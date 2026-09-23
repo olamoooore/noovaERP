@@ -25,6 +25,17 @@ const baseNavItems: NavItem[] = [
     icon: 'solar:home-2-bold-duotone',
   },
   {
+    title: 'Approvals',
+    href: '/approvals',
+    icon: 'solar:checklist-bold-duotone',
+    requiredPermission: 'invoices.approve',
+  },
+  {
+    title: 'Notifications',
+    href: '/notifications',
+    icon: 'solar:bell-bing-bold-duotone',
+  },
+  {
     title: 'Contacts',
     href: '/master-contacts',
     icon: 'solar:users-group-two-rounded-bold-duotone',

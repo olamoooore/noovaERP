@@ -3,13 +3,15 @@
 namespace App\Providers;
 
 use App\Accounting\Contracts\PostingEngineInterface;
+use App\Accounting\Events\ApprovalDecisionEvent;
 use App\Accounting\PostingEngine;
 use App\Accounting\Services\ActionEligibilityEvaluator;
-use App\Accounting\Services\StateTransitionService;
-use App\Accounting\Services\ReversalCorrectionEngine;
 use App\Accounting\Services\PostingPolicyMapper;
+use App\Accounting\Services\ReversalCorrectionEngine;
 use App\Accounting\Services\RevisionPolicyResolver;
+use App\Accounting\Services\StateTransitionService;
 use App\Accounting\Services\StructuredObservabilityService;
+use App\Listeners\InvoiceApprovalDecisionListener;
 use App\Listeners\PreventDangerousMigrations;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
@@ -24,6 +26,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(PostingEngineInterface::class, PostingEngine::class);
+        $this->app->bind(\App\Contracts\EsignProviderInterface::class, \App\Services\NullEsignProvider::class);
         $this->app->register(CompliancePluginServiceProvider::class);
 
         // ADR-005 Accounting Domain Services
@@ -61,14 +64,18 @@ class AppServiceProvider extends ServiceProvider
         // Log dangerous migrations (migrate:fresh, db:wipe) for audit trail
         Event::listen(\Illuminate\Console\Events\CommandFinished::class, PreventDangerousMigrations::class);
 
+        // Wire invoice approval callbacks to the generic approval decision event
+        Event::listen(ApprovalDecisionEvent::class, InvoiceApprovalDecisionListener::class);
+
         // Factory resolver for module models
         \Illuminate\Database\Eloquent\Factories\Factory::guessFactoryNamesUsing(function (string $modelName) {
             // Modules\POS\Models\PosTerminal -> Database\Factories\Modules\POS\Models\PosTerminalFactory
             if (str_starts_with($modelName, 'Modules\\')) {
-                return 'Database\\Factories\\Modules\\' . substr($modelName, strlen('Modules\\')) . 'Factory';
+                return 'Database\\Factories\\Modules\\'.substr($modelName, strlen('Modules\\')).'Factory';
             }
+
             // App\Models\User -> Database\Factories\UserFactory (default Laravel convention)
-            return 'Database\\Factories\\' . class_basename($modelName) . 'Factory';
+            return 'Database\\Factories\\'.class_basename($modelName).'Factory';
         });
 
         // --- Superadmin RBAC gates ---

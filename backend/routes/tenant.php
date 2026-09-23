@@ -61,6 +61,10 @@ Route::middleware([
     // Guest order lookup by token
     Route::get('/web-shop/orders/guest/{token}', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'showGuest']);
 
+    // Invoice public acceptance links (signed, expiring — no auth required)
+    Route::get('/invoice-accept/{token}', [\App\Http\Controllers\Api\InvoiceAcceptanceController::class, 'show']);
+    Route::post('/invoice-accept/{token}/accept', [\App\Http\Controllers\Api\InvoiceAcceptanceController::class, 'accept']);
+
     // Web shop auth (public - no login required)
     // Pillar 2 Part 2 §2.3: dedicated brute-force throttle (5/min per IP).
     Route::post('/web-shop/auth/register', [\Modules\Ecommerce\Http\Controllers\WebAuthController::class, 'register'])->middleware('throttle:5,1');
@@ -242,6 +246,16 @@ Route::middleware([
         Route::get('/{id}', [\App\Http\Controllers\ApprovalController::class, 'show']);
         Route::post('/{id}/approve', [\App\Http\Controllers\ApprovalController::class, 'approve']);
         Route::post('/{id}/reject', [\App\Http\Controllers\ApprovalController::class, 'reject']);
+    });
+
+    // Tenant-scoped user notifications (in-app inbox + actions).
+    // Requires auth:sanctum (inherited from outer middleware group).
+    Route::prefix('notifications')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\NotificationController::class, 'index']);
+        Route::get('/unread-count', [\App\Http\Controllers\Api\NotificationController::class, 'unreadCount']);
+        Route::post('/mark-all-read', [\App\Http\Controllers\Api\NotificationController::class, 'markAllRead']);
+        Route::post('/{id}/read', [\App\Http\Controllers\Api\NotificationController::class, 'markRead']);
+        Route::delete('/{id}', [\App\Http\Controllers\Api\NotificationController::class, 'destroy']);
     });
 
     // ─── ADR-005 Reversals (§15.3) ──────────────────────────────────────────

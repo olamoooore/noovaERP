@@ -3,6 +3,7 @@
 use App\Http\Middleware\ResolveTenantFromWebhook;
 use App\Http\Middleware\SecureWebhookAccess;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\EsignWebhookController;
 use Modules\PaymentGateway\Controllers\PaymentWebhookController;
 
 /*
@@ -43,5 +44,12 @@ Route::prefix('api/v1')->group(function () {
         ->middleware([
             SecureWebhookAccess::class.':paypal',
             ResolveTenantFromWebhook::class.':paypal',
+        ]);
+
+    // E-sign provider webhooks — signature verified by the provider implementation
+    Route::post('/webhooks/esign/{provider}', [EsignWebhookController::class, 'handle'])
+        ->name('webhooks.esign')
+        ->middleware([
+            SecureWebhookAccess::class.':esign',
         ]);
 });

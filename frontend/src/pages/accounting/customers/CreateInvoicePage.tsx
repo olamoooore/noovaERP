@@ -4,6 +4,8 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { todayDateOnly, addCalendarDays, diffCalendarDays, isValidProductQuantity } from '@/lib/dateOnly';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
@@ -264,6 +266,8 @@ export const CreateInvoicePage: React.FC = () => {
   // HR71-04: explicit override intent. Once the user manually edits terms or
   // due date, a later customer change must not silently overwrite it.
   const [termsOverridden, setTermsOverridden] = useState(false);
+  const [requiresApproval, setRequiresApproval] = useState(false);
+  const [customInvoiceNumber, setCustomInvoiceNumber] = useState('');
   const calcDueDate = (invDate: string, termsDays: number) => addCalendarDays(invDate, termsDays);
   const [dueDate, setDueDate] = useState(() => calcDueDate(todayDateOnly(), 30));
   const [caseNumber, setCaseNumber] = useState('');
@@ -422,6 +426,7 @@ export const CreateInvoicePage: React.FC = () => {
       setTermsOverridden(true);
     }
     setCaseNumber(existingInvoice.case_number || '');
+    setCustomInvoiceNumber(existingInvoice.invoice_number || '');
     setPrNo(existingInvoice.pr_no || '');
     setContractNo(existingInvoice.contract_no || '');
     setPlantCode(existingInvoice.plant_code || '');
@@ -441,6 +446,7 @@ export const CreateInvoicePage: React.FC = () => {
     setTerms(existingInvoice.terms || '');
     setDiscountMode('fixed');
     setDiscountAmount(existingInvoice.discount_amount ? Number(existingInvoice.discount_amount) : '');
+    setRequiresApproval(!!existingInvoice.requires_approval);
     setDocumentSnapshot({
       customer_reference: existingInvoice.customer_reference || '',
       internal_reference: existingInvoice.internal_reference || '',
@@ -712,7 +718,7 @@ export const CreateInvoicePage: React.FC = () => {
     ? subtotal * (discountAmt / 100)
     : discountAmt;
   const total = subtotal + taxTotal - lineDiscounts - documentDiscountAmount;
-  const invoiceNumberPreview = `INV-${new Date(invoiceDate).getFullYear()}-XXXX`;
+  const invoiceNumberPreview = customInvoiceNumber || `INV-${new Date(invoiceDate).getFullYear()}-XXXX`;
 
   const handleCustomerFormSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -808,6 +814,8 @@ export const CreateInvoicePage: React.FC = () => {
       terms: terms || undefined,
       payment_terms: paymentTerms,
       discount_amount: documentDiscountAmount || 0,
+      requires_approval: requiresApproval,
+      ...(customInvoiceNumber ? { invoice_number: customInvoiceNumber } : {}),
       ...documentSnapshot,
       lines: lines
         .filter((line) => line.description || line.product_id)
@@ -892,19 +900,15 @@ export const CreateInvoicePage: React.FC = () => {
   return (
     <>
       <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={() => navigate(backPath)}>
-              <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
-              Back
-            </Button>
-            <div>
-              <h1 className="text-3xl font-bold">{isEditMode ? 'Edit' : 'Create'} {documentLabel}</h1>
-              <p className="text-muted-foreground mt-1">
-                Prepare the customer, products, and commercial details for this {documentLabel.toLowerCase()}.
-              </p>
-            </div>
-          </div>
+        <div>
+          <Button variant="ghost" size="sm" onClick={() => navigate(backPath)} className="mb-3">
+            <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
+            Back
+          </Button>
+          <h1 className="text-3xl font-bold">{isEditMode ? 'Edit' : 'Create'} {documentLabel}</h1>
+          <p className="text-muted-foreground mt-1">
+            Prepare the customer, products, and commercial details for this {documentLabel.toLowerCase()}.
+          </p>
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -913,7 +917,7 @@ export const CreateInvoicePage: React.FC = () => {
               <CardTitle>{documentLabel} Details</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Customer *</label>
                   <CustomerSearchCombobox
@@ -928,6 +932,19 @@ export const CreateInvoicePage: React.FC = () => {
                       }
                     }}
                   />
+                  {!isQuoteMode && (
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      <Checkbox
+                        id="requires-approval"
+                        checked={requiresApproval}
+                        onCheckedChange={(checked) => setRequiresApproval(checked === true)}
+                        className="h-3.5 w-3.5"
+                      />
+                      <Label htmlFor="requires-approval" className="text-xs cursor-pointer text-muted-foreground hover:text-foreground">
+                        Requires Approval
+                      </Label>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{isQuoteMode ? 'Quote Date' : 'Invoice Date'}</label>
@@ -975,10 +992,13 @@ export const CreateInvoicePage: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{documentLabel} Number</label>
-                  <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2">
-                    <div className="text-sm font-semibold text-slate-900">{invoiceNumberPreview}</div>
-                    <div className="text-xs text-slate-500 mt-1">Final sequence assigned when the {documentLabel.toLowerCase()} is created.</div>
-                  </div>
+                  <input
+                    type="text"
+                    value={customInvoiceNumber}
+                    onChange={(e) => setCustomInvoiceNumber(e.target.value)}
+                    placeholder={`INV-${new Date().getFullYear()}-XXXX`}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm font-mono"
+                  />
                 </div>
               </div>
 
@@ -1350,19 +1370,19 @@ export const CreateInvoicePage: React.FC = () => {
                 <table className="w-full min-w-[1800px] table-fixed text-sm">
                   <thead>
                     <tr className="border-b">
-                      <th className="text-left py-2 px-2 w-12">#</th>
-                      <th className="text-left py-2 px-2 w-[260px]">Product</th>
-                      {visibleLineColumns.sku && <th className="text-left py-2 px-2 w-[140px]">SKU</th>}
-                      {visibleLineColumns.description && <th className="text-left py-2 px-2 w-[320px]">Description</th>}
-                      {visibleLineColumns.model_number && <th className="text-left py-2 px-2 w-28">Model #</th>}
-                      {visibleLineColumns.product_notes && <th className="text-left py-2 px-2 w-36">Product Notes</th>}
-                      {visibleLineColumns.lot_number && <th className="text-left py-2 px-2 w-32">Lot Number</th>}
-                      {visibleLineColumns.expiry_date && <th className="text-left py-2 px-2 w-36">Expiry Date</th>}
-                      <th className="text-right py-2 px-2 min-w-[90px]">Qty</th>
-                      <th className="text-right py-2 px-2 min-w-[120px]">Unit Price</th>
-                      {visibleLineColumns.tax_rate && <th className="text-right py-2 px-2 min-w-[90px]">Tax %</th>}
-                      <th className="text-right py-2 px-2 min-w-[110px]">Line Total</th>
-                      <th className="py-2 px-2 w-32">Actions</th>
+                      <th className="text-left py-2 px-2 min-w-[3rem] whitespace-nowrap">#</th>
+                      <th className="text-left py-2 px-2 min-w-[15rem] whitespace-nowrap">Product</th>
+                      {visibleLineColumns.sku && <th className="text-left py-2 px-2 min-w-[8rem] whitespace-nowrap">SKU</th>}
+                      {visibleLineColumns.description && <th className="text-left py-2 px-2 min-w-[18rem] whitespace-nowrap">Description</th>}
+                      {visibleLineColumns.model_number && <th className="text-left py-2 px-2 min-w-[6.5rem] whitespace-nowrap">Model #</th>}
+                      {visibleLineColumns.product_notes && <th className="text-left py-2 px-2 min-w-[10rem] whitespace-nowrap">Product Notes</th>}
+                      {visibleLineColumns.lot_number && <th className="text-left py-2 px-2 min-w-[8rem] whitespace-nowrap">Lot Number</th>}
+                      {visibleLineColumns.expiry_date && <th className="text-left py-2 px-2 min-w-[10rem] whitespace-nowrap">Expiry Date</th>}
+                      <th className="text-right py-2 px-2 min-min-w-[5.5rem] whitespace-nowrap">Qty</th>
+                      <th className="text-right py-2 px-2 min-min-w-[7rem] whitespace-nowrap">Unit Price</th>
+                      {visibleLineColumns.tax_rate && <th className="text-right py-2 px-2 min-min-w-[5.5rem] whitespace-nowrap">Tax %</th>}
+                      <th className="text-right py-2 px-2 min-min-w-[6.5rem] whitespace-nowrap">Line Total</th>
+                      <th className="py-2 px-2 min-w-[8rem] whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>
                   <tbody>

@@ -11,6 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { NotificationBell } from '@/components/layout/NotificationBell'
 
 export function TopBar() {
   const { user, logout, role } = useAuthStore()
@@ -34,10 +35,7 @@ export function TopBar() {
 
       <div className="flex items-center gap-4">
         {/* Notifications */}
-        <Button variant="ghost" size="icon" className="relative">
-          <Icon icon="solar:bell-bold" className="h-5 w-5" />
-          <span className="absolute right-1 top-1 flex h-2 w-2 rounded-full bg-destructive"></span>
-        </Button>
+        <NotificationBell />
 
         {/* User menu */}
         <DropdownMenu>
