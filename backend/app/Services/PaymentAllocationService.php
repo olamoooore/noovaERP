@@ -24,6 +24,15 @@ class PaymentAllocationService
      */
     public function allocate(Payment $payment, array $applications): Payment
     {
+        // Issue #155 (hostile re-review): only a cash-bearing, applied payment
+        // may settle AR. Reversed/refunded/unapplied payments and unposted
+        // drafts carry no cash.
+        if ($payment->payment_status !== 'applied') {
+            throw new \InvalidArgumentException(
+                "Payment {$payment->payment_number} is '{$payment->payment_status}' — only applied payments can be allocated."
+            );
+        }
+
         return DB::transaction(function () use ($payment, $applications) {
             $payment->loadMissing('applications');
 
@@ -56,6 +65,17 @@ class PaymentAllocationService
                 if ((int) $invoice->customer_id !== (int) $payment->customer_id) {
                     throw new \InvalidArgumentException(
                         "Invoice {$invoice->invoice_number} does not belong to the payment's customer."
+                    );
+                }
+
+                // Issue #155 (hostile re-review): only open posted receivables
+                // can be settled — draft/unposted, cancelled and voided/
+                // superseded invoices have no AR to apply cash against.
+                if (! in_array((string) $invoice->lifecycle_status, ['posted', 'credited'], true)
+                    || in_array((string) $invoice->status, ['draft', 'cancelled'], true)) {
+                    throw new \InvalidArgumentException(
+                        "Invoice {$invoice->invoice_number} is not an open posted receivable "
+                        ."(lifecycle '{$invoice->lifecycle_status}', status '{$invoice->status}')."
                     );
                 }
 
