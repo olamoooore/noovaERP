@@ -41,6 +41,12 @@ Route::middleware([
             // Issue #152: blanket order writes/releases require sales.write.
             Route::post('/sales/blanket-orders', [\Modules\Sales\Http\Controllers\SalesBlanketOrderController::class, 'store']);
             Route::post('/sales/blanket-orders/{blanketOrder}/release', [\Modules\Sales\Http\Controllers\SalesBlanketOrderController::class, 'release']);
+
+            // Issue #151: recurring sales lifecycle (writes).
+            Route::post('/sales/orders/{salesOrder}/recurrence', [\Modules\Sales\Http\Controllers\SalesOrderRecurrenceController::class, 'store']);
+            Route::post('/sales/recurrences/{recurrence}/pause', [\Modules\Sales\Http\Controllers\SalesOrderRecurrenceController::class, 'pause']);
+            Route::post('/sales/recurrences/{recurrence}/resume', [\Modules\Sales\Http\Controllers\SalesOrderRecurrenceController::class, 'resume']);
+            Route::post('/sales/recurrences/{recurrence}/cancel', [\Modules\Sales\Http\Controllers\SalesOrderRecurrenceController::class, 'cancel']);
             Route::post('/sales/orders/{id}/bill-by-delivered', [SalesOrderController::class, 'setBillByDelivered']);
         });
 
@@ -56,6 +62,9 @@ Route::middleware([
             // Issue #152: blanket orders / call-off agreements (reads).
             Route::get('/sales/blanket-orders', [\Modules\Sales\Http\Controllers\SalesBlanketOrderController::class, 'index']);
             Route::get('/sales/blanket-orders/{blanketOrder}', [\Modules\Sales\Http\Controllers\SalesBlanketOrderController::class, 'show']);
+
+            // Issue #151: recurring sales (reads).
+            Route::get('/sales/recurrences', [\Modules\Sales\Http\Controllers\SalesOrderRecurrenceController::class, 'index']);
 
             // Credit preview
             Route::get('/sales/orders/{id}/credit-preview', [SalesOrderController::class, 'creditPreview']);

@@ -48,6 +48,12 @@ Schedule::command('pos:recover-stuck --fix-syncing')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Issue #151 - Recurring/subscription sales order generation.
+Schedule::command('sales:generate-recurring-orders')
+    ->dailyAt('04:30')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Issue #109 - Inventory subledger vs GL control-account reconciliation.
 Schedule::command('inventory:reconcile-gl')
     ->dailyAt('05:45')
