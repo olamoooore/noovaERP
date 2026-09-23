@@ -1378,10 +1378,10 @@ export const CreateInvoicePage: React.FC = () => {
                       {visibleLineColumns.product_notes && <th className="text-left py-2 px-2 min-w-[10rem] whitespace-nowrap">Product Notes</th>}
                       {visibleLineColumns.lot_number && <th className="text-left py-2 px-2 min-w-[8rem] whitespace-nowrap">Lot Number</th>}
                       {visibleLineColumns.expiry_date && <th className="text-left py-2 px-2 min-w-[10rem] whitespace-nowrap">Expiry Date</th>}
-                      <th className="text-right py-2 px-2 min-min-w-[5.5rem] whitespace-nowrap">Qty</th>
-                      <th className="text-right py-2 px-2 min-min-w-[7rem] whitespace-nowrap">Unit Price</th>
-                      {visibleLineColumns.tax_rate && <th className="text-right py-2 px-2 min-min-w-[5.5rem] whitespace-nowrap">Tax %</th>}
-                      <th className="text-right py-2 px-2 min-min-w-[6.5rem] whitespace-nowrap">Line Total</th>
+                      <th className="text-right py-2 px-2 min-w-[5.5rem] whitespace-nowrap">Qty</th>
+                      <th className="text-right py-2 px-2 min-w-[7rem] whitespace-nowrap">Unit Price</th>
+                      {visibleLineColumns.tax_rate && <th className="text-right py-2 px-2 min-w-[5.5rem] whitespace-nowrap">Tax %</th>}
+                      <th className="text-right py-2 px-2 min-w-[6.5rem] whitespace-nowrap">Line Total</th>
                       <th className="py-2 px-2 min-w-[8rem] whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>

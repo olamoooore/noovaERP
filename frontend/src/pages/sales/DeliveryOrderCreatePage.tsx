@@ -528,16 +528,16 @@ export function DeliveryOrderCreatePage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Product</TableHead>
-                  <TableHead className="min-min-w-[18rem] whitespace-nowrap">Description</TableHead>
-                  <TableHead>Product Notes</TableHead>
-                  <TableHead className="text-right">Ordered</TableHead>
-                  <TableHead className="text-right">Already Delivered</TableHead>
-                  <TableHead className="text-right">Remaining</TableHead>
-                  <TableHead className="text-right">Deliver Now</TableHead>
-                  <TableHead>Patient Name</TableHead>
-                  <TableHead>Lot Number</TableHead>
-                  <TableHead>Expiry Date</TableHead>
+                  <TableHead className="whitespace-nowrap">Product</TableHead>
+                  <TableHead className="min-w-[18rem] whitespace-nowrap">Description</TableHead>
+                  <TableHead className="whitespace-nowrap">Product Notes</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">Ordered</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">Already Delivered</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">Remaining</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">Deliver Now</TableHead>
+                  <TableHead className="whitespace-nowrap">Patient Name</TableHead>
+                  <TableHead className="whitespace-nowrap">Lot Number</TableHead>
+                  <TableHead className="whitespace-nowrap">Expiry Date</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -623,7 +623,7 @@ export function DeliveryOrderCreatePage() {
                 <TableRow>
                   <TableHead className="min-w-[9rem] whitespace-nowrap">Product</TableHead>
                   <TableHead className="min-w-[5.5rem] whitespace-nowrap">SKU</TableHead>
-                  <TableHead className="min-min-w-[18rem] whitespace-nowrap">Description</TableHead>
+                  <TableHead className="min-w-[18rem] whitespace-nowrap">Description</TableHead>
                   <TableHead className="min-w-[6rem] whitespace-nowrap">Model #</TableHead>
                   <TableHead className="min-w-[10rem] whitespace-nowrap">Product Notes</TableHead>
                   <TableHead className="min-w-[10rem] whitespace-nowrap">Patient Name</TableHead>

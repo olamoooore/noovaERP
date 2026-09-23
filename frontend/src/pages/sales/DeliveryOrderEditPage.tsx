@@ -359,7 +359,7 @@ export function DeliveryOrderEditPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[200px]">Product</TableHead>
-                <TableHead className="min-min-w-[18rem] whitespace-nowrap">Description</TableHead>
+                <TableHead className="min-w-[18rem] whitespace-nowrap">Description</TableHead>
                 <TableHead className="min-w-[10rem] whitespace-nowrap">Product Notes</TableHead>
                 <TableHead className="min-w-[10rem] whitespace-nowrap">Patient Name</TableHead>
                 <TableHead className="text-right min-w-[6rem] whitespace-nowrap">Quantity</TableHead>
