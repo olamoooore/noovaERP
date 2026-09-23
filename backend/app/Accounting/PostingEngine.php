@@ -187,6 +187,14 @@ class PostingEngine implements PostingEngineInterface
                 // rather than resolving to NOT_APPLICABLE on a missing period.
                 'period_id' => $request->metadata['period_id'] ?? ($request->metadata['fiscal_period_id'] ?? null),
                 'period_required' => $request->metadata['period_required'] ?? false,
+                // Issue #66 (HR66-03): the source document identity must be in
+                // the gate context or AssuranceGate cannot resolve the
+                // document's findings and the real posting path always passes.
+                // Matching is source_type = documentType plus the UUID
+                // source_id or the document reference_number.
+                'record_type' => $request->documentType,
+                'record_id' => $request->documentId !== null ? (string) $request->documentId : null,
+                'record_reference' => $request->reference,
             ],
             requireSnapshot: true,
         );

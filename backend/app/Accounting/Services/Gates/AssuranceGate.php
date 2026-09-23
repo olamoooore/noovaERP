@@ -95,6 +95,12 @@ class AssuranceGate implements AuthorityGate
 
     /**
      * Resolve candidate findings from the context or by querying the database.
+     *
+     * Issue #66 (HR66-03): the aggregate identity in the context is the SOURCE
+     * DOCUMENT of the posting. Findings are matched by source_type plus either
+     * a UUID source_id (the controlled aggregate ids, e.g. close cycles) or the
+     * document reference_number (numeric document ids cannot be stored in the
+     * uuid source_id column — querying them unguarded raised a SQL cast error).
      */
     private function resolveCandidateFindings(array $context): array
     {
@@ -102,15 +108,33 @@ class AssuranceGate implements AuthorityGate
             return $context['blocking_assurance_findings'];
         }
 
-        if (isset($context['record_type'], $context['record_id'])) {
-            return AccountingFinding::where('source_type', $context['record_type'])
-                ->where('source_id', $context['record_id'])
-                ->whereIn('status', ['open', 'acknowledged', 'investigating'])
-                ->get()
-                ->all();
+        $recordType = $context['record_type'] ?? null;
+        if ($recordType === null) {
+            return [];
         }
 
-        return [];
+        $recordId = $context['record_id'] ?? null;
+        $recordReference = $context['record_reference'] ?? null;
+
+        $hasUuidId = $recordId !== null && \Illuminate\Support\Str::isUuid((string) $recordId);
+        $hasReference = is_string($recordReference) && $recordReference !== '';
+
+        if (! $hasUuidId && ! $hasReference) {
+            return [];
+        }
+
+        return AccountingFinding::where('source_type', $recordType)
+            ->where(function ($query) use ($hasUuidId, $recordId, $hasReference, $recordReference) {
+                if ($hasUuidId) {
+                    $query->orWhere('source_id', (string) $recordId);
+                }
+                if ($hasReference) {
+                    $query->orWhere('reference_number', $recordReference);
+                }
+            })
+            ->whereIn('status', ['open', 'acknowledged', 'investigating'])
+            ->get()
+            ->all();
     }
 
     /**

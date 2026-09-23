@@ -40,7 +40,7 @@ class Issue66AssuranceBaselineSeederTest extends TenantTestCase
         $rows = AssuranceBlockingPolicy::where('tenant_id', $this->tenantUuid)->get();
         $this->assertCount(2, $rows);
         $this->assertTrue($rows->contains(fn ($r) => $r->block_mode === 'BLOCK' && $r->severity_threshold === 'CRITICAL'));
-        $this->assertTrue($rows->contains(fn ($r) => $r->block_mode === 'WARN' && $r->severity_threshold === 'HIGH'));
+        $this->assertTrue($rows->contains(fn ($r) => $r->block_mode === 'WARNING_ONLY' && $r->severity_threshold === 'HIGH'));
     }
 
     public function test_gate_blocks_critical_finding_after_seeding(): void
@@ -73,7 +73,7 @@ class Issue66AssuranceBaselineSeederTest extends TenantTestCase
             ],
         ]);
 
-        // HIGH matches the WARN row only; scopeBlocking() filters to BLOCK
+        // HIGH matches the WARNING_ONLY row only; scopeBlocking() filters to BLOCK
         // rows, and the CRITICAL baseline must not fire for high.
         $this->assertSame('PASS', $result->result->value);
     }

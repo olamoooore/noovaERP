@@ -27,7 +27,7 @@ use Illuminate\Support\Facades\DB;
  *  - BLOCK at CRITICAL: unresolved CRITICAL assurance findings block the
  *    material posting actions (invoice/bill/payment postings, close
  *    cycle, manual journal post) for the records they are attached to.
- *  - WARN at HIGH: non-blocking visibility row (block_mode != 'BLOCK'
+ *  - WARNING_ONLY at HIGH: non-blocking visibility row (block_mode != 'BLOCK'
  *    never blocks; AssuranceGate::scopeBlocking only reads BLOCK rows).
  *
  * Severity matching in AssuranceBlockingPolicy::shouldBlock is
@@ -64,7 +64,7 @@ class AssuranceBlockingPolicySeeder extends Seeder
                 'severity_threshold' => 'HIGH',
                 'risk_threshold' => null,
                 'action_scope' => null,
-                'block_mode' => 'WARN',
+                'block_mode' => 'WARNING_ONLY',
                 'effective_from' => null,
                 'effective_to' => null,
                 'status' => 'active',
