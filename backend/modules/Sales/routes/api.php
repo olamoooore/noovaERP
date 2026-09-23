@@ -38,6 +38,9 @@ Route::middleware([
             Route::post('/sales/orders/{id}/invoice', [SalesOrderController::class, 'createInvoice']);
             // Issue #154: the credit-note path the cancel error points at.
             Route::post('/sales/orders/{id}/credit-note', [SalesOrderController::class, 'creditNote']);
+            // Issue #152: blanket order writes/releases require sales.write.
+            Route::post('/sales/blanket-orders', [\Modules\Sales\Http\Controllers\SalesBlanketOrderController::class, 'store']);
+            Route::post('/sales/blanket-orders/{blanketOrder}/release', [\Modules\Sales\Http\Controllers\SalesBlanketOrderController::class, 'release']);
             Route::post('/sales/orders/{id}/bill-by-delivered', [SalesOrderController::class, 'setBillByDelivered']);
         });
 
@@ -49,6 +52,10 @@ Route::middleware([
             Route::get('/sales/orders/{id}/history', [SalesOrderController::class, 'history']);
             // Issue #150: sales-pipeline analytics (pre-invoice).
             Route::get('/sales/analytics/pipeline', [\Modules\Sales\Http\Controllers\SalesPipelineAnalyticsController::class, 'index']);
+
+            // Issue #152: blanket orders / call-off agreements (reads).
+            Route::get('/sales/blanket-orders', [\Modules\Sales\Http\Controllers\SalesBlanketOrderController::class, 'index']);
+            Route::get('/sales/blanket-orders/{blanketOrder}', [\Modules\Sales\Http\Controllers\SalesBlanketOrderController::class, 'show']);
 
             // Credit preview
             Route::get('/sales/orders/{id}/credit-preview', [SalesOrderController::class, 'creditPreview']);
