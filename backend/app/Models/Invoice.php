@@ -363,6 +363,40 @@ class Invoice extends Model
         return $this->hasMany(\Modules\Sales\Models\DeliveryOrder::class, 'invoice_id');
     }
 
+    /**
+     * Issue #153: surface the linked delivery order's signed proof on the
+     * Invoice API response so client AP/payment processing can verify the
+     * goods were actually received and signed for. Returns the first DO with
+     * a signed document (a DO can have multiple proofs; the most recent wins).
+     */
+    public function proofOfDelivery(): ?array
+    {
+        $do = $this->deliveryOrders()
+            ->whereNotNull('signed_document_path')
+            ->orderByDesc('signed_at')
+            ->orderByDesc('signed_document_uploaded_at')
+            ->first();
+
+        if (! $do) {
+            return null;
+        }
+
+        return [
+            'delivery_order_id' => $do->id,
+            'delivery_order_number' => $do->delivery_order_number,
+            'confirmation_method' => $do->confirmation_method,
+            'confirmed_via_channel' => $do->confirmed_via_channel,
+            'signed_by_name' => $do->signed_by_name,
+            'signed_by_email' => $do->signed_by_email,
+            'signed_at' => optional($do->signed_at)->toIso8601String(),
+            'signed_document_uploaded_at' => optional($do->signed_document_uploaded_at)->toIso8601String(),
+            'signed_document_path' => $do->signed_document_path,
+            'signed_document_url' => route('sales.delivery-orders.signed-document.download', [
+                'id' => $do->id,
+            ], false),
+        ];
+    }
+
     public function medicalCases(): HasMany
     {
         return $this->hasMany(MedicalCase::class);

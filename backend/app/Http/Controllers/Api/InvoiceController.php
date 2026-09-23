@@ -438,6 +438,10 @@ class InvoiceController extends Controller
             return response()->json(['message' => 'Invoice not found'], 404);
         }
 
+        // Issue #153: surface the linked DO's signed proof-of-delivery so
+        // client AP teams can verify receipt + signature alongside the invoice.
+        $invoice->proof_of_delivery = $invoice->proofOfDelivery();
+
         return response()->json($invoice);
     }
 

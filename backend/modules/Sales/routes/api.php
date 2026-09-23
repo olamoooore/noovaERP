@@ -92,6 +92,10 @@ Route::middleware([
             Route::post('/sales/delivery-orders/{id}/confirm', [DeliveryOrderController::class, 'confirm']);
             // Issue #177: signed copy upload for the physical confirmation path.
             Route::post('/sales/delivery-orders/{id}/signed-document', [DeliveryOrderController::class, 'uploadSignedDocument']);
+            // Issue #153: download the signed POD, gated the same way as the
+            // delivery-orders detail endpoint.
+            Route::get('/sales/delivery-orders/{id}/signed-document', [DeliveryOrderController::class, 'downloadSignedDocument'])
+                ->name('sales.delivery-orders.signed-document.download');
             Route::post('/sales/delivery-orders/{id}/complete', [DeliveryOrderController::class, 'complete']);
             Route::post('/sales/delivery-orders/{id}/reverse', [DeliveryOrderController::class, 'reverse']);
             Route::post('/sales/delivery-orders/{id}/cancel', [DeliveryOrderController::class, 'cancel']);

@@ -359,7 +359,10 @@ class DeliveryOrderController extends Controller
     }
 
     /**
-     * Issue #177: upload the signed copy for the physical confirmation path.
+     * Issue #177 / #153: upload the signed copy for the physical confirmation
+     * path. Accepts explicit signer metadata (name + email + signed_at) so
+     * the proof travels with the resulting Invoice for client AP/payment
+     * processing.
      */
     public function uploadSignedDocument(Request $request, $id)
     {
@@ -375,19 +378,48 @@ class DeliveryOrderController extends Controller
 
         $validated = $request->validate([
             'file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'signed_by_name' => 'required|string|max:255',
+            'signed_by_email' => 'nullable|email|max:255',
+            'signed_at' => 'nullable|date',
         ]);
 
         $path = $validated['file']->store('delivery-orders/signed', 'local');
 
         $deliveryOrder->update([
+            'confirmation_method' => $deliveryOrder->confirmation_method ?? 'physical',
             'signed_document_path' => $path,
             'signed_document_uploaded_at' => now(),
+            'signed_by_name' => $validated['signed_by_name'],
+            'signed_by_email' => $validated['signed_by_email'] ?? null,
+            'signed_at' => $validated['signed_at'] ?? now(),
         ]);
 
         return response()->json([
             'message' => 'Signed delivery order uploaded',
             'signed_document_path' => $path,
+            'signed_by_name' => $deliveryOrder->fresh()->signed_by_name,
+            'signed_by_email' => $deliveryOrder->fresh()->signed_by_email,
+            'signed_at' => optional($deliveryOrder->fresh()->signed_at)->toIso8601String(),
         ]);
+    }
+
+    /**
+     * Issue #153: download the signed POD file (referenced by Invoice.proofOfDelivery()).
+     */
+    public function downloadSignedDocument($id)
+    {
+        $deliveryOrder = DeliveryOrder::find($id);
+
+        if (! $deliveryOrder || ! $deliveryOrder->signed_document_path) {
+            return response()->json(['message' => 'Signed document not found.'], 404);
+        }
+
+        $disk = \Illuminate\Support\Facades\Storage::disk('local');
+        if (! $disk->exists($deliveryOrder->signed_document_path)) {
+            return response()->json(['message' => 'Signed document file missing on disk.'], 404);
+        }
+
+        return $disk->download($deliveryOrder->signed_document_path);
     }
 
     /**

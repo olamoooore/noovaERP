@@ -22,6 +22,11 @@ class DeliveryOrder extends Model
         'confirmed_via_channel',
         'signed_document_path',
         'signed_document_uploaded_at',
+        // Issue #153: signer metadata travels with the resulting Invoice for
+        // client AP/payment processing.
+        'signed_by_name',
+        'signed_by_email',
+        'signed_at',
         // Issue #178: rejection/replacement revision chain.
         'correction_group_id',
         'version_number',
@@ -60,6 +65,7 @@ class DeliveryOrder extends Model
 
     protected $casts = [
         'signed_document_uploaded_at' => 'datetime',
+        'signed_at' => 'datetime',
         'is_active_version' => 'boolean',
         'superseded_at' => 'datetime',
         'delivery_date' => 'date',
