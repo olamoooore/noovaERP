@@ -232,4 +232,43 @@ class Issue43PeriodCloseSettlementAuthTest extends TenantTestCase
 
         return $user;
     }
+    /**
+     * HR43-02 (hostile re-review): settlement mutations had denial tests only.
+     * This exercises the REAL router with a user whose tenant role carries
+     * accounting.write and asserts the settlement is allocated (200).
+     */
+    public function test_authorized_accountant_can_allocate_a_settlement_through_the_router(): void
+    {
+        $role = \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'Accountant', 'guard_name' => 'web']);
+        $role->syncPermissions(['accounting.write']);
+
+        $user = $this->createTenantUser('accountant');
+        $user->assignRole('Accountant');
+
+        $settlement = new \App\Models\Settlement;
+        $settlement->tenant_id = $this->tenantUuid;
+        $settlement->settlement_number = 'STL-43-'.Str::upper(Str::random(5));
+        $settlement->settlement_state = 'UNALLOCATED';
+        $settlement->settlement_type = 'cash_application';
+        $settlement->allocated_amount = 0;
+        $settlement->unapplied_amount = 500;
+        $settlement->currency_code = 'USD';
+        $settlement->save();
+
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/accounting/settlements/allocate', [
+            'settlement_id' => $settlement->id,
+            'allocations' => [
+                ['source_record_type' => 'invoice', 'source_record_id' => 1, 'amount' => 200],
+            ],
+        ]);
+
+        $this->assertSame(201, $response->getStatusCode(), $response->getContent());
+
+        $this->assertSame(
+            1,
+            \App\Models\Allocation::where('settlement_id', $settlement->id)->count(),
+            'The allocation must be recorded through the real router'
+        );
+    }
+
 }
