@@ -20,7 +20,7 @@ $controller = ContactMasterController::class;
 | customers.* sensitivity model.
 |
 */
-Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPreference::class, \App\Http\Middleware\EnsureTenantSearchPath::class, \App\Http\Middleware\SyncTenantUserFromCentralAuth::class])->group(function () use ($controller) {
+Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPreference::class, \App\Http\Middleware\EnsureTenantSearchPath::class, \App\Http\Middleware\SyncTenantUserFromCentralAuth::class, \App\Http\Middleware\EnsureContactEntityAccess::class])->group(function () use ($controller) {
 
     // ─── Contact CRUD ─────────────────────────────────────────
     Route::get('/contacts', [$controller, 'index'])
