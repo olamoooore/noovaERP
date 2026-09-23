@@ -851,7 +851,11 @@ class ContactMasterService
     public function rebuildSearchIndex(CoreContact $contact): void
     {
         $roles = $contact->roles->pluck('role')->implode(', ');
-        $identifiers = $contact->identifiers->pluck('identifier_value')->implode(', ');
+        // Hostile re-review (#118): identifier values are encrypted at rest
+        // (tax IDs, registration numbers) — copying them into the search index
+        // would store the plaintext in a second table. Index the identifier
+        // TYPES only; values stay in the encrypted source column.
+        $identifiers = $contact->identifiers->pluck('identifier_type')->implode(', ');
         // Issue #121: the search index must use the PRIMARY address, not the
         // first row in insertion order.
         $address = $contact->addresses->firstWhere('is_primary', true)
@@ -872,7 +876,7 @@ class ContactMasterService
             'identifiers_text' => $identifiers,
             'address_text' => $addressText,
             'primary_role' => $contact->roles->where('is_primary', true)->first()?->role,
-            'primary_identifier' => $contact->identifiers->where('is_primary', true)->first()?->identifier_value,
+            'primary_identifier' => $contact->identifiers->where('is_primary', true)->first()?->identifier_type,
             'is_active' => $contact->is_active,
         ];
 
