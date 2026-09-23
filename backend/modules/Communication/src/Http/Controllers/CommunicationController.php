@@ -258,6 +258,7 @@ class CommunicationController extends Controller
             $request->header('X-Tenant-ID'),
             $validated['model'] ?? null,
             isset($validated['record_id']) ? (int) $validated['record_id'] : null,
+            $this->resolveUserRole($request->user()),
         );
 
         return response()->json(['success' => true, 'data' => ['unread_count' => $count]]);

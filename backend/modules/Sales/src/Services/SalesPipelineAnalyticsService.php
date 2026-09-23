@@ -29,8 +29,15 @@ class SalesPipelineAnalyticsService
             ->whereBetween('order_date', [$from->toDateString(), $to->toDateString()])
             ->get();
 
+        // Hostile re-review (#150): only live revisions count — after #178 a
+        // rejected quotation is cancelled AND superseded by its replacement;
+        // counting both inflates 'lost' and distorts the win rate.
         $quotations = Quotation::query()
             ->whereBetween('quotation_date', [$from->toDateString(), $to->toDateString()])
+            ->where(function ($query) {
+                $query->whereNull('is_active_version')->orWhere('is_active_version', true);
+            })
+            ->whereNull('superseded_at')
             ->get();
 
         $byStatus = $orders
