@@ -77,19 +77,30 @@ class InvoiceActivityService
 
         $description = $this->chatterDescription($event, $fromState, $toState, $metadata);
 
+        // Only emit properties a human benefits from reading. The raw event
+        // name, actor id and the metadata blob are internal — the description
+        // already carries the narrative, and dumping the array rendered as
+        // "[object Object]" in the chatter panel.
+        $properties = [];
+        if (! empty($metadata['review_notes'])) {
+            $properties['review_notes'] = $metadata['review_notes'];
+        }
+        if (! empty($metadata['approval_request_number'])) {
+            $properties['approval_request'] = $metadata['approval_request_number'];
+        }
+        if ($fromState !== $toState && $fromState !== null && $toState !== null) {
+            $properties['state'] = "{$fromState} → {$toState}";
+        }
+
         try {
             $this->chatterService->logEvent(
                 Invoice::class,
                 (int) $invoice->id,
                 $chatterEvent,
                 $description,
-                [
-                    'invoice_event' => $event,
-                    'from_state' => $fromState,
-                    'to_state' => $toState,
-                    'actor_id' => $actorId,
-                    'metadata' => $metadata,
-                ],
+                $properties,
+                $actorId,
+                $actorId !== null ? \App\Models\User::class : null,
             );
         } catch (\Throwable) {
             // never break invoice flows if chatter mirroring fails

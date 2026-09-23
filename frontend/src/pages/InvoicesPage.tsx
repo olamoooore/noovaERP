@@ -6,14 +6,17 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { cn, formatCurrency, formatDate } from '@/lib/utils'
 import api from '@/lib/api'
 import { useNavigate } from 'react-router-dom'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
 import { INVOICE_EXPORT_COLUMNS, SalesDocumentExportMenu } from '@/components/sales/SalesDocumentExportMenu'
-import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { SalesLineColumnMenu, SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { useBulkSelection } from '@/hooks/use-bulk-selection'
 import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 export function InvoicesPage() {
   const { toast } = useToast()
@@ -21,6 +24,9 @@ export function InvoicesPage() {
   const navigate = useNavigate()
 
   const [searchQuery, setSearchQuery] = useState('')
+  const [hiddenInvoiceColumns, setHiddenInvoiceColumns] = useState<number[]>([])
+  const [actionsPinned, setActionsPinned] = useState(false)
+  const [bulkAction, setBulkAction] = useState<'post' | 'delete' | null>(null)
   const [statusFilter, setStatusFilter] = useState('all')
   const [customerFilter, setCustomerFilter] = useState('')
   const [dateFilter, setDateFilter] = useState<'all' | 'yearly' | 'monthly' | 'custom'>('all')
@@ -159,22 +165,63 @@ export function InvoicesPage() {
           <h1 className="text-3xl font-bold">Invoices</h1>
           <p className="text-muted-foreground mt-1">All invoices — created from Sales Orders or directly.</p>
         </div>
-        <div className="flex gap-2">
-          <SalesDocumentExportMenu
-            endpoint="/invoices/export"
-            filenamePrefix="invoices"
-            columns={INVOICE_EXPORT_COLUMNS}
-            filters={activeFilterParams()}
-            selectedIds={selectedIds}
-          />
-          <Button variant="outline" onClick={() => navigate('/invoices/import')}>
-            <Icon icon="solar:import-bold" className="mr-2 h-4 w-4" />
-            Import
-          </Button>
-          <Button onClick={() => navigate('/invoices/create')}>
-            <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
-            Create Invoice
-          </Button>
+        <div className="group/actions flex items-center justify-end">
+          <div
+            className={cn(
+              'flex items-center gap-2 overflow-hidden transition-all duration-300 ease-out',
+              actionsPinned ? 'max-w-[640px] translate-x-0 opacity-100' : 'max-w-0 translate-x-3 opacity-0',
+              !actionsPinned &&
+                'group-hover/actions:max-w-[640px] group-hover/actions:translate-x-0 group-hover/actions:opacity-100',
+              !actionsPinned &&
+                'group-focus-within/actions:max-w-[640px] group-focus-within/actions:translate-x-0 group-focus-within/actions:opacity-100',
+            )}
+          >
+            <SalesDocumentExportMenu
+              compact
+              endpoint="/invoices/export"
+              filenamePrefix="invoices"
+              columns={INVOICE_EXPORT_COLUMNS}
+              filters={activeFilterParams()}
+              selectedIds={selectedIds}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-full px-3 text-xs"
+              onClick={() => navigate('/invoices/import')}
+            >
+              <Icon icon="solar:upload-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
+              Import
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 rounded-full px-3 text-xs"
+              onClick={() => navigate('/invoices/create')}
+            >
+              <Icon icon="solar:add-circle-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
+              Create Invoice
+            </Button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setActionsPinned((v) => !v)}
+            aria-expanded={actionsPinned}
+            title={actionsPinned ? 'Collapse actions' : 'Show actions'}
+            className={cn(
+              'ml-2 inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+              actionsPinned
+                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                : 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
+            )}
+          >
+            <Icon
+              icon={actionsPinned ? 'solar:close-circle-bold-duotone' : 'solar:bolt-circle-bold-duotone'}
+              className="h-3.5 w-3.5"
+            />
+            Actions
+          </button>
         </div>
       </div>
 
@@ -188,7 +235,7 @@ export function InvoicesPage() {
                 <Button
                   size="sm"
                   onClick={() => {
-                    if (confirm(`Post ${selectedIds.length} invoice(s)?`)) bulkPostMutation.mutate(selectedIds)
+                    setBulkAction('post')
                   }}
                   disabled={bulkPostMutation.isPending}
                 >
@@ -196,7 +243,7 @@ export function InvoicesPage() {
                   {bulkPostMutation.isPending ? 'Posting...' : `Bulk Post (${selectedIds.length})`}
                 </Button>
                 <Button variant="destructive" size="sm" onClick={() => {
-                  if (confirm(`Delete ${selectedIds.length} invoice(s)?`)) bulkDeleteMutation.mutate(selectedIds)
+                  setBulkAction('delete')
                 }}>
                   <Icon icon="solar:trash-bin-minimalistic-bold" className="h-4 w-4 mr-1" />
                   Delete ({selectedIds.length})
@@ -206,84 +253,113 @@ export function InvoicesPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="mb-4 flex flex-wrap gap-3">
-            <input
-              type="text"
-              placeholder="Search invoices..."
-              value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setPage(1) }}
-              className="px-3 py-2 border rounded-md text-sm w-64"
-            />
-            <select
+          {/* Compact single-row filter bar — filters left, column picker right */}
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-full sm:w-60">
+              <Icon
+                icon="solar:magnifer-bold-duotone"
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                type="text"
+                placeholder="Search invoices…"
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setPage(1) }}
+                className="h-9 pl-9"
+              />
+            </div>
+
+            <Select
               value={statusFilter}
-              onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
-              className="px-3 py-2 border rounded-md text-sm"
+              onValueChange={(value) => { setStatusFilter(value); setPage(1) }}
             >
-              <option value="all">All Status</option>
-              <option value="draft">Draft</option>
-              <option value="posted">Posted</option>
-              <option value="sent">Sent</option>
-              <option value="paid">Paid</option>
-              <option value="partial">Partial</option>
-              <option value="overdue">Overdue</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-            <div className="w-48 max-w-full">
+              <SelectTrigger className="h-9 w-[150px]">
+                <SelectValue placeholder="All Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="posted">Posted</SelectItem>
+                <SelectItem value="sent">Sent</SelectItem>
+                <SelectItem value="paid">Paid</SelectItem>
+                <SelectItem value="partial">Partial</SelectItem>
+                <SelectItem value="overdue">Overdue</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <div className="w-full sm:w-52">
               <CustomerSearchCombobox
                 value={customerFilter}
                 onValueChange={(value) => { setCustomerFilter(value); setPage(1) }}
                 placeholder="All Customers"
               />
             </div>
-            <select
+
+            <Select
               value={dateFilter}
-              onChange={(e) => { setDateFilter(e.target.value as typeof dateFilter); setPage(1) }}
-              className="rounded-md border px-3 py-2 text-sm"
+              onValueChange={(value) => { setDateFilter(value as typeof dateFilter); setPage(1) }}
             >
-              <option value="all">All Dates</option>
-              <option value="yearly">Yearly</option>
-              <option value="monthly">Monthly</option>
-              <option value="custom">Custom Date</option>
-            </select>
+              <SelectTrigger className="h-9 w-[140px]">
+                <SelectValue placeholder="All Dates" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Dates</SelectItem>
+                <SelectItem value="yearly">Yearly</SelectItem>
+                <SelectItem value="monthly">Monthly</SelectItem>
+                <SelectItem value="custom">Custom Date</SelectItem>
+              </SelectContent>
+            </Select>
+
             {dateFilter === 'yearly' && (
-              <input
+              <Input
                 type="number"
                 min="2000"
                 max="2100"
                 value={selectedYear}
                 onChange={(e) => { setSelectedYear(e.target.value); setPage(1) }}
                 aria-label="Invoice year"
-                className="w-28 rounded-md border px-3 py-2 text-sm"
+                className="h-9 w-28"
               />
             )}
             {dateFilter === 'monthly' && (
-              <input
+              <Input
                 type="month"
                 value={selectedMonth}
                 onChange={(e) => { setSelectedMonth(e.target.value); setPage(1) }}
                 aria-label="Invoice month"
-                className="rounded-md border px-3 py-2 text-sm"
+                className="h-9 w-[150px]"
               />
             )}
             {dateFilter === 'custom' && (
               <>
-                <input
+                <Input
                   type="date"
                   value={customStartDate}
                   onChange={(e) => { setCustomStartDate(e.target.value); setPage(1) }}
                   aria-label="Invoice start date"
-                  className="rounded-md border px-3 py-2 text-sm"
+                  className="h-9 w-[150px]"
                 />
-                <input
+                <Input
                   type="date"
                   min={customStartDate || undefined}
                   value={customEndDate}
                   onChange={(e) => { setCustomEndDate(e.target.value); setPage(1) }}
                   aria-label="Invoice end date"
-                  className="rounded-md border px-3 py-2 text-sm"
+                  className="h-9 w-[150px]"
                 />
               </>
             )}
+            </div>
+
+            <div className="ml-auto">
+              <SalesLineColumnMenu
+                columns={listingColumns(['Select', 'Invoice #', 'Customer', 'Date', 'Created Date', 'Due Date', 'Total', 'Balance', 'Status', 'Actions'])}
+                hidden={hiddenInvoiceColumns}
+                setHidden={setHiddenInvoiceColumns}
+              />
+            </div>
           </div>
 
           {isLoading ? (
@@ -298,7 +374,13 @@ export function InvoicesPage() {
             </div>
           ) : (
             <>
-              <SalesLineColumnVisibility tableClass="invoices-listing-columns" columns={listingColumns(['Select', 'Invoice #', 'Customer', 'Date', 'Created Date', 'Due Date', 'Total', 'Balance', 'Status', 'Actions'])}>
+              <SalesLineColumnVisibility
+                tableClass="invoices-listing-columns"
+                columns={listingColumns(['Select', 'Invoice #', 'Customer', 'Date', 'Created Date', 'Due Date', 'Total', 'Balance', 'Status', 'Actions'])}
+                hiddenColumns={hiddenInvoiceColumns}
+                onHiddenColumnsChange={setHiddenInvoiceColumns}
+                showMenu={false}
+              >
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -415,6 +497,37 @@ export function InvoicesPage() {
           )}
         </CardContent>
       </Card>
+      <ConfirmDialog
+        open={bulkAction === 'post'}
+        onOpenChange={(open) => !open && setBulkAction(null)}
+        title={`Post ${selectedIds.length} invoice(s)?`}
+        description="Each invoice is posted to the general ledger and becomes non-editable. Invoices requiring approval are skipped unless already approved."
+        confirmLabel="Post invoices"
+        tone="warning"
+        icon="solar:check-circle-bold-duotone"
+        isPending={bulkPostMutation.isPending}
+        onConfirm={() => {
+          const ids = selectedIds
+          setBulkAction(null)
+          bulkPostMutation.mutate(ids)
+        }}
+      />
+
+      <ConfirmDialog
+        open={bulkAction === 'delete'}
+        onOpenChange={(open) => !open && setBulkAction(null)}
+        title={`Delete ${selectedIds.length} invoice(s)?`}
+        description="Only draft invoices can be deleted; posted ones are skipped. This cannot be undone."
+        confirmLabel="Delete invoices"
+        icon="solar:trash-bin-trash-bold-duotone"
+        isPending={bulkDeleteMutation.isPending}
+        onConfirm={() => {
+          const ids = selectedIds
+          setBulkAction(null)
+          bulkDeleteMutation.mutate(ids)
+        }}
+      />
+
     </div>
   )
 }

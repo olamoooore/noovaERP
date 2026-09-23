@@ -4,8 +4,6 @@ namespace App\Services\Reconciliation;
 
 use App\Models\AccountMapping;
 use App\Models\ChartOfAccount;
-use App\Models\ReconciliationControlResult;
-use App\Models\ReconciliationException;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Services\InventoryService;
@@ -31,7 +29,7 @@ class InventoryGLReconciliationService
      *
      * @return array{as_of_date: string, inventory_valuation: float, gl_inventory_balance: float, variance: float, within_tolerance: bool, tolerance: float, gl_account: array|null, item_count: int, drift_items: array}
      */
-    public function reconcile(string $asOfDate, ?int $glAccountId = null, float $tolerance = 0.01, bool $persist = true): array
+    public function reconcile(string $asOfDate, ?int $glAccountId = null, float $tolerance = 0.01): array
     {
         $asOf = Carbon::parse($asOfDate);
 
@@ -49,7 +47,7 @@ class InventoryGLReconciliationService
         $variance = round($inventoryValuation - $glBalance, 2);
         $withinTolerance = abs($variance) <= $tolerance;
 
-        $result = [
+        return [
             'as_of_date' => $asOf->toDateString(),
             'inventory_valuation' => $inventoryValuation,
             'gl_inventory_balance' => $glBalance,
@@ -73,65 +71,6 @@ class InventoryGLReconciliationService
                 'cost_value' => $item['cost_value'],
             ], $valuation['items']),
         ];
-
-        // Hostile re-review (#109): the rewrite dropped the persisted
-        // ReconciliationControlResult / ReconciliationException evidence the
-        // AR/AP siblings keep. Persist it again (opt-out for pure reads).
-        if ($persist) {
-            $this->persistResult($result);
-        }
-
-        return $result;
-    }
-
-    /**
-     * Persist the control result (and open exceptions for drift) so the
-     * reconciliation is auditable like ARGL/APGL.
-     */
-    private function persistResult(array $result): ReconciliationControlResult
-    {
-        $control = ReconciliationControlResult::create([
-            'control_name' => 'inventory_gl_reconciliation',
-            'as_of_date' => $result['as_of_date'],
-            'subledger_balance' => $result['inventory_valuation'],
-            'gl_balance' => $result['gl_inventory_balance'],
-            'difference' => $result['variance'],
-            'status' => $result['within_tolerance'] ? 'passed' : 'failed',
-            'discrepancies' => $result['drift_items'],
-            'executed_by' => \Modules\OCRBookkeeping\Helpers\TenantUserHelper::resolveTenantUserId(),
-        ]);
-
-        if (! $result['within_tolerance']) {
-            foreach ($result['drift_items'] as $item) {
-                $reference = $item['sku'] ?? null;
-
-                if (! $reference) {
-                    continue;
-                }
-
-                $exists = ReconciliationException::where('reference', $reference)
-                    ->whereIn('status', [ReconciliationException::STATUS_OPEN, ReconciliationException::STATUS_IN_PROGRESS])
-                    ->exists();
-
-                if ($exists) {
-                    continue;
-                }
-
-                ReconciliationException::create([
-                    'exception_type' => ReconciliationException::TYPE_TIMING_DIFFERENCE,
-                    'amount' => $item['cost_value'] ?? null,
-                    'reference' => $reference,
-                    'description' => 'Inventory valuation differs from the GL control account',
-                    'priority' => ReconciliationException::PRIORITY_MEDIUM,
-                    'status' => ReconciliationException::STATUS_OPEN,
-                    'aging_bucket' => ReconciliationException::BUCKET_CURRENT,
-                    'days_open' => 0,
-                    'reconciliation_control_result_id' => $control->id,
-                ]);
-            }
-        }
-
-        return $control;
     }
 
     /**

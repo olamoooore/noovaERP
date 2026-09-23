@@ -20,6 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { ChatterDialog } from '@/components/chatter'
 import api from '@/lib/api'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 
 interface SalesOrder {
   id: number
@@ -184,11 +185,16 @@ export function SalesOrderDetailPage() {
     <div className="container mx-auto py-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="outline" onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/sales/orders'))}>
-            <Icon icon="material-symbols:arrow-back" className="mr-2 h-4 w-4" />
-            Back
-          </Button>
+        <div className="space-y-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="-ml-2 text-muted-foreground hover:text-foreground"
+          onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/sales/orders'))}
+        >
+          <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
+          Back
+        </Button>
           <div>
             <h1 className="text-2xl font-bold">Sales Order {order.sales_order_number}</h1>
             <p className="text-muted-foreground text-sm">
@@ -196,46 +202,76 @@ export function SalesOrderDetailPage() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {getStatusBadge(order.status)}
-          <Button variant="outline" onClick={() => setChatterOpen(true)}>
-            <Icon icon="solar:chat-round-dots-bold-duotone" className="mr-2 h-4 w-4" />
+          <HeaderActionButton
+            variant="outline"
+            icon="solar:chat-round-dots-bold-duotone"
+            onClick={() => setChatterOpen(true)}
+          >
             Chatter
-          </Button>
+          </HeaderActionButton>
           {order.status === 'draft' && (
-            <Button onClick={() => actionMutation.mutate('confirm')} disabled={actionMutation.isPending}>
-              <Icon icon="solar:check-circle-bold-duotone" className="mr-2 h-4 w-4" />
+            <HeaderActionButton
+              icon="solar:check-circle-bold-duotone"
+              loading={actionMutation.isPending}
+              onClick={() => actionMutation.mutate('confirm')}
+              disabled={actionMutation.isPending}
+            >
               Confirm
-            </Button>
+            </HeaderActionButton>
           )}
           {order.status === 'confirmed' && (
-            <Button onClick={() => actionMutation.mutate('allocate')} disabled={actionMutation.isPending}>
-              <Icon icon="solar:box-bold-duotone" className="mr-2 h-4 w-4" />
+            <HeaderActionButton
+              icon="solar:box-bold-duotone"
+              loading={actionMutation.isPending}
+              onClick={() => actionMutation.mutate('allocate')}
+              disabled={actionMutation.isPending}
+            >
               Allocate
-            </Button>
+            </HeaderActionButton>
           )}
           {order.status === 'allocated' && (
-            <Button onClick={() => actionMutation.mutate('fulfil')} disabled={actionMutation.isPending}>
-              <Icon icon="solar:delivery-bold-duotone" className="mr-2 h-4 w-4" />
+            <HeaderActionButton
+              icon="solar:delivery-bold-duotone"
+              loading={actionMutation.isPending}
+              onClick={() => actionMutation.mutate('fulfil')}
+              disabled={actionMutation.isPending}
+            >
               Fulfil
-            </Button>
+            </HeaderActionButton>
           )}
           {['confirmed', 'allocated', 'fulfilled', 'invoiced'].includes(order.status) && (
-            <Button variant="outline" onClick={() => actionMutation.mutate('invoice')} disabled={actionMutation.isPending}>
-              <Icon icon="solar:file-text-bold-duotone" className="mr-2 h-4 w-4" />
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:file-text-bold-duotone"
+              loading={actionMutation.isPending}
+              onClick={() => actionMutation.mutate('invoice')}
+              disabled={actionMutation.isPending}
+            >
               Create Invoice
-            </Button>
+            </HeaderActionButton>
           )}
           {order.status === 'cancelled' && (
-            <Button variant="outline" onClick={() => actionMutation.mutate('reset-to-draft')} disabled={actionMutation.isPending}>
-              <Icon icon="solar:refresh-bold-duotone" className="mr-2 h-4 w-4" />
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:undo-left-round-bold-duotone"
+              loading={actionMutation.isPending}
+              onClick={() => actionMutation.mutate('reset-to-draft')}
+              disabled={actionMutation.isPending}
+            >
               Reset to Draft
-            </Button>
+            </HeaderActionButton>
           )}
           {['draft', 'confirmed', 'allocated', 'fulfilled'].includes(order.status) && (
-            <Button variant="destructive" onClick={() => setCancelOpen(true)}>
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:close-circle-bold-duotone"
+              className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => setCancelOpen(true)}
+            >
               Cancel
-            </Button>
+            </HeaderActionButton>
           )}
           <ChatterDialog
             open={chatterOpen}

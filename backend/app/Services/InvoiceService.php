@@ -71,6 +71,15 @@ class InvoiceService
             $data['due_date'] = $data['due_date'] ?? now()->addDays(30);
             $data['status'] = 'draft';
 
+            // Apply the tenant's approval default when the caller did not
+            // decide explicitly, so every creation path honours the setting.
+            if (! array_key_exists('requires_approval', $data)) {
+                $data['requires_approval'] = (bool) \App\Models\Setting::getValue(
+                    'sales.invoice.default_requires_approval',
+                    false
+                );
+            }
+
             $invoice = Invoice::create($data);
 
             foreach ($lines as $lineData) {
@@ -189,47 +198,47 @@ class InvoiceService
             // revenue/AR).
             $totalCogs = 0;
             if (! $this->deliveryAlreadyPostedCogs($invoice)) {
-            $bundleDecomposition = app(\App\Services\BundleDecompositionService::class);
-            $batchConsumption = app(\App\Services\BatchSerialConsumptionService::class);
+                $bundleDecomposition = app(\App\Services\BundleDecompositionService::class);
+                $batchConsumption = app(\App\Services\BatchSerialConsumptionService::class);
 
-            // Issue #131: batch-tracked lines cost their FEFO layers (previewed
-            // here because GL posts before stock is deducted).
-            try {
-                $cogsWarehouseId = $this->resolveInventoryWarehouseId($invoice);
-            } catch (\Throwable) {
-                $cogsWarehouseId = null;
-            }
-
-            foreach ($invoice->lines as $line) {
-                if (($line->line_type ?? 'product') !== 'product') {
-                    continue;
+                // Issue #131: batch-tracked lines cost their FEFO layers (previewed
+                // here because GL posts before stock is deducted).
+                try {
+                    $cogsWarehouseId = $this->resolveInventoryWarehouseId($invoice);
+                } catch (\Throwable) {
+                    $cogsWarehouseId = null;
                 }
-                if ($line->product) {
-                    $qty = (float) $line->quantity;
-                    $lineCogs = $batchConsumption->costForLine($line->product, $qty, $cogsWarehouseId)
-                        ?? $bundleDecomposition->cost($line->product, $qty);
 
-                    if ($lineCogs > 0) {
-                        $totalCogs += $lineCogs;
+                foreach ($invoice->lines as $line) {
+                    if (($line->line_type ?? 'product') !== 'product') {
+                        continue;
+                    }
+                    if ($line->product) {
+                        $qty = (float) $line->quantity;
+                        $lineCogs = $batchConsumption->costForLine($line->product, $qty, $cogsWarehouseId)
+                            ?? $bundleDecomposition->cost($line->product, $qty);
+
+                        if ($lineCogs > 0) {
+                            $totalCogs += $lineCogs;
+                        }
                     }
                 }
-            }
 
-            if ($totalCogs > 0) {
-                // Cost of Goods Sold → profile direction: debit
-                $lines[] = new DomainPostingLine(
-                    accountRole: 'cogs',
-                    amount: $totalCogs,
-                    description: "COGS - Invoice {$invoice->invoice_number}",
-                );
+                if ($totalCogs > 0) {
+                    // Cost of Goods Sold → profile direction: debit
+                    $lines[] = new DomainPostingLine(
+                        accountRole: 'cogs',
+                        amount: $totalCogs,
+                        description: "COGS - Invoice {$invoice->invoice_number}",
+                    );
 
-                // Inventory → profile direction: credit
-                $lines[] = new DomainPostingLine(
-                    accountRole: 'inventory',
-                    amount: $totalCogs,
-                    description: "Inventory - Invoice {$invoice->invoice_number}",
-                );
-            }
+                    // Inventory → profile direction: credit
+                    $lines[] = new DomainPostingLine(
+                        accountRole: 'inventory',
+                        amount: $totalCogs,
+                        description: "Inventory - Invoice {$invoice->invoice_number}",
+                    );
+                }
 
             }
 

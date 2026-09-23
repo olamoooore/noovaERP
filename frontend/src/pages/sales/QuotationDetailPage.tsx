@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,6 +13,9 @@ import { Icon } from '@iconify/react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import { cn } from '@/lib/utils'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 export function QuotationDetailPage() {
   const { id } = useParams()
@@ -131,12 +134,14 @@ export function QuotationDetailPage() {
   })
 
   const handleDelete = () => {
-    if (!window.confirm(`Delete quotation ${quotation?.quotation_number}? This action cannot be undone.`)) return
+    setConfirmAction('delete')
+    return
     deleteMutation.mutate()
   }
 
   const [isDownloading, setIsDownloading] = useState(false)
   const [showInvoicesPanel, setShowInvoicesPanel] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<'delete' | 'reset' | null>(null)
   const [chatterOpen, setChatterOpen] = useState(false)
   const handleDownloadPdf = async () => {
     setIsDownloading(true)
@@ -198,9 +203,14 @@ export function QuotationDetailPage() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/quotations'))}>
-            <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
+        <div className="space-y-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="-ml-2 text-muted-foreground hover:text-foreground"
+            onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/quotations'))}
+          >
+            <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
             Back
           </Button>
           <div>
@@ -211,112 +221,137 @@ export function QuotationDetailPage() {
               </Badge>
             </div>
             <p className="text-muted-foreground mt-1">
-              Created {formatDate(quotation.created_at)} for {quotation.customer?.name || 'Unknown'}
+              Created {formatDate(quotation.created_at)} for{' '}
+              {quotation.customer ? (
+                <Link
+                  to={`/customers/${quotation.customer.id}`}
+                  className="font-medium text-primary underline-offset-2 hover:underline"
+                >
+                  {quotation.customer.name}
+                </Link>
+              ) : (
+                'Unknown'
+              )}
             </p>
           </div>
         </div>
 
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handleDownloadPdf} disabled={isDownloading}>
-            <Icon icon="solar:download-minimistic-bold-duotone" className="mr-2 h-4 w-4" />
-            {isDownloading ? 'Preparing...' : 'Download PDF'}
-          </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <HeaderActionButton
+            variant="outline"
+            icon="solar:download-minimalistic-bold-duotone"
+            loading={isDownloading}
+            onClick={handleDownloadPdf}
+            disabled={isDownloading}
+          >
+            Download PDF
+          </HeaderActionButton>
+
           {quotation.status === 'draft' && (
             <>
-              <Button
+              <HeaderActionButton
+                icon="solar:check-circle-bold-duotone"
+                loading={confirmMutation.isPending}
                 onClick={() => confirmMutation.mutate()}
                 disabled={confirmMutation.isPending}
               >
-                <Icon icon="solar:check-circle-bold" className="mr-2 h-4 w-4" />
-                {confirmMutation.isPending ? 'Confirming...' : 'Confirm'}
-              </Button>
-              <Button
+                Confirm
+              </HeaderActionButton>
+              <HeaderActionButton
                 variant="outline"
+                icon="solar:pen-bold-duotone"
                 onClick={() => navigate(`/quotations/${id}/edit`)}
               >
-                <Icon icon="solar:pen-bold" className="mr-2 h-4 w-4" />
                 Edit
-              </Button>
-              <Button
+              </HeaderActionButton>
+              <HeaderActionButton
                 variant="outline"
-                className="text-destructive"
+                icon="solar:trash-bin-trash-bold-duotone"
+                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                loading={deleteMutation.isPending}
                 onClick={handleDelete}
                 disabled={deleteMutation.isPending}
               >
-                <Icon icon="solar:trash-bin-trash-bold-duotone" className="mr-2 h-4 w-4" />
-                {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
-              </Button>
+                Delete
+              </HeaderActionButton>
             </>
           )}
+
           {quotation.status === 'sent' && (
             <>
-              <Button
+              <HeaderActionButton
+                icon="solar:check-circle-bold-duotone"
+                loading={confirmMutation.isPending}
                 onClick={() => confirmMutation.mutate()}
                 disabled={confirmMutation.isPending}
               >
-                <Icon icon="solar:check-circle-bold" className="mr-2 h-4 w-4" />
-                {confirmMutation.isPending ? 'Confirming...' : 'Confirm'}
-              </Button>
-              <Button
+                Confirm
+              </HeaderActionButton>
+              <HeaderActionButton
                 variant="outline"
-                className="text-destructive"
+                icon="solar:close-circle-bold-duotone"
+                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                loading={cancelMutation.isPending}
                 onClick={() => cancelMutation.mutate()}
                 disabled={cancelMutation.isPending}
               >
-                <Icon icon="solar:close-circle-bold" className="mr-2 h-4 w-4" />
-                {cancelMutation.isPending ? 'Cancelling...' : 'Cancel'}
-              </Button>
+                Cancel
+              </HeaderActionButton>
             </>
           )}
+
           {quotation.status === 'confirmed' && (
-            <div className="flex gap-2">
-              <Button
+            <>
+              <HeaderActionButton
+                icon="solar:bill-list-bold-duotone"
+                loading={createInvoiceMutation.isPending}
                 onClick={() => createInvoiceMutation.mutate()}
                 disabled={createInvoiceMutation.isPending}
               >
-                <Icon icon="solar:bill-list-bold-duotone" className="mr-2 h-4 w-4" />
-                {createInvoiceMutation.isPending ? 'Creating Invoice...' : 'Create Invoice'}
-              </Button>
+                Create Invoice
+              </HeaderActionButton>
               {quotation.sales_order && (
-                <Button
+                <HeaderActionButton
                   variant="outline"
+                  icon="solar:box-bold-duotone"
                   onClick={() => navigate(`/delivery-orders/create?sales_order_id=${quotation.sales_order.id}&quotation_id=${quotation.id}`)}
                 >
-                  <Icon icon="solar:package-bold" className="mr-2 h-4 w-4" />
                   Create Delivery Order
-                </Button>
+                </HeaderActionButton>
               )}
-            </div>
+            </>
           )}
+
           {quotation.status === 'cancelled' && (
-            <Button
+            <HeaderActionButton
               variant="outline"
-              onClick={() => {
-                if (window.confirm('Reset this quotation to draft? You will be able to edit and re-confirm it.')) {
-                  resetToDraftMutation.mutate()
-                }
-              }}
+              icon="solar:undo-left-round-bold-duotone"
+              loading={resetToDraftMutation.isPending}
+              onClick={() => setConfirmAction('reset')}
               disabled={resetToDraftMutation.isPending}
             >
-              <Icon icon="solar:undo-left-round-bold" className="mr-2 h-4 w-4" />
-              {resetToDraftMutation.isPending ? 'Resetting...' : 'Reset to Draft'}
-            </Button>
+              Reset to Draft
+            </HeaderActionButton>
           )}
         </div>
       </div>
 
-      {/* Odoo-style smart buttons */}
-      <div className="flex gap-3">
+      {/* Linked-document smart buttons */}
+      <div className="flex flex-wrap gap-2">
         {quotation.invoices && quotation.invoices.length > 0 && (
           <button
+            type="button"
             onClick={() => setShowInvoicesPanel(!showInvoicesPanel)}
-            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
+            className={cn(
+              'inline-flex h-8 items-center gap-1.5 rounded-full border bg-background px-3 text-xs font-medium transition-colors',
+              'hover:bg-accent hover:text-accent-foreground',
+              showInvoicesPanel
+                ? 'border-primary/40 bg-primary/10 text-primary'
+                : 'border-input text-muted-foreground',
+            )}
           >
-            <Icon icon="solar:bill-list-bold-duotone" className="h-5 w-5 text-blue-600" />
-            <div className="text-left">
-              <div className="font-bold text-foreground">{quotation.invoices.length}</div>
-              <div className="text-xs text-muted-foreground">Invoice{quotation.invoices.length !== 1 ? 's' : ''}</div>
-            </div>
+            <Icon icon="solar:bill-list-bold-duotone" className="h-3.5 w-3.5" />
+            {quotation.invoices.length} Invoice{quotation.invoices.length !== 1 ? 's' : ''}
           </button>
         )}
         {quotation.delivery_orders && quotation.delivery_orders.length > 0 && (
@@ -333,16 +368,25 @@ export function QuotationDetailPage() {
         )}
       </div>
 
-      {/* Invoices panel (expandable) */}
+      {/* Linked invoices (expandable) */}
       {showInvoicesPanel && quotation.invoices && quotation.invoices.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Icon icon="solar:bill-list-bold-duotone" className="h-5 w-5 text-blue-600" />
-              Linked Invoices
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Card className="overflow-hidden">
+          <div className="flex items-center gap-3 border-b bg-muted/20 px-6 py-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
+              <Icon icon="solar:bill-list-bold-duotone" className="h-5 w-5" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-base font-semibold leading-none">Linked Invoices</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Invoices raised from this quotation.
+              </p>
+            </div>
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+              {quotation.invoices.length}
+            </span>
+          </div>
+
+          <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -351,26 +395,67 @@ export function QuotationDetailPage() {
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead className="text-right">Balance</TableHead>
-                  <TableHead></TableHead>
+                  <TableHead className="w-[80px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {quotation.invoices.map((inv: any) => (
-                  <TableRow key={inv.id} className="cursor-pointer hover:bg-muted/50">
-                    <TableCell className="font-medium">{inv.invoice_number}</TableCell>
-                    <TableCell>{formatDate(inv.invoice_date)}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{inv.lifecycle_status || inv.status}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right">{formatCurrency(inv.total)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(inv.balance)}</TableCell>
-                    <TableCell>
-                      <Button size="sm" variant="outline" onClick={() => navigate(`/invoices/${inv.id}`)}>
-                        <Icon icon="solar:eye-bold" className="h-3 w-3" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {quotation.invoices.map((inv: any) => {
+                  const status = (inv.lifecycle_status || inv.status || '').toLowerCase()
+                  const statusClass =
+                    status === 'paid'
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                      : status === 'posted' || status === 'sent'
+                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
+                        : status === 'overdue'
+                          ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                          : 'bg-muted text-muted-foreground'
+
+                  return (
+                    <TableRow
+                      key={inv.id}
+                      className="cursor-pointer transition-colors hover:bg-muted/40"
+                      onClick={() => navigate(`/invoices/${inv.id}`)}
+                    >
+                      <TableCell className="font-mono text-sm font-medium">{inv.invoice_number}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{formatDate(inv.invoice_date)}</TableCell>
+                      <TableCell>
+                        <span
+                          className={cn(
+                            'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize',
+                            statusClass,
+                          )}
+                        >
+                          {inv.lifecycle_status || inv.status}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right text-sm font-medium tabular-nums">
+                        {formatCurrency(inv.total)}
+                      </TableCell>
+                      <TableCell
+                        className={cn(
+                          'text-right text-sm font-semibold tabular-nums',
+                          Number(inv.balance) > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400',
+                        )}
+                      >
+                        {formatCurrency(inv.balance)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 rounded-full px-2 text-xs"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            navigate(`/invoices/${inv.id}`)
+                          }}
+                        >
+                          View
+                          <Icon icon="solar:alt-arrow-right-bold-duotone" className="ml-1 h-3.5 w-3.5" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
           </CardContent>
@@ -410,7 +495,19 @@ export function QuotationDetailPage() {
               </div>
               <div>
                 <div className="text-muted-foreground">Salesperson</div>
-                <div className="font-medium">{quotation.salesperson || '-'}</div>
+                <div className="font-medium">
+                  {quotation.salesperson ? (
+                    <Link
+                      to="/settings?tab=team"
+                      className="text-primary underline-offset-2 hover:underline"
+                      title="View team members"
+                    >
+                      {quotation.salesperson}
+                    </Link>
+                  ) : (
+                    '-'
+                  )}
+                </div>
               </div>
               <div>
                 <div className="text-muted-foreground">Delivery Lead Time</div>
@@ -538,7 +635,19 @@ export function QuotationDetailPage() {
                       </TableCell>
                     ) : (<>
                     <TableCell>{index + 1}</TableCell>
-                    <TableCell className="font-medium">{line.product?.name || '-'}</TableCell>
+                    <TableCell className="font-medium">
+                      {line.product ? (
+                        <Link
+                          to={`/products/${line.product.id}`}
+                          className="text-primary underline-offset-2 hover:underline"
+                          title={`Open ${line.product.name}`}
+                        >
+                          {line.product.name}
+                        </Link>
+                      ) : (
+                        line.description || '-'
+                      )}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{line.product?.sku || '-'}</TableCell>
                     <TableCell>{line.description || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{line.model_number || line.product?.manufacturer_part_number || '-'}</TableCell>
@@ -580,6 +689,42 @@ export function QuotationDetailPage() {
           )}
         </div>
       )}
+      <ConfirmDialog
+        open={confirmAction === 'delete'}
+        onOpenChange={(open) => !open && setConfirmAction(null)}
+        title="Delete this quotation?"
+        description={
+          <>
+            Quotation{' '}
+            <span className="font-medium text-foreground">{quotation.quotation_number}</span> and its lines will be
+            permanently removed. This cannot be undone.
+          </>
+        }
+        confirmLabel="Delete"
+        icon="solar:trash-bin-trash-bold-duotone"
+        isPending={deleteMutation.isPending}
+        onConfirm={() => {
+          setConfirmAction(null)
+          deleteMutation.mutate()
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirmAction === 'reset'}
+        onOpenChange={(open) => !open && setConfirmAction(null)}
+        title="Reset this quotation to draft?"
+        description="It becomes editable again and must be re-confirmed."
+        confirmLabel="Reset to Draft"
+        cancelLabel="Keep as is"
+        tone="warning"
+        icon="solar:undo-left-round-bold-duotone"
+        isPending={resetToDraftMutation.isPending}
+        onConfirm={() => {
+          setConfirmAction(null)
+          resetToDraftMutation.mutate()
+        }}
+      />
+
       <ChatterDock
         subjectType={String.raw`App\Models\Quotation`}
         subjectId={id as string}

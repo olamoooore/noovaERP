@@ -52,11 +52,12 @@ export const useSettingsStore = create<SettingsState>()(
       },
       mail: {
         driver: 'smtp',
-        host: 'smtp.gmail.com',
+        host: 'smtpout.secureserver.net',
         port: 587,
         encryption: 'tls',
         username: '',
         password: '',
+        api_key: '',
         from_address: '',
         from_name: 'NoovaERP',
       },
@@ -82,11 +83,12 @@ export const useSettingsStore = create<SettingsState>()(
             },
             mail: {
               driver: mail.driver ?? 'smtp',
-              host: mail.host ?? 'smtp.gmail.com',
+              host: mail.host ?? 'smtpout.secureserver.net',
               port: Number(mail.port ?? 587),
               encryption: mail.encryption ?? 'tls',
               username: mail.username ?? '',
-              password: mail.password ?? '', // likely masked
+              password: mail.password ?? '', // masked as ******** by the API
+              api_key: mail.api_key ?? '', // masked as ******** by the API
               from_address: mail.from_address ?? '',
               from_name: mail.from_name ?? 'NoovaERP',
             },
@@ -132,6 +134,7 @@ export const useSettingsStore = create<SettingsState>()(
             encryption: res.data?.mail?.encryption ?? mail.encryption,
             username: res.data?.mail?.username ?? mail.username,
             password: res.data?.mail?.password ?? mail.password,
+            api_key: res.data?.mail?.api_key ?? mail.api_key,
             from_address: res.data?.mail?.from_address ?? mail.from_address,
             from_name: res.data?.mail?.from_name ?? mail.from_name,
           }

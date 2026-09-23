@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,7 +13,9 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DeliveryOrderColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 export function DeliveryOrderDetailPage() {
   const { id } = useParams()
@@ -24,6 +26,7 @@ export function DeliveryOrderDetailPage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
   const [chatterOpen, setChatterOpen] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<'delete' | 'reset' | null>(null)
 
   const { data: deliveryOrder, isLoading } = useQuery({
     queryKey: ['delivery-order', id],
@@ -233,9 +236,14 @@ export function DeliveryOrderDetailPage() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/delivery-orders'))}>
-            <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
+        <div className="space-y-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="-ml-2 text-muted-foreground hover:text-foreground"
+            onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/delivery-orders'))}
+          >
+            <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
             Back
           </Button>
           <div>
@@ -253,79 +261,96 @@ export function DeliveryOrderDetailPage() {
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {deliveryOrder.status === 'draft' && (
             <>
-              <Button onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending}>
-                <Icon icon="solar:check-circle-bold" className="mr-2 h-4 w-4" />
-                {confirmMutation.isPending ? 'Confirming...' : 'Confirm'}
-              </Button>
-              <Button variant="outline" onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending}>
-                <Icon icon="solar:close-circle-bold" className="mr-2 h-4 w-4" />
+              <HeaderActionButton
+                icon="solar:check-circle-bold-duotone"
+                loading={confirmMutation.isPending}
+                onClick={() => confirmMutation.mutate()}
+                disabled={confirmMutation.isPending}
+              >
+                Confirm
+              </HeaderActionButton>
+              <HeaderActionButton
+                variant="outline"
+                icon="solar:close-circle-bold-duotone"
+                onClick={() => cancelMutation.mutate()}
+                disabled={cancelMutation.isPending}
+              >
                 Cancel
-              </Button>
-              <Button variant="destructive" onClick={() => {
-                if (confirm('Delete this delivery order?')) deleteMutation.mutate()
-              }} disabled={deleteMutation.isPending}>
-                <Icon icon="solar:trash-bin-minimalistic-bold" className="mr-2 h-4 w-4" />
+              </HeaderActionButton>
+              <HeaderActionButton
+                variant="outline"
+                icon="solar:trash-bin-trash-bold-duotone"
+                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => setConfirmAction('delete')}
+                disabled={deleteMutation.isPending}
+              >
                 Delete
-              </Button>
+              </HeaderActionButton>
             </>
           )}
           {deliveryOrder.status === 'confirmed' && (
             <>
-              <Button onClick={() => completeMutation.mutate()} disabled={completeMutation.isPending}>
-                <Icon icon="solar:box-bold" className="mr-2 h-4 w-4" />
-                {completeMutation.isPending ? 'Completing...' : 'Validate / Complete'}
-              </Button>
-              <Button variant="outline" onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending}>
-                <Icon icon="solar:close-circle-bold" className="mr-2 h-4 w-4" />
+              <HeaderActionButton
+                icon="solar:box-bold-duotone"
+                loading={completeMutation.isPending}
+                onClick={() => completeMutation.mutate()}
+                disabled={completeMutation.isPending}
+              >
+                Validate / Complete
+              </HeaderActionButton>
+              <HeaderActionButton
+                variant="outline"
+                icon="solar:close-circle-bold-duotone"
+                onClick={() => cancelMutation.mutate()}
+                disabled={cancelMutation.isPending}
+              >
                 Cancel
-              </Button>
+              </HeaderActionButton>
             </>
           )}
           {deliveryOrder.status === 'done' && (
-            <Button
+            <HeaderActionButton
               variant="outline"
+              icon="solar:undo-left-round-bold-duotone"
+              loading={reverseMutation.isPending}
               onClick={() => {
                 const reason = prompt('Reversal reason (required):')
                 if (reason && reason.length >= 3) reverseMutation.mutate(reason)
               }}
               disabled={reverseMutation.isPending}
             >
-              <Icon icon="solar:undo-left-round-bold" className="mr-2 h-4 w-4" />
-              {reverseMutation.isPending ? 'Reversing...' : 'Reverse'}
-            </Button>
+              Reverse
+            </HeaderActionButton>
           )}
           {deliveryOrder.status === 'cancelled' && (
-            <Button
+            <HeaderActionButton
               variant="outline"
-              onClick={() => {
-                if (confirm('Reset this delivery order to draft? You will be able to edit and re-confirm it.')) {
-                  resetToDraftMutation.mutate()
-                }
-              }}
+              icon="solar:undo-left-round-bold-duotone"
+              loading={resetToDraftMutation.isPending}
+              onClick={() => setConfirmAction('reset')}
               disabled={resetToDraftMutation.isPending}
             >
-              <Icon icon="solar:undo-left-round-bold" className="mr-2 h-4 w-4" />
-              {resetToDraftMutation.isPending ? 'Resetting...' : 'Reset to Draft'}
-            </Button>
+              Reset to Draft
+            </HeaderActionButton>
           )}
-          <Button
+          <HeaderActionButton
             variant="outline"
+            icon="solar:download-minimalistic-bold-duotone"
             onClick={() => setTemplateDialogOpen(true)}
           >
-            <Icon icon="solar:download-bold" className="h-4 w-4 mr-2" />
             Download PDF
-          </Button>
+          </HeaderActionButton>
           {deliveryOrder.status === 'draft' && (
-            <Button
+            <HeaderActionButton
               variant="outline"
+              icon="solar:pen-bold-duotone"
               onClick={() => navigate(`/delivery-orders/${id}/edit`)}
             >
-              <Icon icon="solar:pen-bold" className="h-4 w-4 mr-2" />
               Edit
-            </Button>
+            </HeaderActionButton>
           )}
         </div>
       </div>
@@ -365,26 +390,24 @@ export function DeliveryOrderDetailPage() {
       <div className="flex gap-3">
         {deliveryOrder.invoice && (
           <button
+            type="button"
             onClick={() => navigate(`/invoices/${deliveryOrder.invoice.id}`)}
-            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-input bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
           >
-            <Icon icon="solar:bill-list-bold-duotone" className="h-5 w-5 text-blue-600" />
-            <div className="text-left">
-              <div className="font-bold text-foreground">{deliveryOrder.invoice.invoice_number}</div>
-              <div className="text-xs text-muted-foreground">Invoice</div>
-            </div>
+            <Icon icon="solar:bill-list-bold-duotone" className="h-3.5 w-3.5" />
+            {deliveryOrder.invoice.invoice_number}
+            <span className="text-muted-foreground/70">Invoice</span>
           </button>
         )}
         {deliveryOrder.quotation && (
           <button
+            type="button"
             onClick={() => navigate(`/quotations/${deliveryOrder.quotation.id}`)}
-            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-input bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
           >
-            <Icon icon="solar:document-text-bold-duotone" className="h-5 w-5 text-purple-600" />
-            <div className="text-left">
-              <div className="font-bold text-foreground">{deliveryOrder.quotation.quotation_number}</div>
-              <div className="text-xs text-muted-foreground">Quotation</div>
-            </div>
+            <Icon icon="solar:document-text-bold-duotone" className="h-3.5 w-3.5" />
+            {deliveryOrder.quotation.quotation_number}
+            <span className="text-muted-foreground/70">Quotation</span>
           </button>
         )}
       </div>
@@ -417,7 +440,18 @@ export function DeliveryOrderDetailPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-4">
               <div>
                 <div className="text-muted-foreground">Customer</div>
-                <div className="font-medium">{deliveryOrder.customer?.name || '-'}</div>
+                <div className="font-medium">
+                  {deliveryOrder.customer ? (
+                    <Link
+                      to={`/customers/${deliveryOrder.customer.id}`}
+                      className="text-primary underline-offset-2 hover:underline"
+                    >
+                      {deliveryOrder.customer.name}
+                    </Link>
+                  ) : (
+                    '-'
+                  )}
+                </div>
               </div>
               <div>
                 <div className="text-muted-foreground">Warehouse</div>
@@ -563,6 +597,42 @@ export function DeliveryOrderDetailPage() {
           )}
         </CardContent>
       </Card>
+      <ConfirmDialog
+        open={confirmAction === 'delete'}
+        onOpenChange={(open) => !open && setConfirmAction(null)}
+        title="Delete this delivery order?"
+        description={
+          <>
+            Delivery order{' '}
+            <span className="font-medium text-foreground">{deliveryOrder.delivery_order_number}</span> and its
+            lines will be permanently removed. This cannot be undone.
+          </>
+        }
+        confirmLabel="Delete"
+        icon="solar:trash-bin-trash-bold-duotone"
+        isPending={deleteMutation.isPending}
+        onConfirm={() => {
+          setConfirmAction(null)
+          deleteMutation.mutate()
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirmAction === 'reset'}
+        onOpenChange={(open) => !open && setConfirmAction(null)}
+        title="Reset this delivery order to draft?"
+        description="It becomes editable again and must be re-confirmed. Stock restored on reversal stays restored."
+        confirmLabel="Reset to Draft"
+        cancelLabel="Keep as is"
+        tone="warning"
+        icon="solar:undo-left-round-bold-duotone"
+        isPending={resetToDraftMutation.isPending}
+        onConfirm={() => {
+          setConfirmAction(null)
+          resetToDraftMutation.mutate()
+        }}
+      />
+
       <ChatterDock
         subjectType={String.raw`Modules\Sales\Models\DeliveryOrder`}
         subjectId={id as string}

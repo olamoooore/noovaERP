@@ -27,6 +27,7 @@ import type { Event } from '@/lib/event-management-api';
 import { LoadingSpinner } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { storefrontRoutes } from '@/storefront/lib/paths';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 type EventFormState = {
   name: string;
@@ -70,6 +71,7 @@ const MyEventsDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState('upcoming');
   const [isEventDialogOpen, setIsEventDialogOpen] = useState(true);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
+  const [pendingDeleteEvent, setPendingDeleteEvent] = useState<Event | null>(null);
   const [eventForm, setEventForm] = useState<EventFormState>(makeDefaultEventForm());
   const { toast } = useToast();
   
@@ -228,10 +230,7 @@ const MyEventsDashboard: React.FC = () => {
     }
   };
 
-  const handleDeleteEvent = async (event: Event) => {
-    const confirmed = window.confirm(`Delete event \"${event.name}\"? This action cannot be undone.`);
-    if (!confirmed) return;
-
+  const performDeleteEvent = async (event: Event) => {
     try {
       await deleteEventMutation.mutateAsync(event.id);
       toast({
@@ -598,7 +597,7 @@ const MyEventsDashboard: React.FC = () => {
                       <AccessibleButton
                         size="sm"
                         variant="destructive"
-                        onClick={() => handleDeleteEvent(event)}
+                        onClick={() => setPendingDeleteEvent(event)}
                         ariaLabel={`Delete ${event.name}`}
                         loading={deleteEventMutation.isPending}
                         className="flex-1"
@@ -737,6 +736,24 @@ const MyEventsDashboard: React.FC = () => {
           </form>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        open={!!pendingDeleteEvent}
+        onOpenChange={(open) => !open && setPendingDeleteEvent(null)}
+        title="Delete this event?"
+        description={
+          <>
+            Event <span className="font-medium text-foreground">{pendingDeleteEvent?.name}</span> will be
+            permanently removed. This cannot be undone.
+          </>
+        }
+        confirmLabel="Delete event"
+        icon="solar:trash-bin-trash-bold-duotone"
+        onConfirm={() => {
+          const target = pendingDeleteEvent
+          setPendingDeleteEvent(null)
+          if (target) void performDeleteEvent(target)
+        }}
+      />
     </div>
   );
 };

@@ -1,8 +1,15 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { DollarSign, TrendingUp, Calendar, RefreshCw } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { MetricCard, DashboardGrid } from '@/components/dashboards';
+import { Icon } from '@iconify/react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { LineChart } from '@/components/charts/LineChart';
 import { BarChart } from '@/components/charts/BarChart';
 import { PieChart } from '@/components/charts/PieChart';
@@ -62,11 +69,16 @@ export const SalesDashboard: React.FC = () => {
         reportApi.getSalesByProduct(datePresets.thisYear),
       ]);
       
+      // Analytics API returns `total_revenue` per product (see
+      // SalesAnalyticsService::getSalesByProduct) — never `total_sales`.
+      const sumRevenue = (payload: { products?: Array<{ total_revenue?: number }> }) =>
+        (payload?.products ?? []).reduce((sum, p) => sum + (Number(p.total_revenue) || 0), 0);
+
       return {
-        today: (todayData?.products ?? []).reduce((sum, p) => sum + (Number(p.total_sales) || 0), 0),
-        week: (weekData?.products ?? []).reduce((sum, p) => sum + (Number(p.total_sales) || 0), 0),
-        month: (monthData?.products ?? []).reduce((sum, p) => sum + (Number(p.total_sales) || 0), 0),
-        year: (yearData?.products ?? []).reduce((sum, p) => sum + (Number(p.total_sales) || 0), 0),
+        today: sumRevenue(todayData),
+        week: sumRevenue(weekData),
+        month: sumRevenue(monthData),
+        year: sumRevenue(yearData),
       };
     },
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
@@ -86,7 +98,7 @@ export const SalesDashboard: React.FC = () => {
 
       // Calculate metrics for selected period
       const totalSales = (salesByProduct?.products ?? []).reduce(
-        (sum, p) => sum + (Number(p.total_sales) || 0),
+        (sum, p) => sum + (Number(p.total_revenue) || 0),
         0
       );
 
@@ -99,26 +111,26 @@ export const SalesDashboard: React.FC = () => {
           selected: totalSales,
         },
         sales_by_product: (salesByProduct?.products ?? []).map((p) => ({
-          product: p.product_name || p.name || 'Unknown',
-          amount: Number(p.total_sales || p.total_revenue) || 0,
+          product: p.name || 'Unknown',
+          amount: Number(p.total_revenue) || 0,
         })),
         sales_by_customer: (salesByCustomer?.customers ?? []).map((c) => ({
-          customer: c.customer_name || c.name || 'Unknown',
-          amount: Number(c.total_sales || c.total_revenue) || 0,
+          customer: c.customer_name || 'Walk-in customer',
+          amount: Number(c.total_revenue) || 0,
         })),
         sales_trends: (salesTrends?.trends ?? []).map((t) => ({
           period: t.period || '',
-          amount: Number(t.total_sales || t.revenue) || 0,
+          amount: Number(t.total_revenue) || 0,
         })),
         top_selling_products: (salesByProduct?.products ?? [])
           .slice(0, 10)
           .map((p) => ({
-            name: p.product_name || p.name || 'Unknown',
-            quantity: Number(p.quantity_sold || p.total_quantity) || 0,
+            name: p.name || 'Unknown',
+            quantity: Number(p.total_quantity) || 0,
           })),
         sales_by_category: (salesByCategory?.categories ?? []).map((c) => ({
-          category: c.category_name || 'Unknown',
-          amount: Number(c.total_sales || c.revenue) || 0,
+          category: c.category_name || 'Uncategorised',
+          amount: Number(c.total_revenue) || 0,
         })),
       };
     },
@@ -131,300 +143,345 @@ export const SalesDashboard: React.FC = () => {
   if (error) {
     return (
       <div className="p-6">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <h3 className="text-red-800 font-medium">Error Loading Dashboard</h3>
-          <p className="text-red-600 text-sm mt-1">
-            {error instanceof Error ? error.message : 'Failed to load sales dashboard data'}
-          </p>
-        </div>
+        <Card className="border-rose-200 bg-rose-50 dark:border-rose-900 dark:bg-rose-950/40">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <Icon icon="solar:danger-triangle-bold-duotone" className="mt-0.5 h-5 w-5 text-rose-600" />
+              <div>
+                <h3 className="text-sm font-semibold text-rose-900 dark:text-rose-200">
+                  Error loading dashboard
+                </h3>
+                <p className="mt-1 text-sm text-rose-700 dark:text-rose-300">
+                  {error instanceof Error ? error.message : 'Failed to load sales dashboard data'}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   const formatCurrency = (value: number | undefined | null) => {
     const numValue = Number(value) || 0;
-    return `${numValue.toLocaleString('en-US', {
+    return numValue.toLocaleString('en-US', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    })}`;
+    });
   };
 
+  const PERIODS = ['today', 'week', 'month', 'year'] as const;
+  const periodSub: Record<string, string> = {
+    today: 'Today',
+    week: 'This week',
+    month: 'Selected month',
+    year: 'This year',
+  };
+
+  const MONTHS = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+
+  const KPIS = [
+    { label: "Today's sales", value: data?.metrics.today, icon: 'solar:calendar-bold-duotone', tile: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300', sub: 'Today' },
+    { label: 'This week', value: data?.metrics.week, icon: 'solar:calendar-mark-bold-duotone', tile: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300', sub: 'This week' },
+    { label: 'This month', value: data?.metrics.month, icon: 'solar:chart-2-bold-duotone', tile: 'bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300', sub: 'This month' },
+    { label: 'This year', value: data?.metrics.year, icon: 'solar:graph-up-bold-duotone', tile: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300', sub: 'This year' },
+  ];
+
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Sales Dashboard</h1>
-          <p className="text-muted-foreground mt-1">
-            Comprehensive sales analytics and performance metrics
+    <div className="space-y-4 p-6">
+      {/* Single toolbar row: title · period · month/year · refresh */}
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-3xl font-bold tracking-tight">Sales Dashboard</h1>
+          <p className="text-sm text-muted-foreground">
+            Comprehensive sales analytics and performance metrics.
           </p>
         </div>
-        <button
-          onClick={handleRefresh}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          disabled={isLoading}
-        >
-          <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
-      </div>
 
-      {/* Period Selector */}
-      <div className="flex items-center gap-4">
-        <div className="flex gap-2">
-          {(['today', 'week', 'month', 'year'] as const).map((period) => (
-            <button
-              key={period}
-              onClick={() => setSelectedPeriod(period)}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                selectedPeriod === period
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}
-            >
-              {period.charAt(0).toUpperCase() + period.slice(1)}
-            </button>
-          ))}
-        </div>
-        
-        {/* Month/Year Selector - Only show when "Month" is selected */}
-        {selectedPeriod === 'month' && (
-          <div className="flex items-center gap-2 ml-auto">
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {[
-                'January', 'February', 'March', 'April', 'May', 'June',
-                'July', 'August', 'September', 'October', 'November', 'December'
-              ].map((month, index) => (
-                <option key={index} value={index}>
-                  {month}
-                </option>
-              ))}
-            </select>
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {[now.getFullYear(), now.getFullYear() - 1, now.getFullYear() - 2].map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            {PERIODS.map((period) => (
+              <button
+                key={period}
+                type="button"
+                onClick={() => setSelectedPeriod(period)}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize transition ${
+                  selectedPeriod === period
+                    ? 'bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
+                }`}
+              >
+                {period}
+              </button>
+            ))}
           </div>
-        )}
+
+          {selectedPeriod === 'month' && (
+            <>
+              <Select
+                value={String(selectedMonth)}
+                onValueChange={(v) => setSelectedMonth(parseInt(v, 10))}
+              >
+                <SelectTrigger className="h-9 w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MONTHS.map((month, index) => (
+                    <SelectItem key={index} value={String(index)}>
+                      {month}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={String(selectedYear)}
+                onValueChange={(v) => setSelectedYear(parseInt(v, 10))}
+              >
+                <SelectTrigger className="h-9 w-[110px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[now.getFullYear(), now.getFullYear() - 1, now.getFullYear() - 2].map((year) => (
+                    <SelectItem key={year} value={String(year)}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
+          )}
+
+          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isLoading}>
+            <Icon
+              icon="solar:refresh-circle-bold-duotone"
+              className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}
+            />
+            Refresh
+          </Button>
+        </div>
       </div>
 
-      {/* Sales Metrics */}
-      <DashboardGrid columns={4} gap="md">
-        <MetricCard
-          label="Today's Sales"
-          value={isLoading ? '...' : formatCurrency(data?.metrics.today || 0)}
-          icon={DollarSign}
-          iconColor="text-green-600"
-          loading={isLoading}
-        />
-        <MetricCard
-          label="This Week"
-          value={isLoading ? '...' : formatCurrency(data?.metrics.week || 0)}
-          icon={Calendar}
-          iconColor="text-blue-600"
-          loading={isLoading}
-        />
-        <MetricCard
-          label="This Month"
-          value={isLoading ? '...' : formatCurrency(data?.metrics.month || 0)}
-          icon={TrendingUp}
-          iconColor="text-purple-600"
-          loading={isLoading}
-        />
-        <MetricCard
-          label="This Year"
-          value={isLoading ? '...' : formatCurrency(data?.metrics.year || 0)}
-          icon={TrendingUp}
-          iconColor="text-orange-600"
-          loading={isLoading}
-        />
-      </DashboardGrid>
-
-      {/* Charts Row 1 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Sales Trends Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Sales Trends</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="h-[300px] flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      {/* KPI tiles */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {KPIS.map((kpi) => (
+          <Card key={kpi.label} className="rounded-xl border-slate-200/80 shadow-sm transition hover:shadow-md">
+            <CardContent className="p-5">
+              <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${kpi.tile}`}>
+                <Icon icon={kpi.icon} className="h-5 w-5" />
               </div>
+              <p className="mt-4 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                {kpi.label}
+              </p>
+              <p className="mt-1 text-[26px] font-semibold leading-tight tracking-tight tabular-nums text-slate-900 dark:text-slate-100">
+                {isLoading ? '…' : formatCurrency(kpi.value)}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">{kpi.sub}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Charts row 1 */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b bg-muted/20">
+            <CardTitle className="text-base">Sales trends</CardTitle>
+            <CardDescription>Amount invoiced across the selected window.</CardDescription>
+          </CardHeader>
+          <CardContent className="pt-6">
+            {isLoading ? (
+              <ChartSkeleton height={280} />
             ) : data && data.sales_trends.length > 0 ? (
               <LineChart
                 data={data.sales_trends}
                 xKey="period"
                 yKeys={['amount']}
                 formatYAxis="currency"
-                height={300}
+                height={280}
                 colors={['#3b82f6']}
               />
             ) : (
-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                No sales trends data available
-              </div>
+              <ChartEmpty height={280} label="No sales trends for this period" />
             )}
           </CardContent>
         </Card>
 
-        {/* Sales by Category Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Sales by Category</CardTitle>
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b bg-muted/20">
+            <CardTitle className="text-base">Sales by category</CardTitle>
+            <CardDescription>Revenue split across product categories.</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             {isLoading ? (
-              <div className="h-[300px] flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-              </div>
+              <ChartSkeleton height={280} />
             ) : data && data.sales_by_category.length > 0 ? (
               <PieChart
                 data={data.sales_by_category}
                 nameKey="category"
                 valueKey="amount"
                 formatValue="currency"
-                height={300}
+                height={280}
               />
             ) : (
-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                No category data available
-              </div>
+              <ChartEmpty height={280} label="No category data for this period" />
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Charts Row 2 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Sales by Product Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Sales by Product (Top 10)</CardTitle>
+      {/* Charts row 2 */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b bg-muted/20">
+            <CardTitle className="text-base">Sales by product (top 10)</CardTitle>
+            <CardDescription>Best performing products by invoiced amount.</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             {isLoading ? (
-              <div className="h-[350px] flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-              </div>
+              <ChartSkeleton height={330} />
             ) : data && data.sales_by_product.length > 0 ? (
               <BarChart
                 data={data.sales_by_product.slice(0, 10)}
                 xKey="product"
                 yKeys={['amount']}
                 formatYAxis="currency"
-                height={350}
+                height={330}
                 horizontal={true}
                 colors={['#10b981']}
               />
             ) : (
-              <div className="h-[350px] flex items-center justify-center text-muted-foreground">
-                No product data available
-              </div>
+              <ChartEmpty height={330} label="No product data for this period" />
             )}
           </CardContent>
         </Card>
 
-        {/* Sales by Customer Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Top Customers</CardTitle>
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b bg-muted/20">
+            <CardTitle className="text-base">Top customers</CardTitle>
+            <CardDescription>Highest value accounts in the selected window.</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0">
             {isLoading ? (
-              <div className="space-y-3">
-                {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+              <div className="space-y-3 p-6">
+                {[1, 2, 3, 4, 5].map((i) => (
                   <div key={i} className="flex items-center justify-between">
-                    <div className="h-4 w-40 bg-gray-200 animate-pulse rounded" />
-                    <div className="h-4 w-24 bg-gray-200 animate-pulse rounded" />
+                    <div className="h-4 w-40 animate-pulse rounded bg-muted" />
+                    <div className="h-4 w-24 animate-pulse rounded bg-muted" />
                   </div>
                 ))}
               </div>
             ) : data && data.sales_by_customer.length > 0 ? (
-              <div className="space-y-2 max-h-[350px] overflow-y-auto">
+              <div className="max-h-[330px] divide-y overflow-y-auto">
                 {data.sales_by_customer.slice(0, 15).map((customer, index) => (
                   <div
                     key={index}
-                    className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    className="flex items-center justify-between px-6 py-2.5 transition-colors hover:bg-muted/40"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center justify-center w-8 h-8 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-full font-medium text-sm">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div
+                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                          index === 0
+                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+                            : index === 1
+                              ? 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200'
+                              : index === 2
+                                ? 'bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300'
+                                : 'bg-muted text-muted-foreground'
+                        }`}
+                      >
                         {index + 1}
                       </div>
-                      <span className="font-medium">{customer.customer}</span>
+                      <span className="truncate text-sm font-medium">{customer.customer}</span>
                     </div>
-                    <span className="text-green-600 font-medium">
+                    <span className="shrink-0 text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
                       {formatCurrency(customer.amount)}
                     </span>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="h-[350px] flex items-center justify-center text-muted-foreground">
-                No customer data available
-              </div>
+              <ChartEmpty height={330} label="No customer data for this period" />
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Top Selling Products List */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Top Selling Products by Quantity</CardTitle>
+      {/* Top selling products */}
+      <Card className="overflow-hidden">
+        <CardHeader className="border-b bg-muted/20">
+          <CardTitle className="text-base">Top selling products by quantity</CardTitle>
+          <CardDescription>Units sold, ranked across all products.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-6">
           {isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
               {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                  <div className="h-4 w-24 bg-gray-200 animate-pulse rounded mb-2" />
-                  <div className="h-6 w-16 bg-gray-200 animate-pulse rounded" />
+                <div key={i} className="rounded-xl border p-4">
+                  <div className="mb-2 h-4 w-24 animate-pulse rounded bg-muted" />
+                  <div className="h-6 w-16 animate-pulse rounded bg-muted" />
                 </div>
               ))}
             </div>
           ) : data && data.top_selling_products.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
               {data.top_selling_products.map((product, index) => (
                 <div
                   key={index}
-                  className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900 dark:to-blue-800 rounded-lg border border-blue-200 dark:border-blue-700"
+                  className="rounded-xl border p-4 transition-all hover:-translate-y-0.5 hover:shadow-md"
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-gray-600 dark:text-gray-300 font-medium">
-                      #{index + 1}
+                  <div className="flex items-center justify-between">
+                    <span
+                      className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold ${
+                        index === 0
+                          ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+                          : index === 1
+                            ? 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200'
+                            : index === 2
+                              ? 'bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300'
+                              : 'bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      {index + 1}
                     </span>
-                    <div className="px-2 py-1 bg-blue-600 text-white text-xs rounded-full font-medium">
+                    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
                       {product.quantity} sold
-                    </div>
+                    </span>
                   </div>
-                  <p className="font-medium text-gray-900 dark:text-white line-clamp-2">
-                    {product.name}
-                  </p>
+                  <p className="mt-3 line-clamp-2 text-sm font-medium leading-snug">{product.name}</p>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="h-32 flex items-center justify-center text-muted-foreground">
-              No product data available
-            </div>
+            <ChartEmpty height={120} label="No product data for this period" />
           )}
         </CardContent>
       </Card>
     </div>
   );
 };
+
+function ChartSkeleton({ height }: { height: number }) {
+  return (
+    <div className="flex items-center justify-center" style={{ height }}>
+      <Icon icon="eos-icons:loading" className="h-7 w-7 animate-spin text-primary" />
+    </div>
+  );
+}
+
+function ChartEmpty({ height, label }: { height: number; label: string }) {
+  return (
+    <div
+      className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed text-muted-foreground"
+      style={{ height }}
+    >
+      <Icon icon="solar:chart-2-bold-duotone" className="h-8 w-8 opacity-40" />
+      <span className="text-sm">{label}</span>
+    </div>
+  );
+}
 
 export default SalesDashboard;

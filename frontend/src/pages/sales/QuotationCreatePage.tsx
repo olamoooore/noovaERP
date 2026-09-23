@@ -12,6 +12,18 @@ import { SalesLineColumnMenu, SalesLineColumnVisibility } from '@/components/sal
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
 import { LineItemsTable } from '@/components/sales/LineItemsTable';
+import { PageHeader } from '@/components/layout/PageHeader';
+import {
+  LINE_CELL,
+  LINE_CELL_BOX,
+  LINE_INPUT_NUMERIC,
+  LINE_PRODUCT_WRAP,
+  LINE_TEXTAREA,
+  LINE_VALUE,
+  ProductLineActions,
+  productLineColumns,
+} from '@/components/sales/ProductLineTable';
+import { cn } from '@/lib/utils';
 import { QuotationCaseInformation, emptyQuotationCaseInformation } from '@/components/sales/QuotationCaseInformation';
 import { InternalReferenceTags } from '@/components/sales/InternalReferenceTags';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
@@ -151,6 +163,11 @@ export const QuotationCreatePage: React.FC = () => {
     }
   };
 
+  /** Clear a line in place so a lone row can be emptied without deleting it. */
+  const resetLine = (index: number) => {
+    setLines((current) => current.map((line, i) => (i === index ? emptyLine() : line)));
+  };
+
   const getLineTotal = (line: QuotationLine) => {
     const unitPrice = line.unit_price === '' ? 0 : line.unit_price;
     const taxRate = line.tax_rate === '' ? 0 : line.tax_rate;
@@ -180,6 +197,7 @@ export const QuotationCreatePage: React.FC = () => {
   const taxableAmount = Math.max(subtotalAfterLineDiscounts - documentDiscountAmount, 0);
   const taxAfterDocumentDiscount = subtotalAfterLineDiscounts > 0 ? taxTotal * (taxableAmount / subtotalAfterLineDiscounts) : 0;
   const total = taxableAmount + taxAfterDocumentDiscount;
+  const [customQuoteNumber, setCustomQuoteNumber] = useState('');
   const quoteNumberPreview = `QUO-${new Date(quotationDate).getFullYear()}-XXXX`;
 
   const handleSubmit = (event: React.FormEvent) => {
@@ -214,6 +232,7 @@ export const QuotationCreatePage: React.FC = () => {
 
     const payload = {
       customer_id: parseInt(customerId, 10),
+      ...(customQuoteNumber.trim() ? { quotation_number: customQuoteNumber.trim() } : {}),
       quotation_date: quotationDate,
       valid_until: validUntil,
       customer_reference: customerReference || undefined,
@@ -256,20 +275,11 @@ export const QuotationCreatePage: React.FC = () => {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/quotations')}>
-            <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
-            Back
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold">Create Quotation</h1>
-            <p className="text-muted-foreground mt-1">
-              Prepare a quotation for your customer. Confirm to create a Sales Order.
-            </p>
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        title="Create Quotation"
+        description="Prepare a quotation for your customer. Confirm to create a Sales Order."
+        backTo="/quotations"
+      />
 
       <form onSubmit={handleSubmit}>
         <Card className="mb-6">
@@ -306,9 +316,15 @@ export const QuotationCreatePage: React.FC = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Quotation Number</label>
-                <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2">
-                  <div className="text-sm font-semibold text-slate-900">{quoteNumberPreview}</div>
-                  <div className="text-xs text-slate-500 mt-1">Final sequence assigned when the quotation is created.</div>
+                <input
+                  type="text"
+                  value={customQuoteNumber}
+                  onChange={(event) => setCustomQuoteNumber(event.target.value)}
+                  placeholder={quoteNumberPreview}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800"
+                />
+                <div className="mt-1 text-xs text-slate-500">
+                  Leave blank to use the next auto-generated number ({quoteNumberPreview}).
                 </div>
               </div>
             </div>
@@ -485,27 +501,47 @@ export const QuotationCreatePage: React.FC = () => {
               <SalesLineColumnVisibility tableClass="quotation-create-columns" columns={QUOTATION_CREATE_COLUMNS} hiddenColumns={hiddenLineColumns} onHiddenColumnsChange={setHiddenLineColumns} showMenu={false}>
               <LineItemsTable
                 variant="raw"
-                tableClassName="w-full min-w-[1500px] table-fixed text-sm"
-                headRowClassName="border-b"
-                columns={[
-                  { key: 'index', label: '#', minWidth: 'min-w-[3rem]' },
-                  { key: 'product', label: 'Product', minWidth: 'min-w-[15rem]' },
-                  { key: 'sku', label: 'SKU', minWidth: 'min-w-[5.5rem]' },
-                  { key: 'description', label: 'Description', minWidth: 'min-w-[18rem]' },
-                  { key: 'model_number', label: 'Model #', minWidth: 'min-w-[6.5rem]' },
-                  { key: 'product_notes', label: 'Product Notes', minWidth: 'min-w-[10rem]' },
-                  { key: 'qty', label: 'Qty', align: 'right', minWidth: 'min-w-[4.5rem]' },
-                  { key: 'unit_price', label: 'Unit Price', align: 'right', minWidth: 'min-w-[6.5rem]' },
-                  { key: 'tax_rate', label: 'Tax %', align: 'right', minWidth: 'min-w-[4.5rem]' },
-                  { key: 'line_total', label: 'Line Total', align: 'right', minWidth: 'min-w-[6.5rem]' },
-                  { key: 'actions', label: 'Actions', minWidth: 'min-w-[8rem]' },
-                ]}
+                tableClassName="w-full min-w-[1150px] text-sm"
+                headRowClassName="border-b bg-muted/30"
+                columns={productLineColumns({
+                  sku: true,
+                  description: true,
+                  modelNumber: true,
+                  productNotes: true,
+                  taxRate: true,
+                })}
               >
                   {lines.map((line, index) => (
-                    <tr key={index} className="border-b" draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }}>
-                      {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={11} total={line.line_type === 'section' ? formatCurrency(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }} /> : <>
-                      <td className="py-2 px-2 text-sm font-medium text-slate-500">{lines.slice(0, index + 1).filter((item) => (item.line_type ?? 'product') === 'product').length}</td>
-                      <td className="py-2 px-2 align-top whitespace-normal break-words">
+                    <tr
+                      key={index}
+                      className="border-b transition-colors hover:bg-muted/20"
+                      draggable={(line.line_type ?? 'product') === 'product'}
+                      onDragStart={() => setDraggedLineIndex(index)}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={() => {
+                        if (draggedLineIndex !== null && draggedLineIndex !== index) setLines(reorderDocumentLines(lines, draggedLineIndex, index))
+                        setDraggedLineIndex(null)
+                      }}
+                    >
+                      {line.line_type === 'note' || line.line_type === 'section' ? (
+                        <DocumentTextLineRow
+                          type={line.line_type}
+                          text={line.description}
+                          colSpan={11}
+                          total={line.line_type === 'section' ? formatCurrency(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined}
+                          onChange={(text) => updateLine(index, 'description', text)}
+                          onDelete={() => removeLine(index)}
+                          onDragStart={() => setDraggedLineIndex(index)}
+                          onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null) }}
+                        />
+                      ) : <>
+                      <td className={cn(LINE_CELL, 'w-10')}>
+                        <div className={cn(LINE_CELL_BOX, 'justify-center text-xs font-medium text-muted-foreground')}>
+                          {lines.slice(0, index + 1).filter((item) => (item.line_type ?? 'product') === 'product').length}
+                        </div>
+                      </td>
+
+                      <td className={cn(LINE_CELL, 'min-w-[17rem]', LINE_PRODUCT_WRAP)}>
                         <ProductSearchCombobox
                           value={line.product_id}
                           onValueChange={(val, product) => {
@@ -527,61 +563,58 @@ export const QuotationCreatePage: React.FC = () => {
                           wrapText
                         />
                       </td>
-                      <td className="py-2 px-2">
-                        <input
-                          type="text"
-                          value={line.sku}
-                          readOnly
-                          className="w-full px-2 py-1 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900 text-sm text-slate-500"
-                          placeholder="SKU"
-                        />
+
+                      <td className={cn(LINE_CELL, 'min-w-[10rem]')}>
+                        <div className={LINE_VALUE}>{line.sku || <span className="opacity-60">SKU</span>}</div>
                       </td>
-                      <td className="py-2 px-2 align-top">
+
+                      <td className={cn(LINE_CELL, 'min-w-[16rem]')}>
                         <textarea
                           value={line.description}
                           onChange={(event) => updateLine(index, 'description', event.target.value)}
                           rows={2}
-                          className="w-full whitespace-pre-wrap break-words px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm resize-y"
+                          className={LINE_TEXTAREA}
                           placeholder="Description"
                           required
                         />
                       </td>
-                      <td className="py-2 px-2">
-                        <input
-                          type="text"
-                          value={line.model_number}
-                          readOnly
-                          className="w-full px-2 py-1 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900 text-sm text-slate-500"
-                          placeholder="Model #"
-                        />
+
+                      <td className={cn(LINE_CELL, 'min-w-[7rem]')}>
+                        <div className={LINE_VALUE}>{line.model_number || <span className="opacity-60">Model #</span>}</div>
                       </td>
-                      <td className="py-2 px-2">
+
+                      <td className={cn(LINE_CELL, 'min-w-[10rem]')}>
                         <textarea
                           value={line.product_notes}
                           onChange={(event) => updateLine(index, 'product_notes', event.target.value)}
                           rows={2}
-                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
+                          className={LINE_TEXTAREA}
                           placeholder="Product notes"
                         />
                       </td>
-                      <td className="py-2 px-2">
+
+                      <td className={cn(LINE_CELL, 'w-[5.5rem] min-w-[4.5rem]')}>
+                        <div className={LINE_CELL_BOX}>
                         <input
                           type="number"
                           min="0"
                           value={line.quantity}
                           onChange={(event) => {
-                            const raw = event.target.value;
+                            const raw = event.target.value
                             // HR71-08: keep literal intent — empty is allowed
                             // while typing (caught on submit), no silent
                             // substitution of 1 or 0.
-                            if (raw === '') { updateLine(index, 'quantity', ''); return; }
-                            const parsed = parseFloat(raw);
-                            if (!Number.isNaN(parsed) && parsed >= 0) updateLine(index, 'quantity', parsed);
+                            if (raw === '') { updateLine(index, 'quantity', ''); return }
+                            const parsed = parseFloat(raw)
+                            if (!Number.isNaN(parsed) && parsed >= 0) updateLine(index, 'quantity', parsed)
                           }}
-                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
+                          className={LINE_INPUT_NUMERIC}
                         />
+                        </div>
                       </td>
-                      <td className="py-2 px-2">
+
+                      <td className={cn(LINE_CELL, 'w-[7rem] min-w-[6rem]')}>
+                        <div className={LINE_CELL_BOX}>
                         <input
                           type="number"
                           min="0"
@@ -589,10 +622,13 @@ export const QuotationCreatePage: React.FC = () => {
                           placeholder="0.00"
                           value={line.unit_price === '' ? '' : line.unit_price}
                           onChange={(event) => updateLine(index, 'unit_price', event.target.value === '' ? '' : parseFloat(event.target.value))}
-                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
+                          className={LINE_INPUT_NUMERIC}
                         />
+                        </div>
                       </td>
-                      <td className="py-2 px-2">
+
+                      <td className={cn(LINE_CELL, 'w-[5rem] min-w-[4rem]')}>
+                        <div className={LINE_CELL_BOX}>
                         <input
                           type="number"
                           min="0"
@@ -601,28 +637,28 @@ export const QuotationCreatePage: React.FC = () => {
                           placeholder="0"
                           value={line.tax_rate === '' ? '' : line.tax_rate}
                           onChange={(event) => updateLine(index, 'tax_rate', event.target.value === '' ? '' : parseFloat(event.target.value))}
-                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
+                          className={LINE_INPUT_NUMERIC}
                         />
+                        </div>
                       </td>
-                      <td className="py-2 px-2 text-right font-medium">
-                        {formatCurrency(getLineTotal(line))}
+
+                      <td className={cn(LINE_CELL, 'w-[7.5rem] min-w-[6.5rem]')}>
+                        <div className={cn(LINE_CELL_BOX, 'justify-end text-sm font-semibold tabular-nums')}>
+                          {formatCurrency(getLineTotal(line))}
+                        </div>
                       </td>
-                      <td className="py-2 px-2">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button type="button" variant="ghost" size="sm" onClick={() => moveLine(index, 'up')} disabled={index === 0}>
-                            <Icon icon="solar:arrow-up-bold-duotone" className="h-4 w-4" />
-                          </Button>
-                          <Button type="button" variant="ghost" size="sm" onClick={() => moveLine(index, 'down')} disabled={index === lines.length - 1}>
-                            <Icon icon="solar:arrow-down-bold-duotone" className="h-4 w-4" />
-                          </Button>
-                          <Button type="button" variant="ghost" size="sm" onClick={() => duplicateLine(index)}>
-                            <Icon icon="solar:copy-bold-duotone" className="h-4 w-4" />
-                          </Button>
-                          {lines.length > 1 && (
-                            <Button type="button" variant="ghost" size="sm" onClick={() => removeLine(index)}>
-                              <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-4 w-4 text-destructive" />
-                            </Button>
-                          )}
+
+                      <td className={cn(LINE_CELL, 'w-[10.5rem]')}>
+                        <div className={cn(LINE_CELL_BOX, 'justify-end')}>
+                        <ProductLineActions
+                          onMoveUp={() => moveLine(index, 'up')}
+                          onMoveDown={() => moveLine(index, 'down')}
+                          canMoveUp={index !== 0}
+                          canMoveDown={index !== lines.length - 1}
+                          onDuplicate={() => duplicateLine(index)}
+                          onReset={() => resetLine(index)}
+                          onDelete={() => removeLine(index)}
+                        />
                         </div>
                       </td>
                       </>}

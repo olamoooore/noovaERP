@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
@@ -125,13 +126,10 @@ export function MedicalCaseCreatePage() {
 
   return (
     <div className="container mx-auto py-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <Button variant="outline" onClick={() => navigate('/sales/medical-cases')}>
-          <Icon icon="solar:arrow-left-bold-duotone" className="mr-2 h-4 w-4" />
-          Back
-        </Button>
-        <h1 className="text-3xl font-bold">Create Medical Case</h1>
-      </div>
+      <PageHeader
+        title="Create Medical Case"
+        backTo="/sales/medical-cases"
+      />
 
       <form onSubmit={handleSubmit}>
         <Card className="mb-6">

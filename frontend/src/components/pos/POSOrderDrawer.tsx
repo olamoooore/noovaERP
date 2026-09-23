@@ -30,6 +30,7 @@ import { formatCurrency, formatDateTime, getApiErrorMessage, resolveImageUrl } f
 import { usePosSessionStore, CartItem } from '@/store/posSessionStore'
 import { useToast } from '@/hooks/use-toast'
 import { ApprovalRequestModal } from '@/components/pos/ApprovalRequestModal'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 interface POSOrderDrawerProps {
   open: boolean
@@ -141,6 +142,11 @@ export function POSOrderDrawer({ open, onOpenChange, initialStatusFilter = 'all'
   const [selectedOrder, setSelectedOrder] = useState<PosOrderDetail | null>(null)
   const [orderModalOpen, setOrderModalOpen] = useState(false)
   const [loadingOrderDetails, setLoadingOrderDetails] = useState(false)
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    order: PosOrderDetail
+    action: 'cancel' | 'void' | 'refund'
+    message: string
+  } | null>(null)
   const [downloadingInvoice, setDownloadingInvoice] = useState(false)
   const [actingOrderId, setActingOrderId] = useState<number | null>(null)
   
@@ -253,11 +259,14 @@ export function POSOrderDrawer({ open, onOpenChange, initialStatusFilter = 'all'
       return
     }
 
-    // For draft orders, just confirm and proceed
-    if (!window.confirm(confirmationMessage)) {
-      return
-    }
+    // For draft orders, ask for confirmation in a styled dialog
+    setPendingConfirm({ order, action, message: confirmationMessage })
+  }
 
+  const performPendingAction = async () => {
+    if (!pendingConfirm) return
+    const { order, action } = pendingConfirm
+    setPendingConfirm(null)
     setActingOrderId(order.id)
     await orderActionMutation.mutateAsync({ orderId: order.id, action })
   }
@@ -991,6 +1000,18 @@ export function POSOrderDrawer({ open, onOpenChange, initialStatusFilter = 'all'
           onRejected={handleApprovalRejected}
         />
       )}
+
+      <ConfirmDialog
+        open={!!pendingConfirm}
+        onOpenChange={(open) => !open && setPendingConfirm(null)}
+        title={pendingConfirm ? `${pendingConfirm.action.charAt(0).toUpperCase()}${pendingConfirm.action.slice(1)} order?` : 'Confirm action'}
+        description={pendingConfirm?.message}
+        confirmLabel="Confirm"
+        tone="warning"
+        icon="solar:danger-triangle-bold-duotone"
+        isPending={actingOrderId !== null}
+        onConfirm={() => void performPendingAction()}
+      />
     </SlideOver>
   )
 }

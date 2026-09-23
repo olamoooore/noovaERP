@@ -8,11 +8,14 @@ import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
 import { useNavigate } from 'react-router-dom'
-import { formatDate } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import { SalesDocumentExportMenu } from '@/components/sales/SalesDocumentExportMenu'
-import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { SalesLineColumnMenu, SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useBulkSelection } from '@/hooks/use-bulk-selection'
 import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 const DELIVERY_ORDER_EXPORT_COLUMNS = [
   { key: 'delivery_order_number', label: 'Delivery Order No', group: 'Delivery Order', default: true },
@@ -59,6 +62,9 @@ export function DeliveryOrdersPage() {
   const [typeFilter, setTypeFilter] = useState<string>('all')
   const [page, setPage] = useState(1)
   const [perPage] = useState(20)
+  const [actionsPinned, setActionsPinned] = useState(false)
+  const [hiddenDoColumns, setHiddenDoColumns] = useState<number[]>([])
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
 
   const { data: response, isLoading } = useQuery({
     queryKey: ['delivery-orders', page, perPage, typeFilter, searchQuery],
@@ -156,25 +162,73 @@ export function DeliveryOrdersPage() {
           <h1 className="text-3xl font-bold tracking-tight">Delivery Orders</h1>
           <p className="text-muted-foreground">Track shipments dispatched from sales orders or standalone.</p>
         </div>
-        <div className="flex gap-3">
-          <SalesDocumentExportMenu
-            endpoint="/sales/delivery-orders/export"
-            filenamePrefix="delivery_orders"
-            columns={DELIVERY_ORDER_EXPORT_COLUMNS}
-            filters={{
-              search: searchQuery.trim() || undefined,
-              type: typeFilter !== 'all' ? typeFilter : undefined,
-            }}
-            selectedIds={selectedIds}
-          />
-          <Button variant="outline" onClick={() => navigate('/delivery-orders/import')}>
-            <Icon icon="solar:upload-bold" className="h-4 w-4 mr-2" />
-            Import
-          </Button>
-          <Button onClick={() => navigate('/delivery-orders/create')}>
-            <Icon icon="solar:add-circle-bold" className="h-4 w-4 mr-2" />
-            Create Delivery Order
-          </Button>
+
+        {/* Retracting actions: collapsed to an "Actions" pill, slides out on
+            hover / focus, or stays open when pinned by click (touch + keyboard). */}
+        <div className="group/actions flex items-center justify-end">
+          <div
+            className={cn(
+              'flex items-center gap-2 overflow-hidden transition-all duration-300 ease-out',
+              actionsPinned
+                ? 'max-w-[640px] translate-x-0 opacity-100'
+                : 'max-w-0 translate-x-3 opacity-0',
+              !actionsPinned &&
+                'group-hover/actions:max-w-[640px] group-hover/actions:translate-x-0 group-hover/actions:opacity-100',
+              !actionsPinned &&
+                'group-focus-within/actions:max-w-[640px] group-focus-within/actions:translate-x-0 group-focus-within/actions:opacity-100',
+            )}
+            aria-hidden={!actionsPinned}
+          >
+            <SalesDocumentExportMenu
+              compact
+              endpoint="/sales/delivery-orders/export"
+              filenamePrefix="delivery_orders"
+              columns={DELIVERY_ORDER_EXPORT_COLUMNS}
+              filters={{
+                search: searchQuery.trim() || undefined,
+                type: typeFilter !== 'all' ? typeFilter : undefined,
+              }}
+              selectedIds={selectedIds}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-full px-3 text-xs"
+              onClick={() => navigate('/delivery-orders/import')}
+            >
+              <Icon icon="solar:upload-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
+              Import
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 rounded-full px-3 text-xs"
+              onClick={() => navigate('/delivery-orders/create')}
+            >
+              <Icon icon="solar:add-circle-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
+              Create Delivery Order
+            </Button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setActionsPinned((v) => !v)}
+            aria-expanded={actionsPinned}
+            title={actionsPinned ? 'Collapse actions' : 'Show actions'}
+            className={cn(
+              // Compact pill matching the revealed actions
+              'ml-2 inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+              actionsPinned
+                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                : 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
+            )}
+          >
+            <Icon
+              icon={actionsPinned ? 'solar:close-circle-bold-duotone' : 'solar:bolt-circle-bold-duotone'}
+              className="h-3.5 w-3.5"
+            />
+            Actions
+          </button>
         </div>
       </div>
 
@@ -189,9 +243,7 @@ export function DeliveryOrdersPage() {
                 variant="destructive"
                 size="sm"
                 onClick={() => {
-                  if (confirm(`Delete ${selectedIds.length} delivery order(s)?`)) {
-                    bulkDeleteMutation.mutate(selectedIds)
-                  }
+                  setBulkDeleteOpen(true)
                 }}
               >
                 <Icon icon="solar:trash-bin-minimalistic-bold" className="h-4 w-4 mr-1" />
@@ -202,23 +254,38 @@ export function DeliveryOrdersPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex gap-3 mb-4">
-            <input
-              type="text"
-              placeholder="Search deliveries..."
-              value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setPage(1) }}
-              className="px-3 py-2 border rounded-md text-sm w-64"
-            />
-            <select
-              value={typeFilter}
-              onChange={(e) => { setTypeFilter(e.target.value); setPage(1) }}
-              className="px-3 py-2 border rounded-md text-sm"
-            >
-              <option value="all">All Types</option>
-              <option value="standalone">Standalone</option>
-              <option value="linked">From Sales Order</option>
-            </select>
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <div className="relative w-full sm:w-64">
+              <Icon
+                icon="solar:magnifer-bold-duotone"
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                placeholder="Search deliveries..."
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setPage(1) }}
+                className="h-9 pl-9"
+              />
+            </div>
+
+            <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v); setPage(1) }}>
+              <SelectTrigger className="h-9 w-[170px]">
+                <SelectValue placeholder="All Types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="standalone">Standalone</SelectItem>
+                <SelectItem value="linked">From Sales Order</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <div className="ml-auto">
+              <SalesLineColumnMenu
+                columns={listingColumns(['Select', 'Delivery #', 'Type', 'Sales Order', 'Customer', 'Delivery Date', 'Created Date', 'Lines', 'Status', 'Actions'])}
+                hidden={hiddenDoColumns}
+                setHidden={setHiddenDoColumns}
+              />
+            </div>
           </div>
 
           {isLoading ? (
@@ -228,12 +295,18 @@ export function DeliveryOrdersPage() {
             </div>
           ) : deliveryOrders.length === 0 ? (
             <div className="py-12 text-center text-muted-foreground">
-              <Icon icon="solar:package-bold-duotone" className="mx-auto h-12 w-12 opacity-30" />
+              <Icon icon="solar:box-bold-duotone" className="mx-auto h-12 w-12 opacity-30" />
               <p className="mt-4">No delivery orders found.</p>
             </div>
           ) : (
             <>
-              <SalesLineColumnVisibility tableClass="delivery-orders-listing-columns" columns={listingColumns(['Select', 'Delivery #', 'Type', 'Customer', 'Delivery Date', 'Created Date', 'Lines', 'Status', 'Actions'])}>
+              <SalesLineColumnVisibility
+                tableClass="delivery-orders-listing-columns"
+                columns={listingColumns(['Select', 'Delivery #', 'Type', 'Customer', 'Delivery Date', 'Created Date', 'Lines', 'Status', 'Actions'])}
+                hiddenColumns={hiddenDoColumns}
+                onHiddenColumnsChange={setHiddenDoColumns}
+                showMenu={false}
+              >
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -318,6 +391,21 @@ export function DeliveryOrdersPage() {
           )}
         </CardContent>
       </Card>
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={setBulkDeleteOpen}
+        title={`Delete ${selectedIds.length} delivery order(s)?`}
+        description="Confirmed and completed delivery orders are skipped; only drafts and cancellations are removed. This cannot be undone."
+        confirmLabel="Delete orders"
+        icon="solar:trash-bin-trash-bold-duotone"
+        isPending={bulkDeleteMutation.isPending}
+        onConfirm={() => {
+          const ids = selectedIds
+          setBulkDeleteOpen(false)
+          bulkDeleteMutation.mutate(ids)
+        }}
+      />
+
     </div>
   )
 }

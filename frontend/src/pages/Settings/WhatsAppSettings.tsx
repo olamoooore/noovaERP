@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Icon } from '@iconify/react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -77,6 +78,32 @@ const initialFormState: NewApiKeyForm = {
   api_endpoint: '',
   api_key: '',
   expires_in_days: '',
+}
+
+function WhatsAppStat({
+  label,
+  value,
+  icon,
+  tile,
+}: {
+  label: string
+  value: number
+  icon: string
+  tile: string
+}) {
+  return (
+    <Card className="overflow-hidden">
+      <CardContent className="flex items-center gap-4 p-5">
+        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${tile}`}>
+          <Icon icon={icon} className="h-6 w-6" />
+        </div>
+        <div>
+          <div className="text-2xl font-bold tabular-nums">{value}</div>
+          <div className="text-xs text-muted-foreground">{label}</div>
+        </div>
+      </CardContent>
+    </Card>
+  )
 }
 
 export function WhatsAppSettings() {
@@ -224,51 +251,23 @@ export function WhatsAppSettings() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">WhatsApp Integration</h2>
-          <p className="text-muted-foreground">Manage your WhatsApp API keys and providers.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Manage your WhatsApp API keys and providers.
+          </p>
         </div>
         <Button onClick={() => setIsCreateDialogOpen(true)}>
           <Plus className="mr-2 h-4 w-4" /> New API Key
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Keys</CardTitle>
-            </CardHeader>
-            <CardContent>
-            <div className="text-2xl font-bold">{data?.stats?.total || 0}</div>
-            </CardContent>
-        </Card>
-        <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Keys</CardTitle>
-            <CheckCircle2 className="h-4 w-4 text-green-500" />
-            </CardHeader>
-            <CardContent>
-            <div className="text-2xl font-bold">{data?.stats?.active || 0}</div>
-            </CardContent>
-        </Card>
-        <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Expired Keys</CardTitle>
-            <XCircle className="h-4 w-4 text-red-500" />
-            </CardHeader>
-            <CardContent>
-            <div className="text-2xl font-bold">{data?.stats?.expired || 0}</div>
-            </CardContent>
-        </Card>
-        <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Calls</CardTitle>
-            </CardHeader>
-            <CardContent>
-            <div className="text-2xl font-bold">{data?.stats?.total_api_calls || 0}</div>
-            </CardContent>
-        </Card>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <WhatsAppStat label="Total keys" value={data?.stats?.total || 0} icon="solar:key-bold-duotone" tile="bg-slate-100 text-slate-700 dark:bg-slate-800/70 dark:text-slate-300" />
+        <WhatsAppStat label="Active keys" value={data?.stats?.active || 0} icon="solar:check-circle-bold-duotone" tile="bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300" />
+        <WhatsAppStat label="Expired keys" value={data?.stats?.expired || 0} icon="solar:close-circle-bold-duotone" tile="bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300" />
+        <WhatsAppStat label="Total calls" value={data?.stats?.total_api_calls || 0} icon="solar:phone-calling-bold-duotone" tile="bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300" />
      </div>
 
       <Card>

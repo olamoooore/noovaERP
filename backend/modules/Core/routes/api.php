@@ -346,8 +346,9 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
 
         Route::post('/invoices/{invoice}/cancel', [InvoiceController::class, 'cancel'])
             ->middleware(RequirePermission::using('invoices.write'));
+        // Reverses the ledger and restores stock — admin/owner only.
         Route::post('/invoices/{invoice}/reset-to-draft', [InvoiceController::class, 'resetToDraft'])
-            ->middleware(RequirePermission::using('invoices.write'));
+            ->middleware(RequirePermission::using('documents.reset_to_draft'));
 
         // Issue #92: Budget Management (real budgets; the dashboard no longer
         // fabricates budget as 110% of actual).
@@ -373,7 +374,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::post('/quotations/{id}/cancel', [QuotationController::class, 'cancel']);
         // Issue #178/#179: rejection with auto-versioned replacement draft.
         Route::post('/quotations/{id}/reject', [QuotationController::class, 'reject']);
-        Route::post('/quotations/{id}/reset-to-draft', [QuotationController::class, 'resetToDraft']);
+        Route::post('/quotations/{id}/reset-to-draft', [QuotationController::class, 'resetToDraft'])
+            ->middleware(RequirePermission::using('documents.reset_to_draft'));
         Route::post('/quotations/{id}/create-invoice', [QuotationController::class, 'createInvoice']);
 
         // Payments

@@ -92,6 +92,8 @@ interface SalesDocumentExportMenuProps {
   columns: readonly SalesExportColumn[]
   filters?: Record<string, string | number | undefined>
   selectedIds?: number[]
+  /** Compact pill styling for inline toolbars. */
+  compact?: boolean
 }
 
 export function SalesDocumentExportMenu({
@@ -100,6 +102,7 @@ export function SalesDocumentExportMenu({
   columns,
   filters = {},
   selectedIds = [],
+  compact = false,
 }: SalesDocumentExportMenuProps) {
   const { toast } = useToast()
   const [selectedColumns, setSelectedColumns] = useState<string[]>(
@@ -141,8 +144,19 @@ export function SalesDocumentExportMenu({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" disabled={isExporting}>
-          <Icon icon={isExporting ? 'solar:refresh-bold' : 'solar:file-download-bold'} className={`mr-2 h-4 w-4 ${isExporting ? 'animate-spin' : ''}`} />
+        <Button
+          variant="outline"
+          disabled={isExporting}
+          className={compact ? 'h-8 rounded-full px-3 text-xs' : undefined}
+        >
+          <Icon
+            icon={isExporting ? 'solar:refresh-bold' : 'solar:file-download-bold'}
+            className={
+              compact
+                ? `mr-1.5 h-3.5 w-3.5 ${isExporting ? 'animate-spin' : ''}`
+                : `mr-2 h-4 w-4 ${isExporting ? 'animate-spin' : ''}`
+            }
+          />
           {isExporting ? 'Exporting...' : 'Export Excel'}
         </Button>
       </PopoverTrigger>

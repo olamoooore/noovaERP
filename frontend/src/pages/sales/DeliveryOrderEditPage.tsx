@@ -7,6 +7,15 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { TableCell, TableRow } from '@/components/ui/table'
 import { LineItemsTable } from '@/components/sales/LineItemsTable'
+import {
+  LINE_CELL,
+  LINE_CELL_BOX,
+  LINE_INPUT_NUMERIC,
+  LINE_PRODUCT_WRAP,
+  LINE_TEXTAREA,
+  ProductLineActions,
+} from '@/components/sales/ProductLineTable'
+import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
@@ -181,7 +190,32 @@ export function DeliveryOrderEditPage() {
   const addCatalogProducts = (selected: Array<{ product: any; quantity: number }>) => setLines((prev) => [...prev, ...selected.map(({ product, quantity }) => ({ line_type: 'product' as const, product_id: product.id, product_name: product.name || '', model_number: '', description: product.name || '', product_notes: '', patient_name: '', quantity, unit: product.unit || 'pcs', unit_price: Number(product.price || 0), lot_number: '', expiry_date: '' }))])
 
   const removeLine = (index: number) => {
-    setLines((prev) => prev.filter((_, i) => i !== index))
+    setLines((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev))
+  }
+
+  const emptyLine = (): LineItem => ({
+    line_type: 'product', product_id: null, product_name: '', model_number: '',
+    description: '', product_notes: '', patient_name: '', quantity: 1, unit: 'pcs',
+    unit_price: null, lot_number: '', expiry_date: '',
+  })
+
+  /** Clear a line in place — a lone row can be emptied without deleting it. */
+  const resetLine = (index: number) => {
+    setLines((prev) => prev.map((line, i) => (i === index ? emptyLine() : line)))
+  }
+
+  const moveLine = (index: number, direction: 'up' | 'down') => {
+    const target = direction === 'up' ? index - 1 : index + 1
+    setLines((prev) => reorderDocumentLines(prev, index, target))
+  }
+
+  const duplicateLine = (index: number) => {
+    setLines((prev) => {
+      const copy = { ...prev[index] }
+      const next = [...prev]
+      next.splice(index + 1, 0, copy)
+      return next
+    })
   }
 
   const handleSubmit = () => {
@@ -371,23 +405,52 @@ export function DeliveryOrderEditPage() {
           <LineItemsTable
             variant="shadcn"
             columns={[
-              { key: 'product', label: 'Product', minWidth: 'min-w-[12.5rem]' },
-              { key: 'description', label: 'Description', minWidth: 'min-w-[18rem]' },
+              { key: 'index', label: '#', align: 'center', minWidth: 'w-10', className: 'w-10' },
+              { key: 'product', label: 'Product', minWidth: 'min-w-[15rem]' },
+              { key: 'description', label: 'Description', minWidth: 'min-w-[16rem]' },
               { key: 'product_notes', label: 'Product Notes', minWidth: 'min-w-[10rem]' },
-              { key: 'patient_name', label: 'Patient Name', minWidth: 'min-w-[10rem]' },
-              { key: 'quantity', label: 'Quantity', align: 'right', minWidth: 'min-w-[6rem]' },
-              { key: 'unit', label: 'Unit', minWidth: 'min-w-[6rem]' },
-              { key: 'unit_price', label: 'Unit Price', align: 'right', minWidth: 'min-w-[7rem]' },
-              { key: 'lot_number', label: 'Lot Number', minWidth: 'min-w-[7rem]' },
-              { key: 'expiry_date', label: 'Expiry Date', minWidth: 'min-w-[8rem]' },
-              { key: 'actions', minWidth: 'min-w-[3rem]' },
+              { key: 'patient_name', label: 'Patient Name', minWidth: 'min-w-[9rem]' },
+              { key: 'quantity', label: 'Quantity', align: 'right', minWidth: 'w-[5.5rem] min-w-[4.5rem]' },
+              { key: 'unit', label: 'Unit', minWidth: 'w-[5rem] min-w-[4rem]' },
+              { key: 'unit_price', label: 'Unit Price', align: 'right', minWidth: 'w-[7rem] min-w-[6rem]' },
+              { key: 'lot_number', label: 'Lot Number', minWidth: 'min-w-[7.5rem]' },
+              { key: 'expiry_date', label: 'Expiry Date', minWidth: 'min-w-[9.5rem]' },
+              { key: 'actions', label: '', align: 'right', minWidth: 'w-[10.5rem]', className: 'w-[10.5rem]' },
             ]}
           >
               {lines.map((line, idx) => (
-                <TableRow key={idx} draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(idx)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== idx) setLines(reorderDocumentLines(lines, draggedLineIndex, idx)); setDraggedLineIndex(null); }}>
-                  {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={10} total={line.line_type === 'section' ? getDocumentSectionTotal(lines, idx, (item) => item.quantity * Number(item.unit_price || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : undefined} onChange={(text) => updateLine(idx, 'description', text)} onDelete={() => removeLine(idx)} onDragStart={() => setDraggedLineIndex(idx)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, idx)); setDraggedLineIndex(null); }} /> : <>
-                  <TableCell>
+                <TableRow
+                  key={idx}
+                  className="transition-colors hover:bg-muted/20"
+                  draggable={(line.line_type ?? 'product') === 'product'}
+                  onDragStart={() => setDraggedLineIndex(idx)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => {
+                    if (draggedLineIndex !== null && draggedLineIndex !== idx) setLines(reorderDocumentLines(lines, draggedLineIndex, idx))
+                    setDraggedLineIndex(null)
+                  }}
+                >
+                  {line.line_type === 'note' || line.line_type === 'section' ? (
+                    <DocumentTextLineRow
+                      type={line.line_type}
+                      text={line.description}
+                      colSpan={11}
+                      total={line.line_type === 'section' ? getDocumentSectionTotal(lines, idx, (item) => item.quantity * Number(item.unit_price || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : undefined}
+                      onChange={(text) => updateLine(idx, 'description', text)}
+                      onDelete={() => removeLine(idx)}
+                      onDragStart={() => setDraggedLineIndex(idx)}
+                      onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, idx)); setDraggedLineIndex(null) }}
+                    />
+                  ) : <>
+                  <TableCell className={cn(LINE_CELL, 'w-10')}>
+                    <div className={cn(LINE_CELL_BOX, 'justify-center text-xs font-medium text-muted-foreground')}>
+                      {lines.slice(0, idx + 1).filter((item) => (item.line_type ?? 'product') === 'product').length}
+                    </div>
+                  </TableCell>
+
+                  <TableCell className={cn(LINE_CELL, 'min-w-[15rem]', LINE_PRODUCT_WRAP)}>
                     <ProductSearchCombobox
+                      wrapText
                       value={line.product_id?.toString() || ''}
                       onValueChange={(val, product) => {
                         updateLine(idx, 'product_id', val ? parseInt(val) : null)
@@ -400,44 +463,82 @@ export function DeliveryOrderEditPage() {
                       placeholder="Search product..."
                     />
                   </TableCell>
-                  <TableCell className="min-w-[320px] align-top">
-                    <textarea value={line.description} onChange={(e) => updateLine(idx, 'description', e.target.value)} rows={2} className="w-full whitespace-pre-wrap break-words rounded border border-gray-300 bg-white px-2 py-1 text-sm resize-y dark:border-gray-600 dark:bg-gray-800" placeholder="Description" />
+
+                  <TableCell className={cn(LINE_CELL, 'min-w-[16rem]')}>
+                    <textarea
+                      value={line.description}
+                      onChange={(e) => updateLine(idx, 'description', e.target.value)}
+                      rows={2}
+                      className={LINE_TEXTAREA}
+                      placeholder="Description"
+                    />
                   </TableCell>
-                  <TableCell>
-                    <Input value={line.product_notes} onChange={(e) => updateLine(idx, 'product_notes', e.target.value)} placeholder="Product notes" />
+
+                  <TableCell className={cn(LINE_CELL, 'min-w-[10rem]')}>
+                    <textarea
+                      value={line.product_notes}
+                      onChange={(e) => updateLine(idx, 'product_notes', e.target.value)}
+                      rows={2}
+                      className={LINE_TEXTAREA}
+                      placeholder="Product notes"
+                    />
                   </TableCell>
-                  <TableCell>
-                    <Input value={line.patient_name} onChange={(e) => updateLine(idx, 'patient_name', e.target.value)} placeholder="Patient name" />
+
+                  <TableCell className={cn(LINE_CELL, 'min-w-[9rem]')}>
+                    <div className={LINE_CELL_BOX}>
+                      <Input value={line.patient_name} onChange={(e) => updateLine(idx, 'patient_name', e.target.value)} placeholder="Patient name" className="h-9" />
+                    </div>
                   </TableCell>
-                  <TableCell className="text-right">
-                    <Input type="number" min="0.01" step="0.01" value={line.quantity ?? ''} onChange={(e) => {
-                      // HR71-08: keep literal intent — empty while typing,
-                      // no silent coercion to 0.
-                      const raw = e.target.value;
-                      if (raw === '') { updateLine(idx, 'quantity', ''); return; }
-                      const parsed = parseFloat(raw);
-                      if (!Number.isNaN(parsed) && parsed >= 0) updateLine(idx, 'quantity', parsed);
-                    }} className="w-24 text-right" />
+
+                  <TableCell className={cn(LINE_CELL, 'w-[5.5rem] min-w-[4.5rem]')}>
+                    <div className={LINE_CELL_BOX}>
+                      <Input type="number" min="0.01" step="0.01" value={line.quantity ?? ''} onChange={(e) => {
+                        // HR71-08: keep literal intent — empty while typing,
+                        // no silent coercion to 0.
+                        const raw = e.target.value
+                        if (raw === '') { updateLine(idx, 'quantity', ''); return }
+                        const parsed = parseFloat(raw)
+                        if (!Number.isNaN(parsed) && parsed >= 0) updateLine(idx, 'quantity', parsed)
+                      }} className={LINE_INPUT_NUMERIC} />
+                    </div>
                   </TableCell>
-                  <TableCell>
-                    <Input value={line.unit} onChange={(e) => updateLine(idx, 'unit', e.target.value)} className="w-20" />
+
+                  <TableCell className={cn(LINE_CELL, 'w-[5rem] min-w-[4rem]')}>
+                    <div className={LINE_CELL_BOX}>
+                      <Input value={line.unit} onChange={(e) => updateLine(idx, 'unit', e.target.value)} className="h-9" />
+                    </div>
                   </TableCell>
-                  <TableCell className="text-right">
-                    <Input type="number" min="0" step="0.01" value={line.unit_price ?? ''} onChange={(e) => updateLine(idx, 'unit_price', parseFloat(e.target.value) || null)} className="w-28 text-right" placeholder="0.00" />
+
+                  <TableCell className={cn(LINE_CELL, 'w-[7rem] min-w-[6rem]')}>
+                    <div className={LINE_CELL_BOX}>
+                      <Input type="number" min="0" step="0.01" value={line.unit_price ?? ''} onChange={(e) => updateLine(idx, 'unit_price', parseFloat(e.target.value) || null)} className={LINE_INPUT_NUMERIC} placeholder="0.00" />
+                    </div>
                   </TableCell>
-                  <TableCell>
-                    <ProductTrackingSelector productId={line.product_id} warehouseId={warehouseId} trackingMethod={line.tracking_method} batchId={line.product_batch_id} serialId={line.product_serial_id} onChange={(selection) => setLines((current) => current.map((item, itemIndex) => itemIndex === idx ? { ...item, ...selection } : item))} />
+                  <TableCell className={cn(LINE_CELL, 'min-w-[7.5rem]')}>
+                    <div className={LINE_CELL_BOX}>
+                      <ProductTrackingSelector productId={line.product_id} warehouseId={warehouseId} trackingMethod={line.tracking_method} batchId={line.product_batch_id} serialId={line.product_serial_id} onChange={(selection) => setLines((current) => current.map((item, itemIndex) => itemIndex === idx ? { ...item, ...selection } : item))} />
+                    </div>
                   </TableCell>
-                  <TableCell>
-                    <Input type="date" value={line.expiry_date} readOnly className="w-36 bg-gray-50 dark:bg-gray-900" />
-                    {line.serial_number ? <div className="mt-1 text-xs text-muted-foreground">Serial: {line.serial_number}</div> : null}
+
+                  <TableCell className={cn(LINE_CELL, 'min-w-[9.5rem]')}>
+                    <div className={LINE_CELL_BOX}>
+                      <Input type="date" value={line.expiry_date} readOnly className="h-9 bg-gray-50 dark:bg-gray-900" />
+                      {line.serial_number ? <div className="mt-1 text-xs text-muted-foreground">Serial: {line.serial_number}</div> : null}
+                    </div>
                   </TableCell>
-                  <TableCell>
-                    {lines.length > 1 && (
-                      <Button variant="ghost" size="sm" onClick={() => removeLine(idx)}>
-                        <Icon icon="solar:trash-bin-minimalistic-bold" className="h-4 w-4 text-destructive" />
-                      </Button>
-                    )}
+
+                  <TableCell className={cn(LINE_CELL, 'w-[10.5rem]')}>
+                    <div className={cn(LINE_CELL_BOX, 'justify-end')}>
+                      <ProductLineActions
+                        onMoveUp={() => moveLine(idx, 'up')}
+                        onMoveDown={() => moveLine(idx, 'down')}
+                        canMoveUp={idx !== 0}
+                        canMoveDown={idx !== lines.length - 1}
+                        onDuplicate={() => duplicateLine(idx)}
+                        onReset={() => resetLine(idx)}
+                        onDelete={() => removeLine(idx)}
+                      />
+                    </div>
                   </TableCell>
                   </>}
                 </TableRow>

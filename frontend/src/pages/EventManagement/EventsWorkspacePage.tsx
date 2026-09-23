@@ -32,6 +32,7 @@ import { useCreateEvent, useCustomerDashboard, useDeleteEvent, useDownloadTicket
 import { cn } from '@/lib/utils';
 import { fetchPublicEvents, type ApiEvent } from '@/storefront/lib/api';
 import { useProducts } from '@/storefront/hooks/useProducts';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 type EventFormState = {
   title: string;
@@ -160,6 +161,7 @@ const EventsWorkspacePage: React.FC = () => {
   const [manageFilter, setManageFilter] = useState<'all' | 'live' | 'draft' | 'published' | 'active'>('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<UnifiedEvent | null>(null);
+  const [pendingDeleteEvent, setPendingDeleteEvent] = useState<UnifiedEvent | null>(null);
   const [eventForm, setEventForm] = useState<EventFormState>(buildDefaultForm());
   const [deletingEventId, setDeletingEventId] = useState<number | null>(null);
   const { toast } = useToast();
@@ -396,10 +398,7 @@ const EventsWorkspacePage: React.FC = () => {
     }
   };
 
-  const handleDeleteEvent = async (event: UnifiedEvent) => {
-    const confirmed = window.confirm(`Delete event "${event.title}"? This action cannot be undone.`);
-    if (!confirmed) return;
-
+  const performDeleteEvent = async (event: UnifiedEvent) => {
     setDeletingEventId(event.id);
     try {
       await deleteEventMutation.mutateAsync(event.id);
@@ -691,7 +690,7 @@ const EventsWorkspacePage: React.FC = () => {
                             <AccessibleButton
                               size="sm"
                               variant="destructive"
-                              onClick={() => handleDeleteEvent(event)}
+                              onClick={() => setPendingDeleteEvent(event)}
                               loading={deletingEventId === event.id}
                               className="flex-1"
                             >
@@ -1071,6 +1070,26 @@ const EventsWorkspacePage: React.FC = () => {
           </DialogContent>
         </Dialog>
       </div>
+
+      <ConfirmDialog
+        open={!!pendingDeleteEvent}
+        onOpenChange={(open) => !open && setPendingDeleteEvent(null)}
+        title="Delete this event?"
+        description={
+          <>
+            Event <span className="font-medium text-foreground">{pendingDeleteEvent?.title}</span> will be
+            permanently removed. This cannot be undone.
+          </>
+        }
+        confirmLabel="Delete event"
+        icon="solar:trash-bin-trash-bold-duotone"
+        isPending={deletingEventId !== null}
+        onConfirm={() => {
+          const target = pendingDeleteEvent
+          setPendingDeleteEvent(null)
+          if (target) void performDeleteEvent(target)
+        }}
+      />
     </div>
   );
 };

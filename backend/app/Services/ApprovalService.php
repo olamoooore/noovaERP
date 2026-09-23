@@ -189,6 +189,14 @@ class ApprovalService
             return false;
         }
 
+        // A reviewer explicitly assigned to this request type in tenant
+        // settings may always decide — that list is the operator's intent and
+        // must not be second-guessed by the role heuristic below.
+        if ($requestType === \App\Services\InvoiceApprovalService::REQUEST_TYPE
+            && app(\App\Services\InvoiceApprovalService::class)->resolveReviewers()->contains('id', $user->id)) {
+            return true;
+        }
+
         // Check if user has manager role (basic approval)
         $hasManagerRole = $user->hasRole('manager') || $user->hasRole('supervisor');
 

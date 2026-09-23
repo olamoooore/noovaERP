@@ -9,9 +9,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import api from '@/lib/api'
+import { cn } from '@/lib/utils'
+import { SettingsSectionNav } from '@/components/settings/settings-ui'
 
 interface PaymentGateway {
   id: number
@@ -46,6 +47,23 @@ interface OfflinePaymentMethod {
   display_order: number
 }
 
+const PAYMENT_SECTIONS = [
+  {
+    key: 'online',
+    title: 'Online Gateways',
+    description: 'Stripe, PayPal, HitPay and other processors',
+    icon: 'solar:card-bold-duotone',
+    component: () => null,
+  },
+  {
+    key: 'offline',
+    title: 'Offline Methods',
+    description: 'Bank transfer, cash on delivery and more',
+    icon: 'solar:wallet-money-bold-duotone',
+    component: () => null,
+  },
+]
+
 export function PaymentGatewaySettings() {
   const { toast } = useToast()
   const [gateways, setGateways] = useState<PaymentGateway[]>([])
@@ -56,6 +74,7 @@ export function PaymentGatewaySettings() {
   
   // Online gateway dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [gatewaySection, setGatewaySection] = useState('online')
   const [selectedGateway, setSelectedGateway] = useState<string>('')
   const [formData, setFormData] = useState<any>({})
   const [testingConnection, setTestingConnection] = useState<number | null>(null)
@@ -290,25 +309,32 @@ export function PaymentGatewaySettings() {
   const selectedGatewayConfig = availableGateways.find(g => g.key === selectedGateway)
 
   return (
-    <Tabs defaultValue="online" className="space-y-6">
-      <TabsList>
-        <TabsTrigger value="online">Online Gateways</TabsTrigger>
-        <TabsTrigger value="offline">Offline Methods</TabsTrigger>
-      </TabsList>
+    <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+      <SettingsSectionNav
+        sections={PAYMENT_SECTIONS}
+        activeKey={gatewaySection}
+        onSelect={setGatewaySection}
+      />
 
-      <TabsContent value="online" className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-medium">Online Payment Gateways</h3>
-            <p className="text-sm text-muted-foreground">
-              Configure payment processors to accept online payments from customers.
-            </p>
-          </div>
-          
+      <div className="min-w-0 flex-1 space-y-6">
+      {gatewaySection === 'online' && (
+        <Card className="overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/20 px-6 py-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                <Icon icon="solar:card-bold-duotone" className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold leading-none">Online Payment Gateways</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Configure payment processors to accept online payments from customers.
+                </p>
+              </div>
+            </div>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button>
-                <Icon icon="material-symbols:add" className="mr-2 h-4 w-4" />
+                <Icon icon="solar:add-circle-bold-duotone" className="mr-2 h-4 w-4" />
                 Add Gateway
               </Button>
             </DialogTrigger>
@@ -397,22 +423,25 @@ export function PaymentGatewaySettings() {
               </div>
             </DialogContent>
           </Dialog>
-        </div>
+          </div>
 
+          <CardContent className="p-6">
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Icon icon="svg-spinners:180-ring-with-bg" className="h-8 w-8" />
+          <div className="flex items-center justify-center py-16">
+            <Icon icon="eos-icons:loading" className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : gateways.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <Icon icon="material-symbols:payment-outline" className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No payment gateways configured</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Add a payment gateway to start accepting online payments.
+          <Card className="overflow-hidden">
+            <CardContent className="flex flex-col items-center justify-center py-16">
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
+                <Icon icon="solar:card-bold-duotone" className="h-8 w-8 text-primary" />
+              </div>
+              <h3 className="text-base font-semibold">No payment gateways configured</h3>
+              <p className="mb-5 mt-1 max-w-sm text-center text-sm text-muted-foreground">
+                Connect Stripe, PayPal or HitPay to accept online payments from your customers.
               </p>
               <Button onClick={() => setDialogOpen(true)}>
-                <Icon icon="material-symbols:add" className="mr-2 h-4 w-4" />
+                <Icon icon="solar:add-circle-bold-duotone" className="mr-2 h-4 w-4" />
                 Add Your First Gateway
               </Button>
             </CardContent>
@@ -420,62 +449,86 @@ export function PaymentGatewaySettings() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
             {gateways.map((gateway) => (
-              <Card key={gateway.id}>
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+              <Card
+                key={gateway.id}
+                className={cn(
+                  'overflow-hidden transition-all hover:shadow-md',
+                  !gateway.is_active && 'opacity-60 hover:opacity-100',
+                )}
+              >
+                <CardHeader className="border-b bg-muted/20 pb-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                         <Icon icon={getGatewayIcon(gateway.gateway_name)} className="h-5 w-5 text-primary" />
                       </div>
-                      <div>
-                        <CardTitle className="capitalize">{gateway.gateway_name}</CardTitle>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge variant={gateway.is_active ? 'default' : 'secondary'}>
+                      <div className="min-w-0">
+                        <CardTitle className="truncate text-base capitalize">{gateway.gateway_name}</CardTitle>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <span
+                            className={cn(
+                              'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                              gateway.is_active
+                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                : 'bg-muted text-muted-foreground',
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                'h-1.5 w-1.5 rounded-full',
+                                gateway.is_active ? 'bg-emerald-500' : 'bg-muted-foreground/60',
+                              )}
+                            />
                             {gateway.is_active ? 'Active' : 'Inactive'}
-                          </Badge>
+                          </span>
                           {gateway.is_test_mode && (
-                            <Badge variant="outline">Test Mode</Badge>
+                            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+                              Test mode
+                            </span>
                           )}
                         </div>
                       </div>
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="p-4">
                   <div className="flex gap-2">
                     <Button
                       size="sm"
                       variant="outline"
+                      className="flex-1"
                       onClick={() => handleTestConnection(gateway)}
                       disabled={testingConnection === gateway.id}
                     >
                       {testingConnection === gateway.id ? (
-                        <Icon icon="svg-spinners:180-ring-with-bg" className="mr-2 h-4 w-4" />
+                        <Icon icon="eos-icons:loading" className="mr-1.5 h-4 w-4" />
                       ) : (
-                        <Icon icon="material-symbols:wifi-tethering" className="mr-2 h-4 w-4" />
+                        <Icon icon="solar:test-tube-bold-duotone" className="mr-1.5 h-4 w-4" />
                       )}
-                      Test Connection
-                    </Button>
-                    
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleToggleActive(gateway)}
-                    >
-                      <Icon 
-                        icon={gateway.is_active ? 'material-symbols:pause' : 'material-symbols:play-arrow'} 
-                        className="mr-2 h-4 w-4" 
-                      />
-                      {gateway.is_active ? 'Deactivate' : 'Activate'}
+                      Test
                     </Button>
 
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleDeleteGateway(gateway)}
-                      className="text-destructive hover:text-destructive"
+                      className="flex-1"
+                      onClick={() => handleToggleActive(gateway)}
                     >
-                      <Icon icon="material-symbols:delete-outline" className="h-4 w-4" />
+                      <Icon
+                        icon={gateway.is_active ? 'solar:pause-circle-bold-duotone' : 'solar:play-circle-bold-duotone'}
+                        className="mr-1.5 h-4 w-4"
+                      />
+                      {gateway.is_active ? 'Deactivate' : 'Activate'}
+                    </Button>
+
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className="h-9 w-9 shrink-0 text-destructive hover:text-destructive"
+                      onClick={() => handleDeleteGateway(gateway)}
+                      title="Delete gateway"
+                    >
+                      <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-4 w-4" />
                     </Button>
                   </div>
                 </CardContent>
@@ -483,21 +536,28 @@ export function PaymentGatewaySettings() {
             ))}
           </div>
         )}
-      </TabsContent>
+          </CardContent>
+        </Card>
+      )}
 
-      <TabsContent value="offline" className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-medium">Offline Payment Methods</h3>
-            <p className="text-sm text-muted-foreground">
-              Configure bank transfers, cash on delivery, and other offline payment options.
-            </p>
-          </div>
-          
+      {gatewaySection === 'offline' && (
+        <Card className="overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/20 px-6 py-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                <Icon icon="solar:wallet-money-bold-duotone" className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold leading-none">Offline Payment Methods</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Configure bank transfers, cash on delivery, and other offline payment options.
+                </p>
+              </div>
+            </div>
           <Dialog open={offlineDialogOpen} onOpenChange={setOfflineDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={() => { resetOfflineForm(); setEditingOfflineMethod(null); }}>
-                <Icon icon="material-symbols:add" className="mr-2 h-4 w-4" />
+                <Icon icon="solar:add-circle-bold-duotone" className="mr-2 h-4 w-4" />
                 Add Method
               </Button>
             </DialogTrigger>
@@ -612,8 +672,9 @@ export function PaymentGatewaySettings() {
               </div>
             </DialogContent>
           </Dialog>
-        </div>
+          </div>
 
+          <CardContent className="p-6">
         {loadingOffline ? (
           <div className="flex items-center justify-center py-12">
             <Icon icon="svg-spinners:180-ring-with-bg" className="h-8 w-8" />
@@ -695,7 +756,10 @@ export function PaymentGatewaySettings() {
             ))}
           </div>
         )}
-      </TabsContent>
-    </Tabs>
+          </CardContent>
+        </Card>
+      )}
+      </div>
+    </div>
   )
 }

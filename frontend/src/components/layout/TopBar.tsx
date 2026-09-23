@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { NotificationBell } from '@/components/layout/NotificationBell'
+import { GlobalSearch } from '@/components/search/GlobalSearch'
 
 function greetingFor(hour: number): { label: string; icon: string } {
   if (hour < 12) return { label: 'Good morning', icon: 'solar:sun-2-bold-duotone' }
@@ -70,7 +71,11 @@ export function TopBar() {
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-1 items-center justify-center px-6">
+        <GlobalSearch />
+      </div>
+
+      <div className="flex shrink-0 items-center gap-3">
         {/* Notifications */}
         <NotificationBell />
 

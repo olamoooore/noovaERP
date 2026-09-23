@@ -18,6 +18,36 @@ use Modules\Sales\Models\SalesOrderLine;
 
 class DeliveryOrderService
 {
+    /**
+     * Mirror a delivery-order lifecycle transition into the polymorphic
+     * chatter feed so the document's History tab reflects what happened.
+     * Never throws — a logging failure must not break the document flow.
+     */
+    private function logChatter(
+        DeliveryOrder $deliveryOrder,
+        string $event,
+        string $description,
+        array $properties = [],
+    ): void {
+        try {
+            app(\App\Services\Chatter\ChatterService::class)->logEvent(
+                DeliveryOrder::class,
+                (int) $deliveryOrder->id,
+                $event,
+                $description,
+                $properties,
+                Auth::id(),
+                Auth::check() ? get_class(Auth::user()) : null,
+            );
+        } catch (\Throwable $e) {
+            Log::warning('DeliveryOrderService: chatter mirror failed', [
+                'delivery_order_id' => $deliveryOrder->id,
+                'event' => $event,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     public function __construct(
         private OrderLifecycleService $lifecycleService,
         private InventoryService $inventoryService,
@@ -93,31 +123,31 @@ class DeliveryOrderService
      */
     private function createDeliveryOrderInsideTransaction(SalesOrder $order, array $data, int $warehouseId, ?int $quotationId, ?int $invoiceId): DeliveryOrder
     {
-            $actorId = TenantUserHelper::requireTenantUserId($data['created_by'] ?? Auth::id());
+        $actorId = TenantUserHelper::requireTenantUserId($data['created_by'] ?? Auth::id());
 
-            $deliveryOrder = DeliveryOrder::create([
-                'sales_order_id' => $order->id,
-                'customer_id' => $order->customer_id,
-                'warehouse_id' => $warehouseId,
-                'status' => 'draft',
-                'source' => 'sales_order',
-                'delivery_date' => $data['delivery_date'] ?? now()->toDateString(),
-                'expected_date' => $data['expected_date'] ?? null,
-                'payment_terms' => $data['payment_terms'] ?? null,
-                'carrier' => $data['carrier'] ?? null,
-                'tracking_number' => $data['tracking_number'] ?? null,
-                'shipping_address' => $data['shipping_address'] ?? null,
-                'shipping_address_overridden' => ! empty($data['shipping_address']),
-                'po_number' => $data['po_number'] ?? null,
-                'salesperson' => $data['salesperson'] ?? null,
-                'attention_to' => $data['attention_to'] ?? null,
-                'invoice_id' => $invoiceId,
-                'quotation_id' => $quotationId,
-                'notes' => $data['notes'] ?? null,
-                'created_by' => $actorId,
-            ]);
+        $deliveryOrder = DeliveryOrder::create([
+            'sales_order_id' => $order->id,
+            'customer_id' => $order->customer_id,
+            'warehouse_id' => $warehouseId,
+            'status' => 'draft',
+            'source' => 'sales_order',
+            'delivery_date' => $data['delivery_date'] ?? now()->toDateString(),
+            'expected_date' => $data['expected_date'] ?? null,
+            'payment_terms' => $data['payment_terms'] ?? null,
+            'carrier' => $data['carrier'] ?? null,
+            'tracking_number' => $data['tracking_number'] ?? null,
+            'shipping_address' => $data['shipping_address'] ?? null,
+            'shipping_address_overridden' => ! empty($data['shipping_address']),
+            'po_number' => $data['po_number'] ?? null,
+            'salesperson' => $data['salesperson'] ?? null,
+            'attention_to' => $data['attention_to'] ?? null,
+            'invoice_id' => $invoiceId,
+            'quotation_id' => $quotationId,
+            'notes' => $data['notes'] ?? null,
+            'created_by' => $actorId,
+        ]);
 
-            $lines = $data['lines'] ?? [];
+        $lines = $data['lines'] ?? [];
             $hasDeliverableProduct = false;
             foreach ($lines as $lineData) {
                 $soLineId = $lineData['sales_order_line_id'];
@@ -184,9 +214,8 @@ class DeliveryOrderService
                 throw new \Exception('Set Deliver Now greater than zero for at least one product before creating the delivery order.');
             }
 
-            return $deliveryOrder->fresh(['lines.salesOrderLine', 'customer', 'salesOrder']);
+        return $deliveryOrder->fresh(['lines.salesOrderLine', 'customer', 'salesOrder']);
     }
-
 
     /**
      * Issue #176: DO completion issues inventory from the ledger's perspective
@@ -517,9 +546,9 @@ class DeliveryOrderService
      * Issue #177: dual confirmation path.
      *
      * @param  array{method?: string, channel?: string|null, signed_document_path?: string|null}  $confirmation
-     *         method 'physical' requires an uploaded signed copy;
-     *         method 'digital' requires the channel the confirmation came
-     *         through (email/web/whatsapp/other).
+     *                                                                                                           method 'physical' requires an uploaded signed copy;
+     *                                                                                                           method 'digital' requires the channel the confirmation came
+     *                                                                                                           through (email/web/whatsapp/other).
      */
     public function confirmDeliveryOrder(DeliveryOrder $deliveryOrder, array $confirmation = []): DeliveryOrder
     {
@@ -558,6 +587,13 @@ class DeliveryOrderService
             'signed_document_path' => $method === 'physical' ? $signedDocumentPath : $deliveryOrder->signed_document_path,
         ]);
 
+        $this->logChatter(
+            $deliveryOrder,
+            'status_changed',
+            "Confirmed delivery order {$deliveryOrder->delivery_order_number} ({$method} confirmation)",
+            ['from_state' => 'draft', 'to_state' => 'confirmed', 'method' => $method],
+        );
+
         return $deliveryOrder->fresh(['lines.salesOrderLine', 'lines.product', 'customer', 'salesOrder']);
     }
 
@@ -576,6 +612,13 @@ class DeliveryOrderService
         if (! $deliveryOrder->isConfirmed()) {
             // Idempotency: if already DONE, return as-is
             if ($deliveryOrder->isDone()) {
+                $this->logChatter(
+                    $deliveryOrder,
+                    'status_changed',
+                    "Completed delivery order {$deliveryOrder->delivery_order_number} — stock posted",
+                    ['from_state' => 'confirmed', 'to_state' => 'done'],
+                );
+
                 return $deliveryOrder->fresh(['lines.salesOrderLine', 'lines.product', 'customer', 'salesOrder']);
             }
             throw new \Exception('Only confirmed delivery orders can be completed.');
@@ -692,6 +735,13 @@ class DeliveryOrderService
                 'completed_by' => $actorId,
             ]);
 
+            $this->logChatter(
+                $deliveryOrder,
+                'status_changed',
+                "Completed delivery order {$deliveryOrder->delivery_order_number} — stock posted",
+                ['from_state' => 'confirmed', 'to_state' => 'done'],
+            );
+
             return $deliveryOrder->fresh(['lines.salesOrderLine', 'lines.product', 'customer', 'salesOrder']);
         });
     }
@@ -766,6 +816,13 @@ class DeliveryOrderService
                 'actor' => $actorId,
             ]);
 
+            $this->logChatter(
+                $deliveryOrder,
+                'cancelled',
+                "Cancelled delivery order {$deliveryOrder->delivery_order_number}",
+                ['reason' => $reason],
+            );
+
             return $deliveryOrder->fresh(['lines.salesOrderLine', 'lines.product', 'customer', 'salesOrder']);
         });
     }
@@ -790,6 +847,13 @@ class DeliveryOrderService
                 : $deliveryOrder->notes,
         ]);
 
+        $this->logChatter(
+            $deliveryOrder,
+            'status_changed',
+            "Reset delivery order {$deliveryOrder->delivery_order_number} to draft",
+            ['to_state' => 'draft'],
+        );
+
         return $deliveryOrder->fresh(['lines.salesOrderLine', 'customer', 'salesOrder']);
     }
 
@@ -800,12 +864,24 @@ class DeliveryOrderService
      */
     public function resetToDraft(DeliveryOrder $deliveryOrder): DeliveryOrder
     {
-        if (! $deliveryOrder->isCancelled()) {
-            throw new \Exception('Only cancelled delivery orders can be reset to draft.');
+        // Admin-only route (documents.reset_to_draft). Allowed from a completed
+        // document (reversal restores stock + reverses the COGS entry first) or
+        // from a cancelled one (stock was already restored on cancel).
+        if (! $deliveryOrder->isCancelled() && ! $deliveryOrder->isDone()) {
+            throw new \Exception(
+                'Only completed or cancelled delivery orders can be reset to draft. Current: '.$deliveryOrder->status
+            );
         }
 
         if ($deliveryOrder->invoice_id) {
-            throw new \Exception('Cannot reset a delivery order that is linked to an invoice. Create a new delivery order instead.');
+            throw new \Exception('Cannot reset a delivery order that is linked to an invoice. Reset the invoice first.');
+        }
+
+        if ($deliveryOrder->isDone()) {
+            // DONE → CANCELLED via the canonical reversal: posts compensating
+            // inbound stock movements and reverses the inventory/COGS GL entry.
+            $this->reverseDeliveryOrder($deliveryOrder, 'Reset to draft');
+            $deliveryOrder->refresh();
         }
 
         $deliveryOrder->update([

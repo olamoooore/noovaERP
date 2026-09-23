@@ -20,9 +20,13 @@ import { Icon } from '@iconify/react'
 import { useNavigate } from 'react-router-dom'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { SalesDocumentExportMenu } from '@/components/sales/SalesDocumentExportMenu'
-import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { SalesLineColumnMenu, SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { cn } from '@/lib/utils'
 import { useBulkSelection } from '@/hooks/use-bulk-selection'
 import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 const PER_PAGE = 20
 const QUOTATION_EXPORT_COLUMNS = [
@@ -151,8 +155,7 @@ export function QuotesPage() {
   })
 
   const handleDelete = (quoteId: number, quoteNumber: string) => {
-    if (!window.confirm(`Delete quotation ${quoteNumber}? This action cannot be undone.`)) return
-    deleteMutation.mutate(quoteId)
+    setDeleteTarget({ id: quoteId, number: quoteNumber })
   }
 
   const bulkDeleteMutation = useMutation({
@@ -197,6 +200,10 @@ export function QuotesPage() {
     setPage(1)
   }
 
+  const [actionsPinned, setActionsPinned] = useState(false)
+  const [hiddenQuoteColumns, setHiddenQuoteColumns] = useState<number[]>([])
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; number: string } | null>(null)
+
   const handleStatusChange = (value: string) => {
     setStatusFilter(value)
     setPage(1)
@@ -210,25 +217,66 @@ export function QuotesPage() {
           <p className="text-muted-foreground">Create and manage quotations. Confirm to create Sales Orders, then invoice from orders.</p>
         </div>
 
-        <div className="flex gap-3">
-          <SalesDocumentExportMenu
-            endpoint="/quotations/export"
-            filenamePrefix="quotations"
-            columns={QUOTATION_EXPORT_COLUMNS}
-            filters={{
-              search: searchQuery.trim() || undefined,
-              status: statusFilter !== 'all' ? statusFilter : undefined,
-            }}
-            selectedIds={selectedIds}
-          />
-          <Button variant="outline" onClick={() => navigate('/quotations/import')}>
-            <Icon icon="solar:import-bold" className="mr-2 h-4 w-4" />
-            Import
-          </Button>
-          <Button onClick={() => navigate('/quotations/create')}>
-            <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
-            Create Quotation
-          </Button>
+        <div className="group/actions flex items-center justify-end">
+          <div
+            className={cn(
+              'flex items-center gap-2 overflow-hidden transition-all duration-300 ease-out',
+              actionsPinned ? 'max-w-[640px] translate-x-0 opacity-100' : 'max-w-0 translate-x-3 opacity-0',
+              !actionsPinned &&
+                'group-hover/actions:max-w-[640px] group-hover/actions:translate-x-0 group-hover/actions:opacity-100',
+              !actionsPinned &&
+                'group-focus-within/actions:max-w-[640px] group-focus-within/actions:translate-x-0 group-focus-within/actions:opacity-100',
+            )}
+          >
+            <SalesDocumentExportMenu
+              compact
+              endpoint="/quotations/export"
+              filenamePrefix="quotations"
+              columns={QUOTATION_EXPORT_COLUMNS}
+              filters={{
+                search: searchQuery.trim() || undefined,
+                status: statusFilter !== 'all' ? statusFilter : undefined,
+              }}
+              selectedIds={selectedIds}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-full px-3 text-xs"
+              onClick={() => navigate('/quotations/import')}
+            >
+              <Icon icon="solar:upload-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
+              Import
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 rounded-full px-3 text-xs"
+              onClick={() => navigate('/quotations/create')}
+            >
+              <Icon icon="solar:add-circle-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
+              Create Quotation
+            </Button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setActionsPinned((v) => !v)}
+            aria-expanded={actionsPinned}
+            title={actionsPinned ? 'Collapse actions' : 'Show actions'}
+            className={cn(
+              'ml-2 inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+              actionsPinned
+                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                : 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
+            )}
+          >
+            <Icon
+              icon={actionsPinned ? 'solar:close-circle-bold-duotone' : 'solar:bolt-circle-bold-duotone'}
+              className="h-3.5 w-3.5"
+            />
+            Actions
+          </button>
         </div>
       </div>
 
@@ -240,25 +288,40 @@ export function QuotesPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(event) => handleSearchChange(event.target.value)}
-              placeholder="Search quotation number or customer"
-              className="w-full max-w-md rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
-            />
-            <select
-              value={statusFilter}
-              onChange={(event) => handleStatusChange(event.target.value)}
-              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
-            >
-              <option value="all">All Status</option>
-              <option value="draft">Draft</option>
-              <option value="sent">Sent</option>
-              <option value="confirmed">Confirmed</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-full sm:w-64">
+              <Icon
+                icon="solar:magnifer-bold-duotone"
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                value={searchQuery}
+                onChange={(event) => handleSearchChange(event.target.value)}
+                placeholder="Search quotation number or customer"
+                className="h-9 pl-9"
+              />
+            </div>
+
+            <Select value={statusFilter} onValueChange={handleStatusChange}>
+              <SelectTrigger className="h-9 w-[150px]">
+                <SelectValue placeholder="All Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="sent">Sent</SelectItem>
+                <SelectItem value="confirmed">Confirmed</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <div className="ml-auto">
+              <SalesLineColumnMenu
+                columns={listingColumns(['Select', 'Quote #', 'Customer', 'Quote Date', 'Created Date', 'Valid Until', 'Reference', 'Total', 'Status', 'Actions'])}
+                hidden={hiddenQuoteColumns}
+                setHidden={setHiddenQuoteColumns}
+              />
+            </div>
           </div>
 
           {isLoading ? (
@@ -288,7 +351,13 @@ export function QuotesPage() {
                 </div>
               )}
               <div className="overflow-x-auto">
-                <SalesLineColumnVisibility tableClass="quotes-listing-columns" columns={listingColumns(['Select', 'Quote #', 'Customer', 'Quote Date', 'Created Date', 'Valid Until', 'Reference', 'Total', 'Status', 'Actions'])}>
+                <SalesLineColumnVisibility
+                  tableClass="quotes-listing-columns"
+                  columns={listingColumns(['Select', 'Quote #', 'Customer', 'Quote Date', 'Created Date', 'Valid Until', 'Reference', 'Total', 'Status', 'Actions'])}
+                  hiddenColumns={hiddenQuoteColumns}
+                  onHiddenColumnsChange={setHiddenQuoteColumns}
+                  showMenu={false}
+                >
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -442,6 +511,27 @@ export function QuotesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete this quotation?"
+        description={
+          <>
+            Quotation{' '}
+            <span className="font-medium text-foreground">{deleteTarget?.number}</span> and its lines will be
+            permanently removed. This cannot be undone.
+          </>
+        }
+        confirmLabel="Delete"
+        icon="solar:trash-bin-trash-bold-duotone"
+        isPending={deleteMutation.isPending}
+        onConfirm={() => {
+          const target = deleteTarget
+          setDeleteTarget(null)
+          if (target) deleteMutation.mutate(target.id)
+        }}
+      />
     </div>
   )
 }

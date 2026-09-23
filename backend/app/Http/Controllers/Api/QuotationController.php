@@ -114,6 +114,9 @@ class QuotationController extends Controller
 
         $validated = $request->validate([
             'customer_id' => 'required|exists:customers,id',
+            // Operators may override the generated number (same behaviour as
+            // invoices); uniqueness is scoped to the tenant schema.
+            'quotation_number' => 'nullable|string|max:60|unique:quotations,quotation_number',
             'quotation_date' => 'nullable|date',
             'valid_until' => 'nullable|date',
             'customer_reference' => 'nullable|string|max:100',
@@ -161,6 +164,7 @@ class QuotationController extends Controller
         try {
             $quotation = DB::transaction(function () use ($validated) {
                 $data = array_filter([
+                    'quotation_number' => isset($validated['quotation_number']) ? trim($validated['quotation_number']) : null,
                     'quotation_date' => $validated['quotation_date'] ?? now()->toDateString(),
                     'valid_until' => $validated['valid_until'] ?? null,
                     'customer_id' => $validated['customer_id'],
@@ -1066,8 +1070,10 @@ class QuotationController extends Controller
             return response()->json(['message' => 'Quotation not found'], 404);
         }
 
-        if ($quotation->status !== 'cancelled') {
-            return response()->json(['message' => 'Only cancelled quotations can be reset to draft'], 403);
+        // Admin-only route (documents.reset_to_draft). Quotations carry no GL
+        // or stock effects, so any non-draft status can simply return to draft.
+        if ($quotation->status === 'draft') {
+            return response()->json(['message' => 'Quotation is already in draft'], 422);
         }
 
         $quotation->update(['status' => 'draft']);

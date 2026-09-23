@@ -41,6 +41,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 // Shop settings interface
 interface ShopSettings {
@@ -128,6 +129,7 @@ export function WebsiteEditor() {
   const [selectedPageId, setSelectedPageId] = useState<number | null>(null)
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null)
   const [isDirty, setIsDirty] = useState(false)
+  const [pendingPageId, setPendingPageId] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isCompressingImages, setIsCompressingImages] = useState(false)
   const [activeDevice, setActiveDevice] = useState<string>('Desktop')
@@ -566,16 +568,18 @@ export function WebsiteEditor() {
   }, [editorInstance, handleSave, selectedPageId, toast])
 
   // Handle page change
-  const handlePageChange = (pageId: string) => {
-    if (isDirty) {
-      // TODO: Show confirmation dialog
-      const confirm = window.confirm('You have unsaved changes. Do you want to save before switching pages?')
-      if (confirm) {
-        triggerSave()
-      }
-    }
+  const switchToPage = (pageId: string) => {
     setSelectedPageId(Number(pageId))
     setIsDirty(false)
+  }
+
+  const handlePageChange = (pageId: string) => {
+    if (!isDirty) {
+      switchToPage(pageId)
+      return
+    }
+    // Unsaved edits — ask whether to save first (styled dialog, not alert)
+    setPendingPageId(pageId)
   }
 
   // Preview in new tab — opens the server-rendered /w/ URL so it persists
@@ -1490,6 +1494,31 @@ export function WebsiteEditor() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={pendingPageId !== null}
+        onOpenChange={(open) => !open && setPendingPageId(null)}
+        title="Save before switching pages?"
+        description="This page has unsaved changes. Save them first, or discard and continue."
+        confirmLabel="Save & switch"
+        cancelLabel="Discard changes"
+        tone="warning"
+        icon="solar:diskette-bold-duotone"
+        isPending={isSaving}
+        onConfirm={() => {
+          const target = pendingPageId
+          setPendingPageId(null)
+          if (target) {
+            void triggerSave()
+            switchToPage(target)
+          }
+        }}
+        onCancel={() => {
+          const target = pendingPageId
+          setPendingPageId(null)
+          if (target) switchToPage(target)
+        }}
+      />
     </div>
   )
 }

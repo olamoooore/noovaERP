@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\UserRole;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
@@ -90,7 +91,21 @@ class TenantRoleService
             return false;
         }
 
-        return $spatieRole->hasPermissionTo($permission);
+        // A permission that was never seeded in this tenant's schema must deny
+        // access — not blow up with a 500 (Spatie throws
+        // PermissionDoesNotExist). Denying is the safe default and keeps the
+        // middleware's 403 contract intact.
+        try {
+            return $spatieRole->hasPermissionTo($permission);
+        } catch (\Spatie\Permission\Exceptions\PermissionDoesNotExist $e) {
+            Log::warning('TenantRoleService: permission not seeded in tenant schema', [
+                'tenant_id' => $tenantId,
+                'role' => $role->value,
+                'permission' => $permission,
+            ]);
+
+            return false;
+        }
     }
 
     /**

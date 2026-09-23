@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
@@ -52,6 +54,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const isAcmeTenant = useAuthStore((state) => state.tenantId) === '00000000-0000-0000-0000-000000000001';
+  const role = useAuthStore((state) => state.role);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
@@ -229,70 +232,103 @@ export const CustomerInvoiceDetail: React.FC = () => {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate(backPath)}>
-            <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
-            Back
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold">{documentLabel} {invoice.invoice_number || `#${invoice.id}`}</h1>
-            <p className="text-muted-foreground mt-1">Customer: {invoice.customer?.name || 'Unknown'}</p>
-            {invoice.customer?.code && (
-              <p className="text-sm font-mono text-muted-foreground">{invoice.customer.code}</p>
-            )}
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => navigate(`/accounting/customers/payments?invoice_id=${id}`)}
-          >
-            <Icon icon="solar:wallet-money-bold-duotone" className="h-4 w-4 mr-2" />
-            Payments ({paymentsCount ?? 0})
-          </Button>
-          {invoice.status === 'draft' && (
+      <div className="print:hidden">
+        <PageHeader
+          title={`${documentLabel} ${invoice.invoice_number || `#${invoice.id}`}`}
+          description={
             <>
-              <Button variant="default" onClick={() => postMutation.mutate()}>
-                <Icon icon="solar:check-circle-bold" className="h-4 w-4 mr-2" />
-                {isQuoteMode ? 'Convert to Invoice' : 'Post Invoice'}
-              </Button>
-              <Button variant="destructive" onClick={() => setShowDeleteDialog(true)}>
-                <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-4 w-4 mr-2" />
-                Delete
-              </Button>
+              Customer:{' '}
+              {invoice.customer ? (
+                <Link
+                  to={`/customers/${invoice.customer.id}`}
+                  className="font-medium text-primary underline-offset-2 hover:underline"
+                >
+                  {invoice.customer.name}
+                </Link>
+              ) : (
+                'Unknown'
+              )}
+              {invoice.customer?.code && (
+                <span className="ml-2 font-mono text-xs text-muted-foreground">{invoice.customer.code}</span>
+              )}
             </>
-          )}
-          {['posted', 'sent', 'partial', 'overdue'].includes(invoice.status) && (
-            <Button
+          }
+          backTo={backPath}
+          actions={<>
+            <HeaderActionButton
               variant="outline"
-              className="text-destructive"
-              onClick={() => setShowCancelDialog(true)}
-              disabled={cancelMutation.isPending}
+              icon="solar:wallet-money-bold-duotone"
+              onClick={() => navigate(`/accounting/customers/payments?invoice_id=${id}`)}
             >
-              <Icon icon="solar:close-circle-bold" className="h-4 w-4 mr-2" />
-              {cancelMutation.isPending ? 'Cancelling...' : 'Cancel'}
-            </Button>
-          )}
-          {invoice.status === 'cancelled' && (
-            <Button
+              Payments ({paymentsCount ?? 0})
+            </HeaderActionButton>
+
+            {invoice.status === 'draft' && (
+              <>
+                <HeaderActionButton
+                  icon="solar:check-circle-bold-duotone"
+                  loading={postMutation.isPending}
+                  onClick={() => postMutation.mutate()}
+                >
+                  {isQuoteMode ? 'Convert to Invoice' : 'Post Invoice'}
+                </HeaderActionButton>
+                <HeaderActionButton
+                  variant="outline"
+                  icon="solar:trash-bin-trash-bold-duotone"
+                  className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => setShowDeleteDialog(true)}
+                >
+                  Delete
+                </HeaderActionButton>
+              </>
+            )}
+
+            {['posted', 'sent', 'partial', 'overdue'].includes(invoice.status) && (
+              <HeaderActionButton
+                variant="outline"
+                icon="solar:close-circle-bold-duotone"
+                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                loading={cancelMutation.isPending}
+                onClick={() => setShowCancelDialog(true)}
+                disabled={cancelMutation.isPending}
+              >
+                Cancel
+              </HeaderActionButton>
+            )}
+
+            {/* Owner/Admin only — mirrors documents.reset_to_draft. */}
+            {(role === 'Owner' || role === 'Admin') &&
+              ['posted', 'sent', 'partial', 'overdue', 'cancelled'].includes(invoice.status) && (
+                <HeaderActionButton
+                  variant="outline"
+                  icon="solar:undo-left-round-bold-duotone"
+                  className="border-amber-300 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:border-amber-900 dark:text-amber-400 dark:hover:bg-amber-950/40"
+                  loading={resetToDraftMutation.isPending}
+                  onClick={() => setShowResetDialog(true)}
+                  disabled={resetToDraftMutation.isPending}
+                >
+                  Reset to Draft
+                </HeaderActionButton>
+              )}
+
+            <HeaderActionButton
               variant="outline"
-              onClick={() => setShowResetDialog(true)}
-              disabled={resetToDraftMutation.isPending}
+              icon="solar:printer-bold-duotone"
+              onClick={handleDownloadPdf}
+              disabled={isDownloading}
             >
-              <Icon icon="solar:undo-left-round-bold" className="h-4 w-4 mr-2" />
-              {resetToDraftMutation.isPending ? 'Resetting...' : 'Reset to Draft'}
-            </Button>
-          )}
-           <Button variant="outline" onClick={handleDownloadPdf} disabled={isDownloading}>
-             <Icon icon="solar:printer-bold-duotone" className="h-4 w-4 mr-2" />
-             {isDownloading ? 'Preparing...' : 'Print'}
-           </Button>
-           <Button variant="outline" onClick={handleDownloadPdf} disabled={isDownloading}>
-             <Icon icon="solar:download-bold-duotone" className="h-4 w-4 mr-2" />
-             {isDownloading ? 'Preparing...' : 'PDF'}
-           </Button>
-        </div>
+              Print
+            </HeaderActionButton>
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:download-minimalistic-bold-duotone"
+              onClick={handleDownloadPdf}
+              disabled={isDownloading}
+            >
+              PDF
+            </HeaderActionButton>
+          </>}
+        />
       </div>
 
       {/* Related document smart buttons */}
@@ -302,13 +338,11 @@ export const CustomerInvoiceDetail: React.FC = () => {
             <button
               type="button"
               onClick={() => navigate(`/quotations/${invoice.quotation.id}`)}
-              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
+              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-input bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             >
-              <Icon icon="solar:document-text-bold-duotone" className="h-5 w-5 text-purple-600" />
-              <div className="text-left">
-                <div className="font-bold text-foreground">{invoice.quotation.quotation_number}</div>
-                <div className="text-xs text-muted-foreground">Quotation</div>
-              </div>
+              <Icon icon="solar:document-text-bold-duotone" className="h-3.5 w-3.5" />
+              {invoice.quotation.quotation_number}
+              <span className="text-muted-foreground/70">Quotation</span>
             </button>
           )}
           {invoice.delivery_orders?.map((deliveryOrder: any) => (
@@ -316,13 +350,11 @@ export const CustomerInvoiceDetail: React.FC = () => {
               type="button"
               key={deliveryOrder.id}
               onClick={() => navigate(`/delivery-orders/${deliveryOrder.id}`)}
-              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
+              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-input bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             >
-              <Icon icon="solar:package-bold" className="h-5 w-5 text-orange-600" />
-              <div className="text-left">
-                <div className="font-bold text-foreground">{deliveryOrder.delivery_order_number}</div>
-                <div className="text-xs text-muted-foreground">Delivery Order</div>
-              </div>
+              <Icon icon="solar:box-bold-duotone" className="h-3.5 w-3.5" />
+              {deliveryOrder.delivery_order_number}
+              <span className="text-muted-foreground/70">Delivery Order</span>
             </button>
           ))}
         </div>

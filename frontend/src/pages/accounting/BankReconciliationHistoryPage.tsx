@@ -7,10 +7,12 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import reportApi from '@/lib/reportApi';
 import { useToast } from '@/hooks/use-toast';
+import { PromptDialog } from '@/components/ui/prompt-dialog';
 
 export default function BankReconciliationHistoryPage() {
   const navigate = useNavigate();
   const [selectedBankAccount, setSelectedBankAccount] = useState<string>('');
+  const [reversalTarget, setReversalTarget] = useState<any | null>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -32,8 +34,7 @@ export default function BankReconciliationHistoryPage() {
   });
 
   const requestReversal = (entry: any) => {
-    const reason = window.prompt('Enter the controlled reversal reason:');
-    if (reason?.trim()) reverseMutation.mutate({ reconciliationId: entry.id, reason: reason.trim() });
+    setReversalTarget(entry);
   };
 
   const { data: historyData, isLoading: isLoadingHistory, error: historyError } = useQuery({
@@ -115,6 +116,26 @@ export default function BankReconciliationHistoryPage() {
           </div>
         )}
       </Card>
+
+      <PromptDialog
+        open={!!reversalTarget}
+        onOpenChange={(open) => !open && setReversalTarget(null)}
+        title="Reverse this reconciliation?"
+        description="The reversal is controlled and recorded for audit. Provide a reason (minimum 10 characters)."
+        label="Reversal reason"
+        placeholder="e.g. Duplicate statement import — reversing to re-import."
+        confirmLabel="Request reversal"
+        tone="destructive"
+        icon="solar:undo-left-round-bold-duotone"
+        minLength={10}
+        multiline
+        isPending={reverseMutation.isPending}
+        onConfirm={(reason) => {
+          const target = reversalTarget;
+          setReversalTarget(null);
+          reverseMutation.mutate({ reconciliationId: target.id, reason });
+        }}
+      />
     </div>
   );
 }
