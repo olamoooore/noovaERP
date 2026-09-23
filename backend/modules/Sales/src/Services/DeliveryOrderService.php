@@ -3,6 +3,9 @@
 namespace Modules\Sales\Services;
 
 use App\Models\Warehouse;
+use App\Models\Product;
+use App\Models\ProductBatch;
+use App\Models\ProductSerial;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -109,6 +112,9 @@ class DeliveryOrderService
                     'quantity_delivered' => $quantityDelivered,
                     'unit' => $lineData['unit'] ?? $soLine->unit,
                     'lot_number' => $lineData['lot_number'] ?? null,
+                    'serial_number' => $lineData['serial_number'] ?? null,
+                    'product_batch_id' => $lineData['product_batch_id'] ?? null,
+                    'product_serial_id' => $lineData['product_serial_id'] ?? null,
                     'batch_number' => $lineData['batch_number'] ?? null,
                     'expiry_date' => $lineData['expiry_date'] ?? null,
                 ]);
@@ -244,6 +250,9 @@ class DeliveryOrderService
                     'unit_price' => $lineData['unit_price'] ?? null,
                     'line_total' => isset($lineData['unit_price']) ? ($lineData['unit_price'] * $quantityDelivered) : null,
                     'lot_number' => $lineData['lot_number'] ?? null,
+                    'serial_number' => $lineData['serial_number'] ?? null,
+                    'product_batch_id' => $lineData['product_batch_id'] ?? null,
+                    'product_serial_id' => $lineData['product_serial_id'] ?? null,
                     'batch_number' => $lineData['batch_number'] ?? null,
                     'expiry_date' => $lineData['expiry_date'] ?? null,
                 ]);
@@ -344,6 +353,32 @@ class DeliveryOrderService
                     continue;
                 }
 
+                if ($product->tracking_method === Product::TRACKING_BATCH) {
+                    if (! $line->product_batch_id) {
+                        throw new \Exception("Select an available lot for {$product->name} before completing the delivery.");
+                    }
+                    $batch = ProductBatch::whereKey($line->product_batch_id)->lockForUpdate()->firstOrFail();
+                    if ((int) $batch->product_id !== (int) $line->product_id || (int) $batch->warehouse_id !== $warehouseId) {
+                        throw new \Exception("The selected lot does not belong to {$product->name} in this warehouse.");
+                    }
+                    $available = (int) $batch->quantity - (int) $batch->quantity_reserved;
+                    if ($batch->status !== ProductBatch::STATUS_AVAILABLE || $batch->isExpired() || $available < $qty) {
+                        throw new \Exception("The selected lot for {$product->name} is no longer available in the required quantity.");
+                    }
+                    $batch->decrement('quantity', $qty);
+                }
+
+                if ($product->tracking_method === Product::TRACKING_SERIAL) {
+                    if ($qty !== 1 || ! $line->product_serial_id) {
+                        throw new \Exception("Select exactly one available serial number for each unit of {$product->name}.");
+                    }
+                    $serial = ProductSerial::whereKey($line->product_serial_id)->lockForUpdate()->firstOrFail();
+                    if ((int) $serial->product_id !== (int) $line->product_id || (int) $serial->warehouse_id !== $warehouseId || $serial->status !== ProductSerial::STATUS_IN_STOCK) {
+                        throw new \Exception("The selected serial number for {$product->name} is no longer available in this warehouse.");
+                    }
+                    $serial->markSold($deliveryOrder->customer_id, now(), $deliveryOrder->delivery_order_number);
+                }
+
                 $key = $idempotencyKey ?: "do-complete-{$deliveryOrder->id}-line-{$line->id}";
 
                 $this->inventoryService->adjustStock(
@@ -411,6 +446,21 @@ class DeliveryOrderService
                     $qty = (int) round((float) $line->quantity_delivered);
                     if ($qty <= 0) {
                         continue;
+                    }
+
+                    if ($line->product_batch_id) {
+                        ProductBatch::whereKey($line->product_batch_id)->lockForUpdate()->increment('quantity', $qty);
+                    }
+                    if ($line->product_serial_id) {
+                        $serial = ProductSerial::whereKey($line->product_serial_id)->lockForUpdate()->first();
+                        if ($serial) {
+                            $serial->update([
+                                'status' => ProductSerial::STATUS_IN_STOCK,
+                                'customer_id' => null,
+                                'sold_at' => null,
+                                'sale_reference' => null,
+                            ]);
+                        }
                     }
 
                     // Compensating inbound movement (restock)

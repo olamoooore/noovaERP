@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DeliveryOrderColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog'
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow'
+import { ProductTrackingSelector } from '@/components/inventory/ProductTrackingSelector'
 
 interface LineItem {
   line_type?: 'product' | 'note' | 'section'
@@ -27,6 +28,10 @@ interface LineItem {
   unit: string
   unit_price: number | null
   lot_number: string
+  serial_number?: string
+  product_batch_id?: number | null
+  product_serial_id?: number | null
+  tracking_method?: string
   expiry_date: string
 }
 
@@ -131,6 +136,10 @@ export function DeliveryOrderEditPage() {
           unit: l.unit || 'pcs',
           unit_price: l.unit_price ? parseFloat(l.unit_price) : null,
           lot_number: l.lot_number || '',
+          serial_number: l.serial_number || '',
+          product_batch_id: l.product_batch_id || null,
+          product_serial_id: l.product_serial_id || null,
+          tracking_method: l.product?.tracking_method || 'none',
           expiry_date: l.expiry_date?.split('T')[0] || '',
         })) || []
       )
@@ -211,6 +220,9 @@ export function DeliveryOrderEditPage() {
         unit: l.unit,
         unit_price: l.unit_price || undefined,
         lot_number: l.lot_number || undefined,
+        serial_number: l.serial_number || undefined,
+        product_batch_id: l.product_batch_id || undefined,
+        product_serial_id: l.product_serial_id || undefined,
         expiry_date: l.expiry_date || undefined,
       })),
     })
@@ -381,6 +393,9 @@ export function DeliveryOrderEditPage() {
                         updateLine(idx, 'product_id', val ? parseInt(val) : null)
                         updateLine(idx, 'product_name', product?.name || '')
                         if (!line.description && product) updateLine(idx, 'description', getProductLineDescription(product))
+                        if (product) {
+                          setLines((current) => current.map((item, itemIndex) => itemIndex === idx ? { ...item, tracking_method: (product as any).tracking_method || 'none', product_batch_id: null, product_serial_id: null, lot_number: '', serial_number: '', expiry_date: '' } : item))
+                        }
                       }}
                       placeholder="Search product..."
                     />
@@ -404,10 +419,11 @@ export function DeliveryOrderEditPage() {
                     <Input type="number" min="0" step="0.01" value={line.unit_price ?? ''} onChange={(e) => updateLine(idx, 'unit_price', parseFloat(e.target.value) || null)} className="w-28 text-right" placeholder="0.00" />
                   </TableCell>
                   <TableCell>
-                    <Input value={line.lot_number} onChange={(e) => updateLine(idx, 'lot_number', e.target.value)} className="w-28" placeholder="Lot #" />
+                    <ProductTrackingSelector productId={line.product_id} warehouseId={warehouseId} trackingMethod={line.tracking_method} batchId={line.product_batch_id} serialId={line.product_serial_id} onChange={(selection) => setLines((current) => current.map((item, itemIndex) => itemIndex === idx ? { ...item, ...selection } : item))} />
                   </TableCell>
                   <TableCell>
-                    <Input type="date" value={line.expiry_date} onChange={(e) => updateLine(idx, 'expiry_date', e.target.value)} className="w-36" />
+                    <Input type="date" value={line.expiry_date} readOnly className="w-36 bg-gray-50 dark:bg-gray-900" />
+                    {line.serial_number ? <div className="mt-1 text-xs text-muted-foreground">Serial: {line.serial_number}</div> : null}
                   </TableCell>
                   <TableCell>
                     {lines.length > 1 && (

@@ -18,6 +18,84 @@ use Modules\Inventory\Services\InventoryService;
  */
 class ProductTrackingController extends Controller
 {
+    /**
+     * Return eligible inventory choices for an invoice or delivery-order line.
+     * Expiry is authoritative from the batch record and must not be user-entered.
+     */
+    public function availability(Request $request, $product): JsonResponse
+    {
+        $product = Product::findOrFail($product);
+        $validated = $request->validate([
+            'warehouse_id' => 'nullable|integer|exists:warehouses,id',
+        ]);
+
+        $warehouseId = $validated['warehouse_id'] ?? Warehouse::getDefault()?->id;
+        if (! $warehouseId) {
+            return response()->json(['message' => 'Select a warehouse before choosing a lot or serial number.'], 422);
+        }
+
+        $method = $product->tracking_method ?? Product::TRACKING_NONE;
+        $payload = [
+            'product_id' => $product->id,
+            'warehouse_id' => (int) $warehouseId,
+            'tracking_method' => $method,
+            'batches' => [],
+            'serials' => [],
+        ];
+
+        if ($method === Product::TRACKING_BATCH) {
+            $payload['batches'] = ProductBatch::query()
+                ->where('product_id', $product->id)
+                ->where('warehouse_id', $warehouseId)
+                ->where('status', ProductBatch::STATUS_AVAILABLE)
+                ->whereRaw('quantity - COALESCE(quantity_reserved, 0) > 0')
+                ->where(function ($query) {
+                    $query->whereNull('expiry_date')->orWhereDate('expiry_date', '>=', now()->toDateString());
+                })
+                ->orderByRaw('expiry_date ASC NULLS LAST')
+                ->orderBy('received_date')
+                ->get()
+                ->map(fn (ProductBatch $batch) => [
+                    'id' => $batch->id,
+                    'batch_number' => $batch->batch_number,
+                    'lot_number' => $batch->lot_number ?: $batch->batch_number,
+                    'expiry_date' => $batch->expiry_date?->toDateString(),
+                    'available_quantity' => max(0, (int) $batch->quantity - (int) $batch->quantity_reserved),
+                    'status' => $batch->status,
+                ])->values();
+        }
+
+        if ($method === Product::TRACKING_SERIAL) {
+            $payload['serials'] = ProductSerial::query()
+                ->with('batch:id,batch_number,lot_number,expiry_date')
+                ->where('product_id', $product->id)
+                ->where('warehouse_id', $warehouseId)
+                ->where('status', ProductSerial::STATUS_IN_STOCK)
+                ->where(function ($query) {
+                    $query->whereDoesntHave('batch')
+                        ->orWhereHas('batch', function ($batchQuery) {
+                            $batchQuery->where('status', ProductBatch::STATUS_AVAILABLE)
+                                ->where(function ($expiryQuery) {
+                                    $expiryQuery->whereNull('expiry_date')
+                                        ->orWhereDate('expiry_date', '>=', now()->toDateString());
+                                });
+                        });
+                })
+                ->orderBy('serial_number')
+                ->get()
+                ->map(fn (ProductSerial $serial) => [
+                    'id' => $serial->id,
+                    'serial_number' => $serial->serial_number,
+                    'batch_id' => $serial->batch_id,
+                    'lot_number' => $serial->batch?->lot_number ?: $serial->batch?->batch_number,
+                    'expiry_date' => $serial->batch?->expiry_date?->toDateString(),
+                    'status' => $serial->status,
+                ])->values();
+        }
+
+        return response()->json($payload);
+    }
+
     // ==================== BATCH MANAGEMENT ====================
 
     /**

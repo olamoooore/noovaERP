@@ -24,6 +24,7 @@ interface Product {
   name: string
   sku: string
   stock_quantity: number
+  tracking_method?: 'none' | 'quantity' | 'batch' | 'serial'
 }
 
 interface Warehouse {
@@ -62,6 +63,7 @@ export function StockOperationsPage() {
     notes: '',
     batchNumber: '',
     expiryDate: '',
+    serialNumbers: '',
   })
 
   // Stock Out state
@@ -248,6 +250,8 @@ export function StockOperationsPage() {
         notes: stockInData.notes || null,
         batch_number: stockInData.batchNumber || null,
         expiry_date: stockInData.expiryDate || null,
+        lot_number: stockInData.batchNumber || null,
+        serial_numbers: stockInData.serialNumbers.split(/[\n,]+/).map((value) => value.trim()).filter(Boolean),
       })
       return assertMovementResponse(response.data)
     },
@@ -259,7 +263,7 @@ export function StockOperationsPage() {
         setSelectedStockInProduct({ ...selectedStockInProduct, stock_quantity: newStock })
       }
       toast({ title: 'Stock received successfully' })
-      setStockInData({ productId: '', warehouseId: '', quantity: '', reasonId: '', reference: '', notes: '', batchNumber: '', expiryDate: '' })
+      setStockInData({ productId: '', warehouseId: '', quantity: '', reasonId: '', reference: '', notes: '', batchNumber: '', expiryDate: '', serialNumbers: '' })
     },
     onError: (error: any) => {
       const msg = error.response?.data?.message || 'Failed to receive stock'
@@ -327,6 +331,17 @@ export function StockOperationsPage() {
     if (!stockInData.productId || !stockInData.warehouseId || !stockInData.quantity || !stockInData.reasonId) {
       toast({ title: 'Please fill all required fields', variant: 'destructive' })
       return
+    }
+    if (selectedStockInProduct?.tracking_method === 'batch' && !stockInData.batchNumber.trim()) {
+      toast({ title: 'Batch/Lot number is required', variant: 'destructive' })
+      return
+    }
+    if (selectedStockInProduct?.tracking_method === 'serial') {
+      const serials = stockInData.serialNumbers.split(/[\n,]+/).map((value) => value.trim()).filter(Boolean)
+      if (serials.length !== parseInt(stockInData.quantity) || new Set(serials).size !== serials.length) {
+        toast({ title: 'Serial count must match quantity and contain no duplicates', variant: 'destructive' })
+        return
+      }
     }
     stockInMutation.mutate()
   }
@@ -407,7 +422,7 @@ export function StockOperationsPage() {
                     <ProductSearchCombobox
                       value={stockInData.productId}
                       onValueChange={(value, product) => {
-                        setStockInData({ ...stockInData, productId: value })
+                        setStockInData({ ...stockInData, productId: value, batchNumber: '', expiryDate: '', serialNumbers: '' })
                         setSelectedStockInProduct(product)
                       }}
                       placeholder="Search products..."
@@ -473,23 +488,29 @@ export function StockOperationsPage() {
                     />
                   </div>
 
-                  <div className="space-y-2">
+                  {selectedStockInProduct?.tracking_method === 'batch' && <div className="space-y-2">
                     <Label>Batch Number</Label>
                     <Input
                       value={stockInData.batchNumber}
                       onChange={(e) => setStockInData({ ...stockInData, batchNumber: e.target.value })}
-                      placeholder="Optional batch number"
+                      placeholder="Required batch/lot number"
                     />
-                  </div>
+                  </div>}
 
-                  <div className="space-y-2">
+                  {selectedStockInProduct?.tracking_method === 'batch' && <div className="space-y-2">
                     <Label>Expiry Date</Label>
                     <Input
                       type="date"
                       value={stockInData.expiryDate}
                       onChange={(e) => setStockInData({ ...stockInData, expiryDate: e.target.value })}
                     />
-                  </div>
+                  </div>}
+
+                  {selectedStockInProduct?.tracking_method === 'serial' && <div className="space-y-2 md:col-span-2">
+                    <Label>Serial Numbers *</Label>
+                    <Textarea value={stockInData.serialNumbers} onChange={(event) => setStockInData({ ...stockInData, serialNumbers: event.target.value })} placeholder="One serial number per line or comma-separated" rows={5} />
+                    <p className="text-xs text-muted-foreground">Entered {stockInData.serialNumbers.split(/[\n,]+/).map((value) => value.trim()).filter(Boolean).length} of {parseInt(stockInData.quantity) || 0}</p>
+                  </div>}
                 </div>
 
                 <div className="space-y-2">

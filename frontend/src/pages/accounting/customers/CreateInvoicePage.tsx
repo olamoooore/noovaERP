@@ -19,6 +19,7 @@ import { ContactSearchCombobox } from '@/components/ui/ContactSearchCombobox';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 import { getProductLineDescription, ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
+import { ProductTrackingSelector } from '@/components/inventory/ProductTrackingSelector';
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
 
 interface InvoiceLine {
@@ -29,6 +30,10 @@ interface InvoiceLine {
   description: string;
   product_notes: string;
   lot_number: string;
+  serial_number: string;
+  product_batch_id: number | null;
+  product_serial_id: number | null;
+  tracking_method: string;
   expiry_date: string;
   quantity: number | '';
   unit_price: number | '';
@@ -124,6 +129,10 @@ const emptyLine = (): InvoiceLine => ({
   description: '',
   product_notes: '',
   lot_number: '',
+  serial_number: '',
+  product_batch_id: null,
+  product_serial_id: null,
+  tracking_method: 'none',
   expiry_date: '',
   quantity: 1,
   unit_price: '',
@@ -277,6 +286,7 @@ export const CreateInvoicePage: React.FC = () => {
   const [patientName, setPatientName] = useState('');
   const [costCenterId, setCostCenterId] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
+  const [warehouseId, setWarehouseId] = useState('');
   const [poNumber, setPoNumber] = useState('');
   const [doctorContactId, setDoctorContactId] = useState('');
   const [requestorContactId, setRequestorContactId] = useState('');
@@ -348,6 +358,21 @@ export const CreateInvoicePage: React.FC = () => {
       return response.data.data || response.data || [];
     },
   });
+
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ['warehouses-list'],
+    queryFn: async () => {
+      const response = await api.get('/warehouses', { params: { per_page: 100 } });
+      return response.data?.data || response.data || [];
+    },
+  });
+
+  useEffect(() => {
+    if (!warehouseId && warehouses.length) {
+      const preferred = warehouses.find((warehouse: any) => warehouse.is_default) || warehouses[0];
+      setWarehouseId(String(preferred.id));
+    }
+  }, [warehouseId, warehouses]);
 
   useEffect(() => {
     if (!selectedCustomer) {
@@ -461,6 +486,10 @@ export const CreateInvoicePage: React.FC = () => {
       description: line.description || '',
       product_notes: line.product_notes || '',
       lot_number: line.lot_number || '',
+      serial_number: line.serial_number || '',
+      product_batch_id: line.product_batch_id || null,
+      product_serial_id: line.product_serial_id || null,
+      tracking_method: line.product?.tracking_method || 'none',
       expiry_date: line.expiry_date ? String(line.expiry_date).split('T')[0] : '',
       quantity: Number(line.quantity ?? 1),
       unit_price: line.unit_price != null ? Number(line.unit_price) : '',
@@ -789,6 +818,7 @@ export const CreateInvoicePage: React.FC = () => {
       patient_name: patientName || undefined,
       cost_center_id: costCenterId || undefined,
       delivery_date: deliveryDate || undefined,
+      warehouse_id: warehouseId ? Number(warehouseId) : undefined,
       po_number: poNumber || undefined,
       doctor_contact_id: doctorContactId.includes('-') ? doctorContactId : null,
       requestor_contact_id: requestorContactId.includes('-') ? requestorContactId : null,
@@ -819,6 +849,9 @@ export const CreateInvoicePage: React.FC = () => {
           description: line.description || 'Item',
           product_notes: line.product_notes || null,
           lot_number: line.lot_number || null,
+          serial_number: line.serial_number || null,
+          product_batch_id: line.product_batch_id || null,
+          product_serial_id: line.product_serial_id || null,
           expiry_date: line.expiry_date || null,
           quantity: line.quantity === '' ? 0 : Number(line.quantity),
           unit_price: line.unit_price === '' ? 0 : line.unit_price,
@@ -929,6 +962,15 @@ export const CreateInvoicePage: React.FC = () => {
                     }}
                   />
                 </div>
+                {!isQuoteMode && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Warehouse *</label>
+                    <select value={warehouseId} onChange={(event) => { setWarehouseId(event.target.value); setLines((current) => current.map((line) => ({ ...line, product_batch_id: null, product_serial_id: null, lot_number: '', serial_number: '', expiry_date: '' }))); }} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm">
+                      <option value="">Select warehouse</option>
+                      {warehouses.map((warehouse: any) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium mb-1">{isQuoteMode ? 'Quote Date' : 'Invoice Date'}</label>
                   <input
@@ -1376,11 +1418,17 @@ export const CreateInvoicePage: React.FC = () => {
                             onValueChange={(productId, product) => {
                               const updated = [...lines];
                               updated[index] = { ...updated[index], product_id: productId };
+                              updated[index].lot_number = '';
+                              updated[index].serial_number = '';
+                              updated[index].product_batch_id = null;
+                              updated[index].product_serial_id = null;
+                              updated[index].expiry_date = '';
                               if (product) {
                                 updated[index].description = getProductLineDescription(product);
                                 updated[index].unit_price = parseFloat((product as any).price || (product as any).selling_price || '0');
                                 updated[index].model_number = (product as any).manufacturer_part_number || '';
                                 updated[index].sku = (product as any).sku || '';
+                                updated[index].tracking_method = (product as any).tracking_method || 'none';
                               }
                               setLines(updated);
                             }}
@@ -1423,10 +1471,19 @@ export const CreateInvoicePage: React.FC = () => {
                           />
                         </td>}
                         {visibleLineColumns.lot_number && <td className="py-2 px-2">
-                          <input type="text" value={line.lot_number} onChange={(event) => updateLine(index, 'lot_number', event.target.value)} className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm" placeholder="Lot number" />
+                          <ProductTrackingSelector
+                            productId={line.product_id}
+                            warehouseId={warehouseId}
+                            trackingMethod={line.tracking_method}
+                            batchId={line.product_batch_id}
+                            serialId={line.product_serial_id}
+                            onChange={(selection) => setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...selection } : item))}
+                          />
+                          {line.tracking_method === 'none' || line.tracking_method === 'quantity' ? <span className="text-xs text-muted-foreground">Not tracked</span> : null}
                         </td>}
                         {visibleLineColumns.expiry_date && <td className="py-2 px-2">
-                          <input type="date" value={line.expiry_date} onChange={(event) => updateLine(index, 'expiry_date', event.target.value)} className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm" />
+                          <input type="date" value={line.expiry_date} readOnly className="w-full px-2 py-1 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900 text-sm" />
+                          {line.serial_number ? <div className="mt-1 text-xs text-muted-foreground">Serial: {line.serial_number}</div> : null}
                         </td>}
                         <td className="py-2 px-2">
                           <input

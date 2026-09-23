@@ -15,6 +15,7 @@ import { DeliveryOrderColumnVisibility } from '@/components/sales/DeliveryOrderC
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog'
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
+import { ProductTrackingSelector, type TrackingSelection } from '@/components/inventory/ProductTrackingSelector'
 
 interface LineItem {
   line_type?: 'product' | 'note' | 'section'
@@ -29,6 +30,10 @@ interface LineItem {
   unit: string
   unit_price: number | null
   lot_number: string
+  serial_number?: string
+  product_batch_id?: number | null
+  product_serial_id?: number | null
+  tracking_method?: string
   expiry_date: string
 }
 
@@ -58,6 +63,7 @@ export function DeliveryOrderCreatePage() {
   const [lineQuantities, setLineQuantities] = useState<Record<number, number>>({})
   const [lineLotNumbers, setLineLotNumbers] = useState<Record<number, string>>({})
   const [lineExpiryDates, setLineExpiryDates] = useState<Record<number, string>>({})
+  const [lineTrackingSelections, setLineTrackingSelections] = useState<Record<number, TrackingSelection>>({})
   const [linePatientNames, setLinePatientNames] = useState<Record<number, string>>({})
   const [lineProductNotes, setLineProductNotes] = useState<Record<number, string>>({})
 
@@ -188,6 +194,9 @@ export function DeliveryOrderCreatePage() {
         sales_order_line_id: line.sales_order_line_id,
         quantity_delivered: lineQuantities[line.sales_order_line_id] || 0,
         lot_number: lineLotNumbers[line.sales_order_line_id] || undefined,
+        serial_number: lineTrackingSelections[line.sales_order_line_id]?.serial_number || undefined,
+        product_batch_id: lineTrackingSelections[line.sales_order_line_id]?.product_batch_id || undefined,
+        product_serial_id: lineTrackingSelections[line.sales_order_line_id]?.product_serial_id || undefined,
         expiry_date: lineExpiryDates[line.sales_order_line_id] || undefined,
         patient_name: linePatientNames[line.sales_order_line_id] || undefined,
         product_notes: lineProductNotes[line.sales_order_line_id] ?? line.product_notes ?? undefined,
@@ -271,6 +280,9 @@ export function DeliveryOrderCreatePage() {
         unit: l.unit,
         unit_price: l.unit_price || undefined,
         lot_number: l.lot_number || undefined,
+        serial_number: l.serial_number || undefined,
+        product_batch_id: l.product_batch_id || undefined,
+        product_serial_id: l.product_serial_id || undefined,
         expiry_date: l.expiry_date || undefined,
       })),
     })
@@ -582,21 +594,22 @@ export function DeliveryOrderCreatePage() {
                         />
                       </TableCell>
                       <TableCell>
-                        <Input
-                          type="text"
-                          value={lineLotNumbers[line.sales_order_line_id] || ''}
-                          onChange={(e) => updateLineLot(line.sales_order_line_id, e.target.value)}
-                          className="w-32"
-                          placeholder="Lot #"
+                        <ProductTrackingSelector
+                          productId={line.product_id}
+                          warehouseId={warehouseId}
+                          trackingMethod={line.product?.tracking_method}
+                          batchId={lineTrackingSelections[line.sales_order_line_id]?.product_batch_id}
+                          serialId={lineTrackingSelections[line.sales_order_line_id]?.product_serial_id}
+                          onChange={(selection) => {
+                            setLineTrackingSelections((current) => ({ ...current, [line.sales_order_line_id]: selection }))
+                            setLineLotNumbers((current) => ({ ...current, [line.sales_order_line_id]: selection.lot_number }))
+                            setLineExpiryDates((current) => ({ ...current, [line.sales_order_line_id]: selection.expiry_date }))
+                          }}
                         />
                       </TableCell>
                       <TableCell>
-                        <Input
-                          type="date"
-                          value={lineExpiryDates[line.sales_order_line_id] || ''}
-                          onChange={(e) => setLineExpiryDates((prev) => ({ ...prev, [line.sales_order_line_id]: e.target.value }))}
-                          className="w-36"
-                        />
+                        <Input type="date" value={lineExpiryDates[line.sales_order_line_id] || ''} readOnly className="w-36 bg-gray-50 dark:bg-gray-900" />
+                        {lineTrackingSelections[line.sales_order_line_id]?.serial_number ? <div className="mt-1 text-xs text-muted-foreground">Serial: {lineTrackingSelections[line.sales_order_line_id].serial_number}</div> : null}
                       </TableCell>
                     </TableRow>
                   )
@@ -650,6 +663,12 @@ export function DeliveryOrderCreatePage() {
                             updateStandaloneLine(idx, 'sku', (product as any).sku || '')
                             updateStandaloneLine(idx, 'model_number', (product as any).manufacturer_part_number || '')
                             if (!line.unit_price) updateStandaloneLine(idx, 'unit_price', parseFloat((product as any).price || (product as any).selling_price || '0') || null)
+                            updateStandaloneLine(idx, 'tracking_method', (product as any).tracking_method || 'none')
+                            updateStandaloneLine(idx, 'product_batch_id', null)
+                            updateStandaloneLine(idx, 'product_serial_id', null)
+                            updateStandaloneLine(idx, 'lot_number', '')
+                            updateStandaloneLine(idx, 'serial_number', '')
+                            updateStandaloneLine(idx, 'expiry_date', '')
                           }
                         }}
                         placeholder="Search product..."
@@ -723,15 +742,18 @@ export function DeliveryOrderCreatePage() {
                       />
                     </TableCell>
                     <TableCell>
-                      <Input
-                        value={line.lot_number}
-                        onChange={(e) => updateStandaloneLine(idx, 'lot_number', e.target.value)}
-                        className="w-28"
-                        placeholder="Lot #"
+                      <ProductTrackingSelector
+                        productId={line.product_id}
+                        warehouseId={warehouseId}
+                        trackingMethod={line.tracking_method}
+                        batchId={line.product_batch_id}
+                        serialId={line.product_serial_id}
+                        onChange={(selection) => setStandaloneLines((current) => current.map((item, itemIndex) => itemIndex === idx ? { ...item, ...selection } : item))}
                       />
                     </TableCell>
                     <TableCell>
-                      <Input type="date" value={line.expiry_date} onChange={(e) => updateStandaloneLine(idx, 'expiry_date', e.target.value)} className="w-36" />
+                      <Input type="date" value={line.expiry_date} readOnly className="w-36 bg-gray-50 dark:bg-gray-900" />
+                      {line.serial_number ? <div className="mt-1 text-xs text-muted-foreground">Serial: {line.serial_number}</div> : null}
                     </TableCell>
                     <TableCell>
                       {standaloneLines.length > 1 && (

@@ -37,10 +37,23 @@ return new class extends Migration
         }
 
         DB::transaction(function () {
+            // PostgreSQL refuses to alter a column type while a view depends on
+            // that column. Existing tenants may already have the AR/AP views
+            // from earlier migrations, while fresh tenants can reach this
+            // convergence migration without them. Preserve the tenant's exact
+            // current definitions, temporarily remove the views, and restore
+            // them after all invoice/bill enum conversions are complete.
+            $dependentViews = $this->captureAndDropDependentViews([
+                'ar_transactions',
+                'ap_transactions',
+            ]);
+
             $this->converge('invoices');
             $this->converge('bills');
             $this->converge('journal_entries');
             $this->convergePayments();
+
+            $this->restoreViews($dependentViews);
         });
     }
 
@@ -185,6 +198,47 @@ return new class extends Migration
     }
 
     // ── helpers ────────────────────────────────────────────────────
+
+    /**
+     * Snapshot and drop known reporting views that depend on the document
+     * status columns converted by this migration. DDL is transactional in
+     * PostgreSQL, so a later failure restores the original views automatically.
+     *
+     * @return array<string, string> view name => SELECT definition
+     */
+    private function captureAndDropDependentViews(array $viewNames): array
+    {
+        $definitions = [];
+
+        foreach ($viewNames as $viewName) {
+            $definition = DB::scalar(
+                'SELECT pg_get_viewdef(to_regclass(?), true)',
+                [$viewName]
+            );
+
+            if (! is_string($definition) || trim($definition) === '') {
+                continue;
+            }
+
+            $definitions[$viewName] = $definition;
+            DB::statement("DROP VIEW {$viewName}");
+        }
+
+        return $definitions;
+    }
+
+    /**
+     * Restore views using their pre-migration definitions. This avoids
+     * duplicating a historical AR/AP view definition in a convergence
+     * migration and works regardless of which earlier repair migration built
+     * the tenant's current view.
+     */
+    private function restoreViews(array $definitions): void
+    {
+        foreach (array_reverse($definitions, true) as $viewName => $definition) {
+            DB::statement("CREATE VIEW {$viewName} AS {$definition}");
+        }
+    }
 
     /**
      * Convert a varchar column to a PostgreSQL ENUM user-defined type with

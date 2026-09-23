@@ -124,6 +124,7 @@ class InvoiceController extends Controller
             'patient_name' => 'nullable|string|max:255',
             'cost_center_id' => 'nullable|string|max:100',
             'delivery_date' => 'nullable|date',
+            'warehouse_id' => 'nullable|integer|exists:warehouses,id',
             'customer_reference' => 'nullable|string|max:100',
             'internal_reference' => 'nullable|string|max:100',
             'attention_to' => 'nullable|string|max:255',
@@ -155,6 +156,9 @@ class InvoiceController extends Controller
             'lines.*.description' => 'required|string',
             'lines.*.product_notes' => 'nullable|string',
             'lines.*.lot_number' => 'nullable|string|max:100',
+            'lines.*.serial_number' => 'nullable|string|max:100',
+            'lines.*.product_batch_id' => 'nullable|integer|exists:product_batches,id',
+            'lines.*.product_serial_id' => 'nullable|integer|exists:product_serials,id',
             'lines.*.expiry_date' => 'nullable|date',
             'lines.*.quantity' => 'nullable|integer|min:0',
             'lines.*.unit_price' => 'required_if:lines.*.line_type,product|nullable|numeric|min:0',
@@ -295,6 +299,9 @@ class InvoiceController extends Controller
                     'description' => $line['description'],
                     'product_notes' => $line['product_notes'] ?? null,
                     'lot_number' => $line['lot_number'] ?? null,
+                    'serial_number' => $line['serial_number'] ?? null,
+                    'product_batch_id' => $line['product_batch_id'] ?? null,
+                    'product_serial_id' => $line['product_serial_id'] ?? null,
                     'expiry_date' => $line['expiry_date'] ?? null,
                     'quantity' => $line['quantity'],
                     'unit_price' => $line['unit_price'],
@@ -331,7 +338,9 @@ class InvoiceController extends Controller
                 ->where('track_inventory', true)
                 ->exists();
             if ($hasStockTracked) {
-                $warehouse = Warehouse::getDefault() ?? Warehouse::first();
+                $warehouse = isset($data['warehouse_id'])
+                    ? Warehouse::find($data['warehouse_id'])
+                    : (Warehouse::getDefault() ?? Warehouse::first());
                 if (! $warehouse) {
                     throw new \RuntimeException(
                         'Cannot create invoice for stock-tracked products: no warehouse configured.'
@@ -410,6 +419,9 @@ class InvoiceController extends Controller
             $sourceLine = $data['lines'][$index] ?? [];
             $invoiceLine->update([
                 'lot_number' => $sourceLine['lot_number'] ?? null,
+                'serial_number' => $sourceLine['serial_number'] ?? null,
+                'product_batch_id' => $sourceLine['product_batch_id'] ?? null,
+                'product_serial_id' => $sourceLine['product_serial_id'] ?? null,
                 'expiry_date' => $sourceLine['expiry_date'] ?? null,
             ]);
         }
@@ -484,6 +496,9 @@ class InvoiceController extends Controller
             'lines.*.description' => 'required|string',
             'lines.*.product_notes' => 'nullable|string',
             'lines.*.lot_number' => 'nullable|string|max:100',
+            'lines.*.serial_number' => 'nullable|string|max:100',
+            'lines.*.product_batch_id' => 'nullable|integer|exists:product_batches,id',
+            'lines.*.product_serial_id' => 'nullable|integer|exists:product_serials,id',
             'lines.*.expiry_date' => 'nullable|date',
             'lines.*.quantity' => 'nullable|integer|min:0',
             'lines.*.unit_price' => 'required_if:lines.*.line_type,product|nullable|numeric|min:0',
@@ -533,6 +548,9 @@ class InvoiceController extends Controller
                         'description' => $line['description'],
                         'product_notes' => $line['product_notes'] ?? null,
                         'lot_number' => $line['lot_number'] ?? null,
+                        'serial_number' => $line['serial_number'] ?? null,
+                        'product_batch_id' => $line['product_batch_id'] ?? null,
+                        'product_serial_id' => $line['product_serial_id'] ?? null,
                         'expiry_date' => $line['expiry_date'] ?? null,
                         'quantity' => $line['quantity'],
                         'unit_price' => $line['unit_price'],

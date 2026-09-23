@@ -149,6 +149,9 @@ class DeliveryOrderController extends Controller
                 'lines.*.unit' => 'nullable|string|max:20',
                 'lines.*.unit_price' => 'nullable|numeric|min:0',
                 'lines.*.lot_number' => 'nullable|string|max:100',
+                'lines.*.serial_number' => 'nullable|string|max:100',
+                'lines.*.product_batch_id' => 'nullable|integer|exists:product_batches,id',
+                'lines.*.product_serial_id' => 'nullable|integer|exists:product_serials,id',
                 'lines.*.batch_number' => 'nullable|string|max:100',
                 'lines.*.expiry_date' => 'nullable|date',
             ]);
@@ -199,6 +202,9 @@ class DeliveryOrderController extends Controller
             'lines.*.unit' => 'nullable|string|max:20',
             'lines.*.unit_price' => 'nullable|numeric|min:0',
             'lines.*.lot_number' => 'nullable|string|max:100',
+            'lines.*.serial_number' => 'nullable|string|max:100',
+            'lines.*.product_batch_id' => 'nullable|integer|exists:product_batches,id',
+            'lines.*.product_serial_id' => 'nullable|integer|exists:product_serials,id',
             'lines.*.batch_number' => 'nullable|string|max:100',
             'lines.*.expiry_date' => 'nullable|date',
         ]);
@@ -278,6 +284,9 @@ class DeliveryOrderController extends Controller
             'lines.*.unit' => 'nullable|string|max:20',
             'lines.*.unit_price' => 'nullable|numeric|min:0',
             'lines.*.lot_number' => 'nullable|string|max:100',
+            'lines.*.serial_number' => 'nullable|string|max:100',
+            'lines.*.product_batch_id' => 'nullable|integer|exists:product_batches,id',
+            'lines.*.product_serial_id' => 'nullable|integer|exists:product_serials,id',
             'lines.*.expiry_date' => 'nullable|date',
         ]);
 
@@ -312,6 +321,9 @@ class DeliveryOrderController extends Controller
                         'unit_price' => $unitPrice,
                         'line_total' => $unitPrice ? $unitPrice * $qty : null,
                         'lot_number' => $lineData['lot_number'] ?? null,
+                        'serial_number' => $lineData['serial_number'] ?? null,
+                        'product_batch_id' => $lineData['product_batch_id'] ?? null,
+                        'product_serial_id' => $lineData['product_serial_id'] ?? null,
                         'expiry_date' => $lineData['expiry_date'] ?? null,
                     ]);
                 }
