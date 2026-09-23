@@ -40,6 +40,29 @@ class InvoiceResetToDraftReversalDateTest extends TenantTestCase
             ['name' => 'Reset Draft User', 'email' => 'reset-draft@local', 'password' => bcrypt('password')],
         );
         $this->user->assignRole('Admin');
+
+        // RequirePermission resolves the role through the central
+        // user_company_access row (TenantRoleService), so the test user needs
+        // one for the bound tenant — the route requires invoices.write.
+        $tenantId = (string) tenant()->id;
+        DB::table('public.tenants')->updateOrInsert(
+            ['id' => $tenantId],
+            ['name' => 'Reset Draft Tenant', 'email' => 'reset-draft-tenant@local', 'created_at' => now(), 'updated_at' => now()],
+        );
+        DB::table('public.users')->updateOrInsert(
+            ['id' => $this->user->id],
+            [
+                'name' => $this->user->name,
+                'email' => 'central-reset-draft-'.$this->user->id.'@local',
+                'password' => $this->user->password,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        );
+        DB::table('user_company_access')->updateOrInsert(
+            ['user_id' => $this->user->id, 'tenant_id' => $tenantId],
+            ['role' => 'admin', 'is_default' => true, 'created_at' => now(), 'updated_at' => now()],
+        );
     }
 
     /** Post an invoice JE for a past accounting date and link it to the invoice. */

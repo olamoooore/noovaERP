@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Invoice extends Model
 {
     use HasFactory, SoftDeletes;
+    use \App\Models\Concerns\GuardsJournalEntryLinks;
 
     // Approval dimension (writer: InvoiceApprovalService)
     public const APPROVAL_NOT_REQUIRED = 'not_required';
@@ -88,19 +89,10 @@ class Invoice extends Model
                 );
             }
 
-            // Safety net: clean up any orphaned journal entry links for this invoice.
-            // Issue #47: a link is orphaned only if its linked JournalEntry has been
-            // physically removed (the SoftDeletes global scope would otherwise hide a
-            // soft-deleted entry, which we still consider authoritative traceability).
-            // We use `forceDelete` semantics via `withTrashed()->withTrashed()->exists()`
-            // so a soft-deleted JournalEntry still counts as present.
-            $invoice->journalEntryLinks()->each(function ($link) {
-                if ($link->journal_entry_id
-                    && ! \App\Models\JournalEntry::withTrashed()->whereKey($link->journal_entry_id)->exists()
-                ) {
-                    $link->delete();
-                }
-            });
+            // Issue #47 (HR47-01): a valid JournalEntryLink to a live ledger
+            // posting blocks the delete (previously the link survived and the
+            // invoice was deleted anyway). Orphaned links are cleaned up.
+            $invoice->guardJournalEntryLinksOnDelete("invoice #{$invoice->invoice_number}");
         });
 
         // ADR-005 §15.5 — date integrity between operational invoice and its

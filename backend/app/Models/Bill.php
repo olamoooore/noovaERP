@@ -12,6 +12,7 @@ use Modules\Inventory\Models\PurchaseOrder;
 class Bill extends Model
 {
     use HasFactory, SoftDeletes;
+    use \App\Models\Concerns\GuardsJournalEntryLinks;
 
     protected $fillable = [
         'bill_number',
@@ -138,17 +139,9 @@ class Bill extends Model
                 );
             }
 
-            // Safety net: clean up any orphaned journal entry links for this bill.
-            // Issue #47: include soft-deleted JournalEntries (withTrashed) so the
-            // link is not destroyed when its linked JE was soft-deleted — soft
-            // deletion still counts as a present, authoritative traceability row.
-            $bill->journalEntryLinks()->each(function ($link) {
-                if ($link->journal_entry_id
-                    && ! \App\Models\JournalEntry::withTrashed()->whereKey($link->journal_entry_id)->exists()
-                ) {
-                    $link->delete();
-                }
-            });
+            // Issue #47 (HR47-01): a valid JournalEntryLink to a live ledger
+            // posting blocks the delete; orphaned links are cleaned up.
+            $bill->guardJournalEntryLinksOnDelete("bill #{$bill->bill_number}");
         });
     }
 
