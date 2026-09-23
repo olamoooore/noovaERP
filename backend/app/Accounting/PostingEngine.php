@@ -175,6 +175,11 @@ class PostingEngine implements PostingEngineInterface
                     'account_id' => $l->accountId,
                     'debit' => $l->debit,
                     'credit' => $l->credit,
+                    // Issue #42 (HR42-01): tax identity must reach TaxGate or
+                    // the gate can never detect a tax-bearing line and fails
+                    // open. Without these the gate was always NOT_APPLICABLE.
+                    'tax_code' => $l->taxCode,
+                    'tax_id' => $l->taxId,
                 ], $request->lines),
                 'tax_determination_result' => $request->taxDeterminationResult ?? ($request->metadata['tax_determination_result'] ?? null),
                 // HR69-01: thread period admission context so PeriodOpenGate

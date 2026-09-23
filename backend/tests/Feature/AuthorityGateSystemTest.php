@@ -300,7 +300,7 @@ class AuthorityGateSystemTest extends TestCase
         ]);
 
         $this->assertEquals('BLOCK', $result->result->value);
-        $this->assertEquals('TAX_DETERMINATION_MISSING', $result->reasonCode);
+        $this->assertEquals('TAX_RESULT_MISSING', $result->reasonCode);
     }
 
     /** @test */

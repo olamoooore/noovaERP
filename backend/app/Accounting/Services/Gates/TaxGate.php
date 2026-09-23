@@ -46,12 +46,14 @@ class TaxGate implements AuthorityGate
             return GateEvaluationResult::notApplicable($this->gateCode(), $this->gateOwner());
         }
 
-        // If tax-bearing lines exist, a determination result must be present
+        // If tax-bearing lines exist, a determination result must be present.
+        // Issue #42 (HR42-03): emit the canonical ReasonCode — the gate used a
+        // non-canonical TAX_DETERMINATION_MISSING string.
         if (!$taxDeterminationResult) {
             return GateEvaluationResult::block(
                 $this->gateCode(),
                 $this->gateOwner(),
-                'TAX_DETERMINATION_MISSING',
+                \App\Accounting\Enums\ReasonCode::TAX_RESULT_MISSING->value,
                 $this->gateVersion(),
                 'Tax-bearing lines require a TaxDeterminationResult before posting',
             );
@@ -62,10 +64,12 @@ class TaxGate implements AuthorityGate
         $taxAmount = $taxDeterminationResult['tax_amount'] ?? null;
 
         if ($jurisdiction === null || $taxAmount === null) {
+            // A result without its required fields is not a usable
+            // determination — same canonical TAX_RESULT_MISSING code.
             return GateEvaluationResult::block(
                 $this->gateCode(),
                 $this->gateOwner(),
-                'TAX_DETERMINATION_INCOMPLETE',
+                \App\Accounting\Enums\ReasonCode::TAX_RESULT_MISSING->value,
                 $this->gateVersion(),
                 'TaxDeterminationResult must include jurisdiction and tax_amount',
             );
