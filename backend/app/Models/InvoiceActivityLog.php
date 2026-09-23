@@ -27,11 +27,12 @@ class InvoiceActivityLog extends Model
     public const EVENT_DELIVERY_FAILED = 'delivery_failed';
     public const EVENT_EVIDENCE_ADDED = 'evidence_added';
     public const EVENT_POSTED = 'posted';
+    public const EVENT_PAID = 'paid';
+    public const EVENT_VOIDED = 'voided';
     public const EVENT_PAYMENT_LINK_ISSUED = 'payment_link_issued';
     public const EVENT_PAYMENT_RECORDED = 'payment_recorded';
     public const EVENT_CANCELLED = 'cancelled';
     public const EVENT_RESET_TO_DRAFT = 'reset_to_draft';
-    public const EVENT_VOIDED = 'voided';
 
     public const ACTOR_USER = 'user';
     public const ACTOR_SYSTEM = 'system';

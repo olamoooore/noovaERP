@@ -8,7 +8,9 @@ use App\Models\Invoice;
 use App\Models\User;
 use App\Platform\Notifications\NotificationService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
+use Modules\Communication\Events\BusinessEvent;
 
 class InvoiceApprovalService
 {
@@ -93,6 +95,28 @@ class InvoiceApprovalService
         ]);
 
         $this->notifyApprovers($invoice, $approvalRequest, $user);
+
+        // Issue #84: route this domain event through the platform's
+        // Communication module so the approval-submission appears in chatter
+        // and any subscriber preferences (in-app, email, etc.) are honoured.
+        Event::dispatch(new BusinessEvent(
+            model: 'invoice',
+            recordId: $invoice->id,
+            event: 'invoice.approval_submitted',
+            subject: "Invoice {$invoice->invoice_number} submitted for approval",
+            body: "Invoice {$invoice->invoice_number} (total {$invoice->total} {$invoice->currency_code}) was submitted for approval by user #{$user->id}.",
+            authorId: $user->id,
+            authorType: 'user',
+            tenantId: $invoice->tenant_id ?? null,
+            context: [
+                'invoice_number' => $invoice->invoice_number,
+                'approval_request_id' => $approvalRequest->id,
+                'approval_request_number' => $approvalRequest->request_number,
+            ],
+            metadata: [
+                'source' => 'InvoiceApprovalService::submit',
+            ],
+        ));
 
         return $invoice->fresh();
     }

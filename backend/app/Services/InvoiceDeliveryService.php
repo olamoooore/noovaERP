@@ -8,8 +8,10 @@ use App\Models\InvoiceActivityLog;
 use App\Models\InvoiceDelivery;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Modules\Communication\Events\BusinessEvent;
 
 class InvoiceDeliveryService
 {
@@ -81,6 +83,31 @@ class InvoiceDeliveryService
             'recipient' => $recipient,
         ]);
 
+        // Issue #84: route this domain event through the platform's
+        // Communication module so subscribers, outbox, and delivery channels
+        // (in-app, email, etc.) pick it up alongside the existing direct
+        // Mail::send path.
+        Event::dispatch(new BusinessEvent(
+            model: 'invoice',
+            recordId: $invoice->id,
+            event: 'invoice.delivered',
+            subject: "Invoice {$invoice->invoice_number} delivered",
+            body: "Invoice {$invoice->invoice_number} was delivered to {$recipient} via {$channel}.",
+            authorId: $user->id,
+            authorType: 'user',
+            tenantId: $invoice->tenant_id ?? (function () { try { return tenant()?->id; } catch (\Throwable) { return null; } })(),
+            context: [
+                'invoice_number' => $invoice->invoice_number,
+                'channel' => $channel,
+                'recipient' => $recipient,
+                'document_type' => $documentType,
+            ],
+            metadata: [
+                'delivery_id' => $delivery->id,
+                'source' => 'InvoiceDeliveryService::deliver',
+            ],
+        ));
+
         return $delivery;
     }
 
@@ -120,17 +147,17 @@ class InvoiceDeliveryService
         try {
             $pdfData = $this->generatePdfData($invoice, $delivery->document_type);
 
-            Mail::to($delivery->recipient)->send(new CustomerEmail([
-                'subject' => $this->getEmailSubject($invoice, $delivery->document_type),
-                'body' => $this->getEmailBody($invoice, $delivery->document_type),
-                'attachments' => [
+            Mail::to($delivery->recipient)->send(new CustomerEmail(
+                emailSubject: $this->getEmailSubject($invoice, $delivery->document_type),
+                emailBody: $this->getEmailBody($invoice, $delivery->document_type),
+                emailAttachments: [
                     [
                         'name' => "Invoice-{$invoice->invoice_number}.pdf",
                         'data' => $pdfData,
                         'mime' => 'application/pdf',
                     ],
                 ],
-            ]));
+            ));
 
             $delivery->update([
                 'status' => InvoiceDelivery::STATUS_SENT,
