@@ -47,7 +47,11 @@ class CommunicationServiceProvider extends ServiceProvider
         // Load migrations
         $this->loadMigrationsFrom(__DIR__.'/../../database/migrations');
 
-        // Routes are loaded via ModuleManager::tenantApiRouteFiles() in tenant.php
+        // Issue #85: register the inbound-email subtype so the IMAP bridge
+        // (App\Services\InboundEmailService) can write system notes.
+        \Modules\Communication\Support\EventSubtypeRegistry::register(
+            'record.inbound_email',
+        );
         // Do NOT also loadRoutesFrom here or routes will be registered twice
         // with different middleware stacks, bypassing tenant isolation.
 
