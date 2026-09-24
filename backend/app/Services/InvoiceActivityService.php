@@ -89,6 +89,13 @@ class InvoiceActivityService
         if (! empty($metadata['approval_request_number'])) {
             $properties['approval_request'] = $metadata['approval_request_number'];
         }
+        if (isset($metadata['total']) && is_numeric($metadata['total'])) {
+            $properties['total'] = number_format((float) $metadata['total'], 2);
+        }
+        if (! empty($metadata['fields'])) {
+            // Names of the fields an edit actually touched.
+            $properties['fields'] = (string) $metadata['fields'];
+        }
         if ($fromState !== $toState && $fromState !== null && $toState !== null) {
             $properties['state'] = "{$fromState} → {$toState}";
         }

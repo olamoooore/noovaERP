@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import api from '@/lib/api'
+import { linkableRefs, refLabel, refRoute, resolveNotificationTarget } from '@/lib/notificationLinks'
 
 export interface NotificationItem {
   id: string
@@ -19,7 +20,7 @@ export interface NotificationItem {
   subject: string
   body: string
   data: Record<string, any>
-  status: 'pending' | 'sent' | 'failed'
+  status: 'pending' | 'sent' | 'failed' | 'skipped'
   error: string | null
   sent_at: string | null
   read_at: string | null
@@ -97,18 +98,18 @@ export function NotificationBell() {
     },
   })
 
+  const openNotificationTarget = (item: NotificationItem) => {
+    const target = resolveNotificationTarget(item.data)
+    if (!target) return
+    setOpen(false)
+    navigate(target.route)
+  }
+
   const handleItemClick = (item: NotificationItem) => {
     if (!item.read_at) {
       markReadMutation.mutate(item.id)
     }
-    const data = item.data || {}
-    if (data.invoice_id) {
-      setOpen(false)
-      navigate(`/invoices/${data.invoice_id}`)
-    } else if (data.subject_type && data.subject_id && data.subject_type.includes('Invoice')) {
-      setOpen(false)
-      navigate(`/invoices/${data.subject_id}`)
-    }
+    openNotificationTarget(item)
   }
 
   const unread = countData?.unread ?? 0
@@ -173,6 +174,29 @@ export function NotificationBell() {
                       )}
                     </div>
                     <div className="line-clamp-2 text-xs text-muted-foreground">{item.body}</div>
+                    {(() => {
+                      const refs = linkableRefs(item.data)
+                      if (refs.length === 0) return null
+                      return (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {refs.map((ref) => (
+                            <button
+                              key={`${ref.type}:${ref.id}`}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                if (!item.read_at) markReadMutation.mutate(item.id)
+                                setOpen(false)
+                                const route = refRoute(ref)
+                                if (route) navigate(route)
+                              }}
+                              className="rounded-full border px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                            >
+                              {refLabel(ref)}
+                            </button>
+                          ))}
+                        </div>
+                      )
+                    })()}
                     <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
                       <span>{formatRelativeTime(item.created_at)}</span>
                       <Badge variant="outline" className="h-4 px-1 text-[9px]">

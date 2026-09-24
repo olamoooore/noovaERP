@@ -81,6 +81,7 @@ class InvoiceEvidenceService
             $invoice,
             InvoiceActivityLog::EVENT_EVIDENCE_ADDED,
             [
+                'invoice_number' => $invoice->invoice_number,
                 'evidence_id' => $evidence->id,
                 'type' => $type,
                 'file_name' => $file->getClientOriginalName(),
@@ -143,6 +144,7 @@ class InvoiceEvidenceService
             $invoice,
             InvoiceActivityLog::EVENT_EVIDENCE_ADDED,
             [
+                'invoice_number' => $invoice->invoice_number,
                 'evidence_id' => $evidence->id,
                 'type' => InvoiceEvidence::TYPE_CUSTOMER_ACCEPTANCE,
                 'source' => InvoiceEvidence::SOURCE_PORTAL_ACCEPTANCE,
@@ -220,6 +222,9 @@ class InvoiceEvidenceService
                 'public',
                 $path,
                 null,
+                // Customer uploads have no platform user; name them so the
+                // feed does not attribute the file to "System".
+                trim(($customerName ?: 'Customer').($customerEmail ? " ({$customerEmail})" : '')),
             );
         } catch (\Throwable $e) {
             Log::warning('InvoiceEvidenceService: failed to mirror evidence to chatter', [
@@ -232,6 +237,7 @@ class InvoiceEvidenceService
             $invoice,
             InvoiceActivityLog::EVENT_EVIDENCE_ADDED,
             [
+                'invoice_number' => $invoice->invoice_number,
                 'evidence_id' => $evidence->id,
                 'type' => InvoiceEvidence::TYPE_OTHER,
                 'file_name' => $file->getClientOriginalName(),
@@ -271,7 +277,35 @@ class InvoiceEvidenceService
                 return;
             }
 
-            $this->notificationService->dispatch($event, $creator, $data);
+            // Notifications render `subject` + `body`; without them the service
+            // falls back to dumping the raw payload as JSON, which is what the
+            // bell was showing. Build readable text per event.
+            $number = $invoice->invoice_number;
+            $amount = trim(($invoice->currency_code ?: '').' '.number_format((float) $invoice->total, 2));
+
+            [$defaultSubject, $defaultBody] = match ($event) {
+                'invoice.customer_accepted' => [
+                    "Invoice {$number} accepted by the customer",
+                    ($data['signer_name'] ?? 'The customer')
+                        .($data['signer_email'] ? " ({$data['signer_email']})" : '')
+                        ." accepted invoice {$number} for {$amount}.",
+                ],
+                'invoice.evidence_uploaded' => [
+                    "Evidence uploaded for invoice {$number}",
+                    ($data['customer_name'] ?? $data['signer_name'] ?? 'The customer')
+                        .' uploaded '.($data['file_name'] ?? 'a document')
+                        ." against invoice {$number} ({$amount}).",
+                ],
+                default => [
+                    "Update on invoice {$number}",
+                    "Invoice {$number} was updated by the customer.",
+                ],
+            };
+
+            $this->notificationService->dispatch($event, $creator, array_merge([
+                'subject' => $defaultSubject,
+                'body' => $defaultBody,
+            ], $data));
         } catch (\Throwable $e) {
             Log::warning('InvoiceEvidenceService: failed to notify creator of customer action', [
                 'invoice_id' => $invoice->id,
@@ -310,6 +344,7 @@ class InvoiceEvidenceService
             $invoice,
             InvoiceActivityLog::EVENT_EVIDENCE_ADDED,
             [
+                'invoice_number' => $invoice->invoice_number,
                 'evidence_id' => $evidence->id,
                 'type' => InvoiceEvidence::TYPE_CUSTOMER_ESIGN,
                 'provider' => $provider,
@@ -365,6 +400,7 @@ class InvoiceEvidenceService
                 $invoice,
                 InvoiceActivityLog::EVENT_EVIDENCE_CONFIRMED,
                 [
+                    'invoice_number' => $invoice->invoice_number,
                     'evidence_id' => $evidence->id,
                     'type' => $evidence->type,
                     'file_name' => $evidence->file_name,
@@ -561,6 +597,7 @@ class InvoiceEvidenceService
             $invoice,
             InvoiceActivityLog::EVENT_EVIDENCE_ADDED,
             [
+                'invoice_number' => $invoice->invoice_number,
                 'evidence_id' => $evidence->id,
                 'type' => InvoiceEvidence::TYPE_CUSTOMER_ESIGN,
                 'envelope_id' => $envelope['envelope_id'],

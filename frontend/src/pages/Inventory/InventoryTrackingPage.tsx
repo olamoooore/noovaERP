@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Icon } from '@iconify/react'
 import api from '@/lib/api'
 import { Button } from '@/components/ui/button'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -36,14 +36,12 @@ export function InventoryTrackingPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div><h1 className="text-3xl font-bold">Lot & Serial Tracking</h1><p className="text-muted-foreground">Review tracked inventory and import lots or serial numbers by product.</p></div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" onClick={() => navigate('/inventory/operations')}>
-            <Icon icon="solar:box-minimalistic-bold-duotone" className="mr-2 h-4 w-4" />
+          <HeaderActionButton icon="solar:box-minimalistic-bold-duotone" variant="outline" onClick={() => navigate('/inventory/operations')}>
             Receive Stock
-          </Button>
-          <Button onClick={() => navigate(`/inventory/tracking/import?type=${type}`)}>
-            <Icon icon="solar:upload-bold" className="mr-2 h-4 w-4" />
+          </HeaderActionButton>
+          <HeaderActionButton icon="solar:upload-bold" onClick={() => navigate(`/inventory/tracking/import?type=${type}`)}>
             Bulk Import
-          </Button>
+          </HeaderActionButton>
         </div>
       </div>
 

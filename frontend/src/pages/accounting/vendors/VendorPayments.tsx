@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -79,7 +80,16 @@ export const VendorPayments: React.FC = () => {
           <h1 className="text-3xl font-bold">Vendor Payments</h1>
           <p className="text-muted-foreground mt-1">Track payments made to vendors/suppliers</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Search sits with the actions so the page does not spend a whole
+              row on one input. */}
+          <input
+            type="text"
+            placeholder="Search by vendor, reference number..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-8 w-full rounded-full border bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring sm:w-72"
+          />
           <ImportButton 
             importType="payments"
             onImportComplete={() => queryClient.invalidateQueries({ queryKey: ['vendor-payments'] })}
@@ -87,10 +97,9 @@ export const VendorPayments: React.FC = () => {
           />
           <Dialog open={showRecordPayment} onOpenChange={setShowRecordPayment}>
             <DialogTrigger asChild>
-              <Button>
-                <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
+              <HeaderActionButton icon="solar:add-circle-bold-duotone">
                 Record Payment
-              </Button>
+              </HeaderActionButton>
             </DialogTrigger>
             <DialogContent className="max-w-2xl">
               <DialogHeader>
@@ -109,21 +118,6 @@ export const VendorPayments: React.FC = () => {
           </Dialog>
         </div>
       </div>
-
-      {/* Search */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex gap-4">
-            <input
-              type="text"
-              placeholder="Search by vendor, reference number..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Payments List */}
       <Card>
@@ -148,10 +142,9 @@ export const VendorPayments: React.FC = () => {
               <Icon icon="solar:wallet-money-bold-duotone" className="h-16 w-16 mx-auto mb-4 opacity-50" />
               <p className="text-lg font-medium mb-2">No vendor payments recorded yet</p>
               <p className="text-sm mb-4">Record your first payment to start tracking</p>
-              <Button onClick={() => setShowRecordPayment(true)}>
-                <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
+              <HeaderActionButton icon="solar:add-circle-bold-duotone" onClick={() => setShowRecordPayment(true)}>
                 Record Payment
-              </Button>
+              </HeaderActionButton>
             </div>
           ) : (
             <div className="overflow-x-auto">

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -316,16 +317,14 @@ export const CustomerPayments: React.FC = () => {
         </div>
         <div className="flex gap-2">
           <SalesDocumentExportMenu endpoint="/payments/export" filenamePrefix="payments" columns={PAYMENT_EXPORT_COLUMNS} filters={paymentFilters} selectedIds={selectedIds} />
-          <Button variant="outline" onClick={() => window.location.href = '/accounting/customers/payments/import'}>
-            <Icon icon="solar:upload-bold-duotone" className="h-4 w-4 mr-2" />
+          <HeaderActionButton icon="solar:upload-bold-duotone" variant="outline" onClick={() => window.location.href = '/accounting/customers/payments/import'}>
             Import
-          </Button>
+          </HeaderActionButton>
           <Dialog open={showRecordPayment} onOpenChange={setShowRecordPayment}>
             <DialogTrigger asChild>
-              <Button>
-                <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
+              <HeaderActionButton icon="solar:add-circle-bold-duotone">
                 Record Payment
-              </Button>
+              </HeaderActionButton>
             </DialogTrigger>
             <DialogContent className="max-w-2xl">
               <DialogHeader>
@@ -444,10 +443,9 @@ export const CustomerPayments: React.FC = () => {
               />
             </div>
             <div className="flex items-end">
-              <Button variant="outline" onClick={clearFilters}>
-                <Icon icon="solar:refresh-bold-duotone" className="h-4 w-4 mr-2" />
+              <HeaderActionButton icon="solar:refresh-bold-duotone" variant="outline" onClick={clearFilters}>
                 Clear filters
-              </Button>
+              </HeaderActionButton>
             </div>
           </div>
         </CardContent>
@@ -526,14 +524,12 @@ export const CustomerPayments: React.FC = () => {
               </p>
               {!searchQuery && !statusFilter && !methodFilter && !dateFrom && !dateTo && (
                 <div className="flex justify-center gap-2">
-                  <Button onClick={() => setShowRecordPayment(true)}>
-                    <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
+                  <HeaderActionButton icon="solar:add-circle-bold-duotone" onClick={() => setShowRecordPayment(true)}>
                     Record Payment
-                  </Button>
-                  <Button variant="outline" onClick={() => window.location.href = '/accounting/customers/payments/import'}>
-                    <Icon icon="solar:upload-bold-duotone" className="h-4 w-4 mr-2" />
+                  </HeaderActionButton>
+                  <HeaderActionButton icon="solar:upload-bold-duotone" variant="outline" onClick={() => window.location.href = '/accounting/customers/payments/import'}>
                     Import from CSV
-                  </Button>
+                  </HeaderActionButton>
                 </div>
               )}
             </div>

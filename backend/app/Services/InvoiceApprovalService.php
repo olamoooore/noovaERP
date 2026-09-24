@@ -77,6 +77,7 @@ class InvoiceApprovalService
             $invoice,
             \App\Models\InvoiceActivityLog::EVENT_SUBMITTED,
             [
+                'invoice_number' => $invoice->invoice_number,
                 'approval_request_id' => $approvalRequest->id,
                 'approval_request_number' => $approvalRequest->request_number,
                 'submitted_by' => $user->id,
@@ -189,6 +190,7 @@ class InvoiceApprovalService
             $invoice,
             \App\Models\InvoiceActivityLog::EVENT_APPROVED,
             [
+                'invoice_number' => $invoice->invoice_number,
                 'approval_request_id' => $approvalRequest->id,
                 'reviewed_by' => $approvalRequest->reviewed_by,
                 'review_notes' => $approvalRequest->review_notes,
@@ -244,6 +246,7 @@ class InvoiceApprovalService
             $invoice,
             \App\Models\InvoiceActivityLog::EVENT_REJECTED,
             [
+                'invoice_number' => $invoice->invoice_number,
                 'approval_request_id' => $approvalRequest->id,
                 'reviewed_by' => $approvalRequest->reviewed_by,
                 'reason' => $reason,
@@ -290,6 +293,7 @@ class InvoiceApprovalService
             $invoice,
             \App\Models\InvoiceActivityLog::EVENT_EXPIRED,
             [
+                'invoice_number' => $invoice->invoice_number,
                 'approval_request_id' => $approvalRequest->id,
                 'expired_at' => $approvalRequest->expires_at?->toIso8601String(),
             ],
@@ -332,6 +336,7 @@ class InvoiceApprovalService
             $invoice,
             \App\Models\InvoiceActivityLog::EVENT_WITHDRAWN,
             [
+                'invoice_number' => $invoice->invoice_number,
                 'approval_request_id' => $approvalRequest->id,
                 'previous_approval_status' => $previousStatus,
                 'reason' => $approvalRequest->review_notes,
@@ -408,7 +413,7 @@ class InvoiceApprovalService
             $approvers = $this->resolveReviewers($submitter);
 
             foreach ($approvers as $approver) {
-                $this->notificationService->dispatch('approval.requested', $approver, [
+                $this->notificationService->dispatch('approval.requested', $approver, array_merge([
                     'subject' => "Invoice {$invoice->invoice_number} requires approval",
                     'body' => "Invoice {$invoice->invoice_number} for {$invoice->currency_code} ".number_format($invoice->total, 2).' requires your approval.',
                     'type' => 'invoice_approval',
@@ -417,7 +422,7 @@ class InvoiceApprovalService
                     'invoice_id' => $invoice->id,
                     'invoice_number' => $invoice->invoice_number,
                     'requested_by' => $submitter->name,
-                ]);
+                ], \App\Platform\Notifications\NotificationReferences::forInvoice($invoice)));
             }
         } catch (\Exception $e) {
             Log::warning('Failed to notify approvers for invoice approval', [

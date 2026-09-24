@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -193,10 +194,9 @@ export function SuppliersPage() {
           <h1 className="text-3xl font-bold">Suppliers</h1>
           <p className="text-muted-foreground">Manage your product suppliers and vendor relationships</p>
         </div>
-        <Button onClick={() => { resetForm(); setIsDialogOpen(true) }}>
-          <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
+        <HeaderActionButton icon="solar:add-circle-bold" onClick={() => { resetForm(); setIsDialogOpen(true) }}>
           Add Supplier
-        </Button>
+        </HeaderActionButton>
       </div>
 
       <Card>
@@ -284,9 +284,8 @@ export function SuppliersPage() {
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" onClick={() => handleEdit(supplier)}>
-                        <Icon icon="solar:pen-bold" className="h-4 w-4" />
-                      </Button>
+                      <HeaderActionButton icon="solar:pen-bold" variant="ghost" size="icon" onClick={() => handleEdit(supplier)}>
+                      </HeaderActionButton>
                       <Button
                         variant="ghost"
                         size="icon"

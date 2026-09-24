@@ -10,7 +10,6 @@ use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
-use Modules\Inventory\Models\StockAdjustmentReason;
 use Modules\Inventory\Services\StockAdjustmentService;
 
 class InventoryTrackingController extends Controller
@@ -75,13 +74,7 @@ class InventoryTrackingController extends Controller
         abort_unless(in_array($type, ['batches', 'serials'], true), 404);
         $validated = $request->validate([
             'file' => 'required|file|mimes:csv,txt|max:10240',
-            'adjustment_reason_id' => 'required|integer|exists:stock_adjustment_reasons,id',
         ]);
-
-        $reason = StockAdjustmentReason::findOrFail($validated['adjustment_reason_id']);
-        if (! in_array($reason->type, ['increase', 'both'], true)) {
-            throw ValidationException::withMessages(['adjustment_reason_id' => ['Select a stock-in reason.']]);
-        }
 
         $handle = fopen($validated['file']->getRealPath(), 'r');
         $headers = array_map(fn ($value) => strtolower(trim((string) $value)), fgetcsv($handle) ?: []);
@@ -102,7 +95,7 @@ class InventoryTrackingController extends Controller
             $normalizedValues = array_slice(array_pad($values, count($headers), null), 0, count($headers));
             $row = array_combine($headers, $normalizedValues);
             try {
-                DB::transaction(function () use ($type, $row, $validated) {
+                DB::transaction(function () use ($type, $row) {
                     $product = Product::where('sku', trim((string) $row['product_sku']))->firstOrFail();
                     $warehouse = Warehouse::where('code', trim((string) $row['warehouse_code']))->firstOrFail();
                     $expectedMethod = $type === 'batches' ? Product::TRACKING_BATCH : Product::TRACKING_SERIAL;
@@ -124,7 +117,10 @@ class InventoryTrackingController extends Controller
                         productId: $product->id,
                         warehouseId: $warehouse->id,
                         quantity: $quantity,
-                        adjustmentReasonId: (int) $validated['adjustment_reason_id'],
+                        // Tracking imports record lots/serials and quantity only:
+                        // no adjustment reason, therefore no GL account is
+                        // touched by a bulk import.
+                        adjustmentReasonId: null,
                         reference: trim((string) ($row['reference'] ?? '')) ?: null,
                         notes: trim((string) ($row['notes'] ?? '')) ?: null,
                         batchNumber: $type === 'batches' ? trim((string) $row['batch_number']) : null,

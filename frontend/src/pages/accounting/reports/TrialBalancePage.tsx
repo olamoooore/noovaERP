@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -87,10 +87,9 @@ export default function TrialBalancePage() {
             Verify that debits equal credits
           </p>
         </div>
-        <Button onClick={() => navigate('/accounting')}>
-          <Icon icon="solar:arrow-left-linear" className="w-4 h-4 mr-2" />
+        <HeaderActionButton icon="solar:arrow-left-linear" onClick={() => navigate('/accounting')}>
           Back to Accounting
-        </Button>
+        </HeaderActionButton>
       </div>
 
       {/* Filters */}

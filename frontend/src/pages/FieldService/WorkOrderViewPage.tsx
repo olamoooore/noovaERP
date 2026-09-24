@@ -17,7 +17,7 @@ import { PartsTable } from '@/components/field-service/PartsTable'
 import { TimeTracker } from '@/components/field-service/TimeTracker'
 import { ChatterPanel } from '@/components/field-service/ChatterPanel'
 import WorksheetForm from '@/components/field-service/WorksheetForm'
-import SignaturePad from '@/components/field-service/SignaturePad'
+import SignaturePad from '@/components/signature/SignaturePad'
 import fieldServiceApi, { type WorkOrderStatus, type WorksheetResponse } from '@/lib/fieldServiceApi'
 
 // ─── Worksheet Tab ────────────────────────────────────────────────────────────

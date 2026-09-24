@@ -14,7 +14,11 @@ return [
     */
 
     'rate_limit' => [
-        'authenticated' => (int) env('PLATFORM_RATE_LIMIT_AUTHENTICATED', 300),
+        // Default bumped from 300 → 600 (2026-09-24) after the SPA-polling
+        // 429 incident. The cheap polling endpoints (features /
+        // notifications / dashboard) are also added to PlatformRateLimitMiddleware
+        // SKIP_PATHS so they no longer share the global bucket.
+        'authenticated' => (int) env('PLATFORM_RATE_LIMIT_AUTHENTICATED', 600),
         'guest' => (int) env('PLATFORM_RATE_LIMIT_GUEST', 120),
     ],
 

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Link } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -238,10 +239,9 @@ export function LoyaltyRewardsPage() {
         </div>
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger asChild>
-            <Button>
-              <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
+            <HeaderActionButton icon="solar:add-circle-bold">
               Create Reward
-            </Button>
+            </HeaderActionButton>
           </DialogTrigger>
           <DialogContent>
             <form onSubmit={handleCreateSubmit}>

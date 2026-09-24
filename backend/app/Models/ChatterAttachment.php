@@ -17,6 +17,7 @@ class ChatterAttachment extends Model
         'subject_type',
         'subject_id',
         'uploaded_by_id',
+        'uploaded_by_name',
         'filename',
         'mime_type',
         'size',

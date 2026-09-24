@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -142,10 +143,9 @@ export function LoyaltyRedemptionsPage() {
           <p className="text-muted-foreground">Manage and process customer redemption requests</p>
         </div>
         {selectedRedemptions.length > 0 && (
-          <Button onClick={handleBatchComplete} disabled={updateStatusMutation.isPending}>
-            <Icon icon="solar:check-circle-bold-duotone" className="mr-2 h-4 w-4" />
+          <HeaderActionButton icon="solar:check-circle-bold-duotone" onClick={handleBatchComplete} disabled={updateStatusMutation.isPending}>
             Mark {selectedRedemptions.length} as Completed
-          </Button>
+          </HeaderActionButton>
         )}
       </div>
 

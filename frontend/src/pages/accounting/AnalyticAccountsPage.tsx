@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -238,10 +239,9 @@ export default function AnalyticAccountsPage() {
             Track costs and revenues by project, department, or cost center
           </p>
         </div>
-        <Button onClick={() => navigate('/accounting')}>
-          <Icon icon="solar:arrow-left-linear" className="w-4 h-4 mr-2" />
+        <HeaderActionButton icon="solar:arrow-left-linear" onClick={() => navigate('/accounting')}>
           Back to Accounting
-        </Button>
+        </HeaderActionButton>
       </div>
 
       {/* Type Selector */}
@@ -280,10 +280,9 @@ export default function AnalyticAccountsPage() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-64"
                 />
-                <Button onClick={() => handleOpenForm()}>
-                  <Icon icon="solar:add-circle-linear" className="w-4 h-4 mr-2" />
+                <HeaderActionButton icon="solar:add-circle-linear" onClick={() => handleOpenForm()}>
                   Add Account
-                </Button>
+                </HeaderActionButton>
               </div>
             </div>
 

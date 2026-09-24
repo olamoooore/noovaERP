@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -251,10 +252,9 @@ export function CloseCyclesPage() {
           <h1 className="text-3xl font-bold">Close Cycles</h1>
           <p className="text-muted-foreground mt-1">Manage financial close cycles for each reporting period.</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
+        <HeaderActionButton icon="solar:add-circle-bold" onClick={() => setCreateOpen(true)}>
           New Cycle
-        </Button>
+        </HeaderActionButton>
       </div>
 
       {isLoading ? (

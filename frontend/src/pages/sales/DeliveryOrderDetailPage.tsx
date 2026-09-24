@@ -10,13 +10,18 @@ import { ChatterDock } from '@/components/chatter'
 import { TagEditor } from '@/components/tags/TagEditor'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, resolveImageUrl } from '@/lib/utils'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { DeliveryOrderColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { DeliveryOrderColumnVisibility, SalesLineColumnMenu } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+
+const SHIPPED_ITEM_COLUMNS = [
+  '#', 'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Patient Name',
+  'Qty Ordered', 'Qty Delivered', 'Unit', 'Unit Price', 'Line Total', 'Lot Number', 'Expiry Date',
+].map((label, index) => ({ label, index: index + 1 }))
 
 export function DeliveryOrderDetailPage() {
   const { id } = useParams()
@@ -27,6 +32,11 @@ export function DeliveryOrderDetailPage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
   const [chatterOpen, setChatterOpen] = useState(false)
+
+  // Product Notes starts hidden, matching the previous default.
+  const [hiddenShippedColumns, setHiddenShippedColumns] = useState<number[]>(
+    () => SHIPPED_ITEM_COLUMNS.filter((c) => c.label.toLowerCase() === 'product notes').map((c) => c.index)
+  )
   const [confirmAction, setConfirmAction] = useState<'delete' | 'reset' | null>(null)
 
   const { data: deliveryOrder, isLoading } = useQuery({
@@ -205,8 +215,28 @@ export function DeliveryOrderDetailPage() {
       const response = await api.post(`/sales/delivery-orders/${id}/customer-link`)
       return response.data
     },
-    onSuccess: () => {
-      toast({ title: 'Delivery order sent to customer', description: 'The customer can now sign and upload their copy.' })
+    // The link is returned either way; keep it visible so it can be shared
+    // manually when the email cannot be sent.
+    onSuccess: (data: any) => {
+      // The backend reports whether the mail actually went out: the link can be
+      // issued without an email (no customer address, or the send failed), and
+      // saying "sent" in that case is misleading.
+      const recipient = data?.data?.delivery?.recipient
+      const message = String(data?.message || '')
+      if (recipient && !message.includes('email failed')) {
+        toast({
+          title: 'Delivery order emailed to the customer',
+          description: `${recipient} can now sign and upload their copy.`,
+        })
+      } else {
+        toast({
+          title: 'Customer link created',
+          description: message.includes('no email')
+            ? 'The customer has no email address — copy the link from the dialog.'
+            : 'The email could not be sent — copy the link from the dialog.',
+          variant: 'destructive',
+        })
+      }
     },
     onError: (error: any) => {
       toast({
@@ -309,9 +339,19 @@ export function DeliveryOrderDetailPage() {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-3xl font-bold">{deliveryOrder.delivery_order_number}</h1>
-              {deliveryOrder.approval_status === 'pending' ? (
+              {/* Mirror the list badge: a draft sitting in approval must not
+                  read as a plain "draft". */}
+              {deliveryOrder.status === 'draft' && deliveryOrder.approval_status === 'pending' ? (
                 <Badge variant="secondary" className="bg-amber-100 text-amber-800">
                   Pending Approval
+                </Badge>
+              ) : deliveryOrder.status === 'draft' && deliveryOrder.approval_status === 'approved' ? (
+                <Badge variant="secondary" className="bg-emerald-100 text-emerald-800">
+                  Approved
+                </Badge>
+              ) : deliveryOrder.status === 'draft' && deliveryOrder.approval_status === 'rejected' ? (
+                <Badge variant="secondary" className="bg-red-100 text-red-800">
+                  Approval Rejected
                 </Badge>
               ) : (
                 <Badge variant="secondary" className={getStatusBadge(deliveryOrder.status)}>
@@ -410,7 +450,11 @@ export function DeliveryOrderDetailPage() {
           >
             Download PDF
           </HeaderActionButton>
-          {['confirmed', 'done'].includes(deliveryOrder.status) && (
+          {/* Sending the acceptance link is how a delivery order gets to the
+              customer for signature, so it must be available as soon as the
+              order is not blocked — including an approved draft. */}
+          {deliveryOrder.status !== 'cancelled' &&
+            !['pending', 'rejected'].includes(deliveryOrder.approval_status ?? 'not_required') && (
             <HeaderActionButton
               variant="outline"
               icon="solar:letter-bold-duotone"
@@ -589,11 +633,49 @@ export function DeliveryOrderDetailPage() {
               </div>
               <div>
                 <div className="text-muted-foreground">Created By</div>
-                <div className="font-medium">{deliveryOrder.createdBy?.name || '-'}</div>
+                <div className="font-medium">{deliveryOrder.created_by_user?.name || '-'}</div>
               </div>
               <div>
                 <div className="text-muted-foreground">Confirmed By</div>
-                <div className="font-medium">{deliveryOrder.confirmedBy?.name || '-'}</div>
+                <div className="font-medium">{deliveryOrder.confirmed_by_user?.name || '-'}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Customer signature</div>
+                {deliveryOrder.signed_at || deliveryOrder.signed_document_path ? (
+                  <div className="font-medium">
+                    <span className="flex flex-wrap items-center gap-x-2">
+                      <span className="inline-flex items-center gap-1 text-emerald-600">
+                        <Icon icon="solar:check-circle-bold" className="h-3.5 w-3.5" />
+                        Signed
+                      </span>
+                      {deliveryOrder.signed_by_name && <span>{deliveryOrder.signed_by_name}</span>}
+                      {deliveryOrder.signed_at && (
+                        <span className="text-muted-foreground">
+                          {new Date(deliveryOrder.signed_at).toLocaleString('en-GB', {
+                            day: '2-digit', month: 'short', year: 'numeric',
+                            hour: '2-digit', minute: '2-digit',
+                          })}
+                        </span>
+                      )}
+                    </span>
+                    {deliveryOrder.signed_by_email && (
+                      <div className="text-xs text-muted-foreground">{deliveryOrder.signed_by_email}</div>
+                    )}
+                    {deliveryOrder.signed_document_path && (
+                      <a
+                        href={resolveImageUrl(deliveryOrder.signed_document_path)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-0.5 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                      >
+                        <Icon icon="solar:document-add-bold-duotone" className="h-3.5 w-3.5" />
+                        View signed copy
+                      </a>
+                    )}
+                  </div>
+                ) : (
+                  <div className="font-medium text-muted-foreground">Awaiting customer signature</div>
+                )}
               </div>
               <div>
                 <div className="text-muted-foreground">Invoice</div>
@@ -645,13 +727,22 @@ export function DeliveryOrderDetailPage() {
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle>Shipped Items</CardTitle>
+          <SalesLineColumnMenu
+            columns={SHIPPED_ITEM_COLUMNS}
+            hidden={hiddenShippedColumns}
+            setHidden={setHiddenShippedColumns}
+          />
         </CardHeader>
         <CardContent>
-            <DeliveryOrderColumnVisibility tableClass="do-detail-columns" columns={[
-              '#', 'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Patient Name', 'Qty Ordered', 'Qty Delivered', 'Unit', 'Unit Price', 'Line Total', 'Lot Number', 'Expiry Date',
-            ].map((label, index) => ({ label, index: index + 1 }))}>
+            <DeliveryOrderColumnVisibility
+              tableClass="do-detail-columns"
+              columns={SHIPPED_ITEM_COLUMNS}
+              hiddenColumns={hiddenShippedColumns}
+              onHiddenColumnsChange={setHiddenShippedColumns}
+              showMenu={false}
+            >
             <Table>
             <TableHeader>
                 <TableRow>

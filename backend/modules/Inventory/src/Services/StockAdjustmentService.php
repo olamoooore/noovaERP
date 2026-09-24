@@ -46,7 +46,7 @@ class StockAdjustmentService
         int $productId,
         int $warehouseId,
         float $quantity,
-        int $adjustmentReasonId,
+        ?int $adjustmentReasonId = null,
         ?string $reference = null,
         ?string $notes = null,
         ?string $batchNumber = null,
@@ -179,7 +179,7 @@ class StockAdjustmentService
         float $quantity,
         string $type,
         string $referenceType,
-        int $adjustmentReasonId,
+        ?int $adjustmentReasonId,
         ?string $reference = null,
         ?string $notes = null,
         ?string $batchNumber = null,
@@ -249,6 +249,21 @@ class StockAdjustmentService
             : null;
 
         $isIncrease = $delta > 0;
+
+        // A stock increase has no gain account any more (7300 was removed), and
+        // the import path never posts at all. Skip the posting rather than
+        // throwing "Cannot resolve GL account" and failing the stock receipt.
+        if ($isIncrease && ! $reason?->glMappingKey(true)) {
+            Log::info('StockAdjustmentService: stock increase not posted (no gain account configured)', [
+                'stock_movement_id' => $movement->id,
+                'product_id' => $movement->product_id,
+                'quantity_delta' => $delta,
+                'amount' => $amount,
+            ]);
+
+            return;
+        }
+
         $mappingKey = $reason?->glMappingKey($isIncrease)
             ?? ($isIncrease
                 ? StockAdjustmentReason::DEFAULT_INCREASE_MAPPING_KEY

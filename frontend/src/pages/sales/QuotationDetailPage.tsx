@@ -12,11 +12,15 @@ import { ChatterDock } from '@/components/chatter'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { SalesLineColumnVisibility, SalesLineColumnMenu } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+
+const QUOTATION_LINE_COLUMNS = [
+  '#', 'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Qty', 'Unit Price', 'Tax', 'Total',
+].map((label, index) => ({ label, index: index + 1 }))
 
 export function QuotationDetailPage() {
   const { id } = useParams()
@@ -147,6 +151,11 @@ export function QuotationDetailPage() {
   }
 
   const [isDownloading, setIsDownloading] = useState(false)
+
+  // Product Notes starts hidden, matching the previous default.
+  const [hiddenLineColumns, setHiddenLineColumns] = useState<number[]>(
+    () => QUOTATION_LINE_COLUMNS.filter((c) => c.label.toLowerCase() === 'product notes').map((c) => c.index)
+  )
   const [showInvoicesPanel, setShowInvoicesPanel] = useState(false)
   const [confirmAction, setConfirmAction] = useState<'delete' | 'reset' | null>(null)
   const [chatterOpen, setChatterOpen] = useState(false)
@@ -622,13 +631,22 @@ export function QuotationDetailPage() {
       <QuotationCaseInformationDisplay quotation={quotation} />
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle>Line Items</CardTitle>
+          <SalesLineColumnMenu
+            columns={QUOTATION_LINE_COLUMNS}
+            hidden={hiddenLineColumns}
+            setHidden={setHiddenLineColumns}
+          />
         </CardHeader>
         <CardContent>
-          <SalesLineColumnVisibility tableClass="quotation-detail-columns" columns={[
-            '#', 'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Qty', 'Unit Price', 'Tax', 'Total',
-          ].map((label, index) => ({ label, index: index + 1 }))}>
+          <SalesLineColumnVisibility
+            tableClass="quotation-detail-columns"
+            columns={QUOTATION_LINE_COLUMNS}
+            hiddenColumns={hiddenLineColumns}
+            onHiddenColumnsChange={setHiddenLineColumns}
+            showMenu={false}
+          >
           <Table>
             <TableHeader>
               <TableRow>

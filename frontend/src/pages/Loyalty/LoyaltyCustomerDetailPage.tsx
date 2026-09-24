@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -225,10 +226,9 @@ export function LoyaltyCustomerDetailPage() {
           <p className="text-muted-foreground">{loyalty.customer?.email}</p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" onClick={() => setAdjustDialogOpen(true)}>
-            <Icon icon="solar:wallet-bold-duotone" className="mr-2 h-4 w-4" />
+          <HeaderActionButton icon="solar:wallet-bold-duotone" variant="outline" onClick={() => setAdjustDialogOpen(true)}>
             Adjust Points
-          </Button>
+          </HeaderActionButton>
           <Badge variant="outline" className={getTierBadge(loyalty.tier?.name)}>
             <Icon icon={getTierIcon(loyalty.tier?.name)} className="mr-1 h-4 w-4" />
             {loyalty.tier?.name} Member

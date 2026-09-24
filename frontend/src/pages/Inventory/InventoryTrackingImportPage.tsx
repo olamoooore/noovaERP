@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import api from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
@@ -41,19 +41,12 @@ export function InventoryTrackingImportPage() {
   const [type, setType] = useState<TrackingType>(initialType)
   const [dragActive, setDragActive] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [reasonId, setReasonId] = useState('')
   const [result, setResult] = useState<any>(null)
-
-  const { data: reasons = [] } = useQuery({
-    queryKey: ['adjustment-reasons'],
-    queryFn: async () => (await api.get('/stock/adjustment-reasons')).data || [],
-  })
 
   const importMutation = useMutation({
     mutationFn: async () => {
       const form = new FormData()
       form.append('file', selectedFile as File)
-      form.append('adjustment_reason_id', reasonId)
       return (await api.post(`/inventory/tracking/${type}/import`, form, { headers: { 'Content-Type': 'multipart/form-data' } })).data
     },
     onSuccess: (data) => {
@@ -107,8 +100,6 @@ export function InventoryTrackingImportPage() {
     <div className="mx-auto max-w-5xl space-y-6 p-6">
       <div className="flex items-center gap-4"><Button variant="ghost" size="icon" onClick={() => navigate('/inventory/tracking')}><Icon icon="solar:arrow-left-linear" className="h-5 w-5" /></Button><div><h1 className="text-2xl font-bold">Import Lots / Serial Numbers</h1><p className="text-muted-foreground">Bulk receive tracked inventory from a CSV file.</p></div></div>
 
-      <Card><CardContent className="pt-6"><div className="max-w-sm space-y-2"><label className="text-sm font-medium">Import type</label><Select value={type} onValueChange={(value) => changeType(value as TrackingType)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="batches">Lots / Batches</SelectItem><SelectItem value="serials">Serial Numbers</SelectItem></SelectContent></Select></div></CardContent></Card>
-
       <div className="grid gap-6 md:grid-cols-2">
         <div className="space-y-6">
           <Card><CardHeader><CardTitle className="flex items-center gap-2"><Icon icon="solar:download-minimalistic-bold" className="h-5 w-5 text-primary" />Step 1: Download Template</CardTitle><CardDescription>{type === 'batches' ? 'One row per product lot/batch.' : 'One row per serial number. Each row receives one inventory unit.'}</CardDescription></CardHeader><CardContent><Button variant="outline" className="w-full" onClick={downloadTemplate}><Icon icon="solar:document-text-bold" className="mr-2 h-4 w-4" />Download Import Template</Button></CardContent></Card>
@@ -117,12 +108,12 @@ export function InventoryTrackingImportPage() {
         </div>
 
         <div className="space-y-6">
-          <Card><CardHeader><CardTitle className="flex items-center gap-2"><Icon icon="solar:upload-minimalistic-bold" className="h-5 w-5 text-primary" />Step 2: Upload CSV File</CardTitle><CardDescription>Select the accounting reason and upload the completed template.</CardDescription></CardHeader><CardContent className="space-y-4">
-            <div className="space-y-2"><label className="text-sm font-medium">Stock-in reason *</label><Select value={reasonId} onValueChange={setReasonId}><SelectTrigger><SelectValue placeholder="Select reason" /></SelectTrigger><SelectContent>{reasons.filter((reason: any) => ['increase', 'both'].includes(reason.type)).map((reason: any) => <SelectItem key={reason.id} value={String(reason.id)}>{reason.name}</SelectItem>)}</SelectContent></Select></div>
+          <Card><CardHeader><CardTitle className="flex items-center gap-2"><Icon icon="solar:upload-minimalistic-bold" className="h-5 w-5 text-primary" />Step 2: Upload CSV File</CardTitle><CardDescription>Choose the import type, then upload the completed template.</CardDescription></CardHeader><CardContent className="space-y-4">
+            <div className="space-y-2"><label className="text-sm font-medium">Import type</label><Select value={type} onValueChange={(value) => changeType(value as TrackingType)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="batches">Lots / Batches</SelectItem><SelectItem value="serials">Serial Numbers</SelectItem></SelectContent></Select><p className="text-xs text-muted-foreground">{type === 'batches' ? 'One row per product lot/batch. Existing matching lots are increased.' : 'One row per serial number — each row receives one inventory unit.'}</p></div>
             <div className={`rounded-lg border-2 border-dashed p-8 text-center transition-colors ${dragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/25'} ${selectedFile ? 'bg-muted/50' : ''}`} onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={(event) => { handleDrag(event); setDragActive(false); selectFile(event.dataTransfer.files?.[0]) }}>
               {selectedFile ? <div className="space-y-3"><Icon icon="solar:file-check-bold" className="mx-auto h-12 w-12 text-green-500" /><div><p className="font-medium">{selectedFile.name}</p><p className="text-sm text-muted-foreground">{(selectedFile.size / 1024).toFixed(2)} KB</p></div><Button variant="ghost" size="sm" onClick={() => { setSelectedFile(null); setResult(null) }}><Icon icon="solar:trash-bin-trash-bold" className="mr-2 h-4 w-4" />Remove</Button></div> : <div className="space-y-3"><Icon icon="solar:cloud-upload-bold-duotone" className="mx-auto h-12 w-12 text-muted-foreground" /><div><p className="font-medium">Drag and drop your CSV file here</p><p className="text-sm text-muted-foreground">or click below to browse</p></div><Button variant="outline" size="sm" asChild><label className="cursor-pointer"><Icon icon="solar:folder-open-bold" className="mr-2 h-4 w-4" />Browse Files<input type="file" accept=".csv,text/csv" className="hidden" onChange={(event) => selectFile(event.target.files?.[0])} /></label></Button></div>}
             </div>
-            {selectedFile && !result && <Button className="w-full" disabled={!reasonId || importMutation.isPending} onClick={() => importMutation.mutate()}>{importMutation.isPending ? <><Icon icon="solar:refresh-circle-bold" className="mr-2 h-4 w-4 animate-spin" />Importing…</> : <><Icon icon="solar:import-bold" className="mr-2 h-4 w-4" />Import {type === 'batches' ? 'Lots / Batches' : 'Serial Numbers'}</>}</Button>}
+            {selectedFile && !result && <Button className="w-full" disabled={importMutation.isPending} onClick={() => importMutation.mutate()}>{importMutation.isPending ? <><Icon icon="solar:refresh-circle-bold" className="mr-2 h-4 w-4 animate-spin" />Importing…</> : <><Icon icon="solar:import-bold" className="mr-2 h-4 w-4" />Import {type === 'batches' ? 'Lots / Batches' : 'Serial Numbers'}</>}</Button>}
             {importMutation.isPending && <Progress value={undefined} />}
           </CardContent></Card>
 

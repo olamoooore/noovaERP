@@ -37,7 +37,10 @@ class AccountMappingService
         'depreciation_expense' => '6100',
         'accumulated_depreciation' => '1510',
         'gain_loss_disposal' => '7100',
-        'inventory_adjustment_gain' => '7300',
+        // 'inventory_adjustment_gain' (7300) deliberately removed: stock
+        // increases no longer post a gain account (see
+        // StockAdjustmentService::postValuationChange), so the account must
+        // not be auto-seeded again.
         'sales_discount' => '4200',
         'unrealized_fx_gain_loss' => '7200',
         'realized_fx_gain_loss' => '7201',
@@ -148,7 +151,6 @@ class AccountMappingService
         'depreciation_expense' => 'expense',
         'accumulated_depreciation' => 'asset',
         'gain_loss_disposal' => 'expense',
-        'inventory_adjustment_gain' => 'revenue',
         'sales_discount' => 'revenue',
         'unrealized_fx_gain_loss' => 'expense',
         'realized_fx_gain_loss' => 'expense',

@@ -4,6 +4,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import SignatureCanvas from 'react-signature-canvas'
 import { Badge } from '@/components/ui/badge'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import {
@@ -265,14 +266,12 @@ export default function MyInvoisEinvoicePage() {
           </p>
         </div>
         {/* <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" onClick={() => refetchDocuments()} disabled={isDocumentsLoading}>
-            <Icon icon="solar:refresh-linear" className="w-4 h-4 mr-2" />
+          <HeaderActionButton icon="solar:refresh-linear" variant="outline" onClick={() => refetchDocuments()} disabled={isDocumentsLoading}>
             Refresh Documents
-          </Button>
-          <Button variant="outline" onClick={() => syncPendingMutation.mutate()} disabled={syncPendingMutation.isPending}>
-            <Icon icon="solar:refresh-square-linear" className="w-4 h-4 mr-2" />
+          </HeaderActionButton>
+          <HeaderActionButton icon="solar:refresh-square-linear" variant="outline" onClick={() => syncPendingMutation.mutate()} disabled={syncPendingMutation.isPending}>
             {syncPendingMutation.isPending ? 'Syncing...' : 'Sync Pending (MY)'}
-          </Button>
+          </HeaderActionButton>
         </div> */}
       </div>
 

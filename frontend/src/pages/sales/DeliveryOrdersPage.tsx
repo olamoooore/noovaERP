@@ -320,9 +320,32 @@ export function DeliveryOrdersPage() {
                       <TableCell>{formatDate(do_.created_at)}</TableCell>
                       <TableCell>{do_.lines?.length || 0}</TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className={getStatusBadge(do_.status)}>
-                          {do_.status}
-                        </Badge>
+                        {/* A draft that is sitting in approval should not read as
+                            a plain "draft" — mirror the invoice list's contextual
+                            badge so both lists read the same way. */}
+                        {do_.status === 'draft' && do_.approval_status === 'pending' ? (
+                          do_.approval_view === 'to_approve' ? (
+                            <Badge variant="secondary" className="whitespace-nowrap bg-amber-100 text-amber-800 animate-pulse">
+                              Requires Approval
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="whitespace-nowrap bg-amber-100 text-amber-800">
+                              Pending Approval
+                            </Badge>
+                          )
+                        ) : do_.status === 'draft' && do_.approval_status === 'approved' ? (
+                          <Badge variant="secondary" className="whitespace-nowrap bg-emerald-100 text-emerald-800">
+                            Approved
+                          </Badge>
+                        ) : do_.status === 'draft' && do_.approval_status === 'rejected' ? (
+                          <Badge variant="secondary" className="whitespace-nowrap bg-red-100 text-red-800">
+                            Approval Rejected
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className={getStatusBadge(do_.status)}>
+                            {do_.status}
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell onClick={(event) => event.stopPropagation()}>
                         <div className="flex justify-end gap-1.5">

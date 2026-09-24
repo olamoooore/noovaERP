@@ -46,7 +46,6 @@ export function ChatterDialog({
           <ChatterPanel
             subjectType={subjectType}
             subjectId={subjectId}
-            documentLabel={documentLabel}
             readOnly={readOnly}
             className="h-full"
           />

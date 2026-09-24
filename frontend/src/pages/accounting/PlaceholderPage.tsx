@@ -1,8 +1,8 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Icon } from '@iconify/react';
-import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 
 interface PlaceholderPageProps {
   title: string;
@@ -27,10 +27,9 @@ export const PlaceholderPage: React.FC<PlaceholderPageProps> = ({
           <h1 className="text-3xl font-bold">{title}</h1>
           <p className="text-muted-foreground mt-1">{description}</p>
         </div>
-        <Button variant="outline" onClick={() => navigate('/accounting/dashboard')}>
-          <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
+        <HeaderActionButton icon="solar:arrow-left-bold-duotone" variant="outline" onClick={() => navigate('/accounting/dashboard')}>
           Back to Accounting
-        </Button>
+        </HeaderActionButton>
       </div>
 
       {/* Coming Soon Card */}
@@ -54,14 +53,12 @@ export const PlaceholderPage: React.FC<PlaceholderPageProps> = ({
               </>
             )}
             <div className="flex gap-3 justify-center">
-              <Button onClick={() => navigate('/accounting/dashboard')}>
-                <Icon icon="solar:home-2-bold-duotone" className="h-4 w-4 mr-2" />
+              <HeaderActionButton icon="solar:home-2-bold-duotone" onClick={() => navigate('/accounting/dashboard')}>
                 Go to Accounting Dashboard
-              </Button>
-              <Button variant="outline" onClick={() => navigate('/')}>
-                <Icon icon="solar:home-bold-duotone" className="h-4 w-4 mr-2" />
+              </HeaderActionButton>
+              <HeaderActionButton icon="solar:home-bold-duotone" variant="outline" onClick={() => navigate('/')}>
                 Go to Main Dashboard
-              </Button>
+              </HeaderActionButton>
             </div>
           </div>
         </CardContent>

@@ -25,7 +25,7 @@ import InvoiceCreditNotes from '../components/InvoiceCreditNotes';
 import CreateCreditNoteDialog from '../components/CreateCreditNoteDialog';
 import { useAuthStore } from '@/store/authStore';
 import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow';
-import { SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility';
+import { SalesLineColumnVisibility, SalesLineColumnMenu } from '@/components/sales/DeliveryOrderColumnVisibility';
 
 const formatSnapshotAddress = (snapshot: string | null | undefined): string => {
   if (!snapshot) return '';
@@ -47,6 +47,12 @@ const formatSnapshotAddress = (snapshot: string | null | undefined): string => {
   }
 };
 
+const INVOICE_LINE_COLUMNS = [
+  'Product/Service', 'SKU', 'Description', 'Model #', 'Product Notes', 'Lot Number',
+  'Expiry Date', 'Quantity', 'Unit Price', 'Tax Rate', 'Tax Amount', 'Line Total',
+].map((label, index) => ({ label, index: index + 1 }));
+
+
 export const CustomerInvoiceDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -55,6 +61,10 @@ export const CustomerInvoiceDetail: React.FC = () => {
   const queryClient = useQueryClient();
   const isAcmeTenant = useAuthStore((state) => state.tenantId) === '00000000-0000-0000-0000-000000000001';
   const role = useAuthStore((state) => state.role);
+  // Product Notes starts hidden, matching the previous default.
+  const [hiddenLineColumns, setHiddenLineColumns] = useState<number[]>(
+    () => INVOICE_LINE_COLUMNS.filter((c) => c.label.toLowerCase() === 'product notes').map((c) => c.index)
+  );
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
@@ -584,13 +594,22 @@ export const CustomerInvoiceDetail: React.FC = () => {
 
       {/* Line Items */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle>Line Items</CardTitle>
+          <SalesLineColumnMenu
+            columns={INVOICE_LINE_COLUMNS}
+            hidden={hiddenLineColumns}
+            setHidden={setHiddenLineColumns}
+          />
         </CardHeader>
         <CardContent>
-          <SalesLineColumnVisibility tableClass="customer-invoice-detail-columns" columns={[
-            'Product/Service', 'SKU', 'Description', 'Model #', 'Product Notes', 'Lot Number', 'Expiry Date', 'Quantity', 'Unit Price', 'Tax Rate', 'Tax Amount', 'Line Total',
-          ].map((label, index) => ({ label, index: index + 1 }))}>
+          <SalesLineColumnVisibility
+            tableClass="customer-invoice-detail-columns"
+            columns={INVOICE_LINE_COLUMNS}
+            hiddenColumns={hiddenLineColumns}
+            onHiddenColumnsChange={setHiddenLineColumns}
+            showMenu={false}
+          >
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>

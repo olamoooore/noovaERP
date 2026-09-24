@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -174,10 +175,9 @@ export default function AuditorExportsPage() {
           <h1 className="text-3xl font-bold">Audit Exports</h1>
           <p className="text-muted-foreground">Export audit data packages</p>
         </div>
-        <Button onClick={() => setIsCreateOpen(true)}>
-          <Icon icon="lucide:download" className="mr-2 h-4 w-4" />
+        <HeaderActionButton icon="lucide:download" onClick={() => setIsCreateOpen(true)}>
           New Export
-        </Button>
+        </HeaderActionButton>
       </div>
 
       <Card>

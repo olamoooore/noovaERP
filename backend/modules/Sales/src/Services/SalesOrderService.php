@@ -36,6 +36,38 @@ class SalesOrderService
         return crc32('sales_order_create:'.($tenantId ?? tenant('id') ?? ''));
     }
 
+    /**
+     * Mirror a sales-order lifecycle event into the document's chatter feed.
+     *
+     * Sales orders were the one chatter-enabled document type that logged
+     * nothing at all, so their History tab was permanently empty. Never
+     * throws — a logging failure must not break the order flow.
+     */
+    public function logChatter(
+        SalesOrder $order,
+        string $event,
+        string $description,
+        array $properties = [],
+    ): void {
+        try {
+            app(\App\Services\Chatter\ChatterService::class)->logEvent(
+                SalesOrder::class,
+                (int) $order->id,
+                $event,
+                $description,
+                $properties,
+                Auth::id(),
+                Auth::check() ? get_class(Auth::user()) : null,
+            );
+        } catch (\Throwable $e) {
+            Log::warning('SalesOrderService: chatter mirror failed', [
+                'sales_order_id' => $order->id,
+                'event' => $event,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     public function createOrder(array $data): SalesOrder
     {
         $maxRetries = 5;
@@ -201,6 +233,11 @@ class SalesOrderService
                 'transitioned_at' => now(),
             ]);
 
+            $this->logChatter($order, 'created', "Created sales order {$order->sales_order_number}", [
+                'status' => $order->status,
+                'total' => (float) $order->total,
+            ]);
+
             return $order->fresh(['customer', 'lines.product', 'statusHistory']);
         });
     }
@@ -247,6 +284,8 @@ class SalesOrderService
             $this->reserveStockForOrder($order);
 
             return $order->fresh(['customer', 'lines.product', 'statusHistory']);
+            $this->logChatter($order, 'status_changed', "Confirmed sales order {$order->sales_order_number}", ['to_state' => 'confirmed']);
+
         });
     }
 
@@ -272,6 +311,8 @@ class SalesOrderService
             }
 
             return $order->fresh(['customer', 'lines.product', 'statusHistory']);
+            $this->logChatter($order, 'status_changed', "Allocated stock for sales order {$order->sales_order_number}", ['to_state' => 'allocated']);
+
         });
     }
 
@@ -293,6 +334,8 @@ class SalesOrderService
             $order = $this->lifecycleService->fulfil($order, 'Order fulfilled');
 
             return $order->fresh(['customer', 'lines.product', 'statusHistory']);
+            $this->logChatter($order, 'status_changed', "Fulfilled sales order {$order->sales_order_number}", ['to_state' => 'fulfilled']);
+
         });
     }
 
@@ -439,6 +482,12 @@ class SalesOrderService
 
             $this->lifecycleService->markInvoiced($order, 'Invoice created');
 
+            $this->logChatter($order, 'status_changed', "Raised invoice {$invoice->invoice_number} from sales order {$order->sales_order_number}", [
+                'to_state' => 'invoiced',
+                'invoice_id' => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+            ]);
+
             return $invoice;
         });
     }
@@ -471,6 +520,10 @@ class SalesOrderService
             // the commitment back, otherwise cancelled releases permanently
             // burn the agreement's remaining quantity.
             $this->restoreBlanketCommitments($order);
+
+            $this->logChatter($order, 'cancelled', "Cancelled sales order {$order->sales_order_number}", [
+                'reason' => $reason,
+            ]);
 
             return $order->fresh(['customer', 'lines.product', 'statusHistory']);
         });

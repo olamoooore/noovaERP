@@ -377,36 +377,18 @@ export interface SalesByCustomerData {
 export interface SalesTrendsData {
   trends: Array<{
     period: string;
-    /** Analytics API emits `order_count`; `invoice_count` is the legacy name. */
-    order_count?: number;
-    invoice_count?: number;
-    /** Analytics API emits `revenue` and `total_sales` (identical values). */
-    revenue?: number;
-    total_sales?: number;
-    total_revenue?: number;
-    /** Analytics API emits `average_order_value`. */
-    average_order_value?: number;
-    avg_order_value?: number;
-    growth_rate?: number | null;
+    invoice_count: number;
+    total_revenue: number;
+    avg_order_value: number;
   }>;
 }
 
 export interface SalesByCategoryData {
   categories: Array<{
-    category_id: number | null;
+    category_id: number;
     category_name: string;
-    product_count?: number;
-    quantity_sold?: number;
-    /** Analytics API emits `revenue` and `total_sales` (identical values). */
-    revenue?: number;
-    total_sales?: number;
-    total_revenue?: number;
-    cost?: number;
-    profit?: number;
-    profit_margin?: number;
-    /** Analytics API emits `revenue_percentage`. */
-    revenue_percentage?: number;
-    percentage?: number;
+    total_revenue: number;
+    percentage: number;
   }>;
 }
 

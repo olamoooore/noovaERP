@@ -7,6 +7,7 @@ import EditCreditNoteDialog from './components/EditCreditNoteDialog';
 import CreditNotePostButton from './components/CreditNotePostButton';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -72,10 +73,9 @@ export default function CustomerCreditNotesPage() {
           <h1 className="text-3xl font-bold">Customer Credit Notes</h1>
           <p className="text-muted-foreground mt-1">Manage customer credit notes for returns and corrections</p>
         </div>
-        <Button onClick={() => setShowCreateDialog(true)}>
-          <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
+        <HeaderActionButton icon="solar:add-circle-bold-duotone" onClick={() => setShowCreateDialog(true)}>
           New Credit Note
-        </Button>
+        </HeaderActionButton>
       </div>
 
       {/* Filters */}
@@ -136,10 +136,9 @@ export default function CustomerCreditNotesPage() {
               <Icon icon="solar:document-add-bold-duotone" className="h-16 w-16 mx-auto mb-4 opacity-50" />
               <p className="text-lg font-medium mb-2">No credit notes found</p>
               <p className="text-sm mb-4">Create your first credit note to get started.</p>
-              <Button onClick={() => setShowCreateDialog(true)}>
-                <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
+              <HeaderActionButton icon="solar:add-circle-bold-duotone" onClick={() => setShowCreateDialog(true)}>
                 Create Credit Note
-              </Button>
+              </HeaderActionButton>
             </div>
           ) : (
             <div className="overflow-x-auto">

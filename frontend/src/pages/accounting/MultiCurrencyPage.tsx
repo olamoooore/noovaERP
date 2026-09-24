@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -192,10 +193,9 @@ export default function MultiCurrencyPage({ embedded = false }: { embedded?: boo
             Manage currencies and exchange rates
           </p>
         </div>
-        <Button onClick={() => navigate('/accounting')}>
-          <Icon icon="solar:arrow-left-linear" className="w-4 h-4 mr-2" />
+        <HeaderActionButton icon="solar:arrow-left-linear" onClick={() => navigate('/accounting')}>
           Back to Accounting
-        </Button>
+        </HeaderActionButton>
       </div>}
 
       {/* Tabs */}
@@ -210,10 +210,9 @@ export default function MultiCurrencyPage({ embedded = false }: { embedded?: boo
           <Card className="p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold">Currencies</h2>
-              <Button onClick={() => handleOpenForm()}>
-                <Icon icon="solar:add-circle-linear" className="w-4 h-4 mr-2" />
+              <HeaderActionButton icon="solar:add-circle-linear" onClick={() => handleOpenForm()}>
                 Add Currency
-              </Button>
+              </HeaderActionButton>
             </div>
 
             {isStillLoading ? (

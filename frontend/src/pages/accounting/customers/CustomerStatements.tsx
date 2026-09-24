@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -130,10 +131,9 @@ export const CustomerStatements = () => {
             Select a customer to review their transactions and generate a statement PDF.
           </p>
         </div>
-        <Button onClick={openPdfDialog} disabled={!customerId || transactionsQuery.isLoading}>
-          <Icon icon="solar:file-download-bold-duotone" className="mr-2 h-4 w-4" />
+        <HeaderActionButton icon="solar:file-download-bold-duotone" onClick={openPdfDialog} disabled={!customerId || transactionsQuery.isLoading}>
           Generate PDF
-        </Button>
+        </HeaderActionButton>
       </div>
 
       <Card>

@@ -1453,10 +1453,6 @@ export const CreateInvoicePage: React.FC = () => {
                       ))}
                     </div>
                   </details>
-                  <Button type="button" variant="outline" size="sm" onClick={() => duplicateLine(lines.length - 1)} disabled={lines.length === 0}>
-                    <Icon icon="solar:copy-bold-duotone" className="h-4 w-4 mr-1" />
-                    Duplicate Last
-                  </Button>
                 </div>
               </CardTitle>
             </CardHeader>

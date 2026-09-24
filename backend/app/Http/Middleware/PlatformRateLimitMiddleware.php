@@ -22,16 +22,22 @@ class PlatformRateLimitMiddleware
      * matched the real admin path `/api/v1/admin/...`, making the exemption
      * dead code. `/v1/admin/` matches the actual prefix in routes/api.php.
      *
-     * `/api/v1/features` and `/api/v1/dashboard` are deliberately NOT exempt:
-     * they are normal tenant endpoints. The fix for their burst behaviour is
-     * the canonical RateLimiter below (which always carries a TTL), not an
-     * exemption.
+     * The cheap SPA-polling endpoints (`features`, `notifications/*`,
+     * `dashboard`) are exempted because they fire every 30s on the bell +
+     * every page mount on features/dashboard; the 2026-09-24 hot-fix for
+     * the 429 spike added them here rather than bumping the global limit
+     * (which would weaken protection for genuinely-expensive endpoints).
+     * Heavy endpoints like sales/inventory/accounting writes are still
+     * covered by the canonical RateLimiter below.
      */
     private const SKIP_PATHS = [
         '/api/v1/webhooks/',
         '/api/v1/health',
         '/api/v1/auth/',
         '/v1/admin/',
+        '/api/v1/features',
+        '/api/v1/notifications/',
+        '/api/v1/dashboard',
     ];
 
     public function handle(Request $request, Closure $next): Response

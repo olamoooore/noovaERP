@@ -39,10 +39,23 @@ class InvoiceAcceptanceController extends Controller
             ], 404);
         }
 
+        // The customer is paying this document, so the portal must itemise it:
+        // product name/SKU, model, unit and lot/serial — not just descriptions.
         $lines = $invoice->lines->map(function ($line) {
             return [
                 'id' => $line->id,
+                'line_type' => $line->line_type ?? 'product',
+                'product_name' => $line->product?->name,
+                'sku' => $line->product?->sku,
+                'image' => $line->product?->image,
                 'description' => $line->description,
+                'model_number' => $line->model_number,
+                'product_notes' => $line->product_notes,
+                'patient_name' => $line->patient_name,
+                'lot_number' => $line->lot_number,
+                'serial_number' => $line->serial_number,
+                'expiry_date' => $line->expiry_date?->toDateString(),
+                'unit' => $line->unit,
                 'quantity' => (float) $line->quantity,
                 'unit_price' => (float) $line->unit_price,
                 'tax_rate' => (float) $line->tax_rate,
@@ -72,6 +85,10 @@ class InvoiceAcceptanceController extends Controller
                 'status' => $invoice->status,
                 'notes' => $invoice->notes,
                 'terms' => $invoice->terms,
+                'customer_reference' => $invoice->customer_reference,
+                'po_number' => $invoice->po_number ?? null,
+                'attention_to' => $invoice->attention_to,
+                'billing_address' => $invoice->billing_address_snapshot,
                 'lines' => $lines,
                 'payment_link_url' => $invoice->payment_link_url,
             ],

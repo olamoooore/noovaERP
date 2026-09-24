@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef } from 'react'
 import { useParams } from 'react-router-dom'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,6 +8,8 @@ import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { useToast } from '@/hooks/use-toast'
+import { SignaturePad } from '@/components/signature/SignaturePad'
+import { DocumentItemsTable } from '@/components/public/DocumentItemsTable'
 import api from '@/lib/api'
 
 interface AcceptanceResponse {
@@ -20,10 +22,31 @@ interface AcceptanceResponse {
     status: string
     notes: string | null
     total: number
+    currency_code?: string | null
+    expected_date?: string | null
+    po_number?: string | null
+    carrier?: string | null
+    tracking_number?: string | null
+    attention_to?: string | null
+    salesperson?: string | null
+    shipping_address?: string | null
+    payment_terms?: string | null
     lines: Array<{
       id: number
-      description: string
+      line_type?: string | null
+      product_name?: string | null
+      sku?: string | null
+      description?: string | null
+      model_number?: string | null
+      product_notes?: string | null
+      patient_name?: string | null
+      lot_number?: string | null
+      batch_number?: string | null
+      serial_number?: string | null
+      expiry_date?: string | null
+      unit?: string | null
       quantity: number
+      quantity_ordered?: number
       quantity_delivered: number
       unit_price: number
       line_total: number
@@ -33,6 +56,18 @@ interface AcceptanceResponse {
   already_signed: boolean
   expired: boolean
   expires_at: string | null
+}
+
+const fmtMoney = (value: number, code?: string | null) => {
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: code && /^[A-Za-z]{3}$/.test(code) ? code : 'USD',
+      minimumFractionDigits: 2,
+    }).format(value ?? 0)
+  } catch {
+    return (value ?? 0).toFixed(2)
+  }
 }
 
 const formatDate = (iso: string | null) => {
@@ -47,9 +82,11 @@ const formatDate = (iso: string | null) => {
 export default function DeliveryOrderAcceptancePage() {
   const { token } = useParams<{ token: string }>()
   const { toast } = useToast()
+  const queryClient = useQueryClient()
   const [files, setFiles] = useState<File[]>([])
   const [signerName, setSignerName] = useState('')
   const [signerEmail, setSignerEmail] = useState('')
+  const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const { data, isLoading, error } = useQuery({
@@ -64,9 +101,12 @@ export default function DeliveryOrderAcceptancePage() {
 
   const uploadMutation = useMutation({
     mutationFn: async () => {
-      if (files.length === 0) throw new Error('No file selected')
+      if (files.length === 0 && !signatureDataUrl) {
+        throw new Error('Upload a document or sign digitally.')
+      }
       const form = new FormData()
       files.forEach((f) => form.append('files[]', f))
+      if (signatureDataUrl) form.append('signature', signatureDataUrl)
       if (signerName) form.append('signer_name', signerName)
       if (signerEmail) form.append('signer_email', signerEmail)
       const res = await api.post(`/do-accept/${token}/evidence`, form, {
@@ -76,6 +116,11 @@ export default function DeliveryOrderAcceptancePage() {
     },
     onSuccess: (d: any) => {
       setFiles([])
+      setSignatureDataUrl(null)
+      // Re-read the document so the portal flips to "Received" and the form
+      // is replaced — without this the customer stays on the upload screen
+      // and appears able to submit again.
+      queryClient.invalidateQueries({ queryKey: ['do-acceptance', token] })
       toast({
         title: 'Documents uploaded',
         description: (d?.count ?? 1) > 1 ? `${d.count} files sent to the vendor.` : 'Your file has been sent to the vendor.',
@@ -165,30 +210,51 @@ export default function DeliveryOrderAcceptancePage() {
               </div>
             </div>
 
-            <div className="mb-6 rounded-lg bg-slate-50 p-4">
-              <div className="text-xs uppercase text-muted-foreground">Deliver to</div>
-              <div className="font-semibold">{do_.customer_name}</div>
-              {do_.customer_email && <div className="text-sm text-muted-foreground">{do_.customer_email}</div>}
+            <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="rounded-lg bg-slate-50 p-4">
+                <div className="text-xs uppercase text-muted-foreground">Deliver to</div>
+                <div className="font-semibold">{do_.customer_name}</div>
+                {do_.attention_to && <div className="text-sm">Attn: {do_.attention_to}</div>}
+                {do_.shipping_address && (
+                  <div className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{do_.shipping_address}</div>
+                )}
+                {do_.customer_email && <div className="text-sm text-muted-foreground">{do_.customer_email}</div>}
+              </div>
+
+              <dl className="space-y-1.5 rounded-lg border p-4 text-sm">
+                {do_.po_number && (
+                  <div className="flex justify-between gap-3"><dt className="text-muted-foreground">PO number</dt><dd className="font-medium">{do_.po_number}</dd></div>
+                )}
+                {do_.expected_date && (
+                  <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Expected</dt><dd className="font-medium">{formatDate(do_.expected_date)}</dd></div>
+                )}
+                {do_.carrier && (
+                  <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Carrier</dt><dd className="font-medium">{do_.carrier}</dd></div>
+                )}
+                {do_.tracking_number && (
+                  <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Tracking #</dt><dd className="font-medium">{do_.tracking_number}</dd></div>
+                )}
+                {do_.payment_terms && (
+                  <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Payment terms</dt><dd className="font-medium">{do_.payment_terms}</dd></div>
+                )}
+                {do_.salesperson && (
+                  <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Salesperson</dt><dd className="font-medium">{do_.salesperson}</dd></div>
+                )}
+                <div className="flex justify-between gap-3 border-t pt-1.5">
+                  <dt className="font-medium">Total</dt>
+                  <dd className="font-semibold">{fmtMoney(do_.total, do_.currency_code)}</dd>
+                </div>
+              </dl>
             </div>
 
             <Separator className="my-6" />
 
-            <div className="space-y-2">
-              <div className="grid grid-cols-12 px-2 text-xs uppercase text-muted-foreground">
-                <div className="col-span-7">Description</div>
-                <div className="col-span-3 text-right">Qty</div>
-                <div className="col-span-2 text-right">Total</div>
-              </div>
-              {do_.lines.map((line) => (
-                <div key={line.id} className="grid grid-cols-12 border-b py-2 text-sm last:border-b-0">
-                  <div className="col-span-7">{line.description}</div>
-                  <div className="col-span-3 text-right">{line.quantity_delivered || line.quantity}</div>
-                  <div className="col-span-2 text-right font-medium">
-                    {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'SGD' }).format(line.line_total)}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <DocumentItemsTable
+              lines={do_.lines}
+              currencyCode={do_.currency_code}
+              qtyHeader="Qty delivered"
+              qtyFor={(line) => line.quantity_delivered || line.quantity || 0}
+            />
 
             {do_.notes && (
               <>
@@ -236,8 +302,22 @@ export default function DeliveryOrderAcceptancePage() {
                 </div>
               </div>
 
+              <div className="relative py-1 text-center">
+                <Separator />
+                <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs uppercase tracking-wide text-muted-foreground">
+                  or sign digitally
+                </span>
+              </div>
+
+              <SignaturePad
+                label="Your signature"
+                value={signatureDataUrl}
+                onChange={setSignatureDataUrl}
+                hint="Sign with your mouse, finger or stylus — no printing needed"
+              />
+
               <div className="space-y-2">
-                <Label>Signed document / evidence</Label>
+                <Label>Signed document / evidence (optional if you signed above)</Label>
                 <div className="flex flex-wrap gap-2">
                   {files.map((file, idx) => (
                     <div key={`${file.name}-${idx}`} className="group relative h-20 w-20 overflow-hidden rounded-md border bg-muted">
@@ -281,7 +361,7 @@ export default function DeliveryOrderAcceptancePage() {
 
               <Button
                 onClick={() => uploadMutation.mutate()}
-                disabled={uploadMutation.isPending || files.length === 0}
+                disabled={uploadMutation.isPending || (files.length === 0 && !signatureDataUrl)}
                 className="w-full md:w-auto"
               >
                 {uploadMutation.isPending ? (
@@ -289,7 +369,13 @@ export default function DeliveryOrderAcceptancePage() {
                 ) : (
                   <Icon icon="solar:upload-bold-duotone" className="mr-2 h-4 w-4" />
                 )}
-                {uploadMutation.isPending ? 'Uploading…' : files.length > 1 ? `Upload ${files.length} files` : 'Upload signed copy'}
+                {uploadMutation.isPending
+                  ? 'Submitting…'
+                  : files.length > 1
+                    ? `Submit ${files.length} files`
+                    : signatureDataUrl && files.length === 0
+                      ? 'Submit signature'
+                      : 'Submit signed copy'}
               </Button>
             </CardContent>
           </Card>

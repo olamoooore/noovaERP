@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,6 +8,8 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
+import { SignaturePad } from '@/components/signature/SignaturePad'
+import { DocumentItemsTable } from '@/components/public/DocumentItemsTable'
 import { Separator } from '@/components/ui/separator'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
@@ -35,6 +37,16 @@ interface AcceptanceResponse {
       description: string
       quantity: number
       unit_price: number
+      line_type?: string | null
+      product_name?: string | null
+      sku?: string | null
+      model_number?: string | null
+      product_notes?: string | null
+      patient_name?: string | null
+      lot_number?: string | null
+      serial_number?: string | null
+      expiry_date?: string | null
+      unit?: string | null
       tax_rate: number
       tax_amount: number
       discount_amount: number
@@ -77,12 +89,12 @@ const formatDate = (iso: string | null) => {
 export default function InvoiceAcceptancePage() {
   const { token } = useParams<{ token: string }>()
   const { toast } = useToast()
+  const queryClient = useQueryClient()
 
   const [signerName, setSignerName] = useState('')
   const [signerEmail, setSignerEmail] = useState('')
   const [agreed, setAgreed] = useState(false)
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null)
-  const [isDrawing, setIsDrawing] = useState(false)
   const [paymentFiles, setPaymentFiles] = useState<File[]>([])
   const paymentFileInputRef = useRef<HTMLInputElement | null>(null)
   const [paymentNotes, setPaymentNotes] = useState('')
@@ -108,6 +120,8 @@ export default function InvoiceAcceptancePage() {
       return res.data
     },
     onSuccess: () => {
+      // Re-read so the page shows the accepted state instead of the form.
+      queryClient.invalidateQueries({ queryKey: ['invoice-acceptance', token] })
       toast({ title: 'Invoice accepted', description: 'Thank you — your acceptance has been recorded.' })
     },
     onError: (err: any) => {
@@ -331,22 +345,7 @@ export default function InvoiceAcceptancePage() {
             <Separator className="my-6" />
 
             {/* Line items */}
-            <div className="space-y-2">
-              <div className="grid grid-cols-12 text-xs uppercase text-muted-foreground px-2">
-                <div className="col-span-6">Description</div>
-                <div className="col-span-2 text-right">Qty</div>
-                <div className="col-span-2 text-right">Unit Price</div>
-                <div className="col-span-2 text-right">Total</div>
-              </div>
-              {inv.lines.map((line) => (
-                <div key={line.id} className="grid grid-cols-12 text-sm px-2 py-2 border-b last:border-b-0">
-                  <div className="col-span-6">{line.description}</div>
-                  <div className="col-span-2 text-right">{line.quantity}</div>
-                  <div className="col-span-2 text-right">{currency(line.unit_price, inv.currency_code)}</div>
-                  <div className="col-span-2 text-right font-medium">{currency(line.line_total, inv.currency_code)}</div>
-                </div>
-              ))}
-            </div>
+            <DocumentItemsTable lines={inv.lines} currencyCode={inv.currency_code} />
 
             <Separator className="my-6" />
 
@@ -553,9 +552,9 @@ export default function InvoiceAcceptancePage() {
                 </div>
 
                 <SignaturePad
+                  label="Signature"
+                  value={signatureDataUrl}
                   onChange={setSignatureDataUrl}
-                  isDrawing={isDrawing}
-                  setIsDrawing={setIsDrawing}
                 />
 
                 <div className="flex items-start gap-2">
@@ -603,88 +602,6 @@ export default function InvoiceAcceptancePage() {
         <div className="text-center text-xs text-muted-foreground">
           <p>This is a secure portal — your data is encrypted in transit. Powered by NoovaERP.</p>
         </div>
-      </div>
-    </div>
-  )
-}
-
-function SignaturePad({
-  onChange,
-  isDrawing,
-  setIsDrawing,
-}: {
-  onChange: (dataUrl: string | null) => void
-  isDrawing: boolean
-  setIsDrawing: (v: boolean) => void
-}) {
-  const [canvasRef, setCanvasRef] = useState<HTMLCanvasElement | null>(null)
-  const [hasContent, setHasContent] = useState(false)
-
-  useEffect(() => {
-    if (!canvasRef) return
-    const ctx = canvasRef.getContext('2d')
-    if (!ctx) return
-    ctx.strokeStyle = '#0f172a'
-    ctx.lineWidth = 2
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-  }, [canvasRef])
-
-  const start = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    setIsDrawing(true)
-    const rect = canvasRef!.getBoundingClientRect()
-    const ctx = canvasRef!.getContext('2d')!
-    ctx.beginPath()
-    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top)
-    canvasRef!.setPointerCapture(e.pointerId)
-  }
-
-  const move = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || !canvasRef) return
-    const rect = canvasRef.getBoundingClientRect()
-    const ctx = canvasRef.getContext('2d')!
-    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top)
-    ctx.stroke()
-    setHasContent(true)
-  }
-
-  const end = () => {
-    if (!canvasRef) return
-    setIsDrawing(false)
-    if (hasContent) {
-      onChange(canvasRef.toDataURL('image/png'))
-    }
-  }
-
-  const clear = () => {
-    if (!canvasRef) return
-    const ctx = canvasRef.getContext('2d')!
-    ctx.clearRect(0, 0, canvasRef.width, canvasRef.height)
-    setHasContent(false)
-    onChange(null)
-  }
-
-  return (
-    <div className="space-y-2">
-      <Label>Signature</Label>
-      <div className="rounded-md border bg-white">
-        <canvas
-          ref={setCanvasRef}
-          width={500}
-          height={140}
-          className="w-full touch-none"
-          onPointerDown={start}
-          onPointerMove={move}
-          onPointerUp={end}
-          onPointerCancel={end}
-        />
-      </div>
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>Sign with your mouse or finger above</span>
-        <Button type="button" variant="ghost" size="sm" onClick={clear} disabled={!hasContent}>
-          <Icon icon="solar:close-circle-bold" className="mr-1 h-3.5 w-3.5" />
-          Clear
-        </Button>
       </div>
     </div>
   )

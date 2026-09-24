@@ -816,16 +816,19 @@ export function Sidebar() {
       const data = response.data
       return Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : [])
     },
+    // Don't retry 429s — the Retry-After header says exactly when the
+    // bucket resets; piling on more requests just makes the throttling
+    // worse and the user wait longer. Server-side failures (5xx) still
+    // retry with backoff.
     retry: (failureCount, error: any) => {
       const status = error?.response?.status
-      // Retry transient throttles / server errors with backoff; give up on 4xx
-      // client errors (except 429) which won't fix themselves.
-      if (status === 429 || (status >= 500 && status < 600)) return failureCount < 3
+      if (status === 429) return false
+      if (status >= 500 && status < 600) return failureCount < 3
       if (status >= 400 && status < 500) return false
       return failureCount < 3
     },
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 15000),
-    staleTime: 1000 * 60 * 5,
+    staleTime: 1000 * 60 * 10,
     placeholderData: (prev: any) => prev,
   })
 

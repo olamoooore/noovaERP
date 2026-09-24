@@ -22,7 +22,7 @@ import api from '@/lib/api'
 import { Icon } from '@iconify/react'
 import { getProductLineDescription, ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { DeliveryOrderColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { DeliveryOrderColumnVisibility, SalesLineColumnMenu } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog'
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow'
 import { ProductTrackingSelector } from '@/components/inventory/ProductTrackingSelector'
@@ -46,6 +46,11 @@ interface LineItem {
   expiry_date: string
 }
 
+const DO_EDIT_COLUMNS = [
+  'Product', 'Description', 'Product Notes', 'Patient Name', 'Quantity', 'Unit',
+  'Unit Price', 'Lot Number', 'Expiry Date', 'Actions',
+].map((label, index) => ({ label, index: index + 1 }))
+
 export function DeliveryOrderEditPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -53,6 +58,11 @@ export function DeliveryOrderEditPage() {
   const { toast } = useToast()
 
   const [deliveryDate, setDeliveryDate] = useState('')
+
+  // Product Notes starts hidden, matching the previous default.
+  const [hiddenLineColumns, setHiddenLineColumns] = useState<number[]>(
+    () => DO_EDIT_COLUMNS.filter((c) => c.label.toLowerCase() === 'product notes').map((c) => c.index)
+  )
   const [expectedDate, setExpectedDate] = useState('')
   const [paymentTerms, setPaymentTerms] = useState('')
   const [invoiceId, setInvoiceId] = useState('')
@@ -397,13 +407,22 @@ export function DeliveryOrderEditPage() {
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle>Line Items</CardTitle>
+          <SalesLineColumnMenu
+            columns={DO_EDIT_COLUMNS}
+            hidden={hiddenLineColumns}
+            setHidden={setHiddenLineColumns}
+          />
         </CardHeader>
         <CardContent>
-          <DeliveryOrderColumnVisibility tableClass="do-edit-columns" columns={[
-            'Product', 'Description', 'Product Notes', 'Patient Name', 'Quantity', 'Unit', 'Unit Price', 'Lot Number', 'Expiry Date', 'Actions',
-          ].map((label, index) => ({ label, index: index + 1 }))}>
+          <DeliveryOrderColumnVisibility
+            tableClass="do-edit-columns"
+            columns={DO_EDIT_COLUMNS}
+            hiddenColumns={hiddenLineColumns}
+            onHiddenColumnsChange={setHiddenLineColumns}
+            showMenu={false}
+          >
           <LineItemsTable
             variant="shadcn"
             columns={[

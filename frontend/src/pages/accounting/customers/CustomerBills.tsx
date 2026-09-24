@@ -13,7 +13,7 @@ import api from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 import { INVOICE_EXPORT_COLUMNS, SalesDocumentExportMenu } from '@/components/sales/SalesDocumentExportMenu';
-import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility';
+import { SalesLineColumnMenu, SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility';
 import { useBulkSelection } from '@/hooks/use-bulk-selection';
 import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -22,9 +22,17 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
  * Customer Invoices Page
  * Manage all customer invoices with OCR integration
  */
+const CUSTOMER_BILL_COLUMNS = listingColumns([
+  'Select', 'Invoice #', 'Customer', 'Date', 'Created Date', 'Due Date',
+  'Total', 'Balance', 'Status', 'Source', 'Actions',
+]);
+
 export const CustomerBills: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [showUpload, setShowUpload] = useState(false);
+
+  // No columns hidden by default here.
+  const [hiddenBillColumns, setHiddenBillColumns] = useState<number[]>([]);
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [tagFilter, setTagFilter] = useState('');
@@ -570,11 +578,18 @@ export const CustomerBills: React.FC = () => {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>Customer Invoices</span>
-            {totalRecords > 0 && (
-              <span className="text-sm font-normal text-muted-foreground">
-                {totalRecords} invoice(s)
-              </span>
-            )}
+            <span className="flex items-center gap-3">
+              {totalRecords > 0 && (
+                <span className="text-sm font-normal text-muted-foreground">
+                  {totalRecords} invoice(s)
+                </span>
+              )}
+              <SalesLineColumnMenu
+                columns={CUSTOMER_BILL_COLUMNS}
+                hidden={hiddenBillColumns}
+                setHidden={setHiddenBillColumns}
+              />
+            </span>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -601,7 +616,13 @@ export const CustomerBills: React.FC = () => {
             </div>
           ) : (
             <>
-              <SalesLineColumnVisibility tableClass="customer-bills-listing-columns" columns={listingColumns(['Select', 'Invoice #', 'Customer', 'Date', 'Created Date', 'Due Date', 'Total', 'Balance', 'Status', 'Source', 'Actions'])}>
+              <SalesLineColumnVisibility
+                tableClass="customer-bills-listing-columns"
+                columns={CUSTOMER_BILL_COLUMNS}
+                hiddenColumns={hiddenBillColumns}
+                onHiddenColumnsChange={setHiddenBillColumns}
+                showMenu={false}
+              >
               <Table>
                 <TableHeader>
                   <TableRow>

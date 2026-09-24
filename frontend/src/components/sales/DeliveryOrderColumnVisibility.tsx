@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Icon } from '@iconify/react'
-import { Button } from '@/components/ui/button'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
 interface ColumnDefinition {
@@ -19,9 +19,16 @@ export function SalesLineColumnMenu({ columns, hidden, setHidden }: {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="outline" size="sm">
-          <Icon icon="solar:settings-minimalistic-bold" className="mr-2 h-4 w-4" /> Show/Hide Columns
-        </Button>
+        {/* Canonical compact action pill (h-8 / rounded-full), matching every
+            other header action — the old size="sm" button carried extra
+            padding and a wide icon gap. */}
+        <HeaderActionButton
+          type="button"
+          variant="outline"
+          icon="solar:settings-minimalistic-bold-duotone"
+        >
+          Show/Hide Columns
+        </HeaderActionButton>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
         <DropdownMenuLabel>Show columns</DropdownMenuLabel>

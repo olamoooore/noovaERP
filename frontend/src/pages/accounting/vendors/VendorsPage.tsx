@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -334,10 +335,9 @@ export default function VendorsPage() {
           <h1 className="text-3xl font-bold">Vendors</h1>
           <p className="text-muted-foreground mt-1">Manage your vendor/supplier records</p>
         </div>
-        <Button onClick={() => navigate('/accounting')}>
-          <Icon icon="solar:arrow-left-linear" className="w-4 h-4 mr-2" />
+        <HeaderActionButton icon="solar:arrow-left-linear" onClick={() => navigate('/accounting')}>
           Back to Accounting
-        </Button>
+        </HeaderActionButton>
       </div>
 
       <Card className="p-4">
@@ -350,14 +350,12 @@ export default function VendorsPage() {
             />
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => navigate('/accounting/vendors/import')}>
-              <Icon icon="solar:upload-linear" className="w-4 h-4 mr-2" />
+            <HeaderActionButton icon="solar:upload-linear" variant="outline" onClick={() => navigate('/accounting/vendors/import')}>
               Import Vendors
-            </Button>
-            <Button onClick={openCreate}>
-              <Icon icon="solar:add-circle-linear" className="w-4 h-4 mr-2" />
+            </HeaderActionButton>
+            <HeaderActionButton icon="solar:add-circle-linear" onClick={openCreate}>
               Add Vendor
-            </Button>
+            </HeaderActionButton>
           </div>
         </div>
       </Card>
@@ -390,10 +388,9 @@ export default function VendorsPage() {
                     <Icon icon="solar:user-cross-bold-duotone" className="w-12 h-12 mx-auto mb-3 opacity-50" />
                     <p className="text-lg font-medium mb-1">No vendors yet</p>
                     <p className="text-sm mb-4">Add your first vendor to start creating bills</p>
-                    <Button onClick={openCreate} size="sm">
-                      <Icon icon="solar:add-circle-linear" className="w-4 h-4 mr-2" />
+                    <HeaderActionButton icon="solar:add-circle-linear" onClick={openCreate} size="sm">
                       Add Vendor
-                    </Button>
+                    </HeaderActionButton>
                   </TableCell>
                 </TableRow>
               ) : (
@@ -530,10 +527,9 @@ export default function VendorsPage() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label>Addresses</Label>
-                <Button type="button" variant="outline" size="sm" onClick={() => openAddressForm()}>
-                  <Icon icon="solar:add-circle-linear" className="w-4 h-4 mr-2" />
+                <HeaderActionButton icon="solar:add-circle-linear" type="button" variant="outline" size="sm" onClick={() => openAddressForm()}>
                   Add Address
-                </Button>
+                </HeaderActionButton>
               </div>
               {addresses.length === 0 ? (
                 <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">

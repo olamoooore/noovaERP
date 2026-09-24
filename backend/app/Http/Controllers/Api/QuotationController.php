@@ -39,6 +39,7 @@ class QuotationController extends Controller
      */
     private function logQuotationChatter(
         Quotation $quotation,
+        string $event,
         string $description,
         array $properties = [],
     ): void {
@@ -46,7 +47,7 @@ class QuotationController extends Controller
             app(\App\Services\Chatter\ChatterService::class)->logEvent(
                 Quotation::class,
                 (int) $quotation->id,
-                'status_changed',
+                $event,
                 $description,
                 $properties,
                 Auth::id(),
@@ -270,6 +271,17 @@ class QuotationController extends Controller
                 app(\App\Services\TagService::class)->attach($quotation, $tagNames, Auth::id());
             }
 
+            $this->logQuotationChatter(
+                $quotation,
+                'created',
+                "Created quotation {$quotation->quotation_number}",
+                [
+                    'status' => $quotation->status,
+                    'total' => (float) $quotation->total,
+                    'lines' => $quotation->lines->count(),
+                ],
+            );
+
             return response()->json([
                 'message' => 'Quotation created successfully',
                 'data' => $quotation,
@@ -362,7 +374,18 @@ class QuotationController extends Controller
             $validated['discount_value'] = $validated['discount_amount'];
         }
 
+        $before = $quotation->getOriginal();
         $quotation->update($validated);
+
+        $changedFields = [];
+        foreach (array_keys($validated) as $field) {
+            if (in_array($field, ['lines', 'tags'], true) || ! array_key_exists($field, $before)) {
+                continue;
+            }
+            if ((string) $before[$field] !== (string) ($validated[$field] ?? '')) {
+                $changedFields[] = $field;
+            }
+        }
 
         if ($request->has('lines')) {
             $quotation->lines()->delete();
@@ -384,6 +407,16 @@ class QuotationController extends Controller
 
         $quotation->refresh();
         $quotation->calculateTotals();
+
+        $extra = $request->has('lines') ? ['lines' => 'line items replaced'] : [];
+        if ($changedFields !== [] || $extra !== []) {
+            $this->logQuotationChatter(
+                $quotation,
+                'updated',
+                "Updated quotation {$quotation->quotation_number}",
+                $extra + ['fields' => $changedFields === [] ? 'line items' : implode(', ', $changedFields)],
+            );
+        }
 
         return response()->json($quotation->fresh(['customer', 'lines.product']));
     }
@@ -516,6 +549,19 @@ class QuotationController extends Controller
 
                 return $quotation->fresh(['customer', 'lines.product', 'salesOrder']);
             });
+
+            $this->logQuotationChatter(
+                $quotation,
+                'status_changed',
+                "Confirmed quotation {$quotation->quotation_number}"
+                    .($quotation->salesOrder ? " — created sales order {$quotation->salesOrder->sales_order_number}" : ''),
+                [
+                    'from_state' => 'sent',
+                    'to_state' => 'confirmed',
+                    'sales_order_id' => $quotation->salesOrder?->id,
+                    'sales_order_number' => $quotation->salesOrder?->sales_order_number,
+                ],
+            );
 
             return response()->json([
                 'message' => 'Quotation confirmed successfully',
@@ -1067,6 +1113,7 @@ class QuotationController extends Controller
 
         $this->logQuotationChatter(
             $quotation,
+            'status_changed',
             "Cancelled quotation {$quotation->quotation_number}",
             [
                 'from_state' => $fromStatus,
@@ -1153,6 +1200,7 @@ class QuotationController extends Controller
 
         $this->logQuotationChatter(
             $quotation,
+            'status_changed',
             "Reset quotation {$quotation->quotation_number} to draft",
             [
                 'from_state' => $fromStatus,

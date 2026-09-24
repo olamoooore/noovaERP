@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -221,14 +222,12 @@ export const VendorBills: React.FC = () => {
           <p className="text-muted-foreground mt-1">Manage bills from vendors/suppliers</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setShowUpload(true)}>
-            <Icon icon="solar:upload-bold-duotone" className="h-4 w-4 mr-2" />
+          <HeaderActionButton icon="solar:upload-bold-duotone" variant="outline" onClick={() => setShowUpload(true)}>
             Upload Bill (OCR)
-          </Button>
-          <Button onClick={() => navigate('/accounting/vendors/bills/create')}>
-            <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
+          </HeaderActionButton>
+          <HeaderActionButton icon="solar:add-circle-bold-duotone" onClick={() => navigate('/accounting/vendors/bills/create')}>
             New Bill
-          </Button>
+          </HeaderActionButton>
         </div>
       </div>
 
@@ -351,14 +350,12 @@ export const VendorBills: React.FC = () => {
               <p className="text-lg font-medium mb-2">No vendor bills yet</p>
               <p className="text-sm mb-4">Upload a bill via OCR or create one manually</p>
               <div className="flex gap-2 justify-center">
-                <Button variant="outline" onClick={() => setShowUpload(true)}>
-                  <Icon icon="solar:upload-bold-duotone" className="h-4 w-4 mr-2" />
+                <HeaderActionButton icon="solar:upload-bold-duotone" variant="outline" onClick={() => setShowUpload(true)}>
                   Upload Bill
-                </Button>
-                <Button onClick={() => navigate('/accounting/vendors/bills/create')}>
-                  <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
+                </HeaderActionButton>
+                <HeaderActionButton icon="solar:add-circle-bold-duotone" onClick={() => navigate('/accounting/vendors/bills/create')}>
                   Create Bill
-                </Button>
+                </HeaderActionButton>
               </div>
             </div>
           ) : (

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -308,10 +309,9 @@ export default function AssetsManagementPage() {
             Track and depreciate fixed assets
           </p>
         </div>
-        <Button onClick={() => navigate('/accounting')}>
-          <Icon icon="solar:arrow-left-linear" className="w-4 h-4 mr-2" />
+        <HeaderActionButton icon="solar:arrow-left-linear" onClick={() => navigate('/accounting')}>
           Back to Accounting
-        </Button>
+        </HeaderActionButton>
       </div>
 
       {/* Tabs */}
@@ -327,10 +327,9 @@ export default function AssetsManagementPage() {
               <h2 className="text-xl font-semibold">Fixed Assets</h2>
               <div className="flex gap-2">
                 <SalesDocumentExportMenu endpoint="/accounting/assets/export" filenamePrefix="fixed_assets" columns={ASSET_EXPORT_COLUMNS} filters={{ search: searchTerm || undefined, status: statusFilter === 'all' ? undefined : statusFilter }} />
-                <Button variant="outline" onClick={() => navigate('/accounting/core/assets/import')}>
-                  <Icon icon="solar:upload-linear" className="w-4 h-4 mr-2" />
+                <HeaderActionButton icon="solar:upload-linear" variant="outline" onClick={() => navigate('/accounting/core/assets/import')}>
                   Import CSV
-                </Button>
+                </HeaderActionButton>
                 <Input
                   placeholder="Search assets..."
                   value={searchTerm}
@@ -348,10 +347,9 @@ export default function AssetsManagementPage() {
                     <SelectItem value="inactive">Inactive</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button onClick={() => handleOpenForm()}>
-                  <Icon icon="solar:add-circle-linear" className="w-4 h-4 mr-2" />
+                <HeaderActionButton icon="solar:add-circle-linear" onClick={() => handleOpenForm()}>
                   Add Asset
-                </Button>
+                </HeaderActionButton>
               </div>
             </div>
 

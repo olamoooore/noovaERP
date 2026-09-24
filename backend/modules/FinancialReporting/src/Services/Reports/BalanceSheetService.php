@@ -152,6 +152,9 @@ class BalanceSheetService extends BaseReportService
      * Get posted balances for every account of a COA type without imposing a
      * legacy code range. This lets renamed and recoded equity accounts retain
      * their identity in the Balance Sheet.
+     *
+     * Excludes soft-deleted chart_of_accounts rows (deleted_at IS NOT NULL)
+     * so duplicate-imported accounts that were deactivated don't double-count.
      */
     protected function getAccountsByType(ReportFilter $filter, string $type, bool $useSummary): array
     {
@@ -161,7 +164,10 @@ class BalanceSheetService extends BaseReportService
 
         if ($useSummary) {
             $query = DB::table('daily_ledger_summaries as dls')
-                ->join('chart_of_accounts as coa', 'coa.id', '=', 'dls.account_id')
+                ->join('chart_of_accounts as coa', function ($join) {
+                    $join->on('coa.id', '=', 'dls.account_id')
+                        ->whereNull('coa.deleted_at');
+                })
                 ->leftJoin('chart_of_accounts as parent_coa', 'parent_coa.id', '=', 'coa.parent_id')
                 ->leftJoin('chart_of_accounts as group_coa', 'group_coa.code', '=', 'coa.account_group')
                 ->where('coa.type', $type)
@@ -182,7 +188,10 @@ class BalanceSheetService extends BaseReportService
         } else {
             $query = DB::table('journal_entry_lines as jel')
                 ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
-                ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
+                ->join('chart_of_accounts as coa', function ($join) {
+                    $join->on('coa.id', '=', 'jel.account_id')
+                        ->whereNull('coa.deleted_at');
+                })
                 ->leftJoin('chart_of_accounts as parent_coa', 'parent_coa.id', '=', 'coa.parent_id')
                 ->leftJoin('chart_of_accounts as group_coa', 'group_coa.code', '=', 'coa.account_group')
                 ->where('je.status', 'posted')->where('je.is_active_version', true)
@@ -219,6 +228,11 @@ class BalanceSheetService extends BaseReportService
 
     /**
      * Get retained earnings (calculated from revenue and expenses)
+     *
+     * Also strips "Opening Balance Equity" revenue/expense rows in case
+     * imported journals tagged an opening-balance plug against a
+     * revenue/expense account (defensive — the equity-section filter is
+     * the primary fix).
      */
     protected function getRetainedEarnings(ReportFilter $filter, bool $useSummary): float
     {
@@ -250,6 +264,14 @@ class BalanceSheetService extends BaseReportService
 
     /**
      * Get accounts by type and category
+     *
+     * Excludes soft-deleted chart_of_accounts rows (deleted_at IS NOT NULL)
+     * and uses an EXISTS subquery against bank_accounts instead of a LEFT
+     * JOIN. The LEFT JOIN form previously DUPLICATED journal lines whenever
+     * a chart_of_accounts row had more than one active bank_accounts row
+     * pointing at it (production-incident 2026-09-24: bank balances were
+     * double the actual cash-on-hand). EXISTS gives a yes/no flag without
+     * multiplying the projection.
      */
     protected function getAccountsByTypeAndCategory(
         ReportFilter $filter,
@@ -271,18 +293,15 @@ class BalanceSheetService extends BaseReportService
                 : 'SUM(-dls.net_amount)';
 
             $query = DB::table('daily_ledger_summaries as dls')
-                ->join('chart_of_accounts as coa', 'coa.id', '=', 'dls.account_id')
+                ->join('chart_of_accounts as coa', function ($join) {
+                    $join->on('coa.id', '=', 'dls.account_id')
+                        ->whereNull('coa.deleted_at');
+                })
                 ->leftJoin('chart_of_accounts as parent_coa', 'parent_coa.id', '=', 'coa.parent_id')
                 ->leftJoin('chart_of_accounts as group_coa', 'group_coa.code', '=', 'coa.account_group')
-                ->leftJoin('bank_accounts as ba', function ($join) {
-                    $join->on('ba.gl_account_id', '=', 'coa.id')->where('ba.is_active', true);
-                })
                 ->where('coa.type', $type)
                 ->where(function ($categoryQuery) use ($type, $category) {
-                    $categoryQuery->whereIn('coa.subtype', $this->getCategorySubtypes($type, $category));
-                    if ($type === 'asset' && $category === 'current_asset') {
-                        $categoryQuery->orWhereNotNull('ba.id');
-                    }
+                    $this->applyCategoryFilter($categoryQuery, $type, $category);
                 })
                 ->where('dls.summary_date', '<=', $filter->asOfDate)
                 ->select([
@@ -294,10 +313,9 @@ class BalanceSheetService extends BaseReportService
                     'parent_coa.code as parent_code',
                     'parent_coa.name as parent_name',
                     'group_coa.name as group_name',
-                    'ba.currency_code',
                     DB::raw($balanceExpr.' as balance'),
                 ])
-                ->groupBy('coa.id', 'coa.code', 'coa.name', 'coa.account_group', 'coa.parent_id', 'parent_coa.code', 'parent_coa.name', 'group_coa.name', 'ba.currency_code');
+                ->groupBy('coa.id', 'coa.code', 'coa.name', 'coa.account_group', 'coa.parent_id', 'parent_coa.code', 'parent_coa.name', 'group_coa.name');
         } else {
             $balanceExpr = $debitPositive
                 ? 'SUM(jel.debit - jel.credit)'
@@ -305,19 +323,16 @@ class BalanceSheetService extends BaseReportService
 
             $query = DB::table('journal_entry_lines as jel')
                 ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
-                ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
+                ->join('chart_of_accounts as coa', function ($join) {
+                    $join->on('coa.id', '=', 'jel.account_id')
+                        ->whereNull('coa.deleted_at');
+                })
                 ->leftJoin('chart_of_accounts as parent_coa', 'parent_coa.id', '=', 'coa.parent_id')
                 ->leftJoin('chart_of_accounts as group_coa', 'group_coa.code', '=', 'coa.account_group')
-                ->leftJoin('bank_accounts as ba', function ($join) {
-                    $join->on('ba.gl_account_id', '=', 'coa.id')->where('ba.is_active', true);
-                })
                 ->where('je.status', 'posted')->where('je.is_active_version', true)
                 ->where('coa.type', $type)
                 ->where(function ($categoryQuery) use ($type, $category) {
-                    $categoryQuery->whereIn('coa.subtype', $this->getCategorySubtypes($type, $category));
-                    if ($type === 'asset' && $category === 'current_asset') {
-                        $categoryQuery->orWhereNotNull('ba.id');
-                    }
+                    $this->applyCategoryFilter($categoryQuery, $type, $category);
                 })
                 ->where('je.entry_date', '<=', $filter->asOfDate)
                 ->select([
@@ -329,10 +344,9 @@ class BalanceSheetService extends BaseReportService
                     'parent_coa.code as parent_code',
                     'parent_coa.name as parent_name',
                     'group_coa.name as group_name',
-                    'ba.currency_code',
                     DB::raw($balanceExpr.' as balance'),
                 ])
-                ->groupBy('coa.id', 'coa.code', 'coa.name', 'coa.account_group', 'coa.parent_id', 'parent_coa.code', 'parent_coa.name', 'group_coa.name', 'ba.currency_code');
+                ->groupBy('coa.id', 'coa.code', 'coa.name', 'coa.account_group', 'coa.parent_id', 'parent_coa.code', 'parent_coa.name', 'group_coa.name');
         }
 
         // Apply entity filters
@@ -363,10 +377,141 @@ class BalanceSheetService extends BaseReportService
                 'parent_code' => $row->parent_code,
                 'parent_name' => $row->parent_name,
                 'group_name' => $row->group_name,
-                'currency_code' => $row->currency_code,
+                'currency_code' => null,
                 'balance' => (float) $row->balance,
             ])
             ->toArray();
+    }
+
+    /**
+     * Apply the category WHERE clause for a type+category combination.
+     *
+     * Assets use parent-chain classification rather than a bare subtype
+     * match, because the imported COA contains leaf accounts (e.g.
+     * `123200 Short-term deposits`) whose own subtype is NULL but whose
+     * ancestor group (`120000 Current assets`) clearly determines the
+     * category. A bare `subtype IN (...)` filter silently drops those from
+     * the report and breaks A = L + E by their balance (production incident
+     * 2026-09-24: balance_check drifted by 1,631 because of this).
+     *
+     * Liabilities/equity keep the simpler subtype check (their imported
+     * COA has subtypes set on every posting account).
+     */
+    private function applyCategoryFilter($categoryQuery, string $type, string $category): void
+    {
+        if ($type === 'asset') {
+            // The classification walks every asset account to a single
+            // category, so the ID list is exhaustive and mutually exclusive —
+            // no account is dropped and none is double-counted. The previous
+            // `orWhereExists(bank_accounts)` workaround is gone because an
+            // account holding both a clean fixed_asset subtype and an active
+            // bank link would have been counted in BOTH current and
+            // non-current totals.
+            $ids = $this->resolveAssetAccountIdsForCategory($category);
+            $categoryQuery->whereIn('coa.id', $ids);
+
+            return;
+        }
+
+        $categoryQuery->whereIn('coa.subtype', $this->getCategorySubtypes($type, $category));
+    }
+
+    /**
+     * Resolve which chart_of_accounts IDs belong to the given asset
+     * category by walking each account's parent chain up to its root.
+     *
+     * Precedence:
+     *   1. The account's own subtype, when it maps cleanly.
+     *   2. The first ancestor with a recognised subtype.
+     *   3. The root group's name (`Current assets` / `Noncurrent assets`).
+     *   4. Fallback: `other_asset` (catch-all so nothing is dropped from
+     *      the total assets figure).
+     *
+     * @return array<int>
+     */
+    private function resolveAssetAccountIdsForCategory(string $category): array
+    {
+        $currentSubtypes = $this->getCategorySubtypes('asset', 'current_asset');
+        $fixedSubtypes = $this->getCategorySubtypes('asset', 'fixed_asset');
+        $otherSubtypes = $this->getCategorySubtypes('asset', 'other_asset');
+
+        $accounts = DB::table('chart_of_accounts')
+            ->whereNull('deleted_at')
+            ->where('type', 'asset')
+            ->get(['id', 'parent_id', 'name', 'subtype']);
+
+        $byId = [];
+        foreach ($accounts as $account) {
+            $byId[(int) $account->id] = $account;
+        }
+
+        $ids = [];
+        foreach ($accounts as $account) {
+            $resolved = $this->classifyAssetAccount($account, $byId, $currentSubtypes, $fixedSubtypes, $otherSubtypes);
+
+            if ($resolved === $category) {
+                $ids[] = (int) $account->id;
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
+     * @param  array<int, object>  $byId
+     * @param  array<string>  $currentSubtypes
+     * @param  array<string>  $fixedSubtypes
+     * @param  array<string>  $otherSubtypes
+     */
+    private function classifyAssetAccount(object $account, array $byId, array $currentSubtypes, array $fixedSubtypes, array $otherSubtypes): string
+    {
+        $selfSubtype = strtolower((string) $account->subtype);
+        if (in_array($selfSubtype, $currentSubtypes, true)) {
+            return 'current_asset';
+        }
+        if (in_array($selfSubtype, $fixedSubtypes, true)) {
+            return 'fixed_asset';
+        }
+        if (in_array($selfSubtype, $otherSubtypes, true)) {
+            return 'other_asset';
+        }
+
+        // Walk up the parent chain looking for a classified ancestor.
+        $node = $account;
+        $visited = [];
+        while ($node->parent_id !== null && isset($byId[(int) $node->parent_id])) {
+            if (in_array((int) $node->id, $visited, true)) {
+                break; // cycle guard
+            }
+            $visited[] = (int) $node->id;
+            $node = $byId[(int) $node->parent_id];
+
+            $ancestorSubtype = strtolower((string) $node->subtype);
+            if (in_array($ancestorSubtype, $currentSubtypes, true)) {
+                return 'current_asset';
+            }
+            if (in_array($ancestorSubtype, $fixedSubtypes, true)) {
+                return 'fixed_asset';
+            }
+            if (in_array($ancestorSubtype, $otherSubtypes, true)) {
+                return 'other_asset';
+            }
+        }
+
+        // No typed ancestor — classify by the root group's name. This
+        // catches group headers like `120000 Current assets` that carry
+        // no subtype of their own, and their untyped leaf children.
+        // Order matters: the non-current patterns are checked first so
+        // `Long-term deposits` isn't captured by the `deposit` keyword.
+        $rootName = (string) $node->name;
+        if (preg_match('/non[-\s]?current|long[-\s]?term|fixed\s+asset|property|plant|equipment|intangible|goodwill|right[-\s]?of[-\s]?use|investment property|deferred tax asset|accumulated depreciation|accumulated amortisation/i', $rootName)) {
+            return 'fixed_asset';
+        }
+        if (preg_match('/current|bank|cash|receivable|inventor|prepay|short[-\s]?term|deposit/i', $rootName)) {
+            return 'current_asset';
+        }
+
+        return 'other_asset';
     }
 
     /**

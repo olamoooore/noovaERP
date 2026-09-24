@@ -58,6 +58,8 @@ export interface ChatterAttachment {
   url: string
   uploaded_at: string
   uploaded_by?: ChatterActor | null
+  /** Display name when the uploader was not a platform user (customer portal). */
+  uploaded_by_name?: string | null
 }
 
 export interface ChatterMessageEntry {

@@ -17,6 +17,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 
 const statusColors: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-800',
@@ -59,12 +60,11 @@ export function PurchaseOrdersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Purchase Orders</h1>
-        <Button asChild>
+        <HeaderActionButton icon="solar:add-circle-bold" asChild>
           <Link to="/inventory/purchase-orders/new">
-            <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
             New Purchase Order
           </Link>
-        </Button>
+        </HeaderActionButton>
       </div>
 
       <Card>

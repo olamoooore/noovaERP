@@ -73,6 +73,7 @@ class InvoiceDeliveryService
             $invoice,
             InvoiceActivityLog::EVENT_SENT,
             [
+                'invoice_number' => $invoice->invoice_number,
                 'delivery_id' => $delivery->id,
                 'channel' => $channel,
                 'recipient' => $recipient,

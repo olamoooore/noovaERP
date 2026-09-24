@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import reportApi from '@/lib/reportApi';
@@ -55,10 +56,9 @@ export default function BankReconciliationHistoryPage() {
             Review completed reconciliations by bank account.
           </p>
         </div>
-        <Button type="button" variant="outline" onClick={() => navigate(`/accounting/core/reconciliation${selectedBankAccount ? `?account=${selectedBankAccount}` : ''}`)}>
-          <Icon icon="solar:arrow-left-bold" className="mr-2 h-4 w-4" />
+        <HeaderActionButton icon="solar:arrow-left-bold" type="button" variant="outline" onClick={() => navigate(`/accounting/core/reconciliation${selectedBankAccount ? `?account=${selectedBankAccount}` : ''}`)}>
           Back to Reconcile
-        </Button>
+        </HeaderActionButton>
       </div>
 
       <Card className="p-6">

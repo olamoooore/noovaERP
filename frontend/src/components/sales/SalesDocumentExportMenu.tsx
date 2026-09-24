@@ -93,6 +93,10 @@ interface SalesDocumentExportMenuProps {
   filters?: Record<string, string | number | undefined>
   selectedIds?: number[]
   /** Compact pill styling for inline toolbars. */
+  /**
+   * Compact pill styling (h-8 / rounded-full) — the app's standard action
+   * style. Defaults to true; only pass false for an intentionally large CTA.
+   */
   compact?: boolean
 }
 
@@ -102,7 +106,7 @@ export function SalesDocumentExportMenu({
   columns,
   filters = {},
   selectedIds = [],
-  compact = false,
+  compact = true,
 }: SalesDocumentExportMenuProps) {
   const { toast } = useToast()
   const [selectedColumns, setSelectedColumns] = useState<string[]>(

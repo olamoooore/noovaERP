@@ -121,7 +121,6 @@ export function ChatterDock({
               <ChatterPanel
                 subjectType={subjectType}
                 subjectId={subjectId}
-                documentLabel={documentLabel}
                 readOnly={readOnly}
                 className="h-full border-0 rounded-none"
               />
@@ -135,15 +134,21 @@ export function ChatterDock({
   // Inline (default): a collapsible panel mounted at the bottom of the page
   // (Odoo-style — chatter lives below the form, not above it).
   return (
-    <div className={cn('border-t bg-card', className)}>
+    // A card, like every other block on the page — the old full-width strip
+    // had square corners and looked clipped against the page container.
+    // (No overflow-hidden here: it would create a scroll container and break
+    // the toggle bar's sticky positioning, so the corners are rounded
+    // explicitly on the first/last children instead.)
+    <div className={cn('rounded-xl border bg-card', className)}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cn(
           'sticky bottom-0 z-20 flex w-full items-center justify-between',
           'bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/75',
-          'border-b px-4 py-3 hover:bg-muted/40 transition-colors text-left',
-          open && 'border-b'
+          'rounded-t-xl px-4 py-3 transition-colors hover:bg-muted/40 text-left',
+          // Closed: the bar is the whole card, so its bottom corners round too.
+          open ? 'border-b' : 'rounded-b-xl'
         )}
         aria-expanded={open}
       >
@@ -172,11 +177,10 @@ export function ChatterDock({
         </div>
       </button>
       {open && (
-        <div className="h-[500px] max-h-[60vh] border-b">
+        <div className="h-[500px] max-h-[60vh] overflow-hidden rounded-b-xl">
           <ChatterPanel
             subjectType={subjectType}
             subjectId={subjectId}
-            documentLabel={documentLabel}
             readOnly={readOnly}
             className="h-full border-0 rounded-none"
           />

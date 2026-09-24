@@ -11,11 +11,60 @@ use App\Models\ChatterMessage;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class ChatterService
 {
+    /**
+     * Cached answer to "does the activity_log table the connection actually
+     * resolves have a tenant_id column?". Null = not resolved yet.
+     */
+    private ?bool $activityLogTenantId = null;
+
+    /**
+     * Whether activity rows can (and therefore must) carry a tenant scope.
+     *
+     * `activity_log` lives in the shared `public` schema and has a `tenant_id`
+     * column, but `Schema::hasColumn()` resolves against `current_schema()` —
+     * which under a tenant request is the tenant schema, where the table does
+     * not exist. It returned false, so BOTH the write path and the read path
+     * silently dropped the tenant scope: every tenant wrote NULL-tenant rows
+     * into one shared feed and every tenant read the other tenants' history.
+     *
+     * Resolve the table Postgres would actually use (first match walking the
+     * search_path) and inspect that exact table.
+     */
+    private function activityLogHasTenantId(): bool
+    {
+        if ($this->activityLogTenantId !== null) {
+            return $this->activityLogTenantId;
+        }
+
+        try {
+            $row = DB::selectOne(
+                "SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns c
+                    WHERE c.table_name = 'activity_log'
+                      AND c.column_name = 'tenant_id'
+                      AND c.table_schema = (
+                          SELECT t.table_schema
+                          FROM information_schema.tables t
+                          WHERE t.table_name = 'activity_log'
+                            AND t.table_schema = ANY (current_schemas(false))
+                          ORDER BY array_position(current_schemas(false), t.table_schema)
+                          LIMIT 1
+                      )
+                ) AS present"
+            );
+
+            return $this->activityLogTenantId = (bool) ($row->present ?? false);
+        } catch (\Throwable $e) {
+            return $this->activityLogTenantId = false;
+        }
+    }
+
     public function bundle(string $subjectType, int|string $subjectId): array
     {
         // Normalize subject_id: cast to int for queries against bigint columns
@@ -25,7 +74,7 @@ class ChatterService
         $normalizedId = (int) $subjectId;
 
         $tenantId = $this->currentTenantId();
-        $activityLogHasTenantId = Schema::hasColumn('activity_log', 'tenant_id');
+        $activityLogHasTenantId = $this->activityLogHasTenantId();
 
         $logs = ActivityLogEntry::query()
             ->where('subject_type', $subjectType)
@@ -108,6 +157,7 @@ class ChatterService
                     'url' => $att->url,
                     'uploaded_at' => optional($att->created_at)->toIso8601String(),
                     'uploaded_by' => $this->formatActor($att->uploadedBy),
+                    'uploaded_by_name' => $att->uploaded_by_name,
                 ];
             })
             ->all();
@@ -245,12 +295,16 @@ class ChatterService
         string $storageDisk,
         string $storagePath,
         ?int $uploadedById = null,
+        ?string $uploadedByName = null,
     ): ChatterAttachment {
         $attachment = ChatterAttachment::create([
             'tenant_id' => $this->currentTenantId(),
             'subject_type' => $subjectType,
             'subject_id' => (string) (int) $subjectId,
             'uploaded_by_id' => $uploadedById,
+            // Customer-portal uploads have no user id; without this the feed
+            // attributed them to "System".
+            'uploaded_by_name' => $uploadedByName,
             'filename' => $filename,
             'mime_type' => $mimeType,
             'size' => $size,
@@ -259,11 +313,21 @@ class ChatterService
             'checksum' => null,
         ]);
 
-        $this->logEvent($subjectType, (int) $subjectId, 'attachment_uploaded', "Uploaded {$filename}", [
-            'attachment_id' => $attachment->id,
-            'filename' => $filename,
-            'size' => $size,
-        ]);
+        // Public-portal uploads have no authenticated user, so logEvent cannot
+        // attribute them and the feed said "System". Name the uploader in the
+        // entry itself when the caller supplies one.
+        $this->logEvent(
+            $subjectType,
+            (int) $subjectId,
+            'attachment_uploaded',
+            'Uploaded '.$filename.($uploadedByName ? " by {$uploadedByName}" : ''),
+            [
+                'attachment_id' => $attachment->id,
+                'filename' => $filename,
+                'size' => $size,
+                'uploaded_by_name' => $uploadedByName,
+            ],
+        );
 
         return $attachment->fresh(['uploadedBy']);
     }
@@ -356,10 +420,11 @@ class ChatterService
                 'properties' => $properties,
             ];
 
-            // Older tenant schemas store activity_log inside the isolated
-            // tenant schema and therefore have no tenant_id column. Newer
-            // shared-table schemas require the explicit tenant discriminator.
-            if (Schema::hasColumn('activity_log', 'tenant_id')) {
+            // The shared activity_log in `public` requires the explicit tenant
+            // discriminator. Some older tenant schemas keep an isolated
+            // activity_log that has no such column — activityLogHasTenantId()
+            // inspects the table the connection actually resolves.
+            if ($this->activityLogHasTenantId()) {
                 $attributes['tenant_id'] = $this->currentTenantId();
             }
 

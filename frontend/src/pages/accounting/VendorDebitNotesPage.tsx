@@ -7,6 +7,7 @@ import EditVendorDebitNoteDialog from './components/EditVendorDebitNoteDialog';
 import VendorDebitNotePostButton from './components/VendorDebitNotePostButton';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -69,10 +70,9 @@ export default function VendorDebitNotesPage() {
           <h1 className="text-3xl font-bold">Debit Notes</h1>
           <p className="text-muted-foreground mt-1">Manage debit notes for vendor returns and corrections</p>
         </div>
-        <Button onClick={() => setShowCreateDialog(true)}>
-          <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
+        <HeaderActionButton icon="solar:add-circle-bold-duotone" onClick={() => setShowCreateDialog(true)}>
           New Debit Note
-        </Button>
+        </HeaderActionButton>
       </div>
 
       <Card>
@@ -129,10 +129,9 @@ export default function VendorDebitNotesPage() {
               <Icon icon="solar:document-add-bold-duotone" className="h-16 w-16 mx-auto mb-4 opacity-50" />
               <p className="text-lg font-medium mb-2">No debit notes found</p>
               <p className="text-sm mb-4">Create your first debit note to get started.</p>
-              <Button onClick={() => setShowCreateDialog(true)}>
-                <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
+              <HeaderActionButton icon="solar:add-circle-bold-duotone" onClick={() => setShowCreateDialog(true)}>
                 Create Debit Note
-              </Button>
+              </HeaderActionButton>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -168,18 +167,15 @@ export default function VendorDebitNotesPage() {
                         <div className="flex gap-1 justify-end">
                           {debitNote.status === 'draft' && (
                             <>
-                              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditingDebitNoteId(debitNote.id); }}>
-                                <Icon icon="solar:pen-bold-duotone" className="h-4 w-4" />
-                              </Button>
+                              <HeaderActionButton icon="solar:pen-bold-duotone" size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditingDebitNoteId(debitNote.id); }}>
+                              </HeaderActionButton>
                               <VendorDebitNotePostButton creditNoteId={debitNote.id} onSuccess={refetch} />
-                              <Button size="sm" variant="ghost" onClick={() => handleDelete(debitNote.id, debitNote.status)}>
-                                <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-4 w-4 text-destructive" />
-                              </Button>
+                              <HeaderActionButton icon="solar:trash-bin-trash-bold-duotone" size="sm" variant="ghost" onClick={() => handleDelete(debitNote.id, debitNote.status)}>
+                              </HeaderActionButton>
                             </>
                           )}
-                          <Button size="sm" variant="ghost" onClick={() => navigate(`/accounting/vendors/debit-notes/${debitNote.id}`)}>
-                            <Icon icon="solar:eye-bold-duotone" className="h-4 w-4" />
-                          </Button>
+                          <HeaderActionButton icon="solar:eye-bold-duotone" size="sm" variant="ghost" onClick={() => navigate(`/accounting/vendors/debit-notes/${debitNote.id}`)}>
+                          </HeaderActionButton>
                         </div>
                       </TableCell>
                     </TableRow>

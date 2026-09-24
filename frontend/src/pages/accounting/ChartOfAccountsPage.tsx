@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -439,10 +440,9 @@ export default function ChartOfAccountsPage({ embedded = false }: { embedded?: b
             Define and manage your company's account structure
           </p>
         </div>
-        <Button onClick={() => navigate('/accounting')}>
-          <Icon icon="solar:arrow-left-linear" className="w-4 h-4 mr-2" />
+        <HeaderActionButton icon="solar:arrow-left-linear" onClick={() => navigate('/accounting')}>
           Back to Accounting
-        </Button>
+        </HeaderActionButton>
       </div>}
 
       {/* Tabs */}
@@ -476,18 +476,15 @@ export default function ChartOfAccountsPage({ embedded = false }: { embedded?: b
                     <SelectItem value="expense">Expense</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button variant="outline" onClick={() => navigate('/accounting/core/chart-of-accounts/import')}>
-                  <Icon icon="solar:import-bold-duotone" className="w-4 h-4 mr-2" />
+                <HeaderActionButton icon="solar:import-bold-duotone" variant="outline" onClick={() => navigate('/accounting/core/chart-of-accounts/import')}>
                   Import CSV
-                </Button>
-                <Button variant="outline" onClick={handleExport}>
-                  <Icon icon="solar:export-bold-duotone" className="w-4 h-4 mr-2" />
+                </HeaderActionButton>
+                <HeaderActionButton icon="solar:export-bold-duotone" variant="outline" onClick={handleExport}>
                   Export CSV
-                </Button>
-                <Button onClick={() => handleOpenForm()}>
-                  <Icon icon="solar:add-circle-linear" className="w-4 h-4 mr-2" />
+                </HeaderActionButton>
+                <HeaderActionButton icon="solar:add-circle-linear" onClick={() => handleOpenForm()}>
                   Add Account
-                </Button>
+                </HeaderActionButton>
               </div>
             </div>
 

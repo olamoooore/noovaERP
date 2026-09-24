@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -142,10 +143,9 @@ export const CustomerStatementComparison: React.FC = () => {
           </p>
         </div>
         {showResults && comparison && (
-          <Button variant="outline" onClick={handleDownloadPdf}>
-            <Icon icon="solar:download-minimalistic-bold" className="h-4 w-4 mr-2" />
+          <HeaderActionButton icon="solar:download-minimalistic-bold" variant="outline" onClick={handleDownloadPdf}>
             Download PDF
-          </Button>
+          </HeaderActionButton>
         )}
       </div>
 

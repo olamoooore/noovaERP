@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -78,10 +78,9 @@ export default function BankStatementImportHistoryPage() {
           <h1 className="text-3xl font-bold">Bank Statement Import History</h1>
           <p className="text-muted-foreground mt-1">Review source files and reverse incorrect imports before reimporting.</p>
         </div>
-        <Button type="button" variant="outline" onClick={() => navigate(`/accounting/core/reconciliation${selectedBankAccount ? `?account=${selectedBankAccount}` : ''}`)}>
-          <Icon icon="solar:arrow-left-bold" className="mr-2 h-4 w-4" />
+        <HeaderActionButton icon="solar:arrow-left-bold" type="button" variant="outline" onClick={() => navigate(`/accounting/core/reconciliation${selectedBankAccount ? `?account=${selectedBankAccount}` : ''}`)}>
           Back to Reconcile
-        </Button>
+        </HeaderActionButton>
       </div>
 
       <Card className="p-6">

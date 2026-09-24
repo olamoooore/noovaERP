@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -173,18 +174,15 @@ export function AgedReceivablesPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => handleExport('pdf')}>
-            <Icon icon="solar:file-download-bold" className="mr-2 h-4 w-4" />
+          <HeaderActionButton icon="solar:file-download-bold" variant="outline" onClick={() => handleExport('pdf')}>
             Export PDF
-          </Button>
-          <Button variant="outline" onClick={() => handleExport('excel')}>
-            <Icon icon="solar:file-download-bold" className="mr-2 h-4 w-4" />
+          </HeaderActionButton>
+          <HeaderActionButton icon="solar:file-download-bold" variant="outline" onClick={() => handleExport('excel')}>
             Export Excel
-          </Button>
-          <Button variant="outline" onClick={() => refetch()}>
-            <Icon icon="solar:refresh-bold" className="mr-2 h-4 w-4" />
+          </HeaderActionButton>
+          <HeaderActionButton icon="solar:refresh-bold" variant="outline" onClick={() => refetch()}>
             Refresh
-          </Button>
+          </HeaderActionButton>
         </div>
       </div>
 

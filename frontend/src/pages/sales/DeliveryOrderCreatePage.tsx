@@ -23,7 +23,7 @@ import api from '@/lib/api'
 import { Icon } from '@iconify/react'
 import { getProductLineDescription, ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { DeliveryOrderColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { DeliveryOrderColumnVisibility, SalesLineColumnMenu } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog'
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
@@ -51,6 +51,16 @@ interface LineItem {
   expiry_date: string
 }
 
+const DO_CREATE_LINKED_COLUMNS = [
+  'Product', 'Description', 'Product Notes', 'Unit Price', 'Ordered', 'Already Delivered',
+  'Remaining', 'Deliver Now', 'Patient Name', 'Lot Number', 'Expiry Date',
+].map((label, index) => ({ label, index: index + 1 }))
+
+const DO_CREATE_STANDALONE_COLUMNS = [
+  '#', 'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Lot Number',
+  'Expiry Date', 'Qty', 'Unit Price', 'Line Total', 'Actions',
+].map((label, index) => ({ label, index: index + 1 }))
+
 export function DeliveryOrderCreatePage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -60,6 +70,14 @@ export function DeliveryOrderCreatePage() {
   const { toast } = useToast()
 
   const [mode, setMode] = useState<'linked' | 'standalone'>(preselectedSoId ? 'linked' : 'standalone')
+
+  // Product Notes starts hidden on both tables, matching the previous default.
+  const [hiddenLinkedColumns, setHiddenLinkedColumns] = useState<number[]>(
+    () => DO_CREATE_LINKED_COLUMNS.filter((c) => c.label.toLowerCase() === 'product notes').map((c) => c.index)
+  )
+  const [hiddenStandaloneColumns, setHiddenStandaloneColumns] = useState<number[]>(
+    () => DO_CREATE_STANDALONE_COLUMNS.filter((c) => c.label.toLowerCase() === 'product notes').map((c) => c.index)
+  )
   const [tags, setTags] = useState<string[]>([])
   const [salesOrderId, setSalesOrderId] = useState<string>(preselectedSoId || '')
   const [customerId, setCustomerId] = useState<string>('')
@@ -628,14 +646,23 @@ export function DeliveryOrderCreatePage() {
       {/* Linked Mode: SO Lines */}
       {mode === 'linked' && soData && (
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle>Line Items — Quantities to Deliver</CardTitle>
+            <SalesLineColumnMenu
+              columns={DO_CREATE_LINKED_COLUMNS}
+              hidden={hiddenLinkedColumns}
+              setHidden={setHiddenLinkedColumns}
+            />
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-            <DeliveryOrderColumnVisibility tableClass="do-create-linked-columns" columns={[
-              'Product', 'Description', 'Product Notes', 'Unit Price', 'Ordered', 'Already Delivered', 'Remaining', 'Deliver Now', 'Patient Name', 'Lot Number', 'Expiry Date',
-            ].map((label, index) => ({ label, index: index + 1 }))}>
+            <DeliveryOrderColumnVisibility
+              tableClass="do-create-linked-columns"
+              columns={DO_CREATE_LINKED_COLUMNS}
+              hiddenColumns={hiddenLinkedColumns}
+              onHiddenColumnsChange={setHiddenLinkedColumns}
+              showMenu={false}
+            >
             <LineItemsTable
               variant="shadcn"
               columns={[
@@ -739,14 +766,23 @@ export function DeliveryOrderCreatePage() {
       {/* Standalone Mode: Line Items */}
       {mode === 'standalone' && (
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle>Line Items</CardTitle>
+            <SalesLineColumnMenu
+              columns={DO_CREATE_STANDALONE_COLUMNS}
+              hidden={hiddenStandaloneColumns}
+              setHidden={setHiddenStandaloneColumns}
+            />
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-                        <DeliveryOrderColumnVisibility tableClass="do-create-standalone-columns" columns={[
-              '#', 'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Lot Number', 'Expiry Date', 'Qty', 'Unit Price', 'Line Total', 'Actions',
-            ].map((label, index) => ({ label, index: index + 1 }))}>
+                        <DeliveryOrderColumnVisibility
+              tableClass="do-create-standalone-columns"
+              columns={DO_CREATE_STANDALONE_COLUMNS}
+              hiddenColumns={hiddenStandaloneColumns}
+              onHiddenColumnsChange={setHiddenStandaloneColumns}
+              showMenu={false}
+            >
             <LineItemsTable
               variant="raw"
               tableClassName="w-full min-w-[1300px] text-sm"

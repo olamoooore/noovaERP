@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Icon } from '@iconify/react'
 import { Card } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
@@ -175,10 +174,9 @@ export default function ComplianceReportsPage({ embedded = false }: ComplianceRe
           </p>
         </div>
         {!embedded && (
-          <Button variant="outline" onClick={() => navigate('/accounting/core/journal-entries')}>
-            <Icon icon="solar:arrow-left-linear" className="w-4 h-4 mr-2" />
+          <HeaderActionButton icon="solar:arrow-left-linear" variant="outline" onClick={() => navigate('/accounting/core/journal-entries')}>
             Back to Accounting
-          </Button>
+          </HeaderActionButton>
         )}
       </div>
 
@@ -223,14 +221,12 @@ export default function ComplianceReportsPage({ embedded = false }: ComplianceRe
         </div>
 
         <div className="flex flex-wrap gap-3">
-          <Button variant="outline" onClick={handleDownload} disabled={isDownloading || isExcelDownloading}>
-            <Icon icon="solar:file-download-bold" className="w-4 h-4 mr-2" />
+          <HeaderActionButton icon="solar:file-download-bold" variant="outline" onClick={handleDownload} disabled={isDownloading || isExcelDownloading}>
             {isDownloading ? 'Downloading...' : 'Download XBRL XML'}
-          </Button>
-          <Button variant="outline" onClick={handleExcelDownload} disabled={isDownloading || isExcelDownloading}>
-            <Icon icon="solar:document-bold" className="w-4 h-4 mr-2" />
+          </HeaderActionButton>
+          <HeaderActionButton icon="solar:document-bold" variant="outline" onClick={handleExcelDownload} disabled={isDownloading || isExcelDownloading}>
             {isExcelDownloading ? 'Downloading Excel...' : 'Download Excel'}
-          </Button>
+          </HeaderActionButton>
         </div>
 
         {downloadMeta && (

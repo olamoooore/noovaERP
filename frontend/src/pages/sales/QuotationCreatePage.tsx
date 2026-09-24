@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -496,10 +496,6 @@ export const QuotationCreatePage: React.FC = () => {
               <span>Line Items</span>
               <div className="flex flex-wrap gap-2">
                 <SalesLineColumnMenu columns={QUOTATION_CREATE_COLUMNS} hidden={hiddenLineColumns} setHidden={setHiddenLineColumns} />
-                <Button type="button" variant="outline" size="sm" onClick={() => duplicateLine(lines.length - 1)} disabled={lines.length === 0}>
-                  <Icon icon="solar:copy-bold-duotone" className="h-4 w-4 mr-1" />
-                  Duplicate Last
-                </Button>
               </div>
             </CardTitle>
           </CardHeader>

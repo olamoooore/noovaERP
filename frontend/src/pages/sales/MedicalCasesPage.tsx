@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -73,10 +74,9 @@ export function MedicalCasesPage() {
           <p className="text-muted-foreground mt-1">Manage medical cases linked to customers and invoices</p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => navigate('/sales/medical-cases/create')}>
-            <Icon icon="solar:add-circle-bold-duotone" className="mr-2 h-4 w-4" />
+          <HeaderActionButton icon="solar:add-circle-bold-duotone" onClick={() => navigate('/sales/medical-cases/create')}>
             Create Case
-          </Button>
+          </HeaderActionButton>
         </div>
       </div>
 

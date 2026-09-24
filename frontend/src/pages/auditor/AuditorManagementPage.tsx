@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -213,10 +214,9 @@ export default function AuditorManagementPage() {
         </div>
         <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
           <DialogTrigger asChild>
-            <Button>
-              <Icon icon="lucide:user-plus" className="mr-2 h-4 w-4" />
+            <HeaderActionButton icon="lucide:user-plus">
               Invite Auditor
-            </Button>
+            </HeaderActionButton>
           </DialogTrigger>
           <DialogContent className="max-w-2xl">
             <DialogHeader>

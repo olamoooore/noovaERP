@@ -6,6 +6,7 @@ use App\Exports\InvoicesExport;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\Invoice;
+use App\Models\InvoiceActivityLog;
 use App\Models\InvoiceEvidence;
 use App\Models\Product;
 use App\Models\User;
@@ -271,6 +272,18 @@ class InvoiceController extends Controller
             if (is_array($tagNames) && $tagNames !== []) {
                 app(\App\Services\TagService::class)->attach($invoice, $tagNames, $request->user()?->id);
             }
+
+            // Record the creation in the chatter History feed — the feed
+            // otherwise started at the first status change, so an invoice's
+            // "created at" was missing entirely.
+            $this->activityService->log(
+                $invoice,
+                InvoiceActivityLog::EVENT_CREATED,
+                [
+                    'invoice_number' => $invoice->invoice_number,
+                    'total' => (float) $invoice->total,
+                ],
+            );
 
             // When the tenant requires approval, submitting for review is part
             // of the create action — the operator should never have to trigger
@@ -687,6 +700,11 @@ class InvoiceController extends Controller
             ], 422);
         }
 
+        // Snapshot the editable fields so the chatter History feed can say what
+        // actually changed. Before this, an edit was invisible in the feed —
+        // only status transitions were recorded.
+        $beforeHeader = $invoice->getOriginal();
+
         DB::transaction(function () use ($invoice, $validated) {
             $lines = $validated['lines'] ?? null;
             unset($validated['lines']);
@@ -729,6 +747,30 @@ class InvoiceController extends Controller
                 }
             }
         });
+
+        $changedFields = [];
+        foreach (array_keys($validated) as $field) {
+            if (! array_key_exists($field, $beforeHeader)) {
+                continue;
+            }
+            if ((string) $beforeHeader[$field] !== (string) ($validated[$field] ?? '')) {
+                $changedFields[] = $field;
+            }
+        }
+
+        $linesReplaced = array_key_exists('lines', (array) ($request->all()));
+        if ($changedFields !== [] || $linesReplaced) {
+            $this->activityService->log(
+                $invoice->fresh(),
+                InvoiceActivityLog::EVENT_UPDATED,
+                [
+                    'invoice_number' => $invoice->invoice_number,
+                    'fields' => $changedFields === []
+                        ? 'line items'
+                        : implode(', ', $changedFields).($linesReplaced ? ', line items' : ''),
+                ],
+            );
+        }
 
         return response()->json($invoice->fresh(['customer', 'lines', 'doctor', 'requestor', 'buyer', 'billingContact', 'shippingContact']));
     }

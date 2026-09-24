@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/select'
 import { formatDate } from '@/lib/utils'
 import api from '@/lib/api'
+import { linkableRefs, refLabel, refRoute, resolveNotificationTarget } from '@/lib/notificationLinks'
 import type { NotificationItem } from '@/components/layout/NotificationBell'
 
 const formatRelativeTime = (iso: string | null) => {
@@ -88,11 +89,8 @@ export default function NotificationsPage() {
 
   const handleClick = (item: NotificationItem) => {
     if (!item.read_at) markReadMutation.mutate(item.id)
-    const data = item.data || {}
-    if (data.invoice_id) navigate(`/invoices/${data.invoice_id}`)
-    else if (data.subject_type && data.subject_id && String(data.subject_type).includes('Invoice')) {
-      navigate(`/invoices/${data.subject_id}`)
-    }
+    const target = resolveNotificationTarget(item.data)
+    if (target) navigate(target.route)
   }
 
   return (
@@ -202,18 +200,49 @@ export default function NotificationsPage() {
                       </div>
                     </div>
                     <p className="text-sm text-muted-foreground whitespace-pre-wrap">{item.body}</p>
+                    {(() => {
+                      const refs = linkableRefs(item.data)
+                      if (refs.length === 0) return null
+                      return (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {refs.map((ref) => (
+                            <button
+                              key={`${ref.type}:${ref.id}`}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                if (!item.read_at) markReadMutation.mutate(item.id)
+                                const route = refRoute(ref)
+                                if (route) navigate(route)
+                              }}
+                              className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                            >
+                              <Icon icon="solar:link-bold" className="h-3 w-3" />
+                              {refLabel(ref)}
+                            </button>
+                          ))}
+                        </div>
+                      )
+                    })()}
                     <div className="flex items-center gap-2 pt-1">
                       <Badge variant="outline" className="text-[10px]">
                         {item.event}
                       </Badge>
+                      {/* `status` tracks the MAIL leg only — the row itself is
+                          the in-app notification and is always delivered. Label it
+                          accordingly and explain the reason on hover, so a
+                          non-deliverable recipient doesn't read as a failure. */}
                       <Badge
                         variant={
                           item.status === 'sent' ? 'secondary' :
                           item.status === 'failed' ? 'destructive' : 'outline'
                         }
                         className="text-[10px]"
+                        title={item.error || undefined}
                       >
-                        {item.status}
+                        {item.status === 'sent' ? 'mail sent'
+                          : item.status === 'failed' ? 'mail failed'
+                          : item.status === 'skipped' ? 'mail skipped'
+                          : 'sending…'}
                       </Badge>
                       {item.sent_at && (
                         <span className="text-[10px] text-muted-foreground">

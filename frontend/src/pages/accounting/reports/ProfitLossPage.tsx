@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -72,10 +73,9 @@ export default function ProfitLossPage() {
             Show company's financial performance
           </p>
         </div>
-        <Button onClick={() => navigate('/accounting')}>
-          <Icon icon="solar:arrow-left-linear" className="w-4 h-4 mr-2" />
+        <HeaderActionButton icon="solar:arrow-left-linear" onClick={() => navigate('/accounting')}>
           Back to Accounting
-        </Button>
+        </HeaderActionButton>
       </div>
 
       {/* Filters */}
@@ -100,10 +100,9 @@ export default function ProfitLossPage() {
             />
           </div>
           <div className="flex items-end gap-2">
-            <Button onClick={() => window.print()} variant="outline" className="flex-1">
-              <Icon icon="solar:printer-linear" className="w-4 h-4 mr-2" />
+            <HeaderActionButton icon="solar:printer-linear" onClick={() => window.print()} variant="outline" className="flex-1">
               Print
-            </Button>
+            </HeaderActionButton>
           </div>
         </div>
 

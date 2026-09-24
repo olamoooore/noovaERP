@@ -1,8 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Icon } from '@iconify/react'
 import { Link } from 'react-router-dom'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -15,6 +13,7 @@ import {
 } from '@/components/ui/select'
 import { formatDateTime } from '@/lib/utils'
 import api from '@/lib/api'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 
 interface Warehouse {
   id: number
@@ -75,18 +74,16 @@ export function StockMovementsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Stock Movements</h1>
         <div className="flex gap-2">
-          <Button variant="outline" asChild>
+          <HeaderActionButton icon="solar:minus-circle-bold" variant="outline" asChild>
             <Link to="/inventory/operations">
-              <Icon icon="solar:minus-circle-bold" className="mr-2 h-4 w-4" />
               Stock Out
             </Link>
-          </Button>
-          <Button asChild>
+          </HeaderActionButton>
+          <HeaderActionButton icon="solar:add-circle-bold" asChild>
             <Link to="/inventory/operations">
-              <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
               Stock In
             </Link>
-          </Button>
+          </HeaderActionButton>
         </div>
       </div>
 

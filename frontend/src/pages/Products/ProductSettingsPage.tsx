@@ -1,13 +1,12 @@
 import { Link } from 'react-router-dom'
-import { Icon } from '@iconify/react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Button } from '@/components/ui/button'
 import { CategoryManager } from '@/pages/Products/CategoryManager'
 import { UnitManager } from '@/pages/Products/UnitManager'
 import { AttributeManager } from '@/pages/Products/AttributeManager'
 import { FeatureManager } from '@/pages/Products/FeatureManager'
 import { MetaManager } from '@/pages/Products/MetaManager'
 import { BrandManager } from '@/pages/Products/BrandManager'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 
 export function ProductSettingsPage() {
   return (
@@ -20,12 +19,11 @@ export function ProductSettingsPage() {
           </div>
         </div>
 
-        <Button variant="secondary" asChild>
+        <HeaderActionButton icon="solar:arrow-left-bold" variant="secondary" asChild>
           <Link to="/products">
-            <Icon icon="solar:arrow-left-bold" className="mr-2 h-4 w-4" />
             Back to Products
           </Link>
-        </Button>
+        </HeaderActionButton>
       </div>
 
       <Tabs defaultValue="categories" className="w-full">

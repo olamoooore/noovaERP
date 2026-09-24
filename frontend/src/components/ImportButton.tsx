@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
 import {
   Dialog,
   DialogContent,
@@ -17,7 +18,6 @@ interface ImportButtonProps {
   importType: 'chart-of-accounts' | 'journal-entries' | 'vendor-bills' | 'payments' | 'customers' | 'vendors' | 'products';
   onImportComplete?: () => void;
   variant?: 'default' | 'outline' | 'ghost';
-  size?: 'default' | 'sm' | 'lg';
 }
 
 const LEGACY_IMPORT_TYPES = new Set(['journal-entries', 'vendor-bills']);
@@ -26,7 +26,6 @@ export const ImportButton: React.FC<ImportButtonProps> = ({
   importType,
   onImportComplete,
   variant = 'outline',
-  size = 'default',
 }) => {
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -211,10 +210,9 @@ export const ImportButton: React.FC<ImportButtonProps> = ({
 
   return (
     <>
-      <Button variant={variant} size={size} onClick={() => setOpen(true)}>
-        <Icon icon="solar:import-bold-duotone" className="h-4 w-4 mr-2" />
+      <HeaderActionButton variant={variant} icon="solar:import-bold-duotone" onClick={() => setOpen(true)}>
         Import
-      </Button>
+      </HeaderActionButton>
 
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent className="max-w-md" enableFullscreen>

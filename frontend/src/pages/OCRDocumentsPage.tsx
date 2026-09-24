@@ -1,11 +1,10 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Icon } from '@iconify/react'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DocumentUpload } from '@/components/ocr/DocumentUpload'
 import { DocumentList } from '@/components/ocr/DocumentList'
 import api from '@/lib/api'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 
 export function OCRDocumentsPage() {
   const [showUpload, setShowUpload] = useState(false)
@@ -38,10 +37,9 @@ export function OCRDocumentsPage() {
             Upload and process invoices and receipts automatically
           </p>
         </div>
-        <Button onClick={() => setShowUpload(true)}>
-          <Icon icon="solar:upload-bold" className="mr-2 h-4 w-4" />
+        <HeaderActionButton icon="solar:upload-bold" onClick={() => setShowUpload(true)}>
           Upload Documents
-        </Button>
+        </HeaderActionButton>
       </div>
 
       {showUpload && (

@@ -94,7 +94,6 @@ interface Props {
   /** Numeric/string subject id */
   subjectId: number | string
   /** Display name of the document (shown in the panel header) */
-  documentLabel?: string
   /** When true the panel hides the log-message composer (read-only context) */
   readOnly?: boolean
   /** Optional className applied to the outer wrapper */
@@ -106,7 +105,6 @@ interface Props {
 export function ChatterPanel({
   subjectType,
   subjectId,
-  documentLabel,
   readOnly = false,
   className = '',
 }: Props) {
@@ -196,18 +194,12 @@ export function ChatterPanel({
   }
 
   return (
-    <div className={`flex h-full flex-col rounded-md border bg-card ${className}`}>
-      {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Icon icon="solar:chat-round-dots-bold-duotone" className="h-5 w-5 text-primary" />
-          <h3 className="text-sm font-semibold">Chatter</h3>
-          {documentLabel && (
-            <span className="text-xs text-muted-foreground">— {documentLabel}</span>
-          )}
-        </div>
-        {isLoading && <span className="text-xs text-muted-foreground">Loading…</span>}
-      </div>
+    <div className={`flex h-full flex-col overflow-hidden rounded-xl border bg-card ${className}`}>
+      {/* The surrounding dock/dialog owns the title bar — an extra header here
+          rendered a second "Chatter — <doc>" row directly beneath it. */}
+      {isLoading && (
+        <div className="border-b px-4 py-1.5 text-xs text-muted-foreground">Loading…</div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 border-b px-2 py-2">
@@ -345,6 +337,14 @@ function LogItem({ entry }: { entry: ChatterLogEntry }) {
   const icon = eventIcons[entry.event] ?? eventIcons.updated
   const color = eventColors[entry.event] ?? eventColors.updated
 
+  // Customer-portal actions have no platform user behind them; the producer
+  // records the person's name so the row does not read "System".
+  const actorName =
+    entry.actor?.name
+    || (entry.properties?.uploaded_by_name as string | undefined)
+    || (entry.properties?.signer_name as string | undefined)
+    || 'System'
+
   // Internal IDs (message_id, attachment_id, etc.) and the activity_type
   // are useful to the backend but not to a human reading the log.
   // Filter them out so the log row shows just the description + a clean
@@ -356,6 +356,9 @@ function LogItem({ entry }: { entry: ChatterLogEntry }) {
     'activity_type',
     'sales_order_id',
     'sales_order_number',
+    // Used to attribute the entry to a non-user uploader instead.
+    'uploaded_by_name',
+    'signer_name',
     'unlinked_sales_order_id',
     'unlinked_sales_order_number',
   ])
@@ -379,7 +382,7 @@ function LogItem({ entry }: { entry: ChatterLogEntry }) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium">{entry.actor?.name ?? 'System'}</span>
+          <span className="text-sm font-medium">{actorName}</span>
           <span className="text-xs text-muted-foreground">{formatDateTime(entry.created_at)}</span>
         </div>
         <p className="text-sm text-foreground/80 mt-0.5">
@@ -407,6 +410,8 @@ function humanPropLabel(key: string): string {
 }
 
 function MessageItem({ entry }: { entry: ChatterMessageEntry }) {
+  const actorName = entry.actor?.name ?? 'System'
+
   return (
     <div className="flex gap-3 rounded-md bg-muted/40 p-3">
       <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700">
@@ -414,7 +419,7 @@ function MessageItem({ entry }: { entry: ChatterMessageEntry }) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium">{entry.actor?.name ?? 'System'}</span>
+          <span className="text-sm font-medium">{actorName}</span>
           <span className="text-xs text-muted-foreground">{formatDateTime(entry.created_at)}</span>
         </div>
         <p className="mt-1 whitespace-pre-wrap text-sm">{entry.body}</p>
@@ -482,6 +487,11 @@ function AttachmentItem({
           {attachment.filename}
         </span>
         <span className="shrink-0 text-xs text-muted-foreground">{formatBytes(attachment.size)}</span>
+        {(attachment.uploaded_by?.name || attachment.uploaded_by_name) && (
+          <span className="shrink-0 text-xs text-muted-foreground">
+            · {attachment.uploaded_by?.name || attachment.uploaded_by_name}
+          </span>
+        )}
       </div>
 
       <div className="flex shrink-0 items-center gap-1">

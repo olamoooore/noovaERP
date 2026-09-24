@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -60,10 +61,9 @@ export function CustomerBonusSchemesPage() {
           <p className="text-muted-foreground mt-1">Assign bonus schemes to eligible customers</p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => navigate('/sales/customer-bonus-schemes/create')}>
-            <Icon icon="solar:add-circle-bold-duotone" className="mr-2 h-4 w-4" />
+          <HeaderActionButton icon="solar:add-circle-bold-duotone" onClick={() => navigate('/sales/customer-bonus-schemes/create')}>
             Assign Scheme
-          </Button>
+          </HeaderActionButton>
         </div>
       </div>
 

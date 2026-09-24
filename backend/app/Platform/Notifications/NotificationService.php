@@ -44,15 +44,30 @@ class NotificationService implements NotificationServiceContract
             'sent_at' => null,
         ]);
 
+        // The log row IS the in-app notification; `status` tracks the mail leg
+        // only. A recipient we cannot deliver to is not a notification
+        // failure: attempting the send produces a provider error
+        // ("Invalid `to` field") and brands a perfectly readable in-app
+        // notification as "failed".
+        $toEmail = $user->email;
+        if (! $toEmail || ! filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
+            $log->update([
+                'status' => 'skipped',
+                'error' => $toEmail
+                    ? "Mail not sent: \"{$toEmail}\" is not a deliverable email address."
+                    : 'Mail not sent: the user account has no email address.',
+            ]);
+
+            Log::warning('Notification mail skipped — undeliverable recipient', [
+                'user_id' => $user->id,
+                'event' => $event,
+                'email' => $toEmail,
+            ]);
+
+            return;
+        }
+
         try {
-            // Send mail
-            $toEmail = $user->email;
-            if (! $toEmail) {
-                $log->update(['status' => 'failed', 'error' => 'No email address']);
-
-                return;
-            }
-
             $subject = $log->subject;
             $body = $log->body;
 
@@ -156,7 +171,31 @@ class NotificationService implements NotificationServiceContract
             'approval.approved' => "Your approval request has been approved.\n\nType: {$type}\nApproved by: {$approvedBy}",
             'approval.rejected' => "Your approval request has been rejected.\n\nType: {$type}\nReason: {$reason}",
             'approval.escalated' => "An approval request has been escalated to you.\n\nType: {$type}\nAmount: {$amount}",
-            default => "Event: {$event}\n\n".json_encode($data, JSON_PRETTY_PRINT),
+            // Never dump the raw payload at the user: render it as readable
+            // "Label: value" lines (the bell previously showed raw JSON for
+            // any event without an explicit body).
+            default => $this->humanise($event, $data),
         };
+    }
+
+    /**
+     * Readable fallback body for events that do not supply their own.
+     */
+    private function humanise(string $event, array $data): string
+    {
+        $lines = ['Event: '.ucfirst(str_replace(['.', '_'], ' ', $event))];
+
+        foreach ($data as $key => $value) {
+            if (in_array($key, ['subject', 'body'], true)) {
+                continue;
+            }
+            if ($value === null || $value === '' || is_array($value) || is_object($value)) {
+                continue;
+            }
+
+            $lines[] = ucwords(str_replace('_', ' ', (string) $key)).': '.$value;
+        }
+
+        return implode("\n", $lines);
     }
 }

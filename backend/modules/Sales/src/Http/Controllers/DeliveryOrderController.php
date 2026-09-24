@@ -39,7 +39,46 @@ class DeliveryOrderController extends Controller
 
         $query->with(['customer', 'salesOrder', 'lines.product', 'invoice', 'quotation']);
 
-        return response()->json($query->paginate($request->per_page ?? 20));
+        $paginator = $query->paginate($request->per_page ?? 20);
+
+        // Tag each pending order with whose attention it needs, mirroring the
+        // invoice list: 'to_approve' when the current user is a configured
+        // reviewer, 'submitted' when they are the submitter/bystander. The list
+        // can then show a single contextual status badge instead of a bare
+        // "draft" for a document that is actually sitting in approval.
+        $this->annotateApprovalView($paginator, $request->user());
+
+        return response()->json($paginator);
+    }
+
+    /**
+     * Sets `approval_view` on each pending delivery order in the page.
+     */
+    private function annotateApprovalView($paginator, ?\App\Models\User $user): void
+    {
+        if (! $user || ! method_exists($paginator, 'getCollection')) {
+            return;
+        }
+
+        $currentUserId = (int) $user->id;
+        $reviewerIds = $this->deliveryService->resolveReviewers(null)->pluck('id');
+
+        foreach ($paginator->getCollection() as $order) {
+            if ($order->approval_status !== 'pending') {
+                continue;
+            }
+
+            // A delivery order enters approval at creation, so its submitter is
+            // the creator (confirmed_by is only set later, on confirmation).
+            $requestedBy = $order->created_by;
+            $isSubmitter = $requestedBy !== null && (int) $requestedBy === $currentUserId;
+            $isReviewer = $reviewerIds->contains($currentUserId);
+
+            $order->setAttribute(
+                'approval_view',
+                $isReviewer && ! $isSubmitter ? 'to_approve' : 'submitted'
+            );
+        }
     }
 
     public function export(Request $request)
@@ -187,6 +226,8 @@ class DeliveryOrderController extends Controller
                 $deliveryOrder = $this->deliveryService->createStandaloneDeliveryOrder($validated);
 
                 $this->attachTags($deliveryOrder, $validated['tags'] ?? [], $request->user()?->id);
+                $this->deliveryService->logCreated($deliveryOrder);
+                $this->deliveryService->notifyApprovers($deliveryOrder);
 
                 return response()->json([
                     'message' => 'Standalone delivery order created',
@@ -243,6 +284,8 @@ class DeliveryOrderController extends Controller
             $deliveryOrder = $this->deliveryService->createDeliveryOrder($order, $validated);
 
             $this->attachTags($deliveryOrder, $validated['tags'] ?? [], $request->user()?->id);
+            $this->deliveryService->logCreated($deliveryOrder);
+            $this->deliveryService->notifyApprovers($deliveryOrder);
 
             return response()->json([
                 'message' => 'Delivery order created',
@@ -288,6 +331,15 @@ class DeliveryOrderController extends Controller
         if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
         }
+
+        // `createdBy` serializes as `created_by`, which collides with (and
+        // shadows) the integer column of the same name — the JSON then sent a
+        // user object where an id was expected, and the UI's camelCase read
+        // found nothing. Expose them under explicit keys and drop the
+        // ambiguous relations so `created_by` / `confirmed_by` stay scalar ids.
+        $deliveryOrder->setRelation('created_by_user', $deliveryOrder->createdBy);
+        $deliveryOrder->setRelation('confirmed_by_user', $deliveryOrder->confirmedBy);
+        $deliveryOrder->unsetRelation('createdBy')->unsetRelation('confirmedBy');
 
         // Older quotation-origin deliveries may predate quotation_id. Resolve
         // their quotation through the linked sales order for display.
@@ -349,9 +401,14 @@ class DeliveryOrderController extends Controller
             'lines.*.expiry_date' => 'nullable|date',
         ]);
 
-        DB::transaction(function () use ($deliveryOrder, $validated) {
+        // Editable header fields — used to apply the update AND to describe it
+        // in the chatter History feed.
+        $headerFields = ['warehouse_id', 'delivery_date', 'expected_date', 'payment_terms', 'invoice_id', 'quotation_id', 'carrier', 'tracking_number', 'shipping_address', 'po_number', 'salesperson', 'attention_to', 'notes'];
+        $beforeHeader = $deliveryOrder->only($headerFields);
+        $linesReplaced = $request->has('lines');
+
+        DB::transaction(function () use ($deliveryOrder, $validated, $headerFields) {
             // Update header fields
-            $headerFields = ['warehouse_id', 'delivery_date', 'expected_date', 'payment_terms', 'invoice_id', 'quotation_id', 'carrier', 'tracking_number', 'shipping_address', 'po_number', 'salesperson', 'attention_to', 'notes'];
             foreach ($headerFields as $field) {
                 if (array_key_exists($field, $validated)) {
                     $deliveryOrder->{$field} = $validated[$field];
@@ -394,6 +451,15 @@ class DeliveryOrderController extends Controller
                 }
             }
         });
+
+        $afterHeader = $deliveryOrder->only($headerFields);
+        $changedFields = [];
+        foreach ($headerFields as $field) {
+            if ((string) ($beforeHeader[$field] ?? '') !== (string) ($afterHeader[$field] ?? '')) {
+                $changedFields[] = $field;
+            }
+        }
+        $this->deliveryService->logUpdated($deliveryOrder, $changedFields, $linesReplaced);
 
         return response()->json([
             'message' => 'Delivery order updated',
@@ -504,7 +570,10 @@ class DeliveryOrderController extends Controller
             );
 
             $delivery = null;
-            if (($validated['send_email'] ?? true) && $deliveryOrder->customer?->email) {
+            $emailError = null;
+            $recipient = $deliveryOrder->customer?->email;
+
+            if (($validated['send_email'] ?? true) && $recipient) {
                 $customerName = $deliveryOrder->customer->name ?: 'Sir/Madam';
                 $subject = "Delivery order {$deliveryOrder->delivery_order_number} — please sign and return";
                 $body = "Dear {$customerName},\n\n".
@@ -513,15 +582,38 @@ class DeliveryOrderController extends Controller
                     "{$link['url']}\n\n".
                     'Thank you for your business.';
 
-                \Illuminate\Support\Facades\Mail::raw($body, function ($message) use ($deliveryOrder, $subject) {
-                    $message->to($deliveryOrder->customer->email)->subject($subject);
-                });
+                try {
+                    // Send through the shared CustomerEmail mailable so this
+                    // goes out as HTML with the tenant's configured From —
+                    // sending the raw text body instead produced a bare-link
+                    // plain-text message that providers routinely filter.
+                    \Illuminate\Support\Facades\Mail::to($recipient)
+                        ->send(new \App\Mail\CustomerEmail($subject, $body));
 
-                $delivery = ['recipient' => $deliveryOrder->customer->email];
+                    $delivery = ['recipient' => $recipient];
+                } catch (\Throwable $e) {
+                    // The link is already valid — report the failure instead of
+                    // failing the whole action, so the operator can copy it.
+                    $emailError = $e->getMessage();
+                    Log::error('Delivery order customer email failed', [
+                        'delivery_order_id' => $deliveryOrder->id,
+                        'recipient' => $recipient,
+                        'error' => $emailError,
+                    ]);
+                }
+            }
+
+            $message = 'Customer link issued';
+            if ($delivery) {
+                $message .= ' and emailed';
+            } elseif ($emailError !== null) {
+                $message .= ' — email failed';
+            } elseif (! $recipient) {
+                $message .= ' (the customer has no email address)';
             }
 
             return response()->json([
-                'message' => 'Customer link issued'.($delivery ? ' and emailed' : ''),
+                'message' => $message,
                 'data' => [
                     ...$link,
                     'delivery' => $delivery,

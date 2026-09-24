@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { SalesDocumentExportMenu, type SalesExportColumn } from '@/components/sales/SalesDocumentExportMenu';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -525,10 +526,9 @@ export default function JournalEntriesPage() {
             Create and manage manual journal entries
           </p>
         </div>
-        <Button onClick={() => navigate('/accounting')}>
-          <Icon icon="solar:arrow-left-linear" className="w-4 h-4 mr-2" />
+        <HeaderActionButton icon="solar:arrow-left-linear" onClick={() => navigate('/accounting')}>
           Back to Accounting
-        </Button>
+        </HeaderActionButton>
       </div>
 
       {/* Tabs */}
@@ -551,22 +551,19 @@ export default function JournalEntriesPage() {
             <Input type="date" aria-label="From date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }} className="w-40" />
             <Input type="date" aria-label="To date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} className="w-40" />
             {canWrite && (
-              <Button variant="outline" onClick={() => navigate('/accounting/core/journal-entries/import')}>
-                <Icon icon="solar:import-bold-duotone" className="h-4 w-4 mr-2" />
+              <HeaderActionButton icon="solar:import-bold-duotone" variant="outline" onClick={() => navigate('/accounting/core/journal-entries/import')}>
                 Import CSV
-              </Button>
+              </HeaderActionButton>
             )}
             {canWrite && (
-              <Button variant="outline" onClick={() => navigate('/accounting/core/journals')}>
-                <Icon icon="solar:notebook-bold-duotone" className="h-4 w-4 mr-2" />
+              <HeaderActionButton icon="solar:notebook-bold-duotone" variant="outline" onClick={() => navigate('/accounting/core/journals')}>
                 Manage Journals
-              </Button>
+              </HeaderActionButton>
             )}
             {canWrite && (
-              <Button onClick={() => { resetForm(); setFormOpen(true); }}>
-                <Icon icon="solar:add-circle-linear" className="w-4 h-4 mr-2" />
+              <HeaderActionButton icon="solar:add-circle-linear" onClick={() => { resetForm(); setFormOpen(true); }}>
                 New Entry
-              </Button>
+              </HeaderActionButton>
             )}
           </div>
         </div>
@@ -688,12 +685,10 @@ export default function JournalEntriesPage() {
               <div className="flex items-center justify-between mt-4">
                 <p className="text-sm text-muted-foreground">Showing page {page} of {totalPages} ({totalRecords} entries)</p>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1}>
-                    <Icon icon="solar:arrow-left-bold" className="h-4 w-4 mr-1" />Previous
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages}>
-                    Next<Icon icon="solar:arrow-right-bold" className="h-4 w-4 ml-1" />
-                  </Button>
+                  <HeaderActionButton icon="solar:arrow-left-bold" variant="outline" size="sm" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1}>
+                  </HeaderActionButton>
+                  <HeaderActionButton icon="solar:arrow-right-bold" variant="outline" size="sm" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages}>
+                  </HeaderActionButton>
                 </div>
               </div>
             )}
@@ -783,10 +778,9 @@ export default function JournalEntriesPage() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>Entry Lines</Label>
-                <Button size="sm" variant="outline" onClick={addLine}>
-                  <Icon icon="solar:add-circle-linear" className="w-4 h-4 mr-2" />
+                <HeaderActionButton icon="solar:add-circle-linear" size="sm" variant="outline" onClick={addLine}>
                   Add Line
-                </Button>
+                </HeaderActionButton>
               </div>
               <div className="border rounded-lg overflow-hidden">
                 <Table>
@@ -966,10 +960,9 @@ export default function JournalEntriesPage() {
           )}
           <DialogFooter>
             {selectedEntry?.status === 'draft' && canWrite && (
-              <Button variant="outline" onClick={() => handleEdit(selectedEntry.id)}>
-                <Icon icon="solar:pen-linear" className="w-4 h-4 mr-2" />
+              <HeaderActionButton icon="solar:pen-linear" variant="outline" onClick={() => handleEdit(selectedEntry.id)}>
                 Edit Draft
-              </Button>
+              </HeaderActionButton>
             )}
             {selectedEntry?.status === 'draft' && canPost && (
               <Button

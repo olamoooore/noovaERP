@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import api from '@/lib/api'
 import { Button } from '@/components/ui/button'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -206,12 +207,11 @@ export function POSSettingsPage() {
             Configure your Point of Sale system — terminals, receipts, payment methods, and display options.
           </p>
         </div>
-        <Button variant="secondary" asChild>
+        <HeaderActionButton icon="solar:arrow-left-bold" variant="secondary" asChild>
           <Link to="/pos">
-            <Icon icon="solar:arrow-left-bold" className="mr-2 h-4 w-4" />
             Back to POS
           </Link>
-        </Button>
+        </HeaderActionButton>
       </div>
 
       {/* Tabs */}
@@ -522,10 +522,9 @@ function GeneralSettingsTab({
       </Card>
 
       <div className="flex justify-end">
-        <Button onClick={() => mutation.mutate(form)} disabled={mutation.isPending}>
-          {mutation.isPending && <Icon icon="svg-spinners:ring-resize" className="mr-2 h-4 w-4" />}
+        <HeaderActionButton icon="svg-spinners:ring-resize" onClick={() => mutation.mutate(form)} disabled={mutation.isPending}>
           Save General Settings
-        </Button>
+        </HeaderActionButton>
       </div>
     </div>
   )
@@ -700,10 +699,9 @@ function TerminalsTab({
           <h3 className="text-lg font-medium">POS Terminals</h3>
           <p className="text-sm text-muted-foreground">Manage your point-of-sale terminal devices.</p>
         </div>
-        <Button onClick={openCreate}>
-          <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
+        <HeaderActionButton icon="solar:add-circle-bold" onClick={openCreate}>
           {editorOpen ? 'New Terminal' : 'Add Terminal'}
-        </Button>
+        </HeaderActionButton>
       </div>
 
       <Card>
@@ -749,9 +747,8 @@ function TerminalsTab({
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(t)}>
-                          <Icon icon="solar:pen-bold" className="h-4 w-4" />
-                        </Button>
+                        <HeaderActionButton icon="solar:pen-bold" variant="ghost" size="icon" onClick={() => openEdit(t)}>
+                        </HeaderActionButton>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -930,10 +927,9 @@ function TerminalsTab({
               >
                 Cancel
               </Button>
-              <Button onClick={() => saveMutation.mutate()} disabled={!form.name || saveMutation.isPending}>
-                {saveMutation.isPending && <Icon icon="svg-spinners:ring-resize" className="mr-2 h-4 w-4" />}
+              <HeaderActionButton icon="svg-spinners:ring-resize" onClick={() => saveMutation.mutate()} disabled={!form.name || saveMutation.isPending}>
                 {editing ? 'Update Terminal' : 'Create Terminal'}
-              </Button>
+              </HeaderActionButton>
             </div>
           </CardContent>
         </Card>
@@ -1040,10 +1036,9 @@ function PaymentMethodsTab({
           <h3 className="text-lg font-medium">Payment Methods</h3>
           <p className="text-sm text-muted-foreground">Configure payment options available at the POS.</p>
         </div>
-        <Button onClick={openCreate}>
-          <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
+        <HeaderActionButton icon="solar:add-circle-bold" onClick={openCreate}>
           Add Method
-        </Button>
+        </HeaderActionButton>
       </div>
 
       <Card>
@@ -1099,9 +1094,8 @@ function PaymentMethodsTab({
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(m)}>
-                          <Icon icon="solar:pen-bold" className="h-4 w-4" />
-                        </Button>
+                        <HeaderActionButton icon="solar:pen-bold" variant="ghost" size="icon" onClick={() => openEdit(m)}>
+                        </HeaderActionButton>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -1240,10 +1234,9 @@ function PaymentMethodsTab({
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={() => saveMutation.mutate()} disabled={!form.name || !form.code || saveMutation.isPending}>
-              {saveMutation.isPending && <Icon icon="svg-spinners:ring-resize" className="mr-2 h-4 w-4" />}
+            <HeaderActionButton icon="svg-spinners:ring-resize" onClick={() => saveMutation.mutate()} disabled={!form.name || !form.code || saveMutation.isPending}>
               {editing ? 'Update' : 'Create'}
-            </Button>
+            </HeaderActionButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1390,10 +1383,9 @@ function ReceiptSettingsTab({
       </Card>
 
       <div className="flex justify-end">
-        <Button onClick={() => mutation.mutate(form)} disabled={mutation.isPending}>
-          {mutation.isPending && <Icon icon="svg-spinners:ring-resize" className="mr-2 h-4 w-4" />}
+        <HeaderActionButton icon="svg-spinners:ring-resize" onClick={() => mutation.mutate(form)} disabled={mutation.isPending}>
           Save Receipt Settings
-        </Button>
+        </HeaderActionButton>
       </div>
     </div>
   )
@@ -1541,10 +1533,9 @@ function BarcodeSettingsTab({
       </Card>
 
       <div className="flex justify-end">
-        <Button onClick={() => mutation.mutate(form)} disabled={mutation.isPending}>
-          {mutation.isPending && <Icon icon="svg-spinners:ring-resize" className="mr-2 h-4 w-4" />}
+        <HeaderActionButton icon="svg-spinners:ring-resize" onClick={() => mutation.mutate(form)} disabled={mutation.isPending}>
           Save Barcode Settings
-        </Button>
+        </HeaderActionButton>
       </div>
     </div>
   )

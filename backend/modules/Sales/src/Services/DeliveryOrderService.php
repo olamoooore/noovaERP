@@ -18,12 +18,107 @@ use Modules\Sales\Models\SalesOrderLine;
 
 class DeliveryOrderService
 {
+    /** Record that the delivery order was created. */
+    public function logCreated(DeliveryOrder $deliveryOrder): void
+    {
+        $this->logChatter(
+            $deliveryOrder,
+            'created',
+            "Created delivery order {$deliveryOrder->delivery_order_number}",
+            [
+                'status' => $deliveryOrder->status,
+                'total' => (float) $deliveryOrder->total,
+                'lines' => $deliveryOrder->lines()->count(),
+            ],
+        );
+    }
+
+    /**
+     * Tell the configured approvers that a delivery order is waiting on them.
+     *
+     * Mirrors InvoiceApprovalService::notifyApprovers. Until this existed the
+     * delivery-order flow dispatched NOTHING, so a DO that required approval sat
+     * silently in `pending` and the only "requires approval" notifications a
+     * reviewer ever saw were the invoice ones.
+     */
+    public function notifyApprovers(DeliveryOrder $deliveryOrder): void
+    {
+        if ($deliveryOrder->approval_status !== 'pending') {
+            return;
+        }
+
+        try {
+            $submitterId = Auth::id();
+            $reviewers = $this->resolveReviewers($submitterId);
+
+            if ($reviewers->isEmpty()) {
+                Log::warning('Delivery order approval: no reviewers configured', [
+                    'delivery_order_id' => $deliveryOrder->id,
+                ]);
+
+                return;
+            }
+
+            $notificationService = app(\App\Platform\Notifications\NotificationService::class);
+            $amount = number_format((float) $deliveryOrder->total, 2);
+            $customer = $deliveryOrder->customer?->name;
+            $number = $deliveryOrder->delivery_order_number;
+
+            foreach ($reviewers as $reviewer) {
+                $notificationService->dispatch('approval.requested', $reviewer, array_merge([
+                    'subject' => "Delivery order {$number} requires approval",
+                    'body' => "Delivery order {$number}"
+                        .($customer ? " for {$customer}" : '')
+                        ." totalling {$amount} requires your approval.",
+                    'type' => 'delivery_order_approval',
+                    'amount' => (float) $deliveryOrder->total,
+                    'delivery_order_id' => $deliveryOrder->id,
+                    'delivery_order_number' => $number,
+                    'requested_by' => Auth::user()?->name,
+                ], \App\Platform\Notifications\NotificationReferences::forDeliveryOrder($deliveryOrder)));
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to notify approvers for delivery order approval', [
+                'delivery_order_id' => $deliveryOrder->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Record that draft header fields and/or the line items were edited.
+     * No-ops when nothing actually changed, so opening and saving the edit
+     * form does not spam the history.
+     */
+    public function logUpdated(DeliveryOrder $deliveryOrder, array $changedFields, bool $linesReplaced): void
+    {
+        if ($changedFields === [] && ! $linesReplaced) {
+            return;
+        }
+
+        $this->logChatter(
+            $deliveryOrder,
+            'updated',
+            "Updated delivery order {$deliveryOrder->delivery_order_number}",
+            [
+                'fields' => $changedFields === []
+                    ? 'line items'
+                    : implode(', ', $changedFields).($linesReplaced ? ', line items' : ''),
+            ],
+        );
+    }
+
     /**
      * Mirror a delivery-order lifecycle transition into the polymorphic
      * chatter feed so the document's History tab reflects what happened.
      * Never throws — a logging failure must not break the document flow.
      */
-    private function logChatter(
+    /**
+     * Record a lifecycle event in the document's chatter History feed.
+     * Public so the controller can log creation/edits, which happen outside
+     * this service.
+     */
+    public function logChatter(
         DeliveryOrder $deliveryOrder,
         string $event,
         string $description,

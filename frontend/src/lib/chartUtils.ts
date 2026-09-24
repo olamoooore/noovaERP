@@ -7,9 +7,10 @@
  * Format number as currency
  */
 export const formatCurrency = (value: number, currency: string = 'USD'): string => {
+  const code = typeof currency === 'string' && /^[A-Za-z]{3}$/.test(currency) ? currency : 'USD';
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency,
+    currency: code,
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(value);
@@ -50,9 +51,13 @@ export const formatCompactNumber = (value: number): string => {
  */
 export const formatCompactCurrency = (value: number, currency: string = 'USD'): string => {
   if (!Number.isFinite(value)) return '';
+  // Recharts calls tick formatters as (value, index); a bare function reference
+  // would otherwise pass the index as the currency code and throw
+  // "Invalid currency code : 4".
+  const code = typeof currency === 'string' && /^[A-Za-z]{3}$/.test(currency) ? currency : 'USD';
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency,
+    currency: code,
     notation: 'compact',
     maximumFractionDigits: 1,
   }).format(value);
@@ -69,7 +74,11 @@ export const makeAxisTickFormatter = (
 ): ((value: number) => string) => {
   const compact = Math.abs(maxValue) >= 10000;
   if (mode === 'currency') {
-    return compact ? formatCompactCurrency : (v: number) => formatCurrency(v);
+    // Always wrap: the returned function is handed straight to Recharts, which
+    // invokes formatters with (value, index).
+    return compact
+      ? (v: number) => formatCompactCurrency(v, 'USD')
+      : (v: number) => formatCurrency(v);
   }
   if (mode === 'percent') {
     return (v: number) => (Number.isFinite(v) ? `${formatCompactNumber(v)}%` : '');

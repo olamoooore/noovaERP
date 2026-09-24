@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -581,14 +582,12 @@ export function BankReconciliationPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={() => navigate(`/accounting/core/reconciliation/import-history${selectedBankAccount ? `?account=${selectedBankAccount}` : ''}`)} variant="outline">
-            <Icon icon="solar:document-add-bold" className="mr-2 h-4 w-4" />
+          <HeaderActionButton icon="solar:document-add-bold" onClick={() => navigate(`/accounting/core/reconciliation/import-history${selectedBankAccount ? `?account=${selectedBankAccount}` : ''}`)} variant="outline">
             Import History
-          </Button>
-          <Button onClick={() => navigate('/accounting/core/reconciliation/history')} variant="outline">
-            <Icon icon="solar:history-bold" className="mr-2 h-4 w-4" />
+          </HeaderActionButton>
+          <HeaderActionButton icon="solar:history-bold" onClick={() => navigate('/accounting/core/reconciliation/history')} variant="outline">
             View History
-          </Button>
+          </HeaderActionButton>
         </div>
       </div>
 
@@ -1084,10 +1083,9 @@ export function BankReconciliationPage() {
           <div className="p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">Transactions</h2>
-              <Button onClick={() => setShowAddTransaction(true)} size="sm">
-                <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
+              <HeaderActionButton icon="solar:add-circle-bold" onClick={() => setShowAddTransaction(true)} size="sm">
                 Add Adjusting Entry
-              </Button>
+              </HeaderActionButton>
             </div>
 
             {/* Filters */}

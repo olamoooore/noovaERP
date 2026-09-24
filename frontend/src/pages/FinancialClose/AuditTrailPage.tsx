@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Badge } from '@/components/ui/badge'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -59,10 +60,9 @@ export default function AuditTrailPage() {
           <h1 className="text-3xl font-bold">Audit Trail</h1>
           <p className="text-muted-foreground mt-1">Track all actions and changes across financial close</p>
         </div>
-        <Button variant="outline" onClick={() => refetch()}>
-          <Icon icon="solar:refresh-bold" className="h-4 w-4 mr-1" />
+        <HeaderActionButton icon="solar:refresh-bold" variant="outline" onClick={() => refetch()}>
           Refresh
-        </Button>
+        </HeaderActionButton>
       </div>
 
       {statsData && (

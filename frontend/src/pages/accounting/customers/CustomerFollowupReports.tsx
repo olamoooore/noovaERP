@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -62,14 +63,12 @@ export const CustomerFollowupReports: React.FC = () => {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline">
-            <Icon icon="solar:printer-bold-duotone" className="h-4 w-4 mr-2" />
+          <HeaderActionButton icon="solar:printer-bold-duotone" variant="outline">
             Print Report
-          </Button>
-          <Button variant="outline">
-            <Icon icon="solar:export-bold-duotone" className="h-4 w-4 mr-2" />
+          </HeaderActionButton>
+          <HeaderActionButton icon="solar:export-bold-duotone" variant="outline">
             Export
-          </Button>
+          </HeaderActionButton>
         </div>
       </div>
 
@@ -142,10 +141,9 @@ export const CustomerFollowupReports: React.FC = () => {
               <option value="90">61-90 Days</option>
               <option value="90plus">90+ Days</option>
             </select>
-            <Button variant="outline">
-              <Icon icon="solar:refresh-bold-duotone" className="h-4 w-4 mr-2" />
+            <HeaderActionButton icon="solar:refresh-bold-duotone" variant="outline">
               Refresh
-            </Button>
+            </HeaderActionButton>
           </div>
         </CardContent>
       </Card>
@@ -270,10 +268,9 @@ export const CustomerFollowupReports: React.FC = () => {
                         </p>
                       </div>
                     </div>
-                    <Button size="sm" variant="destructive">
-                      <Icon icon="solar:letter-bold-duotone" className="h-4 w-4 mr-2" />
+                    <HeaderActionButton icon="solar:letter-bold-duotone" size="sm" variant="destructive">
                       Send Reminder
-                    </Button>
+                    </HeaderActionButton>
                   </div>
                 ))}
               {agedReceivables
@@ -290,10 +287,9 @@ export const CustomerFollowupReports: React.FC = () => {
                         </p>
                       </div>
                     </div>
-                    <Button size="sm" variant="outline">
-                      <Icon icon="solar:phone-bold-duotone" className="h-4 w-4 mr-2" />
+                    <HeaderActionButton icon="solar:phone-bold-duotone" size="sm" variant="outline">
                       Call Customer
-                    </Button>
+                    </HeaderActionButton>
                   </div>
                 ))}
             </div>
