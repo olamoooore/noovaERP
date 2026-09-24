@@ -68,6 +68,10 @@ const FIELD_WIDTH_PT: Record<FieldKind, number> = { signature: 150, date: 112, n
 // fine-tunes alignment with the underline.
 const FIELD_Y_OFFSET_PX = -67
 
+// Delivery orders print their signing row lower than invoices; nudge the
+// detected fields down so they sit on the printed line.
+const FIELD_Y_OFFSET_DO_PX = 60
+
 function todayLocal(): string {
   const d = new Date()
   const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
@@ -178,15 +182,17 @@ function isSignatureLabel(text: string): boolean {
   )
 }
 
-async function detectFields(page: any, pageNumber: number, viewport: any): Promise<FieldRect[]> {
+async function detectFields(page: any, pageNumber: number, viewport: any, documentType?: string): Promise<FieldRect[]> {
   const content = await page.getTextContent()
   let signatureLabel: any = null
+  let deliveredByLabel: any = null
   const dates: any[] = []
 
   for (const item of content.items) {
     const text = (item.str || '').trim()
     if (!text) continue
     if (signatureLabel === null && isSignatureLabel(text)) signatureLabel = item
+    if (deliveredByLabel === null && text.includes('Delivered by')) deliveredByLabel = item
     if (text === 'Date' || text === 'Date:') dates.push(item)
   }
 
@@ -201,7 +207,8 @@ async function detectFields(page: any, pageNumber: number, viewport: any): Promi
     const labelWidth = item.width || 0
     const widthPt = Math.max(FIELD_WIDTH_PT[kind], labelWidth + 12)
     const heightPt = 32
-    const topFromTopPt = pageHeightPt - (yFromBottom - 8) + FIELD_Y_OFFSET_PX / scale
+    const offsetPx = FIELD_Y_OFFSET_PX + (documentType === 'delivery_order' ? FIELD_Y_OFFSET_DO_PX : 0)
+    const topFromTopPt = pageHeightPt - (yFromBottom - 8) + offsetPx / scale
 
     return {
       kind,
@@ -224,8 +231,18 @@ async function detectFields(page: any, pageNumber: number, viewport: any): Promi
     fields.push(make(date, 'date'))
   }
 
+  // Delivery orders carry a second signature line for the courier ("Delivered
+  // by"). It uses the same signature as the receiver.
+  if (deliveredByLabel !== null) {
+    fields.push(make(deliveredByLabel, 'signature'))
+  }
+
   // Customer-name box to the right of the signature, sized to the room before
-  // the Date column (generous on invoices, tight on delivery orders).
+  // the Date column. Delivery orders don't use it (their row has no room).
+  if (documentType === 'delivery_order') {
+    return fields
+  }
+
   const signatureField = fields[0]
   const dateField = fields.find((field) => field.kind === 'date')
   const nameXpt = signatureField.pdf.x + signatureField.pdf.width + 8
@@ -308,7 +325,7 @@ export function EsignPage() {
         canvas.height = vpRender.height
         await page.render({ canvasContext: canvas.getContext('2d')!, viewport: vpRender }).promise
 
-        const fields = await detectFields(page, pageNo, vpLogical)
+        const fields = await detectFields(page, pageNo, vpLogical, data?.request.document_type)
         rendered.push({
           url: canvas.toDataURL('image/png'),
           width: vpLogical.width,

@@ -363,6 +363,22 @@ export function InvoiceDetailPage() {
     },
   })
 
+  const [viewingEvidence, setViewingEvidence] = useState<number | null>(null)
+
+  const viewEvidence = async (evidenceId: number) => {
+    setViewingEvidence(evidenceId)
+    try {
+      const response = await api.get(`/invoices/${id}/evidence/${evidenceId}/download`, { responseType: 'blob' })
+      const url = URL.createObjectURL(response.data)
+      window.open(url, '_blank', 'noopener')
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch {
+      toast({ variant: 'destructive', title: 'Could not open the evidence file' })
+    } finally {
+      setViewingEvidence(null)
+    }
+  }
+
   const getStatusBadge = (status: string, approvalStatus?: string) => {
     const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
       draft: { variant: 'secondary', label: 'Draft' },
@@ -1253,6 +1269,18 @@ export function InvoiceDetailPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    {e.file_name && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 rounded-full px-3 text-xs"
+                        onClick={() => viewEvidence(e.id)}
+                        disabled={viewingEvidence === e.id}
+                      >
+                        <Icon icon="solar:eye-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
+                        {viewingEvidence === e.id ? 'Opening…' : 'View'}
+                      </Button>
+                    )}
                     {e.confirmed_at ? (
                       <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
                         <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4" />

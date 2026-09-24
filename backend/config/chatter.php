@@ -68,7 +68,10 @@ return [
     |
     */
     'subject_permissions' => [
-        \App\Models\Invoice::class => 'accounting.view',
+        // Must mirror the permission that actually gates reading the record:
+        // invoices are gated by `invoices.view` (not `accounting.view`), so a
+        // Sales user who can open an invoice can read its chatter too.
+        \App\Models\Invoice::class => 'invoices.view',
         \App\Models\Bill::class => 'accounting.view',
         \App\Models\Payment::class => 'accounting.view',
         \App\Models\JournalEntry::class => 'accounting.view',

@@ -1041,6 +1041,38 @@ class InvoiceController extends Controller
         }
     }
 
+    /**
+     * Stream a piece of invoice evidence (customer signature, PO, delivery
+     * note, payment proof) so the operator can view it directly.
+     */
+    public function downloadEvidence(Request $request, $invoiceId, $evidenceId)
+    {
+        $invoice = Invoice::find($invoiceId);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        $evidence = InvoiceEvidence::where('invoice_id', $invoice->id)->find($evidenceId);
+
+        if (! $evidence || ! $evidence->file_path) {
+            return response()->json(['message' => 'Evidence not found'], 404);
+        }
+
+        foreach (['public', 'local'] as $disk) {
+            if (\Illuminate\Support\Facades\Storage::disk($disk)->exists($evidence->file_path)) {
+                return \Illuminate\Support\Facades\Storage::disk($disk)->response(
+                    $evidence->file_path,
+                    $evidence->file_name ?: basename($evidence->file_path),
+                    ['Content-Type' => $evidence->mime_type ?: 'application/octet-stream'],
+                    'inline',
+                );
+            }
+        }
+
+        return response()->json(['message' => 'Evidence file is no longer available.'], 404);
+    }
+
     public function createPaymentLink(Request $request, $id)
     {
         $invoice = is_object($id) && $id instanceof Invoice ? $id : Invoice::find($id);

@@ -253,10 +253,12 @@ final class DefaultTemplates
                         ['type' => 'text', 'content' => '<div style="font-size:9px;color:#6b7280;">Delivered by (Signature):</div><div style="border-top:1px solid #9ca3af;margin-top:40px;width:200px;"></div>'],
                     ]],
                     ['type' => 'spacer', 'height' => 8],
-                    ['type' => 'footer', 'children' => [
-                        ['type' => 'divider'],
-                        ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => '{{ company.name }} · {{ company.email }} · {{ company.phone }}'],
-                    ]],
+                    // Plain blocks rather than a `footer` block: the renderer
+                    // pins a `footer` + `totals` pair to the end of the document
+                    // (right for invoices), which shoved the delivery order's
+                    // Subtotal/Total *below* the signature row.
+                    ['type' => 'divider'],
+                    ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => '{{ company.name }} · {{ company.email }} · {{ company.phone }}'],
                 ],
             ],
         ];
@@ -297,16 +299,6 @@ final class DefaultTemplates
                         ['label' => 'Closing Balance', 'field' => 'totals.closing_balance', 'format' => 'money', 'bold' => true],
                     ]],
                     ['type' => 'spacer', 'height' => 8],
-                    ['type' => 'text', 'content' => '<b style="color:#6b7280;font-size:9px;text-transform:uppercase;">Aging Summary</b>'],
-                    ['type' => 'columns', 'gap' => 4, 'children' => [
-                        ['type' => 'text', 'align' => 'center', 'content' => '<div style="font-size:8px;color:#6b7280;">Current</div><div style="font-size:11px;font-weight:bold;">{{ aging.current | money }}</div>'],
-                        ['type' => 'text', 'align' => 'center', 'content' => '<div style="font-size:8px;color:#6b7280;">1-30</div><div style="font-size:11px;font-weight:bold;">{{ aging.days_1_30 | money }}</div>'],
-                        ['type' => 'text', 'align' => 'center', 'content' => '<div style="font-size:8px;color:#6b7280;">31-60</div><div style="font-size:11px;font-weight:bold;">{{ aging.days_31_60 | money }}</div>'],
-                        ['type' => 'text', 'align' => 'center', 'content' => '<div style="font-size:8px;color:#6b7280;">61-90</div><div style="font-size:11px;font-weight:bold;">{{ aging.days_61_90 | money }}</div>'],
-                        ['type' => 'text', 'align' => 'center', 'content' => '<div style="font-size:8px;color:#6b7280;">90+</div><div style="font-size:11px;font-weight:bold;color:#dc2626;">{{ aging.days_90_plus | money }}</div>'],
-                        ['type' => 'text', 'align' => 'center', 'content' => '<div style="font-size:8px;color:#6b7280;">Total</div><div style="font-size:11px;font-weight:bold;">{{ aging.total | money }}</div>'],
-                    ]],
-                    ['type' => 'spacer', 'height' => 12],
                     ['type' => 'table', 'source' => 'transactions', 'columns' => [
                         ['label' => '#', 'field' => 'index', 'width' => '5%', 'align' => 'center'],
                         ['label' => 'Date', 'field' => 'date', 'width' => '12%'],

@@ -340,6 +340,9 @@ class InvoiceEvidenceService
                 'signer_email' => $signerData['signer_email'] ?? null,
                 'signer_ip' => $signerData['signer_ip'] ?? null,
                 'signed_at' => now(),
+                // The customer signed through the authenticated signing link, so
+                // the acceptance is already verified — no vendor step needed.
+                'confirmed_at' => now(),
             ]);
 
             $this->syncEvidenceStatus($invoice);

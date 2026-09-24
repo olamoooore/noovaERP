@@ -165,6 +165,11 @@ class HR265CustomerStatementTemplateTest extends TenantTestCase
         $this->assertNotNull($template, 'The system-default statement template must be provisioned on first render.');
         $this->assertSame(DocumentTemplate::STATUS_PUBLISHED, $template->status);
 
+        // The provisioned default must not carry the aging-summary blocks.
+        $html = json_encode($template->layout_config['blocks'] ?? []);
+        $this->assertStringNotContainsString('Aging Summary', $html);
+        $this->assertStringNotContainsString('aging.', $html, 'Default statement template must not reference aging buckets.');
+
         $statement = CustomerStatement::query()->latest('id')->firstOrFail();
         $this->assertTrue(
             GeneratedDocument::query()
@@ -210,9 +215,14 @@ class HR265CustomerStatementTemplateTest extends TenantTestCase
             $this->assertStringContainsString($header, $html, "Header '{$header}' missing from the fallback statement.");
         }
 
-        foreach (['2025/03/021', 'PAY/2026/09/178', 'ASCENSUS-BEH', 'S$1,744.00', 'ACCOUNT STATEMENT', 'Aging Summary'] as $needle) {
+        foreach (['2025/03/021', 'PAY/2026/09/178', 'ASCENSUS-BEH', 'S$1,744.00', 'ACCOUNT STATEMENT'] as $needle) {
             $this->assertStringContainsString($needle, $html, "Fallback statement missing '{$needle}'.");
         }
+
+        // Customer request (2026-09-24): the aging summary must not appear on
+        // statements, even when the payload still carries aging buckets.
+        $this->assertStringNotContainsString('Aging Summary', $html);
+        $this->assertStringNotContainsString('days_90_plus', $html);
 
         // No unresolved template variables / PHP errors leaked into the HTML.
         $this->assertStringNotContainsString('$currency', $html);

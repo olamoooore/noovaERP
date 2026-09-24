@@ -62,24 +62,6 @@
         .summary-value.accent { color: #1d4ed8; }
         .summary-value.danger { color: #b91c1c; }
 
-        /* Aging */
-        table.aging { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        table.aging th, table.aging td {
-            border: 1px solid #e5e7eb;
-            padding: 5px 6px;
-            text-align: right;
-            font-size: 9px;
-        }
-        table.aging th {
-            background: #f9fafb;
-            color: #6b7280;
-            font-weight: normal;
-            text-transform: uppercase;
-            font-size: 8px;
-            letter-spacing: 0.5px;
-        }
-        table.aging td.overdue { color: #b91c1c; font-weight: bold; }
-
         /* Transactions */
         table.txns { width: 100%; border-collapse: collapse; margin-top: 10px; }
         table.txns thead th {
@@ -142,7 +124,6 @@
         'credits' => (float) ($payload['total_credits'] ?? 0),
         'closing' => (float) ($payload['closing_balance'] ?? 0),
     ];
-    $aging    = $payload['aging'] ?? [];
     $bank     = $payload['bank'] ?? [];
     $txns     = $payload['transactions'] ?? [];
 
@@ -252,33 +233,6 @@
             </td>
         </tr>
     </table>
-
-    {{-- Aging --}}
-    @if(! empty($aging))
-    <div class="label" style="margin-top: 12px;">Aging Summary</div>
-    <table class="aging">
-        <thead>
-            <tr>
-                <th class="center">Current</th>
-                <th>1&ndash;30 Days</th>
-                <th>31&ndash;60 Days</th>
-                <th>61&ndash;90 Days</th>
-                <th>90+ Days</th>
-                <th>Total Outstanding</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td class="center">{{ $money($aging['current'] ?? 0) }}</td>
-                <td>{{ $money($aging['days_1_30'] ?? 0) }}</td>
-                <td>{{ $money($aging['days_31_60'] ?? 0) }}</td>
-                <td>{{ $money($aging['days_61_90'] ?? 0) }}</td>
-                <td class="overdue">{{ $money($aging['days_90_plus'] ?? 0) }}</td>
-                <td class="bold">{{ $money($aging['total'] ?? 0) }}</td>
-            </tr>
-        </tbody>
-    </table>
-    @endif
 
     {{-- Transactions --}}
     <div class="label" style="margin-top: 14px;">Transactions</div>
