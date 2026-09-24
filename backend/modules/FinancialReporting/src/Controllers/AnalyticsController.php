@@ -26,6 +26,7 @@ class AnalyticsController extends Controller
         $validated = $request->validate([
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
+            'tag' => 'nullable|string|max:120',
             'top' => 'nullable|integer|min:1|max:100',
         ]);
 
@@ -67,6 +68,7 @@ class AnalyticsController extends Controller
         $validated = $request->validate([
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
+            'tag' => 'nullable|string|max:120',
         ]);
 
         try {
@@ -101,6 +103,8 @@ class AnalyticsController extends Controller
         $validated = $request->validate([
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
+            'interval' => 'nullable|in:day,week,month,year',
+            'tag' => 'nullable|string|max:120',
             'interval' => 'nullable|in:day,week,month,year',
         ]);
 
@@ -138,6 +142,7 @@ class AnalyticsController extends Controller
         $validated = $request->validate([
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
+            'tag' => 'nullable|string|max:120',
         ]);
 
         try {

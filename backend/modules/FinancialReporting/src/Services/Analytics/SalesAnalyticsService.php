@@ -37,7 +37,7 @@ class SalesAnalyticsService
 
         try {
             $sales = DB::query()
-                ->fromSub($this->lineItemsUnion($startDate, $endDate), 'li')
+                ->fromSub($this->lineItemsUnion($startDate, $endDate, $this->salesOrderIdsForTag($filter->tag ?? null)), 'li')
                 ->leftJoin('products as p', 'p.id', '=', 'li.product_id')
                 ->select([
                     'p.id',
@@ -102,6 +102,8 @@ class SalesAnalyticsService
         $startDate = $filter->startDate ?? Carbon::now()->startOfMonth();
         $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
 
+        $salesOrderIds = $this->salesOrderIdsForTag($filter->tag ?? null);
+
         try {
             // Order-level union: walk-ins (POS customer_id null) and non-POS
             // Sales-module orders both feed into customer aggregates.
@@ -129,6 +131,13 @@ class SalesAnalyticsService
                 // from pos_orders; its synced sales_orders row would double-count.
                 ->where('so.channel', '!=', 'pos')
                 ->whereBetween(DB::raw('COALESCE(so.order_date, so.created_at)'), [$startDate, $endDate->endOfDay()]);
+
+            if ($salesOrderIds !== null) {
+                // Tags live on sales orders; POS orders cannot carry one, so an
+                // active tag filter excludes them instead of including them.
+                $posOrders->whereRaw('1 = 0');
+                $salesOrders->whereIn('so.id', $salesOrderIds !== [] ? $salesOrderIds : [-1]);
+            }
 
             $rows = DB::query()
                 ->fromSub($posOrders->unionAll($salesOrders), 'o')
@@ -199,6 +208,8 @@ class SalesAnalyticsService
             default => 'YYYY-MM-DD',
         };
 
+        $salesOrderIds = $this->salesOrderIdsForTag($filter->tag ?? null);
+
         try {
             $posTrends = DB::table('pos_orders')
                 ->select([
@@ -225,6 +236,11 @@ class SalesAnalyticsService
                 ->where('channel', '!=', 'pos')
                 ->whereBetween(DB::raw('COALESCE(order_date, created_at)'), [$startDate, $endDate->endOfDay()])
                 ->groupBy('period');
+
+            if ($salesOrderIds !== null) {
+                $posTrends->whereRaw('1 = 0');
+                $salesTrends->whereIn('so.id', $salesOrderIds !== [] ? $salesOrderIds : [-1]);
+            }
 
             $trends = DB::query()
                 ->fromSub($posTrends->unionAll($salesTrends), 't')
@@ -293,7 +309,7 @@ class SalesAnalyticsService
 
         try {
             $sales = DB::query()
-                ->fromSub($this->lineItemsUnion($startDate, $endDate), 'li')
+                ->fromSub($this->lineItemsUnion($startDate, $endDate, $this->salesOrderIdsForTag($filter->tag ?? null)), 'li')
                 ->leftJoin('products as p', 'p.id', '=', 'li.product_id')
                 ->leftJoin('product_categories as c', 'c.id', '=', 'p.category_id')
                 ->select([
@@ -396,10 +412,34 @@ class SalesAnalyticsService
      * Values are inlined (all bound values are typed — Carbon date strings,
      * fixed string labels, booleans) so there is no SQL-injection surface.
      */
-    private function lineItemsUnion(Carbon $startDate, Carbon $endDate)
+    /**
+     * Sales-order ids carrying the requested tag, or null when no tag filter is
+     * active. An empty array means "the tag exists but nothing carries it" and
+     * must produce an empty report, never an unfiltered one.
+     */
+    private function salesOrderIdsForTag(?string $tag): ?array
+    {
+        if (! $tag) {
+            return null;
+        }
+
+        return app(\App\Services\TagService::class)->subjectIdsForTagSlugs([$tag], 'sales_order');
+    }
+
+    private function lineItemsUnion(Carbon $startDate, Carbon $endDate, ?array $salesOrderIds = null)
     {
         $start = $startDate->format('Y-m-d H:i:s');
         $end = $endDate->endOfDay()->format('Y-m-d H:i:s');
+
+        // A tag filter only applies to documents that can carry tags. Sales
+        // orders can; POS orders cannot, so an active tag filter excludes them
+        // rather than silently including untagged revenue.
+        $posTagClause = $salesOrderIds === null ? '' : ' AND 1 = 0';
+        $soTagClause = '';
+        if ($salesOrderIds !== null) {
+            $ids = array_map('intval', $salesOrderIds);
+            $soTagClause = $ids === [] ? ' AND 1 = 0' : ' AND so.id IN ('.implode(',', $ids).')';
+        }
 
         $sql = "(
             SELECT poi.product_id,
@@ -412,7 +452,7 @@ class SalesAnalyticsService
             JOIN pos_orders po ON po.id = poi.pos_order_id
             WHERE po.paid_at BETWEEN '{$start}' AND '{$end}'
               AND po.status = 'paid'
-              AND po.is_return = false
+              AND po.is_return = false{$posTagClause}
         ) UNION ALL (
             SELECT sol.product_id,
                    so.customer_id,
@@ -425,7 +465,7 @@ class SalesAnalyticsService
             WHERE so.status NOT IN ('draft', 'cancelled')
               AND so.accounting_status <> 'reversed'
               AND so.channel <> 'pos'
-              AND COALESCE(so.order_date, so.created_at) BETWEEN '{$start}' AND '{$end}'
+              AND COALESCE(so.order_date, so.created_at) BETWEEN '{$start}' AND '{$end}'{$soTagClause}
         )";
 
         return DB::table(DB::raw('('.$sql.') AS li'));

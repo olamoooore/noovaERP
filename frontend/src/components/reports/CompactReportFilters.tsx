@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { DateRangeSelector } from './DateRangeSelector';
 import { AccountSelector } from './AccountSelector';
 import { DepartmentSelector } from './DepartmentSelector';
+import { TagFilterSelect } from '@/components/tags/TagFilterSelect';
 import type { ReportFilters as ReportFiltersType } from '@/types/reports';
 import {
   Select,
@@ -32,6 +33,10 @@ interface CompactReportFiltersProps {
   /** Show a quick "Refresh" button to re-trigger the report query. */
   showRefresh?: boolean;
   onRefresh?: () => void;
+  /** Show the document-tag filter (restricts the report to tagged documents). */
+  showTag?: boolean;
+  /** Label for the tag filter, e.g. "Tagged orders". */
+  tagLabel?: string;
 }
 
 export const CompactReportFilters: React.FC<CompactReportFiltersProps> = ({
@@ -47,6 +52,8 @@ export const CompactReportFilters: React.FC<CompactReportFiltersProps> = ({
   autoApply = true,
   showRefresh = true,
   onRefresh,
+  showTag = false,
+  tagLabel = 'All Tags',
 }) => {
   const [filters, setFilters] = useState<ReportFiltersType>({
     start_date: initialFilters.start_date || '',
@@ -56,6 +63,7 @@ export const CompactReportFilters: React.FC<CompactReportFiltersProps> = ({
     account_type: initialFilters.account_type || accountType,
     compare_period: initialFilters.compare_period || false,
     interval: initialFilters.interval || 'month',
+    tag: initialFilters.tag,
   });
 
   useEffect(() => {
@@ -78,6 +86,7 @@ export const CompactReportFilters: React.FC<CompactReportFiltersProps> = ({
       account_type: accountType,
       compare_period: false,
       interval: 'month',
+      tag: undefined,
     };
     setFilters(resetFilters);
     if (autoApply) onFilterChange(resetFilters);
@@ -90,6 +99,7 @@ export const CompactReportFilters: React.FC<CompactReportFiltersProps> = ({
     filters.department_id !== undefined ||
     (filters.account_type && filters.account_type !== accountType) ||
     filters.compare_period ||
+    !!filters.tag ||
     filters.interval !== 'month';
 
   return (
@@ -160,6 +170,16 @@ export const CompactReportFilters: React.FC<CompactReportFiltersProps> = ({
             <SelectItem value="expense">Expense</SelectItem>
           </SelectContent>
         </Select>
+      )}
+
+      {/* Document tag */}
+      {showTag && (
+        <TagFilterSelect
+          className="h-8 w-[160px] text-xs"
+          value={filters.tag || ''}
+          onChange={(value) => update('tag', value || undefined)}
+          placeholder={tagLabel}
+        />
       )}
 
       {/* Compare period */}

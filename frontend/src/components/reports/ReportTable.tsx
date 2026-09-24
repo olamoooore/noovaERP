@@ -213,11 +213,17 @@ export const ReportTable: React.FC<ReportTableProps> = ({
   // Format cell value
   const formatCellValue = (column: Column, row: any) => {
     const value = row[column.key];
+
+    // A missing or non-finite value is rendered as '-' instead of being handed
+    // to the formatter: `formatCurrency(undefined)` renders "$NaN" and
+    // `value.toFixed()` throws, which used to blank whole report pages when an
+    // API renamed or omitted a field.
+    if (value == null || (typeof value === 'number' && !Number.isFinite(value))) {
+      return '-';
+    }
+
     if (column.format) {
       return column.format(value, row);
-    }
-    if (value == null) {
-      return '-';
     }
     return value;
   };

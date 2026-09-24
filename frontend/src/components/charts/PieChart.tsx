@@ -7,7 +7,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { formatCurrency, formatNumber, formatPercent, getColorByIndex } from '@/lib/chartUtils';
+import { formatCurrency, formatNumber, formatPercent, getColorByIndex, truncateLabel } from '@/lib/chartUtils';
 import { getChartTheme } from '@/styles/chartTheme';
 
 interface PieChartProps {
@@ -38,6 +38,7 @@ const CustomTooltip = ({
   const name = entry.name;
 
   const formattedValue = () => {
+    if (!Number.isFinite(value)) return '-';
     if (formatValue === 'currency') return formatCurrency(value);
     if (formatValue === 'percent') return formatPercent(value);
     return formatNumber(value, 2);
@@ -67,7 +68,7 @@ const renderCustomLabel = (props: any) => {
   const x = cx + radius * Math.cos(-midAngle * RADIAN);
   const y = cy + radius * Math.sin(-midAngle * RADIAN);
 
-  if (percent < 0.05) return null; // Don't show label for small slices
+  if (percent < 0.07) return null; // no room for text on small slices
 
   return (
     <text
@@ -114,6 +115,9 @@ export const PieChart: React.FC<PieChartProps> = ({
           outerRadius={height / 3}
           label={showLabels ? renderCustomLabel : false}
           labelLine={false}
+          paddingAngle={2}
+          stroke={theme.colors.background}
+          strokeWidth={1}
         >
           {data.map((_entry, index) => (
             <Cell
@@ -125,8 +129,11 @@ export const PieChart: React.FC<PieChartProps> = ({
         <Tooltip content={<CustomTooltip formatValue={formatValue} />} />
         {showLegend && (
           <Legend
-            wrapperStyle={{ fontSize: theme.fonts.size.small }}
+            wrapperStyle={{ fontSize: theme.fonts.size.small, paddingTop: 8 }}
             iconType="circle"
+            formatter={(value: any) => (
+              <span title={String(value ?? '')}>{truncateLabel(value, 24)}</span>
+            )}
           />
         )}
       </RechartsPieChart>

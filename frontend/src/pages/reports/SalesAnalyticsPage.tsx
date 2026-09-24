@@ -1,11 +1,21 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
+import {
+  Users,
+  ShoppingCart,
+  DollarSign,
+  TrendingUp,
+  Percent,
+  Package,
+  Layers,
+} from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ReportViewer } from '@/components/reports/ReportViewer';
 import { CompactReportFilters } from '@/components/reports/CompactReportFilters';
 import { ReportTable, Column } from '@/components/reports/ReportTable';
+import { KPICard } from '@/components/dashboards/KPICard';
 import { BarChart } from '@/components/charts/BarChart';
 import { LineChart } from '@/components/charts/LineChart';
 import { PieChart } from '@/components/charts/PieChart';
@@ -13,6 +23,15 @@ import { useReportAutoRefresh } from '@/hooks/useReportAutoRefresh';
 import reportApi from '@/lib/reportApi';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import type { ReportFilters as ReportFiltersType } from '@/types/reports';
+import {
+  avgBy,
+  normalizeCategories,
+  normalizeCustomers,
+  normalizeProducts,
+  normalizeTrends,
+  safeDate,
+  sumBy,
+} from './salesAnalyticsRows';
 
 interface SalesAnalyticsPageProps {
   productOnly?: boolean;
@@ -52,7 +71,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
   } = useQuery({
     queryKey: ['sales-by-customer', filters],
     queryFn: () => reportApi.getSalesByCustomer(filters),
-    enabled: activeTab === 'by-customer',
+    enabled: !productOnly && activeTab === 'by-customer',
     staleTime: 15 * 1000,
   });
 
@@ -65,7 +84,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
   } = useQuery({
     queryKey: ['sales-trends', filters],
     queryFn: () => reportApi.getSalesTrends(filters),
-    enabled: activeTab === 'trends',
+    enabled: !productOnly && activeTab === 'trends',
     staleTime: 15 * 1000,
   });
 
@@ -78,9 +97,20 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
   } = useQuery({
     queryKey: ['sales-by-category', filters],
     queryFn: () => reportApi.getSalesByCategory(filters),
-    enabled: activeTab === 'by-category',
+    enabled: !productOnly && activeTab === 'by-category',
     staleTime: 15 * 1000,
   });
+
+  // ---------------------------------------------------------------------------
+  // Normalised rows — the single place that knows the API's field aliases.
+  // ---------------------------------------------------------------------------
+  const products = normalizeProducts(productData);
+
+  const customers = normalizeCustomers(customerData);
+
+  const trends = normalizeTrends(trendsData);
+
+  const categories = normalizeCategories(categoryData);
 
   const handleFilterChange = (newFilters: ReportFiltersType) => {
     setFilters(newFilters);
@@ -95,23 +125,24 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     window.print();
   };
 
-  // Sales by Product Columns
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['sales-by-product'] });
+    queryClient.invalidateQueries({ queryKey: ['sales-by-customer'] });
+    queryClient.invalidateQueries({ queryKey: ['sales-trends'] });
+    queryClient.invalidateQueries({ queryKey: ['sales-by-category'] });
+  };
+
+  const periodLabel = `${filters.start_date} → ${filters.end_date}`;
+
+  // ---------------------------------------------------------------------------
+  // Columns
+  // ---------------------------------------------------------------------------
   const productColumns: Column[] = [
-    {
-      key: 'name',
-      label: 'Product',
-      sortable: true,
-      filterable: true,
-    },
-    {
-      key: 'sku',
-      label: 'SKU',
-      sortable: true,
-      filterable: true,
-    },
+    { key: 'name', label: 'Product', sortable: true, filterable: true },
+    { key: 'sku', label: 'SKU', sortable: true, filterable: true },
     {
       key: 'total_quantity',
-      label: 'Quantity Sold',
+      label: 'Qty Sold',
       sortable: true,
       align: 'right',
       format: (value) => formatNumber(value),
@@ -154,20 +185,9 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     },
   ];
 
-  // Sales by Customer Columns
   const customerColumns: Column[] = [
-    {
-      key: 'name',
-      label: 'Customer',
-      sortable: true,
-      filterable: true,
-    },
-    {
-      key: 'total_orders',
-      label: 'Orders',
-      sortable: true,
-      align: 'right',
-    },
+    { key: 'name', label: 'Customer', sortable: true, filterable: true },
+    { key: 'total_orders', label: 'Orders', sortable: true, align: 'right' },
     {
       key: 'total_revenue',
       label: 'Total Revenue',
@@ -186,10 +206,98 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
       key: 'last_purchase_date',
       label: 'Last Purchase',
       sortable: true,
-      format: (value) => new Date(value).toLocaleDateString(),
+      format: (value) => safeDate(value),
     },
   ];
 
+  const categoryColumns: Column[] = [
+    { key: 'category_name', label: 'Category', sortable: true, filterable: true },
+    {
+      key: 'product_count',
+      label: 'Products',
+      sortable: true,
+      align: 'right',
+      format: (value) => formatNumber(value),
+    },
+    {
+      key: 'quantity_sold',
+      label: 'Qty Sold',
+      sortable: true,
+      align: 'right',
+      format: (value) => formatNumber(value),
+    },
+    {
+      key: 'total_revenue',
+      label: 'Revenue',
+      sortable: true,
+      align: 'right',
+      format: (value) => formatCurrency(value),
+    },
+    {
+      key: 'total_profit',
+      label: 'Profit',
+      sortable: true,
+      align: 'right',
+      format: (value) => (
+        <span className={value >= 0 ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>
+          {formatCurrency(value)}
+        </span>
+      ),
+    },
+    {
+      key: 'percentage',
+      label: 'Share',
+      sortable: true,
+      align: 'right',
+      format: (value) => (
+        <div className="flex items-center justify-end gap-2">
+          <div className="w-20 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
+            <div
+              className="bg-blue-600 h-1.5 rounded-full"
+              style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
+            />
+          </div>
+          <span className="font-semibold tabular-nums w-12 text-right">{value.toFixed(1)}%</span>
+        </div>
+      ),
+    },
+  ];
+
+  const trendColumns: Column[] = [
+    { key: 'period', label: 'Period', sortable: true },
+    { key: 'invoice_count', label: 'Orders', sortable: true, align: 'right', format: (value) => formatNumber(value) },
+    {
+      key: 'total_revenue',
+      label: 'Revenue',
+      sortable: true,
+      align: 'right',
+      format: (value) => formatCurrency(value),
+    },
+    {
+      key: 'avg_order_value',
+      label: 'Avg Order Value',
+      sortable: true,
+      align: 'right',
+      format: (value) => formatCurrency(value),
+    },
+  ];
+
+  const tabFilters = (
+    <CompactReportFilters
+      onFilterChange={handleFilterChange}
+      initialFilters={filters}
+      showDateRange
+      showInterval
+      showTag
+      tagLabel="Tagged orders"
+      showRefresh
+      onRefresh={handleRefresh}
+    />
+  );
+
+  // ---------------------------------------------------------------------------
+  // Product-only view (used by /products/report)
+  // ---------------------------------------------------------------------------
   if (productOnly) {
     return (
       <div className="space-y-6">
@@ -200,23 +308,11 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
           </p>
         </div>
 
-        <CompactReportFilters
-          onFilterChange={handleFilterChange}
-          initialFilters={filters}
-          showDateRange
-          showInterval
-          showRefresh
-          onRefresh={() => {
-            queryClient.invalidateQueries({ queryKey: ['sales-by-product'] });
-            queryClient.invalidateQueries({ queryKey: ['sales-by-customer'] });
-            queryClient.invalidateQueries({ queryKey: ['sales-trends'] });
-            queryClient.invalidateQueries({ queryKey: ['sales-by-category'] });
-          }}
-        />
+        {tabFilters}
 
         <ReportViewer
           title="Sales by Product"
-          description={`For the period ${filters.start_date} to ${filters.end_date}`}
+          description={`For the period ${periodLabel}`}
           isLoading={isProductLoading}
           error={productError?.message || null}
           onRefresh={refetchProduct}
@@ -225,10 +321,36 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
         >
           {productData && (
             <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                <KPICard
+                  title="Products Sold"
+                  value={formatNumber(products.length)}
+                  icon={Package}
+                />
+                <KPICard
+                  title="Total Revenue"
+                  value={formatCurrency(sumBy(products, (p) => p.total_revenue))}
+                  icon={DollarSign}
+                />
+                <KPICard
+                  title="Total Profit"
+                  value={formatCurrency(sumBy(products, (p) => p.total_profit))}
+                  icon={TrendingUp}
+                />
+                <KPICard
+                  title="Avg Margin"
+                  value={`${avgBy(products, (p) => p.profit_margin).toFixed(2)}%`}
+                  icon={Percent}
+                />
+              </div>
+
               <Card className="p-6">
-                <h3 className="text-lg font-semibold mb-4">Top 10 Products by Revenue</h3>
+                <div className="mb-4 flex items-baseline justify-between gap-4">
+                  <h3 className="text-base font-semibold">Top 10 Products by Revenue</h3>
+                  <span className="text-xs text-muted-foreground">Hover a bar for exact figures</span>
+                </div>
                 <BarChart
-                  data={(productData?.products ?? []).slice(0, 10).map((p) => ({
+                  data={products.slice(0, 10).map((p) => ({
                     name: p.name,
                     Revenue: p.total_revenue,
                     Profit: p.total_profit,
@@ -236,59 +358,23 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
                   xKey="name"
                   yKeys={['Revenue', 'Profit']}
                   colors={['#3b82f6', '#8b5cf6']}
-                  height={350}
+                  height={360}
                   formatYAxis="currency"
+                  truncateLabels={14}
+                  xAxisAngle={-30}
                 />
               </Card>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <Card className="p-4">
-                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                    Total Products Sold
-                  </div>
-                  <div className="text-2xl font-bold">{(productData?.products ?? []).length}</div>
-                </Card>
-                <Card className="p-4 bg-blue-50 dark:bg-blue-900/20">
-                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Revenue</div>
-                  <div className="text-2xl font-bold text-blue-600">
-                    {formatCurrency(
-                      (productData?.products ?? []).reduce((sum, p) => sum + p.total_revenue, 0)
-                    )}
-                  </div>
-                </Card>
-                <Card className="p-4 bg-green-50 dark:bg-green-900/20">
-                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Profit</div>
-                  <div className="text-2xl font-bold text-green-600">
-                    {formatCurrency(
-                      (productData?.products ?? []).reduce((sum, p) => sum + p.total_profit, 0)
-                    )}
-                  </div>
-                </Card>
-                <Card className="p-4 bg-purple-50 dark:bg-purple-900/20">
-                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                    Avg Profit Margin
-                  </div>
-                  <div className="text-2xl font-bold text-purple-600">
-                    {(productData?.products ?? []).length > 0
-                      ? (
-                          (productData?.products ?? []).reduce(
-                            (sum, p) => sum + p.profit_margin,
-                            0
-                          ) / (productData?.products ?? []).length
-                        ).toFixed(2)
-                      : '0.00'}
-                    %
-                  </div>
-                </Card>
-              </div>
-
-              <ReportTable
-                columns={productColumns}
-                data={productData?.products ?? []}
-                showPagination
-                showSearch
-                pageSize={20}
-              />
+              <Card className="p-6">
+                <h3 className="mb-4 text-base font-semibold">All Products</h3>
+                <ReportTable
+                  columns={productColumns}
+                  data={products}
+                  showPagination
+                  showSearch
+                  pageSize={20}
+                />
+              </Card>
             </div>
           )}
         </ReportViewer>
@@ -296,9 +382,11 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Tabbed view
+  // ---------------------------------------------------------------------------
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Sales Analytics</h1>
@@ -308,22 +396,8 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
         </div>
       </div>
 
-      {/* Filters */}
-      <CompactReportFilters
-        onFilterChange={handleFilterChange}
-        initialFilters={filters}
-        showDateRange
-        showInterval
-        showRefresh
-        onRefresh={() => {
-          queryClient.invalidateQueries({ queryKey: ['sales-by-product'] });
-          queryClient.invalidateQueries({ queryKey: ['sales-by-customer'] });
-          queryClient.invalidateQueries({ queryKey: ['sales-trends'] });
-          queryClient.invalidateQueries({ queryKey: ['sales-by-category'] });
-        }}
-      />
+      {tabFilters}
 
-      {/* Analytics Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="by-customer">
@@ -340,100 +414,11 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
           </TabsTrigger>
         </TabsList>
 
-        {/* Sales by Product Tab */}
-        <TabsContent value="by-product">
-          <ReportViewer
-            title="Sales by Product"
-            description={`For the period ${filters.start_date} to ${filters.end_date}`}
-            isLoading={isProductLoading}
-            error={productError?.message || null}
-            onRefresh={refetchProduct}
-            onExport={handleExport}
-            onPrint={handlePrint}
-          >
-            {productData && (
-              <div className="space-y-6">
-                {/* Top Products Chart */}
-                <Card className="p-6">
-                  <h3 className="text-lg font-semibold mb-4">Top 10 Products by Revenue</h3>
-                  <BarChart
-                    data={(productData?.products ?? []).slice(0, 10).map((p) => ({
-                      name: p.name,
-                      Revenue: p.total_revenue,
-                      Profit: p.total_profit,
-                    }))}
-                    xKey="name"
-                    yKeys={['Revenue', 'Profit']}
-                    colors={['#3b82f6', '#8b5cf6']}
-                    height={350}
-                    formatYAxis="currency"
-                  />
-                </Card>
-
-                {/* Summary Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <Card className="p-4">
-                    <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                      Total Products Sold
-                    </div>
-                    <div className="text-2xl font-bold">
-                      {(productData?.products ?? []).length}
-                    </div>
-                  </Card>
-                  <Card className="p-4 bg-blue-50 dark:bg-blue-900/20">
-                    <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                      Total Revenue
-                    </div>
-                    <div className="text-2xl font-bold text-blue-600">
-                      {formatCurrency(
-                        (productData?.products ?? []).reduce((sum, p) => sum + p.total_revenue, 0)
-                      )}
-                    </div>
-                  </Card>
-                  <Card className="p-4 bg-green-50 dark:bg-green-900/20">
-                    <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                      Total Profit
-                    </div>
-                    <div className="text-2xl font-bold text-green-600">
-                      {formatCurrency(
-                        (productData?.products ?? []).reduce((sum, p) => sum + p.total_profit, 0)
-                      )}
-                    </div>
-                  </Card>
-                  <Card className="p-4 bg-purple-50 dark:bg-purple-900/20">
-                    <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                      Avg Profit Margin
-                    </div>
-                    <div className="text-2xl font-bold text-purple-600">
-                      {(productData?.products ?? []).length > 0
-                        ? (
-                            (productData?.products ?? []).reduce((sum, p) => sum + p.profit_margin, 0) /
-                            (productData?.products ?? []).length
-                          ).toFixed(2)
-                        : '0.00'}
-                      %
-                    </div>
-                  </Card>
-                </div>
-
-                {/* Products Table */}
-                <ReportTable
-                  columns={productColumns}
-                  data={productData?.products ?? []}
-                  showPagination
-                  showSearch
-                  pageSize={20}
-                />
-              </div>
-            )}
-          </ReportViewer>
-        </TabsContent>
-
-        {/* Sales by Customer Tab */}
+        {/* ------------------------------- Customers ------------------------------ */}
         <TabsContent value="by-customer">
           <ReportViewer
             title="Sales by Customer"
-            description={`For the period ${filters.start_date} to ${filters.end_date}`}
+            description={`For the period ${periodLabel}`}
             isLoading={isCustomerLoading}
             error={customerError?.message || null}
             onRefresh={refetchCustomer}
@@ -442,83 +427,66 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
           >
             {customerData && (
               <div className="space-y-6">
-                {/* Top Customers Chart */}
+                <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                  <KPICard title="Customers" value={formatNumber(customers.length)} icon={Users} />
+                  <KPICard
+                    title="Total Revenue"
+                    value={formatCurrency(sumBy(customers, (c) => c.total_revenue))}
+                    icon={DollarSign}
+                  />
+                  <KPICard
+                    title="Total Orders"
+                    value={formatNumber(sumBy(customers, (c) => c.total_orders))}
+                    icon={ShoppingCart}
+                  />
+                  <KPICard
+                    title="Avg Order Value"
+                    value={formatCurrency(avgBy(customers, (c) => c.average_order_value))}
+                    icon={TrendingUp}
+                  />
+                </div>
+
                 <Card className="p-6">
-                  <h3 className="text-lg font-semibold mb-4">Top 10 Customers by Revenue</h3>
+                  <div className="mb-4 flex items-baseline justify-between gap-4">
+                    <h3 className="text-base font-semibold">Top 10 Customers by Revenue</h3>
+                    <span className="text-xs text-muted-foreground">Hover a bar for the full name</span>
+                  </div>
                   <BarChart
-                    data={(customerData?.customers ?? []).slice(0, 10).map((c) => ({
+                    data={customers.slice(0, 10).map((c) => ({
                       name: c.name,
                       Revenue: c.total_revenue,
                     }))}
                     xKey="name"
                     yKeys={['Revenue']}
-                    height={350}
+                    colors={['#3b82f6']}
+                    height={Math.max(320, Math.min(10, customers.length) * 40)}
                     formatYAxis="currency"
                     horizontal
+                    truncateLabels={28}
+                    showLegend={false}
                   />
                 </Card>
 
-                {/* Summary Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <Card className="p-4">
-                    <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                      Total Customers
-                    </div>
-                    <div className="text-2xl font-bold">
-                      {(customerData?.customers ?? []).length}
-                    </div>
-                  </Card>
-                  <Card className="p-4 bg-blue-50 dark:bg-blue-900/20">
-                    <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                      Total Revenue
-                    </div>
-                    <div className="text-2xl font-bold text-blue-600">
-                      {formatCurrency(
-                        (customerData?.customers ?? []).reduce((sum, c) => sum + c.total_revenue, 0)
-                      )}
-                    </div>
-                  </Card>
-                  <Card className="p-4 bg-green-50 dark:bg-green-900/20">
-                    <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                      Total Orders
-                    </div>
-                    <div className="text-2xl font-bold text-green-600">
-                      {(customerData?.customers ?? []).reduce((sum, c) => sum + c.total_orders, 0)}
-                    </div>
-                  </Card>
-                  <Card className="p-4 bg-purple-50 dark:bg-purple-900/20">
-                    <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                      Avg Order Value
-                    </div>
-                    <div className="text-2xl font-bold text-purple-600">
-                      {formatCurrency(
-                        (customerData?.customers ?? []).length > 0
-                          ? (customerData?.customers ?? []).reduce((sum, c) => sum + c.average_order_value, 0) /
-                              (customerData?.customers ?? []).length
-                          : 0
-                      )}
-                    </div>
-                  </Card>
-                </div>
-
-                {/* Customers Table */}
-                <ReportTable
-                  columns={customerColumns}
-                  data={customerData?.customers ?? []}
-                  showPagination
-                  showSearch
-                  pageSize={20}
-                />
+                <Card className="p-6">
+                  <h3 className="mb-4 text-base font-semibold">Customer Detail</h3>
+                  <ReportTable
+                    columns={customerColumns}
+                    data={customers}
+                    showPagination
+                    showSearch
+                    pageSize={20}
+                  />
+                </Card>
               </div>
             )}
           </ReportViewer>
         </TabsContent>
 
-        {/* Sales Trends Tab */}
+        {/* -------------------------------- Trends -------------------------------- */}
         <TabsContent value="trends">
           <ReportViewer
             title="Sales Trends"
-            description={`For the period ${filters.start_date} to ${filters.end_date}`}
+            description={`For the period ${periodLabel}`}
             isLoading={isTrendsLoading}
             error={trendsError?.message || null}
             onRefresh={refetchTrends}
@@ -527,116 +495,84 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
           >
             {trendsData && (
               <div className="space-y-6">
-                {/* Revenue Trend Chart */}
-                <Card className="p-6">
-                  <h3 className="text-lg font-semibold mb-4">Revenue Trend</h3>
-                  <LineChart
-                    data={(trendsData?.trends ?? []).map((t) => ({
-                      period: t.period,
-                      Revenue: t.total_revenue,
-                      'Avg Order': t.avg_order_value,
-                    }))}
-                    xKey="period"
-                    yKeys={['Revenue']}
-                    height={350}
-                    formatYAxis="currency"
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <KPICard
+                    title="Total Revenue"
+                    value={formatCurrency(sumBy(trends, (t) => t.total_revenue))}
+                    icon={DollarSign}
                   />
-                </Card>
-
-                {/* Order Count Trend Chart */}
-                <Card className="p-6">
-                  <h3 className="text-lg font-semibold mb-4">Order Count Trend</h3>
-                  <LineChart
-                    data={(trendsData?.trends ?? []).map((t) => ({
-                      period: t.period,
-                      Orders: t.invoice_count,
-                    }))}
-                    xKey="period"
-                    yKeys={['Orders']}
-                    height={350}
-                    formatYAxis="number"
+                  <KPICard
+                    title="Total Orders"
+                    value={formatNumber(sumBy(trends, (t) => t.invoice_count))}
+                    icon={ShoppingCart}
                   />
-                </Card>
-
-                {/* Summary Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Card className="p-4 bg-blue-50 dark:bg-blue-900/20">
-                    <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                      Total Revenue
-                    </div>
-                    <div className="text-2xl font-bold text-blue-600">
-                      {formatCurrency(
-                        (trendsData?.trends ?? []).reduce((sum, t) => sum + t.total_revenue, 0)
-                      )}
-                    </div>
-                  </Card>
-                  <Card className="p-4 bg-green-50 dark:bg-green-900/20">
-                    <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                      Total Orders
-                    </div>
-                    <div className="text-2xl font-bold text-green-600">
-                      {(trendsData?.trends ?? []).reduce((sum, t) => sum + t.invoice_count, 0)}
-                    </div>
-                  </Card>
-                  <Card className="p-4 bg-purple-50 dark:bg-purple-900/20">
-                    <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                      Avg Order Value
-                    </div>
-                    <div className="text-2xl font-bold text-purple-600">
-                      {formatCurrency(
-                        (trendsData?.trends ?? []).length > 0
-                          ? (trendsData?.trends ?? []).reduce((sum, t) => sum + t.avg_order_value, 0) /
-                              (trendsData?.trends ?? []).length
-                          : 0
-                      )}
-                    </div>
-                  </Card>
+                  <KPICard
+                    title="Avg Order Value"
+                    value={formatCurrency(avgBy(trends, (t) => t.avg_order_value))}
+                    icon={TrendingUp}
+                  />
                 </div>
 
-                {/* Trends Table */}
-                <ReportTable
-                  columns={[
-                    {
-                      key: 'period',
-                      label: 'Period',
-                      sortable: true,
-                    },
-                    {
-                      key: 'invoice_count',
-                      label: 'Orders',
-                      sortable: true,
-                      align: 'right',
-                    },
-                    {
-                      key: 'total_revenue',
-                      label: 'Revenue',
-                      sortable: true,
-                      align: 'right',
-                      format: (value) => formatCurrency(value),
-                    },
-                    {
-                      key: 'avg_order_value',
-                      label: 'Avg Order Value',
-                      sortable: true,
-                      align: 'right',
-                      format: (value) => formatCurrency(value),
-                    },
-                  ]}
-                  data={trendsData?.trends ?? []}
-                  showPagination
-                  showSearch={false}
-                  pageSize={20}
-                />
+                <Card className="p-6">
+                  <div className="mb-4 flex items-baseline justify-between gap-4">
+                    <h3 className="text-base font-semibold">Revenue Trend</h3>
+                    <span className="text-xs text-muted-foreground">
+                      {formatNumber(trends.length)} period{trends.length === 1 ? '' : 's'}
+                    </span>
+                  </div>
+                  <LineChart
+                    data={trends.map((t) => ({ period: t.period, Revenue: t.total_revenue }))}
+                    xKey="period"
+                    yKeys={['Revenue']}
+                    colors={['#3b82f6']}
+                    height={320}
+                    formatYAxis="currency"
+                    showLegend={false}
+                    truncateLabels={14}
+                    xAxisAngle={trends.length > 8 ? -30 : 0}
+                  />
+                </Card>
+
+                <Card className="p-6">
+                  <div className="mb-4 flex items-baseline justify-between gap-4">
+                    <h3 className="text-base font-semibold">Order Volume</h3>
+                    <span className="text-xs text-muted-foreground">
+                      Orders per period
+                    </span>
+                  </div>
+                  <LineChart
+                    data={trends.map((t) => ({ period: t.period, Orders: t.invoice_count }))}
+                    xKey="period"
+                    yKeys={['Orders']}
+                    colors={['#10b981']}
+                    height={300}
+                    formatYAxis="number"
+                    showLegend={false}
+                    truncateLabels={14}
+                    xAxisAngle={trends.length > 8 ? -30 : 0}
+                  />
+                </Card>
+
+                <Card className="p-6">
+                  <h3 className="mb-4 text-base font-semibold">Period Detail</h3>
+                  <ReportTable
+                    columns={trendColumns}
+                    data={trends}
+                    showPagination={trends.length > 20}
+                    showSearch={false}
+                    pageSize={20}
+                  />
+                </Card>
               </div>
             )}
           </ReportViewer>
         </TabsContent>
 
-        {/* Sales by Category Tab */}
+        {/* ------------------------------ By Category ----------------------------- */}
         <TabsContent value="by-category">
           <ReportViewer
             title="Sales by Category"
-            description={`For the period ${filters.start_date} to ${filters.end_date}`}
+            description={`For the period ${periodLabel}`}
             isLoading={isCategoryLoading}
             error={categoryError?.message || null}
             onRefresh={refetchCategory}
@@ -645,87 +581,70 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
           >
             {categoryData && (
               <div className="space-y-6">
-                {/* Category Distribution Chart */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                  <KPICard title="Categories" value={formatNumber(categories.length)} icon={Layers} />
+                  <KPICard
+                    title="Total Revenue"
+                    value={formatCurrency(sumBy(categories, (c) => c.total_revenue))}
+                    icon={DollarSign}
+                  />
+                  <KPICard
+                    title="Total Profit"
+                    value={formatCurrency(sumBy(categories, (c) => c.total_profit))}
+                    icon={TrendingUp}
+                  />
+                  <KPICard
+                    title="Avg Margin"
+                    value={`${avgBy(categories, (c) => c.profit_margin).toFixed(2)}%`}
+                    icon={Percent}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                   <Card className="p-6">
-                    <h3 className="text-lg font-semibold mb-4">Revenue Distribution</h3>
+                    <h3 className="mb-4 text-base font-semibold">Revenue Distribution</h3>
                     <PieChart
-                      data={(categoryData?.categories ?? []).map((c) => ({
+                      data={categories.map((c) => ({
                         name: c.category_name,
                         value: c.total_revenue,
                       }))}
                       nameKey="name"
                       valueKey="value"
-                      height={350}
+                      height={340}
                       formatValue="currency"
+                      showLegend={categories.length <= 8}
                     />
                   </Card>
 
                   <Card className="p-6">
-                    <h3 className="text-lg font-semibold mb-4">Revenue by Category</h3>
+                    <h3 className="mb-4 text-base font-semibold">Revenue by Category</h3>
                     <BarChart
-                      data={(categoryData?.categories ?? []).map((c) => ({
+                      data={categories.map((c) => ({
                         name: c.category_name,
                         Revenue: c.total_revenue,
                       }))}
                       xKey="name"
                       yKeys={['Revenue']}
-                      height={350}
+                      colors={['#3b82f6']}
+                      height={340}
                       formatYAxis="currency"
+                      showLegend={false}
+                      truncateLabels={14}
+                      xAxisAngle={categories.length > 4 ? -25 : 0}
                     />
                   </Card>
                 </div>
 
-                {/* Summary Card */}
-                <Card className="p-6 bg-blue-50 dark:bg-blue-900/20">
-                  <div className="flex justify-between items-center">
-                    <span className="text-lg font-semibold">Total Revenue:</span>
-                    <span className="text-3xl font-bold text-blue-600">
-                      {formatCurrency(
-                        (categoryData?.categories ?? []).reduce((sum, c) => sum + c.total_revenue, 0)
-                      )}
-                    </span>
-                  </div>
+                <Card className="p-6">
+                  <h3 className="mb-4 text-base font-semibold">Category Detail</h3>
+                  <ReportTable
+                    columns={categoryColumns}
+                    data={categories}
+                    showPagination={categories.length > 20}
+                    showSearch={false}
+                    pageSize={20}
+                  />
                 </Card>
-
-                {/* Categories Table */}
-                <ReportTable
-                  columns={[
-                    {
-                      key: 'category_name',
-                      label: 'Category',
-                      sortable: true,
-                      filterable: true,
-                    },
-                    {
-                      key: 'total_revenue',
-                      label: 'Revenue',
-                      sortable: true,
-                      align: 'right',
-                      format: (value) => formatCurrency(value),
-                    },
-                    {
-                      key: 'percentage',
-                      label: 'Percentage',
-                      sortable: true,
-                      align: 'right',
-                      format: (value) => (
-                        <div className="flex items-center justify-end gap-2">
-                          <div className="w-24 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                            <div
-                              className="bg-blue-600 h-2 rounded-full"
-                              style={{ width: `${value}%` }}
-                            />
-                          </div>
-                          <span className="font-semibold">{value.toFixed(1)}%</span>
-                        </div>
-                      ),
-                    },
-                  ]}
-                  data={categoryData?.categories ?? []}
-                  showPagination={false}
-                  showSearch={false}
-                />
               </div>
             )}
           </ReportViewer>

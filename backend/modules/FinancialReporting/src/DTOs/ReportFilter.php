@@ -26,6 +26,8 @@ class ReportFilter
         public int $perPage = 50,
         public ?int $legalEntityId = null,
         public ?int $entityBookId = null,
+        /** Tag slug — restrict the report to documents carrying this tag. */
+        public ?string $tag = null,
     ) {}
 
     /**
@@ -53,6 +55,7 @@ class ReportFilter
             perPage: (int) ($data['per_page'] ?? 50),
             legalEntityId: isset($data['legal_entity_id']) ? (int) $data['legal_entity_id'] : null,
             entityBookId: isset($data['entity_book_id']) ? (int) $data['entity_book_id'] : null,
+            tag: isset($data['tag']) && $data['tag'] !== '' ? (string) $data['tag'] : null,
         );
     }
 
@@ -78,6 +81,7 @@ class ReportFilter
             $this->interval,
             $this->legalEntityId,
             $this->entityBookId,
+            $this->tag,
         ];
 
         return md5(implode(':', array_filter($parts)));
