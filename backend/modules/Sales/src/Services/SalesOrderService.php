@@ -96,7 +96,7 @@ class SalesOrderService
 
             $order = SalesOrder::create($data);
 
-            foreach ($lines as $lineData) {
+            foreach ($lines as $lineIndex => $lineData) {
                 // Issue #135: a line entered in a non-base UOM must be converted
                 // to base units before it can reach stock/COGS. The base-unit
                 // price is derived from the UOM rate; an explicit unit_price is
@@ -153,7 +153,7 @@ class SalesOrderService
                 $line = $order->lines()->create([
                     'legal_entity_id' => $order->legal_entity_id,
                     'line_type' => $lineData['line_type'] ?? 'product',
-                    'sequence' => $lineData['sequence'] ?? 0,
+                    'sequence' => $lineData['sequence'] ?? $lineIndex,
                     'product_id' => $lineData['product_id'] ?? null,
                     'model_number' => $lineData['model_number'] ?? null,
                     'product_notes' => $lineData['product_notes'] ?? null,
@@ -355,6 +355,7 @@ class SalesOrderService
                     $lines[] = [
                         'line_type' => $line->line_type,
                         'sequence' => $line->sequence ?? 0,
+                        'sales_order_line_id' => $line->id,
                         'description' => $line->description,
                         'quantity' => 0,
                         'unit_price' => 0,

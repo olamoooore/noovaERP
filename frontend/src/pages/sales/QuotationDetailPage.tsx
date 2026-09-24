@@ -650,7 +650,11 @@ export function QuotationDetailPage() {
                         <div className="flex items-center justify-between gap-4"><span>{line.description}</span>{line.line_type === 'section' && <span className="whitespace-nowrap tabular-nums">{formatCurrency(getDocumentSectionTotal(quotation.lines || [], index, (item: any) => Number(item.line_total || 0)))}</span>}</div>
                       </TableCell>
                     ) : (<>
-                    <TableCell>{index + 1}</TableCell>
+                    <TableCell>
+                      {(quotation.lines || [])
+                        .slice(0, index + 1)
+                        .filter((item: any) => (item.line_type ?? 'product') === 'product').length}
+                    </TableCell>
                     <TableCell className="font-medium">
                       {line.product ? (
                         <Link

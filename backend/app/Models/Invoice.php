@@ -274,7 +274,9 @@ class Invoice extends Model
 
     public function lines(): HasMany
     {
-        return $this->hasMany(InvoiceLine::class);
+        return $this->hasMany(InvoiceLine::class)
+            ->orderBy('sequence')
+            ->orderBy('id');
     }
 
     public function journalEntry(): BelongsTo

@@ -105,7 +105,9 @@ class DeliveryOrder extends Model
 
     public function lines(): HasMany
     {
-        return $this->hasMany(DeliveryOrderLine::class);
+        return $this->hasMany(DeliveryOrderLine::class)
+            ->orderBy('sequence')
+            ->orderBy('id');
     }
 
     public function createdBy(): BelongsTo
