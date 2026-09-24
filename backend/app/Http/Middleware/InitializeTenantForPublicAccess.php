@@ -109,6 +109,21 @@ class InitializeTenantForPublicAccess
             }
         }
 
+        // Delivery-order customer portal — same pattern as invoice-accept.
+        if (preg_match('#^api/v1/do-accept/#', $path)) {
+            $token = $request->route('token');
+            if ($token) {
+                $tenant = app(\Modules\Sales\Services\DeliveryOrderService::class)
+                    ->resolveTenantForCustomerToken((string) $token);
+
+                if ($tenant) {
+                    $this->tenancy->initialize($tenant);
+
+                    return $next($request);
+                }
+            }
+        }
+
         // 2. For /w/{slug} routes, resolve tenant by finding which tenant owns the website.
         //    This takes priority over domain resolution because the website's tenant
         //    may differ from the domain's tenant (e.g. shared domain in multi-tenant setup).

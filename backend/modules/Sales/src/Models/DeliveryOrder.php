@@ -61,12 +61,18 @@ class DeliveryOrder extends Model
         'created_by',
         'confirmed_by',
         'completed_by',
+        'acceptance_token',
+        'acceptance_expires_at',
+        'requires_approval',
+        'approval_status',
     ];
 
     protected $casts = [
         'signed_document_uploaded_at' => 'datetime',
         'signed_at' => 'datetime',
+        'acceptance_expires_at' => 'datetime',
         'is_active_version' => 'boolean',
+        'requires_approval' => 'boolean',
         'superseded_at' => 'datetime',
         'delivery_date' => 'date',
         'expected_date' => 'date',

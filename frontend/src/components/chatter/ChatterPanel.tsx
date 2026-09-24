@@ -432,41 +432,94 @@ function AttachmentItem({
   readOnly: boolean
   onDelete: () => void
 }) {
+  const [busy, setBusy] = useState<'view' | 'download' | null>(null)
+
+  const fetchBlob = async (): Promise<Blob> => {
+    // Issue #78: attachments are fetched through the authenticated API
+    // (the storage path is never exposed), so download as a blob.
+    const response = await api.get(attachment.url, { responseType: 'blob' })
+    return response.data as Blob
+  }
+
+  const handleView = async () => {
+    try {
+      setBusy('view')
+      const blob = await fetchBlob()
+      const url = URL.createObjectURL(blob)
+      window.open(url, '_blank', 'noopener,noreferrer')
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch {
+      // Surfaced by the global api interceptor; keep the row inert.
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const handleDownload = async () => {
+    try {
+      setBusy('download')
+      const blob = await fetchBlob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = attachment.filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch {
+      // Surfaced by the global api interceptor; keep the row inert.
+    } finally {
+      setBusy(null)
+    }
+  }
+
   return (
-    <div className="flex items-center justify-between rounded-md border bg-card px-3 py-2">
+    <div className="flex items-center justify-between gap-3 rounded-md border bg-card px-3 py-2">
       <div className="flex min-w-0 items-center gap-2">
-        <Icon icon="solar:paperclip-bold-duotone" width={16} className="text-indigo-600" />
-        <button
-          type="button"
-          onClick={async () => {
-            try {
-              // Issue #78: attachments are fetched through the authenticated API
-              // (the storage path is never exposed), so download as a blob.
-              const response = await api.get(attachment.url, { responseType: 'blob' })
-              const blobUrl = URL.createObjectURL(response.data as Blob)
-              window.open(blobUrl, '_blank', 'noopener,noreferrer')
-              window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
-            } catch {
-              // Surfaced by the global api interceptor; keep the row inert.
-            }
-          }}
-          className="truncate text-sm font-medium hover:underline"
-        >
+        <Icon icon="solar:paperclip-bold-duotone" width={16} className="shrink-0 text-indigo-600" />
+        <span className="truncate text-sm font-medium" title={attachment.filename}>
           {attachment.filename}
-        </button>
-        <span className="text-xs text-muted-foreground">{formatBytes(attachment.size)}</span>
+        </span>
+        <span className="shrink-0 text-xs text-muted-foreground">{formatBytes(attachment.size)}</span>
       </div>
-      {!readOnly && (
+
+      <div className="flex shrink-0 items-center gap-1">
         <Button
           type="button"
-          size="icon"
-          variant="ghost"
-          className="h-7 w-7 rounded-full text-muted-foreground hover:text-destructive"
-          onClick={onDelete}
+          size="sm"
+          variant="outline"
+          className="h-7 rounded-full px-2.5 text-xs"
+          onClick={handleView}
+          disabled={busy !== null}
         >
-          <Icon icon="solar:trash-bin-trash-bold-duotone" width={16} />
+          <Icon icon="solar:eye-bold-duotone" width={14} className="mr-1" />
+          View
         </Button>
-      )}
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-7 rounded-full px-2.5 text-xs"
+          onClick={handleDownload}
+          disabled={busy !== null}
+        >
+          <Icon icon="solar:download-minimalistic-bold-duotone" width={14} className="mr-1" />
+          {busy === 'download' ? '…' : 'Download'}
+        </Button>
+        {!readOnly && (
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7 rounded-full text-muted-foreground hover:text-destructive"
+            onClick={onDelete}
+            title="Delete attachment"
+          >
+            <Icon icon="solar:trash-bin-trash-bold-duotone" width={16} />
+          </Button>
+        )}
+      </div>
     </div>
   )
 }

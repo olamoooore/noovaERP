@@ -149,17 +149,17 @@ export default function InvoiceAcceptancePage() {
       setPaymentFiles([])
       setPaymentNotes('')
       toast({
-        title: 'Payment proof uploaded',
+        title: 'Evidence uploaded',
         description:
           (data?.count ?? 1) > 1
-            ? `${data.count} receipts have been sent to the vendor.`
-            : 'Your receipt has been sent to the vendor.',
+            ? `${data.count} files have been sent to the vendor.`
+            : 'Your file has been sent to the vendor.',
       })
     },
     onError: (err: any) => {
       toast({
         variant: 'destructive',
-        title: 'Could not upload payment proof',
+        title: 'Could not upload evidence',
         description: err.response?.data?.error || err.response?.data?.message || 'Please try again.',
       })
     },
@@ -273,21 +273,21 @@ export default function InvoiceAcceptancePage() {
             <CardTitle className="text-base">Invoice status</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
               {data.status_trail.map((step, i) => (
-                <div key={step.key} className="flex items-center gap-2">
-                  <div className={`flex items-center gap-2 rounded-full px-3 py-1 text-xs ${
+                <div key={step.key} className="flex shrink-0 items-center gap-1.5">
+                  <div className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] ${
                     step.completed ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
                   }`}>
                     {step.completed ? (
-                      <Icon icon="solar:check-circle-bold" className="h-4 w-4" />
+                      <Icon icon="solar:check-circle-bold" className="h-3.5 w-3.5" />
                     ) : (
-                      <Icon icon="solar:clock-circle-bold" className="h-4 w-4" />
+                      <Icon icon="solar:clock-circle-bold" className="h-3.5 w-3.5" />
                     )}
                     <span className="font-medium">{step.label}</span>
                   </div>
                   {i < data.status_trail.length - 1 && (
-                    <Icon icon="solar:arrow-right-bold" className="h-3 w-3 text-slate-400" />
+                    <Icon icon="solar:arrow-right-bold" className="h-3 w-3 shrink-0 text-slate-400" />
                   )}
                 </div>
               ))}
@@ -436,20 +436,20 @@ export default function InvoiceAcceptancePage() {
           </Card>
         )}
 
-        {/* Payment proof upload — before the acceptance submit, so the customer
-            can attach their bank-transfer receipt */}
+        {/* Evidence upload — before the acceptance submit, so the customer
+            can attach a receipt, signed document, or any supporting file */}
         {!data.revoked && !isFullyPaid && inv.balance > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Payment proof</CardTitle>
+              <CardTitle className="text-base">Evidence</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Paid by bank transfer? Upload your receipt so the vendor can confirm payment.
+                Attach a payment receipt, signed document, or any supporting file for the vendor to review.
               </p>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleUploadEvidence} className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Bank transfer receipts</Label>
+                  <Label>Evidence files</Label>
                   <div className="flex flex-wrap gap-2">
                     {paymentFiles.map((file, idx) => (
                       <FileThumbnail
@@ -462,7 +462,7 @@ export default function InvoiceAcceptancePage() {
                     <button
                       type="button"
                       onClick={() => paymentFileInputRef.current?.click()}
-                      title="Add receipt"
+                      title="Add file"
                       className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-md border-2 border-dashed text-muted-foreground transition-colors hover:border-primary hover:text-primary"
                     >
                       <Icon icon="solar:add-circle-bold-duotone" className="h-6 w-6" />
@@ -512,8 +512,8 @@ export default function InvoiceAcceptancePage() {
                   {uploadEvidenceMutation.isPending
                     ? 'Uploading…'
                     : paymentFiles.length > 1
-                      ? `Upload ${paymentFiles.length} receipts`
-                      : 'Upload payment proof'}
+                      ? `Upload ${paymentFiles.length} files`
+                      : 'Upload evidence'}
                 </Button>
               </form>
             </CardContent>

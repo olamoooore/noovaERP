@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { TagEditor } from '@/components/tags/TagEditor';
 import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -181,6 +182,9 @@ export const VendorBillDetail: React.FC = () => {
           <div>
             <h1 className="text-3xl font-bold">Bill {bill.bill_number || `#${bill.id}`}</h1>
             <p className="text-muted-foreground mt-1">Vendor: {bill.vendor?.name || 'Unknown'}</p>
+            <div className="mt-2">
+              <TagEditor subjectType="bill" subjectId={id!} />
+            </div>
           </div>
         </div>
         <div className="flex gap-2">

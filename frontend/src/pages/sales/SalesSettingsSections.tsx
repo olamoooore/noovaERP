@@ -49,6 +49,9 @@ export interface SalesSettings {
     cc_internal_email: string
     document_type_on_send: string
   }
+  delivery_order: {
+    default_requires_approval: boolean
+  }
 }
 
 export const emptySalesSettings: SalesSettings = {
@@ -77,6 +80,9 @@ export const emptySalesSettings: SalesSettings = {
     attach_pdf: true,
     cc_internal_email: '',
     document_type_on_send: 'final_invoice',
+  },
+  delivery_order: {
+    default_requires_approval: false,
   },
 }
 
@@ -317,10 +323,12 @@ export function ApprovalSettings() {
   const { data, isLoading } = useSalesSettings()
   const [local, setLocal] = useState<Partial<SalesSettings['invoice']>>({})
   const mutation = useSalesSettingsMutation('invoice', 'Approval settings saved', () => setLocal({}))
+  const doMutation = useSalesSettingsMutation('delivery_order', 'Delivery-order approval saved', () => setLocal({}))
 
   if (isLoading || !data) return <SettingsLoadingCard />
 
   const invoice = { ...data.invoice, ...local }
+  const deliveryOrder = data.delivery_order ?? { default_requires_approval: false }
 
   return (
     <Card className="overflow-hidden">
@@ -369,12 +377,22 @@ export function ApprovalSettings() {
           </Badge>
         </SettingsRow>
 
+        <SettingsRow
+          title="Delivery orders require approval by default"
+          description="New delivery orders start with the approval requirement already enabled."
+        >
+          <Switch
+            checked={deliveryOrder.default_requires_approval}
+            onCheckedChange={(v) => doMutation.mutate({ default_requires_approval: v } as any)}
+          />
+        </SettingsRow>
+
         {/* Reviewers */}
         <div className="space-y-4 py-4">
           <div className="space-y-1">
-            <div className="text-sm font-medium leading-none">Invoice reviewers</div>
+            <div className="text-sm font-medium leading-none">Approval reviewers</div>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              Who gets notified and can approve invoices. Pick specific people, roles, or both.
+              Who gets notified and can approve invoices and delivery orders. Pick specific people, roles, or both.
               When nothing is selected, everyone with the invoice-approval permission is used.
             </p>
           </div>
@@ -477,7 +495,7 @@ export function ApprovalSettings() {
               <Icon icon="solar:info-circle-bold-duotone" className="h-3.5 w-3.5 shrink-0 text-primary" />
               {(invoice.reviewer_user_ids ?? []).length + (invoice.reviewer_roles ?? []).length} reviewer
               source{(invoice.reviewer_user_ids ?? []).length + (invoice.reviewer_roles ?? []).length === 1 ? '' : 's'} selected.
-              The submitter is always excluded from approving their own invoice.
+              The submitter is always excluded from approving their own document.
             </div>
           )}
         </div>

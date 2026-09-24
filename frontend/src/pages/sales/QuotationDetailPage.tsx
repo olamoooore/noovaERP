@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { TagEditor } from '@/components/tags/TagEditor'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { QuotationCaseInformationDisplay } from '@/components/sales/QuotationCaseInformation'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -239,6 +240,7 @@ export function QuotationDetailPage() {
                 'Unknown'
               )}
             </p>
+            <TagEditor subjectType="quotation" subjectId={id!} />
           </div>
         </div>
 

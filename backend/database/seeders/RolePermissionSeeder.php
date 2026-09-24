@@ -176,7 +176,7 @@ class RolePermissionSeeder extends Seeder
         'entities.manage' => [UserRole::OWNER, UserRole::ADMIN],
 
         // Settings
-        'settings.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::VIEWER],
+        'settings.view' => [UserRole::OWNER, UserRole::ADMIN],
         'settings.write' => [UserRole::OWNER, UserRole::ADMIN],
 
         // Users
@@ -275,12 +275,29 @@ class RolePermissionSeeder extends Seeder
                 continue;
             }
 
-            $roleNames = array_map(fn (UserRole $r) => $r->spatieName(), $roleEnums);
-            $roles = Role::whereIn('name', $roleNames)->where('guard_name', 'web')->get();
+            $allowedRoleNames = array_map(fn (UserRole $r) => $r->spatieName(), $roleEnums);
 
-            foreach ($roles as $role) {
+            $rolesToGrant = Role::whereIn('name', $allowedRoleNames)
+                ->where('guard_name', 'web')
+                ->get();
+
+            foreach ($rolesToGrant as $role) {
                 if (! $role->hasPermissionTo($permission)) {
                     $role->givePermissionTo($permission);
+                }
+            }
+
+            // Revoke stale grants: if a role was previously allowed but has
+            // since been dropped from the matrix (e.g. settings.view used to
+            // include MANAGER + VIEWER and now only includes OWNER + ADMIN),
+            // remove it so re-seeding converges the DB to the source of truth.
+            $staleRoles = Role::where('guard_name', 'web')
+                ->whereNotIn('name', $allowedRoleNames)
+                ->get();
+
+            foreach ($staleRoles as $role) {
+                if ($role->hasPermissionTo($permission)) {
+                    $role->revokePermissionTo($permission);
                 }
             }
         }

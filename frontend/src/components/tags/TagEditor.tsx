@@ -111,6 +111,10 @@ export function TagEditor({
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
+      <span className="mr-0.5 flex items-center gap-1 text-xs font-medium text-muted-foreground">
+        <Icon icon="solar:tag-bold-duotone" className="h-3.5 w-3.5" />
+        Tags
+      </span>
       {chips.map((chip) => (
         <span
           key={chip.id}

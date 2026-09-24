@@ -91,8 +91,13 @@ Route::middleware([
         // Lifecycle transitions + bulk operations
         Route::middleware(\App\Http\Middleware\RequirePermission::class.':sales.write')->group(function () {
             Route::post('/sales/delivery-orders/{id}/confirm', [DeliveryOrderController::class, 'confirm']);
+            // Delivery-order approval (reviewer actions).
+            Route::post('/sales/delivery-orders/{id}/approve', [DeliveryOrderController::class, 'approve']);
+            Route::post('/sales/delivery-orders/{id}/reject-approval', [DeliveryOrderController::class, 'rejectApproval']);
             // Issue #177: signed copy upload for the physical confirmation path.
             Route::post('/sales/delivery-orders/{id}/signed-document', [DeliveryOrderController::class, 'uploadSignedDocument']);
+            // Customer portal: send the DO to the customer for signing/evidence.
+            Route::post('/sales/delivery-orders/{id}/customer-link', [DeliveryOrderController::class, 'issueCustomerLink']);
             // Issue #153: download the signed POD, gated the same way as the
             // delivery-orders detail endpoint.
             Route::get('/sales/delivery-orders/{id}/signed-document', [DeliveryOrderController::class, 'downloadSignedDocument'])

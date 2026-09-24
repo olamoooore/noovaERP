@@ -598,6 +598,9 @@ class CompanySettingsController extends Controller
                     'cc_internal_email' => \App\Models\Setting::getValue('sales.delivery.cc_internal_email', ''),
                     'document_type_on_send' => \App\Models\Setting::getValue('sales.delivery.document_type_on_send', 'final_invoice'),
                 ],
+                'delivery_order' => [
+                    'default_requires_approval' => (bool) \App\Models\Setting::getValue('sales.delivery_order.default_requires_approval', false),
+                ],
             ],
         ]);
     }
@@ -627,6 +630,7 @@ class CompanySettingsController extends Controller
             'delivery.attach_pdf' => 'nullable|boolean',
             'delivery.cc_internal_email' => 'nullable|email|max:255',
             'delivery.document_type_on_send' => 'nullable|string|in:final_invoice,acceptance_copy',
+            'delivery_order.default_requires_approval' => 'nullable|boolean',
         ]);
 
         $map = [
@@ -650,6 +654,7 @@ class CompanySettingsController extends Controller
             'delivery.attach_pdf' => 'sales.delivery.attach_pdf',
             'delivery.cc_internal_email' => 'sales.delivery.cc_internal_email',
             'delivery.document_type_on_send' => 'sales.delivery.document_type_on_send',
+            'delivery_order.default_requires_approval' => 'sales.delivery_order.default_requires_approval',
         ];
 
         // $validated arrives nested (['invoice' => ['key' => value]]), while

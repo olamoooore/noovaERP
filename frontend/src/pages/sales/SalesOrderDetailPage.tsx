@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { TagEditor } from '@/components/tags/TagEditor'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { ChatterDialog } from '@/components/chatter'
@@ -204,6 +205,7 @@ export function SalesOrderDetailPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {getStatusBadge(order.status)}
+          <TagEditor subjectType="sales_order" subjectId={id!} />
           <HeaderActionButton
             variant="outline"
             icon="solar:chat-round-dots-bold-duotone"

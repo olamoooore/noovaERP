@@ -136,6 +136,7 @@ class DeliveryOrderController extends Controller
                 'invoice_id' => 'nullable|exists:invoices,id',
                 'quotation_id' => 'nullable|exists:quotations,id',
                 'notes' => 'nullable|string',
+                'requires_approval' => 'nullable|boolean',
                 'lines' => 'required|array|min:1',
                 'lines.*.line_type' => 'nullable|in:product,note,section',
                 'lines.*.sequence' => 'nullable|integer|min:0',
@@ -193,6 +194,7 @@ class DeliveryOrderController extends Controller
             'salesperson' => 'nullable|string|max:255',
             'attention_to' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
+            'requires_approval' => 'nullable|boolean',
             'lines' => 'required|array|min:1',
             'lines.*.line_type' => 'nullable|in:product,note,section',
             'lines.*.sequence' => 'nullable|integer|min:0',
@@ -228,7 +230,7 @@ class DeliveryOrderController extends Controller
         }
     }
 
-    public function show($id)
+    public function show(Request $request, $id)
     {
         $deliveryOrder = DeliveryOrder::with([
             'customer',
@@ -249,6 +251,13 @@ class DeliveryOrderController extends Controller
         // their quotation through the linked sales order for display.
         if (! $deliveryOrder->quotation && $deliveryOrder->salesOrder?->quotation) {
             $deliveryOrder->setRelation('quotation', $deliveryOrder->salesOrder->quotation);
+        }
+
+        // Whether the current user may approve this pending delivery order.
+        $deliveryOrder->can_approve = false;
+        if ($deliveryOrder->approval_status === 'pending') {
+            $reviewers = $this->deliveryService->resolveReviewers((int) $deliveryOrder->created_by);
+            $deliveryOrder->can_approve = $reviewers->contains('id', (int) $request->user()?->id);
         }
 
         return response()->json($deliveryOrder);
@@ -379,6 +388,114 @@ class DeliveryOrderController extends Controller
     }
 
     /**
+     * Approve a pending delivery order (reviewer action).
+     */
+    public function approve(Request $request, $id)
+    {
+        $deliveryOrder = DeliveryOrder::find($id);
+
+        if (! $deliveryOrder) {
+            return response()->json(['message' => 'Delivery order not found'], 404);
+        }
+
+        try {
+            $deliveryOrder = $this->deliveryService->approveDeliveryOrder($deliveryOrder, $request->user());
+
+            return response()->json([
+                'message' => 'Delivery order approved',
+                'data' => $deliveryOrder,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+    }
+
+    /**
+     * Reject a pending delivery order (reviewer action).
+     */
+    public function rejectApproval(Request $request, $id)
+    {
+        $deliveryOrder = DeliveryOrder::find($id);
+
+        if (! $deliveryOrder) {
+            return response()->json(['message' => 'Delivery order not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'reason' => 'required|string|min:10|max:500',
+        ]);
+
+        try {
+            $deliveryOrder = $this->deliveryService->rejectDeliveryOrder($deliveryOrder, $request->user(), $validated['reason']);
+
+            return response()->json([
+                'message' => 'Delivery order rejected',
+                'data' => $deliveryOrder,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+    }
+
+    /**
+     * Send a delivery order to the customer: issues a public acceptance link
+     * and emails it so the customer can sign on paper and upload the signed
+     * copy back through the portal.
+     */
+    public function issueCustomerLink(Request $request, $id)
+    {
+        $deliveryOrder = DeliveryOrder::with('customer')->find($id);
+
+        if (! $deliveryOrder) {
+            return response()->json(['message' => 'Delivery order not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'expires_in_days' => 'nullable|integer|min:1|max:90',
+            'send_email' => 'nullable|boolean',
+        ]);
+
+        try {
+            $link = $this->deliveryService->issueCustomerLink(
+                $deliveryOrder,
+                (int) ($validated['expires_in_days'] ?? 30),
+            );
+
+            $delivery = null;
+            if (($validated['send_email'] ?? true) && $deliveryOrder->customer?->email) {
+                $customerName = $deliveryOrder->customer->name ?: 'Sir/Madam';
+                $subject = "Delivery order {$deliveryOrder->delivery_order_number} — please sign and return";
+                $body = "Dear {$customerName},\n\n".
+                    "Please find your delivery order {$deliveryOrder->delivery_order_number}.\n".
+                    "To confirm receipt, open this link, sign the copy, and upload it back:\n".
+                    "{$link['url']}\n\n".
+                    'Thank you for your business.';
+
+                \Illuminate\Support\Facades\Mail::raw($body, function ($message) use ($deliveryOrder, $subject) {
+                    $message->to($deliveryOrder->customer->email)->subject($subject);
+                });
+
+                $delivery = ['recipient' => $deliveryOrder->customer->email];
+            }
+
+            return response()->json([
+                'message' => 'Customer link issued'.($delivery ? ' and emailed' : ''),
+                'data' => [
+                    ...$link,
+                    'delivery' => $delivery,
+                ],
+            ], 201);
+        } catch (\Throwable $e) {
+            Log::error('Failed to issue delivery-order customer link', [
+                'delivery_order_id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json(['message' => 'Failed to issue customer link'], 500);
+        }
+    }
+
+    /**
      * Issue #177 / #153: upload the signed copy for the physical confirmation
      * path. Accepts explicit signer metadata (name + email + signed_at) so
      * the proof travels with the resulting Invoice for client AP/payment
@@ -391,7 +508,6 @@ class DeliveryOrderController extends Controller
         if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
         }
-
         if (! $deliveryOrder->isDraft()) {
             return response()->json(['message' => 'The signed document must be uploaded before the order is confirmed.'], 422);
         }

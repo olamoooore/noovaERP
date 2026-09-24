@@ -21,7 +21,12 @@ class TagService
         'quotation' => \App\Models\Quotation::class,
         'sales_order' => \Modules\Sales\Models\SalesOrder::class,
         'delivery_order' => \Modules\Sales\Models\DeliveryOrder::class,
+        'purchase_order' => \Modules\Inventory\Models\PurchaseOrder::class,
+        'bill' => \App\Models\Bill::class,
         'customer' => \App\Models\Customer::class,
+        'vendor' => \App\Models\Vendor::class,
+        'payment' => \App\Models\Payment::class,
+        'product' => \App\Models\Product::class,
     ];
 
     /**

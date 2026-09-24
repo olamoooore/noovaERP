@@ -1125,7 +1125,8 @@ export function Sidebar() {
         {navItems.map((item) => renderNavItem(item, 0))}
       </nav>
 
-      {/* General settings */}
+      {/* General settings — OWNER/ADMIN/SUPERADMIN only (settings.view). */}
+      {hasPermission('settings.view') && (
       <div className={cn('border-t', isMinimized ? 'p-2' : 'p-3')}>
         <Link
           to="/settings"
@@ -1156,6 +1157,7 @@ export function Sidebar() {
           )}
         </Link>
       </div>
+      )}
     </div>
   )
 }

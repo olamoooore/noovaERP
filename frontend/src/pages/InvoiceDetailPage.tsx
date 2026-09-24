@@ -626,7 +626,8 @@ export function InvoiceDetailPage() {
       )}
 
       {/* Linked documents */}
-      <div className="flex flex-wrap gap-2 print:hidden">
+      <div className="flex flex-wrap items-center gap-2 print:hidden">
+        <TagEditor subjectType="invoice" subjectId={id as string} />
         {invoice.quotation && (
           <button
             type="button"

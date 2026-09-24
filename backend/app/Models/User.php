@@ -7,6 +7,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 
@@ -52,6 +53,8 @@ class User extends Authenticatable
     protected $fillable = [
         'name',
         'email',
+        'phone',
+        'avatar',
         'password',
         'is_active',
         'deactivated_at',
@@ -124,6 +127,31 @@ class User extends Authenticatable
     {
         return (bool) ($this->is_super_admin ?? false)
             || in_array($this->role, self::PRIVILEGED_ROLES, true);
+    }
+
+    /**
+     * Absolute URL to the user's avatar image.
+     *
+     * Returns null when no avatar is set so the frontend can fall back
+     * to initials. `Storage::url()` resolves to `${APP_URL}/storage/...`
+     * for the public disk — matches the `UploadController@store` shape
+     * used everywhere else.
+     */
+    public function getAvatarUrlAttribute(): ?string
+    {
+        $path = $this->avatar;
+        if (! $path) {
+            return null;
+        }
+
+        // If the stored value is already an absolute URL (e.g. pasted
+        // by hand or returned from an external identity provider),
+        // return it as-is.
+        if (preg_match('#^https?://#i', $path)) {
+            return $path;
+        }
+
+        return Storage::disk('public')->url($path);
     }
 
     /**

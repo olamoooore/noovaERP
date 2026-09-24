@@ -93,16 +93,30 @@ class InvoiceAcceptanceController extends Controller
 
     private function buildStatusTrail(Invoice $invoice, $evidence): array
     {
+        // "Evidence submitted" counts any customer/vendor-provided document
+        // (payment proof, purchase order, delivery order, other) — the
+        // acceptance signature is covered by its own step.
+        $submittedEvidence = $invoice->evidence()
+            ->whereNull('deleted_at')
+            ->whereNull('revoked_at')
+            ->whereNotNull('file_name')
+            ->where('type', '!=', InvoiceEvidence::TYPE_CUSTOMER_ACCEPTANCE);
+
+        $confirmedEvidence = $invoice->evidence()
+            ->whereNotNull('confirmed_at')
+            ->whereNull('deleted_at')
+            ->whereNull('revoked_at');
+
         $trail = [
             [
                 'key' => 'issued',
-                'label' => 'Invoice issued',
+                'label' => 'Issued',
                 'completed' => true,
                 'date' => optional($invoice->invoice_date)->toDateString() ?? optional($invoice->created_at)->toIso8601String(),
             ],
             [
                 'key' => 'sent',
-                'label' => 'Sent to customer',
+                'label' => 'Sent',
                 // The acceptance link itself is the delivery — reaching this
                 // endpoint with a valid token means the invoice was sent.
                 'completed' => true,
@@ -110,35 +124,21 @@ class InvoiceAcceptanceController extends Controller
             ],
             [
                 'key' => 'accepted',
-                'label' => 'Customer acceptance',
+                'label' => 'Accepted',
                 'completed' => $evidence->signed_at !== null,
                 'date' => optional($evidence->signed_at)->toIso8601String(),
             ],
             [
                 'key' => 'evidence',
-                'label' => 'Payment evidence',
-                'completed' => $invoice->evidence()
-                    ->where('type', InvoiceEvidence::TYPE_PAYMENT_PROOF)
-                    ->whereNull('deleted_at')
-                    ->exists(),
-                'date' => optional($invoice->evidence()
-                    ->where('type', InvoiceEvidence::TYPE_PAYMENT_PROOF)
-                    ->whereNull('deleted_at')
-                    ->latest()
-                    ->first()?->created_at)->toIso8601String(),
+                'label' => 'Evidence submitted',
+                'completed' => (clone $submittedEvidence)->exists(),
+                'date' => optional((clone $submittedEvidence)->latest()->first()?->created_at)->toIso8601String(),
             ],
             [
                 'key' => 'confirmed',
-                'label' => 'Evidence confirmed',
-                'completed' => $invoice->evidence()
-                    ->whereNotNull('confirmed_at')
-                    ->whereNull('deleted_at')
-                    ->exists(),
-                'date' => optional($invoice->evidence()
-                    ->whereNotNull('confirmed_at')
-                    ->whereNull('deleted_at')
-                    ->latest('confirmed_at')
-                    ->first()?->confirmed_at)->toIso8601String(),
+                'label' => 'Confirmed',
+                'completed' => (clone $confirmedEvidence)->exists(),
+                'date' => optional((clone $confirmedEvidence)->latest('confirmed_at')->first()?->confirmed_at)->toIso8601String(),
             ],
         ];
 
@@ -260,7 +260,7 @@ class InvoiceAcceptanceController extends Controller
             $proofs = [];
 
             foreach ($files as $file) {
-                $proofs[] = $this->evidenceService->recordCustomerPaymentProof(
+                $proofs[] = $this->evidenceService->recordCustomerEvidence(
                     $invoice,
                     $file,
                     $request->input('notes'),
@@ -273,8 +273,8 @@ class InvoiceAcceptanceController extends Controller
 
             return response()->json([
                 'message' => $count === 1
-                    ? 'Payment proof uploaded successfully.'
-                    : "{$count} payment proofs uploaded successfully.",
+                    ? 'Evidence uploaded successfully.'
+                    : "{$count} evidence files uploaded successfully.",
                 // Back-compat single-file fields (the first uploaded file).
                 'evidence_id' => $proofs[0]->id,
                 'file_name' => $proofs[0]->file_name,

@@ -101,16 +101,24 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
     Route::get('/me', [AuthController::class, 'me']);
     Route::get('/products/{product}/tracking-availability', [ProductTrackingController::class, 'availability']);
 
-    // Settings
-    Route::get('/settings', [SettingsController::class, 'show']);
-    Route::put('/settings', [SettingsController::class, 'update']);
-    Route::post('/settings/test-smtp', [SettingsController::class, 'testSmtp']);
+    // Settings — locked to OWNER/ADMIN via settings.view/settings.write.
+    // SUPERADMIN bypasses via RequirePermission's is_super_admin shortcut.
+    Route::get('/settings', [SettingsController::class, 'show'])
+        ->middleware(RequirePermission::using('settings.view'));
+    Route::put('/settings', [SettingsController::class, 'update'])
+        ->middleware(RequirePermission::using('settings.write'));
+    Route::post('/settings/test-smtp', [SettingsController::class, 'testSmtp'])
+        ->middleware(RequirePermission::using('settings.write'));
 
     // Sales Settings (tenant-root, no accounting prefix) — used by the Sales Settings UI
-    Route::get('/settings/document-formats', [CompanySettingsController::class, 'documentFormats']);
-    Route::put('/settings/document-formats', [CompanySettingsController::class, 'updateDocumentFormats']);
-    Route::get('/settings/sales', [CompanySettingsController::class, 'getSalesSettings']);
-    Route::put('/settings/sales', [CompanySettingsController::class, 'updateSalesSettings']);
+    Route::get('/settings/document-formats', [CompanySettingsController::class, 'documentFormats'])
+        ->middleware(RequirePermission::using('settings.view'));
+    Route::put('/settings/document-formats', [CompanySettingsController::class, 'updateDocumentFormats'])
+        ->middleware(RequirePermission::using('settings.write'));
+    Route::get('/settings/sales', [CompanySettingsController::class, 'getSalesSettings'])
+        ->middleware(RequirePermission::using('settings.view'));
+    Route::put('/settings/sales', [CompanySettingsController::class, 'updateSalesSettings'])
+        ->middleware(RequirePermission::using('settings.write'));
 
     // Taxes
     Route::get('/taxes', [TaxController::class, 'index']);
@@ -711,16 +719,24 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::get('/analytic-accounts/{id}/balance', [AnalyticAccountsController::class, 'balance']);
         Route::get('/analytic-accounts/{id}/profit-loss', [AnalyticAccountsController::class, 'profitLoss']);
 
-        // Company Settings
-        Route::get('/settings', [CompanySettingsController::class, 'index']);
-        Route::put('/settings', [CompanySettingsController::class, 'update']);
+        // Company Settings — same OWNER/ADMIN gate as the top-level /settings routes.
+        Route::get('/settings', [CompanySettingsController::class, 'index'])
+            ->middleware(RequirePermission::using('settings.view'));
+        Route::put('/settings', [CompanySettingsController::class, 'update'])
+            ->middleware(RequirePermission::using('settings.write'));
         // Logo upload/delete: routes removed until controller methods are implemented
-        Route::get('/settings/fiscal-year', [CompanySettingsController::class, 'fiscalYear']);
-        Route::put('/settings/fiscal-year', [CompanySettingsController::class, 'updateFiscalYear']);
-        Route::get('/settings/currencies', [CompanySettingsController::class, 'currencies']);
-        Route::put('/settings/currencies', [CompanySettingsController::class, 'updateCurrencies']);
-        Route::get('/settings/accounts', [CompanySettingsController::class, 'accounts']);
-        Route::put('/settings/accounts', [CompanySettingsController::class, 'updateAccounts']);
+        Route::get('/settings/fiscal-year', [CompanySettingsController::class, 'fiscalYear'])
+            ->middleware(RequirePermission::using('settings.view'));
+        Route::put('/settings/fiscal-year', [CompanySettingsController::class, 'updateFiscalYear'])
+            ->middleware(RequirePermission::using('settings.write'));
+        Route::get('/settings/currencies', [CompanySettingsController::class, 'currencies'])
+            ->middleware(RequirePermission::using('settings.view'));
+        Route::put('/settings/currencies', [CompanySettingsController::class, 'updateCurrencies'])
+            ->middleware(RequirePermission::using('settings.write'));
+        Route::get('/settings/accounts', [CompanySettingsController::class, 'accounts'])
+            ->middleware(RequirePermission::using('settings.view'));
+        Route::put('/settings/accounts', [CompanySettingsController::class, 'updateAccounts'])
+            ->middleware(RequirePermission::using('settings.write'));
         // (document-formats + sales settings moved out of the accounting prefix
         //  group below so they're reachable as /api/v1/settings/... directly)
 

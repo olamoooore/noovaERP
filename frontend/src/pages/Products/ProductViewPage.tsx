@@ -1,4 +1,5 @@
 import { Link, useParams } from 'react-router-dom'
+import { TagEditor } from '@/components/tags/TagEditor'
 import { useQuery } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
@@ -49,6 +50,11 @@ export function ProductViewPage() {
             <span className="text-foreground">View</span>
           </div>
           <h1 className="text-3xl font-bold mt-1">{isLoading ? 'Loading…' : product?.name || 'Product'}</h1>
+          {Number.isFinite(productId) && productId > 0 && (
+            <div className="mt-2">
+              <TagEditor subjectType="product" subjectId={String(productId)} />
+            </div>
+          )}
         </div>
 
         <div className="flex gap-2">

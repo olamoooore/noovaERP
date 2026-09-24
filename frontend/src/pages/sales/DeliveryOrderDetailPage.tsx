@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import { ChatterDock } from '@/components/chatter'
+import { TagEditor } from '@/components/tags/TagEditor'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
 import { formatCurrency, formatDate } from '@/lib/utils'
@@ -199,6 +200,65 @@ export function DeliveryOrderDetailPage() {
     },
   })
 
+  const sendToCustomerMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/sales/delivery-orders/${id}/customer-link`)
+      return response.data
+    },
+    onSuccess: () => {
+      toast({ title: 'Delivery order sent to customer', description: 'The customer can now sign and upload their copy.' })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to send delivery order',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
+  const [approvalComment, setApprovalComment] = useState('')
+
+  const approveMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/sales/delivery-orders/${id}/approve`)
+      return response.data
+    },
+    onSuccess: () => {
+      setApprovalComment('')
+      queryClient.invalidateQueries({ queryKey: ['delivery-order', id] })
+      queryClient.invalidateQueries({ queryKey: ['delivery-orders'] })
+      toast({ title: 'Delivery order approved', description: 'It can now be confirmed.' })
+    },
+    onError: (error: any) => {
+      toast({ variant: 'destructive', title: 'Could not approve', description: error.response?.data?.message || 'An error occurred' })
+    },
+  })
+
+  const declineMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/sales/delivery-orders/${id}/reject-approval`, { reason: approvalComment })
+      return response.data
+    },
+    onSuccess: () => {
+      setApprovalComment('')
+      queryClient.invalidateQueries({ queryKey: ['delivery-order', id] })
+      queryClient.invalidateQueries({ queryKey: ['delivery-orders'] })
+      toast({ title: 'Delivery order declined', description: 'It has been returned to draft.' })
+    },
+    onError: (error: any) => {
+      toast({ variant: 'destructive', title: 'Could not decline', description: error.response?.data?.message || 'An error occurred' })
+    },
+  })
+
+  const handleDecline = () => {
+    if ((approvalComment.trim().length || 0) < 10) {
+      toast({ variant: 'destructive', title: 'A reason is required', description: 'Please add a comment (at least 10 characters).' })
+      return
+    }
+    declineMutation.mutate()
+  }
+
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
       draft: 'bg-gray-100 text-gray-800',
@@ -249,15 +309,22 @@ export function DeliveryOrderDetailPage() {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-3xl font-bold">{deliveryOrder.delivery_order_number}</h1>
-              <Badge variant="secondary" className={getStatusBadge(deliveryOrder.status)}>
-                {deliveryOrder.status}
-              </Badge>
+              {deliveryOrder.approval_status === 'pending' ? (
+                <Badge variant="secondary" className="bg-amber-100 text-amber-800">
+                  Pending Approval
+                </Badge>
+              ) : (
+                <Badge variant="secondary" className={getStatusBadge(deliveryOrder.status)}>
+                  {deliveryOrder.status}
+                </Badge>
+              )}
             </div>
             <p className="text-muted-foreground mt-1">
               {deliveryOrder.quotation
                 ? `For Quotation ${deliveryOrder.quotation.quotation_number}`
                 : 'Standalone Delivery'}
             </p>
+            <TagEditor subjectType="delivery_order" subjectId={id!} />
           </div>
         </div>
 
@@ -343,6 +410,17 @@ export function DeliveryOrderDetailPage() {
           >
             Download PDF
           </HeaderActionButton>
+          {['confirmed', 'done'].includes(deliveryOrder.status) && (
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:letter-bold-duotone"
+              loading={sendToCustomerMutation.isPending}
+              onClick={() => sendToCustomerMutation.mutate()}
+              disabled={sendToCustomerMutation.isPending}
+            >
+              Send to Customer
+            </HeaderActionButton>
+          )}
           {deliveryOrder.status === 'draft' && (
             <HeaderActionButton
               variant="outline"
@@ -385,6 +463,43 @@ export function DeliveryOrderDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Approval actions — shown to the reviewer while the DO awaits approval */}
+      {deliveryOrder.can_approve && (
+        <div className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/40">
+          <div className="flex items-center gap-2">
+            <Icon icon="solar:clipboard-check-bold-duotone" className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            <span className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+              This delivery order is awaiting your approval
+            </span>
+          </div>
+          <textarea
+            value={approvalComment}
+            onChange={(e) => setApprovalComment(e.target.value)}
+            placeholder="Add a comment (required when declining)…"
+            className="min-h-[80px] w-full rounded-md border bg-white p-3 text-sm dark:bg-background"
+          />
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => approveMutation.mutate()}
+              disabled={approveMutation.isPending || declineMutation.isPending}
+              className="h-8 rounded-full bg-emerald-600 px-4 text-xs text-white hover:bg-emerald-700"
+            >
+              <Icon icon="solar:check-circle-bold-duotone" className="mr-1.5 h-4 w-4" />
+              {approveMutation.isPending ? 'Approving…' : 'Approve'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleDecline}
+              disabled={approveMutation.isPending || declineMutation.isPending}
+              className="h-8 rounded-full border-red-300 px-4 text-xs text-red-700 hover:bg-red-50 hover:text-red-800 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40"
+            >
+              <Icon icon="solar:close-circle-bold-duotone" className="mr-1.5 h-4 w-4" />
+              {declineMutation.isPending ? 'Declining…' : 'Decline'}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Odoo-style smart buttons */}
       <div className="flex gap-3">

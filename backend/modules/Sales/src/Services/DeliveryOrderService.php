@@ -2,8 +2,8 @@
 
 namespace Modules\Sales\Services;
 
-use App\Models\Warehouse;
 use App\Models\Product;
+use App\Models\Warehouse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -145,74 +145,76 @@ class DeliveryOrderService
             'quotation_id' => $quotationId,
             'notes' => $data['notes'] ?? null,
             'created_by' => $actorId,
+            'requires_approval' => ! empty($data['requires_approval']),
+            'approval_status' => ! empty($data['requires_approval']) ? 'pending' : 'not_required',
         ]);
 
         $lines = $data['lines'] ?? [];
-            $hasDeliverableProduct = false;
-            foreach ($lines as $lineData) {
-                $soLineId = $lineData['sales_order_line_id'];
-                $soLine = SalesOrderLine::findOrFail($soLineId);
-                $lineType = $soLine->line_type ?? $lineData['line_type'] ?? 'product';
+        $hasDeliverableProduct = false;
+        foreach ($lines as $lineData) {
+            $soLineId = $lineData['sales_order_line_id'];
+            $soLine = SalesOrderLine::findOrFail($soLineId);
+            $lineType = $soLine->line_type ?? $lineData['line_type'] ?? 'product';
 
-                if ((int) $soLine->sales_order_id !== (int) $order->id) {
-                    throw new \Exception("Sales order line {$soLineId} does not belong to order #{$order->id}.");
-                }
-
-                $quantityDelivered = (float) ($lineData['quantity_delivered'] ?? 0);
-                if ($lineType === 'product' && $quantityDelivered <= 0) {
-                    throw new \Exception("Delivery quantity must be greater than zero for sales order line #{$soLineId}.");
-                }
-                if ($lineType === 'product') {
-                    $hasDeliverableProduct = true;
-                }
-                $remainingForThisLine = (float) $soLine->quantity
-                    - (float) $soLine->quantity_delivered
-                    - (float) $soLine->quantity_cancelled;
-
-                if ($quantityDelivered > $remainingForThisLine + 0.0001) {
-                    throw new \Exception(
-                        "Cannot deliver {$quantityDelivered} of line #{$soLineId}. "
-                        ."Only {$remainingForThisLine} remaining to deliver."
-                    );
-                }
-
-                $lineProduct = $lineType === 'product' && $soLine->product_id
-                    ? \App\Models\Product::find($soLine->product_id)
-                    : null;
-                $serialNumbers = $lineType === 'product'
-                    ? $this->resolveSerialNumbers($lineProduct, $lineData, $quantityDelivered)
-                    : [];
-
-                DeliveryOrderLine::create([
-                    'line_type' => $lineType,
-                    'sequence' => $lineData['sequence'] ?? $soLine->sequence ?? 0,
-                    'delivery_order_id' => $deliveryOrder->id,
-                    'sales_order_line_id' => $soLine->id,
-                    'product_id' => $soLine->product_id,
-                    'model_number' => $lineData['model_number'] ?? $soLine->model_number ?? null,
-                    'description' => $lineData['description'] ?? $soLine->description,
-                    'product_notes' => $lineData['product_notes'] ?? $soLine->product_notes ?? null,
-                    'patient_name' => $lineData['patient_name'] ?? null,
-                    'quantity_ordered' => $lineType === 'product' ? (float) $soLine->quantity : 0,
-                    'quantity_delivered' => $lineType === 'product' ? $quantityDelivered : 0,
-                    'unit' => $lineData['unit'] ?? $soLine->unit,
-                    'unit_price' => $lineType === 'product' ? (float) ($lineData['unit_price'] ?? $soLine->unit_price ?? 0) : null,
-                    'line_total' => $lineType === 'product'
-                        ? round((float) ($lineData['unit_price'] ?? $soLine->unit_price ?? 0) * $quantityDelivered, 2)
-                        : null,
-                    'lot_number' => $lineData['lot_number'] ?? null,
-                    'serial_number' => $lineData['serial_number'] ?? null,
-                    'product_batch_id' => $lineData['product_batch_id'] ?? null,
-                    'product_serial_id' => $lineData['product_serial_id'] ?? null,
-                    'batch_number' => $lineData['batch_number'] ?? null,
-                    'expiry_date' => $lineData['expiry_date'] ?? null,
-                    'serial_numbers' => $serialNumbers,
-                ]);
+            if ((int) $soLine->sales_order_id !== (int) $order->id) {
+                throw new \Exception("Sales order line {$soLineId} does not belong to order #{$order->id}.");
             }
 
-            if (! $hasDeliverableProduct) {
-                throw new \Exception('Set Deliver Now greater than zero for at least one product before creating the delivery order.');
+            $quantityDelivered = (float) ($lineData['quantity_delivered'] ?? 0);
+            if ($lineType === 'product' && $quantityDelivered <= 0) {
+                throw new \Exception("Delivery quantity must be greater than zero for sales order line #{$soLineId}.");
             }
+            if ($lineType === 'product') {
+                $hasDeliverableProduct = true;
+            }
+            $remainingForThisLine = (float) $soLine->quantity
+                - (float) $soLine->quantity_delivered
+                - (float) $soLine->quantity_cancelled;
+
+            if ($quantityDelivered > $remainingForThisLine + 0.0001) {
+                throw new \Exception(
+                    "Cannot deliver {$quantityDelivered} of line #{$soLineId}. "
+                    ."Only {$remainingForThisLine} remaining to deliver."
+                );
+            }
+
+            $lineProduct = $lineType === 'product' && $soLine->product_id
+                ? \App\Models\Product::find($soLine->product_id)
+                : null;
+            $serialNumbers = $lineType === 'product'
+                ? $this->resolveSerialNumbers($lineProduct, $lineData, $quantityDelivered)
+                : [];
+
+            DeliveryOrderLine::create([
+                'line_type' => $lineType,
+                'sequence' => $lineData['sequence'] ?? $soLine->sequence ?? 0,
+                'delivery_order_id' => $deliveryOrder->id,
+                'sales_order_line_id' => $soLine->id,
+                'product_id' => $soLine->product_id,
+                'model_number' => $lineData['model_number'] ?? $soLine->model_number ?? null,
+                'description' => $lineData['description'] ?? $soLine->description,
+                'product_notes' => $lineData['product_notes'] ?? $soLine->product_notes ?? null,
+                'patient_name' => $lineData['patient_name'] ?? null,
+                'quantity_ordered' => $lineType === 'product' ? (float) $soLine->quantity : 0,
+                'quantity_delivered' => $lineType === 'product' ? $quantityDelivered : 0,
+                'unit' => $lineData['unit'] ?? $soLine->unit,
+                'unit_price' => $lineType === 'product' ? (float) ($lineData['unit_price'] ?? $soLine->unit_price ?? 0) : null,
+                'line_total' => $lineType === 'product'
+                    ? round((float) ($lineData['unit_price'] ?? $soLine->unit_price ?? 0) * $quantityDelivered, 2)
+                    : null,
+                'lot_number' => $lineData['lot_number'] ?? null,
+                'serial_number' => $lineData['serial_number'] ?? null,
+                'product_batch_id' => $lineData['product_batch_id'] ?? null,
+                'product_serial_id' => $lineData['product_serial_id'] ?? null,
+                'batch_number' => $lineData['batch_number'] ?? null,
+                'expiry_date' => $lineData['expiry_date'] ?? null,
+                'serial_numbers' => $serialNumbers,
+            ]);
+        }
+
+        if (! $hasDeliverableProduct) {
+            throw new \Exception('Set Deliver Now greater than zero for at least one product before creating the delivery order.');
+        }
 
         return $deliveryOrder->fresh(['lines.salesOrderLine', 'customer', 'salesOrder']);
     }
@@ -471,6 +473,8 @@ class DeliveryOrderService
                 'quotation_id' => $quotationId,
                 'notes' => $data['notes'] ?? null,
                 'created_by' => $actorId,
+                'requires_approval' => ! empty($data['requires_approval']),
+                'approval_status' => ! empty($data['requires_approval']) ? 'pending' : 'not_required',
             ]);
 
             foreach ($lines as $lineData) {
@@ -554,6 +558,10 @@ class DeliveryOrderService
     {
         if (! $deliveryOrder->isDraft()) {
             throw new \Exception('Only draft delivery orders can be confirmed.');
+        }
+
+        if ($deliveryOrder->requires_approval && $deliveryOrder->approval_status !== 'approved') {
+            throw new \Exception('This delivery order requires approval before it can be confirmed.');
         }
 
         if (! $deliveryOrder->warehouse_id) {
@@ -929,5 +937,121 @@ class DeliveryOrderService
         }
 
         return true;
+    }
+
+    /**
+     * Issue (or refresh) the customer's public acceptance link for a delivery
+     * order. Returns the token + frontend URL; the caller sends the email.
+     */
+    public function issueCustomerLink(DeliveryOrder $deliveryOrder, int $expiresInDays = 30): array
+    {
+        $token = (string) \Illuminate\Support\Str::uuid();
+        $expiresAt = now()->addDays($expiresInDays);
+
+        $deliveryOrder->update([
+            'acceptance_token' => $token,
+            'acceptance_expires_at' => $expiresAt,
+        ]);
+
+        $frontendUrl = rtrim((string) (env('FRONTEND_URL') ?: config('app.url', '')), '/');
+
+        return [
+            'token' => $token,
+            'url' => "{$frontendUrl}/do-accept/{$token}",
+            'expires_at' => $expiresAt->toIso8601String(),
+        ];
+    }
+
+    /**
+     * Users who can approve a delivery order.
+     *
+     * Reuses the invoice approval reviewer pool (Sales Settings → Approval
+     * Workflow) so one set of reviewers covers invoices and delivery orders.
+     * Falls back to the sales.write permission holder if nothing is configured.
+     */
+    public function resolveReviewers(?int $submitterId = null): \Illuminate\Support\Collection
+    {
+        $users = collect();
+
+        $configuredIds = \App\Models\Setting::getValue('sales.invoice.reviewer_user_ids', []);
+        $configuredRoles = \App\Models\Setting::getValue('sales.invoice.reviewer_roles', []);
+
+        if (is_array($configuredIds) && $configuredIds !== []) {
+            $users = $users->merge(\App\Models\User::whereIn('id', array_map('intval', $configuredIds))->get());
+        }
+
+        if (is_array($configuredRoles) && $configuredRoles !== []) {
+            $spatieNames = collect($configuredRoles)
+                ->map(fn ($role) => \App\Enums\UserRole::tryFrom(strtolower((string) $role))?->spatieName())
+                ->filter()
+                ->values()
+                ->all();
+
+            if ($spatieNames !== []) {
+                $users = $users->merge(\App\Models\User::role($spatieNames)->get());
+            }
+        }
+
+        $users = $users
+            ->unique('id')
+            ->reject(fn ($u) => $submitterId !== null && (int) $u->id === (int) $submitterId)
+            ->values();
+
+        return $users;
+    }
+
+    public function approveDeliveryOrder(DeliveryOrder $deliveryOrder, \App\Models\User $user): DeliveryOrder
+    {
+        if ($deliveryOrder->approval_status === 'approved') {
+            return $deliveryOrder;
+        }
+
+        $deliveryOrder->update(['approval_status' => 'approved']);
+
+        $this->logChatter($deliveryOrder, 'status_changed', "Approved {$deliveryOrder->delivery_order_number}", [
+            'state' => 'pending → approved',
+        ]);
+
+        return $deliveryOrder->fresh();
+    }
+
+    public function rejectDeliveryOrder(DeliveryOrder $deliveryOrder, \App\Models\User $user, string $reason): DeliveryOrder
+    {
+        $deliveryOrder->update([
+            'approval_status' => 'rejected',
+            'status' => 'draft',
+        ]);
+
+        $this->logChatter($deliveryOrder, 'status_changed', "Rejected {$deliveryOrder->delivery_order_number}", [
+            'state' => 'pending → rejected',
+            'reason' => $reason,
+        ]);
+
+        return $deliveryOrder->fresh();
+    }
+
+    /**
+     * Locate which tenant owns a given delivery-order customer token.
+     * Mirrors InvoiceEvidenceService::resolveTenantForAcceptanceToken for the
+     * public /do-accept route.
+     */
+    public function resolveTenantForCustomerToken(string $token): ?\App\Models\Tenant
+    {
+        foreach (\App\Models\Tenant::all() as $tenant) {
+            try {
+                $found = $tenant->run(function () use ($token) {
+                    return DeliveryOrder::where('acceptance_token', $token)->exists();
+                });
+
+                if ($found) {
+                    return $tenant;
+                }
+            } catch (\Throwable $e) {
+                // A tenant whose schema predates the acceptance_token column.
+                continue;
+            }
+        }
+
+        return null;
     }
 }

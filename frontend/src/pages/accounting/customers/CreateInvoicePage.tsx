@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
-import { formatCurrency, getApiErrorMessage } from '@/lib/utils';
+import { cn, formatCurrency, getApiErrorMessage } from '@/lib/utils';
 import api from '@/lib/api';
 import { ContactSearchCombobox } from '@/components/ui/ContactSearchCombobox';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
@@ -23,6 +23,16 @@ import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
 import { ProductTrackingSelector } from '@/components/inventory/ProductTrackingSelector';
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
 import { LineItemsTable } from '@/components/sales/LineItemsTable'
+import {
+  LINE_CELL,
+  LINE_CELL_BOX,
+  LINE_INPUT_NUMERIC,
+  LINE_PRODUCT_WRAP,
+  LINE_TEXTAREA,
+  LINE_VALUE,
+  productLineColumns,
+  ProductLineActions,
+} from '@/components/sales/ProductLineTable'
 
 interface InvoiceLine {
   line_type?: 'product' | 'note' | 'section';
@@ -712,6 +722,10 @@ export const CreateInvoicePage: React.FC = () => {
     if (lines.length > 1) {
       setLines(lines.filter((_, currentIndex) => currentIndex !== index));
     }
+  };
+
+  const resetLine = (index: number) => {
+    setLines((current) => current.map((line, i) => (i === index ? emptyLine() : line)));
   };
 
   const getLineTotal = (line: InvoiceLine) => {
@@ -1438,29 +1452,27 @@ export const CreateInvoicePage: React.FC = () => {
               <div className="overflow-x-auto">
                 <LineItemsTable
                   variant="raw"
-                  tableClassName="w-full min-w-[1800px] table-fixed text-sm"
-                  headRowClassName="border-b"
-                  columns={[
-                    { key: 'index', label: '#', minWidth: 'min-w-[3rem]' },
-                    { key: 'product', label: 'Product', minWidth: 'min-w-[15rem]' },
-                    { key: 'sku', label: 'SKU', minWidth: 'min-w-[8rem]', hidden: !visibleLineColumns.sku },
-                    { key: 'description', label: 'Description', minWidth: 'min-w-[18rem]', hidden: !visibleLineColumns.description },
-                    { key: 'model_number', label: 'Model #', minWidth: 'min-w-[6.5rem]', hidden: !visibleLineColumns.model_number },
-                    { key: 'product_notes', label: 'Product Notes', minWidth: 'min-w-[10rem]', hidden: !visibleLineColumns.product_notes },
-                    { key: 'lot_number', label: 'Lot Number', minWidth: 'min-w-[8rem]', hidden: !visibleLineColumns.lot_number },
-                    { key: 'expiry_date', label: 'Expiry Date', minWidth: 'min-w-[10rem]', hidden: !visibleLineColumns.expiry_date },
-                    { key: 'qty', label: 'Qty', align: 'right', minWidth: 'min-w-[5.5rem]' },
-                    { key: 'unit_price', label: 'Unit Price', align: 'right', minWidth: 'min-w-[7rem]' },
-                    { key: 'tax_rate', label: 'Tax %', align: 'right', minWidth: 'min-w-[5.5rem]', hidden: !visibleLineColumns.tax_rate },
-                    { key: 'line_total', label: 'Line Total', align: 'right', minWidth: 'min-w-[6.5rem]' },
-                    { key: 'actions', label: 'Actions', minWidth: 'min-w-[8rem]' },
-                  ]}
+                  tableClassName="w-full min-w-[1700px] text-sm"
+                  headRowClassName="border-b bg-muted/30"
+                  columns={productLineColumns({
+                    sku: visibleLineColumns.sku,
+                    description: visibleLineColumns.description,
+                    modelNumber: visibleLineColumns.model_number,
+                    productNotes: visibleLineColumns.product_notes,
+                    lotNumber: visibleLineColumns.lot_number,
+                    expiryDate: visibleLineColumns.expiry_date,
+                    taxRate: visibleLineColumns.tax_rate,
+                  })}
                 >
                     {lines.map((line, index) => (
-                      <tr key={index} className="border-b" draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }}>
-                        {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={12} total={line.line_type === 'section' ? formatCurrency(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }} /> : <>
-                        <td className="py-2 px-2 text-sm font-medium text-slate-500">{lines.slice(0, index + 1).filter((item) => (item.line_type ?? 'product') === 'product').length}</td>
-                        <td className="py-2 px-2">
+                      <tr key={index} className="border-b transition-colors hover:bg-muted/20" draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }}>
+                        {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={13} total={line.line_type === 'section' ? formatCurrency(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }} /> : <>
+                        <td className={cn(LINE_CELL, 'w-10')}>
+                          <div className={cn(LINE_CELL_BOX, 'justify-center text-xs font-medium text-muted-foreground')}>
+                            {lines.slice(0, index + 1).filter((item) => (item.line_type ?? 'product') === 'product').length}
+                          </div>
+                        </td>
+                        <td className={cn(LINE_CELL, 'min-w-[17rem]', LINE_PRODUCT_WRAP)}>
                           <ProductSearchCombobox
                             value={line.product_id}
                             onValueChange={(productId, product) => {
@@ -1480,45 +1492,34 @@ export const CreateInvoicePage: React.FC = () => {
                               }
                               setLines(updated);
                             }}
+                            wrapText
                           />
                         </td>
-                        {visibleLineColumns.sku && <td className="py-2 px-2 w-[140px]">
-                          <input
-                            type="text"
-                            value={line.sku}
-                            readOnly
-                            className="w-full px-2 py-1 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900 text-sm text-slate-500"
-                            placeholder="SKU"
-                          />
+                        {visibleLineColumns.sku && <td className={cn(LINE_CELL, 'min-w-[7rem]')}>
+                          <div className={LINE_VALUE}>{line.sku || <span className="opacity-60">SKU</span>}</div>
                         </td>}
-                        {visibleLineColumns.description && <td className="py-2 px-2">
+                        {visibleLineColumns.description && <td className={cn(LINE_CELL, 'min-w-[16rem]')}>
                           <textarea
                             value={line.description}
                             onChange={(event) => updateLine(index, 'description', event.target.value)}
                             rows={2}
-                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
+                            className={LINE_TEXTAREA}
                             placeholder="Description"
                           />
                         </td>}
-                        {visibleLineColumns.model_number && <td className="py-2 px-2">
-                          <input
-                            type="text"
-                            value={line.model_number}
-                            readOnly
-                            className="w-full px-2 py-1 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900 text-sm text-slate-500"
-                            placeholder="Model #"
-                          />
+                        {visibleLineColumns.model_number && <td className={cn(LINE_CELL, 'min-w-[7rem]')}>
+                          <div className={LINE_VALUE}>{line.model_number || <span className="opacity-60">Model #</span>}</div>
                         </td>}
-                        {visibleLineColumns.product_notes && <td className="py-2 px-2">
+                        {visibleLineColumns.product_notes && <td className={cn(LINE_CELL, 'min-w-[10rem]')}>
                           <textarea
                             value={line.product_notes}
                             onChange={(event) => updateLine(index, 'product_notes', event.target.value)}
                             rows={2}
-                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
+                            className={LINE_TEXTAREA}
                             placeholder="Product notes"
                           />
                         </td>}
-                        {visibleLineColumns.lot_number && <td className="py-2 px-2">
+                        {visibleLineColumns.lot_number && <td className={cn(LINE_CELL, 'min-w-[7.5rem]')}>
                           <ProductTrackingSelector
                             productId={line.product_id}
                             warehouseId={warehouseId}
@@ -1529,71 +1530,70 @@ export const CreateInvoicePage: React.FC = () => {
                           />
                           {line.tracking_method === 'none' || line.tracking_method === 'quantity' ? <span className="text-xs text-muted-foreground">Not tracked</span> : null}
                         </td>}
-                        {visibleLineColumns.expiry_date && <td className="py-2 px-2">
-                          <input type="date" value={line.expiry_date} readOnly className="w-full px-2 py-1 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900 text-sm" />
-                          {line.serial_number ? <div className="mt-1 text-xs text-muted-foreground">Serial: {line.serial_number}</div> : null}
+                        {visibleLineColumns.expiry_date && <td className={cn(LINE_CELL, 'min-w-[9.5rem]')}>
+                          <div className={LINE_VALUE}>{line.expiry_date || <span className="opacity-60">Expiry</span>}</div>
                         </td>}
-                        <td className="py-2 px-2">
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.0001"
-                            inputMode="decimal"
-                            value={line.quantity}
-                            onChange={(event) => {
-                              const raw = event.target.value;
-                              // HR71-08: keep the user's literal intent, do
-                              // not silently substitute 1. Empty is allowed
-                              // while typing and is caught on submit.
-                              if (raw === '') { updateLine(index, 'quantity', ''); return; }
-                              const parsed = Number(raw);
-                              if (!Number.isNaN(parsed)) updateLine(index, 'quantity', parsed);
-                            }}
-                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right text-gray-900 dark:text-gray-100 font-medium"
-                          />
+                        <td className={cn(LINE_CELL, 'w-[5.5rem] min-w-[4.5rem]')}>
+                          <div className={LINE_CELL_BOX}>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.0001"
+                              inputMode="decimal"
+                              value={line.quantity}
+                              onChange={(event) => {
+                                const raw = event.target.value;
+                                if (raw === '') { updateLine(index, 'quantity', ''); return; }
+                                const parsed = Number(raw);
+                                if (!Number.isNaN(parsed)) updateLine(index, 'quantity', parsed);
+                              }}
+                              className={LINE_INPUT_NUMERIC}
+                            />
+                          </div>
                         </td>
-                        <td className="py-2 px-2">
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="0.00"
-                            value={line.unit_price === '' ? '' : line.unit_price}
-                            onChange={(event) => updateLine(index, 'unit_price', event.target.value === '' ? '' : parseFloat(event.target.value))}
-                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right text-gray-900 dark:text-gray-100 font-medium"
-                          />
+                        <td className={cn(LINE_CELL, 'w-[7rem] min-w-[6rem]')}>
+                          <div className={LINE_CELL_BOX}>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="0.00"
+                              value={line.unit_price === '' ? '' : line.unit_price}
+                              onChange={(event) => updateLine(index, 'unit_price', event.target.value === '' ? '' : parseFloat(event.target.value))}
+                              className={LINE_INPUT_NUMERIC}
+                            />
+                          </div>
                         </td>
-                        {visibleLineColumns.tax_rate && <td className="py-2 px-2">
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          step="0.01"
-                          placeholder="0"
-                          value={line.tax_rate === '' ? '' : line.tax_rate}
-                          onChange={(event) => updateLine(index, 'tax_rate', event.target.value === '' ? '' : parseFloat(event.target.value))}
-                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right text-gray-900 dark:text-gray-100 font-medium"
-                        />
-                      </td>}
-                        <td className="py-2 px-2 text-right font-medium">
-                          {formatCurrency(getLineTotal(line))}
+                        {visibleLineColumns.tax_rate && <td className={cn(LINE_CELL, 'w-[5rem] min-w-[4rem]')}>
+                          <div className={LINE_CELL_BOX}>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              placeholder="0"
+                              value={line.tax_rate === '' ? '' : line.tax_rate}
+                              onChange={(event) => updateLine(index, 'tax_rate', event.target.value === '' ? '' : parseFloat(event.target.value))}
+                              className={LINE_INPUT_NUMERIC}
+                            />
+                          </div>
+                        </td>}
+                        <td className={cn(LINE_CELL, 'w-[7.5rem] min-w-[6.5rem]')}>
+                          <div className={cn(LINE_CELL_BOX, 'justify-end text-sm font-semibold tabular-nums')}>
+                            {formatCurrency(getLineTotal(line))}
+                          </div>
                         </td>
-                        <td className="py-2 px-2">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button type="button" variant="ghost" size="sm" onClick={() => moveLine(index, 'up')} disabled={index === 0}>
-                              <Icon icon="solar:arrow-up-bold-duotone" className="h-4 w-4" />
-                            </Button>
-                            <Button type="button" variant="ghost" size="sm" onClick={() => moveLine(index, 'down')} disabled={index === lines.length - 1}>
-                              <Icon icon="solar:arrow-down-bold-duotone" className="h-4 w-4" />
-                            </Button>
-                            <Button type="button" variant="ghost" size="sm" onClick={() => duplicateLine(index)}>
-                              <Icon icon="solar:copy-bold-duotone" className="h-4 w-4" />
-                            </Button>
-                            {lines.length > 1 && (
-                              <Button type="button" variant="ghost" size="sm" onClick={() => removeLine(index)}>
-                                <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-4 w-4 text-destructive" />
-                              </Button>
-                            )}
+                        <td className={cn(LINE_CELL, 'w-[10.5rem]')}>
+                          <div className={cn(LINE_CELL_BOX, 'justify-end')}>
+                            <ProductLineActions
+                              onMoveUp={() => moveLine(index, 'up')}
+                              onMoveDown={() => moveLine(index, 'down')}
+                              canMoveUp={index !== 0}
+                              canMoveDown={index !== lines.length - 1}
+                              onDuplicate={() => duplicateLine(index)}
+                              onReset={() => resetLine(index)}
+                              onDelete={() => removeLine(index)}
+                            />
                           </div>
                         </td>
                         </>}

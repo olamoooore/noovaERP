@@ -7,6 +7,7 @@ import { MainLayout } from '@/components/layout/MainLayout'
 import { POSLayout } from '@/components/layout/POSLayout'
 import { LoginPage } from '@/pages/LoginPage'
 import { DashboardPage } from '@/pages/DashboardPage'
+import { RequireSettingsAccess } from '@/components/auth/RequireSettingsAccess'
 import { useAuthStore } from '@/store/authStore'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useStripeDevtoolsGuard } from '@/hooks/useStripeDevtoolsGuard'
@@ -33,6 +34,7 @@ const SearchResultsPage = lazy(() => import('@/pages/SearchResultsPage').then(m 
 const ApprovalsInboxPage = lazy(() => import('@/pages/ApprovalsInboxPage').then(m => ({ default: m.default })))
 const InvoiceAcceptancePage = lazy(() => import('@/pages/InvoiceAcceptancePage').then(m => ({ default: m.default })))
 const QuotationAcceptancePage = lazy(() => import('@/pages/QuotationAcceptancePage').then(m => ({ default: m.default })))
+const DeliveryOrderAcceptancePage = lazy(() => import('@/pages/DeliveryOrderAcceptancePage').then(m => ({ default: m.default })))
 const PaymentsPage = lazy(() => import('@/pages/PaymentsPage').then(m => ({ default: m.PaymentsPage })))
 const AccountingPage = lazy(() => import('@/pages/AccountingPage').then(m => ({ default: m.AccountingPage })))
 const ModulesPage = lazy(() => import('@/pages/Modules/ModulesPage').then(m => ({ default: m.ModulesPage })))
@@ -48,6 +50,7 @@ const POSReportsPage = lazy(() => import('@/pages/POS/POSReportsPage').then(m =>
 const POSSettingsPage = lazy(() => import('@/pages/POS/POSSettingsPage').then(m => ({ default: m.POSSettingsPage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
 const TenantUsersPage = lazy(() => import('@/pages/TenantUsersPage'))
+const UserProfilePage = lazy(() => import('@/pages/Profile/ProfilePage').then(m => ({ default: m.ProfilePage })))
 const ReceiptBuilderPage = lazy(() => import('@/pages/Settings/ReceiptBuilderPage').then(m => ({ default: m.ReceiptBuilderPage })))
 const CountryPluginSettings = lazy(() => import('@/pages/Settings/CountryPluginSettings').then(m => ({ default: m.CountryPluginSettings })))
 const TemplateEditorPage = lazy(() => import('@/pages/TemplateBuilder/TemplateEditorPage'))
@@ -311,6 +314,7 @@ function App() {
             <Route path="/signup" element={<SignupPage />} />
             <Route path="/invoice-accept/:token" element={<InvoiceAcceptancePage />} />
             <Route path="/quotation-accept/:token" element={<QuotationAcceptancePage />} />
+            <Route path="/do-accept/:token" element={<DeliveryOrderAcceptancePage />} />
             
             <Route element={<ProtectedRoute />}>
               {/* Receipt Builder - fullscreen without sidebar */}
@@ -493,10 +497,34 @@ function App() {
                 <Route path="/dashboards/sales" element={<SalesDashboard />} />
                 <Route path="/dashboards/inventory" element={<InventoryDashboard />} />
                 <Route path="/dashboards/financial" element={<FinancialDashboard />} />
-                <Route path="/settings" element={<SettingsPage />} />
-                <Route path="/settings/users" element={<TenantUsersPage />} />
-                <Route path="/settings/iot-devices" element={<IoTDevicesPage />} />
+                <Route
+                  path="/settings"
+                  element={
+                    <RequireSettingsAccess>
+                      <SettingsPage />
+                    </RequireSettingsAccess>
+                  }
+                />
+                <Route
+                  path="/settings/users"
+                  element={
+                    <RequireSettingsAccess permission="users.view">
+                      <TenantUsersPage />
+                    </RequireSettingsAccess>
+                  }
+                />
+                <Route
+                  path="/settings/iot-devices"
+                  element={
+                    <RequireSettingsAccess>
+                      <IoTDevicesPage />
+                    </RequireSettingsAccess>
+                  }
+                />
                 <Route path="/iot-hub" element={<IoTHubPage />} />
+
+                {/* Own profile */}
+                <Route path="/profile" element={<UserProfilePage />} />
                 
                 {/* Payment Gateway Routes */}
                 <Route path="/payments" element={<PaymentsPage />} />
@@ -504,8 +532,22 @@ function App() {
                 <Route path="/checkout" element={<PaymentCheckout />} />
                 <Route path="/payment-test" element={<PaymentTestPage />} />
                 <Route path="/payment/success" element={<PaymentSuccess />} />
-                <Route path="/settings/payment-gateways" element={<PaymentGatewaySettings />} />
-                <Route path="/settings/offline-payments" element={<OfflinePaymentMethods />} />
+                <Route
+                  path="/settings/payment-gateways"
+                  element={
+                    <RequireSettingsAccess>
+                      <PaymentGatewaySettings />
+                    </RequireSettingsAccess>
+                  }
+                />
+                <Route
+                  path="/settings/offline-payments"
+                  element={
+                    <RequireSettingsAccess>
+                      <OfflinePaymentMethods />
+                    </RequireSettingsAccess>
+                  }
+                />
                 
                 {/* Loyalty Module Routes */}
                 <Route path="/loyalty" element={<LoyaltyDashboardPage />} />

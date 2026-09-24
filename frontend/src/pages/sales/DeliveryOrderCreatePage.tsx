@@ -7,6 +7,17 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { TableCell, TableRow } from '@/components/ui/table'
 import { LineItemsTable } from '@/components/sales/LineItemsTable'
+import {
+  LINE_CELL,
+  LINE_CELL_BOX,
+  LINE_INPUT_NUMERIC,
+  LINE_PRODUCT_WRAP,
+  LINE_TEXTAREA,
+  LINE_VALUE,
+  productLineColumns,
+  ProductLineActions,
+} from '@/components/sales/ProductLineTable'
+import { cn, formatCurrency } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
@@ -16,6 +27,7 @@ import { DeliveryOrderColumnVisibility } from '@/components/sales/DeliveryOrderC
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog'
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
+import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { ProductTrackingSelector, type TrackingSelection } from '@/components/inventory/ProductTrackingSelector'
 
 interface LineItem {
@@ -92,6 +104,17 @@ export function DeliveryOrderCreatePage() {
       return res.data?.data || res.data || []
     },
   })
+
+  // Tenant sales settings — drives the requires-approval default.
+  const { data: salesSettings } = useQuery<{ delivery_order?: { default_requires_approval?: boolean } }>({
+    queryKey: ['sales-settings'],
+    queryFn: async () => {
+      const res = await api.get('/settings/sales')
+      return res.data?.data ?? res.data ?? {}
+    },
+  })
+
+  const requiresApproval = salesSettings?.delivery_order?.default_requires_approval ?? false
 
   // Fetch products for standalone mode
   const { data: productsData } = useQuery({
@@ -238,6 +261,7 @@ export function DeliveryOrderCreatePage() {
       payment_terms: paymentTerms || undefined,
       invoice_id: invoiceId ? parseInt(invoiceId) : undefined,
       quotation_id: quotationId ? parseInt(quotationId) : undefined,
+      requires_approval: requiresApproval,
       lines,
     })
   }
@@ -284,6 +308,7 @@ export function DeliveryOrderCreatePage() {
       payment_terms: paymentTerms || undefined,
       invoice_id: invoiceId ? parseInt(invoiceId) : undefined,
       quotation_id: quotationId ? parseInt(quotationId) : undefined,
+      requires_approval: requiresApproval,
       lines: validLines.map((l) => ({
         line_type: l.line_type || 'product',
         sequence: validLines.indexOf(l),
@@ -330,6 +355,35 @@ export function DeliveryOrderCreatePage() {
     setStandaloneLines((prev) => prev.map((line, i) => (i === index ? { ...line, [field]: value } : line)))
   }
 
+  const moveStandaloneLine = (index: number, direction: 'up' | 'down') => {
+    setStandaloneLines((prev) => {
+      const target = direction === 'up' ? index - 1 : index + 1
+      if (target < 0 || target >= prev.length) return prev
+      const next = [...prev]
+      ;[next[index], next[target]] = [next[target], next[index]]
+      return next
+    })
+  }
+
+  const duplicateStandaloneLine = (index: number) => {
+    setStandaloneLines((prev) => {
+      const source = prev[index]
+      const next = [...prev]
+      next.splice(index + 1, 0, { ...source })
+      return next
+    })
+  }
+
+  const resetStandaloneLine = (index: number) => {
+    setStandaloneLines((prev) =>
+      prev.map((line, i) =>
+        i === index
+          ? { product_id: null, product_name: '', sku: '', model_number: '', description: '', product_notes: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '', expiry_date: '' }
+          : line,
+      ),
+    )
+  }
+
   const products = Array.isArray(productsData) ? productsData : []
   const warehouses = Array.isArray(warehousesData) ? warehousesData : []
   const invoices = Array.isArray(invoicesData) ? invoicesData : []
@@ -337,36 +391,46 @@ export function DeliveryOrderCreatePage() {
 
   return (
     <div className="space-y-6 p-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={() => navigate('/delivery-orders')}>
-          <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
-          Back
-        </Button>
+      <div className="flex items-start justify-between gap-4">
         <div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate('/delivery-orders')}
+            className="-ml-2 mb-3 text-muted-foreground hover:text-foreground"
+          >
+            <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
+            Back
+          </Button>
           <h1 className="text-3xl font-bold">Create Delivery Order</h1>
           <p className="text-muted-foreground mt-1">
             {mode === 'linked' ? 'Dispatch items from a confirmed sales order.' : 'Create a standalone delivery.'}
           </p>
         </div>
-      </div>
 
-      {/* Mode Toggle */}
-      {!preselectedSoId && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex gap-4">
-              <Button variant={mode === 'standalone' ? 'default' : 'outline'} onClick={() => setMode('standalone')}>
-                <Icon icon="solar:package-bold" className="h-4 w-4 mr-2" />
-                Standalone Delivery
-              </Button>
-              <Button variant={mode === 'linked' ? 'default' : 'outline'} onClick={() => setMode('linked')}>
-                <Icon icon="solar:document-text-bold" className="h-4 w-4 mr-2" />
-                From Sales Order
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+        {!preselectedSoId && (
+          <div className="flex shrink-0 items-center gap-1.5 pt-8">
+            <Button
+              variant={mode === 'standalone' ? 'default' : 'outline'}
+              size="sm"
+              className="h-8 rounded-full px-3 text-xs"
+              onClick={() => setMode('standalone')}
+            >
+              <Icon icon="solar:package-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
+              Standalone Delivery
+            </Button>
+            <Button
+              variant={mode === 'linked' ? 'default' : 'outline'}
+              size="sm"
+              className="h-8 rounded-full px-3 text-xs"
+              onClick={() => setMode('linked')}
+            >
+              <Icon icon="solar:document-text-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
+              From Sales Order
+            </Button>
+          </div>
+        )}
+      </div>
 
       {/* Linked Mode: SO Input */}
       {mode === 'linked' && (
@@ -414,6 +478,15 @@ export function DeliveryOrderCreatePage() {
                   ))}
                 </SelectContent>
               </Select>
+              {requiresApproval && (
+                <div className="mt-1.5 flex items-center gap-1.5 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs text-orange-700 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-300">
+                  <Icon icon="solar:checklist-bold-duotone" className="h-3.5 w-3.5" />
+                  <span>
+                    Will require approval before confirming
+                    <span className="text-orange-600/70"> · set in Sales Settings</span>
+                  </span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -434,6 +507,15 @@ export function DeliveryOrderCreatePage() {
                   onValueChange={handleCustomerChange}
                   placeholder="Search customer name or code..."
                 />
+                {requiresApproval && (
+                  <div className="mt-1.5 flex items-center gap-1.5 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs text-orange-700 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-300">
+                    <Icon icon="solar:checklist-bold-duotone" className="h-3.5 w-3.5" />
+                    <span>
+                      Will require approval before confirming
+                      <span className="text-orange-600/70"> · set in Sales Settings</span>
+                    </span>
+                  </div>
+                )}
               </div>
               <div>
                 <Label>Warehouse <span className="text-destructive">*</span></Label>
@@ -482,31 +564,21 @@ export function DeliveryOrderCreatePage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <Label>Invoice No.</Label>
-              <Select value={invoiceId || 'none'} onValueChange={(value) => setInvoiceId(value === 'none' ? '' : value)}>
-                <SelectTrigger><SelectValue placeholder="Select invoice" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {invoices.map((invoice: any) => (
-                    <SelectItem key={invoice.id} value={invoice.id.toString()}>
-                      {invoice.invoice_number}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={invoiceId || 'none'}
+                onValueChange={(value) => setInvoiceId(value === 'none' ? '' : value)}
+                items={invoices.map((invoice: any) => ({ value: invoice.id.toString(), label: invoice.invoice_number }))}
+                placeholder="Search invoice…"
+              />
             </div>
             <div>
               <Label>Quotation No.</Label>
-              <Select value={quotationId || 'none'} onValueChange={(value) => setQuotationId(value === 'none' ? '' : value)}>
-                <SelectTrigger><SelectValue placeholder="Select quotation" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {quotations.map((quotation: any) => (
-                    <SelectItem key={quotation.id} value={quotation.id.toString()}>
-                      {quotation.quotation_number}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={quotationId || 'none'}
+                onValueChange={(value) => setQuotationId(value === 'none' ? '' : value)}
+                items={quotations.map((quotation: any) => ({ value: quotation.id.toString(), label: quotation.quotation_number }))}
+                placeholder="Search quotation…"
+              />
             </div>
             <div>
               <Label>Payment Terms</Label>
@@ -553,6 +625,7 @@ export function DeliveryOrderCreatePage() {
             <CardTitle>Line Items — Quantities to Deliver</CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="overflow-x-auto">
             <DeliveryOrderColumnVisibility tableClass="do-create-linked-columns" columns={[
               'Product', 'Description', 'Product Notes', 'Unit Price', 'Ordered', 'Already Delivered', 'Remaining', 'Deliver Now', 'Patient Name', 'Lot Number', 'Expiry Date',
             ].map((label, index) => ({ label, index: index + 1 }))}>
@@ -651,6 +724,7 @@ export function DeliveryOrderCreatePage() {
                 })}
             </LineItemsTable>
             </DeliveryOrderColumnVisibility>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -662,151 +736,177 @@ export function DeliveryOrderCreatePage() {
             <CardTitle>Line Items</CardTitle>
           </CardHeader>
           <CardContent>
-            <DeliveryOrderColumnVisibility tableClass="do-create-standalone-columns" columns={[
-              'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Patient Name', 'Quantity', 'Unit', 'Unit Price', 'Lot Number', 'Expiry Date', 'Actions',
+            <div className="overflow-x-auto">
+                        <DeliveryOrderColumnVisibility tableClass="do-create-standalone-columns" columns={[
+              '#', 'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Lot Number', 'Expiry Date', 'Qty', 'Unit Price', 'Line Total', 'Actions',
             ].map((label, index) => ({ label, index: index + 1 }))}>
             <LineItemsTable
-              variant="shadcn"
-              columns={[
-                { key: 'product', label: 'Product', minWidth: 'min-w-[9rem]' },
-                { key: 'sku', label: 'SKU', minWidth: 'min-w-[5.5rem]' },
-                { key: 'description', label: 'Description', minWidth: 'min-w-[18rem]' },
-                { key: 'model_number', label: 'Model #', minWidth: 'min-w-[6rem]' },
-                { key: 'product_notes', label: 'Product Notes', minWidth: 'min-w-[10rem]' },
-                { key: 'patient_name', label: 'Patient Name', minWidth: 'min-w-[10rem]' },
-                { key: 'quantity', label: 'Quantity', align: 'right', minWidth: 'min-w-[6rem]' },
-                { key: 'unit', label: 'Unit', minWidth: 'min-w-[5rem]' },
-                { key: 'unit_price', label: 'Unit Price', align: 'right', minWidth: 'min-w-[7rem]' },
-                { key: 'lot_number', label: 'Lot Number', minWidth: 'min-w-[6rem]' },
-                { key: 'expiry_date', label: 'Expiry Date', minWidth: 'min-w-[8rem]' },
-                { key: 'actions', minWidth: 'min-w-[3rem]' },
-              ]}
+              variant="raw"
+              tableClassName="w-full min-w-[1300px] text-sm"
+              headRowClassName="border-b bg-muted/30"
+              columns={productLineColumns({
+                sku: true,
+                description: true,
+                modelNumber: true,
+                productNotes: true,
+                lotNumber: true,
+                expiryDate: true,
+              })}
             >
                 {standaloneLines.map((line, idx) => (
-                  <TableRow key={idx} draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(idx)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== idx) setStandaloneLines(reorderDocumentLines(standaloneLines, draggedLineIndex, idx)); setDraggedLineIndex(null); }}>
-                    {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={12} total={line.line_type === 'section' ? getDocumentSectionTotal(standaloneLines, idx, (item) => item.quantity * Number(item.unit_price || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : undefined} onChange={(text) => updateStandaloneLine(idx, 'description', text)} onDelete={() => removeStandaloneLine(idx)} onDragStart={() => setDraggedLineIndex(idx)} onDrop={() => { if (draggedLineIndex !== null) setStandaloneLines(reorderDocumentLines(standaloneLines, draggedLineIndex, idx)); setDraggedLineIndex(null); }} /> : <>
-                    <TableCell>
-                      <ProductSearchCombobox
-                        value={line.product_id?.toString() || ''}
-                        onValueChange={(val, product) => {
-                          updateStandaloneLine(idx, 'product_id', val ? parseInt(val) : null)
-                          updateStandaloneLine(idx, 'product_name', product?.name || '')
-                          if (!line.description && product) updateStandaloneLine(idx, 'description', getProductLineDescription(product))
-                          if (product) {
-                            updateStandaloneLine(idx, 'sku', (product as any).sku || '')
-                            updateStandaloneLine(idx, 'model_number', (product as any).manufacturer_part_number || '')
-                            if (!line.unit_price) updateStandaloneLine(idx, 'unit_price', parseFloat((product as any).price || (product as any).selling_price || '0') || null)
-                            updateStandaloneLine(idx, 'tracking_method', (product as any).tracking_method || 'none')
-                            updateStandaloneLine(idx, 'product_batch_id', null)
-                            updateStandaloneLine(idx, 'product_serial_id', null)
-                            updateStandaloneLine(idx, 'lot_number', '')
-                            updateStandaloneLine(idx, 'serial_number', '')
-                            updateStandaloneLine(idx, 'expiry_date', '')
-                          }
-                        }}
-                        placeholder="Search product..."
+                  <tr
+                    key={idx}
+                    draggable={(line.line_type ?? 'product') === 'product'}
+                    onDragStart={() => setDraggedLineIndex(idx)}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={() => {
+                      if (draggedLineIndex !== null && draggedLineIndex !== idx) setStandaloneLines(reorderDocumentLines(standaloneLines, draggedLineIndex, idx))
+                      setDraggedLineIndex(null)
+                    }}
+                    className="border-b transition-colors hover:bg-muted/20"
+                  >
+                    {line.line_type === 'note' || line.line_type === 'section' ? (
+                      <DocumentTextLineRow
+                        type={line.line_type}
+                        text={line.description}
+                        colSpan={12}
+                        total={line.line_type === 'section' ? formatCurrency(getDocumentSectionTotal(standaloneLines, idx, (item) => (Number(item.quantity) || 0) * (Number(item.unit_price) || 0))) : undefined}
+                        onChange={(text) => updateStandaloneLine(idx, 'description', text)}
+                        onDelete={() => removeStandaloneLine(idx)}
+                        onDragStart={() => setDraggedLineIndex(idx)}
+                        onDrop={() => { if (draggedLineIndex !== null) setStandaloneLines(reorderDocumentLines(standaloneLines, draggedLineIndex, idx)); setDraggedLineIndex(null) }}
                       />
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        value={line.sku}
-                        readOnly
-                        className="bg-gray-50 dark:bg-gray-900 text-slate-500"
-                        placeholder="SKU"
-                      />
-                    </TableCell>
-                    <TableCell className="min-w-[320px] align-top">
-                      <textarea
-                        value={line.description}
-                        onChange={(e) => updateStandaloneLine(idx, 'description', e.target.value)}
-                        rows={2}
-                        className="w-full whitespace-pre-wrap break-words rounded border border-gray-300 bg-white px-2 py-1 text-sm resize-y dark:border-gray-600 dark:bg-gray-800"
-                        placeholder="Description"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        value={line.model_number}
-                        readOnly
-                        className="bg-gray-50 dark:bg-gray-900 text-slate-500"
-                        placeholder="Model #"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        value={line.product_notes}
-                        onChange={(e) => updateStandaloneLine(idx, 'product_notes', e.target.value)}
-                        placeholder="Product notes"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        value={line.patient_name}
-                        onChange={(e) => updateStandaloneLine(idx, 'patient_name', e.target.value)}
-                        placeholder="Patient name"
-                      />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Input
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        value={line.quantity ?? ''}
-                        onChange={(e) => {
-                          // HR71-08: keep literal intent — empty while typing,
-                          // no silent coercion to 0.
-                          const raw = e.target.value;
-                          if (raw === '') { updateStandaloneLine(idx, 'quantity', ''); return; }
-                          const parsed = parseFloat(raw);
-                          if (!Number.isNaN(parsed) && parsed >= 0) updateStandaloneLine(idx, 'quantity', parsed);
-                        }}
-                        className="w-24 text-right"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        value={line.unit}
-                        onChange={(e) => updateStandaloneLine(idx, 'unit', e.target.value)}
-                        className="w-20"
-                      />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={line.unit_price ?? ''}
-                        onChange={(e) => updateStandaloneLine(idx, 'unit_price', parseFloat(e.target.value) || null)}
-                        className="w-28 text-right"
-                        placeholder="0.00"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <ProductTrackingSelector
-                        productId={line.product_id}
-                        warehouseId={warehouseId}
-                        trackingMethod={line.tracking_method}
-                        batchId={line.product_batch_id}
-                        serialId={line.product_serial_id}
-                        onChange={(selection) => setStandaloneLines((current) => current.map((item, itemIndex) => itemIndex === idx ? { ...item, ...selection } : item))}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input type="date" value={line.expiry_date} readOnly className="w-36 bg-gray-50 dark:bg-gray-900" />
-                      {line.serial_number ? <div className="mt-1 text-xs text-muted-foreground">Serial: {line.serial_number}</div> : null}
-                    </TableCell>
-                    <TableCell>
-                      {standaloneLines.length > 1 && (
-                        <Button variant="ghost" size="sm" onClick={() => removeStandaloneLine(idx)}>
-                          <Icon icon="solar:trash-bin-minimalistic-bold" className="h-4 w-4 text-destructive" />
-                        </Button>
-                      )}
-                    </TableCell>
+                    ) : <>
+                      <td className={cn(LINE_CELL, 'w-10')}>
+                        <div className={cn(LINE_CELL_BOX, 'justify-center text-xs font-medium text-muted-foreground')}>
+                          {standaloneLines.slice(0, idx + 1).filter((item) => (item.line_type ?? 'product') === 'product').length}
+                        </div>
+                      </td>
+
+                      <td className={cn(LINE_CELL, 'min-w-[17rem]', LINE_PRODUCT_WRAP)}>
+                        <ProductSearchCombobox
+                          value={line.product_id?.toString() || ''}
+                          onValueChange={(val, product) => {
+                            updateStandaloneLine(idx, 'product_id', val ? parseInt(val) : null)
+                            updateStandaloneLine(idx, 'product_name', product?.name || '')
+                            if (!line.description && product) updateStandaloneLine(idx, 'description', getProductLineDescription(product))
+                            if (product) {
+                              updateStandaloneLine(idx, 'sku', (product as any).sku || '')
+                              updateStandaloneLine(idx, 'model_number', (product as any).manufacturer_part_number || '')
+                              if (!line.unit_price) updateStandaloneLine(idx, 'unit_price', parseFloat((product as any).price || (product as any).selling_price || '0') || null)
+                              updateStandaloneLine(idx, 'tracking_method', (product as any).tracking_method || 'none')
+                              updateStandaloneLine(idx, 'product_batch_id', null)
+                              updateStandaloneLine(idx, 'product_serial_id', null)
+                              updateStandaloneLine(idx, 'lot_number', '')
+                              updateStandaloneLine(idx, 'serial_number', '')
+                              updateStandaloneLine(idx, 'expiry_date', '')
+                            }
+                          }}
+                          placeholder="Search product..."
+                          wrapText
+                        />
+                      </td>
+
+                      <td className={cn(LINE_CELL, 'min-w-[10rem]')}>
+                        <div className={LINE_VALUE}>{line.sku || <span className="opacity-60">SKU</span>}</div>
+                      </td>
+
+                      <td className={cn(LINE_CELL, 'min-w-[16rem]')}>
+                        <textarea
+                          value={line.description}
+                          onChange={(event) => updateStandaloneLine(idx, 'description', event.target.value)}
+                          rows={2}
+                          className={LINE_TEXTAREA}
+                          placeholder="Description"
+                        />
+                      </td>
+
+                      <td className={cn(LINE_CELL, 'min-w-[7rem]')}>
+                        <div className={LINE_VALUE}>{line.model_number || <span className="opacity-60">Model #</span>}</div>
+                      </td>
+
+                      <td className={cn(LINE_CELL, 'min-w-[10rem]')}>
+                        <textarea
+                          value={line.product_notes}
+                          onChange={(event) => updateStandaloneLine(idx, 'product_notes', event.target.value)}
+                          rows={2}
+                          className={LINE_TEXTAREA}
+                          placeholder="Product notes"
+                        />
+                      </td>
+
+                      <td className={cn(LINE_CELL, 'min-w-[7.5rem]')}>
+                        <ProductTrackingSelector
+                          productId={line.product_id}
+                          warehouseId={warehouseId}
+                          trackingMethod={line.tracking_method}
+                          batchId={line.product_batch_id}
+                          serialId={line.product_serial_id}
+                          onChange={(selection) => setStandaloneLines((current) => current.map((item, itemIndex) => itemIndex === idx ? { ...item, ...selection } : item))}
+                        />
+                      </td>
+
+                      <td className={cn(LINE_CELL, 'min-w-[9.5rem]')}>
+                        <div className={LINE_VALUE}>{line.expiry_date || <span className="opacity-60">Expiry</span>}</div>
+                      </td>
+
+                      <td className={cn(LINE_CELL, 'w-[5.5rem] min-w-[4.5rem]')}>
+                        <div className={LINE_CELL_BOX}>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={line.quantity ?? ''}
+                            onChange={(event) => {
+                              const raw = event.target.value
+                              if (raw === '') { updateStandaloneLine(idx, 'quantity', ''); return }
+                              const parsed = parseFloat(raw)
+                              if (!Number.isNaN(parsed) && parsed >= 0) updateStandaloneLine(idx, 'quantity', parsed)
+                            }}
+                            className={LINE_INPUT_NUMERIC}
+                          />
+                        </div>
+                      </td>
+
+                      <td className={cn(LINE_CELL, 'w-[7rem] min-w-[6rem]')}>
+                        <div className={LINE_CELL_BOX}>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={line.unit_price ?? ''}
+                            onChange={(event) => updateStandaloneLine(idx, 'unit_price', event.target.value === '' ? null : parseFloat(event.target.value))}
+                            className={LINE_INPUT_NUMERIC}
+                          />
+                        </div>
+                      </td>
+
+                      <td className={cn(LINE_CELL, 'w-[7.5rem] min-w-[6.5rem]')}>
+                        <div className={cn(LINE_CELL_BOX, 'justify-end text-sm font-semibold tabular-nums')}>
+                          {formatCurrency((Number(line.quantity) || 0) * (Number(line.unit_price) || 0))}
+                        </div>
+                      </td>
+
+                      <td className={cn(LINE_CELL, 'w-[10.5rem]')}>
+                        <div className={cn(LINE_CELL_BOX, 'justify-end')}>
+                          <ProductLineActions
+                            onMoveUp={() => moveStandaloneLine(idx, 'up')}
+                            onMoveDown={() => moveStandaloneLine(idx, 'down')}
+                            canMoveUp={idx !== 0}
+                            canMoveDown={idx !== standaloneLines.length - 1}
+                            onDuplicate={() => duplicateStandaloneLine(idx)}
+                            onReset={() => resetStandaloneLine(idx)}
+                            onDelete={() => removeStandaloneLine(idx)}
+                          />
+                        </div>
+                      </td>
                     </>}
-                  </TableRow>
+                  </tr>
                 ))}
             </LineItemsTable>
             </DeliveryOrderColumnVisibility>
+            </div>
             <div className="mt-3 flex flex-wrap gap-2">
               <ProductCatalogDialog products={productsData || []} onAdd={addCatalogProducts} />
               <Button variant="outline" size="sm" onClick={addStandaloneLine}>

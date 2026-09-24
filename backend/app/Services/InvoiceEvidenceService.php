@@ -166,11 +166,11 @@ class InvoiceEvidenceService
     }
 
     /**
-     * Record a customer-supplied payment proof (bank-transfer receipt, etc.)
-     * through the public acceptance portal and surface it in chatter + to the
-     * invoice creator.
+     * Record customer-supplied evidence (bank-transfer receipt, signed
+     * document, or anything else) through the public acceptance portal and
+     * surface it in chatter + to the invoice creator.
      */
-    public function recordCustomerPaymentProof(
+    public function recordCustomerEvidence(
         Invoice $invoice,
         UploadedFile $file,
         ?string $notes = null,
@@ -194,7 +194,7 @@ class InvoiceEvidenceService
         $evidence = DB::transaction(function () use ($invoice, $file, $notes, $customerName, $customerEmail, $path, $checksum, $mimeType) {
             return InvoiceEvidence::create([
                 'invoice_id' => $invoice->id,
-                'type' => InvoiceEvidence::TYPE_PAYMENT_PROOF,
+                'type' => InvoiceEvidence::TYPE_OTHER,
                 'source' => InvoiceEvidence::SOURCE_UPLOAD,
                 'file_path' => $path,
                 'file_name' => $file->getClientOriginalName(),
@@ -209,7 +209,7 @@ class InvoiceEvidenceService
         });
 
         // Surface the file as a chatter attachment so the invoice's creator can
-        // see the customer's proof directly in the chatter panel.
+        // see the customer's evidence directly in the chatter panel.
         try {
             $this->chatterService->registerAttachment(
                 Invoice::class,
@@ -222,7 +222,7 @@ class InvoiceEvidenceService
                 null,
             );
         } catch (\Throwable $e) {
-            Log::warning('InvoiceEvidenceService: failed to mirror payment proof to chatter', [
+            Log::warning('InvoiceEvidenceService: failed to mirror evidence to chatter', [
                 'invoice_id' => $invoice->id,
                 'error' => $e->getMessage(),
             ]);
@@ -233,7 +233,7 @@ class InvoiceEvidenceService
             InvoiceActivityLog::EVENT_EVIDENCE_ADDED,
             [
                 'evidence_id' => $evidence->id,
-                'type' => InvoiceEvidence::TYPE_PAYMENT_PROOF,
+                'type' => InvoiceEvidence::TYPE_OTHER,
                 'file_name' => $file->getClientOriginalName(),
                 'notes' => $notes,
             ],
@@ -243,14 +243,14 @@ class InvoiceEvidenceService
             null,
         );
 
-        $this->notifyCustomerAction($invoice, 'invoice.payment_proof_uploaded', [
-            'type' => 'Payment Proof',
+        $this->notifyCustomerAction($invoice, 'invoice.evidence_uploaded', [
+            'type' => 'Evidence',
             'invoice_number' => $invoice->invoice_number,
             'file_name' => $file->getClientOriginalName(),
             'invoice_id' => $invoice->id,
         ]);
 
-        Log::info('Invoice payment proof uploaded by customer', [
+        Log::info('Invoice evidence uploaded by customer', [
             'evidence_id' => $evidence->id,
             'invoice_id' => $invoice->id,
             'file_name' => $file->getClientOriginalName(),

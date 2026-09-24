@@ -30,8 +30,24 @@ export function LoginPage() {
     try {
       // Use the central auth endpoint (not tenant-scoped)
       const response = await api.post('/auth/login', { email, password })
+      const user = response.data.user
+      // Pull avatar_url + phone from the profile endpoint — they aren't
+      // on the login response (the central users table only just gained
+      // those columns).
+      let avatarUrl: string | null = user?.avatar_url ?? null
+      let phone: string | null = user?.phone ?? null
+      try {
+        const profileRes = await api.get('/auth/profile', {
+          headers: { Authorization: `Bearer ${response.data.token}` },
+        })
+        avatarUrl = profileRes.data.avatar_url ?? avatarUrl
+        phone = profileRes.data.user?.phone ?? phone
+      } catch {
+        // profile fetch is best-effort — proceed with what login gave us
+      }
+
       setAuth(
-        response.data.user,
+        { ...user, avatar_url: avatarUrl, phone },
         response.data.token,
         response.data.tenant?.id,
         response.data.role,

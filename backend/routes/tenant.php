@@ -66,6 +66,10 @@ Route::middleware([
     Route::post('/invoice-accept/{token}/accept', [\App\Http\Controllers\Api\InvoiceAcceptanceController::class, 'accept']);
     Route::post('/invoice-accept/{token}/evidence', [\App\Http\Controllers\Api\InvoiceAcceptanceController::class, 'uploadEvidence']);
 
+    // Delivery-order customer portal (view DO, upload signed copy / evidence)
+    Route::get('/do-accept/{token}', [\Modules\Sales\Http\Controllers\DeliveryOrderAcceptanceController::class, 'show']);
+    Route::post('/do-accept/{token}/evidence', [\Modules\Sales\Http\Controllers\DeliveryOrderAcceptanceController::class, 'uploadEvidence']);
+
     // Issue #149: online quotation acceptance / eSignature portal.
     Route::get('/quotation-accept/{token}', [\App\Http\Controllers\Api\SalesOrderAcceptanceController::class, 'show']);
     Route::post('/quotation-accept/{token}/accept', [\App\Http\Controllers\Api\SalesOrderAcceptanceController::class, 'accept'])

@@ -20,6 +20,7 @@ import { useToast } from '@/hooks/use-toast'
 import { formatCurrency, cn, getApiErrorMessage } from '@/lib/utils'
 import api from '@/lib/api'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { TagEditor } from '@/components/tags/TagEditor'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 
 const numericPhoneValue = (value: string) => value.replace(/\D/g, '')
@@ -642,6 +643,7 @@ export function CustomerDetailsPage() {
                 ))}
               </div>
             )}
+            <TagEditor subjectType="customer" subjectId={id!} />
           </div>
         </div>
       </PageHeader>
