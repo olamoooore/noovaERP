@@ -160,7 +160,7 @@ class BankStatementImportService
         $v = $row['values'];
         $get = fn (string $key) => isset($m[$key]) ? trim((string) ($v[$m[$key]] ?? '')) : '';
         $dateFormat = $input['date_format'] ?? null;
-        $date = $dateFormat ? Carbon::createFromFormat($dateFormat, $get('transaction_date')) : Carbon::parse($get('transaction_date'));
+        $date = $this->parseTransactionDate($get('transaction_date'), $dateFormat);
         $numeric = fn ($value) => (float) str_replace([',', ' '], '', (string) $value);
         $amount = isset($m['amount'])
             ? $numeric($get('amount'))
@@ -187,5 +187,23 @@ class BankStatementImportService
         ]);
 
         return ['bank_account_id' => $bankAccountId, 'transaction_key' => hash('sha256', $canonical), 'source_row' => $row['source_row'], 'value_date' => $get('value_date') ?: null, 'transaction_date' => $date->format('Y-m-d'), 'transaction_time' => $get('transaction_time') ?: null, 'description' => $description, 'bank_reference' => $reference ?: null, 'customer_reference' => $get('customer_reference') ?: null, 'customer_code' => $get('customer_code') ?: null, 'amount' => $amount, 'currency_code' => strtoupper($input['currency_code']), 'running_balance' => $running === '' ? null : $numeric($running), 'status' => 'unmatched', 'matched_amount' => 0, 'residual_amount' => $amount, 'needs_review' => $reference === '', 'raw_data' => $v, 'allocation_reference' => $get('invoice_reference') ?: null, 'allocation_amount' => $get('allocation_amount') === '' ? null : $numeric($get('allocation_amount'))];
+    }
+
+    private function parseTransactionDate(string $rawDate, ?string $dateFormat): Carbon
+    {
+        if ($dateFormat) {
+            return Carbon::createFromFormat($dateFormat, $rawDate);
+        }
+
+        try {
+            $date = Carbon::createFromFormat('!d/m/Y', $rawDate);
+            if ($date->format('d/m/Y') === $rawDate) {
+                return $date;
+            }
+        } catch (\Throwable) {
+            // Continue to the existing automatic parser for other date formats.
+        }
+
+        return Carbon::parse($rawDate);
     }
 }
