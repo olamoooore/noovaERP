@@ -297,7 +297,7 @@ export function GeneralSettings() {
                 alt="Logo preview"
                 className="h-10 w-10 rounded border object-contain"
                 onError={(e) => {
-                  ;(e.target as HTMLImageElement).style.display = 'none'
+                  (e.target as HTMLImageElement).style.display = 'none'
                 }}
               />
             )}

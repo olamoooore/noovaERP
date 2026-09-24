@@ -10,12 +10,9 @@ export type EchoClient = {
   leaveChannel: (name: string) => void
 } | null
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare global {
   interface Window {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Pusher: any
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Echo: any
   }
 }

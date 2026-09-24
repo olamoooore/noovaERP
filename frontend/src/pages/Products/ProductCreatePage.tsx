@@ -282,7 +282,6 @@ export function ProductCreatePage() {
       tax_included: (taxConfig.pricing_mode ?? 'exclusive') === 'inclusive',
     }))
     // only run when settings changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taxConfig.pricing_mode])
 
   useEffect(() => {

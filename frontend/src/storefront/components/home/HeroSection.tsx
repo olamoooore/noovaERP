@@ -17,17 +17,17 @@ export const HeroSection = () => {
       script.id = scriptId;
       script.src = "https://cdn.jsdelivr.net/gh/hiunicornstudio/unicornstudio.js@v1.5.2/dist/unicornStudio.umd.js";
       script.onload = () => {
-        // @ts-ignore
+        // @ts-expect-error -- UnicornStudio is injected from a CDN and has no type declaration
         if (window.UnicornStudio) {
-          // @ts-ignore
+          // @ts-expect-error -- UnicornStudio is injected from a CDN and has no type declaration
           window.UnicornStudio.init();
         }
       };
       document.head.appendChild(script);
     } else {
-       // @ts-ignore
+       // @ts-expect-error -- UnicornStudio is injected from a CDN and has no type declaration
        if (window.UnicornStudio) {
-         // @ts-ignore
+         // @ts-expect-error -- UnicornStudio is injected from a CDN and has no type declaration
          window.UnicornStudio.init();
        }
     }

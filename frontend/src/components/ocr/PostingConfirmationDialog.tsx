@@ -28,9 +28,10 @@ export function PostingConfirmationDialog({
   onConfirm,
   isPosting,
 }: PostingConfirmationDialogProps) {
+  const systemCurrencyCode = useSettingsStore((state) => state.currencyCode)
+
   if (!document) return null
 
-  const systemCurrencyCode = useSettingsStore((state) => state.currencyCode)
   const postingCurrencyCode = systemCurrencyCode || 'USD'
 
   // Validate all line items have accounts assigned

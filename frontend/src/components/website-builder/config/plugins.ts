@@ -11,19 +11,13 @@ import gjsTooltip from 'grapesjs-tooltip'
 import gjsTyped from 'grapesjs-typed'
 import gjsStyleBg from 'grapesjs-style-bg'
 import gjsPluginExport from 'grapesjs-plugin-export'
-// @ts-ignore - no types available
 import gjsNavbar from 'grapesjs-navbar'
-// @ts-ignore - no types available
 import gjsStyleGradient from 'grapesjs-style-gradient'
-// @ts-ignore - no types available
 import gjsStyleFilter from 'grapesjs-style-filter'
-// @ts-ignore - no types available
 import gjsBlocksFlexbox from 'grapesjs-blocks-flexbox'
-// @ts-ignore - no types available
+// @ts-expect-error - no types available
 import gjsUiSuggestClasses from 'grapesjs-ui-suggest-classes'
-// @ts-ignore - no types available
 import gjsClick from 'grapesjs-click'
-// @ts-ignore - no types available
 import gjsFloat from 'grapesjs-float'
 import { Editor } from 'grapesjs'
 

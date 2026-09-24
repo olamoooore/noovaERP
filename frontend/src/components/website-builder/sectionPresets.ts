@@ -122,7 +122,7 @@ export const sectionPresets: SectionPreset[] = [
             <p style="font-size: 14px; color: #94a3b8; margin-bottom: 24px;">REST and GraphQL APIs with comprehensive documentation.</p>
             <div style="background: #020617; border-radius: 8px; padding: 12px; font-family: monospace; font-size: 12px;">
               <div style="color: #94a3b8;">curl -X POST api.dev/</div>
-              <div style="color: #34d399;">\ -d '{"status": "ok"}'</div>
+              <div style="color: #34d399;">-d '{"status": "ok"}'</div>
             </div>
           </div>
           

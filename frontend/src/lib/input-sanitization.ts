@@ -44,7 +44,9 @@ export function sanitizeString(input: string, allowHtml = false): string {
   // Trim whitespace
   sanitized = sanitized.trim();
   
-  // Remove control characters except newlines and tabs
+  // Remove control characters except newlines and tabs. The control chars are the
+  // point of this rule, so the no-control-regex warning is intentional.
+  // eslint-disable-next-line no-control-regex
   sanitized = sanitized.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
   
   if (allowHtml) {
@@ -169,7 +171,7 @@ export function validateFileUpload(file: File): { valid: boolean; errors: string
  */
 export function sanitizeFilename(filename: string): string {
   // Remove path traversal attempts
-  let sanitized = filename.replace(/.*[\/\\]/, '');
+  let sanitized = filename.replace(/.*[/\\]/, '');
   
   // Remove dangerous characters
   sanitized = sanitized.replace(/[^a-zA-Z0-9._-]/g, '_');

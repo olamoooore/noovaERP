@@ -97,7 +97,7 @@ export function TopBar() {
                   alt={user?.name || 'Avatar'}
                   className="h-10 w-10 rounded-full object-cover"
                   onError={(e) => {
-                    ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+                    (e.currentTarget as HTMLImageElement).style.display = 'none'
                   }}
                 />
               ) : (
@@ -127,7 +127,7 @@ export function TopBar() {
                       alt={user?.name || 'Avatar'}
                       className="absolute inset-0 h-full w-full object-cover"
                       onError={(e) => {
-                        ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+                        (e.currentTarget as HTMLImageElement).style.display = 'none'
                       }}
                     />
                   ) : null}

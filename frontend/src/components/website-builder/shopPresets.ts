@@ -58,7 +58,7 @@ export function getShopPageDefaultContent(pageType: 'shop' | 'cart' | 'checkout'
       (function() {
         var basePath = '';
         // Detect base path from current URL (e.g. /noovaerp)
-        var match = window.location.pathname.match(/^\/([^/]+)\/w\//);
+        var match = window.location.pathname.match(new RegExp('^/([^/]+)/w/'));
         if (match) basePath = '/' + match[1];
         window.location.href = basePath + '${targetRoute}';
       })();

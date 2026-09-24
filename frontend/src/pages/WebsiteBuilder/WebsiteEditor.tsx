@@ -470,7 +470,7 @@ export function WebsiteEditor() {
       return css
         .replace(/\{/g, ' {\n  ')
         .replace(/;/g, ';\n  ')
-        .replace(/\n  \}/g, '\n}')
+        .replace(/\n {2}\}/g, '\n}')
         .replace(/\}\s*/g, '}\n\n')
         .trim()
     }

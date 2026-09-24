@@ -172,7 +172,7 @@ export const ValidationRules = {
   },
   phone: {
     required: true,
-    pattern: /^\+?[\d\s\-\(\)]+$/,
+    pattern: /^\+?[\d\s\-()]+$/,
     minLength: 10,
     maxLength: 20
   },

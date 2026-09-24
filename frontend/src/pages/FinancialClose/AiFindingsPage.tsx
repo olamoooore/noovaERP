@@ -64,7 +64,8 @@ export function AiFindingsPage() {
     queryClient.invalidateQueries({ queryKey: ['ai-findings', reviewId] })
   }
 
-  function makeMutation(fn: (id: string) => Promise<unknown>, label: string) {
+  // Named as a hook because it calls useMutation; invoked unconditionally below.
+  function useFindingMutation(fn: (id: string) => Promise<unknown>, label: string) {
     return useMutation({
       mutationFn: fn,
       onSuccess: () => { invalidate(); toast({ title: label }) },
@@ -72,12 +73,9 @@ export function AiFindingsPage() {
     })
   }
 
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const acceptMutation   = makeMutation(findingsApi.accept,   'Finding accepted.')
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const dismissMutation  = makeMutation(findingsApi.dismiss,  'Finding dismissed.')
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const escalateMutation = makeMutation(findingsApi.escalate, 'Finding escalated.')
+  const acceptMutation   = useFindingMutation(findingsApi.accept,   'Finding accepted.')
+  const dismissMutation  = useFindingMutation(findingsApi.dismiss,  'Finding dismissed.')
+  const escalateMutation = useFindingMutation(findingsApi.escalate, 'Finding escalated.')
 
   const filtered = riskFilter === 'all'
     ? findings

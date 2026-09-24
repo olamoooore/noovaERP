@@ -912,7 +912,7 @@ function generateUniqueTabContent(content: string): string {
   const oldGroupId = tabGroupMatch[1]
   
   // Replace all occurrences of the old group ID with the new unique ID
-  let newContent = content
+  const newContent = content
     .replace(new RegExp(`data-tab-group="${oldGroupId}"`, 'g'), `data-tab-group="${uniqueId}"`)
     .replace(new RegExp(`href="#${oldGroupId}`, 'g'), `href="#${uniqueId}`)
     .replace(new RegExp(`id="${oldGroupId}`, 'g'), `id="${uniqueId}`)
@@ -928,7 +928,7 @@ function generateUniqueFAQContent(content: string): string {
   const uniqueId = `faq${Date.now()}${faqPresetCounter++}`
   
   // Replace FAQ tab IDs (for vertical tabs FAQ)
-  let newContent = content
+  const newContent = content
     .replace(/data-faq-tabs="([^"]+)"/g, `data-faq-tabs="${uniqueId}"`)
     .replace(/href="#faq-general"/g, `href="#${uniqueId}-general"`)
     .replace(/href="#faq-billing"/g, `href="#${uniqueId}-billing"`)

@@ -287,8 +287,8 @@ export const isValidEmail = (email: string): boolean => {
 
 export const isValidPhone = (phone: string): boolean => {
   // Basic phone validation - can be enhanced based on requirements
-  const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/
-  return phoneRegex.test(phone.replace(/[\s\-\(\)]/g, ''))
+  const phoneRegex = /^[+]?[1-9][\d]{0,15}$/
+  return phoneRegex.test(phone.replace(/[\s\-()]/g, ''))
 }
 
 // Analytics utilities

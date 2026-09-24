@@ -320,7 +320,7 @@ const Shop = () => {
     : (realBundleProducts.length > 0 ? realBundleProducts.length : bundleOffers.length);
 
   const filteredProducts = useMemo(() => {
-    let filtered = filteredByControls.filter((product) => matchesShopView(product, shopView));
+    const filtered = filteredByControls.filter((product) => matchesShopView(product, shopView));
 
     // Apply sorting
     const sorted = [...filtered].sort((a, b) => {

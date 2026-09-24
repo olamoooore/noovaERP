@@ -296,10 +296,11 @@ export const AnimationControlProvider: React.FC<{
  */
 export const useAnimationControls = () => {
   const context = React.useContext(AnimationControlContext)
-  
+  // Called unconditionally (rules-of-hooks); only consumed when no provider exists.
+  const { prefersReducedMotion } = useMotionPreference()
+
   if (!context) {
     // Fallback to system preference if no provider
-    const { prefersReducedMotion } = useMotionPreference()
     return {
       animationsEnabled: !prefersReducedMotion,
       setAnimationsEnabled: () => {},

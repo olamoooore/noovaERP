@@ -139,7 +139,7 @@ export const VALIDATION_RULES = {
 export const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 // Phone validation regex (basic international format)
-export const PHONE_REGEX = /^[\+]?[1-9][\d]{0,15}$/
+export const PHONE_REGEX = /^[+]?[1-9][\d]{0,15}$/
 
 // Booking reference format
 export const BOOKING_REFERENCE_PREFIX = 'BK'

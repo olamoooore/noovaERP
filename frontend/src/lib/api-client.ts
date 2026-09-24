@@ -328,15 +328,11 @@ class APIClient {
 
   // Public API methods
   async request<T = any>(config: APIClientConfig): Promise<APIResponse<T>> {
-    try {
-      const response = await this.axiosInstance.request(config)
-      return {
-        data: response.data,
-        status: response.status,
-        message: response.data?.message
-      }
-    } catch (error: any) {
-      throw error
+    const response = await this.axiosInstance.request(config)
+    return {
+      data: response.data,
+      status: response.status,
+      message: response.data?.message
     }
   }
 

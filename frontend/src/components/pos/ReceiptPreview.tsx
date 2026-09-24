@@ -125,10 +125,11 @@ export function ReceiptPreview({ data, loading }: ReceiptPreviewProps) {
     const qrContent = data.qr_code_content || 'receipt_url'
     
     switch (qrContent) {
-      case 'receipt_url':
+      case 'receipt_url': {
         // Generate receipt URL - in production this would be the actual receipt view URL
         const receiptId = data.receipt_id || data.receipt_number
         return `${window.location.origin}/receipts/${receiptId}`
+      }
       
       case 'store_website':
         // Use store website URL
