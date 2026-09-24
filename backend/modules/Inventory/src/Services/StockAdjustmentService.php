@@ -54,13 +54,14 @@ class StockAdjustmentService
         ?int $uomId = null,
         ?string $lotNumber = null,
         array $serialNumbers = [],
+        bool $postToGl = true,
     ): StockMovement {
         if ($uomId !== null) {
             $converter = app(\App\Services\ProductUomConverter::class);
             $quantity = $converter->toBase($converter->resolve($productId, $uomId), $quantity);
         }
 
-        return DB::transaction(function () use ($productId, $warehouseId, $quantity, $adjustmentReasonId, $reference, $notes, $batchNumber, $expiryDate, $lotNumber, $serialNumbers) {
+        return DB::transaction(function () use ($productId, $warehouseId, $quantity, $adjustmentReasonId, $reference, $notes, $batchNumber, $expiryDate, $lotNumber, $serialNumbers, $postToGl) {
             $product = Product::findOrFail($productId);
 
             if ($product->tracking_method === Product::TRACKING_BATCH) {
@@ -119,6 +120,7 @@ class StockAdjustmentService
                 notes: $notes,
                 batchNumber: $batchNumber,
                 expiryDate: $expiryDate,
+                postToGl: $postToGl,
             );
         });
     }
@@ -183,6 +185,7 @@ class StockAdjustmentService
         ?string $batchNumber = null,
         ?\DateTime $expiryDate = null,
         ?int $uomId = null,
+        bool $postToGl = true,
     ): StockMovement {
         // Issue #246: the adjustment endpoints never accepted a uom_id, so a
         // "2 Boxes" entry was recorded as 2 base units. Convert through the
@@ -194,7 +197,7 @@ class StockAdjustmentService
 
         return DB::transaction(function () use (
             $productId, $warehouseId, $quantity, $type, $referenceType,
-            $adjustmentReasonId, $reference, $notes, $batchNumber, $expiryDate
+            $adjustmentReasonId, $reference, $notes, $batchNumber, $expiryDate, $postToGl
         ) {
             $movement = $this->inventoryService->adjustStock(
                 productId: $productId,
@@ -210,7 +213,9 @@ class StockAdjustmentService
                 expiryDate: $expiryDate,
             );
 
-            $this->postValuationChange($movement);
+            if ($postToGl) {
+                $this->postValuationChange($movement);
+            }
 
             return $movement;
         });

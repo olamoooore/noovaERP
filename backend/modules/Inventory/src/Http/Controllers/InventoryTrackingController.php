@@ -96,7 +96,9 @@ class InventoryTrackingController extends Controller
         $rowNumber = 1;
         while (($values = fgetcsv($handle)) !== false) {
             $rowNumber++;
-            if (count(array_filter($values, fn ($value) => trim((string) $value) !== '')) === 0) continue;
+            if (count(array_filter($values, fn ($value) => trim((string) $value) !== '')) === 0) {
+                continue;
+            }
             $normalizedValues = array_slice(array_pad($values, count($headers), null), 0, count($headers));
             $row = array_combine($headers, $normalizedValues);
             try {
@@ -109,10 +111,14 @@ class InventoryTrackingController extends Controller
                     }
 
                     $quantity = $type === 'batches' ? (int) $row['quantity'] : 1;
-                    if ($quantity < 1) throw new \RuntimeException('Quantity must be at least 1.');
+                    if ($quantity < 1) {
+                        throw new \RuntimeException('Quantity must be at least 1.');
+                    }
                     $expiry = ! empty($row['expiry_date']) ? new \DateTime($row['expiry_date']) : null;
                     $serials = $type === 'serials' ? [trim((string) $row['serial_number'])] : [];
-                    if ($type === 'serials' && $serials[0] === '') throw new \RuntimeException('Serial number is required.');
+                    if ($type === 'serials' && $serials[0] === '') {
+                        throw new \RuntimeException('Serial number is required.');
+                    }
 
                     $this->stockAdjustmentService->stockIn(
                         productId: $product->id,
@@ -125,6 +131,11 @@ class InventoryTrackingController extends Controller
                         expiryDate: $expiry,
                         lotNumber: $type === 'batches' ? trim((string) $row['batch_number']) : null,
                         serialNumbers: $serials,
+                        // Batch/serial import records tracking data (lot numbers,
+                        // serials, expiry) — it must not create a GL journal
+                        // entry, which previously failed the whole import against
+                        // the journal_entries type check constraint.
+                        postToGl: false,
                     );
                 });
                 $results[] = ['row' => $rowNumber, 'status' => 'imported'];

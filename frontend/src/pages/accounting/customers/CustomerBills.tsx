@@ -27,6 +27,7 @@ export const CustomerBills: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(20);
   const [dateFilter, setDateFilter] = useState<'all' | 'yearly' | 'monthly' | 'custom'>('all');
   const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
@@ -105,7 +106,7 @@ export const CustomerBills: React.FC = () => {
       }
 
       const params = new URLSearchParams();
-      params.set('per_page', '20');
+      params.set('per_page', String(perPage));
       params.set('page', String(page));
       if (statusFilter !== 'all') params.append('status', statusFilter);
       if (searchQuery) params.append('search', searchQuery);
@@ -304,6 +305,66 @@ export const CustomerBills: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* Quick Stats */}
+      {invoices && invoices.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Invoices</p>
+                  <p className="text-2xl font-bold">{totalRecords}</p>
+                </div>
+                <Icon icon="solar:document-text-bold-duotone" className="h-8 w-8 text-blue-500" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Page</p>
+                  <p className="text-2xl font-bold">
+                    {currentPage} / {lastPage}
+                  </p>
+                </div>
+                <Icon icon="solar:document-bold-duotone" className="h-8 w-8 text-gray-500" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Selected</p>
+                  <p className="text-2xl font-bold">{selectedIds.length}</p>
+                </div>
+                <Icon icon="solar:check-circle-bold-duotone" className="h-8 w-8 text-orange-500" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm text-muted-foreground">Per Page</p>
+                  <select
+                    value={perPage}
+                    onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1); }}
+                    className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    {[10, 20, 50, 100].map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </div>
+                <Icon icon="solar:sort-bold-duotone" className="h-8 w-8 text-green-500" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Drill-down Filter Indicator */}
       {(customerFilter || agingBucketFilter) && (
@@ -510,7 +571,6 @@ export const CustomerBills: React.FC = () => {
             </div>
           ) : (
             <>
-            <div className="overflow-x-auto">
               <SalesLineColumnVisibility tableClass="customer-bills-listing-columns" columns={listingColumns(['Select', 'Invoice #', 'Customer', 'Date', 'Created Date', 'Due Date', 'Total', 'Balance', 'Status', 'Source', 'Actions'])}>
               <Table>
                 <TableHeader>
@@ -580,42 +640,46 @@ export const CustomerBills: React.FC = () => {
                         )}
                       </TableCell>
                       <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex gap-1 justify-end">
-                          {invoice.status === 'draft' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                postInvoiceMutation.mutate(invoice.id);
-                              }}
-                            >
-                              <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4 mr-1" />
-                              Post
-                            </Button>
-                          )}
+                        <div className="flex justify-end gap-1.5">
                           <Button
                             size="sm"
-                            variant="ghost"
+                            variant="outline"
+                            className="h-7 w-7 p-0"
+                            title="View"
                             onClick={(e) => {
                               e.stopPropagation();
                               navigate(`/accounting/customers/bills/${invoice.id}`);
                             }}
                           >
-                            <Icon icon="solar:eye-bold-duotone" className="h-4 w-4" />
+                            <Icon icon="solar:eye-bold-duotone" className="h-3.5 w-3.5" />
                           </Button>
                           {invoice.status === 'draft' && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              title="Edit"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate(`/accounting/customers/bills/${invoice.id}/edit`);
-                              }}
-                            >
-                              <Icon icon="solar:pen-bold" className="h-4 w-4" />
-                            </Button>
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 w-7 p-0"
+                                title="Edit"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(`/accounting/customers/bills/${invoice.id}/edit`);
+                                }}
+                              >
+                                <Icon icon="solar:pen-bold-duotone" className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                className="h-7 w-7 bg-emerald-600 p-0 text-white hover:bg-emerald-700"
+                                title="Post"
+                                disabled={postInvoiceMutation.isPending}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  postInvoiceMutation.mutate(invoice.id);
+                                }}
+                              >
+                                <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4" />
+                              </Button>
+                            </>
                           )}
                         </div>
                       </TableCell>
@@ -624,7 +688,6 @@ export const CustomerBills: React.FC = () => {
                 </TableBody>
               </Table>
               </SalesLineColumnVisibility>
-            </div>
 
             {lastPage > 1 && (
               <div className="flex items-center justify-between pt-4">
@@ -658,57 +721,6 @@ export const CustomerBills: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Quick Stats */}
-      {invoices && invoices.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Invoices</p>
-                  <p className="text-2xl font-bold">{totalRecords}</p>
-                </div>
-                <Icon icon="solar:document-text-bold-duotone" className="h-8 w-8 text-blue-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Page</p>
-                  <p className="text-2xl font-bold">
-                    {currentPage} / {lastPage}
-                  </p>
-                </div>
-                <Icon icon="solar:document-bold-duotone" className="h-8 w-8 text-gray-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Selected</p>
-                  <p className="text-2xl font-bold">{selectedIds.length}</p>
-                </div>
-                <Icon icon="solar:check-circle-bold-duotone" className="h-8 w-8 text-orange-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Per Page</p>
-                  <p className="text-2xl font-bold">20</p>
-                </div>
-                <Icon icon="solar:sort-bold-duotone" className="h-8 w-8 text-green-500" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
       <ConfirmDialog
         open={bulkDeleteOpen}
         onOpenChange={setBulkDeleteOpen}

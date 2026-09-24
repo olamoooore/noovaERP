@@ -1012,19 +1012,6 @@ export const CreateInvoicePage: React.FC = () => {
                       }
                     }}
                   />
-                  {!isQuoteMode && (
-                    requiresApproval ? (
-                      <div className="mt-1.5 flex items-center gap-1.5 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs text-orange-700 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-300">
-                        <Icon icon="solar:checklist-bold-duotone" className="h-3.5 w-3.5 shrink-0" />
-                        <span>
-                          Will require approval before posting
-                          {salesSettings?.invoice?.default_requires_approval && !isEditMode && (
-                            <span className="text-orange-600/70"> · set in Sales Settings</span>
-                          )}
-                        </span>
-                      </div>
-                    ) : null
-                  )}
                 </div>
                 {!isQuoteMode && (
                   <div className="lg:col-span-2">
@@ -1090,6 +1077,18 @@ export const CreateInvoicePage: React.FC = () => {
                   />
                 </div>
               </div>
+
+              {!isQuoteMode && requiresApproval && (
+                <div className="mt-4 flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-700 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-300">
+                  <Icon icon="solar:checklist-bold-duotone" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    This {documentLabel.toLowerCase()} will require approval before posting
+                    {salesSettings?.invoice?.default_requires_approval && !isEditMode && (
+                      <span className="text-orange-600/70"> · set in Sales Settings</span>
+                    )}
+                  </span>
+                </div>
+              )}
 
               <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
