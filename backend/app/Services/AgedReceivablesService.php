@@ -53,6 +53,14 @@ class AgedReceivablesService
             });
         }
 
+        // Filter by document tag (tags live on the invoice).
+        if (! empty($filters['tag'])) {
+            $taggedIds = app(\App\Services\TagService::class)
+                ->subjectIdsForTagSlugs([$filters['tag']], 'invoice');
+
+            $invoicesQuery->whereIn('id', $taggedIds !== [] ? $taggedIds : [-1]);
+        }
+
         $invoices = $invoicesQuery->get();
 
         // Calculate aging for each invoice and categorize

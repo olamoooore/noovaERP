@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import reportApi from '@/lib/reportApi';
+import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 
@@ -20,6 +21,7 @@ interface AgedReceivablesFilters {
   search?: string;
   min_amount?: number;
   aging_bucket?: string;
+  tag?: string;
 }
 
 export function AgedReceivablesPage() {
@@ -36,6 +38,16 @@ export function AgedReceivablesPage() {
   } = useQuery({
     queryKey: ['aged-receivables', filters],
     queryFn: () => reportApi.getAgedReceivables(filters),
+  });
+
+  // Tenant tags (for the tag filter)
+  const { data: allTags = [] } = useQuery({
+    queryKey: ['tags'],
+    queryFn: async () => {
+      const res = await api.get('/tags');
+      return (res.data?.data ?? []) as Array<{ id: number; name: string; slug: string; color: string }>;
+    },
+    staleTime: 60_000,
   });
 
   // Handle filter changes
@@ -91,6 +103,8 @@ export function AgedReceivablesPage() {
 
       // Prepare export data with proper structure
       const exportData = {
+        report_type: 'aged_receivables',
+        filters: {} as Record<string, unknown>,
         report_data: {
           title: 'Aged Receivables Report',
           generated_at: new Date().toISOString(),
@@ -185,7 +199,7 @@ export function AgedReceivablesPage() {
 
       {/* Filters */}
       <Card className="p-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div>
             <label className="text-sm font-medium mb-2 block">
               Search Customer
@@ -225,6 +239,29 @@ export function AgedReceivablesPage() {
                 <SelectItem value="days_31_60">31-60 Days</SelectItem>
                 <SelectItem value="days_61_90">61-90 Days</SelectItem>
                 <SelectItem value="days_90_plus">90+ Days</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-2 block">
+              Tag
+            </label>
+            <Select
+              value={filters.tag || 'all'}
+              onValueChange={(value) =>
+                setFilters((prev) => ({ ...prev, tag: value === 'all' ? undefined : value }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="All Tags" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Tags</SelectItem>
+                {allTags.map((t) => (
+                  <SelectItem key={t.id} value={t.slug}>
+                    {t.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -422,7 +459,7 @@ export function AgedReceivablesPage() {
                       </td>
                     </tr>
                   ) : (
-                    receivablesData.data.map((customer) => (
+                    receivablesData.data.map((customer: any) => (
                       <tr
                         key={customer.customer_id}
                         className="border-b hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"

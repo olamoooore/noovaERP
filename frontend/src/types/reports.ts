@@ -14,6 +14,8 @@ export interface ReportFilters {
   product_id?: number;
   customer_id?: number;
   vendor_id?: number;
+  /** Tag slug — filter documents carrying this tag. */
+  tag?: string;
   movement_type?: string;
   method?: 'direct' | 'indirect';
   interval?: 'day' | 'week' | 'month' | 'year';

@@ -40,6 +40,14 @@ class AgedPayablesService
             });
         }
 
+        // Filter by document tag (tags live on the bill).
+        if (! empty($filters['tag'])) {
+            $taggedIds = app(\App\Services\TagService::class)
+                ->subjectIdsForTagSlugs([$filters['tag']], 'bill');
+
+            $billsQuery->whereIn('id', $taggedIds !== [] ? $taggedIds : [-1]);
+        }
+
         $bills = $billsQuery->get();
 
         // Calculate aging for each bill and categorize

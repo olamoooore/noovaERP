@@ -32,6 +32,7 @@ class AgedReceivablesController extends Controller
                 'min_amount' => 'nullable|numeric|min:0',
                 'aging_bucket' => 'nullable|string|in:current,days_1_30,days_31_60,days_61_90,days_90_plus',
                 'customer_id' => 'nullable|integer|exists:customers,id',
+                'tag' => 'nullable|string|max:120',
             ]);
 
             // Get report data
