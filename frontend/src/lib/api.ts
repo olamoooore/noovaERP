@@ -1,7 +1,36 @@
 import axios from 'axios'
+import { useAuthStore } from '@/store/authStore'
 
 // Use VITE_API_BASE_URL from .env.production, fallback to /api/v1 for development
 const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+
+/**
+ * The auth token has two possible homes: the zustand store (persisted under
+ * `auth-storage`) and the legacy raw `localStorage.token`. `ProtectedRoute`
+ * and `LoginPage` gate on the STORE, so requests must prefer the store too —
+ * otherwise a mismatch (store has a token, raw key doesn't) makes the app
+ * render the authenticated shell while sending unauthenticated requests,
+ * which 401s, redirects to /login, bounces back to /dashboard, and loops
+ * forever at ~1 reload/second.
+ */
+function authToken(): string | null {
+  return useAuthStore.getState().token ?? localStorage.getItem('token')
+}
+
+/**
+ * Single 401 path for every axios instance: fully log out (clears the
+ * zustand store AND the legacy keys, keeping both homes in sync) and only
+ * navigate when not already on /login — otherwise parallel 401s reload
+ * /login continuously.
+ */
+function handleUnauthorized() {
+  useAuthStore.getState().logout()
+  localStorage.removeItem('token')
+  localStorage.removeItem('user')
+  if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+    window.location.href = '/login'
+  }
+}
 
 // Main API (tenant routes)
 export const api = axios.create({
@@ -32,7 +61,7 @@ export const accountingApi = axios.create({
 
 // Request interceptor to add auth token
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
+  const token = authToken()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -48,7 +77,7 @@ api.interceptors.request.use((config) => {
 })
 
 authApi.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
+  const token = authToken()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -56,7 +85,7 @@ authApi.interceptors.request.use((config) => {
 })
 
 accountingApi.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
+  const token = authToken()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -87,14 +116,7 @@ api.interceptors.response.use(
         // Let the web shop auth hook handle this
         return Promise.reject(error)
       }
-      localStorage.removeItem('token')
-      localStorage.removeItem('user')
-      // Only redirect when not already on the login page: parallel 401s
-      // (expired/restored-DB tokens) otherwise reload /login repeatedly and
-      // the dashboard appears to reload forever.
-      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-        window.location.href = '/login'
-      }
+      handleUnauthorized()
       return Promise.reject(error)
     }
 
@@ -131,9 +153,7 @@ authApi.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('user')
-      window.location.href = '/login'
+      handleUnauthorized()
     }
     return Promise.reject(error)
   }
@@ -143,9 +163,7 @@ accountingApi.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('user')
-      window.location.href = '/login'
+      handleUnauthorized()
     }
     return Promise.reject(error)
   }
