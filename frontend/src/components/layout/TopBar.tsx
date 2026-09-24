@@ -14,10 +14,10 @@ import {
 import { NotificationBell } from '@/components/layout/NotificationBell'
 import { GlobalSearch } from '@/components/search/GlobalSearch'
 
-function greetingFor(hour: number): { label: string; symbol: string } {
-  if (hour < 12) return { label: 'Good morning', symbol: '🌅' }
-  if (hour < 17) return { label: 'Good afternoon', symbol: '☀️' }
-  return { label: 'Good evening', symbol: '🌙' }
+function greetingFor(hour: number): { label: string; icon: string } {
+  if (hour < 12) return { label: 'Good morning', icon: 'solar:sunrise-bold-duotone' }
+  if (hour < 17) return { label: 'Good afternoon', icon: 'solar:sun-bold-duotone' }
+  return { label: 'Good evening', icon: 'solar:moon-stars-bold-duotone' }
 }
 
 function useNow(intervalMs = 10000) {
@@ -55,10 +55,12 @@ export function TopBar() {
   return (
     <div className="flex h-16 items-center justify-between border-b bg-card px-6">
       <div className="flex items-center gap-4">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-lg leading-none">
-          <span role="img" aria-label={greeting.label}>
-            {greeting.symbol}
-          </span>
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-lg leading-none text-primary">
+          <Icon
+            icon={greeting.icon}
+            className="h-6 w-6"
+            aria-label={greeting.label}
+          />
         </div>
         <div className="min-w-0">
           <h1 className="truncate text-lg font-semibold leading-tight">
