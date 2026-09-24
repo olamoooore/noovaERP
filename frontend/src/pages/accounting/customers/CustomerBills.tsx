@@ -291,16 +291,30 @@ export const CustomerBills: React.FC = () => {
                 ? invoices.map((invoice: any) => invoice.id)
                 : []}
           />
-          <Button variant="outline" onClick={() => navigate('/accounting/customers/credit-notes')}>
-            <Icon icon="solar:document-add-bold-duotone" className="h-4 w-4 mr-2" />
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-full px-3 text-xs"
+            onClick={() => navigate('/accounting/customers/credit-notes')}
+          >
+            <Icon icon="solar:document-add-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
             Credit Notes
           </Button>
-          <Button variant="outline" onClick={() => setShowUpload(true)}>
-            <Icon icon="solar:upload-bold-duotone" className="h-4 w-4 mr-2" />
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-full px-3 text-xs"
+            onClick={() => setShowUpload(true)}
+          >
+            <Icon icon="solar:upload-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
             Upload Invoice (OCR)
           </Button>
-          <Button onClick={() => navigate('/accounting/customers/bills/create')}>
-            <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
+          <Button
+            size="sm"
+            className="h-8 rounded-full px-3 text-xs"
+            onClick={() => navigate('/accounting/customers/bills/create')}
+          >
+            <Icon icon="solar:add-circle-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
             New Invoice
           </Button>
         </div>

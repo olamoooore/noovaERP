@@ -212,6 +212,8 @@ class InvoiceController extends Controller
             'lines.*.unit_price' => 'required_if:lines.*.line_type,product|nullable|numeric|min:0',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
+            'tags' => 'nullable|array',
+            'tags.*' => 'string|max:100',
         ]);
 
         // Lock-date check: block creating invoice dated in a closed period
@@ -253,7 +255,14 @@ class InvoiceController extends Controller
         }
 
         try {
+            $tagNames = $validated['tags'] ?? [];
+            unset($validated['tags']);
+
             $invoice = $this->createInvoiceFromData($validated);
+
+            if (is_array($tagNames) && $tagNames !== []) {
+                app(\App\Services\TagService::class)->attach($invoice, $tagNames, $request->user()?->id);
+            }
 
             // When the tenant requires approval, submitting for review is part
             // of the create action — the operator should never have to trigger

@@ -137,6 +137,8 @@ class DeliveryOrderController extends Controller
                 'quotation_id' => 'nullable|exists:quotations,id',
                 'notes' => 'nullable|string',
                 'requires_approval' => 'nullable|boolean',
+                'tags' => 'nullable|array',
+                'tags.*' => 'string|max:100',
                 'lines' => 'required|array|min:1',
                 'lines.*.line_type' => 'nullable|in:product,note,section',
                 'lines.*.sequence' => 'nullable|integer|min:0',
@@ -169,6 +171,8 @@ class DeliveryOrderController extends Controller
             try {
                 $deliveryOrder = $this->deliveryService->createStandaloneDeliveryOrder($validated);
 
+                $this->attachTags($deliveryOrder, $validated['tags'] ?? [], $request->user()?->id);
+
                 return response()->json([
                     'message' => 'Standalone delivery order created',
                     'data' => $deliveryOrder,
@@ -195,6 +199,8 @@ class DeliveryOrderController extends Controller
             'attention_to' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
             'requires_approval' => 'nullable|boolean',
+            'tags' => 'nullable|array',
+            'tags.*' => 'string|max:100',
             'lines' => 'required|array|min:1',
             'lines.*.line_type' => 'nullable|in:product,note,section',
             'lines.*.sequence' => 'nullable|integer|min:0',
@@ -221,12 +227,33 @@ class DeliveryOrderController extends Controller
         try {
             $deliveryOrder = $this->deliveryService->createDeliveryOrder($order, $validated);
 
+            $this->attachTags($deliveryOrder, $validated['tags'] ?? [], $request->user()?->id);
+
             return response()->json([
                 'message' => 'Delivery order created',
                 'data' => $deliveryOrder,
             ], 201);
         } catch (\Exception $e) {
             return response()->json(['message' => $e->getMessage()], 422);
+        }
+    }
+
+    /**
+     * Attach tags supplied on a create request to the freshly created document.
+     */
+    private function attachTags(DeliveryOrder $deliveryOrder, array $tags, ?int $userId): void
+    {
+        if ($tags === []) {
+            return;
+        }
+
+        try {
+            app(\App\Services\TagService::class)->attach($deliveryOrder, $tags, $userId);
+        } catch (\Throwable $e) {
+            Log::warning('DeliveryOrderController: failed to attach tags', [
+                'delivery_order_id' => $deliveryOrder->id,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

@@ -13,6 +13,7 @@ import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
 import { LineItemsTable } from '@/components/sales/LineItemsTable';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { TagPicker } from '@/components/tags/TagPicker';
 import {
   LINE_CELL,
   LINE_CELL_BOX,
@@ -59,6 +60,7 @@ const emptyLine = (): QuotationLine => ({
 
 export const QuotationCreatePage: React.FC = () => {
   const [hiddenLineColumns, setHiddenLineColumns] = useState<number[]>([6])
+  const [tags, setTags] = useState<string[]>([])
   const [draggedLineIndex, setDraggedLineIndex] = useState<number | null>(null)
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -254,6 +256,7 @@ export const QuotationCreatePage: React.FC = () => {
       discount_amount: documentDiscountAmount || 0,
       discount_type: discountMode,
       discount_value: discountValue,
+      ...(tags.length ? { tags } : {}),
     lines: lines
       .filter((line) => line.description || line.product_id)
       .map((line) => ({
@@ -279,7 +282,11 @@ export const QuotationCreatePage: React.FC = () => {
         title="Create Quotation"
         description="Prepare a quotation for your customer. Confirm to create a Sales Order."
         backTo="/quotations"
-      />
+      >
+        <div className="mt-2">
+          <TagPicker value={tags} onChange={setTags} />
+        </div>
+      </PageHeader>
 
       <form onSubmit={handleSubmit}>
         <Card className="mb-6">

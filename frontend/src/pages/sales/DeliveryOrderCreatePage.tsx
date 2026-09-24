@@ -28,6 +28,7 @@ import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog'
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
+import { TagPicker } from '@/components/tags/TagPicker'
 import { ProductTrackingSelector, type TrackingSelection } from '@/components/inventory/ProductTrackingSelector'
 
 interface LineItem {
@@ -59,6 +60,7 @@ export function DeliveryOrderCreatePage() {
   const { toast } = useToast()
 
   const [mode, setMode] = useState<'linked' | 'standalone'>(preselectedSoId ? 'linked' : 'standalone')
+  const [tags, setTags] = useState<string[]>([])
   const [salesOrderId, setSalesOrderId] = useState<string>(preselectedSoId || '')
   const [customerId, setCustomerId] = useState<string>('')
   const [warehouseId, setWarehouseId] = useState<string>('')
@@ -262,6 +264,7 @@ export function DeliveryOrderCreatePage() {
       invoice_id: invoiceId ? parseInt(invoiceId) : undefined,
       quotation_id: quotationId ? parseInt(quotationId) : undefined,
       requires_approval: requiresApproval,
+      ...(tags.length ? { tags } : {}),
       lines,
     })
   }
@@ -309,6 +312,7 @@ export function DeliveryOrderCreatePage() {
       invoice_id: invoiceId ? parseInt(invoiceId) : undefined,
       quotation_id: quotationId ? parseInt(quotationId) : undefined,
       requires_approval: requiresApproval,
+      ...(tags.length ? { tags } : {}),
       lines: validLines.map((l) => ({
         line_type: l.line_type || 'product',
         sequence: validLines.indexOf(l),
@@ -406,6 +410,9 @@ export function DeliveryOrderCreatePage() {
           <p className="text-muted-foreground mt-1">
             {mode === 'linked' ? 'Dispatch items from a confirmed sales order.' : 'Create a standalone delivery.'}
           </p>
+          <div className="mt-2">
+            <TagPicker value={tags} onChange={setTags} />
+          </div>
         </div>
 
         {!preselectedSoId && (

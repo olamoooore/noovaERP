@@ -186,6 +186,8 @@ class QuotationController extends Controller
             'lines.*.unit_price' => 'required_if:lines.*.line_type,product|nullable|numeric|min:0',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
+            'tags' => 'nullable|array',
+            'tags.*' => 'string|max:100',
         ]);
 
         try {
@@ -254,6 +256,11 @@ class QuotationController extends Controller
 
                 return $quotation->load(['customer', 'lines.product']);
             });
+
+            $tagNames = $validated['tags'] ?? [];
+            if (is_array($tagNames) && $tagNames !== []) {
+                app(\App\Services\TagService::class)->attach($quotation, $tagNames, Auth::id());
+            }
 
             return response()->json([
                 'message' => 'Quotation created successfully',

@@ -24,6 +24,7 @@ import { ProductTrackingSelector } from '@/components/inventory/ProductTrackingS
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
 import { LineItemsTable } from '@/components/sales/LineItemsTable'
 import { TagEditor } from '@/components/tags/TagEditor'
+import { TagPicker } from '@/components/tags/TagPicker'
 import {
   LINE_CELL,
   LINE_CELL_BOX,
@@ -319,6 +320,7 @@ export const CreateInvoicePage: React.FC = () => {
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [customerDialogMode, setCustomerDialogMode] = useState<'create' | 'edit'>('create');
   const [customerForm, setCustomerForm] = useState<CustomerFormState>(initialCustomerForm);
+  const [tags, setTags] = useState<string[]>([]);
   const [originalCustomerId, setOriginalCustomerId] = useState('');
   const [visibleLineColumns, setVisibleLineColumns] = useState<Record<string, boolean>>(() => {
     const defaults = { sku: true, description: true, model_number: true, product_notes: false, lot_number: true, expiry_date: true, tax_rate: true };
@@ -887,6 +889,7 @@ export const CreateInvoicePage: React.FC = () => {
       payment_terms: paymentTerms,
       discount_amount: documentDiscountAmount || 0,
       requires_approval: requiresApproval,
+      ...(!isEditMode && tags.length ? { tags } : {}),
       ...(customInvoiceNumber ? { invoice_number: customInvoiceNumber } : {}),
       ...documentSnapshot,
       lines: lines
@@ -984,9 +987,13 @@ export const CreateInvoicePage: React.FC = () => {
           <p className="text-muted-foreground mt-1">
             Prepare the customer, products, and commercial details for this {documentLabel.toLowerCase()}.
           </p>
-          {isEditMode && id && (
+          {isEditMode && id ? (
             <div className="mt-2">
               <TagEditor subjectType={isQuoteMode ? 'quotation' : 'invoice'} subjectId={id} />
+            </div>
+          ) : (
+            <div className="mt-2">
+              <TagPicker value={tags} onChange={setTags} />
             </div>
           )}
         </div>
