@@ -35,7 +35,16 @@ export function InventoryTrackingPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div><h1 className="text-3xl font-bold">Lot & Serial Tracking</h1><p className="text-muted-foreground">Review tracked inventory and import lots or serial numbers by product.</p></div>
-        <Button onClick={() => navigate(`/inventory/tracking/import?type=${type}`)}><Icon icon="solar:upload-bold" className="mr-2 h-4 w-4" />Bulk Import</Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={() => navigate('/inventory/operations')}>
+            <Icon icon="solar:box-minimalistic-bold-duotone" className="mr-2 h-4 w-4" />
+            Receive Stock
+          </Button>
+          <Button onClick={() => navigate(`/inventory/tracking/import?type=${type}`)}>
+            <Icon icon="solar:upload-bold" className="mr-2 h-4 w-4" />
+            Bulk Import
+          </Button>
+        </div>
       </div>
 
       <Tabs value={type} onValueChange={(value) => { setType(value as TrackingType); setProductId('all'); setPage(1) }}>

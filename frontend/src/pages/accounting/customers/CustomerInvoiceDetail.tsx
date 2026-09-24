@@ -265,6 +265,15 @@ export const CustomerInvoiceDetail: React.FC = () => {
 
             {invoice.status === 'draft' && (
               <>
+                {!isQuoteMode && (
+                  <HeaderActionButton
+                    variant="outline"
+                    icon="solar:pen-bold-duotone"
+                    onClick={() => navigate(`/accounting/customers/bills/${invoice.id}/edit`)}
+                  >
+                    Edit
+                  </HeaderActionButton>
+                )}
                 <HeaderActionButton
                   icon="solar:check-circle-bold-duotone"
                   loading={postMutation.isPending}
