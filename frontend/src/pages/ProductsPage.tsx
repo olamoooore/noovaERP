@@ -18,6 +18,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import api from '@/lib/api'
 import { SalesLineColumnMenu, SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { SalesDocumentExportMenu, type SalesExportColumn } from '@/components/sales/SalesDocumentExportMenu'
+import { TagFilterSelect } from '@/components/tags/TagFilterSelect'
 import { RetractingActions } from '@/components/layout/RetractingActions'
 import { useBulkSelection } from '@/hooks/use-bulk-selection'
 import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice'
@@ -69,6 +70,7 @@ export function ProductsPage() {
   const [type, setType] = useState<TypeFilter>('all')
   const [status, setStatus] = useState<StatusFilter>('all')
   const [categoryId, setCategoryId] = useState<string>('all')
+  const [tagFilter, setTagFilter] = useState('')
   const [sortBy, setSortBy] = useState<SortBy>('created_at')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [page, setPage] = useState(1)
@@ -79,6 +81,7 @@ export function ProductsPage() {
     setType('all')
     setStatus('all')
     setCategoryId('all')
+    setTagFilter('')
     setSortBy('created_at')
     setSortDir('desc')
     setPage(1)
@@ -93,7 +96,7 @@ export function ProductsPage() {
   })
 
   const { data: productsResponse, isLoading: productsLoading } = useQuery({
-    queryKey: ['products', search, type, status, categoryId, sortBy, sortDir, page],
+    queryKey: ['products', search, type, status, categoryId, tagFilter, sortBy, sortDir, page],
     queryFn: async () => {
       const params: Record<string, any> = {
         per_page: 50,
@@ -111,6 +114,7 @@ export function ProductsPage() {
         else if (status === 'out_of_stock') params.out_of_stock = true
       }
       if (categoryId !== 'all') params.category_id = parseInt(categoryId)
+      if (tagFilter) params.tag = tagFilter
 
       const response = await api.get('/products', { params })
       return response.data
@@ -121,7 +125,7 @@ export function ProductsPage() {
   const products = productsResponse?.data || []
   const totalPages = productsResponse?.last_page || 1
   const totalProducts = productsResponse?.total || 0
-  const productFilters = { search: search.trim() || undefined, type: type === 'all' ? undefined : type, category_id: categoryId === 'all' ? undefined : Number(categoryId), is_active: status === 'active' ? 1 : status === 'inactive' ? 0 : undefined, is_new_arrival: status === 'new_arrival' ? 1 : undefined, is_preorder: status === 'preorder' ? 1 : undefined, out_of_stock: status === 'out_of_stock' ? 1 : undefined, sort_by: sortBy, sort_dir: sortDir }
+  const productFilters = { search: search.trim() || undefined, type: type === 'all' ? undefined : type, category_id: categoryId === 'all' ? undefined : Number(categoryId), tag: tagFilter || undefined, is_active: status === 'active' ? 1 : status === 'inactive' ? 0 : undefined, is_new_arrival: status === 'new_arrival' ? 1 : undefined, is_preorder: status === 'preorder' ? 1 : undefined, out_of_stock: status === 'out_of_stock' ? 1 : undefined, sort_by: sortBy, sort_dir: sortDir }
   const {
     selectedIds, clearSelection, toggleSelect, togglePageSelection,
     selectAllMatching, allPageSelected, allMatchingSelected, isSelectingAll,
@@ -271,6 +275,15 @@ export function ProductsPage() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">Tag</div>
+                <TagFilterSelect
+                  className="h-10 w-full"
+                  value={tagFilter}
+                  onChange={(value) => { setTagFilter(value); setPage(1) }}
+                />
               </div>
 
               <div className="space-y-1">

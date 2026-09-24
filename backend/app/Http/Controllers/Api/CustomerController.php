@@ -8,6 +8,7 @@ use App\Models\Customer;
 use App\Models\CustomerCategory;
 use App\Models\CustomerLoyaltyProgram;
 use App\Services\CustomerContactSyncService;
+use App\Services\TagService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -69,6 +70,14 @@ class CustomerController extends Controller
             });
         }
 
+        // Filter by document tag.
+        if ($request->filled('tag')) {
+            $taggedIds = app(\App\Services\TagService::class)
+                ->subjectIdsForTagSlugs([$request->tag], 'customer');
+
+            $query->whereIn('id', $taggedIds !== [] ? $taggedIds : [-1]);
+        }
+
         // Sorting
         $sortBy = $request->sort_by ?? 'name';
         $sortDir = $request->sort_dir ?? 'asc';
@@ -120,6 +129,12 @@ class CustomerController extends Controller
         }
         if ($request->filled('category_id')) {
             $query->whereHas('categories', fn ($q) => $q->where('customer_categories.id', $request->category_id));
+        }
+        if ($request->filled('tag')) {
+            $taggedIds = app(TagService::class)
+                ->subjectIdsForTagSlugs([$request->tag], 'customer');
+
+            $query->whereIn('id', $taggedIds !== [] ? $taggedIds : [-1]);
         }
 
         return Excel::download(new CustomersExport($query->orderBy('name'), $validated['columns']), 'customers_'.now()->format('Y-m-d').'.xlsx');

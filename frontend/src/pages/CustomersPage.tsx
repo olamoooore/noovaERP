@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { TagFilterSelect } from '@/components/tags/TagFilterSelect'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
@@ -148,6 +149,7 @@ export function CustomersPage() {
   const [hiddenCustomerColumns, setHiddenCustomerColumns] = useState<number[]>([])
   const [confirmAction, setConfirmAction] = useState<{ type: 'bulk-delete' | 'delete'; id?: number } | null>(null)
   const [filterType, setFilterType] = useState<string>('all')
+  const [tagFilter, setTagFilter] = useState('')
   const [page, setPage] = useState(1)
   const [editMode, setEditMode] = useState(false)
   const [formData, setFormData] = useState<CustomerFormData>(initialFormData)
@@ -158,11 +160,12 @@ export function CustomersPage() {
 
   // Fetch customers — newest first, paginated
   const { data: customersData, isLoading } = useQuery({
-    queryKey: ['customers', searchTerm, filterType, page],
+    queryKey: ['customers', searchTerm, filterType, tagFilter, page],
     queryFn: async () => {
       const params = new URLSearchParams()
       if (searchTerm) params.append('search', searchTerm)
       if (filterType && filterType !== 'all') params.append('type', filterType)
+      if (tagFilter) params.append('tag', tagFilter)
       params.append('sort_by', 'created_at')
       params.append('sort_dir', 'desc')
       params.append('per_page', String(PAGE_SIZE))
@@ -179,16 +182,16 @@ export function CustomersPage() {
     selectAllMatching, allPageSelected, allMatchingSelected, isSelectingAll,
   } = useBulkSelection({
     pageIds: customers.map((customer: Customer) => customer.id),
-    scopeKey: JSON.stringify({ search: searchTerm, type: filterType }),
+    scopeKey: JSON.stringify({ search: searchTerm, type: filterType, tag: tagFilter }),
     fetchAllIds: async () => {
-      const response = await api.get('/customers', { params: { search: searchTerm || undefined, type: filterType === 'all' ? undefined : filterType, ids_only: 1 } })
+      const response = await api.get('/customers', { params: { search: searchTerm || undefined, type: filterType === 'all' ? undefined : filterType, tag: tagFilter || undefined, ids_only: 1 } })
       return response.data.data
     },
     onSelectAllError: () => toast({ variant: 'destructive', title: 'Failed to select all customers' }),
   })
 
   // Reset to first page whenever the search/filter changes
-  useEffect(() => { setPage(1) }, [searchTerm, filterType])
+  useEffect(() => { setPage(1) }, [searchTerm, filterType, tagFilter])
 
   // Overall customer statistics for the summary cards (independent of pagination)
   const { data: stats } = useQuery({
@@ -376,7 +379,7 @@ export function CustomersPage() {
           <p className="text-muted-foreground">Manage your customers, contacts and relationships</p>
         </div>
         <RetractingActions>
-          <SalesDocumentExportMenu compact endpoint="/customers/export" filenamePrefix="customers" columns={CUSTOMER_EXPORT_COLUMNS} filters={{ search: searchTerm || undefined, type: filterType === 'all' ? undefined : filterType }} selectedIds={selectedIds} />
+          <SalesDocumentExportMenu compact endpoint="/customers/export" filenamePrefix="customers" columns={CUSTOMER_EXPORT_COLUMNS} filters={{ search: searchTerm || undefined, type: filterType === 'all' ? undefined : filterType, tag: tagFilter || undefined }} selectedIds={selectedIds} />
           <Button variant="outline" size="sm" className="h-8 rounded-full px-3 text-xs" asChild>
             <Link to="/customers/import">
               <Icon icon="solar:upload-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
@@ -689,6 +692,11 @@ export function CustomersPage() {
                 <SelectItem value="company">Companies</SelectItem>
               </SelectContent>
             </Select>
+
+            <TagFilterSelect
+              value={tagFilter}
+              onChange={(value) => setTagFilter(value)}
+            />
 
             {categories.length > 0 && (
               <div className="hidden items-center gap-2 xl:flex">

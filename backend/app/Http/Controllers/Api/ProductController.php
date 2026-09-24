@@ -180,6 +180,14 @@ class ProductController extends Controller
             });
         }
 
+        // Filter by document tag.
+        if ($request->filled('tag')) {
+            $taggedIds = app(\App\Services\TagService::class)
+                ->subjectIdsForTagSlugs([$request->tag], 'product');
+
+            $query->whereIn('id', $taggedIds !== [] ? $taggedIds : [-1]);
+        }
+
         $allowedSorts = ['name', 'price', 'cost', 'stock_quantity', 'created_at', 'updated_at', 'sku', 'status'];
         $sortBy = (string) $request->input('sort_by', 'created_at');
         $sortDir = strtolower((string) $request->input('sort_dir', 'desc'));
@@ -251,6 +259,12 @@ class ProductController extends Controller
         }
         if ($request->filled('out_of_stock')) {
             $query->where('stock_quantity', '<=', 0);
+        }
+        if ($request->filled('tag')) {
+            $taggedIds = app(\App\Services\TagService::class)
+                ->subjectIdsForTagSlugs([$request->tag], 'product');
+
+            $query->whereIn('id', $taggedIds !== [] ? $taggedIds : [-1]);
         }
 
         return Excel::download(new ProductsExport($query->orderBy('name'), $validated['columns']), 'products_'.now()->format('Y-m-d').'.xlsx');
