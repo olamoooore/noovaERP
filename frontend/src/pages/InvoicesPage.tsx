@@ -14,6 +14,7 @@ import { INVOICE_EXPORT_COLUMNS, SalesDocumentExportMenu } from '@/components/sa
 import { SalesLineColumnMenu, SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { useBulkSelection } from '@/hooks/use-bulk-selection'
 import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice'
+import { TagFilterSelect } from '@/components/tags/TagFilterSelect'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -28,6 +29,7 @@ export function InvoicesPage() {
   const [bulkAction, setBulkAction] = useState<'post' | 'delete' | null>(null)
   const [statusFilter, setStatusFilter] = useState('all')
   const [customerFilter, setCustomerFilter] = useState('')
+  const [tagFilter, setTagFilter] = useState('')
   const [dateFilter, setDateFilter] = useState<'all' | 'yearly' | 'monthly' | 'custom'>('all')
   const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()))
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
@@ -41,6 +43,7 @@ export function InvoicesPage() {
     if (statusFilter !== 'all') params.status = statusFilter
     if (searchQuery.trim()) params.search = searchQuery.trim()
     if (customerFilter) params.customer_id = customerFilter
+    if (tagFilter) params.tag = tagFilter
     if (dateFilter === 'yearly') {
       params.start_date = `${selectedYear}-01-01`
       params.end_date = `${selectedYear}-12-31`
@@ -56,7 +59,7 @@ export function InvoicesPage() {
   }
 
   const { data: response, isLoading } = useQuery({
-    queryKey: ['invoices', page, perPage, statusFilter, searchQuery, customerFilter, dateFilter, selectedYear, selectedMonth, customStartDate, customEndDate],
+    queryKey: ['invoices', page, perPage, statusFilter, searchQuery, customerFilter, tagFilter, dateFilter, selectedYear, selectedMonth, customStartDate, customEndDate],
     queryFn: async () => {
       const params = { page, per_page: perPage, ...activeFilterParams() }
       const res = await api.get('/invoices', { params })
@@ -264,6 +267,11 @@ export function InvoicesPage() {
                 placeholder="All Customers"
               />
             </div>
+
+            <TagFilterSelect
+              value={tagFilter}
+              onChange={(value) => { setTagFilter(value); setPage(1) }}
+            />
 
             <Select
               value={dateFilter}

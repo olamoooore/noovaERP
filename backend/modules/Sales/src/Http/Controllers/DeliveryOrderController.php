@@ -66,7 +66,14 @@ class DeliveryOrderController extends Controller
 
     private function filteredDeliveryOrderQuery(Request $request)
     {
-        $query = DeliveryOrder::query()->orderBy('created_at', 'desc')->orderBy('id', 'desc');
+        // Sort by the most recent of (created_at, updated_at), with NULL
+        // timestamps sent to the END so that imported/migrated rows with
+        // empty timestamps don't float to the top. Ties broken by id DESC
+        // so the highest id wins when timestamps are missing or equal —
+        // i.e. the user's newly-created record always surfaces first.
+        $query = DeliveryOrder::query()
+            ->orderByRaw('COALESCE(created_at, updated_at) DESC NULLS LAST')
+            ->orderBy('id', 'desc');
 
         if ($request->filled('status')) {
             $query->whereIn('status', explode(',', $request->status));
@@ -111,6 +118,14 @@ class DeliveryOrderController extends Controller
                         $sq->where('sales_order_number', 'ILIKE', "%{$search}%");
                     });
             });
+        }
+
+        // Filter by document tag.
+        if ($request->filled('tag')) {
+            $taggedIds = app(\App\Services\TagService::class)
+                ->subjectIdsForTagSlugs([$request->tag], 'delivery_order');
+
+            $query->whereIn('id', $taggedIds !== [] ? $taggedIds : [-1]);
         }
 
         return $query;

@@ -130,6 +130,14 @@ class QuotationController extends Controller
             });
         }
 
+        // Filter by document tag.
+        if ($request->filled('tag')) {
+            $taggedIds = app(\App\Services\TagService::class)
+                ->subjectIdsForTagSlugs([$request->tag], 'quotation');
+
+            $query->whereIn('id', $taggedIds !== [] ? $taggedIds : [-1]);
+        }
+
         return $query;
     }
 

@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { DocumentUpload } from '@/components/ocr/DocumentUpload';
 import { useToast } from '@/hooks/use-toast';
+import { useTags } from '@/hooks/use-tags';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -26,6 +27,7 @@ export const CustomerBills: React.FC = () => {
   const [showUpload, setShowUpload] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(20);
   const [dateFilter, setDateFilter] = useState<'all' | 'yearly' | 'monthly' | 'custom'>('all');
@@ -36,6 +38,7 @@ export const CustomerBills: React.FC = () => {
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkDeleteCount, setBulkDeleteCount] = useState(0);
   const { toast } = useToast();
+  const { data: allTags = [] } = useTags();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -52,6 +55,7 @@ export const CustomerBills: React.FC = () => {
       status: statusFilter !== 'all' ? statusFilter : undefined,
       search: searchQuery.trim() || undefined,
       customer_id: customerFilter || undefined,
+      tag: tagFilter || undefined,
     };
     if (dateFilter === 'yearly' && selectedYear) {
       filters.start_date = `${selectedYear}-01-01`;
@@ -78,7 +82,7 @@ export const CustomerBills: React.FC = () => {
 
   // Fetch invoices
   const { data: invoicesData, isLoading, refetch } = useQuery({
-    queryKey: ['customer-bills', statusFilter, searchQuery, customerFilter, agingBucketFilter, dateFilter, selectedYear, selectedMonth, customStartDate, customEndDate, page],
+    queryKey: ['customer-bills', statusFilter, searchQuery, customerFilter, tagFilter, agingBucketFilter, dateFilter, selectedYear, selectedMonth, customStartDate, customEndDate, page],
     queryFn: async () => {
       if (isAgingDrilldown) {
         const response = await api.get('/accounting/reports/aged-receivables/details', {
@@ -111,6 +115,7 @@ export const CustomerBills: React.FC = () => {
       if (statusFilter !== 'all') params.append('status', statusFilter);
       if (searchQuery) params.append('search', searchQuery);
       if (customerFilter) params.append('customer_id', customerFilter);
+      if (tagFilter) params.append('tag', tagFilter);
       if (dateFilter === 'yearly' && selectedYear) {
         params.append('start_date', `${selectedYear}-01-01`);
         params.append('end_date', `${selectedYear}-12-31`);
@@ -471,6 +476,17 @@ export const CustomerBills: React.FC = () => {
                 placeholder="All Customers"
               />
             </div>
+            <select
+              value={tagFilter}
+              onChange={(e) => { setTagFilter(e.target.value); setPage(1); }}
+              aria-label="Filter by tag"
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
+            >
+              <option value="">All Tags</option>
+              {allTags.map((t) => (
+                <option key={t.id} value={t.slug}>{t.name}</option>
+              ))}
+            </select>
             <select
               value={dateFilter}
               onChange={(e) => { setDateFilter(e.target.value as typeof dateFilter); setPage(1); }}

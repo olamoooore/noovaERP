@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useBulkSelection } from '@/hooks/use-bulk-selection'
 import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice'
+import { TagFilterSelect } from '@/components/tags/TagFilterSelect'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 const DELIVERY_ORDER_EXPORT_COLUMNS = [
@@ -60,17 +61,19 @@ export function DeliveryOrdersPage() {
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('all')
+  const [tagFilter, setTagFilter] = useState('')
   const [page, setPage] = useState(1)
   const [perPage] = useState(20)
   const [hiddenDoColumns, setHiddenDoColumns] = useState<number[]>([])
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
 
   const { data: response, isLoading } = useQuery({
-    queryKey: ['delivery-orders', page, perPage, typeFilter, searchQuery],
+    queryKey: ['delivery-orders', page, perPage, typeFilter, tagFilter, searchQuery],
     queryFn: async () => {
       const params: any = { page, per_page: perPage }
       if (typeFilter !== 'all') params.type = typeFilter
       if (searchQuery.trim()) params.search = searchQuery.trim()
+      if (tagFilter) params.tag = tagFilter
       const res = await api.get('/sales/delivery-orders', { params })
       return res.data
     },
@@ -86,6 +89,7 @@ export function DeliveryOrdersPage() {
   const selectionFilters = {
     ...(typeFilter !== 'all' ? { type: typeFilter } : {}),
     ...(searchQuery.trim() ? { search: searchQuery.trim() } : {}),
+    ...(tagFilter ? { tag: tagFilter } : {}),
   }
   const {
     selectedIds,
@@ -240,6 +244,11 @@ export function DeliveryOrdersPage() {
                 <SelectItem value="linked">From Sales Order</SelectItem>
               </SelectContent>
             </Select>
+
+            <TagFilterSelect
+              value={tagFilter}
+              onChange={(value) => { setTagFilter(value); setPage(1) }}
+            />
 
             <div className="ml-auto">
               <SalesLineColumnMenu

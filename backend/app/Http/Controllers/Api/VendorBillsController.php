@@ -68,6 +68,14 @@ class VendorBillsController extends Controller
                 $query->where('vendor_id', $vendorId);
             }
 
+            // Filter by document tag.
+            if ($request->filled('tag')) {
+                $taggedIds = app(\App\Services\TagService::class)
+                    ->subjectIdsForTagSlugs([$request->tag], 'bill');
+
+                $query->whereIn('id', $taggedIds !== [] ? $taggedIds : [-1]);
+            }
+
             // Search filter
             if ($request->has('search')) {
                 $search = $request->get('search');

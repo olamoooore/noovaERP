@@ -26,6 +26,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 import { useBulkSelection } from '@/hooks/use-bulk-selection'
 import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice'
+import { TagFilterSelect } from '@/components/tags/TagFilterSelect'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 const PER_PAGE = 20
@@ -74,6 +75,7 @@ export function QuotesPage() {
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [tagFilter, setTagFilter] = useState('')
   const [page, setPage] = useState(1)
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false)
 
@@ -82,9 +84,10 @@ export function QuotesPage() {
   queryParams.set('page', String(page))
   if (searchQuery.trim()) queryParams.set('search', searchQuery.trim())
   if (statusFilter !== 'all') queryParams.set('status', statusFilter)
+  if (tagFilter) queryParams.set('tag', tagFilter)
 
   const { data: quotesResponse, isLoading } = useQuery({
-    queryKey: ['quotations', searchQuery, statusFilter, page],
+    queryKey: ['quotations', searchQuery, statusFilter, tagFilter, page],
     queryFn: async () => {
       const response = await api.get(`/quotations?${queryParams.toString()}`)
       return response.data
@@ -99,6 +102,7 @@ export function QuotesPage() {
   const selectionFilters = {
     ...(searchQuery.trim() ? { search: searchQuery.trim() } : {}),
     ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
+    ...(tagFilter ? { tag: tagFilter } : {}),
   }
   const {
     selectedIds,
@@ -283,6 +287,11 @@ export function QuotesPage() {
                 <SelectItem value="cancelled">Cancelled</SelectItem>
               </SelectContent>
             </Select>
+
+            <TagFilterSelect
+              value={tagFilter}
+              onChange={(value) => { setTagFilter(value); setPage(1) }}
+            />
 
             <div className="ml-auto">
               <SalesLineColumnMenu

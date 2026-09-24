@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import reportApi from '@/lib/reportApi';
-import api from '@/lib/api';
+import { TagFilterSelect } from '@/components/tags/TagFilterSelect';
 import { formatCurrency } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 
@@ -40,15 +40,6 @@ export function AgedReceivablesPage() {
     queryFn: () => reportApi.getAgedReceivables(filters),
   });
 
-  // Tenant tags (for the tag filter)
-  const { data: allTags = [] } = useQuery({
-    queryKey: ['tags'],
-    queryFn: async () => {
-      const res = await api.get('/tags');
-      return (res.data?.data ?? []) as Array<{ id: number; name: string; slug: string; color: string }>;
-    },
-    staleTime: 60_000,
-  });
 
   // Handle filter changes
   const handleSearchChange = (value: string) => {
@@ -246,24 +237,13 @@ export function AgedReceivablesPage() {
             <label className="text-sm font-medium mb-2 block">
               Tag
             </label>
-            <Select
-              value={filters.tag || 'all'}
-              onValueChange={(value) =>
-                setFilters((prev) => ({ ...prev, tag: value === 'all' ? undefined : value }))
+            <TagFilterSelect
+              className="h-10 w-full"
+              value={filters.tag || ''}
+              onChange={(value) =>
+                setFilters((prev) => ({ ...prev, tag: value || undefined }))
               }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="All Tags" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Tags</SelectItem>
-                {allTags.map((t) => (
-                  <SelectItem key={t.id} value={t.slug}>
-                    {t.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            />
           </div>
           <div className="flex items-end">
             <Button
