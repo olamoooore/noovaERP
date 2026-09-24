@@ -675,7 +675,11 @@ export function DeliveryOrderDetailPage() {
               {deliveryOrder.lines?.map((line: any, index: number) => (
                 <TableRow key={line.id}>
                   {line.line_type === 'note' || line.line_type === 'section' ? <TableCell colSpan={14} className={line.line_type === 'section' ? 'bg-muted/60 font-semibold' : 'bg-muted/30 italic text-muted-foreground'}><div className="flex items-center justify-between gap-4"><span>{line.description}</span>{line.line_type === 'section' && <span className="whitespace-nowrap tabular-nums">{formatCurrency(getDocumentSectionTotal(deliveryOrder.lines || [], index, (item: any) => Number(item.line_total ?? (Number(item.quantity || 0) * Number(item.unit_price || 0)))))}</span>}</div></TableCell> : <>
-                  <TableCell>{index + 1}</TableCell>
+                  <TableCell>
+                    {(deliveryOrder.lines || [])
+                      .slice(0, index + 1)
+                      .filter((item: any) => (item.line_type ?? 'product') === 'product').length}
+                  </TableCell>
                   <TableCell className="font-medium">{line.product?.name || '-'}</TableCell>
                   <TableCell className="text-muted-foreground">{line.product?.sku || '-'}</TableCell>
                   <TableCell>{line.description || '-'}</TableCell>

@@ -240,14 +240,14 @@ class QuotationController extends Controller
 
                 $quotation = Quotation::create($data);
 
-                foreach ($validated['lines'] as $lineData) {
+                foreach ($validated['lines'] as $lineIndex => $lineData) {
                     $lineType = $lineData['line_type'] ?? 'product';
                     if ($lineType === 'product' && empty($lineData['product_id'])) {
                         throw new \InvalidArgumentException('Product lines require a product.');
                     }
                     $quotation->lines()->create([
                         'line_type' => $lineType,
-                        'sequence' => $lineData['sequence'] ?? 0,
+                        'sequence' => $lineData['sequence'] ?? $lineIndex,
                         'product_id' => $lineData['product_id'] ?? null,
                         'model_number' => $lineData['model_number'] ?? null,
                         'description' => $lineData['description'],
@@ -366,10 +366,10 @@ class QuotationController extends Controller
 
         if ($request->has('lines')) {
             $quotation->lines()->delete();
-            foreach ($request->lines as $lineData) {
+            foreach ($request->lines as $lineIndex => $lineData) {
                 $quotation->lines()->create([
                     'line_type' => $lineData['line_type'] ?? 'product',
-                    'sequence' => $lineData['sequence'] ?? 0,
+                    'sequence' => $lineData['sequence'] ?? $lineIndex,
                     'product_id' => $lineData['product_id'] ?? null,
                     'model_number' => $lineData['model_number'] ?? null,
                     'description' => $lineData['description'],

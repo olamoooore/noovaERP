@@ -310,8 +310,9 @@ export const QuotationEditPage: React.FC = () => {
       discount_value: discountValue,
   lines: lines
     .filter((line) => line.description || line.product_id)
-    .map((line) => ({
+    .map((line, index) => ({
       line_type: line.line_type || 'product',
+      sequence: index,
       product_id: line.product_id ? parseInt(line.product_id, 10) : null,
       model_number: line.model_number || null,
       description: line.description || 'Item',

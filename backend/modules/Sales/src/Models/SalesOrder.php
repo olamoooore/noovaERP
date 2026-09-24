@@ -98,7 +98,9 @@ class SalesOrder extends Model
 
     public function lines(): HasMany
     {
-        return $this->hasMany(SalesOrderLine::class);
+        return $this->hasMany(SalesOrderLine::class)
+            ->orderBy('sequence')
+            ->orderBy('id');
     }
 
     /**

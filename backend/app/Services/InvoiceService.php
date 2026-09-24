@@ -82,12 +82,12 @@ class InvoiceService
 
             $invoice = Invoice::create($data);
 
-            foreach ($lines as $lineData) {
+            foreach ($lines as $lineIndex => $lineData) {
                 $invoice->lines()->create([
                     'line_type' => $lineData['line_type'] ?? 'product',
                     // Issue #138: stable link to the originating order line.
                     'sales_order_line_id' => $lineData['sales_order_line_id'] ?? null,
-                    'sequence' => $lineData['sequence'] ?? 0,
+                    'sequence' => $lineData['sequence'] ?? $lineIndex,
                     'product_id' => $lineData['product_id'] ?? null,
                     'model_number' => $lineData['model_number'] ?? null,
                     'description' => $lineData['description'],

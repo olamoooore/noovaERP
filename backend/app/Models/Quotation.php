@@ -102,7 +102,9 @@ class Quotation extends Model
 
     public function lines(): HasMany
     {
-        return $this->hasMany(QuotationLine::class);
+        return $this->hasMany(QuotationLine::class)
+            ->orderBy('sequence')
+            ->orderBy('id');
     }
 
     public function salesOrder(): BelongsTo

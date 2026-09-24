@@ -14,6 +14,7 @@ class InvoiceLine extends Model
         'invoice_id',
         'sales_order_line_id',
         'line_type',
+        'sequence',
         'product_id',
         'product_batch_id',
         'product_serial_id',
@@ -38,6 +39,7 @@ class InvoiceLine extends Model
     ];
 
     protected $casts = [
+        'sequence' => 'integer',
         'unit_price' => 'decimal:2',
         'tax_rate' => 'decimal:2',
         'tax_inclusive' => 'boolean',
