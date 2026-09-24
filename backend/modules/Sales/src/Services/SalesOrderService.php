@@ -7,6 +7,7 @@ use App\Services\InvoiceService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Modules\Sales\Models\SalesChannelReference;
 use Modules\Sales\Models\SalesInvoiceLink;
@@ -481,7 +482,14 @@ class SalesOrderService
      */
     private function restoreBlanketCommitments(SalesOrder $order): void
     {
-        if (! class_exists(\Modules\Sales\Models\SalesBlanketOrderRelease::class)) {
+        // Some tenants have not installed the optional blanket-order release
+        // ledger yet. The model class existing does not guarantee its tenant
+        // table exists, and a normal Sales Order cancellation must not fail
+        // merely because this optional feature is unavailable.
+        if (
+            ! class_exists(\Modules\Sales\Models\SalesBlanketOrderRelease::class)
+            || ! Schema::hasTable('sales_blanket_order_releases')
+        ) {
             return;
         }
 

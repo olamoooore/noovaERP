@@ -11,6 +11,7 @@ use App\Models\ChatterMessage;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 
 class ChatterService
@@ -24,6 +25,7 @@ class ChatterService
         $normalizedId = (int) $subjectId;
 
         $tenantId = $this->currentTenantId();
+        $activityLogHasTenantId = Schema::hasColumn('activity_log', 'tenant_id');
 
         $logs = ActivityLogEntry::query()
             ->where('subject_type', $subjectType)
@@ -31,7 +33,10 @@ class ChatterService
             // Scope to this tenant — subject ids are per-tenant sequences, so
             // without this two tenants' documents would share history.
             // (All pre-existing rows were backfilled when tenant_id was added.)
-            ->when($tenantId !== null, fn ($q) => $q->where('tenant_id', $tenantId))
+            ->when(
+                $tenantId !== null && $activityLogHasTenantId,
+                fn ($q) => $q->where('tenant_id', $tenantId)
+            )
             ->with('causer')
             ->orderByDesc('created_at')
             ->limit(200)
@@ -301,9 +306,8 @@ class ChatterService
                 $causerId = null;
             }
 
-            ActivityLogEntry::create([
+            $attributes = [
                 'log_name' => 'chatter',
-                'tenant_id' => $this->currentTenantId(),
                 'description' => $description,
                 'subject_type' => $subjectType,
                 'subject_id' => (int) $subjectId,
@@ -311,7 +315,16 @@ class ChatterService
                 'causer_id' => $causerId,
                 'event' => $event,
                 'properties' => $properties,
-            ]);
+            ];
+
+            // Older tenant schemas store activity_log inside the isolated
+            // tenant schema and therefore have no tenant_id column. Newer
+            // shared-table schemas require the explicit tenant discriminator.
+            if (Schema::hasColumn('activity_log', 'tenant_id')) {
+                $attributes['tenant_id'] = $this->currentTenantId();
+            }
+
+            ActivityLogEntry::create($attributes);
         } catch (\Throwable $e) {
             // never break user-visible flows because chatter logging failed
             report($e);

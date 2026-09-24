@@ -103,6 +103,9 @@ export function QuotationDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quotation', id] })
       queryClient.invalidateQueries({ queryKey: ['quotations'] })
+      queryClient.invalidateQueries({
+        queryKey: ['chatter', String.raw`App\Models\Quotation`, id],
+      })
       toast({ title: 'Quotation cancelled' })
     },
     onError: (error: any) => {
@@ -122,6 +125,9 @@ export function QuotationDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quotation', id] })
       queryClient.invalidateQueries({ queryKey: ['quotations'] })
+      queryClient.invalidateQueries({
+        queryKey: ['chatter', String.raw`App\Models\Quotation`, id],
+      })
       toast({ title: 'Quotation reset to draft' })
     },
     onError: (error: any) => {
@@ -319,6 +325,16 @@ export function QuotationDetailPage() {
                   Create Delivery Order
                 </HeaderActionButton>
               )}
+              <HeaderActionButton
+                variant="outline"
+                icon="solar:close-circle-bold-duotone"
+                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                loading={cancelMutation.isPending}
+                onClick={() => cancelMutation.mutate()}
+                disabled={cancelMutation.isPending}
+              >
+                Cancel
+              </HeaderActionButton>
             </>
           )}
 
