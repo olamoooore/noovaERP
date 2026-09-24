@@ -47,6 +47,7 @@ use App\Http\Controllers\Api\PaymentTermsController;
 use App\Http\Controllers\Api\ProductAttributeController;
 use App\Http\Controllers\Api\ProductCategoryController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\ProductTrackingController;
 use App\Http\Controllers\Api\ProductCustomFieldController;
 use App\Http\Controllers\Api\ProductFeatureController;
 use App\Http\Controllers\Api\ProductUnitController;
@@ -98,6 +99,7 @@ Route::middleware([
 // middleware below. Without this the impersonation feature was a silent no-op.
 Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware::class, \App\Http\Middleware\SetTenantFromUserPreference::class, \App\Http\Middleware\EnsureTenantSearchPath::class, \App\Http\Middleware\SyncTenantUserFromCentralAuth::class])->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
+    Route::get('/products/{product}/tracking-availability', [ProductTrackingController::class, 'availability']);
 
     // Settings
     Route::get('/settings', [SettingsController::class, 'show']);

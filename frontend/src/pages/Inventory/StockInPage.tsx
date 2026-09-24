@@ -21,6 +21,7 @@ interface Product {
   name: string
   sku: string
   stock_quantity: number
+  tracking_method?: 'none' | 'quantity' | 'batch' | 'serial'
 }
 
 interface Warehouse {
@@ -40,6 +41,7 @@ export function StockInPage() {
   const [notes, setNotes] = useState('')
   const [batchNumber, setBatchNumber] = useState('')
   const [expiryDate, setExpiryDate] = useState('')
+  const [serialNumbers, setSerialNumbers] = useState('')
 
   useEffect(() => {
     const nextProductId = searchParams.get('product_id')
@@ -80,6 +82,8 @@ export function StockInPage() {
         notes: notes || null,
         batch_number: batchNumber || null,
         expiry_date: expiryDate || null,
+        lot_number: batchNumber || null,
+        serial_numbers: serialNumbers.split(/[\n,]+/).map((value) => value.trim()).filter(Boolean),
       })
     },
     onSuccess: () => {
@@ -103,6 +107,17 @@ export function StockInPage() {
       toast({ title: 'Please fill all required fields', variant: 'destructive' })
       return
     }
+    if (selectedProduct?.tracking_method === 'batch' && !batchNumber.trim()) {
+      toast({ title: 'Batch/Lot number is required', variant: 'destructive' })
+      return
+    }
+    if (selectedProduct?.tracking_method === 'serial') {
+      const serials = serialNumbers.split(/[\n,]+/).map((value) => value.trim()).filter(Boolean)
+      if (serials.length !== parseInt(quantity) || new Set(serials).size !== serials.length) {
+        toast({ title: 'Serial count must match quantity and contain no duplicates', variant: 'destructive' })
+        return
+      }
+    }
     mutation.mutate()
   }
 
@@ -125,7 +140,7 @@ export function StockInPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Product *</label>
-              <Select value={productId} onValueChange={setProductId}>
+              <Select value={productId} onValueChange={(value) => { setProductId(value); setBatchNumber(''); setExpiryDate(''); setSerialNumbers(''); }}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select product" />
                 </SelectTrigger>
@@ -178,9 +193,9 @@ export function StockInPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            {selectedProduct?.tracking_method === 'batch' && <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Batch Number</label>
+                <label className="text-sm font-medium">Batch/Lot Number *</label>
                 <Input
                   value={batchNumber}
                   onChange={(e) => setBatchNumber(e.target.value)}
@@ -195,7 +210,13 @@ export function StockInPage() {
                   onChange={(e) => setExpiryDate(e.target.value)}
                 />
               </div>
-            </div>
+            </div>}
+
+            {selectedProduct?.tracking_method === 'serial' && <div className="space-y-2">
+              <label className="text-sm font-medium">Serial Numbers *</label>
+              <Textarea value={serialNumbers} onChange={(event) => setSerialNumbers(event.target.value)} placeholder="One serial number per line or comma-separated" rows={5} />
+              <p className="text-xs text-muted-foreground">Entered {serialNumbers.split(/[\n,]+/).map((value) => value.trim()).filter(Boolean).length} of {parseInt(quantity) || 0}</p>
+            </div>}
 
             <div className="space-y-2">
               <label className="text-sm font-medium">Notes</label>

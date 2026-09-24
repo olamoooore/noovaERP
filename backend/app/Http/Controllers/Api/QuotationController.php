@@ -33,6 +33,33 @@ class QuotationController extends Controller
         private CaseImportService $caseImportService,
     ) {}
 
+    /**
+     * Mirror quotation lifecycle changes into the chatter History feed.
+     * Chatter failures must never prevent the document transition itself.
+     */
+    private function logQuotationChatter(
+        Quotation $quotation,
+        string $description,
+        array $properties = [],
+    ): void {
+        try {
+            app(\App\Services\Chatter\ChatterService::class)->logEvent(
+                Quotation::class,
+                (int) $quotation->id,
+                'status_changed',
+                $description,
+                $properties,
+                Auth::id(),
+                Auth::check() ? get_class(Auth::user()) : null,
+            );
+        } catch (\Throwable $e) {
+            Log::warning('QuotationController: chatter mirror failed', [
+                'quotation_id' => $quotation->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     public function index(Request $request)
     {
         $query = $this->filteredQuotationQuery($request);
@@ -987,8 +1014,8 @@ class QuotationController extends Controller
     }
 
     /**
-     * Cancel a quotation (draft|sent → cancelled).
-     * Prevents cancellation if a Sales Order has been created from this quotation.
+     * Cancel a quotation. Confirmed quotations cancel their generated Sales
+     * Order in the same transaction when no downstream document exists.
      */
     public function cancel(\Illuminate\Http\Request $request, $id)
     {
@@ -998,19 +1025,43 @@ class QuotationController extends Controller
             return response()->json(['message' => 'Quotation not found'], 404);
         }
 
-        if (! in_array($quotation->status, ['draft', 'sent'])) {
-            return response()->json(['message' => 'Only draft or sent quotations can be cancelled'], 403);
+        if (! in_array($quotation->status, ['draft', 'sent', 'confirmed'], true)) {
+            return response()->json(['message' => 'Only draft, sent, or confirmed quotations can be cancelled'], 403);
         }
 
-        if ($quotation->sales_order_id) {
-            return response()->json(['message' => 'Cannot cancel a quotation that has a linked Sales Order. Cancel the Sales Order instead.'], 422);
+        if ($quotation->invoices()->exists() || $quotation->deliveryOrders()->exists()) {
+            return response()->json([
+                'message' => 'Cannot cancel this quotation because it has a linked invoice or delivery order.',
+            ], 422);
         }
 
-        $quotation->update(['status' => 'cancelled']);
+        $fromStatus = $quotation->status;
+
+        $quotation = DB::transaction(function () use ($quotation) {
+            if ($quotation->salesOrder && $quotation->salesOrder->status !== 'cancelled') {
+                $this->salesOrderService->cancelOrder(
+                    $quotation->salesOrder,
+                    "Quotation {$quotation->quotation_number} cancelled"
+                );
+            }
+
+            $quotation->update(['status' => 'cancelled']);
+
+            return $quotation->fresh(['customer', 'lines.product', 'salesOrder']);
+        });
+
+        $this->logQuotationChatter(
+            $quotation,
+            "Cancelled quotation {$quotation->quotation_number}",
+            [
+                'from_state' => $fromStatus,
+                'to_state' => 'cancelled',
+            ],
+        );
 
         return response()->json([
             'message' => 'Quotation cancelled',
-            'data' => $quotation->fresh(['customer', 'lines.product']),
+            'data' => $quotation,
         ]);
     }
 
@@ -1076,7 +1127,23 @@ class QuotationController extends Controller
             return response()->json(['message' => 'Quotation is already in draft'], 422);
         }
 
-        $quotation->update(['status' => 'draft']);
+        $fromStatus = $quotation->status;
+
+        $quotation->update([
+            'status' => 'draft',
+            // A cancelled Sales Order remains as audit history. Reconfirming
+            // the quotation must create and link a new active order.
+            'sales_order_id' => null,
+        ]);
+
+        $this->logQuotationChatter(
+            $quotation,
+            "Reset quotation {$quotation->quotation_number} to draft",
+            [
+                'from_state' => $fromStatus,
+                'to_state' => 'draft',
+            ],
+        );
 
         return response()->json([
             'message' => 'Quotation reset to draft',

@@ -23,11 +23,19 @@ class WarehouseController extends Controller
             'code' => 'nullable|string|max:50',
             'address' => 'nullable|string',
             'is_active' => 'boolean',
+            'is_default' => 'boolean',
         ]);
 
         $this->enforceTierWarehouseLimit($validated);
 
-        $warehouse = Warehouse::create($validated);
+        $warehouse = DB::transaction(function () use ($validated) {
+            $warehouse = Warehouse::create($validated);
+            if ($warehouse->is_default) {
+                $warehouse->setAsDefault();
+            }
+
+            return $warehouse->fresh();
+        });
 
         return response()->json($warehouse, 201);
     }
@@ -47,6 +55,7 @@ class WarehouseController extends Controller
             'code' => 'nullable|string|max:50',
             'address' => 'nullable|string',
             'is_active' => 'boolean',
+            'is_default' => 'boolean',
         ]);
 
         $this->enforceTierWarehouseLimit($validated, $warehouse);
@@ -62,9 +71,14 @@ class WarehouseController extends Controller
             ]);
         }
 
-        $warehouse->update($validated);
+        DB::transaction(function () use ($warehouse, $validated) {
+            $warehouse->update($validated);
+            if ($warehouse->is_default) {
+                $warehouse->setAsDefault();
+            }
+        });
 
-        return $warehouse;
+        return $warehouse->fresh();
     }
 
     public function destroy($warehouse)

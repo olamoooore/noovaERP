@@ -15,6 +15,8 @@ class InvoiceLine extends Model
         'sales_order_line_id',
         'line_type',
         'product_id',
+        'product_batch_id',
+        'product_serial_id',
         'model_number',
         'gl_account_id',
         'cost_center_id',
@@ -24,6 +26,7 @@ class InvoiceLine extends Model
         'description',
         'product_notes',
         'lot_number',
+        'serial_number',
         'expiry_date',
         'quantity',
         'unit_price',
@@ -61,6 +64,16 @@ class InvoiceLine extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function batch(): BelongsTo
+    {
+        return $this->belongsTo(ProductBatch::class, 'product_batch_id');
+    }
+
+    public function serial(): BelongsTo
+    {
+        return $this->belongsTo(ProductSerial::class, 'product_serial_id');
     }
 
     public function calculateTotals(): void

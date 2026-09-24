@@ -243,7 +243,7 @@ export function DeliveryOrdersPage() {
 
             <div className="ml-auto">
               <SalesLineColumnMenu
-                columns={listingColumns(['Select', 'Delivery #', 'Type', 'Sales Order', 'Customer', 'Delivery Date', 'Created Date', 'Lines', 'Status', 'Actions'])}
+                columns={listingColumns(['Select', 'Delivery #', 'Type', 'Customer', 'Delivery Date', 'Created Date', 'Lines', 'Status', 'Actions'])}
                 hidden={hiddenDoColumns}
                 setHidden={setHiddenDoColumns}
               />
@@ -264,7 +264,7 @@ export function DeliveryOrdersPage() {
             <>
               <SalesLineColumnVisibility
                 tableClass="delivery-orders-listing-columns"
-                columns={listingColumns(['Select', 'Delivery #', 'Type', 'Sales Order', 'Customer', 'Delivery Date', 'Created Date', 'Lines', 'Status', 'Actions'])}
+                columns={listingColumns(['Select', 'Delivery #', 'Type', 'Customer', 'Delivery Date', 'Created Date', 'Lines', 'Status', 'Actions'])}
                 hiddenColumns={hiddenDoColumns}
                 onHiddenColumnsChange={setHiddenDoColumns}
                 showMenu={false}
@@ -282,7 +282,6 @@ export function DeliveryOrdersPage() {
                     </TableHead>
                     <TableHead>Delivery #</TableHead>
                     <TableHead>Type</TableHead>
-                    <TableHead>Sales Order</TableHead>
                     <TableHead>Customer</TableHead>
                     <TableHead>Delivery Date</TableHead>
                     <TableHead>Created Date</TableHead>
@@ -307,7 +306,6 @@ export function DeliveryOrdersPage() {
                           {do_.sales_order_id ? 'Linked' : 'Standalone'}
                         </Badge>
                       </TableCell>
-                      <TableCell>{do_.sales_order?.sales_order_number || '-'}</TableCell>
                       <TableCell>{do_.customer?.name || '-'}</TableCell>
                       <TableCell>{do_.delivery_date ? formatDate(do_.delivery_date) : '-'}</TableCell>
                       <TableCell>{formatDate(do_.created_at)}</TableCell>
@@ -319,7 +317,14 @@ export function DeliveryOrdersPage() {
                       </TableCell>
                       <TableCell onClick={(event) => event.stopPropagation()}>
                         <div className="flex justify-end gap-1.5">
-                          <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => navigate(`/delivery-orders/${do_.id}`)} title="View">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 w-7 p-0"
+                            onClick={() => navigate(`/delivery-orders/${do_.id}`)}
+                            title="View"
+                            aria-label="View delivery order"
+                          >
                             <Icon icon="solar:eye-bold-duotone" className="h-3.5 w-3.5" />
                           </Button>
                           {do_.status === 'draft' && (
@@ -329,6 +334,7 @@ export function DeliveryOrdersPage() {
                               onClick={() => confirmMutation.mutate(do_.id)}
                               disabled={confirmMutation.isPending}
                               title="Confirm"
+                              aria-label="Confirm delivery order"
                             >
                               <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4" />
                             </Button>

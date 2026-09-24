@@ -64,6 +64,33 @@ class RM002SubscriptionTierWarehouseModelTest extends TenantTestCase
         $this->assertSame(2, DB::table('warehouses')->where('is_active', true)->count());
     }
 
+    public function test_updating_a_warehouse_as_default_persists_and_clears_the_previous_default(): void
+    {
+        $tenantId = (string) Str::uuid();
+        $this->seedTenantWithActiveTier($tenantId, 'growth');
+
+        $first = $this->postJson('/api/v1/warehouses', [
+            'name' => 'Warehouse A',
+            'code' => 'WH-A',
+            'is_active' => true,
+            'is_default' => true,
+        ])->assertCreated();
+
+        $second = $this->postJson('/api/v1/warehouses', [
+            'name' => 'Warehouse B',
+            'code' => 'WH-B',
+            'is_active' => true,
+        ])->assertCreated();
+
+        $this->putJson('/api/v1/warehouses/'.$second->json('id'), [
+            'is_default' => true,
+        ])->assertOk()->assertJsonPath('is_default', true);
+
+        $this->assertFalse((bool) DB::table('warehouses')->where('id', $first->json('id'))->value('is_default'));
+        $this->assertTrue((bool) DB::table('warehouses')->where('id', $second->json('id'))->value('is_default'));
+        $this->assertSame(1, DB::table('warehouses')->where('is_default', true)->count());
+    }
+
     public function test_downgrade_to_essential_preserves_existing_active_warehouses_and_blocks_new_activation(): void
     {
         $tenantId = (string) Str::uuid();

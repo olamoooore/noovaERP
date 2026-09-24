@@ -154,6 +154,10 @@ class DeliveryOrderTest extends TenantTestCase
             'created_by' => $this->user->id,
         ]);
 
+        $createdLine = $do->lines->first();
+        $this->assertSame(100.0, (float) $createdLine->unit_price, 'Delivery line must inherit the quotation/sales-order unit price');
+        $this->assertSame(4000.0, (float) $createdLine->line_total, 'Delivery line total must use the delivered quantity');
+
         // Confirm should NOT deduct stock
         $do = $service->confirmDeliveryOrder($do);
         $this->assertSame('confirmed', $do->status);

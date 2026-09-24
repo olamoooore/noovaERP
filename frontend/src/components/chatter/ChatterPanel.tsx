@@ -354,6 +354,10 @@ function LogItem({ entry }: { entry: ChatterLogEntry }) {
     'activity_id',
     'attachment_id',
     'activity_type',
+    'sales_order_id',
+    'sales_order_number',
+    'unlinked_sales_order_id',
+    'unlinked_sales_order_number',
   ])
   // Only primitive values are rendered. Objects/arrays are internal payloads
   // (they used to render as "[object Object]") and booleans alone are noise.

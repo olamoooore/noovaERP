@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\Inventory\Http\Controllers\BrandController;
 use Modules\Inventory\Http\Controllers\InventoryReportController;
 use Modules\Inventory\Http\Controllers\InventorySettingsController;
+use Modules\Inventory\Http\Controllers\InventoryTrackingController;
 use Modules\Inventory\Http\Controllers\PurchaseOrderController;
 use Modules\Inventory\Http\Controllers\StockController;
 use Modules\Inventory\Http\Controllers\SupplierController;
@@ -64,6 +65,10 @@ Route::middleware(['auth:sanctum', 'inventory.access'])->group(function () {
 
     // Inventory Reports
     Route::prefix('inventory')->group(function () {
+        Route::get('/tracking/batches', [InventoryTrackingController::class, 'batches']);
+        Route::get('/tracking/serials', [InventoryTrackingController::class, 'serials']);
+        Route::get('/tracking/{type}/template', [InventoryTrackingController::class, 'template']);
+        Route::post('/tracking/{type}/import', [InventoryTrackingController::class, 'import'])->middleware(\App\Http\Middleware\RequirePermission::class.':inventory.write');
         Route::get('/dashboard', [InventoryReportController::class, 'dashboard']);
         Route::get('/valuation', [InventoryReportController::class, 'valuation']);
         Route::get('/reports/low-stock', [InventoryReportController::class, 'lowStockReport']);

@@ -6,6 +6,8 @@ use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\PostingEngine;
 use App\Models\Product;
+use App\Models\ProductBatch;
+use App\Models\ProductSerial;
 use App\Models\StockMovement;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -50,20 +52,75 @@ class StockAdjustmentService
         ?string $batchNumber = null,
         ?\DateTime $expiryDate = null,
         ?int $uomId = null,
+        ?string $lotNumber = null,
+        array $serialNumbers = [],
     ): StockMovement {
-        return $this->record(
-            productId: $productId,
-            warehouseId: $warehouseId,
-            quantity: $quantity,
-            type: 'in',
-            referenceType: 'manual_stock_in',
-            adjustmentReasonId: $adjustmentReasonId,
-            reference: $reference,
-            notes: $notes,
-            batchNumber: $batchNumber,
-            expiryDate: $expiryDate,
-            uomId: $uomId,
-        );
+        if ($uomId !== null) {
+            $converter = app(\App\Services\ProductUomConverter::class);
+            $quantity = $converter->toBase($converter->resolve($productId, $uomId), $quantity);
+        }
+
+        return DB::transaction(function () use ($productId, $warehouseId, $quantity, $adjustmentReasonId, $reference, $notes, $batchNumber, $expiryDate, $lotNumber, $serialNumbers) {
+            $product = Product::findOrFail($productId);
+
+            if ($product->tracking_method === Product::TRACKING_BATCH) {
+                $batch = ProductBatch::where('product_id', $productId)
+                    ->where('batch_number', $batchNumber)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($batch && (int) $batch->warehouse_id !== $warehouseId) {
+                    throw new \RuntimeException('This batch number already exists in another warehouse.');
+                }
+                if ($batch && $expiryDate && $batch->expiry_date && $batch->expiry_date->toDateString() !== $expiryDate->format('Y-m-d')) {
+                    throw new \RuntimeException('The entered expiry date does not match the existing batch.');
+                }
+
+                if ($batch) {
+                    $batch->increment('quantity', $quantity);
+                } else {
+                    ProductBatch::create([
+                        'product_id' => $productId,
+                        'warehouse_id' => $warehouseId,
+                        'batch_number' => $batchNumber,
+                        'lot_number' => $lotNumber ?: $batchNumber,
+                        'quantity' => $quantity,
+                        'quantity_reserved' => 0,
+                        'received_date' => now()->toDateString(),
+                        'expiry_date' => $expiryDate?->format('Y-m-d'),
+                        'status' => ProductBatch::STATUS_AVAILABLE,
+                    ]);
+                }
+            }
+
+            if ($product->tracking_method === Product::TRACKING_SERIAL) {
+                $duplicates = ProductSerial::whereIn('serial_number', $serialNumbers)->pluck('serial_number')->all();
+                if ($duplicates !== []) {
+                    throw new \RuntimeException('Serial number already exists: '.implode(', ', $duplicates));
+                }
+                foreach ($serialNumbers as $serialNumber) {
+                    ProductSerial::create([
+                        'product_id' => $productId,
+                        'warehouse_id' => $warehouseId,
+                        'serial_number' => trim($serialNumber),
+                        'status' => ProductSerial::STATUS_AVAILABLE,
+                    ]);
+                }
+            }
+
+            return $this->record(
+                productId: $productId,
+                warehouseId: $warehouseId,
+                quantity: $quantity,
+                type: 'in',
+                referenceType: 'manual_stock_in',
+                adjustmentReasonId: $adjustmentReasonId,
+                reference: $reference,
+                notes: $notes,
+                batchNumber: $batchNumber,
+                expiryDate: $expiryDate,
+            );
+        });
     }
 
     /**

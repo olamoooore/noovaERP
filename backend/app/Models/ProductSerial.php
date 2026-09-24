@@ -59,6 +59,9 @@ class ProductSerial extends Model
 
     public const STATUS_RESERVED = 'reserved';
 
+    /** Backwards-compatible alias used by existing stock receiving flows. */
+    public const STATUS_IN_STOCK = self::STATUS_AVAILABLE;
+
     public const STATUS_SOLD = 'sold';
 
     public const STATUS_RETURNED = 'returned';
@@ -122,9 +125,9 @@ class ProductSerial extends Model
     /**
      * Mark as sold to customer
      */
-    public function markSold(int $customerId, ?\Carbon\Carbon $purchaseDate = null, ?string $saleReference = null): void
+    public function markSold(?int $customerId, \Carbon\Carbon|string|null $soldAt = null, ?string $saleReference = null): void
     {
-        $soldAt = $purchaseDate ?? now();
+        $soldAt = $soldAt ? \Carbon\Carbon::parse($soldAt) : now();
 
         $this->status = self::STATUS_SOLD;
         $this->customer_id = $customerId;
@@ -144,9 +147,9 @@ class ProductSerial extends Model
     /**
      * Mark as returned
      */
-    public function markReturned(): void
+    public function markReturned(bool $returnToStock = true): void
     {
-        $this->status = self::STATUS_RETURNED;
+        $this->status = $returnToStock ? self::STATUS_AVAILABLE : self::STATUS_RETURNED;
         $this->save();
     }
 }

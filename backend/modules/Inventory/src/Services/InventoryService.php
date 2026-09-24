@@ -203,8 +203,9 @@ class InventoryService
             $movement = StockMovement::create($movementPayload);
 
             // Issue #131: sales consume batch layers (FEFO) and returns restore
-            // them from the consumption ledger. Activates only for products that
-            // actually have batch rows; never blocks the movement on failure.
+            // them from the consumption ledger. Lot stock and aggregate stock
+            // are one invariant, so a bookkeeping failure must roll back the
+            // enclosing stock transaction instead of reporting false success.
             try {
                 $batchConsumption = app(\App\Services\BatchSerialConsumptionService::class);
                 $movementQty = (float) $movement->quantity;
@@ -228,11 +229,13 @@ class InventoryService
                     );
                 }
             } catch (\Throwable $e) {
-                Log::error('InventoryService: batch layer bookkeeping failed (stock movement preserved)', [
+                Log::error('InventoryService: batch layer bookkeeping failed; rolling back stock movement', [
                     'product_id' => $productId,
                     'movement_id' => $movement->id,
                     'error' => $e->getMessage(),
                 ]);
+
+                throw $e;
             }
 
             return $movement;

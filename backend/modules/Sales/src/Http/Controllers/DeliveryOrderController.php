@@ -149,6 +149,9 @@ class DeliveryOrderController extends Controller
                 'lines.*.unit' => 'nullable|string|max:20',
                 'lines.*.unit_price' => 'nullable|numeric|min:0',
                 'lines.*.lot_number' => 'nullable|string|max:100',
+                'lines.*.serial_number' => 'nullable|string|max:100',
+                'lines.*.product_batch_id' => 'nullable|integer|exists:product_batches,id',
+                'lines.*.product_serial_id' => 'nullable|integer|exists:product_serials,id',
                 'lines.*.batch_number' => 'nullable|string|max:100',
                 'lines.*.expiry_date' => 'nullable|date',
             ]);
@@ -191,14 +194,19 @@ class DeliveryOrderController extends Controller
             'attention_to' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
             'lines' => 'required|array|min:1',
+            'lines.*.line_type' => 'nullable|in:product,note,section',
+            'lines.*.sequence' => 'nullable|integer|min:0',
             'lines.*.sales_order_line_id' => 'required|exists:sales_order_lines,id',
-            'lines.*.quantity_delivered' => 'required|numeric|min:0.0001',
+            'lines.*.quantity_delivered' => 'required|numeric|min:0',
             'lines.*.description' => 'nullable|string',
             'lines.*.product_notes' => 'nullable|string',
             'lines.*.patient_name' => 'nullable|string|max:255',
             'lines.*.unit' => 'nullable|string|max:20',
             'lines.*.unit_price' => 'nullable|numeric|min:0',
             'lines.*.lot_number' => 'nullable|string|max:100',
+            'lines.*.serial_number' => 'nullable|string|max:100',
+            'lines.*.product_batch_id' => 'nullable|integer|exists:product_batches,id',
+            'lines.*.product_serial_id' => 'nullable|integer|exists:product_serials,id',
             'lines.*.batch_number' => 'nullable|string|max:100',
             'lines.*.expiry_date' => 'nullable|date',
         ]);
@@ -224,7 +232,7 @@ class DeliveryOrderController extends Controller
     {
         $deliveryOrder = DeliveryOrder::with([
             'customer',
-            'salesOrder',
+            'salesOrder.quotation',
             'lines.product',
             'lines.salesOrderLine',
             'createdBy',
@@ -235,6 +243,12 @@ class DeliveryOrderController extends Controller
 
         if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
+        }
+
+        // Older quotation-origin deliveries may predate quotation_id. Resolve
+        // their quotation through the linked sales order for display.
+        if (! $deliveryOrder->quotation && $deliveryOrder->salesOrder?->quotation) {
+            $deliveryOrder->setRelation('quotation', $deliveryOrder->salesOrder->quotation);
         }
 
         return response()->json($deliveryOrder);
@@ -278,6 +292,9 @@ class DeliveryOrderController extends Controller
             'lines.*.unit' => 'nullable|string|max:20',
             'lines.*.unit_price' => 'nullable|numeric|min:0',
             'lines.*.lot_number' => 'nullable|string|max:100',
+            'lines.*.serial_number' => 'nullable|string|max:100',
+            'lines.*.product_batch_id' => 'nullable|integer|exists:product_batches,id',
+            'lines.*.product_serial_id' => 'nullable|integer|exists:product_serials,id',
             'lines.*.expiry_date' => 'nullable|date',
         ]);
 
@@ -312,6 +329,9 @@ class DeliveryOrderController extends Controller
                         'unit_price' => $unitPrice,
                         'line_total' => $unitPrice ? $unitPrice * $qty : null,
                         'lot_number' => $lineData['lot_number'] ?? null,
+                        'serial_number' => $lineData['serial_number'] ?? null,
+                        'product_batch_id' => $lineData['product_batch_id'] ?? null,
+                        'product_serial_id' => $lineData['product_serial_id'] ?? null,
                         'expiry_date' => $lineData['expiry_date'] ?? null,
                     ]);
                 }
@@ -1025,9 +1045,16 @@ class DeliveryOrderController extends Controller
 
             return [
                 'sales_order_line_id' => $line->id,
+                'line_type' => $line->line_type ?? 'product',
+                'sequence' => $line->sequence,
                 'product_id' => $line->product_id,
                 'product_name' => $line->product?->name,
                 'description' => $line->description,
+                'product_notes' => $line->product_notes,
+                'unit' => $line->unit,
+                'unit_price' => (float) $line->unit_price,
+                'line_total' => (float) $line->line_total,
+                'product' => $line->product,
                 'quantity_ordered' => (float) $line->quantity,
                 'quantity_delivered' => $totalDelivered,
                 'quantity_remaining' => (float) $line->quantity - $totalDelivered,

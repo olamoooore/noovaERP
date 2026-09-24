@@ -103,6 +103,9 @@ export function QuotationDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quotation', id] })
       queryClient.invalidateQueries({ queryKey: ['quotations'] })
+      queryClient.invalidateQueries({
+        queryKey: ['chatter', String.raw`App\Models\Quotation`, id],
+      })
       toast({ title: 'Quotation cancelled' })
     },
     onError: (error: any) => {
@@ -122,6 +125,9 @@ export function QuotationDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quotation', id] })
       queryClient.invalidateQueries({ queryKey: ['quotations'] })
+      queryClient.invalidateQueries({
+        queryKey: ['chatter', String.raw`App\Models\Quotation`, id],
+      })
       toast({ title: 'Quotation reset to draft' })
     },
     onError: (error: any) => {
@@ -314,11 +320,21 @@ export function QuotationDetailPage() {
                 <HeaderActionButton
                   variant="outline"
                   icon="solar:box-bold-duotone"
-                  onClick={() => navigate(`/delivery-orders/create?sales_order_id=${quotation.sales_order.id}`)}
+                  onClick={() => navigate(`/delivery-orders/create?sales_order_id=${quotation.sales_order.id}&quotation_id=${quotation.id}`)}
                 >
                   Create Delivery Order
                 </HeaderActionButton>
               )}
+              <HeaderActionButton
+                variant="outline"
+                icon="solar:close-circle-bold-duotone"
+                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                loading={cancelMutation.isPending}
+                onClick={() => cancelMutation.mutate()}
+                disabled={cancelMutation.isPending}
+              >
+                Cancel
+              </HeaderActionButton>
             </>
           )}
 

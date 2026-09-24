@@ -252,6 +252,8 @@ const InventoryDashboardPage = lazy(() => import('@/pages/Inventory/InventoryDas
 const StockManagementPage = lazy(() => import('@/pages/Inventory/StockManagementPage').then(m => ({ default: m.StockManagementPage })))
 const StockMovementsPage = lazy(() => import('@/pages/Inventory/StockMovementsPage').then(m => ({ default: m.StockMovementsPage })))
 const StockOperationsPage = lazy(() => import('@/pages/Inventory/StockOperationsPage').then(m => ({ default: m.StockOperationsPage })))
+const InventoryTrackingPage = lazy(() => import('@/pages/Inventory/InventoryTrackingPage').then(m => ({ default: m.InventoryTrackingPage })))
+const InventoryTrackingImportPage = lazy(() => import('@/pages/Inventory/InventoryTrackingImportPage').then(m => ({ default: m.InventoryTrackingImportPage })))
 const PurchaseOrdersPage = lazy(() => import('@/pages/Inventory/PurchaseOrdersPage').then(m => ({ default: m.PurchaseOrdersPage })))
 const PurchaseOrderCreatePage = lazy(() => import('@/pages/Inventory/PurchaseOrderCreatePage').then(m => ({ default: m.PurchaseOrderCreatePage })))
 const WarehouseTransfersPage = lazy(() => import('@/pages/Inventory/WarehouseTransfersPage').then(m => ({ default: m.WarehouseTransfersPage })))
@@ -334,6 +336,8 @@ function App() {
                 <Route path="/inventory/stock" element={<StockManagementPage />} />
                 <Route path="/inventory/movements" element={<StockMovementsPage />} />
                 <Route path="/inventory/operations" element={<StockOperationsPage />} />
+                <Route path="/inventory/tracking" element={<InventoryTrackingPage />} />
+                <Route path="/inventory/tracking/import" element={<InventoryTrackingImportPage />} />
                 <Route path="/inventory/purchase-orders" element={<PurchaseOrdersPage />} />
                 <Route path="/inventory/purchase-orders/new" element={<PurchaseOrderCreatePage />} />
                 <Route path="/inventory/transfers" element={<WarehouseTransfersPage />} />

@@ -20,21 +20,9 @@ import { ContactSearchCombobox } from '@/components/ui/ContactSearchCombobox';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 import { getProductLineDescription, ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
+import { ProductTrackingSelector } from '@/components/inventory/ProductTrackingSelector';
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
 import { LineItemsTable } from '@/components/sales/LineItemsTable'
-import { PageHeader } from '@/components/layout/PageHeader'
-import {
-  LINE_CELL,
-  LINE_CELL_BOX,
-  LINE_INPUT,
-  LINE_INPUT_NUMERIC,
-  LINE_PRODUCT_WRAP,
-  LINE_TEXTAREA,
-  LINE_VALUE,
-  ProductLineActions,
-  productLineColumns,
-} from '@/components/sales/ProductLineTable'
-import { cn } from '@/lib/utils'
 
 interface InvoiceLine {
   line_type?: 'product' | 'note' | 'section';
@@ -44,6 +32,10 @@ interface InvoiceLine {
   description: string;
   product_notes: string;
   lot_number: string;
+  serial_number: string;
+  product_batch_id: number | null;
+  product_serial_id: number | null;
+  tracking_method: string;
   expiry_date: string;
   quantity: number | '';
   unit_price: number | '';
@@ -139,6 +131,10 @@ const emptyLine = (): InvoiceLine => ({
   description: '',
   product_notes: '',
   lot_number: '',
+  serial_number: '',
+  product_batch_id: null,
+  product_serial_id: null,
+  tracking_method: 'none',
   expiry_date: '',
   quantity: 1,
   unit_price: '',
@@ -294,6 +290,7 @@ export const CreateInvoicePage: React.FC = () => {
   const [patientName, setPatientName] = useState('');
   const [costCenterId, setCostCenterId] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
+  const [warehouseId, setWarehouseId] = useState('');
   const [poNumber, setPoNumber] = useState('');
   const [doctorContactId, setDoctorContactId] = useState('');
   const [requestorContactId, setRequestorContactId] = useState('');
@@ -376,6 +373,21 @@ export const CreateInvoicePage: React.FC = () => {
       return response.data.data || response.data || [];
     },
   });
+
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ['warehouses-list'],
+    queryFn: async () => {
+      const response = await api.get('/warehouses', { params: { per_page: 100 } });
+      return response.data?.data || response.data || [];
+    },
+  });
+
+  useEffect(() => {
+    if (!warehouseId && warehouses.length) {
+      const preferred = warehouses.find((warehouse: any) => warehouse.is_default) || warehouses[0];
+      setWarehouseId(String(preferred.id));
+    }
+  }, [warehouseId, warehouses]);
 
   useEffect(() => {
     if (!selectedCustomer) {
@@ -491,6 +503,10 @@ export const CreateInvoicePage: React.FC = () => {
       description: line.description || '',
       product_notes: line.product_notes || '',
       lot_number: line.lot_number || '',
+      serial_number: line.serial_number || '',
+      product_batch_id: line.product_batch_id || null,
+      product_serial_id: line.product_serial_id || null,
+      tracking_method: line.product?.tracking_method || 'none',
       expiry_date: line.expiry_date ? String(line.expiry_date).split('T')[0] : '',
       quantity: Number(line.quantity ?? 1),
       unit_price: line.unit_price != null ? Number(line.unit_price) : '',
@@ -698,15 +714,6 @@ export const CreateInvoicePage: React.FC = () => {
     }
   };
 
-  /**
-   * Clear a line in place. A single row previously could not be cleared at all
-   * because delete is hidden when only one line remains — this resets it to a
-   * fresh product line without changing the row count.
-   */
-  const resetLine = (index: number) => {
-    setLines((current) => current.map((line, i) => (i === index ? emptyLine() : line)));
-  };
-
   const getLineTotal = (line: InvoiceLine) => {
     const qty = line.quantity === '' ? 0 : line.quantity;
     const unitPrice = line.unit_price === '' ? 0 : line.unit_price;
@@ -844,6 +851,7 @@ export const CreateInvoicePage: React.FC = () => {
       patient_name: patientName || undefined,
       cost_center_id: costCenterId || undefined,
       delivery_date: deliveryDate || undefined,
+      warehouse_id: warehouseId ? Number(warehouseId) : undefined,
       po_number: poNumber || undefined,
       doctor_contact_id: doctorContactId.includes('-') ? doctorContactId : null,
       requestor_contact_id: requestorContactId.includes('-') ? requestorContactId : null,
@@ -876,6 +884,9 @@ export const CreateInvoicePage: React.FC = () => {
           description: line.description || 'Item',
           product_notes: line.product_notes || null,
           lot_number: line.lot_number || null,
+          serial_number: line.serial_number || null,
+          product_batch_id: line.product_batch_id || null,
+          product_serial_id: line.product_serial_id || null,
           expiry_date: line.expiry_date || null,
           quantity: line.quantity === '' ? 0 : Number(line.quantity),
           unit_price: line.unit_price === '' ? 0 : line.unit_price,
@@ -949,11 +960,16 @@ export const CreateInvoicePage: React.FC = () => {
   return (
     <>
       <div className="p-6 space-y-6">
-        <PageHeader
-          title={`${isEditMode ? 'Edit' : 'Create'} ${documentLabel}`}
-          description={`Prepare the customer, products, and commercial details for this ${documentLabel.toLowerCase()}.`}
-          onBack={() => navigate(backPath)}
-        />
+        <div>
+          <Button variant="ghost" size="sm" onClick={() => navigate(backPath)} className="mb-3">
+            <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
+            Back
+          </Button>
+          <h1 className="text-3xl font-bold">{isEditMode ? 'Edit' : 'Create'} {documentLabel}</h1>
+          <p className="text-muted-foreground mt-1">
+            Prepare the customer, products, and commercial details for this {documentLabel.toLowerCase()}.
+          </p>
+        </div>
 
         <form onSubmit={handleSubmit}>
           <Card className="mb-6">
@@ -976,7 +992,29 @@ export const CreateInvoicePage: React.FC = () => {
                       }
                     }}
                   />
+                  {!isQuoteMode && (
+                    requiresApproval ? (
+                      <div className="mt-1.5 flex items-center gap-1.5 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs text-orange-700 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-300">
+                        <Icon icon="solar:checklist-bold-duotone" className="h-3.5 w-3.5" />
+                        <span>
+                          Will require approval before posting
+                          {salesSettings?.invoice?.default_requires_approval && !isEditMode && (
+                            <span className="text-orange-600/70"> · set in Sales Settings</span>
+                          )}
+                        </span>
+                      </div>
+                    ) : null
+                  )}
                 </div>
+                {!isQuoteMode && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Warehouse *</label>
+                    <select value={warehouseId} onChange={(event) => { setWarehouseId(event.target.value); setLines((current) => current.map((line) => ({ ...line, product_batch_id: null, product_serial_id: null, lot_number: '', serial_number: '', expiry_date: '' }))); }} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm">
+                      <option value="">Select warehouse</option>
+                      {warehouses.map((warehouse: any) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}{warehouse.is_default ? ' (Default)' : ''}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium mb-1">{isQuoteMode ? 'Quote Date' : 'Invoice Date'}</label>
                   <input
@@ -1400,127 +1438,102 @@ export const CreateInvoicePage: React.FC = () => {
               <div className="overflow-x-auto">
                 <LineItemsTable
                   variant="raw"
-                  tableClassName="w-full min-w-[1150px] text-sm"
-                  headRowClassName="border-b bg-muted/30"
-                  columns={productLineColumns({
-                    sku: visibleLineColumns.sku,
-                    description: visibleLineColumns.description,
-                    modelNumber: visibleLineColumns.model_number,
-                    productNotes: visibleLineColumns.product_notes,
-                    lotNumber: visibleLineColumns.lot_number,
-                    expiryDate: visibleLineColumns.expiry_date,
-                    taxRate: visibleLineColumns.tax_rate,
-                  })}
+                  tableClassName="w-full min-w-[1800px] table-fixed text-sm"
+                  headRowClassName="border-b"
+                  columns={[
+                    { key: 'index', label: '#', minWidth: 'min-w-[3rem]' },
+                    { key: 'product', label: 'Product', minWidth: 'min-w-[15rem]' },
+                    { key: 'sku', label: 'SKU', minWidth: 'min-w-[8rem]', hidden: !visibleLineColumns.sku },
+                    { key: 'description', label: 'Description', minWidth: 'min-w-[18rem]', hidden: !visibleLineColumns.description },
+                    { key: 'model_number', label: 'Model #', minWidth: 'min-w-[6.5rem]', hidden: !visibleLineColumns.model_number },
+                    { key: 'product_notes', label: 'Product Notes', minWidth: 'min-w-[10rem]', hidden: !visibleLineColumns.product_notes },
+                    { key: 'lot_number', label: 'Lot Number', minWidth: 'min-w-[8rem]', hidden: !visibleLineColumns.lot_number },
+                    { key: 'expiry_date', label: 'Expiry Date', minWidth: 'min-w-[10rem]', hidden: !visibleLineColumns.expiry_date },
+                    { key: 'qty', label: 'Qty', align: 'right', minWidth: 'min-w-[5.5rem]' },
+                    { key: 'unit_price', label: 'Unit Price', align: 'right', minWidth: 'min-w-[7rem]' },
+                    { key: 'tax_rate', label: 'Tax %', align: 'right', minWidth: 'min-w-[5.5rem]', hidden: !visibleLineColumns.tax_rate },
+                    { key: 'line_total', label: 'Line Total', align: 'right', minWidth: 'min-w-[6.5rem]' },
+                    { key: 'actions', label: 'Actions', minWidth: 'min-w-[8rem]' },
+                  ]}
                 >
                     {lines.map((line, index) => (
-                      <tr
-                        key={index}
-                        className="border-b transition-colors hover:bg-muted/20"
-                        draggable={(line.line_type ?? 'product') === 'product'}
-                        onDragStart={() => setDraggedLineIndex(index)}
-                        onDragOver={(event) => event.preventDefault()}
-                        onDrop={() => {
-                          if (draggedLineIndex !== null && draggedLineIndex !== index) setLines(reorderDocumentLines(lines, draggedLineIndex, index))
-                          setDraggedLineIndex(null)
-                        }}
-                      >
-                        {line.line_type === 'note' || line.line_type === 'section' ? (
-                          <DocumentTextLineRow
-                            type={line.line_type}
-                            text={line.description}
-                            colSpan={12}
-                            total={line.line_type === 'section' ? formatCurrency(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined}
-                            onChange={(text) => updateLine(index, 'description', text)}
-                            onDelete={() => removeLine(index)}
-                            onDragStart={() => setDraggedLineIndex(index)}
-                            onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null) }}
-                          />
-                        ) : <>
-                        <td className={cn(LINE_CELL, 'w-10')}>
-                          <div className={cn(LINE_CELL_BOX, 'justify-center text-xs font-medium text-muted-foreground')}>
-                            {lines.slice(0, index + 1).filter((item) => (item.line_type ?? 'product') === 'product').length}
-                          </div>
-                        </td>
-
-                        <td className={cn(LINE_CELL, 'min-w-[17rem]', LINE_PRODUCT_WRAP)}>
+                      <tr key={index} className="border-b" draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }}>
+                        {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={12} total={line.line_type === 'section' ? formatCurrency(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }} /> : <>
+                        <td className="py-2 px-2 text-sm font-medium text-slate-500">{lines.slice(0, index + 1).filter((item) => (item.line_type ?? 'product') === 'product').length}</td>
+                        <td className="py-2 px-2">
                           <ProductSearchCombobox
-                            wrapText
                             value={line.product_id}
                             onValueChange={(productId, product) => {
-                              const updated = [...lines]
-                              updated[index] = { ...updated[index], product_id: productId }
+                              const updated = [...lines];
+                              updated[index] = { ...updated[index], product_id: productId };
+                              updated[index].lot_number = '';
+                              updated[index].serial_number = '';
+                              updated[index].product_batch_id = null;
+                              updated[index].product_serial_id = null;
+                              updated[index].expiry_date = '';
                               if (product) {
-                                updated[index].description = getProductLineDescription(product)
-                                updated[index].unit_price = parseFloat((product as any).price || (product as any).selling_price || '0')
-                                updated[index].model_number = (product as any).manufacturer_part_number || ''
-                                updated[index].sku = (product as any).sku || ''
+                                updated[index].description = getProductLineDescription(product);
+                                updated[index].unit_price = parseFloat((product as any).price || (product as any).selling_price || '0');
+                                updated[index].model_number = (product as any).manufacturer_part_number || '';
+                                updated[index].sku = (product as any).sku || '';
+                                updated[index].tracking_method = (product as any).tracking_method || 'none';
                               }
-                              setLines(updated)
+                              setLines(updated);
                             }}
                           />
                         </td>
-
-                        {visibleLineColumns.sku && (
-                          <td className={cn(LINE_CELL, 'min-w-[10rem]')}>
-                            <div className={LINE_VALUE}>{line.sku || <span className="opacity-60">SKU</span>}</div>
-                          </td>
-                        )}
-
-                        {visibleLineColumns.description && (
-                          <td className={cn(LINE_CELL, 'min-w-[16rem]')}>
-                            <textarea
-                              value={line.description}
-                              onChange={(event) => updateLine(index, 'description', event.target.value)}
-                              rows={2}
-                              className={LINE_TEXTAREA}
-                              placeholder="Description"
-                            />
-                          </td>
-                        )}
-
-                        {visibleLineColumns.model_number && (
-                          <td className={cn(LINE_CELL, 'min-w-[7rem]')}>
-                            <div className={LINE_VALUE}>{line.model_number || <span className="opacity-60">Model #</span>}</div>
-                          </td>
-                        )}
-
-                        {visibleLineColumns.product_notes && (
-                          <td className={cn(LINE_CELL, 'min-w-[10rem]')}>
-                            <textarea
-                              value={line.product_notes}
-                              onChange={(event) => updateLine(index, 'product_notes', event.target.value)}
-                              rows={2}
-                              className={LINE_TEXTAREA}
-                              placeholder="Product notes"
-                            />
-                          </td>
-                        )}
-
-                        {visibleLineColumns.lot_number && (
-                          <td className={cn(LINE_CELL, 'min-w-[7.5rem]')}>
-                            <input
-                              type="text"
-                              value={line.lot_number}
-                              onChange={(event) => updateLine(index, 'lot_number', event.target.value)}
-                              className={LINE_INPUT}
-                              placeholder="Lot"
-                            />
-                          </td>
-                        )}
-
-                        {visibleLineColumns.expiry_date && (
-                          <td className={cn(LINE_CELL, 'min-w-[9.5rem]')}>
-                            <input
-                              type="date"
-                              value={line.expiry_date}
-                              onChange={(event) => updateLine(index, 'expiry_date', event.target.value)}
-                              className={LINE_INPUT}
-                            />
-                          </td>
-                        )}
-
-                        <td className={cn(LINE_CELL, 'w-[5.5rem] min-w-[4.5rem]')}>
-                          <div className={LINE_CELL_BOX}>
+                        {visibleLineColumns.sku && <td className="py-2 px-2 w-[140px]">
+                          <input
+                            type="text"
+                            value={line.sku}
+                            readOnly
+                            className="w-full px-2 py-1 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900 text-sm text-slate-500"
+                            placeholder="SKU"
+                          />
+                        </td>}
+                        {visibleLineColumns.description && <td className="py-2 px-2">
+                          <textarea
+                            value={line.description}
+                            onChange={(event) => updateLine(index, 'description', event.target.value)}
+                            rows={2}
+                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
+                            placeholder="Description"
+                          />
+                        </td>}
+                        {visibleLineColumns.model_number && <td className="py-2 px-2">
+                          <input
+                            type="text"
+                            value={line.model_number}
+                            readOnly
+                            className="w-full px-2 py-1 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900 text-sm text-slate-500"
+                            placeholder="Model #"
+                          />
+                        </td>}
+                        {visibleLineColumns.product_notes && <td className="py-2 px-2">
+                          <textarea
+                            value={line.product_notes}
+                            onChange={(event) => updateLine(index, 'product_notes', event.target.value)}
+                            rows={2}
+                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
+                            placeholder="Product notes"
+                          />
+                        </td>}
+                        {visibleLineColumns.lot_number && <td className="py-2 px-2">
+                          <ProductTrackingSelector
+                            productId={line.product_id}
+                            warehouseId={warehouseId}
+                            trackingMethod={line.tracking_method}
+                            batchId={line.product_batch_id}
+                            serialId={line.product_serial_id}
+                            onChange={(selection) => setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...selection } : item))}
+                          />
+                          {line.tracking_method === 'none' || line.tracking_method === 'quantity' ? <span className="text-xs text-muted-foreground">Not tracked</span> : null}
+                        </td>}
+                        {visibleLineColumns.expiry_date && <td className="py-2 px-2">
+                          <input type="date" value={line.expiry_date} readOnly className="w-full px-2 py-1 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900 text-sm" />
+                          {line.serial_number ? <div className="mt-1 text-xs text-muted-foreground">Serial: {line.serial_number}</div> : null}
+                        </td>}
+                        <td className="py-2 px-2">
                           <input
                             type="number"
                             min="0"
@@ -1528,21 +1541,18 @@ export const CreateInvoicePage: React.FC = () => {
                             inputMode="decimal"
                             value={line.quantity}
                             onChange={(event) => {
-                              const raw = event.target.value
+                              const raw = event.target.value;
                               // HR71-08: keep the user's literal intent, do
                               // not silently substitute 1. Empty is allowed
                               // while typing and is caught on submit.
-                              if (raw === '') { updateLine(index, 'quantity', ''); return }
-                              const parsed = Number(raw)
-                              if (!Number.isNaN(parsed)) updateLine(index, 'quantity', parsed)
+                              if (raw === '') { updateLine(index, 'quantity', ''); return; }
+                              const parsed = Number(raw);
+                              if (!Number.isNaN(parsed)) updateLine(index, 'quantity', parsed);
                             }}
-                            className={LINE_INPUT_NUMERIC}
+                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right text-gray-900 dark:text-gray-100 font-medium"
                           />
-                          </div>
                         </td>
-
-                        <td className={cn(LINE_CELL, 'w-[7rem] min-w-[6rem]')}>
-                          <div className={LINE_CELL_BOX}>
+                        <td className="py-2 px-2">
                           <input
                             type="number"
                             min="0"
@@ -1550,45 +1560,40 @@ export const CreateInvoicePage: React.FC = () => {
                             placeholder="0.00"
                             value={line.unit_price === '' ? '' : line.unit_price}
                             onChange={(event) => updateLine(index, 'unit_price', event.target.value === '' ? '' : parseFloat(event.target.value))}
-                            className={LINE_INPUT_NUMERIC}
+                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right text-gray-900 dark:text-gray-100 font-medium"
                           />
-                          </div>
                         </td>
-
-                        {visibleLineColumns.tax_rate && (
-                          <td className={cn(LINE_CELL, 'w-[5rem] min-w-[4rem]')}>
-                            <div className={LINE_CELL_BOX}>
-                            <input
-                              type="number"
-                              min="0"
-                              max="100"
-                              step="0.01"
-                              placeholder="0"
-                              value={line.tax_rate === '' ? '' : line.tax_rate}
-                              onChange={(event) => updateLine(index, 'tax_rate', event.target.value === '' ? '' : parseFloat(event.target.value))}
-                              className={LINE_INPUT_NUMERIC}
-                            />
-                            </div>
-                          </td>
-                        )}
-
-                        <td className={cn(LINE_CELL, 'w-[7.5rem] min-w-[6.5rem]')}>
-                          <div className={cn(LINE_CELL_BOX, 'justify-end text-sm font-semibold tabular-nums')}>
-                            {formatCurrency(getLineTotal(line))}
-                          </div>
+                        {visibleLineColumns.tax_rate && <td className="py-2 px-2">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          placeholder="0"
+                          value={line.tax_rate === '' ? '' : line.tax_rate}
+                          onChange={(event) => updateLine(index, 'tax_rate', event.target.value === '' ? '' : parseFloat(event.target.value))}
+                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right text-gray-900 dark:text-gray-100 font-medium"
+                        />
+                      </td>}
+                        <td className="py-2 px-2 text-right font-medium">
+                          {formatCurrency(getLineTotal(line))}
                         </td>
-
-                        <td className={cn(LINE_CELL, 'w-[10.5rem]')}>
-                          <div className={cn(LINE_CELL_BOX, 'justify-end')}>
-                          <ProductLineActions
-                            onMoveUp={() => moveLine(index, 'up')}
-                            onMoveDown={() => moveLine(index, 'down')}
-                            canMoveUp={index !== 0}
-                            canMoveDown={index !== lines.length - 1}
-                            onDuplicate={() => duplicateLine(index)}
-                            onReset={() => resetLine(index)}
-                            onDelete={() => removeLine(index)}
-                          />
+                        <td className="py-2 px-2">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button type="button" variant="ghost" size="sm" onClick={() => moveLine(index, 'up')} disabled={index === 0}>
+                              <Icon icon="solar:arrow-up-bold-duotone" className="h-4 w-4" />
+                            </Button>
+                            <Button type="button" variant="ghost" size="sm" onClick={() => moveLine(index, 'down')} disabled={index === lines.length - 1}>
+                              <Icon icon="solar:arrow-down-bold-duotone" className="h-4 w-4" />
+                            </Button>
+                            <Button type="button" variant="ghost" size="sm" onClick={() => duplicateLine(index)}>
+                              <Icon icon="solar:copy-bold-duotone" className="h-4 w-4" />
+                            </Button>
+                            {lines.length > 1 && (
+                              <Button type="button" variant="ghost" size="sm" onClick={() => removeLine(index)}>
+                                <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-4 w-4 text-destructive" />
+                              </Button>
+                            )}
                           </div>
                         </td>
                         </>}

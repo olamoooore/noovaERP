@@ -4,6 +4,7 @@ namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\StockMovement;
+use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
@@ -74,24 +75,38 @@ class StockController extends Controller
             'reference' => 'nullable|string|max:100',
             'notes' => 'nullable|string|max:500',
             'batch_number' => 'nullable|string|max:100',
+            'lot_number' => 'nullable|string|max:100',
             'expiry_date' => 'nullable|date',
+            'serial_numbers' => 'nullable|array|max:1000',
+            'serial_numbers.*' => 'required|string|max:100|distinct',
         ]);
 
         try {
             $this->resolveReasonForType((int) $validated['adjustment_reason_id'], 'in');
 
+            $product = Product::findOrFail($validated['product_id']);
+            if ($product->tracking_method === Product::TRACKING_BATCH && empty($validated['batch_number'])) {
+                throw ValidationException::withMessages(['batch_number' => ['Batch/Lot number is required for this product.']]);
+            }
+            if ($product->tracking_method === Product::TRACKING_SERIAL
+                && count($validated['serial_numbers'] ?? []) !== (int) $validated['quantity']) {
+                throw ValidationException::withMessages(['serial_numbers' => ['Enter exactly one unique serial number for each received unit.']]);
+            }
+
             // Issue #106: route manual movements through StockAdjustmentService so
             // the valuation change is posted to the GL in the same transaction.
             $movement = $this->stockAdjustmentService->stockIn(
-                (int) $validated['product_id'],
-                (int) $validated['warehouse_id'],
-                (float) $validated['quantity'],
-                (int) $validated['adjustment_reason_id'],
-                $validated['reference'] ?? null,
-                $validated['notes'] ?? null,
-                $validated['batch_number'] ?? null,
-                isset($validated['expiry_date']) ? new \DateTime($validated['expiry_date']) : null,
-                isset($validated['uom_id']) ? (int) $validated['uom_id'] : null
+                productId: (int) $validated['product_id'],
+                warehouseId: (int) $validated['warehouse_id'],
+                quantity: (float) $validated['quantity'],
+                adjustmentReasonId: (int) $validated['adjustment_reason_id'],
+                reference: $validated['reference'] ?? null,
+                notes: $validated['notes'] ?? null,
+                batchNumber: $validated['batch_number'] ?? null,
+                expiryDate: isset($validated['expiry_date']) ? new \DateTime($validated['expiry_date']) : null,
+                lotNumber: $validated['lot_number'] ?? null,
+                serialNumbers: $validated['serial_numbers'] ?? [],
+                uomId: isset($validated['uom_id']) ? (int) $validated['uom_id'] : null,
             );
 
             return response()->json($movement->load('product'));

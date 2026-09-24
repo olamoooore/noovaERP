@@ -103,6 +103,10 @@ export function DeliveryOrderDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['delivery-order', id] })
       queryClient.invalidateQueries({ queryKey: ['delivery-orders'] })
       queryClient.invalidateQueries({ queryKey: ['sales-orders'] })
+      queryClient.invalidateQueries({ queryKey: ['inventory-tracking'] })
+      queryClient.invalidateQueries({ queryKey: ['product-tracking-availability'] })
+      queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
+      queryClient.invalidateQueries({ queryKey: ['inventory-dashboard'] })
       toast({ title: 'Delivery completed — stock deducted' })
     },
     onError: (error: any) => {
@@ -123,6 +127,10 @@ export function DeliveryOrderDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['delivery-order', id] })
       queryClient.invalidateQueries({ queryKey: ['delivery-orders'] })
       queryClient.invalidateQueries({ queryKey: ['sales-orders'] })
+      queryClient.invalidateQueries({ queryKey: ['inventory-tracking'] })
+      queryClient.invalidateQueries({ queryKey: ['product-tracking-availability'] })
+      queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
+      queryClient.invalidateQueries({ queryKey: ['inventory-dashboard'] })
       toast({ title: 'Delivery reversed — stock restored' })
     },
     onError: (error: any) => {
@@ -246,8 +254,8 @@ export function DeliveryOrderDetailPage() {
               </Badge>
             </div>
             <p className="text-muted-foreground mt-1">
-              {deliveryOrder.sales_order
-                ? `For Sales Order ${deliveryOrder.sales_order.sales_order_number}`
+              {deliveryOrder.quotation
+                ? `For Quotation ${deliveryOrder.quotation.quotation_number}`
                 : 'Standalone Delivery'}
             </p>
           </div>
@@ -380,17 +388,6 @@ export function DeliveryOrderDetailPage() {
 
       {/* Odoo-style smart buttons */}
       <div className="flex gap-3">
-        {deliveryOrder.sales_order && (
-          <button
-            type="button"
-            onClick={() => navigate(`/sales/orders/${deliveryOrder.sales_order.id}`)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-input bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-          >
-            <Icon icon="solar:cart-large-2-bold-duotone" className="h-3.5 w-3.5" />
-            {deliveryOrder.sales_order.sales_order_number}
-            <span className="text-muted-foreground/70">Sales Order</span>
-          </button>
-        )}
         {deliveryOrder.invoice && (
           <button
             type="button"

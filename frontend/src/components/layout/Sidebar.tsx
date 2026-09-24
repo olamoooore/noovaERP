@@ -172,6 +172,11 @@ const baseNavItems: NavItem[] = [
         href: '/inventory/stock',
         icon: 'solar:box-bold-duotone',
       },
+      {
+        title: 'Lots & Serials',
+        href: '/inventory/tracking',
+        icon: 'solar:qr-code-bold-duotone',
+      },
       // {
       //   title: 'Stock Movements',
       //   href: '/inventory/movements',

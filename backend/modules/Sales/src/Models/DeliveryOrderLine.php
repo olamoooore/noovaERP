@@ -13,6 +13,8 @@ class DeliveryOrderLine extends Model
         'delivery_order_id',
         'sales_order_line_id',
         'product_id',
+        'product_batch_id',
+        'product_serial_id',
         'model_number',
         'description',
         'product_notes',
@@ -25,6 +27,7 @@ class DeliveryOrderLine extends Model
         'unit',
         'lot_number',
         'batch_number',
+        'serial_number',
         'expiry_date',
         // Issue #131: serials consumed by this delivery line.
         'serial_numbers',
@@ -54,6 +57,16 @@ class DeliveryOrderLine extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(\App\Models\Product::class);
+    }
+
+    public function batch(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\ProductBatch::class, 'product_batch_id');
+    }
+
+    public function serial(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\ProductSerial::class, 'product_serial_id');
     }
 
     public function getRemainingQuantityAttribute(): float
