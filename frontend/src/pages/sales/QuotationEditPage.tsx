@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { TagEditor } from '@/components/tags/TagEditor'
 import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency, getApiErrorMessage } from '@/lib/utils';
@@ -349,6 +350,7 @@ export const QuotationEditPage: React.FC = () => {
             <p className="text-muted-foreground mt-1">
               {quotation?.quotation_number ? `Editing ${quotation.quotation_number}` : 'Update quotation details'}
             </p>
+            {id && <div className="mt-2"><TagEditor subjectType="quotation" subjectId={id} /></div>}
           </div>
         </div>
       </div>

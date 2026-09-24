@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
+import { TagEditor } from '@/components/tags/TagEditor'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -297,6 +298,7 @@ export function DeliveryOrderEditPage() {
         <div>
           <h1 className="text-3xl font-bold">Edit Delivery Order</h1>
           <p className="text-muted-foreground mt-1">{deliveryOrder.delivery_order_number}</p>
+          {id && <div className="mt-2"><TagEditor subjectType="delivery_order" subjectId={id} /></div>}
         </div>
       </div>
 

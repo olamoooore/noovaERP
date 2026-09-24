@@ -23,6 +23,7 @@ import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
 import { ProductTrackingSelector } from '@/components/inventory/ProductTrackingSelector';
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
 import { LineItemsTable } from '@/components/sales/LineItemsTable'
+import { TagEditor } from '@/components/tags/TagEditor'
 import {
   LINE_CELL,
   LINE_CELL_BOX,
@@ -983,6 +984,11 @@ export const CreateInvoicePage: React.FC = () => {
           <p className="text-muted-foreground mt-1">
             Prepare the customer, products, and commercial details for this {documentLabel.toLowerCase()}.
           </p>
+          {isEditMode && id && (
+            <div className="mt-2">
+              <TagEditor subjectType={isQuoteMode ? 'quotation' : 'invoice'} subjectId={id} />
+            </div>
+          )}
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -991,8 +997,8 @@ export const CreateInvoicePage: React.FC = () => {
               <CardTitle>{documentLabel} Details</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                <div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-12 lg:items-end">
+                <div className="lg:col-span-3">
                   <label className="block text-sm font-medium mb-1">Customer *</label>
                   <CustomerSearchCombobox
                     value={customerId}
@@ -1009,7 +1015,7 @@ export const CreateInvoicePage: React.FC = () => {
                   {!isQuoteMode && (
                     requiresApproval ? (
                       <div className="mt-1.5 flex items-center gap-1.5 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs text-orange-700 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-300">
-                        <Icon icon="solar:checklist-bold-duotone" className="h-3.5 w-3.5" />
+                        <Icon icon="solar:checklist-bold-duotone" className="h-3.5 w-3.5 shrink-0" />
                         <span>
                           Will require approval before posting
                           {salesSettings?.invoice?.default_requires_approval && !isEditMode && (
@@ -1021,7 +1027,7 @@ export const CreateInvoicePage: React.FC = () => {
                   )}
                 </div>
                 {!isQuoteMode && (
-                  <div>
+                  <div className="lg:col-span-2">
                     <label className="block text-sm font-medium mb-1">Warehouse *</label>
                     <select value={warehouseId} onChange={(event) => { setWarehouseId(event.target.value); setLines((current) => current.map((line) => ({ ...line, product_batch_id: null, product_serial_id: null, lot_number: '', serial_number: '', expiry_date: '' }))); }} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm">
                       <option value="">Select warehouse</option>
@@ -1029,7 +1035,7 @@ export const CreateInvoicePage: React.FC = () => {
                     </select>
                   </div>
                 )}
-                <div>
+                <div className={isQuoteMode ? 'lg:col-span-2' : 'lg:col-span-2'}>
                   <label className="block text-sm font-medium mb-1">{isQuoteMode ? 'Quote Date' : 'Invoice Date'}</label>
                   <input
                     type="date"
@@ -1039,12 +1045,12 @@ export const CreateInvoicePage: React.FC = () => {
                       setInvoiceDate(newDate);
                       setDueDate(calcDueDate(newDate, paymentTerms));
                     }}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full min-w-0 px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 {!isQuoteMode && (
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Payment Terms (days)</label>
+                  <div className="lg:col-span-1">
+                    <label className="block text-sm font-medium mb-1">Terms (days)</label>
                     <input
                       type="number"
                       min="0"
@@ -1056,11 +1062,11 @@ export const CreateInvoicePage: React.FC = () => {
                         // HR71-04: an intentional term edit is an override.
                         setTermsOverridden(true);
                       }}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full min-w-0 px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 )}
-                <div>
+                <div className={isQuoteMode ? 'lg:col-span-2' : 'lg:col-span-2'}>
                   <label className="block text-sm font-medium mb-1">{isQuoteMode ? 'Valid Until' : 'Due Date'}</label>
                   <input
                     type="date"
@@ -1070,10 +1076,10 @@ export const CreateInvoicePage: React.FC = () => {
                       // HR71-04: an intentional due-date edit is an override.
                       setTermsOverridden(true);
                     }}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full min-w-0 px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
-                <div>
+                <div className="lg:col-span-2">
                   <label className="block text-sm font-medium mb-1">{documentLabel} Number</label>
                   <input
                     type="text"

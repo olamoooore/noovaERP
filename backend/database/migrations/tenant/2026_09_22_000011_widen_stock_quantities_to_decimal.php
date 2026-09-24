@@ -34,8 +34,14 @@ return new class extends Migration
                     continue;
                 }
 
+                // Scope to the CURRENT tenant schema. information_schema.columns
+                // spans every schema, so an unscoped lookup could read another
+                // tenant's (already-numeric) column and skip the widen here,
+                // leaving stock_levels numeric while products.stock_quantity
+                // stayed integer — which then 500'd imports with
+                // "invalid input syntax for type integer: 192.0000".
                 $type = DB::selectOne(
-                    'SELECT data_type FROM information_schema.columns WHERE table_name = ? AND column_name = ?',
+                    'SELECT data_type FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?',
                     [$table, $column]
                 )?->data_type;
 
