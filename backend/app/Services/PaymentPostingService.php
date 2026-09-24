@@ -71,7 +71,14 @@ class PaymentPostingService
             // ── #44: policy-driven payment method → GL account mapping ──
             $method = $payment->method ?? 'cash';
 
-            $allowedMethods = ['bank_transfer', 'card', 'check', 'cash', 'gateway'];
+            // 'other' is accepted by PaymentController::store() and produced by
+            // PaymentImportService::resolveMethod() for unclassified import
+            // values — it MUST be postable here too, otherwise imported
+            // payments are permanently stuck in `recorded` with no GL entry
+            // (production report 2026-09-24). Unclassified receipts post to
+            // the default bank account, matching the platform's dominant
+            // settlement path.
+            $allowedMethods = ['bank_transfer', 'card', 'check', 'cash', 'gateway', 'other'];
             if (! in_array($method, $allowedMethods, true)) {
                 throw new \RuntimeException(
                     "Unsupported payment method: '{$method}'. ".
@@ -85,6 +92,7 @@ class PaymentPostingService
                 'check' => 'cheque_clearing',
                 'cash' => 'cash',
                 'gateway' => 'gateway_receivable',
+                'other' => 'bank',
             };
 
             $lines = [

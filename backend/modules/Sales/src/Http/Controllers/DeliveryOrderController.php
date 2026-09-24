@@ -578,7 +578,7 @@ class DeliveryOrderController extends Controller
                 $subject = "Delivery order {$deliveryOrder->delivery_order_number} — please sign and return";
                 $body = "Dear {$customerName},\n\n".
                     "Please find your delivery order {$deliveryOrder->delivery_order_number}.\n".
-                    "To confirm receipt, open this link, sign the copy, and upload it back:\n".
+                    "To review and electronically sign this delivery order, open this link:\n".
                     "{$link['url']}\n\n".
                     'Thank you for your business.';
 

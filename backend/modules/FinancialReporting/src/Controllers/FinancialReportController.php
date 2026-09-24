@@ -145,19 +145,38 @@ class FinancialReportController extends Controller
                 ];
             }
 
+            // Per-tenant presentation filter: account/group codes listed in
+            // the tenant setting `reporting.balance_sheet.hidden_account_codes`
+            // are omitted from the UI groups. Section TOTALS are intentionally
+            // NOT adjusted — this is a presentation-only filter agreed with
+            // the operator (the GL figures and A = L + E remain unchanged).
+            $hiddenCodes = $this->hiddenStatementLineCodes();
+
             $response = [
                 'assets' => [
-                    'current' => $this->groupBalanceSheetAccounts($currentAssets),
-                    'non_current' => $this->groupBalanceSheetAccounts([...$fixedAssets, ...$otherAssets]),
+                    'current' => $this->filterHiddenStatementLines(
+                        $this->groupBalanceSheetAccounts($currentAssets),
+                        $hiddenCodes
+                    ),
+                    'non_current' => $this->filterHiddenStatementLines(
+                        $this->groupBalanceSheetAccounts([...$fixedAssets, ...$otherAssets]),
+                        $hiddenCodes
+                    ),
                     'total' => $totalAssets,
                 ],
                 'liabilities' => [
-                    'current' => $this->groupBalanceSheetAccounts($currentLiabilities),
-                    'non_current' => $this->groupBalanceSheetAccounts($longTermLiabilities),
+                    'current' => $this->filterHiddenStatementLines(
+                        $this->groupBalanceSheetAccounts($currentLiabilities),
+                        $hiddenCodes
+                    ),
+                    'non_current' => $this->filterHiddenStatementLines(
+                        $this->groupBalanceSheetAccounts($longTermLiabilities),
+                        $hiddenCodes
+                    ),
                     'total' => $totalLiabilities,
                 ],
                 'equity' => [
-                    'groups' => $equityGroups,
+                    'groups' => $this->filterHiddenStatementLines($equityGroups, $hiddenCodes),
                     'total' => $totalEquity,
                 ],
                 'total_assets' => $totalAssets,
@@ -248,6 +267,76 @@ class FinancialReportController extends Controller
         }
 
         return array_values($groups);
+    }
+
+    /**
+     * Per-tenant statement-line presentation filter.
+     *
+     * Reads the tenant setting `reporting.balance_sheet.hidden_account_codes`
+     * (an array of account codes and/or group codes). Matching groups are
+     * omitted entirely; matching accounts are removed from their group, and
+     * a group left with no accounts is dropped.
+     *
+     * Section totals are deliberately NOT recomputed — this is a display-only
+     * filter, so the accounting equation and the underlying GL figures stay
+     * exactly as reported.
+     *
+     * @return array<int, string>
+     */
+    private function hiddenStatementLineCodes(): array
+    {
+        try {
+            $codes = \App\Models\Setting::getValue('reporting.balance_sheet.hidden_account_codes', []);
+        } catch (\Throwable $e) {
+            return [];
+        }
+
+        if (! is_array($codes)) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            array_map(static fn ($code) => (string) $code, $codes),
+            static fn ($code) => $code !== ''
+        ));
+    }
+
+    /**
+     * @param  array<int, array{code: string, name: string, accounts: array<int, array<string, mixed>>, total: float}>  $groups
+     * @param  array<int, string>  $hiddenCodes
+     * @return array<int, array<string, mixed>>
+     */
+    private function filterHiddenStatementLines(array $groups, array $hiddenCodes): array
+    {
+        if ($hiddenCodes === []) {
+            return $groups;
+        }
+
+        $hiddenLookup = array_flip($hiddenCodes);
+        $filtered = [];
+
+        foreach ($groups as $group) {
+            // Whole group hidden by code, or a single-account group whose
+            // account code is hidden (kept for clarity even though the
+            // account loop below would also catch it).
+            if (isset($hiddenLookup[(string) ($group['code'] ?? '')])) {
+                continue;
+            }
+
+            $accounts = array_values(array_filter(
+                $group['accounts'] ?? [],
+                static fn ($account) => ! isset($hiddenLookup[(string) ($account['code'] ?? '')])
+            ));
+
+            if ($accounts === []) {
+                continue;
+            }
+
+            $group['accounts'] = $accounts;
+            $filtered[] = $group;
+        }
+
+        return $filtered;
     }
 
     /**

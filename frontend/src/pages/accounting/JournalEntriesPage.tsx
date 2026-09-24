@@ -546,10 +546,10 @@ export default function JournalEntriesPage() {
               placeholder="Search entry no., reference, description..."
               value={searchTerm}
               onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
-              className="w-72"
+              className="h-8 rounded-full px-3 text-xs w-72"
             />
-            <Input type="date" aria-label="From date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }} className="w-40" />
-            <Input type="date" aria-label="To date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} className="w-40" />
+            <Input type="date" aria-label="From date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }} className="h-8 rounded-full px-3 text-xs w-40" />
+            <Input type="date" aria-label="To date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} className="h-8 rounded-full px-3 text-xs w-40" />
             {canWrite && (
               <HeaderActionButton icon="solar:import-bold-duotone" variant="outline" onClick={() => navigate('/accounting/core/journal-entries/import')}>
                 Import CSV

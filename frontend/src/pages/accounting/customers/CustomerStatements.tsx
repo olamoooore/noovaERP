@@ -5,11 +5,8 @@ import { Icon } from '@iconify/react'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
@@ -29,13 +26,20 @@ interface CustomerTransaction {
   status: string
 }
 
-function defaultPdfDates() {
-  const to = new Date()
-  const from = new Date(to.getFullYear(), to.getMonth() - 1, to.getDate())
-  return {
-    from: from.toISOString().split('T')[0],
-    to: to.toISOString().split('T')[0],
-  }
+/** Current year and the four before it — enough for retrospective statements. */
+const yearsFor = (current: number) => Array.from({ length: 5 }, (_, i) => current - i)
+
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]
+
+/** First and last day of the selected month — what a statement period is. */
+function monthWindow(year: number, monthIndex: number) {
+  const start = new Date(year, monthIndex, 1)
+  const end = new Date(year, monthIndex + 1, 0)
+  const iso = (d: Date) => d.toISOString().split('T')[0]
+  return { start: iso(start), end: iso(end) }
 }
 
 export const CustomerStatements = () => {
@@ -43,20 +47,29 @@ export const CustomerStatements = () => {
   const navigate = useNavigate()
   const { toast } = useToast()
   const [customerId, setCustomerId] = useState(searchParams.get('customer_id') || '')
-  const [pdfDialogOpen, setPdfDialogOpen] = useState(false)
-  const [pdfDates, setPdfDates] = useState(defaultPdfDates)
+  const now = new Date()
+  const [month, setMonth] = useState(String(now.getMonth()))
+  const [year, setYear] = useState(String(now.getFullYear()))
+  const years = useMemo(() => yearsFor(new Date().getFullYear()), [])
 
   useEffect(() => {
     setCustomerId(searchParams.get('customer_id') || '')
   }, [searchParams])
 
+  const period = useMemo(
+    () => monthWindow(Number(year), Number(month)),
+    [year, month]
+  )
+
   const transactionsQuery = useQuery({
-    queryKey: ['customer-account-statement-transactions', customerId],
+    queryKey: ['customer-account-statement-transactions', customerId, period.start, period.end],
     queryFn: async () => {
       const response = await api.get('/accounting/customers/transactions', {
         params: {
           customer_id: customerId,
           transaction_type: 'invoice',
+          start_date: period.start,
+          end_date: period.end,
           per_page: 1000,
         },
       })
@@ -87,10 +100,12 @@ export const CustomerStatements = () => {
 
   const generatePdf = useMutation({
     mutationFn: async () => {
-      const response = await api.get(`/customers/${customerId}/statement`, {
+      // The route lives under /accounting/customers (the previous
+      // /customers/{id}/statement path does not exist and 404'd every time).
+      const response = await api.get(`/accounting/customers/${customerId}/statement`, {
         params: {
-          start_date: pdfDates.from,
-          end_date: pdfDates.to,
+          start_date: period.start,
+          end_date: period.end,
         },
         responseType: 'blob',
       })
@@ -102,12 +117,11 @@ export const CustomerStatements = () => {
       const link = document.createElement('a')
       link.href = url
       const customerCode = selectedCustomerQuery.data?.code || customerId || 'UNKNOWN'
-      link.download = `SOA_${customerCode}_${pdfDates.to.replaceAll('-', '')}.pdf`
+      link.download = `SOA_${customerCode}_${period.end.split('-').join('')}.pdf`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
       window.URL.revokeObjectURL(url)
-      setPdfDialogOpen(false)
       toast({ title: 'Statement of Account generated successfully' })
     },
     onError: (error) => toast({
@@ -117,37 +131,56 @@ export const CustomerStatements = () => {
     }),
   })
 
-  const openPdfDialog = () => {
-    setPdfDates(defaultPdfDates())
-    setPdfDialogOpen(true)
-  }
-
   return (
     <div className="space-y-6 p-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      {/* One action row: customer, the statement period, and the action. The
+          period is always visible (it drives both the list and the PDF) instead
+          of hiding behind a dialog. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Customer Account Statement</h1>
           <p className="mt-1 text-muted-foreground">
-            Select a customer to review their transactions and generate a statement PDF.
+            Pick a customer and a month to review their transactions and generate a statement PDF.
           </p>
         </div>
-        <HeaderActionButton icon="solar:file-download-bold-duotone" onClick={openPdfDialog} disabled={!customerId || transactionsQuery.isLoading}>
-          Generate PDF
-        </HeaderActionButton>
-      </div>
-
-      <Card>
-        <CardHeader><CardTitle>Customer</CardTitle></CardHeader>
-        <CardContent>
-          <div className="max-w-xl">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="w-full sm:w-60">
             <CustomerSearchCombobox
               value={customerId}
               onValueChange={setCustomerId}
               placeholder="Search customer name or code..."
+              compact
             />
           </div>
-        </CardContent>
-      </Card>
+          <Select value={month} onValueChange={setMonth}>
+            <SelectTrigger className="h-8 w-[128px] rounded-full text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {MONTHS.map((label, index) => (
+                <SelectItem key={label} value={String(index)}>{label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={year} onValueChange={setYear}>
+            <SelectTrigger className="h-8 w-[96px] rounded-full text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {years.map((option) => (
+                <SelectItem key={option} value={String(option)}>{option}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <HeaderActionButton
+            icon="solar:file-download-bold-duotone"
+            onClick={() => generatePdf.mutate()}
+            disabled={!customerId || generatePdf.isPending}
+          >
+            {generatePdf.isPending ? 'Generating…' : 'Generate PDF'}
+          </HeaderActionButton>
+        </div>
+      </div>
 
       {!customerId ? (
         <Card>
@@ -160,7 +193,12 @@ export const CustomerStatements = () => {
         <Card>
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <CardTitle>Transactions</CardTitle>
+              <CardTitle>
+                Transactions
+                <span className="ml-2 text-sm font-normal text-muted-foreground">
+                  {MONTHS[Number(month)]} {year}
+                </span>
+              </CardTitle>
               <div className="flex gap-4 text-sm">
                 <span>Debit: <strong>{formatCurrency(totals.debit)}</strong></span>
                 <span>Credit: <strong>{formatCurrency(totals.credit)}</strong></span>
@@ -207,7 +245,7 @@ export const CustomerStatements = () => {
                         }}
                       >
                         <TableCell>{formatDate(transaction.transaction_date)}</TableCell>
-                        <TableCell className="capitalize">{transaction.transaction_type.replaceAll('_', ' ')}</TableCell>
+                        <TableCell className="capitalize">{transaction.transaction_type.split('_').join(' ')}</TableCell>
                         <TableCell className="font-mono">{transaction.document_number || '-'}</TableCell>
                         <TableCell>{formatDate(transaction.due_date)}</TableCell>
                         <TableCell><Badge variant="outline" className="capitalize">{transaction.status}</Badge></TableCell>
@@ -224,42 +262,6 @@ export const CustomerStatements = () => {
         </Card>
       )}
 
-      <Dialog open={pdfDialogOpen} onOpenChange={setPdfDialogOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Generate Customer Statement PDF</DialogTitle></DialogHeader>
-          <div className="grid grid-cols-1 gap-4 py-2 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="statement-from-date">From Date</Label>
-              <Input
-                id="statement-from-date"
-                type="date"
-                value={pdfDates.from}
-                max={pdfDates.to}
-                onChange={(event) => setPdfDates({ ...pdfDates, from: event.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="statement-to-date">To Date</Label>
-              <Input
-                id="statement-to-date"
-                type="date"
-                value={pdfDates.to}
-                min={pdfDates.from}
-                onChange={(event) => setPdfDates({ ...pdfDates, to: event.target.value })}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPdfDialogOpen(false)}>Cancel</Button>
-            <Button
-              onClick={() => generatePdf.mutate()}
-              disabled={generatePdf.isPending || !pdfDates.from || !pdfDates.to || pdfDates.from > pdfDates.to}
-            >
-              {generatePdf.isPending ? 'Generating...' : 'Generate PDF'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

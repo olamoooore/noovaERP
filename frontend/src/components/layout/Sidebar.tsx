@@ -335,6 +335,13 @@ const baseNavItems: NavItem[] = [
         href: '/accounting/customers/payments',
         icon: 'solar:wallet-money-bold-duotone',
       },
+      {
+        // Statement of account belongs with the customer documents it covers,
+        // not under Reports.
+        title: 'Account Statement',
+        href: '/accounting/reporting/customer-statements',
+        icon: 'solar:document-text-bold-duotone',
+      },
       // {
       //   title: 'Batch Payments',
       //   href: '/accounting/customers/batch-payments',
@@ -558,11 +565,6 @@ const baseNavItems: NavItem[] = [
         title: 'Expense Analytics',
         href: '/reports/expense-analytics',
         icon: 'solar:wallet-money-bold-duotone',
-      },
-      {
-        title: 'Customer Account Statement',
-        href: '/accounting/reporting/customer-statements',
-        icon: 'solar:document-text-bold-duotone',
       },
       {
         title: 'Compliance Reports',

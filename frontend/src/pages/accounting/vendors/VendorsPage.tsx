@@ -330,35 +330,29 @@ export default function VendorsPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Search sits with the actions: the page keeps one action row instead of
+          a full-width card that only held the input. The redundant
+          "Back to Accounting" button is gone — the sidebar already navigates. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Vendors</h1>
           <p className="text-muted-foreground mt-1">Manage your vendor/supplier records</p>
         </div>
-        <HeaderActionButton icon="solar:arrow-left-linear" onClick={() => navigate('/accounting')}>
-          Back to Accounting
-        </HeaderActionButton>
-      </div>
-
-      <Card className="p-4">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex-1 max-w-md">
-            <Input
-              placeholder="Search vendors..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-          <div className="flex gap-2">
-            <HeaderActionButton icon="solar:upload-linear" variant="outline" onClick={() => navigate('/accounting/vendors/import')}>
-              Import Vendors
-            </HeaderActionButton>
-            <HeaderActionButton icon="solar:add-circle-linear" onClick={openCreate}>
-              Add Vendor
-            </HeaderActionButton>
-          </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            placeholder="Search vendors..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="h-8 w-full rounded-full px-3 text-xs sm:w-64"
+          />
+          <HeaderActionButton icon="solar:upload-bold-duotone" variant="outline" onClick={() => navigate('/accounting/vendors/import')}>
+            Import Vendors
+          </HeaderActionButton>
+          <HeaderActionButton icon="solar:add-circle-bold-duotone" onClick={openCreate}>
+            Add Vendor
+          </HeaderActionButton>
         </div>
-      </Card>
+      </div>
 
       <Card>
         {isLoading ? (
@@ -367,18 +361,18 @@ export default function VendorsPage() {
             <p className="text-muted-foreground mt-2">Loading vendors...</p>
           </div>
         ) : (
-          <Table>
+          <Table className="w-full table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead>Code</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Company</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Contact Person</TableHead>
-                <TableHead>Payment Terms</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead className="w-[7%]">Code</TableHead>
+                <TableHead className="w-[17%]">Name</TableHead>
+                <TableHead className="w-[15%]">Company</TableHead>
+                <TableHead className="w-[17%]">Email</TableHead>
+                <TableHead className="w-[10%]">Phone</TableHead>
+                <TableHead className="w-[12%]">Contact Person</TableHead>
+                <TableHead className="w-[7%] whitespace-nowrap">Terms</TableHead>
+                <TableHead className="w-[7%]">Status</TableHead>
+                <TableHead className="w-[8%] text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -396,30 +390,41 @@ export default function VendorsPage() {
               ) : (
                 vendors.map((vendor) => (
                   <TableRow key={vendor.id}>
-                    <TableCell>{vendor.code || '-'}</TableCell>
-                    <TableCell className="font-medium">{vendor.name}</TableCell>
-                    <TableCell>{vendor.company || '-'}</TableCell>
-                    <TableCell>{vendor.email || '-'}</TableCell>
-                    <TableCell>{vendor.phone || '-'}</TableCell>
-                    <TableCell>{vendor.contact_person || '-'}</TableCell>
-                    <TableCell>{vendor.payment_terms ? `${vendor.payment_terms} days` : '-'}</TableCell>
+                    <TableCell className="truncate font-mono text-sm" title={vendor.code || undefined}>{vendor.code || '-'}</TableCell>
+                    <TableCell className="truncate font-medium" title={vendor.name}>{vendor.name}</TableCell>
+                    <TableCell className="truncate" title={vendor.company || undefined}>{vendor.company || '-'}</TableCell>
+                    <TableCell className="truncate" title={vendor.email || undefined}>{vendor.email || '-'}</TableCell>
+                    <TableCell className="truncate" title={vendor.phone || undefined}>{vendor.phone || '-'}</TableCell>
+                    <TableCell className="truncate" title={vendor.contact_person || undefined}>{vendor.contact_person || '-'}</TableCell>
+                    <TableCell className="whitespace-nowrap">{vendor.payment_terms ? `${vendor.payment_terms} days` : '-'}</TableCell>
                     <TableCell>
                       <Badge variant={vendor.is_active !== false ? 'default' : 'secondary'}>
                         {vendor.is_active !== false ? 'Active' : 'Inactive'}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(vendor)}>
-                        <Icon icon="solar:pen-linear" className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => setDeletingVendor(vendor)}
-                      >
-                        <Icon icon="solar:trash-bin-trash-linear" className="w-4 h-4" />
-                      </Button>
+                      <div className="flex justify-end gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          onClick={() => openEdit(vendor)}
+                          title="Edit vendor"
+                          aria-label="Edit vendor"
+                        >
+                          <Icon icon="solar:pen-bold-duotone" className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                          onClick={() => setDeletingVendor(vendor)}
+                          title="Delete vendor"
+                          aria-label="Delete vendor"
+                        >
+                          <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))

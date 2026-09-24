@@ -122,6 +122,71 @@ class InvoiceImportTest extends TenantTestCase
         ]);
     }
 
+    public function test_reimport_restores_soft_deleted_draft_invoice(): void
+    {
+        $user = User::create([
+            'name' => 'Invoice Admin',
+            'email' => 'admin-import-restore@test.local',
+            'password' => bcrypt('password'),
+        ]);
+
+        $customer = Customer::factory()->create([
+            'code' => 'CUST-001',
+            'name' => 'Acme Corp',
+            'payment_terms' => 30,
+        ]);
+        Product::factory()->create([
+            'sku' => 'SKU-A',
+            'track_inventory' => false,
+            'price' => 25,
+            'cost' => 10,
+        ]);
+
+        // Production report 2026-09-24: a re-import found previously-deleted
+        // invoices through withTrashed(), updated them without restoring, and
+        // answered "created: 292" while all 120 soft-deleted invoices stayed
+        // invisible (deleted_at untouched) in every list and report.
+        $deleted = Invoice::factory()->create([
+            'invoice_number' => 'IMP-DEL-001',
+            'customer_id' => $customer->id,
+            'status' => 'draft',
+            'lifecycle_status' => 'draft',
+        ]);
+        $deleted->delete();
+        $this->assertSoftDeleted('invoices', ['id' => $deleted->id]);
+
+        $csv = implode("\n", [
+            'invoice_number,status,customer_code,invoice_date,due_date,description,quantity,unit_price',
+            'IMP-DEL-001,draft,CUST-001,1/20/2026,2/20/2026,Restored widget,3,25.00',
+        ]);
+
+        $file = UploadedFile::fake()->createWithContent('invoices.csv', $csv);
+
+        $response = $this
+            ->withoutMiddleware()
+            ->actingAs($user)
+            ->post('/api/v1/invoices/import', ['file' => $file]);
+
+        $response->assertStatus(200);
+        $response->assertJson(['created' => 1]);
+
+        // Re-import must restore the existing row (same id) so it is visible
+        // again, not update it behind deleted_at.
+        $restored = Invoice::where('invoice_number', 'IMP-DEL-001')->first();
+        $this->assertNotNull($restored);
+        $this->assertSame($deleted->id, $restored->id);
+        $this->assertNull($restored->deleted_at);
+        $this->assertSame('2026-01-20', $restored->invoice_date->format('Y-m-d'));
+        $this->assertSame('2026-02-20', $restored->due_date->format('Y-m-d'));
+
+        $this->assertDatabaseHas('invoice_lines', [
+            'invoice_id' => $restored->id,
+            'description' => 'Restored widget',
+            'quantity' => 3,
+            'unit_price' => 25,
+        ]);
+    }
+
     public function test_import_reports_error_for_unknown_customer_without_failing_other_rows(): void
     {
         $user = User::create([

@@ -31,6 +31,17 @@ final class PdfGenerationService implements PdfGenerationServiceContract
             ? $this->templates->find($options['template_id'])
             : $this->templates->resolveFor($documentType);
 
+        // Lazily provision the tenant's system-default starter templates when
+        // none is assigned for this document type yet. Without this, a tenant
+        // that never manually created a template has NO published default for
+        // any type (seedDefaults() is only wired to a job that is never
+        // dispatched), so every render threw and callers silently degraded to
+        // their legacy fallbacks.
+        if (! $template && ! isset($options['template_id'])) {
+            $this->templates->seedDefaults();
+            $template = $this->templates->resolveFor($documentType);
+        }
+
         if (! $template) {
             throw new \RuntimeException("No template available to render document type '{$documentType}'.");
         }
@@ -45,7 +56,7 @@ final class PdfGenerationService implements PdfGenerationServiceContract
 
         $data = $this->dataSources->loadPayload($documentType, $documentId);
         $format = $options['format'] ?? 'pdf';
-        $built = $this->build($template, $data, $format);
+        $built = $this->build($template, $data, $format, $options['signature'] ?? null);
 
         $ttl = (int) config('templatebuilder.pdf.cache_ttl_min', 1440);
 
@@ -70,6 +81,11 @@ final class PdfGenerationService implements PdfGenerationServiceContract
             ? $this->templates->find($templateId)
             : $this->templates->resolveFor($documentType);
 
+        if (! $template && ! $templateId) {
+            $this->templates->seedDefaults();
+            $template = $this->templates->resolveFor($documentType);
+        }
+
         if (! $template) {
             throw new \RuntimeException("No template available to render document type '{$documentType}'.");
         }
@@ -83,16 +99,20 @@ final class PdfGenerationService implements PdfGenerationServiceContract
      * @param  array<string,mixed>  $data
      * @return array{bytes: string, html: string, mime: string, hash: string}
      */
-    private function build(DocumentTemplate $template, array $data, string $format): array
+    private function build(DocumentTemplate $template, array $data, string $format, ?array $signature = null): array
     {
         // Production PDFs render the PUBLISHED version, never an unsaved draft.
         $renderTemplate = $this->forRendering($template);
 
         $rendered = $this->renderer->render($renderTemplate, $data);
 
-        $fullHtml = $this->wrapCanvas($renderTemplate, $rendered['html']);
+        // A signed document carries its signature block on the same template, so
+        // every tenant template gets one without being edited.
+        $body = $rendered['html'].($signature !== null ? $this->signatureBlockHtml($signature) : '');
 
-        $hash = hash('sha256', $template->id.'|'.$template->published_version.'|'.json_encode($data));
+        $fullHtml = $this->wrapCanvas($renderTemplate, $body);
+
+        $hash = hash('sha256', $template->id.'|'.$template->published_version.'|'.json_encode($data).($signature !== null ? '|signed' : ''));
 
         if ($format === 'html') {
             return ['bytes' => $fullHtml, 'html' => $fullHtml, 'mime' => 'text/html', 'hash' => $hash];
@@ -104,6 +124,58 @@ final class PdfGenerationService implements PdfGenerationServiceContract
         $bytes = $pdf->output();
 
         return ['bytes' => $bytes, 'html' => $fullHtml, 'mime' => 'application/pdf', 'hash' => $hash];
+    }
+
+    /**
+     * Appended to the rendered HTML when a document has been signed. Carries the
+     * signature image plus the audit facts a signed document needs (signer,
+     * time, method, IP, document hash).
+     *
+     * @param  array{data_uri:string,signer_name?:?string,signer_email?:?string,signed_at?:?string,date?:?string,method?:?string,ip?:?string,document_hash?:?string}  $signature
+     */
+    private function signatureBlockHtml(array $signature): string
+    {
+        $e = fn (?string $v): string => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+        $src = (string) ($signature['data_uri'] ?? '');
+
+        if ($src === '') {
+            return '';
+        }
+
+        $rows = array_filter([
+            'Signed at' => $signature['signed_at'] ?? null,
+            'Method' => $signature['method'] ?? null,
+            'Signed by' => $signature['signer_email'] ?? null,
+            'IP address' => $signature['ip'] ?? null,
+            'Document hash' => isset($signature['document_hash']) ? substr((string) $signature['document_hash'], 0, 32).'…' : null,
+        ], fn ($v) => $v !== null && $v !== '');
+
+        $audit = '';
+        foreach ($rows as $label => $value) {
+            $audit .= '<div style="margin-bottom:1px;"><strong>'.$e((string) $label).':</strong> '.$e((string) $value).'</div>';
+        }
+
+        $date = $signature['date'] ?? null;
+        $dateLine = $date !== null && $date !== ''
+            ? '<div style="margin-top:4px; font-size:11px; color:#475569;"><strong>Received:</strong> '.$e((string) $date).'</div>'
+            : '';
+
+        return '<div style="page-break-inside:avoid; margin-top:26px; padding-top:10px; border-top:1px solid #cbd5e1;">
+            <div style="font-size:9px; letter-spacing:.08em; text-transform:uppercase; color:#64748b; margin-bottom:8px;">Signed electronically</div>
+            <table style="width:100%; border-collapse:collapse;">
+                <tr>
+                    <td style="width:46%; vertical-align:bottom; padding-right:12px;">
+                        <img src="'.$e($src).'" style="max-height:64px; max-width:230px;" />
+                        <div style="border-top:1px solid #94a3b8; margin-top:5px; padding-top:4px; font-size:11px;">
+                            <strong>'.($signature['signer_name'] ?? null ? 'Received by: '.$e((string) $signature['signer_name']) : 'Received by: Customer').'</strong>
+                            '.($signature['signer_email'] ?? null ? '<br /><span style="color:#475569;">'.$e((string) $signature['signer_email']).'</span>' : '').'
+                            '.$dateLine.'
+                        </div>
+                    </td>
+                    <td style="width:54%; vertical-align:top; font-size:9px; color:#475569;">'.$audit.'</td>
+                </tr>
+            </table>
+        </div>';
     }
 
     /**

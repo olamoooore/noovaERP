@@ -703,14 +703,20 @@ class FixedAssetsController extends Controller
             $successCount = collect($results)->where('status', 'success')->count();
             $errorCount = collect($results)->where('status', 'error')->count();
             $skippedCount = collect($results)->where('status', 'skipped')->count();
+            $pendingCount = (int) collect($results)->sum('pending_posting');
             $totalCount = count($results);
 
             if ($totalCount === 0) {
                 $message = 'No active assets found for the selected period.';
+            } elseif ($successCount === $totalCount && $pendingCount > 0) {
+                $message = "Depreciation schedule generated for {$successCount} asset(s). {$pendingCount} period(s) have no journal entry yet (period closed or not open) and can be posted once the period is open.";
             } elseif ($successCount === $totalCount) {
                 $message = 'Depreciation calculated successfully.';
             } elseif ($successCount > 0) {
                 $message = "Depreciation calculated for {$successCount} asset(s). {$skippedCount} skipped, {$errorCount} error(s).";
+                if ($pendingCount > 0) {
+                    $message .= " {$pendingCount} period(s) pending posting.";
+                }
             } elseif ($errorCount > 0) {
                 $message = 'Depreciation calculation failed. Check results for details.';
             } else {

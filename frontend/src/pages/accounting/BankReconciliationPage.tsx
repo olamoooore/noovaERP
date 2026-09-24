@@ -110,18 +110,36 @@ export function BankReconciliationPage() {
     queryFn: () => reportApi.getBankAccounts(),
   });
 
-  // Pre-select bank account from query param
+  // Pre-select bank account from query param, or auto-select the first
+  // account when none is specified. Without this the detail cards
+  // (currency / current balance / last reconciliation) render empty until
+  // the user manually picks an account, which reads as "data missing"
+  // even when the API returned balances (production report 2026-09-24).
   const accountParam = searchParams.get('account');
   const statementTransactionParam = searchParams.get('statement_transaction');
   useEffect(() => {
-    if (accountParam && bankAccountsData?.data) {
+    if (!bankAccountsData?.data || bankAccountsData.data.length === 0) {
+      return;
+    }
+
+    // Explicit ?account= param wins.
+    if (accountParam) {
       const accId = parseInt(accountParam, 10);
       const exists = bankAccountsData.data.find((a: any) => a.id === accId);
       if (exists) {
         setSelectedBankAccount(accId);
       }
+      return;
     }
-  }, [accountParam, bankAccountsData]);
+
+    // Don't override a manual selection the user has already made.
+    if (selectedBankAccount !== null) {
+      return;
+    }
+
+    // Auto-select the first account so the summary cards populate immediately.
+    setSelectedBankAccount(bankAccountsData.data[0].id);
+  }, [accountParam, bankAccountsData, selectedBankAccount]);
 
   const { data: chartOfAccounts = [] } = useQuery({
     queryKey: ['chart-of-accounts'],
@@ -611,7 +629,9 @@ export function BankReconciliationPage() {
                 ) : bankAccountsData?.data && bankAccountsData.data.length > 0 ? (
                   bankAccountsData.data.map((account) => (
                     <SelectItem key={account.id} value={account.id.toString()}>
-                      {account.name} ({account.account_number})
+                      {account.name}
+                      {account.account_number ? ` (${account.account_number})` : ''}
+                      {account.currency_code ? ` · ${account.currency_code}` : ''}
                     </SelectItem>
                   ))
                 ) : (
@@ -631,17 +651,28 @@ export function BankReconciliationPage() {
                   {selectedAccount.last_reconciliation_date || 'Never'}
                 </p>
                 <p className="text-sm font-medium mt-1">
-                  {selectedAccount.last_reconciliation_balance
-                    ? formatCurrency(selectedAccount.last_reconciliation_balance)
+                  {selectedAccount.last_reconciliation_balance !== null
+                    && selectedAccount.last_reconciliation_balance !== undefined
+                    ? formatCurrency(
+                        Number(selectedAccount.last_reconciliation_balance),
+                        selectedAccount.currency_code,
+                      )
                     : 'N/A'}
                 </p>
               </div>
               <div>
                 <Label>Current Balance</Label>
                 <p className="text-lg font-bold mt-2">
-                  {formatCurrency(selectedAccount.current_balance)}
+                  {formatCurrency(
+                    Number(selectedAccount.current_balance ?? 0),
+                    selectedAccount.currency_code,
+                  )}
                 </p>
-                <p className="text-sm text-muted-foreground mt-1">Currency: {selectedAccount.currency_code}</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Currency: {selectedAccount.currency_code || '—'}
+                  {selectedAccount.bank_name ? ` · ${selectedAccount.bank_name}` : ''}
+                  {selectedAccount.gl_account_name ? ` · GL: ${selectedAccount.gl_account_name}` : ''}
+                </p>
               </div>
             </>
           )}

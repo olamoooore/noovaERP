@@ -26,7 +26,11 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(PostingEngineInterface::class, PostingEngine::class);
-        $this->app->bind(\App\Contracts\EsignProviderInterface::class, \App\Services\NullEsignProvider::class);
+        // Built-in (self-hosted) e-signature: envelopes are our own
+        // EsignRequest rows and signing happens on our public signing page —
+        // no third-party e-sign service. Swap this binding to adopt an
+        // external provider without touching call sites.
+        $this->app->bind(\App\Contracts\EsignProviderInterface::class, \App\Services\BuiltInEsignProvider::class);
         $this->app->register(CompliancePluginServiceProvider::class);
 
         // ADR-005 Accounting Domain Services

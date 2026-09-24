@@ -70,6 +70,14 @@ Route::middleware([
     Route::get('/do-accept/{token}', [\Modules\Sales\Http\Controllers\DeliveryOrderAcceptanceController::class, 'show']);
     Route::post('/do-accept/{token}/evidence', [\Modules\Sales\Http\Controllers\DeliveryOrderAcceptanceController::class, 'uploadEvidence']);
 
+    // Built-in e-signature (self-hosted): the customer signs the real document.
+    Route::get('/sign/{token}', [\App\Http\Controllers\Api\EsignController::class, 'show']);
+    Route::get('/sign/{token}/pdf', [\App\Http\Controllers\Api\EsignController::class, 'pdf']);
+    Route::post('/sign/{token}', [\App\Http\Controllers\Api\EsignController::class, 'sign'])
+        ->middleware('throttle:10,1');
+    Route::post('/sign/{token}/upload', [\App\Http\Controllers\Api\EsignController::class, 'upload'])
+        ->middleware('throttle:10,1');
+
     // Issue #149: online quotation acceptance / eSignature portal.
     Route::get('/quotation-accept/{token}', [\App\Http\Controllers\Api\SalesOrderAcceptanceController::class, 'show']);
     Route::post('/quotation-accept/{token}/accept', [\App\Http\Controllers\Api\SalesOrderAcceptanceController::class, 'accept'])

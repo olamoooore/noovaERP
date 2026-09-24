@@ -522,7 +522,7 @@ function AttachmentItem({
             type="button"
             size="icon"
             variant="ghost"
-            className="h-7 w-7 rounded-full text-muted-foreground hover:text-destructive"
+            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
             onClick={onDelete}
             title="Delete attachment"
           >

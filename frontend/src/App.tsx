@@ -35,6 +35,7 @@ const ApprovalsInboxPage = lazy(() => import('@/pages/ApprovalsInboxPage').then(
 const InvoiceAcceptancePage = lazy(() => import('@/pages/InvoiceAcceptancePage').then(m => ({ default: m.default })))
 const QuotationAcceptancePage = lazy(() => import('@/pages/QuotationAcceptancePage').then(m => ({ default: m.default })))
 const DeliveryOrderAcceptancePage = lazy(() => import('@/pages/DeliveryOrderAcceptancePage').then(m => ({ default: m.default })))
+const EsignPage = lazy(() => import('@/pages/EsignPage').then(m => ({ default: m.EsignPage })))
 const PaymentsPage = lazy(() => import('@/pages/PaymentsPage').then(m => ({ default: m.PaymentsPage })))
 const AccountingPage = lazy(() => import('@/pages/AccountingPage').then(m => ({ default: m.AccountingPage })))
 const ModulesPage = lazy(() => import('@/pages/Modules/ModulesPage').then(m => ({ default: m.ModulesPage })))
@@ -315,6 +316,7 @@ function App() {
             <Route path="/invoice-accept/:token" element={<InvoiceAcceptancePage />} />
             <Route path="/quotation-accept/:token" element={<QuotationAcceptancePage />} />
             <Route path="/do-accept/:token" element={<DeliveryOrderAcceptancePage />} />
+            <Route path="/sign/:token" element={<EsignPage />} />
             
             <Route element={<ProtectedRoute />}>
               {/* Receipt Builder - fullscreen without sidebar */}

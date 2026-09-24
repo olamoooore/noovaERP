@@ -75,7 +75,26 @@ STEERING-PACK-ADDENDUM-REVIEW.md
 
 # OpenClaw implementation pack (local reference only)
 ace-openclaw-implementation-pack/
+
+# Database backups / dumps — never commit (large binaries + may contain PII)
 *.sql
+*.sql.gz
+*.dump
+*.dump.gz
+*.tar.gz
+acme_local_fresh_*.dump
+noovaerp_*_backup_*.dump
+noovaerp_*_backup_*.sql.gz
+noovaerp_current_backup.sql
+noovaerp_local_backup_*.sql
+
+# Tenant JSON backups written by the app's 7300-backup feature
+backend/storage/app/7300-backups/
+
+# Exported data files at repo root (customer/invoice masterlists — contain PII)
+/*.xlsx
+/*.csv
+
 # Runtime tenant report exports — never commit
 backend/storage/app/reports/*
 !backend/storage/app/reports/.gitkeep

@@ -373,10 +373,27 @@ class InvoiceController extends Controller
         if ($importedNumber !== '') {
             $existingInvoice = Invoice::withTrashed()->where('invoice_number', $importedNumber)->first();
             if ($existingInvoice) {
-                // If invoice is already posted, skip update to preserve financial integrity
+                // If invoice is already posted, skip update to preserve financial integrity.
+                // A soft-deleted posted invoice is still restored so the re-import
+                // makes it visible again (no financial fields are touched).
                 if ($existingInvoice->status === 'posted' && $existingInvoice->journal_entry_id) {
+                    if ($existingInvoice->trashed()) {
+                        $existingInvoice->restore();
+                    }
+
                     return $existingInvoice;
                 }
+
+                // withTrashed() finds soft-deleted rows; restore BEFORE mutating.
+                // Without this the update lands on a deleted row that stays
+                // invisible in every list/report, and the import reports
+                // "created: N" while nothing appears (production report
+                // 2026-09-24: 120 soft-deleted August invoices were "imported
+                // successfully" but never showed up).
+                if ($existingInvoice->trashed()) {
+                    $existingInvoice->restore();
+                }
+
                 // Clean up existing lines for re-creation
                 $existingInvoice->lines()->delete();
             }

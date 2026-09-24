@@ -69,13 +69,25 @@ class DepreciationService
                 $period = $start->copy();
                 $scheduleEnd = $start->copy()->addMonths($months - 1)->endOfMonth();
                 $created = 0;
-                DB::transaction(function () use ($asset, &$period, $scheduleEnd, &$created) {
+                $pending = 0;
+                $periodErrors = [];
+
+                DB::transaction(function () use ($asset, &$period, $scheduleEnd, &$created, &$pending, &$periodErrors) {
                     FixedAsset::where('id', $asset->id)->lockForUpdate()->first();
 
                     while ($period->lte($scheduleEnd)) {
                         $periodEnd = $period->copy()->endOfMonth();
+
+                        // Month-bucket lookup: this method stores end-of-month
+                        // dates while generateScheduleForAsset() stores
+                        // start-of-month dates, so an exact-date check misses
+                        // rows created by the other entry point and duplicates
+                        // the whole schedule (HR216 regression).
                         $existing = DepreciationSchedule::where('asset_id', $asset->id)
-                            ->whereDate('period_date', $periodEnd->toDateString())
+                            ->whereBetween('period_date', [
+                                $period->copy()->startOfMonth()->toDateString(),
+                                $periodEnd->toDateString(),
+                            ])
                             ->first();
 
                         if (! $existing) {
@@ -104,26 +116,60 @@ class DepreciationService
                                 'book_value' => max($bookValue, (float) $asset->salvage_value),
                                 'is_posted' => false,
                             ]);
+
+                            // Draft-journal creation can legitimately fail when
+                            // the fiscal period is closed/locked (e.g. a
+                            // historical asset whose useful life predates the
+                            // current open period) or when no period exists.
+                            // KEEP the schedule row unposted so the amortisation
+                            // plan is visible and postPendingScheduleEntries()
+                            // can create the journals once a period opens —
+                            // matching generateScheduleForAsset()'s behaviour.
+                            //
+                            // NOTE: this method deliberately leaves is_posted =
+                            // false on SUCCESS too — the running accumulation
+                            // below (and $draftScheduledBefore) treats every
+                            // row of the current run as an unposted draft.
+                            // Rows with a journal_entry_id are "scheduled";
+                            // rows without one are "pending posting".
                             try {
                                 $journalEntry = $this->createDepreciationDraftJournalEntry($asset, $schedule, $periodEnd);
+                                $schedule->update(['journal_entry_id' => $journalEntry->id]);
+                                $created++;
                             } catch (\Throwable $e) {
-                                // Do not leave an orphaned schedule when draft creation fails.
-                                $schedule->delete();
-                                throw $e;
+                                $pending++;
+                                $periodErrors[] = [
+                                    'period' => $periodEnd->toDateString(),
+                                    'message' => $e->getMessage(),
+                                    'schedule_id' => $schedule->id,
+                                    'retry_endpoint' => "/api/v1/assets/{$asset->id}/post-schedule",
+                                ];
                             }
-                            $schedule->update(['journal_entry_id' => $journalEntry->id]);
-                            $created++;
                         }
                         $period->addMonth();
                     }
                 });
 
+                $totalScheduled = $created + $pending;
+
+                if ($totalScheduled === 0) {
+                    $message = 'No missing depreciation periods.';
+                } else {
+                    $message = "Created {$totalScheduled} depreciation schedule entr".($totalScheduled === 1 ? 'y' : 'ies').'.';
+                    if ($pending > 0) {
+                        $message .= " {$pending} period(s) could not be posted to the ledger (fiscal period closed or not open) — the schedule is saved and can be posted once the period is open.";
+                    }
+                }
+
                 $results[] = [
                     'asset_id' => $asset->id,
                     'asset_name' => $asset->name,
-                    'status' => $created > 0 ? 'success' : 'skipped',
-                    'message' => $created > 0 ? "Created {$created} draft depreciation journal(s)." : 'No missing depreciation periods.',
+                    'status' => $totalScheduled > 0 ? 'success' : 'skipped',
+                    'message' => $message,
+                    'schedule_count' => $totalScheduled,
                     'draft_count' => $created,
+                    'pending_posting' => $pending,
+                    'errors' => $periodErrors,
                 ];
 
             } catch (\Exception $e) {
@@ -186,10 +232,23 @@ class DepreciationService
         for ($i = 0; $i < $periodsTotal; $i++) {
             $periodDate = $this->advancePeriod($startDate, $frequency, $i);
 
-            // Skip if already posted for this period
-            $existing = DepreciationSchedule::where('asset_id', $asset->id)
-                ->where('period_date', $periodDate->format('Y-m-d'))
-                ->first();
+            // Skip if a schedule row already exists for this period. For
+            // monthly assets use a month-bucket match: this method stores
+            // start-of-month dates while calculateDepreciationForPeriod()
+            // stores end-of-month dates, so an exact-date check would
+            // duplicate the schedule when both entry points are used.
+            $existingQuery = DepreciationSchedule::where('asset_id', $asset->id);
+
+            if ($frequency === 'monthly') {
+                $existingQuery->whereBetween('period_date', [
+                    $periodDate->copy()->startOfMonth()->toDateString(),
+                    $periodDate->copy()->endOfMonth()->toDateString(),
+                ]);
+            } else {
+                $existingQuery->where('period_date', $periodDate->format('Y-m-d'));
+            }
+
+            $existing = $existingQuery->first();
 
             if ($existing) {
                 $results['skipped_existing']++;

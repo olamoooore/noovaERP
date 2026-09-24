@@ -461,10 +461,10 @@ export default function ChartOfAccountsPage({ embedded = false }: { embedded?: b
                   placeholder="Search accounts..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-64"
+                  className="h-8 rounded-full px-3 text-xs w-64"
                 />
                 <Select value={typeFilter} onValueChange={setTypeFilter}>
-                  <SelectTrigger className="w-40">
+                  <SelectTrigger className="h-8 rounded-full text-xs w-40">
                     <SelectValue placeholder="All Types" />
                   </SelectTrigger>
                   <SelectContent>

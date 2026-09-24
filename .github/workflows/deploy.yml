@@ -247,6 +247,13 @@ jobs:
             # Run central migrations
             php artisan migrate --force
 
+            # Pre-flight: every tenant row must have a Postgres schema, or
+            # `tenants:migrate` dies deep inside the migration runner with
+            # "no schema has been selected to create in" (2026-09-24 deploy:
+            # a test-debris tenant row "ModelTenant" with is_test=true and no
+            # schema aborted the whole pipeline). Fail fast + actionable.
+            php artisan tenants:preflight
+
             # Run tenant migrations (failures must fail the deployment)
             php artisan tenants:migrate --force
 

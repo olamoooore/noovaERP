@@ -226,7 +226,7 @@ export function DeliveryOrderDetailPage() {
       if (recipient && !message.includes('email failed')) {
         toast({
           title: 'Delivery order emailed to the customer',
-          description: `${recipient} can now sign and upload their copy.`,
+          description: `${recipient} can now review and electronically sign the document.`,
         })
       } else {
         toast({

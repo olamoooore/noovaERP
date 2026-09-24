@@ -200,7 +200,7 @@ export default function JournalsPage() {
               placeholder="Search journals..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-64"
+              className="h-8 rounded-full px-3 text-xs w-64"
             />
             <HeaderActionButton icon="solar:add-circle-linear" onClick={() => handleOpenForm()}>
               Add Journal

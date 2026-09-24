@@ -1040,20 +1040,27 @@ class DeliveryOrderService
      */
     public function issueCustomerLink(DeliveryOrder $deliveryOrder, int $expiresInDays = 30): array
     {
-        $token = (string) \Illuminate\Support\Str::uuid();
-        $expiresAt = now()->addDays($expiresInDays);
-
-        $deliveryOrder->update([
-            'acceptance_token' => $token,
-            'acceptance_expires_at' => $expiresAt,
-        ]);
+        // Built-in e-signature: the customer link opens the same /sign/{token}
+        // page used for invoices, where the recipient signs the real delivery
+        // order PDF — instead of the legacy /do-accept upload portal.
+        $esign = app(\App\Services\EsignService::class)->request(
+            'delivery_order',
+            $deliveryOrder->id,
+            [[
+                'name' => $deliveryOrder->customer?->name,
+                'email' => $deliveryOrder->customer?->email,
+            ]],
+            null,
+            $expiresInDays,
+        );
 
         $frontendUrl = rtrim((string) (env('FRONTEND_URL') ?: config('app.url', '')), '/');
 
         return [
-            'token' => $token,
-            'url' => "{$frontendUrl}/do-accept/{$token}",
-            'expires_at' => $expiresAt->toIso8601String(),
+            'token' => $esign->token,
+            'url' => "{$frontendUrl}/sign/{$esign->token}",
+            'expires_at' => $esign->expires_at?->toIso8601String(),
+            'esign_request_id' => $esign->id,
         ];
     }
 

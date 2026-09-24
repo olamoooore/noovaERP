@@ -60,6 +60,12 @@ interface DocumentTemplateServiceContract
     public function createFromStarter(string $documentType): DocumentTemplate;
 
     /**
+     * Provision the system-default starter templates for the current tenant.
+     * Idempotent — skips any document_type that already has a system default.
+     */
+    public function seedDefaults(): void;
+
+    /**
      * Map of document_type => active (resolved) template id, for surfacing
      * which template currently backs each document in the UI.
      *

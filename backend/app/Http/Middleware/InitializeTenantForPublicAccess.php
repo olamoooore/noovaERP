@@ -124,6 +124,21 @@ class InitializeTenantForPublicAccess
             }
         }
 
+        // Built-in e-signature signing page — the token identifies the tenant.
+        if (preg_match('#^api/v1/sign/#', $path)) {
+            $token = $request->route('token');
+            if ($token) {
+                $tenant = app(\App\Services\EsignService::class)
+                    ->resolveTenantForToken((string) $token);
+
+                if ($tenant) {
+                    $this->tenancy->initialize($tenant);
+
+                    return $next($request);
+                }
+            }
+        }
+
         // 2. For /w/{slug} routes, resolve tenant by finding which tenant owns the website.
         //    This takes priority over domain resolution because the website's tenant
         //    may differ from the domain's tenant (e.g. shared domain in multi-tenant setup).

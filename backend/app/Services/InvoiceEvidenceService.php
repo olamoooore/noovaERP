@@ -29,6 +29,7 @@ class InvoiceEvidenceService
         private InvoiceActivityService $activityLog,
         private ChatterService $chatterService,
         private NotificationService $notificationService,
+        private EsignService $esignService,
     ) {}
 
     public function upload(
@@ -320,15 +321,21 @@ class InvoiceEvidenceService
         string $provider,
         string $externalId,
         array $signerData = [],
+        ?string $documentPath = null,
     ): InvoiceEvidence {
 
-        $evidence = DB::transaction(function () use ($invoice, $provider, $externalId, $signerData) {
+        $evidence = DB::transaction(function () use ($invoice, $provider, $externalId, $signerData, $documentPath) {
             $evidence = InvoiceEvidence::create([
                 'invoice_id' => $invoice->id,
                 'type' => InvoiceEvidence::TYPE_CUSTOMER_ESIGN,
                 'source' => InvoiceEvidence::SOURCE_ESIGN_PROVIDER,
                 'provider' => $provider,
                 'external_id' => $externalId,
+                // Without this the evidence row recorded that a signature
+                // happened but had no signed document attached to it.
+                'file_path' => $documentPath,
+                'file_name' => $documentPath ? basename($documentPath) : null,
+                'mime_type' => $documentPath ? 'application/pdf' : null,
                 'signer_name' => $signerData['signer_name'] ?? null,
                 'signer_email' => $signerData['signer_email'] ?? null,
                 'signer_ip' => $signerData['signer_ip'] ?? null,
@@ -349,6 +356,63 @@ class InvoiceEvidenceService
                 'type' => InvoiceEvidence::TYPE_CUSTOMER_ESIGN,
                 'provider' => $provider,
                 'external_id' => $externalId,
+            ],
+            $invoice->getOriginal('evidence_status') ?? Invoice::EVIDENCE_NOT_REQUIRED,
+            $invoice->fresh()->evidence_status,
+            InvoiceActivityLog::ACTOR_CUSTOMER,
+            null,
+        );
+
+        return $evidence;
+    }
+
+    /**
+     * Record a physically signed (paper) copy uploaded through the public
+     * signing link. Deliberately distinct from recordEsignCompletion (which
+     * records a digital signature): this lands as a customer_acceptance
+     * evidence row, so the invoice shows the customer chose to sign on paper
+     * and upload the scan.
+     *
+     * @param  array{signer_name?:?string,signer_email?:?string,signer_ip?:?string}  $signerData
+     */
+    public function recordUploadedSignedCopy(
+        Invoice $invoice,
+        string $documentPath,
+        ?string $originalName = null,
+        ?string $mimeType = null,
+        ?int $sizeBytes = null,
+        array $signerData = [],
+    ): InvoiceEvidence {
+        $evidence = DB::transaction(function () use ($invoice, $documentPath, $originalName, $mimeType, $sizeBytes, $signerData) {
+            $evidence = InvoiceEvidence::create([
+                'invoice_id' => $invoice->id,
+                'type' => InvoiceEvidence::TYPE_CUSTOMER_ACCEPTANCE,
+                'source' => InvoiceEvidence::SOURCE_UPLOAD,
+                'provider' => 'Built-in',
+                'file_path' => $documentPath,
+                'file_name' => $originalName ?: basename($documentPath),
+                'mime_type' => $mimeType ?: 'application/pdf',
+                'size_bytes' => $sizeBytes,
+                'signer_name' => $signerData['signer_name'] ?? null,
+                'signer_email' => $signerData['signer_email'] ?? null,
+                'signer_ip' => $signerData['signer_ip'] ?? null,
+                'signed_at' => now(),
+            ]);
+
+            $this->syncEvidenceStatus($invoice);
+
+            return $evidence;
+        });
+
+        $this->activityLog->log(
+            $invoice,
+            InvoiceActivityLog::EVENT_EVIDENCE_ADDED,
+            [
+                'invoice_number' => $invoice->invoice_number,
+                'evidence_id' => $evidence->id,
+                'type' => InvoiceEvidence::TYPE_CUSTOMER_ACCEPTANCE,
+                'source' => InvoiceEvidence::SOURCE_UPLOAD,
+                'completion' => 'uploaded_document',
             ],
             $invoice->getOriginal('evidence_status') ?? Invoice::EVIDENCE_NOT_REQUIRED,
             $invoice->fresh()->evidence_status,
@@ -486,23 +550,30 @@ class InvoiceEvidenceService
         $token = \Illuminate\Support\Str::uuid()->toString();
         $expiresAt = now()->addDays($expiresInDays);
 
-        $evidence = InvoiceEvidence::create([
-            'invoice_id' => $invoice->id,
-            'type' => InvoiceEvidence::TYPE_CUSTOMER_ACCEPTANCE,
-            'source' => InvoiceEvidence::SOURCE_PORTAL_ACCEPTANCE,
-            'external_id' => $token,
-            'signed_at' => null,
-            'expires_at' => $expiresAt,
-        ]);
+        // Built-in e-signature: the link now opens our /sign/{token} page where
+        // the customer signs the real invoice PDF, instead of the legacy
+        // /invoice-accept portal. The old portal is retained only for links
+        // already in the wild; new requests become EsignRequest rows and the
+        // signed copy is stored as a customer_esign evidence on completion.
+        $esign = $this->esignService->request(
+            'invoice',
+            $invoice->id,
+            [[
+                'name' => $invoice->customer?->name,
+                'email' => $invoice->customer?->email,
+            ]],
+            null,
+            $expiresInDays,
+        );
 
         $frontendUrl = rtrim((string) (env('FRONTEND_URL') ?: config('app.url', '')), '/');
-        $signedUrl = "{$frontendUrl}/invoice-accept/{$token}";
 
         return [
-            'token' => $token,
-            'url' => $signedUrl,
-            'expires_at' => $expiresAt->toIso8601String(),
-            'evidence_id' => $evidence->id,
+            'token' => $esign->token,
+            'url' => "{$frontendUrl}/sign/{$esign->token}",
+            'expires_at' => $esign->expires_at?->toIso8601String(),
+            'evidence_id' => null,
+            'esign_request_id' => $esign->id,
         ];
     }
 
@@ -527,6 +598,13 @@ class InvoiceEvidenceService
      */
     public function revokeAcceptanceLinks(Invoice $invoice): int
     {
+        // A withdrawn/cancelled invoice must also stop being signable through
+        // the built-in e-sign link issued for it.
+        \App\Models\EsignRequest::where('document_type', 'invoice')
+            ->where('document_id', $invoice->id)
+            ->where('status', \App\Models\EsignRequest::STATUS_PENDING)
+            ->update(['status' => \App\Models\EsignRequest::STATUS_CANCELLED]);
+
         $revoked = InvoiceEvidence::where('invoice_id', $invoice->id)
             ->where('source', InvoiceEvidence::SOURCE_PORTAL_ACCEPTANCE)
             ->whereNull('revoked_at')

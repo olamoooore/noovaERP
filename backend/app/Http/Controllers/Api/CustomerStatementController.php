@@ -6,13 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Mail\CustomerStatementMail;
 use App\Models\Customer;
 use App\Models\CustomerStatement;
-use App\Models\Invoice;
 use App\Models\Setting;
 use App\Services\CustomerStatementService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Modules\TemplateBuilder\Contracts\PdfGenerationServiceContract;
@@ -42,84 +43,26 @@ class CustomerStatementController extends Controller
         $asOf = Carbon::parse($validated['end_date'] ?? $validated['as_of'] ?? now());
         $startDate = isset($validated['start_date']) ? Carbon::parse($validated['start_date']) : null;
 
-        // Get outstanding invoices: posted, balance > 0, invoice_date <= as_of
-        // Issue #96: exclude voided/reversed/superseded documents.
-        $invoices = Invoice::where('customer_id', $customer->id)
-            ->where('status', 'posted')
-            ->where('balance', '>', 0)
-            ->notSuperseded()
-            ->where('invoice_date', '<=', $asOf)
-            ->when($startDate, fn ($query) => $query->where('invoice_date', '>=', $startDate))
-            ->orderBy('invoice_date', 'asc')
-            ->get();
-
-        // Build transaction lines for the template
-        $transactions = [];
-        $runningBalance = 0;
-        foreach ($invoices as $invoice) {
-            $reference = collect([
-                $invoice->po_number,
-                $invoice->customer_reference,
-            ])->filter()->implode(', ');
-
-            $invAmount = round((float) $invoice->total, 2);
-            $runningBalance += $invAmount;
-
-            $transactions[] = [
-                'date' => $invoice->invoice_date->format('Y-m-d'),
-                'type' => 'Invoice',
-                'document_number' => $invoice->invoice_number,
-                'description' => $reference ?: ($invoice->lines->pluck('description')->filter()->first() ?? ''),
-                'reference' => $reference,
-                'due_date' => $invoice->due_date ? $invoice->due_date->format('Y-m-d') : '',
-                'inv_amount' => $invAmount,
-                'balance' => round((float) $invoice->balance, 2),
-                'total' => $runningBalance,
-                'debit' => $invAmount,
-                'credit' => 0.00,
-                'status' => $invoice->status,
-            ];
-        }
-
-        // Get billing address
-        $billingAddress = $customer->addresses()
-            ->where('type', 'billing')
-            ->where('is_default', true)
-            ->first();
-
-        $attentionTo = $customer->customerContacts()
-            ->where('is_primary', true)
-            ->first()?->name ?? $customer->name;
-
-        // Build payload matching CustomerStatementDataSource expectations
-        $payload = [
-            'customer' => [
-                'id' => $customer->id,
-                'code' => $customer->code,
-                'name' => $customer->name,
-                'email' => $customer->email,
-                'attention_to' => $attentionTo,
-                'billing_address' => $billingAddress
-                    ? collect([$billingAddress->street, $billingAddress->street2, $billingAddress->city, $billingAddress->state, $billingAddress->zip, $billingAddress->country])->filter()->implode(', ')
-                    : $customer->billing_address,
-                'payment_terms' => $customer->payment_terms ? $customer->payment_terms.' Days from Invoice Date' : '',
-            ],
-            'period' => [
-                'start_date' => $startDate?->format('Y-m-d'),
-                'end_date' => $asOf->format('Y-m-d'),
-                'type' => $startDate ? 'custom' : 'as_of',
-            ],
-            'opening_balance' => 0,
-            'closing_balance' => round($invoices->sum('balance'), 2),
-            'total_amount_due' => round($invoices->sum('balance'), 2),
-            'total_debits' => round($invoices->sum('total'), 2),
-            'total_credits' => 0,
-            'transactions' => $transactions,
-            'generated_at' => now()->toISOString(),
-            'include_paid' => false,
-            'as_of_date' => $asOf->format('Y-m-d'),
-            'bank' => $this->resolveBankSettings(),
-        ];
+        // Build the payload through the canonical service so the statement is
+        // a real ledger extract — invoices, payments and credit notes with a
+        // seeded opening balance and a per-row running balance — instead of
+        // the previous inline query that (a) dropped invoices already paid
+        // within the period and (b) never included payments or credit notes,
+        // so a fully-settled month rendered as an empty statement.
+        //
+        // Range statements (the month picker) include settled documents too,
+        // because a statement for March must show March's invoice AND the
+        // March receipt that settled it. As-of statements stay an
+        // outstanding-only snapshot.
+        $payload = $startDate !== null
+            ? $this->statementService->buildRangePayload(
+                $customer,
+                $startDate,
+                $asOf,
+                includePaid: true,
+                periodType: 'custom',
+            )
+            : $this->statementService->buildAsOfPayload($customer, $asOf);
 
         // Save a CustomerStatement record (required by template builder's DataSource)
         $statement = CustomerStatement::create([
@@ -127,23 +70,40 @@ class CustomerStatementController extends Controller
             'start_date' => $startDate?->toDateString(),
             'end_date' => $asOf->toDateString(),
             'period_type' => $startDate ? 'custom' : 'as_of',
-            'include_paid' => false,
+            'include_paid' => (bool) ($payload['include_paid'] ?? false),
             'payload' => $payload,
             'generated_by' => Auth::id(),
         ]);
 
-        // Render PDF using the template builder
-        $pdfService = app(PdfGenerationServiceContract::class);
-        $result = $pdfService->render('customer_statement', (string) $statement->id, [
-            'format' => 'pdf',
-        ]);
+        // Render through the tenant's own template when one is published, and
+        // otherwise fall back to the built-in statement layout. The renderer
+        // throws when a tenant has no published customer_statement template,
+        // which used to fail the entire request (500) even though a complete
+        // built-in layout exists.
+        try {
+            $pdfService = app(PdfGenerationServiceContract::class);
+            $result = $pdfService->render('customer_statement', (string) $statement->id, [
+                'format' => 'pdf',
+            ]);
+            $bytes = $result['bytes'];
+        } catch (\Throwable $e) {
+            Log::warning('CustomerStatementController: template render unavailable, using built-in layout', [
+                'statement_id' => $statement->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            $bytes = Pdf::loadView('accounting.customer-statement-pdf', [
+                'payload' => $payload,
+                'statementId' => $statement->id,
+            ])->output();
+        }
 
         $filename = sprintf('SOA_%s_%s.pdf', $customer->code ?? 'UNKNOWN', $asOf->format('Ymd'));
 
-        return response($result['bytes'], 200, [
+        return response($bytes, 200, [
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => 'inline; filename="'.$filename.'"',
-            'Content-Length' => strlen($result['bytes']),
+            'Content-Length' => strlen($bytes),
         ]);
     }
 
@@ -489,10 +449,57 @@ class CustomerStatementController extends Controller
         ];
     }
 
+    /**
+     * Company block for the statement payload (used by the legacy blade PDF).
+     *
+     * Commit 4bb87d8e deleted this helper and resolveBankSettings() but left
+     * their call sites behind, so every statement PDF request failed with
+     * "Method ... does not exist" and returned 500. Restored, and sourced from
+     * the canonical company resolver so a statement matches every other
+     * document rather than reading a non-existent column off a key/value table.
+     */
+    private function resolveCompanySettings(): array
+    {
+        $company = \Modules\TemplateBuilder\Services\DataSource\CompanyDataSource::forCurrentTenant();
+
+        return [
+            'name' => $company['name'] ?? '',
+            'address' => $company['address'] ?? '',
+            'email' => $company['email'] ?? '',
+            'phone' => $company['phone'] ?? '',
+            'logo' => $company['logo_url'] ?? '',
+            'registration_number' => $company['registration_number'] ?? '',
+        ];
+    }
+
+    /**
+     * Bank details for the statement footer, from the tenant's own bank accounts.
+     *
+     * The template data source reads bank_name / account_name / account_number /
+     * swift_code / bank_code (the last two are simply absent from the table, so
+     * they resolve to empty strings).
+     */
+    private function resolveBankSettings(): array
+    {
+        $bank = DB::table('bank_accounts')
+            ->orderByDesc('is_active')
+            ->orderBy('id')
+            ->first();
+
+        return [
+            'bank_name' => $bank->bank_name ?? '',
+            'account_name' => $bank->account_name ?? '',
+            'account_number' => $bank->account_number ?? '',
+            'swift_code' => $bank->swift_code ?? '',
+            'bank_code' => $bank->bank_code ?? '',
+        ];
+    }
+
     protected function storeStatementPdf(CustomerStatement $statement, array $payload): string
     {
         $pdf = Pdf::loadView('accounting.customer-statement-pdf', [
             'payload' => $payload,
+            'statementId' => $statement->id,
         ]);
 
         $relativePath = sprintf('customer-statements/customer-%d/statement-%d.pdf', $statement->customer_id, $statement->id);

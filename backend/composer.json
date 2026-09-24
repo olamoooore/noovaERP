@@ -14,11 +14,15 @@
         "maatwebsite/excel": "^3.1",
         "predis/predis": "^2.3",
         "resend/resend-php": "^1.15",
+        "setasign/fpdi": "^2.6",
+        "setasign/fpdi-tcpdf": "^2.3",
+        "smalot/pdfparser": "^2.12",
         "spatie/laravel-activitylog": "^4.8",
         "spatie/laravel-medialibrary": "^11.0",
         "spatie/laravel-permission": "^6.0",
         "stancl/tenancy": "^3.8",
-        "stripe/stripe-php": "^13.0"
+        "stripe/stripe-php": "^13.0",
+        "tecnickcom/tcpdf": "^6.11"
     },
     "require-dev": {
         "brianium/paratest": "^7.8",

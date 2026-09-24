@@ -32,12 +32,15 @@ interface CustomerSearchComboboxProps {
   onValueChange: (value: string, customer?: Customer) => void
   placeholder?: string
   disabled?: boolean
+  /** Compact pill styling (h-8 / rounded-full) to match the header action row. */
+  compact?: boolean
 }
 
 export function CustomerSearchCombobox({
   value,
   onValueChange,
   placeholder = 'Search customers...',
+  compact = false,
   disabled = false,
 }: CustomerSearchComboboxProps) {
   const [open, setOpen] = useState(false)
@@ -111,6 +114,7 @@ export function CustomerSearchCombobox({
             disabled={disabled}
             className={cn(
               'w-full justify-between font-normal',
+              compact && 'h-8 rounded-full px-3 text-xs',
               value && 'pr-16',
               !value && 'text-muted-foreground'
             )}

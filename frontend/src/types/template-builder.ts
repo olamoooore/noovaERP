@@ -135,7 +135,7 @@ export interface LayoutConfig {
   blocks: Block[]
 }
 
-export type DocumentType = 'invoice' | 'quotation' | 'purchase_order' | 'receipt'
+export type DocumentType = 'invoice' | 'quotation' | 'purchase_order' | 'receipt' | 'delivery_order' | 'customer_statement'
 export type TemplateMode = 'block' | 'code' | 'blade'
 
 // ADR-004 §9 — 5-state editorial lifecycle (supersedes the legacy 3-state).
@@ -258,6 +258,8 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   quotation: 'Quotation',
   purchase_order: 'Purchase Order',
   receipt: 'Receipt',
+  delivery_order: 'Delivery Order',
+  customer_statement: 'Customer Statement',
 }
 
 // ─── ADR-004 §7 — Universal Registry ────────────────────────────────────────

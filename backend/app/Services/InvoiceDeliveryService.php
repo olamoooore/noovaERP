@@ -289,7 +289,7 @@ class InvoiceDeliveryService
             "Due Date: {$dueDate}\n\n";
 
         if ($portalUrl) {
-            $body .= "To review, accept, or upload evidence for this invoice, open this link:\n".
+            $body .= "To review and electronically sign this invoice, open this link:\n".
                 "{$portalUrl}\n\n";
         }
 

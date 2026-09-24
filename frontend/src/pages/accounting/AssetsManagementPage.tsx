@@ -125,14 +125,49 @@ export default function AssetsManagementPage() {
   const calculateDepreciationMutation = useMutation({
     mutationFn: (data: { period_date: string; asset_ids?: number[] }) =>
       fixedAssetsApi.calculateDepreciation(data),
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['depreciation-schedule'] });
       queryClient.invalidateQueries({ queryKey: ['fixed-assets'] });
       // Re-fetch the schedule for the currently selected asset so the table updates
       if (selectedAssetId) {
         queryClient.refetchQueries({ queryKey: ['depreciation-schedule', selectedAssetId] });
       }
-      toast({ title: 'Success', description: 'Depreciation calculated successfully' });
+
+      // The backend returns per-asset results. Surface the real outcome
+      // instead of a blanket success toast: an asset can produce schedule
+      // rows whose journal entries could not be posted (fiscal period
+      // closed), and a run can fail entirely (e.g. no active assets).
+      const results: any[] = Array.isArray(data?.results) ? data.results : [];
+      const errorResults = results.filter((r) => r.status === 'error');
+      const pendingCount = results.reduce((sum, r) => sum + (Number(r.pending_posting) || 0), 0);
+      const scheduleCount = results.reduce(
+        (sum, r) => sum + (Number(r.schedule_count ?? r.draft_count) || 0),
+        0,
+      );
+
+      if (data?.success === false && errorResults.length > 0) {
+        toast({
+          title: 'Depreciation failed',
+          description: errorResults[0]?.message || data?.message || 'Failed to calculate depreciation',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      if (pendingCount > 0) {
+        toast({
+          title: 'Schedule created — posting pending',
+          description:
+            `${scheduleCount} schedule entr${scheduleCount === 1 ? 'y' : 'ies'} created. ` +
+            `${pendingCount} period(s) could not be posted because their fiscal period is closed — the schedule is saved and can be posted once the period is open.`,
+        });
+        return;
+      }
+
+      toast({
+        title: 'Success',
+        description: data?.message || `Depreciation calculated${scheduleCount > 0 ? ` — ${scheduleCount} schedule entries` : ''}.`,
+      });
     },
     onError: (error: any) => {
       toast({
@@ -327,17 +362,17 @@ export default function AssetsManagementPage() {
               <h2 className="text-xl font-semibold">Fixed Assets</h2>
               <div className="flex gap-2">
                 <SalesDocumentExportMenu endpoint="/accounting/assets/export" filenamePrefix="fixed_assets" columns={ASSET_EXPORT_COLUMNS} filters={{ search: searchTerm || undefined, status: statusFilter === 'all' ? undefined : statusFilter }} />
-                <HeaderActionButton icon="solar:upload-linear" variant="outline" onClick={() => navigate('/accounting/core/assets/import')}>
+                <HeaderActionButton icon="solar:upload-bold-duotone" variant="outline" onClick={() => navigate('/accounting/core/assets/import')}>
                   Import CSV
                 </HeaderActionButton>
                 <Input
                   placeholder="Search assets..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-64"
+                  className="h-8 w-64 rounded-full px-3 text-xs"
                 />
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-40">
+                  <SelectTrigger className="h-8 w-40 rounded-full text-xs">
                     <SelectValue placeholder="All Status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -347,7 +382,7 @@ export default function AssetsManagementPage() {
                     <SelectItem value="inactive">Inactive</SelectItem>
                   </SelectContent>
                 </Select>
-                <HeaderActionButton icon="solar:add-circle-linear" onClick={() => handleOpenForm()}>
+                <HeaderActionButton icon="solar:add-circle-bold-duotone" onClick={() => handleOpenForm()}>
                   Add Asset
                 </HeaderActionButton>
               </div>

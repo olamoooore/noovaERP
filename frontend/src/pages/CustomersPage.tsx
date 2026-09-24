@@ -743,10 +743,10 @@ export function CustomersPage() {
                   onHiddenColumnsChange={setHiddenCustomerColumns}
                   showMenu={false}
                 >
-                <Table>
+                <Table className="w-full table-fixed">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[40px]">
+                  <TableHead className="w-[3%]">
                     <input
                       type="checkbox"
                       checked={allPageSelected}
@@ -755,16 +755,16 @@ export function CustomersPage() {
                       className="h-4 w-4 rounded border-gray-300"
                     />
                   </TableHead>
-                  <TableHead className="w-[92px]">Code</TableHead>
-                  <TableHead className="min-w-[260px]">Name</TableHead>
-                  <TableHead className="w-[110px]">Type</TableHead>
-                  <TableHead className="w-[180px]">Email</TableHead>
-                  <TableHead className="w-[125px]">Phone</TableHead>
-                  <TableHead className="w-[110px]">Created Date</TableHead>
-                  <TableHead className="w-[110px] text-right">Outstanding</TableHead>
-                  <TableHead className="w-[120px] text-right">Total Purchases</TableHead>
-                  <TableHead className="w-[90px]">Status</TableHead>
-                  <TableHead className="w-[70px]">Actions</TableHead>
+                  <TableHead className="w-[7%]">Code</TableHead>
+                  <TableHead className="w-[19%]">Name</TableHead>
+                  <TableHead className="w-[7%]">Type</TableHead>
+                  <TableHead className="w-[14%]">Email</TableHead>
+                  <TableHead className="w-[9%]">Phone</TableHead>
+                  <TableHead className="w-[7%]">Created Date</TableHead>
+                  <TableHead className="w-[8%] text-right">Outstanding</TableHead>
+                  <TableHead className="w-[8%] text-right">Total Purchases</TableHead>
+                  <TableHead className="w-[7%]">Status</TableHead>
+                  <TableHead className="w-[9%]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -789,14 +789,17 @@ export function CustomersPage() {
                           className="h-4 w-4 rounded border-gray-300"
                         />
                       </TableCell>
-                      <TableCell className="font-mono text-sm">{customer.code || '-'}</TableCell>
+                      <TableCell className="truncate font-mono text-sm" title={customer.code || undefined}>
+                        {customer.code || '-'}
+                      </TableCell>
                       <TableCell>
-                        <div>
-                          <div className="font-medium">{customer.name}</div>
-                          {customer.company && (
-                            <div className="text-sm text-muted-foreground">{customer.company}</div>
-                          )}
-                        </div>
+                        <div className="truncate font-medium" title={customer.name}>{customer.name}</div>
+                        {/* Company == name for company customers; showing it again just duplicated the row */}
+                        {customer.company && customer.company !== customer.name && (
+                          <div className="truncate text-sm text-muted-foreground" title={customer.company}>
+                            {customer.company}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Badge variant={customer.type === 'company' ? 'default' : 'secondary'}>
@@ -805,19 +808,21 @@ export function CustomersPage() {
                       </TableCell>
                       <TableCell>
                         {customer.email ? (
-                          <span className="block w-[150px] truncate" title={customer.email}>
+                          <span className="block truncate" title={customer.email}>
                             {customer.email}
                           </span>
                         ) : (
                           '-'
                         )}
                       </TableCell>
-                      <TableCell>{customer.phone || customer.mobile || '-'}</TableCell>
-                      <TableCell>{formatDate(customer.created_at)}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="truncate" title={customer.phone || customer.mobile || undefined}>
+                        {customer.phone || customer.mobile || '-'}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">{formatDate(customer.created_at)}</TableCell>
+                      <TableCell className="whitespace-nowrap text-right tabular-nums">
                         {formatCurrency(customer.total_outstanding || 0)}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="whitespace-nowrap text-right tabular-nums">
                         {formatCurrency(customer.total_purchases || 0)}
                       </TableCell>
                       <TableCell>

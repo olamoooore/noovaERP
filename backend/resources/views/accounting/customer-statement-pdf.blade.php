@@ -1,157 +1,357 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Statement of Account</title>
+    <meta charset="utf-8">
+    <title>Account Statement</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: DejaVu Sans, sans-serif; color: #111827; font-size: 11px; line-height: 1.4; }
+        @page { margin: 110px 40px 70px 40px; }
 
-        .header { margin-bottom: 16px; }
-        .company-name { font-size: 18px; font-weight: bold; color: #1a1a1a; }
-        .company-details { font-size: 9px; color: #6b7280; margin-top: 2px; }
+        * { box-sizing: border-box; }
+        body {
+            font-family: DejaVu Sans, sans-serif;
+            font-size: 10px;
+            line-height: 1.45;
+            color: #1f2937;
+            margin: 0;
+        }
 
-        .title-bar { background: #1a56db; color: #fff; padding: 10px 16px; font-size: 16px; font-weight: bold; margin-bottom: 16px; text-align: center; letter-spacing: 1px; }
+        /* Repeats on every page DomPDF renders. */
+        header { position: fixed; top: -75px; left: 0; right: 0; height: 70px; }
+        footer { position: fixed; bottom: -45px; left: 0; right: 0; height: 40px; }
 
-        .info-grid { display: flex; gap: 12px; margin-bottom: 20px; }
-        .info-box { flex: 1; border: 1px solid #d1d5db; border-radius: 4px; padding: 8px 10px; }
-        .info-box .label { font-size: 9px; font-weight: bold; color: #6b7280; text-transform: uppercase; margin-bottom: 2px; }
-        .info-box .value { font-size: 11px; color: #111827; }
-        .info-box.attention { flex: 2; }
+        .muted { color: #6b7280; }
+        .small { font-size: 9px; }
+        .bold { font-weight: bold; }
+        .right { text-align: right; }
+        .center { text-align: center; }
+        .nowrap { white-space: nowrap; }
 
-        table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
-        th { background: #f3f4f6; font-weight: bold; font-size: 10px; text-transform: uppercase; padding: 8px 6px; border-bottom: 2px solid #d1d5db; text-align: left; }
-        td { padding: 7px 6px; border-bottom: 1px solid #e5e7eb; font-size: 11px; }
-        .num { text-align: right; }
+        .doc-title {
+            font-size: 22px;
+            font-weight: bold;
+            letter-spacing: 1.5px;
+            color: #111827;
+            text-align: right;
+        }
+        .company-name { font-size: 15px; font-weight: bold; color: #111827; }
+        .company-meta { font-size: 9px; color: #6b7280; }
 
-        .total-row { font-weight: bold; background: #f9fafb; }
-        .total-row td { border-bottom: 2px solid #1a56db; border-top: 2px solid #1a56db; padding: 10px 6px; }
+        .rule { border-top: 2px solid #1f2937; margin: 10px 0 14px; }
+        .hairline { border-top: 1px solid #e5e7eb; }
 
-        .footer-section { margin-top: 24px; }
-        .amount-due { text-align: right; font-size: 14px; font-weight: bold; margin-bottom: 20px; }
-        .amount-due .value { color: #1a56db; }
+        /* Section labels */
+        .label {
+            font-size: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #9ca3af;
+            margin-bottom: 3px;
+        }
 
-        .bank-info { border-top: 1px solid #d1d5db; padding-top: 12px; }
-        .bank-info .title { font-size: 10px; font-weight: bold; color: #6b7280; text-transform: uppercase; margin-bottom: 4px; }
-        .bank-info .detail { font-size: 10px; color: #374151; line-height: 1.6; }
+        /* Summary cards */
+        table.summary { width: 100%; border-collapse: separate; border-spacing: 6px 0; margin: 12px -6px 4px; }
+        table.summary td {
+            width: 25%;
+            border: 1px solid #e5e7eb;
+            border-radius: 4px;
+            padding: 8px 10px;
+            vertical-align: top;
+        }
+        .summary-label { font-size: 8px; text-transform: uppercase; letter-spacing: 0.8px; color: #6b7280; }
+        .summary-value { font-size: 13px; font-weight: bold; color: #111827; margin-top: 2px; }
+        .summary-value.accent { color: #1d4ed8; }
+        .summary-value.danger { color: #b91c1c; }
 
-        .no-data { text-align: center; padding: 40px 0; color: #9ca3af; font-style: italic; }
+        /* Aging */
+        table.aging { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        table.aging th, table.aging td {
+            border: 1px solid #e5e7eb;
+            padding: 5px 6px;
+            text-align: right;
+            font-size: 9px;
+        }
+        table.aging th {
+            background: #f9fafb;
+            color: #6b7280;
+            font-weight: normal;
+            text-transform: uppercase;
+            font-size: 8px;
+            letter-spacing: 0.5px;
+        }
+        table.aging td.overdue { color: #b91c1c; font-weight: bold; }
+
+        /* Transactions */
+        table.txns { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        table.txns thead th {
+            background: #1f2937;
+            color: #ffffff;
+            font-size: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            padding: 6px 6px;
+            text-align: left;
+        }
+        table.txns thead th.right { text-align: right; }
+        table.txns tbody td {
+            padding: 6px 6px;
+            border-bottom: 1px solid #eef0f3;
+            vertical-align: top;
+        }
+        table.txns tbody tr:nth-child(even) { background: #fafbfc; }
+        table.txns tbody tr.opening td { background: #f3f4f6; font-style: italic; color: #4b5563; }
+        table.txns .type { font-size: 9px; }
+        table.txns .doc { font-family: DejaVu Sans Mono, monospace; font-size: 9px; }
+        table.txns .money { text-align: right; white-space: nowrap; }
+        table.txns .balance { text-align: right; white-space: nowrap; font-weight: bold; }
+
+        .badge {
+            display: inline-block;
+            padding: 1px 5px;
+            border-radius: 8px;
+            font-size: 8px;
+            background: #eef2ff;
+            color: #3730a3;
+            text-transform: capitalize;
+        }
+        .badge.paid, .badge.applied, .badge.received { background: #ecfdf5; color: #047857; }
+        .badge.overdue { background: #fef2f2; color: #b91c1c; }
+
+        table.closing { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        table.closing td { padding: 6px 10px; }
+        table.closing tr.grand td {
+            background: #1f2937;
+            color: #ffffff;
+            font-weight: bold;
+            font-size: 11px;
+        }
+
+        .footer-note { font-size: 8px; color: #9ca3af; text-align: center; }
+        .empty { padding: 24px; text-align: center; color: #9ca3af; border: 1px dashed #d1d5db; border-radius: 4px; }
     </style>
 </head>
 <body>
-    @php
-        $statementLines = collect($payload['transactions'] ?? $payload['lines'] ?? []);
-        $amountDue = $payload['total_amount_due'] ?? $payload['closing_balance'] ?? 0;
-    @endphp
-    {{-- Company Header --}}
-    <div class="header">
-        <div class="company-name">{{ $payload['company']['name'] ?? 'Your Company' }}</div>
-        @if(!empty($payload['company']['address']))
-        <div class="company-details">{{ $payload['company']['address'] }}</div>
-        @endif
-        @if(!empty($payload['company']['email']) || !empty($payload['company']['phone']))
-        <div class="company-details">
-            @if(!empty($payload['company']['email']))Email: {{ $payload['company']['email'] }}@endif
-            @if(!empty($payload['company']['phone']) && !empty($payload['company']['email'])) | @endif
-            @if(!empty($payload['company']['phone']))Tel: {{ $payload['company']['phone'] }}@endif
-        </div>
-        @endif
-    </div>
 
-    {{-- Title --}}
-    <div class="title-bar">STATEMENT OF ACCOUNT</div>
+@php
+    /** @var array $payload */
+    $company  = $payload['company'] ?? [];
+    $customer = $payload['customer'] ?? [];
+    $period   = $payload['period'] ?? [];
+    $totals   = [
+        'opening' => (float) ($payload['opening_balance'] ?? 0),
+        'debits'  => (float) ($payload['total_debits'] ?? 0),
+        'credits' => (float) ($payload['total_credits'] ?? 0),
+        'closing' => (float) ($payload['closing_balance'] ?? 0),
+    ];
+    $aging    = $payload['aging'] ?? [];
+    $bank     = $payload['bank'] ?? [];
+    $txns     = $payload['transactions'] ?? [];
 
-    {{-- Info Boxes --}}
-    <div class="info-grid">
-        <div class="info-box attention">
-            <div class="label">Attention To</div>
-            <div class="value">{{ $payload['customer']['attention_to'] ?? $payload['customer']['name'] ?? '' }}</div>
-        </div>
-        <div class="info-box">
-            <div class="label">Account Name</div>
-            <div class="value">{{ $payload['customer']['name'] ?? '' }}</div>
-        </div>
-        <div class="info-box">
-            <div class="label">Account Code</div>
-            <div class="value">{{ $payload['customer']['code'] ?? '' }}</div>
-        </div>
-    </div>
+    $currency = strtoupper((string) ($payload['currency'] ?? 'USD'));
+    $symbols  = ['SGD' => 'S$', 'USD' => '$', 'EUR' => '€', 'GBP' => '£', 'MYR' => 'RM', 'AUD' => 'A$', 'IDR' => 'Rp'];
+    $symbol   = $symbols[$currency] ?? $currency.' ';
 
-    <div class="info-grid">
-        <div class="info-box">
-            <div class="label">Address</div>
-            <div class="value">{{ $payload['customer']['address'] ?? $payload['customer']['billing_address'] ?? '-' }}</div>
-        </div>
-        <div class="info-box">
-            <div class="label">Currency</div>
-            <div class="value">{{ $currency }}</div>
-        </div>
-        <div class="info-box">
-            <div class="label">Payment Term</div>
-            <div class="value">{{ $payload['customer']['payment_terms'] ?? '-' }}</div>
-        </div>
-        <div class="info-box">
-            <div class="label">Statement Date</div>
-            <div class="value">
-                @if($periodStart){{ $periodStart }} to {{ $asOfDate }}@else{{ $asOfDate }}@endif
-            </div>
-        </div>
-    </div>
+    $money = fn ($value) => $symbol.number_format((float) $value, 2);
+    $hasPeriod = ! empty($period['start_date']);
+@endphp
 
-    {{-- Invoice Table --}}
-    @if($statementLines->count() > 0)
-    <table>
+    <header>
+        <table style="width: 100%;">
+            <tr>
+                <td style="vertical-align: top; width: 60%;">
+                    <div class="company-name">{{ $company['name'] ?: config('app.name') }}</div>
+                    @if(! empty($company['address']))<div class="company-meta">{{ $company['address'] }}</div>@endif
+                    <div class="company-meta">
+                        @if(! empty($company['email'])){{ $company['email'] }}@endif
+                        @if(! empty($company['phone'])) · {{ $company['phone'] }}@endif
+                        @if(! empty($company['registration_number'])) · Reg. {{ $company['registration_number'] }}@endif
+                    </div>
+                </td>
+                <td style="vertical-align: top; width: 40%;">
+                    <div class="doc-title">ACCOUNT STATEMENT</div>
+                    <div class="small muted right" style="margin-top: 2px;">Statement of Account</div>
+                </td>
+            </tr>
+        </table>
+        <div class="rule"></div>
+    </header>
+
+    <footer>
+        <div class="hairline"></div>
+        <div class="footer-note" style="margin-top: 6px;">
+            {{ $company['name'] ?? '' }}
+            @if(! empty($company['email'])) · {{ $company['email'] }}@endif
+            @if(! empty($company['phone'])) · {{ $company['phone'] }}@endif
+        </div>
+        <div class="footer-note">
+            Statement generated {{ $payload['generated_at'] ?? now()->toDateTimeString() }}
+        </div>
+    </footer>
+
+    {{-- Customer / period block --}}
+    <table style="width: 100%;">
+        <tr>
+            <td style="width: 55%; vertical-align: top;">
+                <div class="label">Bill To</div>
+                <div class="bold" style="font-size: 12px;">{{ $customer['name'] ?? 'Customer' }}</div>
+                @if(! empty($customer['code']))<div class="small muted">{{ $customer['code'] }}</div>@endif
+                @if(! empty($customer['billing_address']))<div class="small muted">{{ $customer['billing_address'] }}</div>@endif
+                @if(! empty($customer['email']))<div class="small muted">{{ $customer['email'] }}</div>@endif
+                @if(! empty($customer['attention_to']))<div class="small muted">Attn: {{ $customer['attention_to'] }}</div>@endif
+            </td>
+            <td style="width: 45%; vertical-align: top;">
+                <table style="width: 100%;">
+                    <tr>
+                        <td class="small muted nowrap" style="width: 45%;">Statement No.</td>
+                        <td class="small bold right">{{ ! empty($statementId) ? 'STMT-'.$statementId : 'STMT' }}</td>
+                    </tr>
+                    <tr>
+                        <td class="small muted nowrap">Statement Period</td>
+                        <td class="small right">
+                            @if($hasPeriod)
+                                {{ \Carbon\Carbon::parse($period['start_date'])->format('d M Y') }}
+                                &ndash;
+                                {{ \Carbon\Carbon::parse($period['end_date'])->format('d M Y') }}
+                            @else
+                                As of {{ \Carbon\Carbon::parse($period['end_date'] ?? ($payload['as_of_date'] ?? now()))->format('d M Y') }}
+                            @endif
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="small muted nowrap">Generated</td>
+                        <td class="small right">{{ \Carbon\Carbon::parse($payload['generated_at'] ?? now())->format('d M Y') }}</td>
+                    </tr>
+                    @if(! empty($customer['payment_terms']))
+                    <tr>
+                        <td class="small muted nowrap">Payment Terms</td>
+                        <td class="small right">{{ $customer['payment_terms'] }}</td>
+                    </tr>
+                    @endif
+                </table>
+            </td>
+        </tr>
+    </table>
+
+    {{-- Summary cards --}}
+    <table class="summary">
+        <tr>
+            <td>
+                <div class="summary-label">Opening Balance</div>
+                <div class="summary-value">{{ $money($totals['opening']) }}</div>
+            </td>
+            <td>
+                <div class="summary-label">Total Debits</div>
+                <div class="summary-value">{{ $money($totals['debits']) }}</div>
+            </td>
+            <td>
+                <div class="summary-label">Total Credits</div>
+                <div class="summary-value" style="color: #047857;">{{ $money($totals['credits']) }}</div>
+            </td>
+            <td>
+                <div class="summary-label">Closing Balance</div>
+                <div class="summary-value {{ $totals['closing'] > 0 ? 'danger' : '' }}">{{ $money($totals['closing']) }}</div>
+            </td>
+        </tr>
+    </table>
+
+    {{-- Aging --}}
+    @if(! empty($aging))
+    <div class="label" style="margin-top: 12px;">Aging Summary</div>
+    <table class="aging">
         <thead>
             <tr>
-                <th style="width: 11%;">Date</th>
-                <th style="width: 12%;">Type</th>
-                <th style="width: 15%;">Document</th>
-                <th style="width: 24%;">Description</th>
-                <th style="width: 10%;">Due Date</th>
-                <th class="num" style="width: 9%;">Debit</th>
-                <th class="num" style="width: 9%;">Credit</th>
-                <th class="num" style="width: 10%;">Balance</th>
+                <th class="center">Current</th>
+                <th>1&ndash;30 Days</th>
+                <th>31&ndash;60 Days</th>
+                <th>61&ndash;90 Days</th>
+                <th>90+ Days</th>
+                <th>Total Outstanding</th>
             </tr>
         </thead>
         <tbody>
-            @foreach($statementLines as $line)
             <tr>
-                <td>{{ $line['invoice_date'] ?? $line['date'] ?? '' }}</td>
-                <td>{{ $line['invoice_number'] ?? $line['document_number'] ?? '' }}</td>
-                <td>{{ $line['reference'] ?? $line['description'] ?? '' }}</td>
-                <td>{{ $line['due_date'] ?? '-' }}</td>
-                <td class="num">{{ number_format($line['total'] ?? $line['debit'] ?? 0, 2) }}</td>
-                <td class="num">{{ number_format($line['balance'] ?? 0, 2) }}</td>
-            </tr>
-            @endforeach
-            <tr class="total-row">
-                <td colspan="4" style="text-align: right;">Total</td>
-                <td class="num">{{ number_format($statementLines->sum(fn ($line) => $line['total'] ?? $line['debit'] ?? 0), 2) }}</td>
-                <td class="num">{{ number_format($amountDue, 2) }}</td>
+                <td class="center">{{ $money($aging['current'] ?? 0) }}</td>
+                <td>{{ $money($aging['days_1_30'] ?? 0) }}</td>
+                <td>{{ $money($aging['days_31_60'] ?? 0) }}</td>
+                <td>{{ $money($aging['days_61_90'] ?? 0) }}</td>
+                <td class="overdue">{{ $money($aging['days_90_plus'] ?? 0) }}</td>
+                <td class="bold">{{ $money($aging['total'] ?? 0) }}</td>
             </tr>
         </tbody>
     </table>
+    @endif
+
+    {{-- Transactions --}}
+    <div class="label" style="margin-top: 14px;">Transactions</div>
+
+    @if(count($txns) === 0)
+        <div class="empty">No transactions in this period.</div>
     @else
-    <div class="no-data">No transactions for {{ $periodStart ? $periodStart.' to '.$asOfDate : 'the period ending '.$asOfDate }}.</div>
+        <table class="txns">
+            <thead>
+                <tr>
+                    <th style="width: 5%;" class="center">#</th>
+                    <th style="width: 11%;">Date</th>
+                    <th style="width: 12%;">Type</th>
+                    <th style="width: 16%;">Document #</th>
+                    <th style="width: 27%;">Description</th>
+                    <th class="right" style="width: 9%;">Debit</th>
+                    <th class="right" style="width: 9%;">Credit</th>
+                    <th class="right" style="width: 11%;">Balance</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($txns as $i => $line)
+                    @php $isOpening = ($line['type'] ?? '') === 'Opening Balance'; @endphp
+                    <tr class="{{ $isOpening ? 'opening' : '' }}">
+                        <td class="center">{{ $i + 1 }}</td>
+                        <td class="nowrap">{{ ! empty($line['date']) ? \Carbon\Carbon::parse($line['date'])->format('d M Y') : '' }}</td>
+                        <td class="type">
+                            {{ $line['type'] ?? '' }}
+                            @php
+                                $status = strtolower((string) ($line['status'] ?? ''));
+                                $showBadge = $status !== '' && ! in_array($status, ['open'], true);
+                            @endphp
+                            @if($showBadge)
+                                <div class="small"><span class="badge {{ $status }}">{{ $status }}</span></div>
+                            @endif
+                        </td>
+                        <td class="doc">
+                            {{ $line['document_number'] ?? '' }}
+                            @if(! empty($line['due_date']))
+                                <div class="small muted">Due {{ \Carbon\Carbon::parse($line['due_date'])->format('d M Y') }}</div>
+                            @endif
+                        </td>
+                        <td>{{ $line['description'] ?? '' }}</td>
+                        <td class="money">{{ ((float) ($line['debit'] ?? 0)) !== 0.0 ? $money($line['debit']) : '' }}</td>
+                        <td class="money" style="color: #047857;">{{ ((float) ($line['credit'] ?? 0)) !== 0.0 ? $money($line['credit']) : '' }}</td>
+                        <td class="balance">{{ $money($line['balance'] ?? 0) }}</td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+
+        <table class="closing">
+            <tr class="grand">
+                <td style="width: 60%;">TOTAL AMOUNT {{ $totals['closing'] >= 0 ? 'DUE' : 'IN CREDIT' }}</td>
+                <td class="right">{{ $money(abs($totals['closing'])) }}</td>
+            </tr>
+        </table>
     @endif
 
-    {{-- Total Amount Due --}}
-    <div class="amount-due">
-        Total Amount Due ({{ $payload['currency'] ?? 'USD' }}): <span class="value">{{ number_format($amountDue, 2) }}</span>
-    </div>
-
-    {{-- Bank Info Footer --}}
-    @if(!empty($payload['bank']['bank_name']) || !empty($payload['bank']['name']))
-    @php $bankName = $payload['bank']['bank_name'] ?? $payload['bank']['name'] ?? ''; @endphp
-    <div class="bank-info">
-        <div class="title">Bank Details</div>
-        <div class="detail">
-            <strong>Bank Name:</strong> {{ $bankName }}<br/>
-            @if(!empty($payload['bank']['account_name']))<strong>Account Name:</strong> {{ $payload['bank']['account_name'] }}<br/>@endif
-            @if(!empty($payload['bank']['account_number']))<strong>Account No:</strong> {{ $payload['bank']['account_number'] }}<br/>@endif
-            @if(!empty($payload['bank']['swift_code']))<strong>SWIFT Code:</strong> {{ $payload['bank']['swift_code'] }}@endif
+    @if(! empty($bank['bank_name']) || ! empty($bank['account_number']))
+        <div class="label" style="margin-top: 16px;">Remittance Details</div>
+        <div class="small muted">
+            {{ $bank['bank_name'] ?? '' }}
+            @if(! empty($bank['account_name'])) · {{ $bank['account_name'] }}@endif
+            @if(! empty($bank['account_number'])) · A/C {{ $bank['account_number'] }}@endif
+            @if(! empty($bank['swift_code'])) · SWIFT {{ $bank['swift_code'] }}@endif
         </div>
-    </div>
     @endif
+
+    <div class="small muted" style="margin-top: 18px;">
+        Please settle the closing balance by the payment terms shown above. If you have already paid,
+        kindly disregard this statement and accept our thanks.
+    </div>
+
 </body>
 </html>

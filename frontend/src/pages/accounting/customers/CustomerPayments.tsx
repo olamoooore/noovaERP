@@ -72,13 +72,14 @@ interface PaginatedPayments {
   total: number;
 }
 
+// Canonical statuses (#73): `recorded` = received but not yet in the ledger;
+// `applied` = posted (journal_entry_id set); `reversed`/`refunded` = terminal
+// corrections. The legacy `draft` / `posted` labels no longer exist in the
+// backend enum — filtering on them silently returned zero rows.
 const PAYMENT_STATUS_OPTIONS = [
-  { value: 'draft', label: 'Draft', icon: 'solar:document-bold-duotone', variant: 'secondary' as const },
-  { value: 'posted', label: 'Posted', icon: 'solar:check-circle-bold-duotone', variant: 'default' as const },
-  { value: 'recorded', label: 'Recorded', icon: 'solar:check-circle-bold', variant: 'default' as const },
-  { value: 'applied', label: 'Applied', icon: 'solar:wallet-bold-duotone', variant: 'default' as const },
+  { value: 'recorded', label: 'Recorded (not in ledger)', icon: 'solar:document-bold-duotone', variant: 'secondary' as const },
+  { value: 'applied', label: 'Applied (posted)', icon: 'solar:check-circle-bold-duotone', variant: 'default' as const },
   { value: 'unapplied', label: 'Unapplied', icon: 'solar:link-broken-bold-duotone', variant: 'outline' as const },
-  { value: 'cancelled', label: 'Cancelled', icon: 'solar:close-circle-bold-duotone', variant: 'outline' as const },
   { value: 'reversed', label: 'Reversed', icon: 'solar:undo-left-round-bold', variant: 'destructive' as const },
   { value: 'refunded', label: 'Refunded', icon: 'solar:refresh-circle-bold-duotone', variant: 'destructive' as const },
 ];
@@ -88,8 +89,10 @@ const PAYMENT_STATUS_OPTIONS = [
 // PaymentCorrectionService::assertCorrectable().
 const TERMINAL_PAYMENT_STATUSES = ['reversed', 'refunded', 'cancelled', 'unapplied'];
 
+// Only POSTED payments (journal_entry_id set) can be corrected. The backend
+// rejects unposted rows with "has not been posted. Delete it instead."
 const isCorrectable = (payment: Payment): boolean =>
-  payment.payment_status !== 'draft'
+  payment.journal_entry_id != null
   && !TERMINAL_PAYMENT_STATUSES.includes(payment.payment_status)
   && !payment.refund_payment_id;
 
@@ -233,11 +236,14 @@ export const CustomerPayments: React.FC = () => {
     );
   };
 
+  // `recorded` is the canonical pre-posting status (Payment::scopeDraft()
+  // maps draft → recorded). Unposted rows are editable/deletable; posting
+  // flips them to `applied` and sets journal_entry_id.
   const draftSelected = paymentList.filter(
-    (p) => selectedIdSet.has(p.id) && p.payment_status === 'draft',
+    (p) => selectedIdSet.has(p.id) && p.payment_status === 'recorded' && !p.journal_entry_id,
   );
   const postableSelected = paymentList.filter(
-    (p) => selectedIdSet.has(p.id) && p.payment_status === 'draft' && !p.journal_entry_id,
+    (p) => selectedIdSet.has(p.id) && p.payment_status === 'recorded' && !p.journal_entry_id,
   );
   const lockedSelected = allMatchingSelected ? 0 : selectedIds.length - draftSelected.length;
 
@@ -460,11 +466,11 @@ export const CustomerPayments: React.FC = () => {
               <BulkSelectionNotice pageSize={paymentList.length} allPageSelected={allPageSelected} selectedCount={selectedIds.length} allMatchingSelected={allMatchingSelected} isSelectingAll={isSelectingAll} onSelectAllMatching={selectAllMatching} noun="payments" />
               {lockedSelected > 0 && (
                 <span className="text-xs text-muted-foreground">
-                  ({lockedSelected} locked, only drafts can be deleted)
+                  ({lockedSelected} posted/locked, only unposted payments can be deleted)
                 </span>
               )}
               {allMatchingSelected && (
-                <span className="text-xs text-muted-foreground">Non-draft payments will be skipped by bulk actions.</span>
+                <span className="text-xs text-muted-foreground">Posted payments will be skipped by bulk actions.</span>
               )}
             </div>
             <div className="flex gap-2">
@@ -476,7 +482,7 @@ export const CustomerPayments: React.FC = () => {
                 <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4 mr-2" />
                 {bulkPostMutation.isPending
                   ? 'Posting...'
-                  : allMatchingSelected ? 'Post Selected Drafts' : `Post ${postableSelected.length > 0 ? `${postableSelected.length} draft(s)` : ''}`}
+                  : allMatchingSelected ? 'Post Selected Payments' : `Post ${postableSelected.length > 0 ? `${postableSelected.length} payment(s)` : ''}`}
               </Button>
               <Button
                 variant="destructive"
@@ -485,7 +491,7 @@ export const CustomerPayments: React.FC = () => {
                 disabled={!allMatchingSelected && draftSelected.length === 0}
               >
                 <Icon icon="solar:trash-bin-trash-bold" className="h-4 w-4 mr-2" />
-                {allMatchingSelected ? 'Delete Selected Drafts' : `Delete ${draftSelected.length > 0 ? `${draftSelected.length} draft(s)` : ''}`}
+                {allMatchingSelected ? 'Delete Selected Payments' : `Delete ${draftSelected.length > 0 ? `${draftSelected.length} payment(s)` : ''}`}
               </Button>
               <Button variant="outline" size="sm" onClick={clearSelection}>
                 Clear selection
@@ -561,8 +567,8 @@ export const CustomerPayments: React.FC = () => {
                   </TableHeader>
                   <TableBody>
                     {paymentList.map((payment) => {
-                      const editable = payment.payment_status === 'draft' && !payment.journal_entry_id;
-                      const postable = payment.payment_status === 'draft' && !payment.journal_entry_id;
+                      const editable = payment.payment_status === 'recorded' && !payment.journal_entry_id;
+                      const postable = payment.payment_status === 'recorded' && !payment.journal_entry_id;
                       const correctable = canCorrect && isCorrectable(payment);
                       return (
                         <TableRow key={payment.id} className="hover:bg-accent/50">
@@ -620,8 +626,8 @@ export const CustomerPayments: React.FC = () => {
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => setEditingPayment(payment)}
-                                  aria-label="Edit draft payment"
-                                  title="Edit draft payment"
+                                  aria-label="Edit unposted payment"
+                                  title="Edit unposted payment"
                                 >
                                   <Icon icon="solar:pen-bold-duotone" className="h-4 w-4" />
                                 </Button>
@@ -759,7 +765,7 @@ export const CustomerPayments: React.FC = () => {
       <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete selected draft payments?</AlertDialogTitle>
+            <AlertDialogTitle>Delete selected unposted payments?</AlertDialogTitle>
             <AlertDialogDescription>
               {lockedSelected > 0 && (
                 <p className="mb-2 text-amber-600">
@@ -767,7 +773,7 @@ export const CustomerPayments: React.FC = () => {
                   Use refund or reversal to correct posted payments.
                 </p>
               )}
-              This action permanently removes the selected draft payments and restores
+              This action permanently removes the selected unposted payments and restores
               the linked invoice balances. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -950,7 +956,7 @@ const ViewPaymentDialog: React.FC<{
             </div>
           )}
 
-          {detail.payment_status !== 'draft' && (
+          {detail.journal_entry_id != null && (
             <div className="border-t pt-4 flex items-start gap-2 rounded-md bg-muted/50 p-3">
               <Icon icon="solar:lock-keyhole-bold-duotone" className="h-4 w-4 text-muted-foreground mt-0.5" />
               <p className="text-xs text-muted-foreground">
