@@ -475,14 +475,23 @@ export function InvoiceDetailPage() {
               </HeaderActionButton>
             )}
             {invoice.status === 'draft' && (
-              <HeaderActionButton
-                icon="solar:check-circle-bold-duotone"
-                loading={postMutation.isPending}
-                onClick={() => postMutation.mutate()}
-                disabled={postMutation.isPending}
-              >
-                Post Invoice
-              </HeaderActionButton>
+              <>
+                <HeaderActionButton
+                  variant="outline"
+                  icon="solar:pen-bold-duotone"
+                  onClick={() => navigate(`/invoices/${invoice.id}/edit`)}
+                >
+                  Edit
+                </HeaderActionButton>
+                <HeaderActionButton
+                  icon="solar:check-circle-bold-duotone"
+                  loading={postMutation.isPending}
+                  onClick={() => postMutation.mutate()}
+                  disabled={postMutation.isPending}
+                >
+                  Post Invoice
+                </HeaderActionButton>
+              </>
             )}
             <HeaderActionButton
               variant="outline"
