@@ -13,6 +13,7 @@ export interface CustomerCreditNote {
 }
 
 export interface CreditNoteFilters {
+  search?: string;
   status?: string;
   customer_id?: number;
   invoice_id?: number;

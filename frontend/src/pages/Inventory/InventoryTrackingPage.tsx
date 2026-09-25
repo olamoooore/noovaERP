@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
-import { Button } from '@/components/ui/button'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import { Pagination } from '@/components/ui/Pagination'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -20,11 +20,12 @@ export function InventoryTrackingPage() {
   const [warehouseId, setWarehouseId] = useState('all')
   const [productId, setProductId] = useState('all')
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(25)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['inventory-tracking', type, search, warehouseId, productId, page],
+    queryKey: ['inventory-tracking', type, search, warehouseId, productId, page, pageSize],
     queryFn: async () => {
-      const response = await api.get(`/inventory/tracking/${type}`, { params: { search: search || undefined, warehouse_id: warehouseId === 'all' ? undefined : warehouseId, product_id: productId === 'all' ? undefined : productId, page, per_page: 25 } })
+      const response = await api.get(`/inventory/tracking/${type}`, { params: { search: search || undefined, warehouse_id: warehouseId === 'all' ? undefined : warehouseId, product_id: productId === 'all' ? undefined : productId, page, per_page: pageSize } })
       return response.data
     },
   })
@@ -68,7 +69,17 @@ export function InventoryTrackingPage() {
         </TabsContent>
       </Tabs>
 
-      {data?.last_page > 1 && <div className="flex items-center justify-end gap-2"><Button variant="outline" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>Previous</Button><span className="text-sm text-muted-foreground">Page {data.current_page} of {data.last_page}</span><Button variant="outline" disabled={page >= data.last_page} onClick={() => setPage((value) => value + 1)}>Next</Button></div>}
+      <Pagination
+        page={page}
+        totalPages={data?.last_page ?? 1}
+        onPageChange={setPage}
+        from={(page - 1) * pageSize + 1}
+        to={Math.min(page * pageSize, data?.total ?? 0)}
+        total={data?.total ?? 0}
+        label={type === 'batches' ? 'lots / batches' : 'serial numbers'}
+        pageSize={pageSize}
+        onPageSizeChange={(size) => { setPageSize(size); setPage(1) }}
+      />
 
     </div>
   )

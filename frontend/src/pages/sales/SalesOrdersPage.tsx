@@ -11,6 +11,7 @@ import { Icon } from '@iconify/react'
 import { useNavigate } from 'react-router-dom'
 import { formatDate, formatCurrency } from '@/lib/utils'
 import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { Pagination } from '@/components/ui/Pagination'
 
 const STATUS_FILTERS = [
   { value: 'all', label: 'All Statuses' },
@@ -34,14 +35,15 @@ export function SalesOrdersPage() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [channelFilter, setChannelFilter] = useState('all')
 
   const { data, isLoading } = useQuery({
-    queryKey: ['sales-orders', { page, searchQuery, statusFilter, channelFilter }],
+    queryKey: ['sales-orders', { page, pageSize, searchQuery, statusFilter, channelFilter }],
     queryFn: async () => {
-      const params: any = { per_page: 20, page }
+      const params: any = { per_page: pageSize, page }
       if (searchQuery.trim()) params.search = searchQuery.trim()
       if (statusFilter !== 'all') params.status = statusFilter
       if (channelFilter !== 'all') params.channel = channelFilter
@@ -249,31 +251,17 @@ export function SalesOrdersPage() {
               </SalesLineColumnVisibility>
 
               {/* Pagination */}
-              {(meta?.last_page && meta.last_page > 1) && (
-                <div className="flex items-center justify-between mt-4">
-                  <p className="text-sm text-muted-foreground">
-                    Page {meta.current_page} of {meta.last_page} ({meta.total} total)
-                  </p>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={page <= 1}
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    >
-                      Previous
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={page >= (meta.last_page ?? 1)}
-                      onClick={() => setPage((p) => p + 1)}
-                    >
-                      Next
-                    </Button>
-                  </div>
-                </div>
-              )}
+              <Pagination
+                page={page}
+                totalPages={meta?.last_page ?? 1}
+                onPageChange={setPage}
+                from={(page - 1) * pageSize + 1}
+                to={Math.min(page * pageSize, meta?.total ?? 0)}
+                total={meta?.total ?? 0}
+                label="sales orders"
+                pageSize={pageSize}
+                onPageSizeChange={(size) => { setPageSize(size); setPage(1) }}
+              />
             </>
           )}
         </CardContent>

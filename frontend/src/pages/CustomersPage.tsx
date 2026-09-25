@@ -22,6 +22,7 @@ import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice'
 import { SalesDocumentExportMenu, type SalesExportColumn } from '@/components/sales/SalesDocumentExportMenu'
 import { RetractingActions } from '@/components/layout/RetractingActions'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Pagination } from '@/components/ui/Pagination'
 
 const CUSTOMER_EXPORT_COLUMNS = [
   { key: 'code', label: 'Customer Code', group: 'Customer', default: true }, { key: 'name', label: 'Customer Name', group: 'Customer', default: true },
@@ -138,8 +139,6 @@ function formatAddress(address: string | null | undefined): string {
   }
 }
 
-const PAGE_SIZE = 20
-
 export function CustomersPage() {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
@@ -151,16 +150,18 @@ export function CustomersPage() {
   const [filterType, setFilterType] = useState<string>('all')
   const [tagFilter, setTagFilter] = useState('')
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
   const [editMode, setEditMode] = useState(false)
   const [formData, setFormData] = useState<CustomerFormData>(initialFormData)
   const [customerInvoicesPage, setCustomerInvoicesPage] = useState(1)
+  const [customerInvoicesPageSize, setCustomerInvoicesPageSize] = useState(10)
 
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
   // Fetch customers — newest first, paginated
   const { data: customersData, isLoading } = useQuery({
-    queryKey: ['customers', searchTerm, filterType, tagFilter, page],
+    queryKey: ['customers', searchTerm, filterType, tagFilter, page, pageSize],
     queryFn: async () => {
       const params = new URLSearchParams()
       if (searchTerm) params.append('search', searchTerm)
@@ -168,7 +169,7 @@ export function CustomersPage() {
       if (tagFilter) params.append('tag', tagFilter)
       params.append('sort_by', 'created_at')
       params.append('sort_dir', 'desc')
-      params.append('per_page', String(PAGE_SIZE))
+      params.append('per_page', String(pageSize))
       params.append('page', String(page))
       const response = await api.get(`/customers?${params.toString()}`)
       return response.data
@@ -223,10 +224,10 @@ export function CustomersPage() {
   })
 
   const { data: customerInvoicesData, isLoading: customerInvoicesLoading } = useQuery({
-    queryKey: ['customer-invoices', selectedCustomer?.id, customerInvoicesPage],
+    queryKey: ['customer-invoices', selectedCustomer?.id, customerInvoicesPage, customerInvoicesPageSize],
     queryFn: async () => {
       const response = await api.get(`/customers/${selectedCustomer!.id}/invoices`, {
-        params: { page: customerInvoicesPage, per_page: 10 },
+        params: { page: customerInvoicesPage, per_page: customerInvoicesPageSize },
       })
       return response.data
     },
@@ -868,38 +869,17 @@ export function CustomersPage() {
           )}
 
           {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between pt-4 border-t mt-4">
-              <div className="text-sm text-muted-foreground">
-                Showing {customersData?.from ?? 0}–{customersData?.to ?? 0} of {totalCustomers} customers
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                >
-                  <Icon icon="solar:arrow-left-linear" className="h-4 w-4 mr-1" />
-                  Previous
-                </Button>
-                <span className="text-sm text-muted-foreground">
-                  Page {page} of {totalPages}
-                </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                >
-                  Next
-                  <Icon icon="solar:arrow-right-linear" className="h-4 w-4 ml-1" />
-                </Button>
-              </div>
-            </div>
-          )}
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            from={customersData?.from}
+            to={customersData?.to}
+            total={totalCustomers}
+            label="customers"
+            pageSize={pageSize}
+            onPageSizeChange={(size) => { setPageSize(size); setPage(1) }}
+          />
         </CardContent>
       </Card>
 
@@ -1086,20 +1066,18 @@ export function CustomersPage() {
                       ) : (
                         <p className="text-muted-foreground text-center py-4">No invoices yet</p>
                       )}
-                      {customerInvoicesData?.last_page > 1 && (
-                        <div className="flex items-center justify-between pt-4">
-                          <span className="text-sm text-muted-foreground">
-                            Page {customerInvoicesData.current_page} of {customerInvoicesData.last_page}
-                          </span>
-                          <div className="flex gap-2">
-                            <Button size="sm" variant="outline" disabled={customerInvoicesPage <= 1} onClick={() => setCustomerInvoicesPage((p) => p - 1)}>
-                              Previous
-                            </Button>
-                            <Button size="sm" variant="outline" disabled={customerInvoicesPage >= customerInvoicesData.last_page} onClick={() => setCustomerInvoicesPage((p) => p + 1)}>
-                              Next
-                            </Button>
-                          </div>
-                        </div>
+                      {customerInvoicesData && (
+                        <Pagination
+                          page={customerInvoicesPage}
+                          totalPages={customerInvoicesData.last_page}
+                          onPageChange={setCustomerInvoicesPage}
+                          from={(customerInvoicesData.current_page - 1) * customerInvoicesPageSize + 1}
+                          to={Math.min(customerInvoicesData.current_page * customerInvoicesPageSize, customerInvoicesData.total)}
+                          total={customerInvoicesData.total}
+                          label="invoices"
+                          pageSize={customerInvoicesPageSize}
+                          onPageSizeChange={(size) => { setCustomerInvoicesPageSize(size); setCustomerInvoicesPage(1) }}
+                        />
                       )}
                     </CardContent>
                   </Card>

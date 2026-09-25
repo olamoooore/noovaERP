@@ -5,12 +5,12 @@ import type { VendorCreditNote, VendorCreditNoteFilters, CreateVendorCreditNoteP
 const API_BASE = '/accounting/vendors/credit-notes';
 
 // List credit notes
-export function useVendorCreditNotes(filters: VendorCreditNoteFilters, page: number = 1) {
+export function useVendorCreditNotes(filters: VendorCreditNoteFilters, page: number = 1, perPage: number = 20) {
   return useQuery({
-    queryKey: ['vendor-credit-notes', filters, page],
+    queryKey: ['vendor-credit-notes', filters, page, perPage],
     queryFn: async () => {
       const { data } = await api.get(API_BASE, {
-        params: { ...filters, page, per_page: 20 },
+        params: { ...filters, page, per_page: perPage },
       });
       return data;
     },

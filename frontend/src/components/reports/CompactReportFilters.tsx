@@ -37,6 +37,12 @@ interface CompactReportFiltersProps {
   showTag?: boolean;
   /** Label for the tag filter, e.g. "Tagged orders". */
   tagLabel?: string;
+  /**
+   * Render as a plain compact pill row directly under the page header
+   * (no bordered card shell). Used by the report pages that keep their
+   * filters outside the header action row.
+   */
+  plain?: boolean;
 }
 
 export const CompactReportFilters: React.FC<CompactReportFiltersProps> = ({
@@ -54,6 +60,7 @@ export const CompactReportFilters: React.FC<CompactReportFiltersProps> = ({
   onRefresh,
   showTag = false,
   tagLabel = 'All Tags',
+  plain = false,
 }) => {
   const [filters, setFilters] = useState<ReportFiltersType>({
     start_date: initialFilters.start_date || '',
@@ -103,14 +110,21 @@ export const CompactReportFilters: React.FC<CompactReportFiltersProps> = ({
     filters.interval !== 'month';
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-md border bg-card px-3 py-2">
+    <div className={plain
+      ? 'flex flex-wrap items-center gap-2'
+      : 'flex flex-wrap items-center gap-2 rounded-md border bg-card px-3 py-2'}
+    >
       {/* Header / label */}
-      <div className="flex items-center gap-1.5 text-muted-foreground">
-        <Icon icon="solar:filter-bold" className="h-3.5 w-3.5" />
-        <span className="text-xs font-medium">Filters</span>
-      </div>
+      {!plain && (
+        <>
+          <div className="flex items-center gap-1.5 text-muted-foreground">
+            <Icon icon="solar:filter-bold" className="h-3.5 w-3.5" />
+            <span className="text-xs font-medium">Filters</span>
+          </div>
 
-      <div className="h-4 w-px bg-border" />
+          <div className="h-4 w-px bg-border" />
+        </>
+      )}
 
       {/* Date range */}
       {showDateRange && (
@@ -119,14 +133,14 @@ export const CompactReportFilters: React.FC<CompactReportFiltersProps> = ({
             type="date"
             value={filters.start_date || ''}
             onChange={(e) => update('start_date', e.target.value)}
-            className="h-8 w-[140px] text-xs"
+            className={plain ? 'h-8 w-[140px] rounded-full px-3 text-xs' : 'h-8 w-[140px] text-xs'}
           />
           <span className="text-muted-foreground text-xs">→</span>
           <Input
             type="date"
             value={filters.end_date || ''}
             onChange={(e) => update('end_date', e.target.value)}
-            className="h-8 w-[140px] text-xs"
+            className={plain ? 'h-8 w-[140px] rounded-full px-3 text-xs' : 'h-8 w-[140px] text-xs'}
           />
         </div>
       )}

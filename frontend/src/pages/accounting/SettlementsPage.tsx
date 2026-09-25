@@ -22,6 +22,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Pagination } from '@/components/ui/Pagination';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import settlementsApi, { Settlement } from '@/lib/settlementsApi';
 import { formatCurrency } from '@/lib/utils';
@@ -40,6 +41,7 @@ export default function SettlementsPage() {
   const [stateFilter, setStateFilter] = useState<string>('all');
   const [sourceTypeFilter, setSourceTypeFilter] = useState<string>('all');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [selectedSettlement, setSelectedSettlement] = useState<Settlement | null>(null);
   const [showAllocate, setShowAllocate] = useState(false);
   const [showReverse, setShowReverse] = useState(false);
@@ -49,11 +51,12 @@ export default function SettlementsPage() {
   ]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['settlements', stateFilter, sourceTypeFilter, page],
+    queryKey: ['settlements', stateFilter, sourceTypeFilter, page, pageSize],
     queryFn: () => settlementsApi.getSettlements({
       state: stateFilter === 'all' ? undefined : stateFilter,
       source_type: sourceTypeFilter === 'all' ? undefined : sourceTypeFilter,
       page,
+      per_page: pageSize,
     }),
   });
 
@@ -125,45 +128,35 @@ export default function SettlementsPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Settlements</h1>
           <p className="text-muted-foreground mt-1">
             Manage payment allocations, unapplied cash, and reversals
           </p>
         </div>
-      </div>
-
-      {/* Filters */}
-      <Card className="p-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-          <div className="space-y-2">
-            <Label>State</Label>
-            <Select value={stateFilter} onValueChange={setStateFilter}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All States</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="partially_allocated">Partially Allocated</SelectItem>
-                <SelectItem value="fully_allocated">Fully Allocated</SelectItem>
-                <SelectItem value="reversed">Reversed</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Source Type</Label>
-            <Select value={sourceTypeFilter} onValueChange={setSourceTypeFilter}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="payment">Payment</SelectItem>
-                <SelectItem value="credit_note">Credit Note</SelectItem>
-                <SelectItem value="debit_note">Debit Note</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={stateFilter} onValueChange={setStateFilter}>
+            <SelectTrigger className="h-8 w-44 rounded-full text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All States</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="partially_allocated">Partially Allocated</SelectItem>
+              <SelectItem value="fully_allocated">Fully Allocated</SelectItem>
+              <SelectItem value="reversed">Reversed</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={sourceTypeFilter} onValueChange={setSourceTypeFilter}>
+            <SelectTrigger className="h-8 w-40 rounded-full text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="payment">Payment</SelectItem>
+              <SelectItem value="credit_note">Credit Note</SelectItem>
+              <SelectItem value="debit_note">Debit Note</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-      </Card>
+      </div>
 
       {/* Settlements Table */}
       <Card className="p-6">
@@ -230,31 +223,17 @@ export default function SettlementsPage() {
             </Table>
 
             {/* Pagination */}
-            {data.last_page > 1 && (
-              <div className="flex justify-between items-center mt-4">
-                <span className="text-sm text-muted-foreground">
-                  Page {data.current_page} of {data.last_page} ({data.total} settlements)
-                </span>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page <= 1}
-                    onClick={() => setPage(page - 1)}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page >= data.last_page}
-                    onClick={() => setPage(page + 1)}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
-            )}
+            <Pagination
+              page={page}
+              totalPages={data.last_page}
+              onPageChange={setPage}
+              from={(page - 1) * pageSize + 1}
+              to={Math.min(page * pageSize, data.total)}
+              total={data.total}
+              label="settlements"
+              pageSize={pageSize}
+              onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+            />
           </>
         )}
       </Card>

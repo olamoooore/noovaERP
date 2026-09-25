@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
-import { Button } from '@/components/ui/button'
+import { Pagination } from '@/components/ui/Pagination'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -30,7 +30,7 @@ export function BonusSchemesPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [page, setPage] = useState(1)
-  const perPage = 25
+  const [perPage, setPerPage] = useState(25)
   const navigate = useNavigate()
   const { toast } = useToast()
   const queryClient = useQueryClient()
@@ -141,21 +141,17 @@ export function BonusSchemesPage() {
                 </TableBody>
               </Table>
 
-              {meta.last_page > 1 && (
-                <div className="flex items-center justify-between mt-4">
-                  <p className="text-sm text-muted-foreground">
-                    Page {meta.current_page} of {meta.last_page} ({meta.total} total)
-                  </p>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>
-                      Previous
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(meta.last_page, p + 1))} disabled={page === meta.last_page}>
-                      Next
-                    </Button>
-                  </div>
-                </div>
-              )}
+              <Pagination
+                page={page}
+                totalPages={meta.last_page}
+                onPageChange={setPage}
+                from={(page - 1) * perPage + 1}
+                to={Math.min(page * perPage, meta.total)}
+                total={meta.total}
+                label="bonus schemes"
+                pageSize={perPage}
+                onPageSizeChange={(size) => { setPerPage(size); setPage(1) }}
+              />
             </>
           )}
         </CardContent>

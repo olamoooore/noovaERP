@@ -180,7 +180,7 @@ export function ExportExample() {
     loading: exportLoading, 
     error: exportError, 
     exportToPdf, 
-    exportToExcel 
+    exportToCsv 
   } = useReportExport();
 
   const filters: ReportFilters = {
@@ -205,11 +205,11 @@ export function ExportExample() {
     }
   };
 
-  const handleExportExcel = async () => {
+  const handleExportCsv = async () => {
     if (!data) return;
     
     try {
-      const result = await exportToExcel('profit_loss', data, filters);
+      const result = await exportToCsv('profit_loss', data, filters);
       if (result.download_url) {
         window.open(result.download_url, '_blank');
       }
@@ -235,8 +235,8 @@ export function ExportExample() {
             <button onClick={handleExportPdf} disabled={exportLoading}>
               {exportLoading ? 'Exporting...' : 'Export to PDF'}
             </button>
-            <button onClick={handleExportExcel} disabled={exportLoading}>
-              {exportLoading ? 'Exporting...' : 'Export to Excel'}
+            <button onClick={handleExportCsv} disabled={exportLoading}>
+              {exportLoading ? 'Exporting...' : 'Export to CSV'}
             </button>
             {exportError && <p>Export Error: {exportError}</p>}
           </div>

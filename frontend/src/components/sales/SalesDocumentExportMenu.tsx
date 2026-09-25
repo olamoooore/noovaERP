@@ -122,24 +122,25 @@ export function SalesDocumentExportMenu({
       const response = await api.get(endpoint, {
         params: {
           ...filters,
+          format: 'csv',
           columns: selectedColumns,
           ...(selectedIds.length > 0 ? { document_ids: selectedIds } : {}),
         },
         responseType: 'blob',
       })
       const url = window.URL.createObjectURL(new Blob([response.data], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        type: 'text/csv;charset=utf-8;',
       }))
       const link = document.createElement('a')
       link.href = url
-      link.download = `${filenamePrefix}_${new Date().toISOString().slice(0, 10)}.xlsx`
+      link.download = `${filenamePrefix}_${new Date().toISOString().slice(0, 10)}.csv`
       document.body.appendChild(link)
       link.click()
       link.remove()
       window.URL.revokeObjectURL(url)
-      toast({ title: 'Excel export downloaded' })
+      toast({ title: 'CSV export downloaded' })
     } catch {
-      toast({ variant: 'destructive', title: 'Failed to export Excel file' })
+      toast({ variant: 'destructive', title: 'Failed to export CSV file' })
     } finally {
       setIsExporting(false)
     }
@@ -154,14 +155,14 @@ export function SalesDocumentExportMenu({
           className={compact ? 'h-8 rounded-full px-3 text-xs' : undefined}
         >
           <Icon
-            icon={isExporting ? 'solar:refresh-bold' : 'solar:file-download-bold'}
+            icon={isExporting ? 'solar:refresh-bold' : 'solar:file-text-bold'}
             className={
               compact
                 ? `mr-1.5 h-3.5 w-3.5 ${isExporting ? 'animate-spin' : ''}`
                 : `mr-2 h-4 w-4 ${isExporting ? 'animate-spin' : ''}`
             }
           />
-          {isExporting ? 'Exporting...' : 'Export Excel'}
+          {isExporting ? 'Exporting...' : 'Export CSV'}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72">

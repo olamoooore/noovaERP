@@ -56,6 +56,7 @@ import { cn, formatCurrency, mapCommandError } from '@/lib/utils';
 import api from '@/lib/api';
 import { useBulkSelection } from '@/hooks/use-bulk-selection';
 import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice';
+import { Pagination } from '@/components/ui/Pagination'
 
 const JOURNAL_EXPORT_COLUMNS = [
   { key: 'entry_number', label: 'Entry No', group: 'Entry', default: true }, { key: 'entry_date', label: 'Date', group: 'Entry', default: true },
@@ -147,6 +148,7 @@ export default function JournalEntriesPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const { hasPermission } = useAuthStore();
   const canPost = hasPermission('accounting.post');
   const canReverse = hasPermission('accounting.reverse');
@@ -184,7 +186,7 @@ export default function JournalEntriesPage() {
 
   // Fetch journal entries
   const { data: entriesData, isLoading } = useQuery({
-    queryKey: ['journal-entries', { status: activeTab === 'all' ? undefined : activeTab === 'reversed' ? undefined : activeTab, is_reversal: activeTab === 'reversed' ? true : undefined, search: searchTerm, start_date: dateFrom, end_date: dateTo, page }],
+    queryKey: ['journal-entries', { status: activeTab === 'all' ? undefined : activeTab === 'reversed' ? undefined : activeTab, is_reversal: activeTab === 'reversed' ? true : undefined, search: searchTerm, start_date: dateFrom, end_date: dateTo, page, per_page: pageSize }],
     queryFn: () =>
       journalEntriesApi.getJournalEntries({
         status: activeTab === 'all' || activeTab === 'reversed' ? undefined : activeTab,
@@ -193,7 +195,7 @@ export default function JournalEntriesPage() {
         start_date: dateFrom || undefined,
         end_date: dateTo || undefined,
         page,
-        per_page: 20,
+        per_page: pageSize,
       }),
   });
 
@@ -681,17 +683,17 @@ export default function JournalEntriesPage() {
               </Table>
               </>
             )}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between mt-4">
-                <p className="text-sm text-muted-foreground">Showing page {page} of {totalPages} ({totalRecords} entries)</p>
-                <div className="flex gap-2">
-                  <HeaderActionButton icon="solar:arrow-left-bold" variant="outline" size="sm" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1}>
-                  </HeaderActionButton>
-                  <HeaderActionButton icon="solar:arrow-right-bold" variant="outline" size="sm" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages}>
-                  </HeaderActionButton>
-                </div>
-              </div>
-            )}
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              onPageChange={setPage}
+              from={(page - 1) * pageSize + 1}
+              to={Math.min(page * pageSize, totalRecords)}
+              total={totalRecords}
+              label="journal entries"
+              pageSize={pageSize}
+              onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+            />
           </Card>
         </TabsContent>
       </Tabs>

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Pagination } from '@/components/ui/Pagination'
 
 export type CatalogProduct = {
   id: number
@@ -17,8 +18,6 @@ export type CatalogProduct = {
   status?: string | null
   is_active?: boolean
 }
-
-const PAGE_SIZE = 50
 
 const categoryName = (product: CatalogProduct) => {
   if (typeof product.category === 'object') return product.category?.name || 'Uncategorized'
@@ -41,6 +40,7 @@ export function ProductCatalogDialog({ products = [], onAdd }: {
   const [productType, setProductType] = useState('all')
   const [status, setStatus] = useState('all')
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50)
   const [quantities, setQuantities] = useState<Record<number, number>>({})
 
   const categories = useMemo(
@@ -65,8 +65,8 @@ export function ProductCatalogDialog({ products = [], onAdd }: {
         && (!query || searchable.includes(query))
     })
   }, [category, productType, products, search, status])
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const paginatedProducts = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const paginatedProducts = filtered.slice((page - 1) * pageSize, page * pageSize)
   const selected = products.filter((product) => (quantities[product.id] || 0) > 0)
   const selectedUnits = selected.reduce((total, product) => total + quantities[product.id], 0)
 
@@ -193,15 +193,17 @@ export function ProductCatalogDialog({ products = [], onAdd }: {
               ) : (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">{paginatedProducts.map(renderProductCard)}</div>
               )}
-              {filtered.length > PAGE_SIZE && (
-                <div className="mt-6 flex items-center justify-between border-t pt-4">
-                  <p className="text-sm text-muted-foreground">Page {page} of {pageCount} · Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}</p>
-                  <div className="flex gap-2">
-                    <Button type="button" variant="outline" size="sm" disabled={page === 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>Previous</Button>
-                    <Button type="button" variant="outline" size="sm" disabled={page === pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))}>Next</Button>
-                  </div>
-                </div>
-              )}
+              <Pagination
+                page={page}
+                totalPages={pageCount}
+                onPageChange={setPage}
+                from={(page - 1) * pageSize + 1}
+                to={Math.min(page * pageSize, filtered.length)}
+                total={filtered.length}
+                label="products"
+                pageSize={pageSize}
+                onPageSizeChange={(size) => { setPageSize(size); setPage(1) }}
+              />
             </main>
           </div>
 

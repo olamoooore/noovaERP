@@ -36,15 +36,15 @@ export interface ChartTheme {
  */
 export const lightTheme: ChartTheme = {
   colors: {
-    primary: '#3b82f6',
+    primary: '#6366f1',
     secondary: '#8b5cf6',
     success: '#10b981',
     warning: '#f59e0b',
-    danger: '#ef4444',
-    info: '#06b6d4',
-    gray: '#6b7280',
-    text: '#1f2937',
-    grid: '#e5e7eb',
+    danger: '#f43f5e',
+    info: '#0ea5e9',
+    gray: '#64748b',
+    text: '#94a3b8',
+    grid: '#eef2f7',
     background: '#ffffff',
   },
   fonts: {
@@ -67,16 +67,16 @@ export const lightTheme: ChartTheme = {
  */
 export const darkTheme: ChartTheme = {
   colors: {
-    primary: '#60a5fa',
+    primary: '#818cf8',
     secondary: '#a78bfa',
     success: '#34d399',
     warning: '#fbbf24',
-    danger: '#f87171',
-    info: '#22d3ee',
-    gray: '#9ca3af',
-    text: '#f9fafb',
-    grid: '#374151',
-    background: '#1f2937',
+    danger: '#fb7185',
+    info: '#38bdf8',
+    gray: '#94a3b8',
+    text: '#94a3b8',
+    grid: '#1f2937',
+    background: '#0f172a',
   },
   fonts: {
     family: 'Inter, system-ui, sans-serif',

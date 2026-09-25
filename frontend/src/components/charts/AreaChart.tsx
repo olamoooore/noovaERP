@@ -9,8 +9,9 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { formatCurrency, formatNumber, getColorByIndex } from '@/lib/chartUtils';
+import { getColorByIndex, makeAxisTickFormatter, maxAbsOf } from '@/lib/chartUtils';
 import { getChartTheme } from '@/styles/chartTheme';
+import { ChartTooltip } from '@/components/charts/ChartTooltip';
 
 interface AreaChartProps {
   data: any[];
@@ -26,42 +27,8 @@ interface AreaChartProps {
 }
 
 /**
- * Custom tooltip component
- */
-const CustomTooltip = ({
-  active,
-  payload,
-  label,
-  formatYAxis,
-}: any) => {
-  if (!active || !payload || !payload.length) return null;
-
-  const formatValue = (value: number) => {
-    if (formatYAxis === 'currency') return formatCurrency(value);
-    if (formatYAxis === 'percent') return `${value.toFixed(1)}%`;
-    return formatNumber(value, 2);
-  };
-
-  return (
-    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3">
-      <p className="font-medium text-sm mb-2">{label}</p>
-      {payload.map((entry: any, index: number) => (
-        <div key={index} className="flex items-center gap-2 text-sm">
-          <div
-            className="w-3 h-3 rounded-full"
-            style={{ backgroundColor: entry.color }}
-          />
-          <span className="text-gray-600 dark:text-gray-400">{entry.name}:</span>
-          <span className="font-medium">{formatValue(entry.value)}</span>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-/**
- * AreaChart Component
- * Displays data as an area chart with support for stacked areas
+ * AreaChart — modern gradient areas with a soft dashed grid, hairline-free
+ * axes and a floating tooltip.
  */
 export const AreaChart: React.FC<AreaChartProps> = ({
   data,
@@ -76,45 +43,73 @@ export const AreaChart: React.FC<AreaChartProps> = ({
   isDark = false,
 }) => {
   const theme = getChartTheme(isDark);
-
-  const formatYAxisTick = (value: number) => {
-    if (formatYAxis === 'currency') return formatCurrency(value);
-    if (formatYAxis === 'percent') return `${value}%`;
-    return formatNumber(value);
-  };
+  const tickFormatter = makeAxisTickFormatter(formatYAxis, maxAbsOf(data, yKeys));
+  const legendVisible = showLegend && (yKeys.length > 1 || stacked);
+  const gradientId = React.useId().replace(/[:]/g, '');
 
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <RechartsAreaChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-        {showGrid && <CartesianGrid strokeDasharray="3 3" stroke={theme.colors.grid} />}
+      <RechartsAreaChart data={data} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
+        <defs>
+          {yKeys.map((key, index) => {
+            const color = colors?.[index] || getColorByIndex(index);
+            return (
+              <linearGradient key={key} id={`${gradientId}-${index}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={color} stopOpacity={stacked ? 0.6 : 0.35} />
+                <stop offset="70%" stopColor={color} stopOpacity={stacked ? 0.25 : 0.05} />
+                <stop offset="100%" stopColor={color} stopOpacity={0} />
+              </linearGradient>
+            );
+          })}
+        </defs>
+
+        {showGrid && (
+          <CartesianGrid vertical={false} strokeDasharray="4 8" stroke={theme.colors.grid} />
+        )}
         <XAxis
           dataKey={xKey}
-          stroke={theme.colors.text}
-          style={{ fontSize: theme.fonts.size.small }}
+          axisLine={false}
+          tickLine={false}
+          tick={{ fill: theme.colors.text, fontSize: 11 }}
+          tickMargin={10}
         />
         <YAxis
-          stroke={theme.colors.text}
-          style={{ fontSize: theme.fonts.size.small }}
-          tickFormatter={formatYAxisTick}
+          axisLine={false}
+          tickLine={false}
+          tick={{ fill: theme.colors.text, fontSize: 11 }}
+          tickFormatter={tickFormatter}
+          tickMargin={8}
+          width={60}
         />
-        <Tooltip content={<CustomTooltip formatYAxis={formatYAxis} />} />
-        {showLegend && (
+        <Tooltip
+          cursor={{ stroke: theme.colors.grid, strokeWidth: 1, strokeDasharray: '4 4' }}
+          content={<ChartTooltip valueFormat={formatYAxis} />}
+        />
+        {legendVisible && (
           <Legend
-            wrapperStyle={{ fontSize: theme.fonts.size.small }}
-            iconType="rect"
+            wrapperStyle={{ fontSize: 12, paddingTop: 12 }}
+            iconType="circle"
+            iconSize={8}
           />
         )}
-        {yKeys.map((key, index) => (
-          <Area
-            key={key}
-            type="monotone"
-            dataKey={key}
-            stroke={colors?.[index] || getColorByIndex(index)}
-            fill={colors?.[index] || getColorByIndex(index)}
-            fillOpacity={0.6}
-            stackId={stacked ? 'stack' : undefined}
-          />
-        ))}
+
+        {yKeys.map((key, index) => {
+          const color = colors?.[index] || getColorByIndex(index);
+          return (
+            <Area
+              key={key}
+              type="monotone"
+              dataKey={key}
+              stroke={color}
+              strokeWidth={2.5}
+              fill={`url(#${gradientId}-${index})`}
+              fillOpacity={1}
+              stackId={stacked ? 'stack' : undefined}
+              dot={false}
+              activeDot={{ r: 5, strokeWidth: 2, stroke: theme.colors.background, fill: color }}
+            />
+          );
+        })}
       </RechartsAreaChart>
     </ResponsiveContainer>
   );

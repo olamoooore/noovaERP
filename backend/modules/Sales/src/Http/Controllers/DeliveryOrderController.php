@@ -95,11 +95,15 @@ class DeliveryOrderController extends Controller
             'search' => ['nullable', 'string', 'max:255'],
             'document_ids' => ['nullable', 'array', 'max:1000'],
             'document_ids.*' => ['required', 'integer', 'distinct'],
+            'format' => ['nullable', 'in:csv,xlsx'],
         ]);
+
+        $format = $validated['format'] ?? 'xlsx';
 
         return Excel::download(
             new DeliveryOrdersExport($this->filteredDeliveryOrderQuery($request), $validated['columns']),
-            'delivery_orders_'.now()->format('Y-m-d').'.xlsx'
+            'delivery_orders_'.now()->format('Y-m-d').'.'.$format,
+            $format === 'csv' ? \Maatwebsite\Excel\Excel::CSV : \Maatwebsite\Excel\Excel::XLSX
         );
     }
 

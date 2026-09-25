@@ -134,13 +134,26 @@ class CompanySettingsController extends Controller
     {
         try {
             $settings = DB::table('company_settings')->first();
-            $month = $settings->fiscal_year_start_month ?? 1;
-            $day = $settings->fiscal_year_start_day ?? 1;
-            $year = now()->year;
-            $startDate = \Carbon\Carbon::createFromDate($year, $month, $day)->format('Y-m-d');
+            $month = (int) ($settings->fiscal_year_start_month ?? 1);
+            $day = (int) ($settings->fiscal_year_start_day ?? 1);
+
+            // Compute the fiscal year CONTAINING today from the configured
+            // month/day. The stored fiscal_year_end can be stale (it produced
+            // start 2026-08-01 / end 2025-08-31) and must never be returned
+            // verbatim — reports default their ranges from this.
+            $today = \Carbon\Carbon::today();
+            $start = \Carbon\Carbon::createFromDate($today->year, $month, min($day, 28));
+            if ($start->gt($today)) {
+                $start->subYear();
+            }
+            $end = $start->copy()->addYear()->subDay();
+
             $fiscalYear = [
-                'fiscal_year_start' => $startDate,
-                'fiscal_year_end' => $settings->fiscal_year_end ?? \Carbon\Carbon::parse($startDate)->addYear()->subDay()->format('Y-m-d'),
+                'fiscal_year_start' => $start->format('Y-m-d'),
+                'fiscal_year_end' => $end->format('Y-m-d'),
+                'fiscal_year_label' => 'FY'.$end->year,
+                'fiscal_year_start_month' => $month,
+                'fiscal_year_start_day' => $day,
                 'lock_date' => $settings->lock_date ?? null,
             ];
 

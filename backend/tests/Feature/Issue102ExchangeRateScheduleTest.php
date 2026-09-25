@@ -80,6 +80,37 @@ class Issue102ExchangeRateScheduleTest extends TenantTestCase
         unset($_ENV['EXCHANGE_RATE_API_KEY'], $_SERVER['EXCHANGE_RATE_API_KEY']);
     }
 
+    public function test_sync_command_uses_keyless_provider_when_no_api_key(): void
+    {
+        // No keyed provider configured: the sync must fall back to the
+        // keyless provider instead of silently failing (production had no
+        // EXCHANGE_RATE_API_KEY, so "Exchange Rates" was always empty).
+        putenv('EXCHANGE_RATE_API_KEY');
+        unset($_ENV['EXCHANGE_RATE_API_KEY'], $_SERVER['EXCHANGE_RATE_API_KEY']);
+        config(['services.exchange_rate.api_key' => null]);
+
+        Http::fake([
+            'open.er-api.com/*' => Http::response([
+                'result' => 'success',
+                'rates' => ['USD' => 0.74, 'MYR' => 3.45, 'SGD' => 1.0, 'JPY' => 110.0],
+            ], 200),
+        ]);
+
+        $this->artisan('exchange-rates:sync')->assertExitCode(0);
+
+        $this->assertDatabaseHas('exchange_rates', [
+            'from_currency' => 'SGD',
+            'to_currency' => 'USD',
+            'source' => 'api',
+        ]);
+        $this->assertDatabaseHas('exchange_rates', [
+            'from_currency' => 'SGD',
+            'to_currency' => 'JPY',
+            'source' => 'api',
+        ]);
+        $this->assertSame(0, ExchangeRate::where('to_currency', 'SGD')->count());
+    }
+
     public function test_sync_command_skips_the_base_currency(): void
     {
         Http::fake([

@@ -8,7 +8,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -17,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Pagination } from '@/components/ui/Pagination';
 
 export interface Column {
   key: string;
@@ -360,45 +360,17 @@ export const ReportTable: React.FC<ReportTableProps> = ({
           </div>
 
           {/* Pagination controls */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handlePageChange(1)}
-              disabled={currentPage === 1}
-            >
-              <Icon icon="solar:double-alt-arrow-left-bold" className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage === 1}
-            >
-              <Icon icon="solar:alt-arrow-left-bold" className="h-4 w-4" />
-            </Button>
-
-            <span className="text-sm text-gray-600 dark:text-gray-400 px-2">
-              Page {currentPage} of {totalPages}
-            </span>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage === totalPages}
-            >
-              <Icon icon="solar:alt-arrow-right-bold" className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handlePageChange(totalPages)}
-              disabled={currentPage === totalPages}
-            >
-              <Icon icon="solar:double-alt-arrow-right-bold" className="h-4 w-4" />
-            </Button>
-          </div>
+          <Pagination
+            page={currentPage}
+            totalPages={totalPages}
+            onPageChange={handlePageChange}
+            from={startIndex + 1}
+            to={Math.min(endIndex, processedData.length)}
+            total={processedData.length}
+            label="rows"
+            pageSize={itemsPerPage}
+            onPageSizeChange={(size) => handleItemsPerPageChange(String(size))}
+          />
         </div>
       )}
     </div>

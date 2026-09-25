@@ -18,6 +18,7 @@ import { TagFilterSelect } from '@/components/tags/TagFilterSelect'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Pagination } from '@/components/ui/Pagination'
 
 export function InvoicesPage() {
   const { toast } = useToast()
@@ -36,7 +37,7 @@ export function InvoicesPage() {
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
   const [page, setPage] = useState(1)
-  const [perPage] = useState(20)
+  const [perPage, setPerPage] = useState(20)
 
   const activeFilterParams = () => {
     const params: Record<string, string> = {}
@@ -461,21 +462,17 @@ export function InvoicesPage() {
               </Table>
               </SalesLineColumnVisibility>
 
-              {meta.last_page > 1 && (
-                <div className="flex items-center justify-between mt-4">
-                  <p className="text-sm text-muted-foreground">
-                    Page {meta.current_page} of {meta.last_page} ({meta.total} total)
-                  </p>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                      Previous
-                    </Button>
-                    <Button variant="outline" size="sm" disabled={page >= meta.last_page} onClick={() => setPage((p) => p + 1)}>
-                      Next
-                    </Button>
-                  </div>
-                </div>
-              )}
+              <Pagination
+                page={page}
+                totalPages={meta.last_page}
+                onPageChange={setPage}
+                from={(page - 1) * perPage + 1}
+                to={Math.min(page * perPage, meta.total)}
+                total={meta.total}
+                label="invoices"
+                pageSize={perPage}
+                onPageSizeChange={(size) => { setPerPage(size); setPage(1) }}
+              />
             </>
           )}
         </CardContent>

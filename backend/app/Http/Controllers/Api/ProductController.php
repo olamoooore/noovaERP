@@ -232,6 +232,7 @@ class ProductController extends Controller
             'columns.*' => ['required', 'string', 'distinct', 'in:'.implode(',', array_keys(ProductsExport::COLUMNS))],
             'document_ids' => ['nullable', 'array'],
             'document_ids.*' => ['integer', 'distinct', 'exists:products,id'],
+            'format' => ['nullable', 'in:csv,xlsx'],
         ]);
 
         $query = Product::query();
@@ -267,7 +268,13 @@ class ProductController extends Controller
             $query->whereIn('id', $taggedIds !== [] ? $taggedIds : [-1]);
         }
 
-        return Excel::download(new ProductsExport($query->orderBy('name'), $validated['columns']), 'products_'.now()->format('Y-m-d').'.xlsx');
+        $format = $validated['format'] ?? 'xlsx';
+
+        return Excel::download(
+            new ProductsExport($query->orderBy('name'), $validated['columns']),
+            'products_'.now()->format('Y-m-d').'.'.$format,
+            $format === 'csv' ? \Maatwebsite\Excel\Excel::CSV : \Maatwebsite\Excel\Excel::XLSX
+        );
     }
 
     public function store(Request $request)

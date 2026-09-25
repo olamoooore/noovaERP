@@ -596,22 +596,6 @@ export function useReportExport() {
     }
   }, []);
 
-  const exportToExcel = useCallback(async (reportType: string, reportData: any, filters: ReportFilters) => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const result = await reportApi.exportToExcel({ report_type: reportType, report_data: reportData, filters });
-      return result;
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.message || err.message || 'Export failed';
-      setError(errorMessage);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   const exportToCsv = useCallback(async (reportType: string, reportData: any, filters: ReportFilters) => {
     setLoading(true);
     setError(null);
@@ -632,7 +616,6 @@ export function useReportExport() {
     loading,
     error,
     exportToPdf,
-    exportToExcel,
     exportToCsv,
   };
 }

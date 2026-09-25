@@ -31,6 +31,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { useToast } from '@/hooks/use-toast'
+import { Pagination } from '@/components/ui/Pagination'
 import { formatCurrency, formatDateTime, getApiErrorMessage, resolveImageUrl } from '@/lib/utils'
 
 interface SalesOrder {
@@ -154,11 +155,12 @@ export function POSOrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<SalesOrderDetail | null>(null)
   const [loadingOrderDetail, setLoadingOrderDetail] = useState(false)
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['sales-orders', search, statusFilter, sourceFilter, dateFilter, page],
+    queryKey: ['sales-orders', search, statusFilter, sourceFilter, dateFilter, page, pageSize],
     queryFn: async () => {
-      const params: Record<string, any> = { page, per_page: 20 }
+      const params: Record<string, any> = { page, per_page: pageSize }
       if (search) params.search = search
       if (statusFilter !== 'all') params.status = statusFilter
       if (sourceFilter !== 'all') params.source = sourceFilter
@@ -285,17 +287,75 @@ export function POSOrdersPage() {
   return (
     <div className="flex h-full flex-col gap-4 p-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Orders</h1>
           <p className="text-muted-foreground">View and manage all orders (POS & Web)</p>
         </div>
-        <Link to="/pos/terminal">
-          <Button>
-            <Icon icon="solar:cash-out-bold" className="h-4 w-4 mr-2" />
-            New Sale
-          </Button>
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative w-64">
+            <Icon icon="solar:magnifer-bold" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search order number, customer..."
+              className="h-8 rounded-full pl-8 pr-3 text-xs"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <Select value={sourceFilter} onValueChange={setSourceFilter}>
+            <SelectTrigger className="h-8 w-32 rounded-full text-xs">
+              <SelectValue placeholder="Source" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Sources</SelectItem>
+              <SelectItem value="pos">POS</SelectItem>
+              <SelectItem value="web">Web</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="h-8 w-36 rounded-full text-xs">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="paid">Paid</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="confirmed">Confirmed</SelectItem>
+              <SelectItem value="processing">Processing</SelectItem>
+              <SelectItem value="shipped">Shipped</SelectItem>
+              <SelectItem value="delivered">Delivered</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
+            type="date"
+            className="h-8 w-40 rounded-full px-3 text-xs"
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+          />
+          {(search || statusFilter !== 'all' || sourceFilter !== 'all' || dateFilter) && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-full px-3 text-xs"
+              onClick={() => {
+                setSearch('')
+                setStatusFilter('all')
+                setSourceFilter('all')
+                setDateFilter('')
+              }}
+            >
+              <Icon icon="solar:refresh-bold" className="mr-1.5 h-3.5 w-3.5" />
+              Reset
+            </Button>
+          )}
+          <Link to="/pos/terminal">
+            <Button>
+              <Icon icon="solar:cash-out-bold" className="h-4 w-4 mr-2" />
+              New Sale
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Stats */}
@@ -325,68 +385,6 @@ export function POSOrdersPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-4">
-          <div className="flex flex-wrap gap-4">
-            <div className="relative flex-1 min-w-[200px]">
-              <Icon icon="solar:magnifer-bold" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search order number, customer..."
-                className="pl-9"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-            <Select value={sourceFilter} onValueChange={setSourceFilter}>
-              <SelectTrigger className="w-[120px]">
-                <SelectValue placeholder="Source" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Sources</SelectItem>
-                <SelectItem value="pos">POS</SelectItem>
-                <SelectItem value="web">Web</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="paid">Paid</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="confirmed">Confirmed</SelectItem>
-                <SelectItem value="processing">Processing</SelectItem>
-                <SelectItem value="shipped">Shipped</SelectItem>
-                <SelectItem value="delivered">Delivered</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
-              </SelectContent>
-            </Select>
-            <Input
-              type="date"
-              className="w-[180px]"
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-            />
-            {(search || statusFilter !== 'all' || sourceFilter !== 'all' || dateFilter) && (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setSearch('')
-                  setStatusFilter('all')
-                  setSourceFilter('all')
-                  setDateFilter('')
-                }}
-              >
-                <Icon icon="solar:refresh-bold" className="h-4 w-4 mr-2" />
-                Reset
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Orders Table */}
       <Card className="flex-1">
@@ -462,31 +460,17 @@ export function POSOrdersPage() {
               </Table>
 
               {/* Pagination */}
-              {pagination.last_page > 1 && (
-                <div className="flex items-center justify-between p-4 border-t">
-                  <span className="text-sm text-muted-foreground">
-                    Page {pagination.current_page} of {pagination.last_page}
-                  </span>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={page === 1}
-                      onClick={() => setPage(p => p - 1)}
-                    >
-                      Previous
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={page === pagination.last_page}
-                      onClick={() => setPage(p => p + 1)}
-                    >
-                      Next
-                    </Button>
-                  </div>
-                </div>
-              )}
+              <Pagination
+                page={page}
+                totalPages={pagination.last_page}
+                onPageChange={setPage}
+                from={pagination.from}
+                to={pagination.to}
+                total={pagination.total}
+                label="orders"
+                pageSize={pageSize}
+                onPageSizeChange={(size) => { setPageSize(size); setPage(1) }}
+              />
             </>
           )}
         </CardContent>

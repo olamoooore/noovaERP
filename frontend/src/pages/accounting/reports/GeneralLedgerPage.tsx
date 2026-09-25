@@ -5,7 +5,6 @@ import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -77,64 +76,60 @@ export default function GeneralLedgerPage() {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">General Ledger</h1>
           <p className="text-muted-foreground mt-1">
             Detailed transaction listing by account
           </p>
         </div>
-        <HeaderActionButton icon="solar:arrow-left-linear" onClick={() => navigate('/accounting')}>
-          Back to Accounting
-        </HeaderActionButton>
-      </div>
-
-      {/* Filters */}
-      <Card className="p-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="account">Account</Label>
-            <Select value={effectiveAccountId} onValueChange={setAccountId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select account" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Accounts (Summary)</SelectItem>
-                {accounts
-                  .filter((acc: any) => acc.is_active)
-                  .map((acc: any) => (
-                    <SelectItem key={acc.id} value={acc.id.toString()}>
-                      {acc.code} - {acc.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="start_date">Start Date</Label>
-            <Input
-              id="start_date"
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="end_date">End Date</Label>
-            <Input
-              id="end_date"
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-            />
-          </div>
-          <div className="flex items-end">
-            <HeaderActionButton icon="solar:printer-linear" onClick={() => window.print()} variant="outline" className="w-full">
-              Print
-            </HeaderActionButton>
-          </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={effectiveAccountId} onValueChange={setAccountId}>
+            <SelectTrigger className="h-8 w-56 rounded-full text-xs">
+              <SelectValue placeholder="Select account" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Accounts (Summary)</SelectItem>
+              {accounts
+                .filter((acc: any) => acc.is_active)
+                .map((acc: any) => (
+                  <SelectItem key={acc.id} value={acc.id.toString()}>
+                    {acc.code} - {acc.name}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+          <Input
+            id="start_date"
+            type="date"
+            value={startDate}
+            onChange={(e) => {
+              const value = e.target.value;
+              setStartDate(value);
+              // Keep the range valid: the API rejects end_date < start_date.
+              if (endDate && value > endDate) setEndDate(value);
+            }}
+            className="h-8 w-40 rounded-full px-3 text-xs"
+          />
+          <Input
+            id="end_date"
+            type="date"
+            value={endDate}
+            onChange={(e) => {
+              const value = e.target.value;
+              setEndDate(value);
+              if (startDate && value < startDate) setStartDate(value);
+            }}
+            className="h-8 w-40 rounded-full px-3 text-xs"
+          />
+          <HeaderActionButton icon="solar:printer-linear" onClick={() => window.print()} variant="outline">
+            Print
+          </HeaderActionButton>
+          <HeaderActionButton icon="solar:arrow-left-linear" onClick={() => navigate('/accounting')}>
+            Back to Accounting
+          </HeaderActionButton>
         </div>
-      </Card>
+      </div>
 
       {/* Report */}
       <Card className="p-6">

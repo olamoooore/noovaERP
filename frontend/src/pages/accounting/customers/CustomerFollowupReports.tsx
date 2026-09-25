@@ -55,14 +55,30 @@ export const CustomerFollowupReports: React.FC = () => {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Customer Follow-up Reports</h1>
           <p className="text-muted-foreground mt-1">
             Monitor overdue invoices and customer payment behavior
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={agingPeriod}
+            onChange={(e) => setAgingPeriod(e.target.value)}
+            className="h-8 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="all">All Periods</option>
+            <option value="current">Current Only</option>
+            <option value="overdue">Overdue Only</option>
+            <option value="30">1-30 Days</option>
+            <option value="60">31-60 Days</option>
+            <option value="90">61-90 Days</option>
+            <option value="90plus">90+ Days</option>
+          </select>
+          <HeaderActionButton icon="solar:refresh-bold-duotone" variant="outline">
+            Refresh
+          </HeaderActionButton>
           <HeaderActionButton icon="solar:printer-bold-duotone" variant="outline">
             Print Report
           </HeaderActionButton>
@@ -123,30 +139,6 @@ export const CustomerFollowupReports: React.FC = () => {
           </CardContent>
         </Card>
       </div>
-
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex gap-4">
-            <select
-              value={agingPeriod}
-              onChange={(e) => setAgingPeriod(e.target.value)}
-              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Periods</option>
-              <option value="current">Current Only</option>
-              <option value="overdue">Overdue Only</option>
-              <option value="30">1-30 Days</option>
-              <option value="60">31-60 Days</option>
-              <option value="90">61-90 Days</option>
-              <option value="90plus">90+ Days</option>
-            </select>
-            <HeaderActionButton icon="solar:refresh-bold-duotone" variant="outline">
-              Refresh
-            </HeaderActionButton>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Aged Receivables Table */}
       <Card>

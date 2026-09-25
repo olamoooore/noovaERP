@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
+import { Pagination } from '@/components/ui/Pagination'
 import {
   Dialog,
   DialogContent,
@@ -83,11 +84,6 @@ interface PaginatedResponse<T> {
   total: number
 }
 
-const PRODUCTS_PAGE_SIZE = 50
-const MOVEMENTS_PAGE_SIZE = 50
-const LOW_STOCK_PAGE_SIZE = 25
-const OUT_OF_STOCK_PAGE_SIZE = 25
-
 const normalizePaginatedResponse = <T,>(payload: any): PaginatedResponse<T> => {
   const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : []
 
@@ -142,6 +138,10 @@ export function StockManagementPage() {
   const [movementsPage, setMovementsPage] = useState(1)
   const [lowStockPage, setLowStockPage] = useState(1)
   const [outOfStockPage, setOutOfStockPage] = useState(1)
+  const [productsPageSize, setProductsPageSize] = useState(50)
+  const [movementsPageSize, setMovementsPageSize] = useState(50)
+  const [lowStockPageSize, setLowStockPageSize] = useState(25)
+  const [outOfStockPageSize, setOutOfStockPageSize] = useState(25)
 
   useEffect(() => {
     setProductsPage(1)
@@ -153,9 +153,9 @@ export function StockManagementPage() {
 
   // Queries
   const { data: productsData, isLoading: productsLoading } = useQuery<PaginatedResponse<Product>>({
-    queryKey: ['products-stock', searchProducts, productsPage],
+    queryKey: ['products-stock', searchProducts, productsPage, productsPageSize],
     queryFn: async () => {
-      const params: Record<string, any> = { per_page: PRODUCTS_PAGE_SIZE, page: productsPage }
+      const params: Record<string, any> = { per_page: productsPageSize, page: productsPage }
       if (searchProducts) params.search = searchProducts
       const res = await api.get('/products', { params })
       return normalizePaginatedResponse<Product>(res.data)
@@ -189,9 +189,9 @@ export function StockManagementPage() {
   })
 
   const { data: movementsData, isLoading: movementsLoading } = useQuery<PaginatedResponse<StockMovement>>({
-    queryKey: ['stock-movements', searchMovements, filterType, filterWarehouse, movementsPage],
+    queryKey: ['stock-movements', searchMovements, filterType, filterWarehouse, movementsPage, movementsPageSize],
     queryFn: async () => {
-      const params: Record<string, any> = { per_page: MOVEMENTS_PAGE_SIZE, page: movementsPage }
+      const params: Record<string, any> = { per_page: movementsPageSize, page: movementsPage }
       if (searchMovements) params.search = searchMovements
       if (filterType !== 'all') params.type = filterType
       if (filterWarehouse !== 'all') params.warehouse_id = filterWarehouse
@@ -201,17 +201,17 @@ export function StockManagementPage() {
   })
 
   const { data: lowStockData, isLoading: lowStockLoading } = useQuery<PaginatedResponse<Product>>({
-    queryKey: ['low-stock', lowStockPage],
+    queryKey: ['low-stock', lowStockPage, lowStockPageSize],
     queryFn: async () => {
-      const res = await api.get('/stock/low-stock', { params: { per_page: LOW_STOCK_PAGE_SIZE, page: lowStockPage } })
+      const res = await api.get('/stock/low-stock', { params: { per_page: lowStockPageSize, page: lowStockPage } })
       return normalizePaginatedResponse<Product>(res.data)
     },
   })
 
   const { data: outOfStockData, isLoading: outOfStockLoading } = useQuery<PaginatedResponse<Product>>({
-    queryKey: ['out-of-stock', outOfStockPage],
+    queryKey: ['out-of-stock', outOfStockPage, outOfStockPageSize],
     queryFn: async () => {
-      const res = await api.get('/stock/out-of-stock', { params: { per_page: OUT_OF_STOCK_PAGE_SIZE, page: outOfStockPage } })
+      const res = await api.get('/stock/out-of-stock', { params: { per_page: outOfStockPageSize, page: outOfStockPage } })
       return normalizePaginatedResponse<Product>(res.data)
     },
   })
@@ -537,44 +537,26 @@ export function StockManagementPage() {
     pagination: PaginatedResponse<unknown> | undefined,
     page: number,
     setPage: React.Dispatch<React.SetStateAction<number>>,
-    itemLabel: string
+    itemLabel: string,
+    pageSize: number,
+    setPageSize: (size: number) => void
   ) => {
-    if (!pagination || pagination.last_page <= 1) {
+    if (!pagination) {
       return null
     }
 
-    const startItem = ((pagination.current_page - 1) * pagination.per_page) + 1
-    const endItem = Math.min(pagination.current_page * pagination.per_page, pagination.total)
-
     return (
-      <div className="flex items-center justify-between border-t px-4 py-3">
-        <div className="text-sm text-muted-foreground">
-          Showing {startItem}-{endItem} of {pagination.total} {itemLabel}
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={page <= 1}
-            onClick={() => setPage((currentPage) => Math.max(1, currentPage - 1))}
-          >
-            Previous
-          </Button>
-          <span className="text-sm text-muted-foreground">
-            Page {pagination.current_page} of {pagination.last_page}
-          </span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={page >= pagination.last_page}
-            onClick={() => setPage((currentPage) => Math.min(pagination.last_page, currentPage + 1))}
-          >
-            Next
-          </Button>
-        </div>
-      </div>
+      <Pagination
+        page={page}
+        totalPages={pagination.last_page}
+        onPageChange={setPage}
+        from={((pagination.current_page - 1) * pagination.per_page) + 1}
+        to={Math.min(pagination.current_page * pagination.per_page, pagination.total)}
+        total={pagination.total}
+        label={itemLabel}
+        pageSize={pageSize}
+        onPageSizeChange={(size) => { setPageSize(size); setPage(1) }}
+      />
     )
   }
 
@@ -800,7 +782,7 @@ export function StockManagementPage() {
                     )}
                   </TableBody>
                 </Table>
-                {renderPagination(productsData, productsPage, setProductsPage, 'products')}
+                {renderPagination(productsData, productsPage, setProductsPage, 'products', productsPageSize, setProductsPageSize)}
               </div>
             </CardContent>
           </Card>
@@ -929,7 +911,7 @@ export function StockManagementPage() {
                     )}
                   </TableBody>
                 </Table>
-                {renderPagination(movementsData, movementsPage, setMovementsPage, 'movements')}
+                {renderPagination(movementsData, movementsPage, setMovementsPage, 'movements', movementsPageSize, setMovementsPageSize)}
               </div>
             </CardContent>
           </Card>
@@ -1000,7 +982,7 @@ export function StockManagementPage() {
                   ))}
                 </div>
               )}
-              {renderPagination(lowStockData, lowStockPage, setLowStockPage, 'low stock items')}
+              {renderPagination(lowStockData, lowStockPage, setLowStockPage, 'low stock items', lowStockPageSize, setLowStockPageSize)}
             </CardContent>
           </Card>
         </TabsContent>
@@ -1072,7 +1054,7 @@ export function StockManagementPage() {
                   ))}
                 </div>
               )}
-              {renderPagination(outOfStockData, outOfStockPage, setOutOfStockPage, 'out of stock items')}
+              {renderPagination(outOfStockData, outOfStockPage, setOutOfStockPage, 'out of stock items', outOfStockPageSize, setOutOfStockPageSize)}
             </CardContent>
           </Card>
         </TabsContent>

@@ -101,7 +101,9 @@ export default function AccountingEntityManagementPage({ embedded = false }: { e
   const [bookForm, setBookForm] = useState({ legal_entity_id: '', name: '', book_type: 'general', currency_code: 'USD' });
 
   const { data: currenciesData } = useQuery({
-    queryKey: ['currencies'],
+    // Distinct key: this endpoint's payload differs from the currency list
+    // served to MultiCurrencyPage (see CompanySettingsPage 'currency-settings').
+    queryKey: ['currency-settings-available'],
     queryFn: async () => {
       const response = await api.get('/accounting/settings/currencies');
       return response.data.available_currencies || [];

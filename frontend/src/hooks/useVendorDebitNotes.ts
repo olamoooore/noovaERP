@@ -4,12 +4,12 @@ import type { VendorDebitNote, VendorDebitNoteFilters, CreateVendorDebitNotePayl
 
 const API_BASE = '/accounting/vendors/debit-notes';
 
-export function useVendorDebitNotes(filters: VendorDebitNoteFilters, page: number = 1) {
+export function useVendorDebitNotes(filters: VendorDebitNoteFilters, page: number = 1, perPage: number = 20) {
   return useQuery({
-    queryKey: ['vendor-debit-notes', filters, page],
+    queryKey: ['vendor-debit-notes', filters, page, perPage],
     queryFn: async () => {
       const { data } = await api.get(API_BASE, {
-        params: { ...filters, page, per_page: 20 },
+        params: { ...filters, page, per_page: perPage },
       });
       return data;
     },

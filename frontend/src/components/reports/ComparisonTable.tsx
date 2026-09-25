@@ -2,7 +2,7 @@ import { useRef } from 'react'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { generateReportPDF } from '@/lib/pdfGenerator'
+import { ReportExportToolbar } from '@/components/reports/ReportExportToolbar'
 
 export interface ComparisonRow {
   label: string
@@ -38,81 +38,47 @@ export function ComparisonTable({
 }: ComparisonTableProps) {
   const tableRef = useRef<HTMLDivElement>(null)
 
-  const handleDownloadCSV = () => {
-    const csvRows = [
-      ['Account', currentLabel, compareLabel, 'Change', 'Change %'],
-    ]
-
-    rows.forEach((row) => {
+  // Explicit export rows so CSV/PDF keep the comparison columns (Change, %)
+  // even though the toolbar otherwise reads the rendered table.
+  const exportRows: string[][] = [
+    ['Account', currentLabel, compareLabel, 'Change', 'Change %'],
+    ...rows.map((row) => {
       const change = row.current - row.compare
       const changePct = row.compare !== 0 ? ((change / Math.abs(row.compare)) * 100) : null
 
-      csvRows.push([
+      return [
         row.label,
         formatCurrency(row.current),
         formatCurrency(row.compare),
         change !== 0 ? formatCurrency(change) : '—',
         changePct !== null ? `${changePct.toFixed(1)}%` : '—',
-      ])
-    })
-
-    const csv = csvRows.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = window.URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.setAttribute('download', `${filename}.csv`)
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-  }
-
-  const handleDownloadPDF = async () => {
-    if (!tableRef.current) return
-
-    await generateReportPDF(tableRef.current, {
-      title,
-      subtitle: `${currentLabel} vs ${compareLabel}`,
-      companyName,
-      asOfDate,
-      compareDate,
-      filename,
-    })
-  }
+      ]
+    }),
+  ]
 
   return (
     <div className="space-y-4">
-      {/* Header with download buttons */}
-      <div className="flex items-center justify-between">
+      {/* Header: period pills + the same export toolbar used on report cards */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <Badge variant="outline" className="text-sm px-3 py-1">
+          <Badge variant="outline" className="px-3 py-1 text-sm">
             {currentLabel}
           </Badge>
           <span className="text-muted-foreground">vs</span>
-          <Badge variant="outline" className="text-sm px-3 py-1">
+          <Badge variant="outline" className="px-3 py-1 text-sm">
             {compareLabel}
           </Badge>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={handleDownloadCSV}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            CSV
-          </button>
-          <button
-            onClick={handleDownloadPDF}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-red-600 border border-red-600 rounded-md hover:bg-red-700 transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-            </svg>
-            PDF
-          </button>
-        </div>
+        <ReportExportToolbar
+          targetRef={tableRef}
+          rows={exportRows}
+          title={title}
+          subtitle={`${currentLabel} vs ${compareLabel}`}
+          companyName={companyName}
+          asOfDate={asOfDate}
+          compareDate={compareDate}
+          filename={filename}
+        />
       </div>
 
       {/* Comparison Table */}

@@ -111,6 +111,7 @@ class CustomerController extends Controller
             'columns.*' => ['required', 'string', 'distinct', 'in:'.implode(',', array_keys(CustomersExport::COLUMNS))],
             'document_ids' => ['nullable', 'array'],
             'document_ids.*' => ['integer', 'distinct', 'exists:customers,id'],
+            'format' => ['nullable', 'in:csv,xlsx'],
         ]);
 
         $query = Customer::query();
@@ -137,7 +138,13 @@ class CustomerController extends Controller
             $query->whereIn('id', $taggedIds !== [] ? $taggedIds : [-1]);
         }
 
-        return Excel::download(new CustomersExport($query->orderBy('name'), $validated['columns']), 'customers_'.now()->format('Y-m-d').'.xlsx');
+        $format = $validated['format'] ?? 'xlsx';
+
+        return Excel::download(
+            new CustomersExport($query->orderBy('name'), $validated['columns']),
+            'customers_'.now()->format('Y-m-d').'.'.$format,
+            $format === 'csv' ? \Maatwebsite\Excel\Excel::CSV : \Maatwebsite\Excel\Excel::XLSX
+        );
     }
 
     public function store(Request $request): JsonResponse

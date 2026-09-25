@@ -32,7 +32,6 @@ export default function ComplianceReportsPage({ embedded = false }: ComplianceRe
   const [asOfDate, setAsOfDate] = useState(today)
   const [startDate, setStartDate] = useState(startOfYear)
   const [isDownloading, setIsDownloading] = useState(false)
-  const [isExcelDownloading, setIsExcelDownloading] = useState(false)
   const [downloadMeta, setDownloadMeta] = useState<{
     filename: string
     taxonomyValidated: boolean
@@ -123,50 +122,10 @@ export default function ComplianceReportsPage({ embedded = false }: ComplianceRe
     }
   }
 
-  const handleExcelDownload = async () => {
-    try {
-      setIsExcelDownloading(true)
-      setDownloadMeta(null)
-
-      const { blob, filename } = await complianceApi.downloadExcel(
-        countryCode,
-        reportType,
-        {
-          as_of_date: asOfDate,
-          start_date: reportType === 'income_statement' ? startDate : undefined,
-          strict_schema_validation: false,
-        }
-      )
-
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = filename
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-
-      toast({
-        title: 'Excel Downloaded',
-        description: `${filename} downloaded successfully.`,
-      })
-    } catch (error) {
-      const message = await parseDownloadError(error)
-
-      toast({
-        title: 'Excel Download Failed',
-        description: message,
-        variant: 'destructive',
-      })
-    } finally {
-      setIsExcelDownloading(false)
-    }
-  }
-
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Compliance Reports</h1>
           <p className="text-muted-foreground mt-1">
@@ -180,12 +139,15 @@ export default function ComplianceReportsPage({ embedded = false }: ComplianceRe
         )}
       </div>
 
-      <Card className="p-6 space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="reportType">Report Type</Label>
+      {/* Report parameters — compact pills, matching the rest of the app */}
+      <Card className="p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="reportType" className="text-xs text-muted-foreground">
+              Report Type
+            </Label>
             <Select value={reportType} onValueChange={(value) => setReportType(value as ReportType)}>
-              <SelectTrigger id="reportType">
+              <SelectTrigger id="reportType" className="h-8 w-44 rounded-full text-xs">
                 <SelectValue placeholder="Select report type" />
               </SelectTrigger>
               <SelectContent>
@@ -198,46 +160,54 @@ export default function ComplianceReportsPage({ embedded = false }: ComplianceRe
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="asOfDate">As Of Date</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="asOfDate" className="text-xs text-muted-foreground">
+              As Of Date
+            </Label>
             <Input
               id="asOfDate"
               type="date"
               value={asOfDate}
               onChange={(e) => setAsOfDate(e.target.value)}
+              className="h-8 w-40 rounded-full px-3 text-xs"
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="startDate">Start Date (P&L only)</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="startDate" className="text-xs text-muted-foreground">
+              Start Date (P&L only)
+            </Label>
             <Input
               id="startDate"
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
               disabled={reportType !== 'income_statement'}
+              className="h-8 w-40 rounded-full px-3 text-xs"
             />
           </div>
-        </div>
 
-        <div className="flex flex-wrap gap-3">
-          <HeaderActionButton icon="solar:file-download-bold" variant="outline" onClick={handleDownload} disabled={isDownloading || isExcelDownloading}>
-            {isDownloading ? 'Downloading...' : 'Download XBRL XML'}
-          </HeaderActionButton>
-          <HeaderActionButton icon="solar:document-bold" variant="outline" onClick={handleExcelDownload} disabled={isDownloading || isExcelDownloading}>
-            {isExcelDownloading ? 'Downloading Excel...' : 'Download Excel'}
-          </HeaderActionButton>
-        </div>
-
-        {downloadMeta && (
-          <div className="rounded-lg border p-4 bg-muted/30">
-            <h3 className="font-semibold mb-2">Last Download</h3>
-            <div className="text-sm space-y-1">
-              <p><span className="font-medium">File:</span> {downloadMeta.filename}</p>
-            </div>
+          <div className="ml-auto">
+            <HeaderActionButton icon="solar:file-download-bold" onClick={handleDownload} disabled={isDownloading}>
+              {isDownloading ? 'Downloading...' : 'Download XBRL XML'}
+            </HeaderActionButton>
           </div>
-        )}
+        </div>
       </Card>
+
+      {downloadMeta && (
+        <Card className="p-4">
+          <h3 className="text-sm font-semibold">Last download</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">{downloadMeta.filename}</span>
+            {downloadMeta.taxonomyValidated
+              ? downloadMeta.taxonomyValid
+                ? ' · taxonomy validated'
+                : ' · taxonomy warnings'
+              : ''}
+          </p>
+        </Card>
+      )}
     </div>
   )
 }

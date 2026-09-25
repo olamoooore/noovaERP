@@ -22,6 +22,7 @@ import { TagFilterSelect } from '@/components/tags/TagFilterSelect'
 import { RetractingActions } from '@/components/layout/RetractingActions'
 import { useBulkSelection } from '@/hooks/use-bulk-selection'
 import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice'
+import { Pagination } from '@/components/ui/Pagination'
 
 const PRODUCT_EXPORT_COLUMNS = [
   { key: 'sku', label: 'SKU', group: 'Product', default: true }, { key: 'name', label: 'Product Name', group: 'Product', default: true },
@@ -74,6 +75,7 @@ export function ProductsPage() {
   const [sortBy, setSortBy] = useState<SortBy>('created_at')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50)
   const [hiddenProductColumns, setHiddenProductColumns] = useState<number[]>([])
 
   const clearFilters = () => {
@@ -96,10 +98,10 @@ export function ProductsPage() {
   })
 
   const { data: productsResponse, isLoading: productsLoading } = useQuery({
-    queryKey: ['products', search, type, status, categoryId, tagFilter, sortBy, sortDir, page],
+    queryKey: ['products', search, type, status, categoryId, tagFilter, sortBy, sortDir, page, pageSize],
     queryFn: async () => {
       const params: Record<string, any> = {
-        per_page: 50,
+        per_page: pageSize,
         page,
         sort_by: sortBy,
         sort_dir: sortDir,
@@ -643,38 +645,17 @@ export function ProductsPage() {
           )}
 
           {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between pt-4 border-t mt-4">
-              <div className="text-sm text-muted-foreground">
-                Showing {((page - 1) * 50) + 1}–{Math.min(page * 50, totalProducts)} of {totalProducts} products
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                >
-                  <Icon icon="solar:arrow-left-linear" className="h-4 w-4 mr-1" />
-                  Previous
-                </Button>
-                <span className="text-sm text-muted-foreground">
-                  Page {page} of {totalPages}
-                </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                >
-                  Next
-                  <Icon icon="solar:arrow-right-linear" className="h-4 w-4 ml-1" />
-                </Button>
-              </div>
-            </div>
-          )}
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            from={((page - 1) * pageSize) + 1}
+            to={Math.min(page * pageSize, totalProducts)}
+            total={totalProducts}
+            label="products"
+            pageSize={pageSize}
+            onPageSizeChange={(size) => { setPageSize(size); setPage(1) }}
+          />
         </CardContent>
       </Card>
     </div>

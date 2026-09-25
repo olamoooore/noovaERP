@@ -405,7 +405,7 @@ export function InventoryReportsPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Inventory Reports</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
@@ -416,6 +416,7 @@ export function InventoryReportsPage() {
 
       {/* Filters */}
       <CompactReportFilters
+        plain
         onFilterChange={handleFilterChange}
         initialFilters={filters}
         showDateRange

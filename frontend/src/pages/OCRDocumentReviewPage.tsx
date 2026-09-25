@@ -2,14 +2,22 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { useToast } from '@/hooks/use-toast'
 import { DocumentViewer } from '@/components/ocr/DocumentViewer'
 import { DocumentForm } from '@/components/ocr/DocumentForm'
 import { PostingConfirmationDialog } from '@/components/ocr/PostingConfirmationDialog'
+import { getOcrStatusStyle } from '@/components/ocr/ocrStatus'
 import api from '@/lib/api'
+
+const formatDate = (value?: string | null) => {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+}
 
 export function OCRDocumentReviewPage() {
   const { uuid } = useParams()
@@ -59,18 +67,18 @@ export function OCRDocumentReviewPage() {
       return response.data
     },
     onSuccess: () => {
-      toast({ 
+      toast({
         title: 'Document posted successfully',
-        description: 'Journal entry has been created'
+        description: 'Journal entry has been created',
       })
       setShowPostDialog(false)
       navigate('/ocr/documents')
     },
     onError: (error: any) => {
-      toast({ 
-        variant: 'destructive', 
+      toast({
+        variant: 'destructive',
         title: 'Failed to post document',
-        description: error.response?.data?.message || 'An error occurred'
+        description: error.response?.data?.message || 'An error occurred',
       })
       setShowPostDialog(false)
     },
@@ -86,10 +94,10 @@ export function OCRDocumentReviewPage() {
       toast({ title: 'Document reprocessed successfully' })
     },
     onError: (error: any) => {
-      toast({ 
-        variant: 'destructive', 
+      toast({
+        variant: 'destructive',
         title: 'Retry failed',
-        description: error.response?.data?.error || error.response?.data?.message || 'An error occurred'
+        description: error.response?.data?.error || error.response?.data?.message || 'An error occurred',
       })
     },
   })
@@ -99,18 +107,10 @@ export function OCRDocumentReviewPage() {
     updateMutation.mutate(data)
   }
 
-  const handlePostClick = () => {
-    setShowPostDialog(true)
-  }
-
-  const handlePostConfirm = () => {
-    postMutation.mutate()
-  }
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Icon icon="solar:refresh-circle-bold" className="h-8 w-8 animate-spin text-primary" />
+        <Icon icon="svg-spinners:ring-resize" className="h-8 w-8 text-primary" />
       </div>
     )
   }
@@ -119,28 +119,22 @@ export function OCRDocumentReviewPage() {
     return (
       <div className="space-y-6">
         <h1 className="text-3xl font-bold">Document Not Found</h1>
-        <Card>
-          <CardContent className="py-12 text-center">
+        <Card className="rounded-xl">
+          <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
+            <div className="grid h-14 w-14 place-items-center rounded-full bg-muted">
+              <Icon icon="solar:document-text-bold-duotone" className="h-7 w-7 text-muted-foreground" />
+            </div>
             <p className="text-muted-foreground">The requested document could not be found.</p>
-            <Button className="mt-4" onClick={() => navigate('/ocr/documents')}>
+            <HeaderActionButton icon="solar:alt-arrow-left-linear" onClick={() => navigate('/ocr/documents')}>
               Back to Documents
-            </Button>
+            </HeaderActionButton>
           </CardContent>
         </Card>
       </div>
     )
   }
 
-  const statusConfig = {
-    PENDING: { label: 'Pending', color: 'bg-gray-500' },
-    PROCESSING: { label: 'Processing', color: 'bg-blue-500' },
-    NEEDS_REVIEW: { label: 'Needs Review', color: 'bg-yellow-500' },
-    POSTED: { label: 'Posted', color: 'bg-green-500' },
-    EXTRACTION_FAILED: { label: 'Failed', color: 'bg-red-500' },
-  }
-
-  const status = statusConfig[document.status as keyof typeof statusConfig] || statusConfig.PENDING
-
+  const status = getOcrStatusStyle(document.status)
   const canEdit = document.status === 'NEEDS_REVIEW' || document.status === 'EXTRACTION_FAILED'
   const canPost = document.status === 'NEEDS_REVIEW'
   const canRetry = document.status === 'EXTRACTION_FAILED'
@@ -148,100 +142,100 @@ export function OCRDocumentReviewPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/ocr/documents')}>
-            <Icon icon="solar:alt-arrow-left-bold" className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold">{document.file_name}</h1>
-            <p className="text-muted-foreground mt-1">Review and verify extracted data</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <HeaderActionButton
+            variant="outline"
+            icon="solar:alt-arrow-left-linear"
+            onClick={() => navigate('/ocr/documents')}
+          >
+            Back
+          </HeaderActionButton>
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h1 className="truncate text-2xl font-bold">{document.file_name}</h1>
+              <Badge variant="outline" className={`gap-1 font-medium ${status.badge}`}>
+                <Icon icon={status.icon} className="h-3.5 w-3.5" />
+                {status.label}
+              </Badge>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Review and verify extracted data · Uploaded {formatDate(document.created_at)}
+            </p>
           </div>
         </div>
-        <Badge className={`${status.color} text-white`}>
-          {status.label}
-        </Badge>
+
+        {canPost && (
+          <div className="flex items-center gap-2">
+            <HeaderActionButton variant="outline" onClick={() => navigate('/ocr/documents')}>
+              Cancel
+            </HeaderActionButton>
+            <HeaderActionButton
+              icon="solar:check-circle-bold"
+              onClick={() => setShowPostDialog(true)}
+              disabled={postMutation.isPending}
+            >
+              Approve & Post
+            </HeaderActionButton>
+          </div>
+        )}
       </div>
 
+      {/* Extraction failure banner */}
+      {canRetry && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
+          <div className="flex items-start gap-3">
+            <Icon icon="solar:danger-triangle-bold" className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+            <div>
+              <p className="font-medium text-red-800">Extraction failed</p>
+              <p className="text-sm text-red-700">
+                {document.error_message || 'The OCR service could not process this document. Retry to run it again.'}
+              </p>
+            </div>
+          </div>
+          <HeaderActionButton
+            icon="solar:refresh-circle-bold"
+            onClick={() => retryMutation.mutate()}
+            disabled={retryMutation.isPending}
+          >
+            {retryMutation.isPending ? 'Retrying...' : 'Retry Extraction'}
+          </HeaderActionButton>
+        </div>
+      )}
+
       {/* Split View */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
         {/* Left: Document Viewer */}
-        <Card className="lg:sticky lg:top-6 lg:h-[calc(100vh-12rem)]">
-          <CardHeader>
-            <CardTitle>Original Document</CardTitle>
+        <Card className="rounded-xl lg:sticky lg:top-6 lg:h-[calc(100vh-11rem)]">
+          <CardHeader className="flex flex-row items-center gap-2 space-y-0 border-b pb-4">
+            <div className="grid h-8 w-8 place-items-center rounded-lg bg-slate-100 text-slate-600">
+              <Icon icon="solar:gallery-wide-bold-duotone" className="h-4 w-4" />
+            </div>
+            <CardTitle className="text-base">Original Document</CardTitle>
           </CardHeader>
-          <CardContent className="h-[calc(100%-5rem)] overflow-auto">
+          <CardContent className="h-[calc(100%-4.75rem)] overflow-auto pt-4">
             <DocumentViewer document={document} />
           </CardContent>
         </Card>
 
         {/* Right: Editable Form */}
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Extracted Data</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <DocumentForm
-                document={document}
-                suggestions={suggestions}
-                onSave={handleSave}
-                isSaving={isSaving}
-                readOnly={!canEdit}
-              />
-            </CardContent>
-          </Card>
-
-          {/* Actions */}
-          {canRetry && (
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">
-                    Extraction failed. {document.error_message ? `Reason: ${document.error_message}` : 'Please retry.'}
-                  </p>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => navigate('/ocr/documents')}
-                    >
-                      Back
-                    </Button>
-                    <Button
-                      onClick={() => retryMutation.mutate()}
-                      disabled={retryMutation.isPending}
-                    >
-                      <Icon icon="solar:refresh-circle-bold" className="mr-2 h-4 w-4" />
-                      {retryMutation.isPending ? 'Retrying...' : 'Retry Extraction'}
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {canPost && (
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => navigate('/ocr/documents')}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handlePostClick}
-                    disabled={postMutation.isPending}
-                  >
-                    <Icon icon="solar:check-circle-bold" className="mr-2 h-4 w-4" />
-                    Approve & Post
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+        <Card className="rounded-xl">
+          <CardHeader className="flex flex-row items-center gap-2 space-y-0 border-b pb-4">
+            <div className="grid h-8 w-8 place-items-center rounded-lg bg-indigo-50 text-indigo-600">
+              <Icon icon="solar:document-add-bold-duotone" className="h-4 w-4" />
+            </div>
+            <CardTitle className="text-base">Extracted Data</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <DocumentForm
+              document={document}
+              suggestions={suggestions}
+              onSave={handleSave}
+              isSaving={isSaving}
+              readOnly={!canEdit}
+            />
+          </CardContent>
+        </Card>
       </div>
 
       {/* Posting Confirmation Dialog */}
@@ -249,7 +243,7 @@ export function OCRDocumentReviewPage() {
         open={showPostDialog}
         onOpenChange={setShowPostDialog}
         document={document}
-        onConfirm={handlePostConfirm}
+        onConfirm={() => postMutation.mutate()}
         isPosting={postMutation.isPending}
       />
     </div>

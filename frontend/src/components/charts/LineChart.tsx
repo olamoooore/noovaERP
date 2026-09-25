@@ -1,7 +1,7 @@
 import React from 'react';
 import {
-  LineChart as RechartsLineChart,
-  Line,
+  AreaChart as RechartsAreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -10,14 +10,13 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import {
-  formatCurrency,
-  formatNumber,
   getColorByIndex,
   makeAxisTickFormatter,
   maxAbsOf,
   truncateLabel,
 } from '@/lib/chartUtils';
 import { getChartTheme } from '@/styles/chartTheme';
+import { ChartTooltip } from '@/components/charts/ChartTooltip';
 
 interface LineChartProps {
   data: any[];
@@ -39,44 +38,9 @@ interface LineChartProps {
 }
 
 /**
- * Custom tooltip component — full category label, exact value.
- */
-const CustomTooltip = ({
-  active,
-  payload,
-  label,
-  formatYAxis,
-}: any) => {
-  if (!active || !payload || !payload.length) return null;
-
-  const formatValue = (value: number) => {
-    if (!Number.isFinite(value)) return '-';
-    if (formatYAxis === 'currency') return formatCurrency(value);
-    if (formatYAxis === 'percent') return `${value.toFixed(1)}%`;
-    return formatNumber(value, 2);
-  };
-
-  return (
-    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 max-w-xs">
-      <p className="font-medium text-sm mb-2 break-words">{label}</p>
-      {payload.map((entry: any, index: number) => (
-        <div key={index} className="flex items-center gap-2 text-sm">
-          <div
-            className="w-3 h-3 rounded-full shrink-0"
-            style={{ backgroundColor: entry.color }}
-          />
-          <span className="text-gray-600 dark:text-gray-400">{entry.name}:</span>
-          <span className="font-medium ml-auto tabular-nums">{formatValue(entry.value)}</span>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-/**
- * LineChart Component
- * Displays data as a line chart with multiple series support. Axis ticks adapt
- * to magnitude and long category labels are truncated to avoid collisions.
+ * LineChart — modern area/line hybrid: smooth gradient fill under each line,
+ * hairline dashed grid, no axis lines and a floating tooltip. Single-series
+ * charts skip the legend so the plot gets the full height.
  */
 export const LineChart: React.FC<LineChartProps> = ({
   data,
@@ -96,53 +60,80 @@ export const LineChart: React.FC<LineChartProps> = ({
   const angled = xAxisAngle !== 0;
   const categoryTick = (value: any) =>
     truncateLabels > 0 ? truncateLabel(value, truncateLabels) : String(value ?? '');
-  // Dots only help when there are few points; otherwise they clutter the line.
-  const showDots = (data?.length ?? 0) <= 24;
+  const legendVisible = showLegend && yKeys.length > 1;
+  const gradientId = React.useId().replace(/[:]/g, '');
 
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <RechartsLineChart
+      <RechartsAreaChart
         data={data}
-        margin={{ top: 8, right: 16, left: 8, bottom: angled ? 72 : 8 }}
+        margin={{ top: 8, right: 12, left: 4, bottom: angled ? 72 : 4 }}
       >
-        {showGrid && <CartesianGrid strokeDasharray="3 3" stroke={theme.colors.grid} />}
+        <defs>
+          {yKeys.map((key, index) => {
+            const color = colors?.[index] || getColorByIndex(index);
+            return (
+              <linearGradient key={key} id={`${gradientId}-${index}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={color} stopOpacity={0.35} />
+                <stop offset="70%" stopColor={color} stopOpacity={0.05} />
+                <stop offset="100%" stopColor={color} stopOpacity={0} />
+              </linearGradient>
+            );
+          })}
+        </defs>
+
+        {showGrid && (
+          <CartesianGrid vertical={false} strokeDasharray="4 8" stroke={theme.colors.grid} />
+        )}
         <XAxis
           dataKey={xKey}
-          stroke={theme.colors.text}
-          style={{ fontSize: theme.fonts.size.small }}
+          axisLine={false}
+          tickLine={false}
+          tick={{ fill: theme.colors.text, fontSize: 11 }}
           tickFormatter={categoryTick}
-          tickMargin={8}
+          tickMargin={10}
           interval="preserveStartEnd"
           angle={xAxisAngle}
           textAnchor={angled ? 'end' : 'middle'}
           height={angled ? 64 : undefined}
         />
         <YAxis
-          stroke={theme.colors.text}
-          style={{ fontSize: theme.fonts.size.small }}
+          axisLine={false}
+          tickLine={false}
+          tick={{ fill: theme.colors.text, fontSize: 11 }}
           tickFormatter={tickFormatter}
-          tickMargin={6}
-          width={64}
+          tickMargin={8}
+          width={60}
         />
-        <Tooltip content={<CustomTooltip formatYAxis={formatYAxis} />} />
-        {showLegend && (
+        <Tooltip
+          cursor={{ stroke: theme.colors.grid, strokeWidth: 1, strokeDasharray: '4 4' }}
+          content={<ChartTooltip valueFormat={formatYAxis} />}
+        />
+        {legendVisible && (
           <Legend
-            wrapperStyle={{ fontSize: theme.fonts.size.small, paddingTop: 8 }}
-            iconType="line"
+            wrapperStyle={{ fontSize: 12, paddingTop: 12 }}
+            iconType="circle"
+            iconSize={8}
           />
         )}
-        {yKeys.map((key, index) => (
-          <Line
-            key={key}
-            type="monotone"
-            dataKey={key}
-            stroke={colors?.[index] || getColorByIndex(index)}
-            strokeWidth={2}
-            dot={showDots ? { r: 3 } : false}
-            activeDot={{ r: 5 }}
-          />
-        ))}
-      </RechartsLineChart>
+
+        {yKeys.map((key, index) => {
+          const color = colors?.[index] || getColorByIndex(index);
+          return (
+            <Area
+              key={key}
+              type="monotone"
+              dataKey={key}
+              stroke={color}
+              strokeWidth={2.5}
+              fill={`url(#${gradientId}-${index})`}
+              fillOpacity={1}
+              dot={false}
+              activeDot={{ r: 5, strokeWidth: 2, stroke: theme.colors.background, fill: color }}
+            />
+          );
+        })}
+      </RechartsAreaChart>
     </ResponsiveContainer>
   );
 };

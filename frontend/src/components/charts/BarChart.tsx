@@ -11,14 +11,13 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import {
-  formatCurrency,
-  formatNumber,
   getColorByIndex,
   makeAxisTickFormatter,
   maxAbsOf,
   truncateLabel,
 } from '@/lib/chartUtils';
 import { getChartTheme } from '@/styles/chartTheme';
+import { ChartTooltip } from '@/components/charts/ChartTooltip';
 
 interface BarChartProps {
   data: any[];
@@ -42,46 +41,8 @@ interface BarChartProps {
 }
 
 /**
- * Custom tooltip component — always renders the full category label and the
- * exact value (the axes use shortened forms for legibility).
- */
-const CustomTooltip = ({
-  active,
-  payload,
-  label,
-  formatYAxis,
-}: any) => {
-  if (!active || !payload || !payload.length) return null;
-
-  const formatValue = (value: number) => {
-    if (!Number.isFinite(value)) return '-';
-    if (formatYAxis === 'currency') return formatCurrency(value);
-    if (formatYAxis === 'percent') return `${value.toFixed(1)}%`;
-    return formatNumber(value, 2);
-  };
-
-  return (
-    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 max-w-xs">
-      <p className="font-medium text-sm mb-2 break-words">{label}</p>
-      {payload.map((entry: any, index: number) => (
-        <div key={index} className="flex items-center gap-2 text-sm">
-          <div
-            className="w-3 h-3 rounded shrink-0"
-            style={{ backgroundColor: entry.color }}
-          />
-          <span className="text-gray-600 dark:text-gray-400">{entry.name}:</span>
-          <span className="font-medium ml-auto tabular-nums">{formatValue(entry.value)}</span>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-/**
- * BarChart Component
- * Displays data as a bar chart with support for stacked and horizontal layouts.
- * Axis ticks adapt to magnitude (compact currency above 10k) and long category
- * labels are truncated so they never overlap.
+ * BarChart — modern bars with rounded corners, soft dashed grid, clean axes
+ * and a floating tooltip. Single-series charts skip the legend.
  */
 export const BarChart: React.FC<BarChartProps> = ({
   data,
@@ -103,41 +64,51 @@ export const BarChart: React.FC<BarChartProps> = ({
   const angled = xAxisAngle !== 0;
   const categoryTick = (value: any) =>
     truncateLabels > 0 ? truncateLabel(value, truncateLabels) : String(value ?? '');
+  const legendVisible = showLegend && yKeys.length > 1;
 
   // Horizontal charts put the category names on the Y axis, so give that axis
   // enough width for the (truncated) names instead of the 60px default.
   const categoryAxisWidth = truncateLabels > 0 ? Math.min(200, truncateLabels * 7 + 14) : 160;
 
-  const ChartComponent = RechartsBarChart;
-  const layout = horizontal ? 'horizontal' : 'vertical';
-
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <ChartComponent
+      <RechartsBarChart
         data={data}
-        layout={layout}
+        layout={horizontal ? 'horizontal' : 'vertical'}
         margin={
           horizontal
-            ? { top: 8, right: 28, left: 8, bottom: 8 }
-            : { top: 8, right: 16, left: 8, bottom: angled ? 72 : 8 }
+            ? { top: 16, right: 20, left: 4, bottom: 4 }
+            : { top: 16, right: 12, left: 4, bottom: angled ? 72 : 4 }
         }
+        barCategoryGap="24%"
       >
-        {showGrid && <CartesianGrid strokeDasharray="3 3" stroke={theme.colors.grid} vertical={horizontal} />}
+        {showGrid && (
+          <CartesianGrid
+            vertical={horizontal}
+            horizontal={!horizontal}
+            strokeDasharray="4 8"
+            stroke={theme.colors.grid}
+          />
+        )}
+
         {horizontal ? (
           <>
             <XAxis
               type="number"
-              stroke={theme.colors.text}
-              style={{ fontSize: theme.fonts.size.small }}
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: theme.colors.text, fontSize: 11 }}
               tickFormatter={tickFormatter}
               tickMargin={8}
+              domain={[(min: number) => Math.min(0, min), (max: number) => max * 1.08]}
             />
             <YAxis
               type="category"
               dataKey={xKey}
               width={categoryAxisWidth}
-              stroke={theme.colors.text}
-              style={{ fontSize: theme.fonts.size.small }}
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: theme.colors.text, fontSize: 11 }}
               tickFormatter={categoryTick}
               tickMargin={8}
             />
@@ -146,10 +117,11 @@ export const BarChart: React.FC<BarChartProps> = ({
           <>
             <XAxis
               dataKey={xKey}
-              stroke={theme.colors.text}
-              style={{ fontSize: theme.fonts.size.small }}
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: theme.colors.text, fontSize: 11 }}
               tickFormatter={categoryTick}
-              tickMargin={8}
+              tickMargin={10}
               // Rotated labels fit every category; otherwise let Recharts thin
               // them so long names can never collide.
               interval={angled ? 0 : 'preserveStartEnd'}
@@ -158,32 +130,44 @@ export const BarChart: React.FC<BarChartProps> = ({
               height={angled ? 64 : undefined}
             />
             <YAxis
-              stroke={theme.colors.text}
-              style={{ fontSize: theme.fonts.size.small }}
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: theme.colors.text, fontSize: 11 }}
               tickFormatter={tickFormatter}
-              tickMargin={6}
-              width={64}
+              tickMargin={8}
+              width={60}
+              domain={[(min: number) => Math.min(0, min), (max: number) => max * 1.08]}
             />
           </>
         )}
+
         <Tooltip
-          content={<CustomTooltip formatYAxis={formatYAxis} />}
-          cursor={{ fill: 'rgba(148, 163, 184, 0.12)' }}
+          cursor={{ fill: 'rgba(148, 163, 184, 0.10)', radius: 8 }}
+          content={<ChartTooltip valueFormat={formatYAxis} />}
         />
-        {showLegend && (
+        {legendVisible && (
           <Legend
-            wrapperStyle={{ fontSize: theme.fonts.size.small, paddingTop: 8 }}
-            iconType="rect"
+            wrapperStyle={{ fontSize: 12, paddingTop: 12 }}
+            iconType="circle"
+            iconSize={8}
           />
         )}
+
         {yKeys.map((key, index) => {
           const barColor = colors?.[index] || getColorByIndex(index);
+          const radius: [number, number, number, number] = stacked
+            ? [0, 0, 0, 0]
+            : horizontal
+              ? [0, 8, 8, 0]
+              : [8, 8, 0, 0];
+
           return (
             <Bar
               key={key}
               dataKey={key}
               stackId={stacked ? 'stack' : undefined}
-              radius={horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0]}
+              radius={radius}
+              maxBarSize={horizontal ? 22 : 48}
             >
               {data.map((_entry, idx) => (
                 <Cell key={`cell-${idx}`} fill={barColor} />
@@ -191,7 +175,7 @@ export const BarChart: React.FC<BarChartProps> = ({
             </Bar>
           );
         })}
-      </ChartComponent>
+      </RechartsBarChart>
     </ResponsiveContainer>
   );
 };

@@ -1,10 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -14,6 +12,7 @@ import {
 } from '@/components/ui/select'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import chartOfAccountsApi from '@/lib/chartOfAccountsApi'
 
 interface DocumentFormProps {
@@ -112,23 +111,37 @@ export function DocumentForm({ document, suggestions, onSave, isSaving, readOnly
   }
 
   const getConfidenceBadge = (score: number) => {
-    if (score >= 0.85) {
-      return <Badge className="bg-green-500 text-white text-xs">High</Badge>
-    } else if (score >= 0.7) {
-      return <Badge className="bg-yellow-500 text-white text-xs">Medium</Badge>
-    } else {
-      return <Badge className="bg-red-500 text-white text-xs">Low</Badge>
-    }
+    const style =
+      score >= 0.85
+        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+        : score >= 0.7
+          ? 'border-amber-200 bg-amber-50 text-amber-700'
+          : 'border-red-200 bg-red-50 text-red-700'
+
+    return (
+      <Badge variant="outline" className={`text-xs font-medium ${style}`}>
+        {score >= 0.85 ? 'High' : score >= 0.7 ? 'Medium' : 'Low'} · {Math.round(score * 100)}%
+      </Badge>
+    )
   }
 
+  const SectionHeader = ({ icon, title, action }: { icon: string; title: string; action?: ReactNode }) => (
+    <div className="flex items-center justify-between border-b pb-3">
+      <div className="flex items-center gap-2.5">
+        <div className="grid h-8 w-8 place-items-center rounded-lg bg-slate-100 text-slate-600">
+          <Icon icon={icon} className="h-4 w-4" />
+        </div>
+        <h3 className="text-sm font-semibold">{title}</h3>
+      </div>
+      {action}
+    </div>
+  )
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-8">
       {/* Vendor Information */}
       <div className="space-y-4">
-        <h3 className="font-semibold flex items-center gap-2">
-          <Icon icon="solar:user-bold" className="h-5 w-5" />
-          Vendor Information
-        </h3>
+        <SectionHeader icon="solar:user-bold-duotone" title="Vendor Information" />
 
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -146,14 +159,14 @@ export function DocumentForm({ document, suggestions, onSave, isSaving, readOnly
           />
           {suggestions?.vendors && suggestions.vendors.length > 0 && (
             <div className="text-sm text-muted-foreground">
-              <p className="mb-1">Suggestions:</p>
+              <p className="mb-1.5">Suggestions:</p>
               <div className="flex flex-wrap gap-2">
                 {suggestions.vendors.map((vendor: any) => (
-                  <Button
+                  <HeaderActionButton
                     key={vendor.id}
                     type="button"
                     variant="outline"
-                    size="sm"
+                    icon="solar:magic-stick-3-bold-duotone"
                     onClick={() => {
                       handleChange('vendor_name', vendor.name)
                       handleChange('vendor_id', vendor.id)
@@ -161,7 +174,7 @@ export function DocumentForm({ document, suggestions, onSave, isSaving, readOnly
                     disabled={readOnly}
                   >
                     {vendor.name} ({Math.round(vendor.confidence * 100)}%)
-                  </Button>
+                  </HeaderActionButton>
                 ))}
               </div>
             </div>
@@ -171,10 +184,7 @@ export function DocumentForm({ document, suggestions, onSave, isSaving, readOnly
 
       {/* Document Details */}
       <div className="space-y-4">
-        <h3 className="font-semibold flex items-center gap-2">
-          <Icon icon="solar:document-text-bold" className="h-5 w-5" />
-          Document Details
-        </h3>
+        <SectionHeader icon="solar:document-text-bold-duotone" title="Document Details" />
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
@@ -203,33 +213,48 @@ export function DocumentForm({ document, suggestions, onSave, isSaving, readOnly
 
       {/* Line Items */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold flex items-center gap-2">
-            <Icon icon="solar:list-bold" className="h-5 w-5" />
-            Line Items
-          </h3>
-          {!readOnly && (
-            <Button type="button" variant="outline" size="sm" onClick={addLineItem}>
-              <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
-              Add Item
-            </Button>
-          )}
-        </div>
+        <SectionHeader
+          icon="solar:list-bold-duotone"
+          title="Line Items"
+          action={
+            !readOnly ? (
+              <HeaderActionButton
+                type="button"
+                variant="outline"
+                icon="solar:add-circle-linear"
+                onClick={addLineItem}
+              >
+                Add Item
+              </HeaderActionButton>
+            ) : undefined
+          }
+        />
+
+        {formData.line_items.length === 0 && (
+          <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+            No line items extracted. Click "Add Item" to add one.
+          </p>
+        )}
 
         {formData.line_items.map((item: any, index: number) => (
-          <Card key={index} className="p-4">
+          <Card key={index} className="rounded-xl border-dashed p-4">
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label>Item {index + 1}</Label>
+                <div className="flex items-center gap-2">
+                  <div className="grid h-6 w-6 place-items-center rounded-md bg-slate-100 text-[11px] font-semibold text-slate-600">
+                    {index + 1}
+                  </div>
+                  <span className="text-sm font-medium">Line item</span>
+                </div>
                 {!readOnly && (
-                  <Button
+                  <HeaderActionButton
                     type="button"
                     variant="ghost"
-                    size="sm"
+                    icon="solar:trash-bin-trash-bold"
+                    className="h-7 px-2 text-destructive hover:text-destructive"
+                    aria-label="Remove line item"
                     onClick={() => removeLineItem(index)}
-                  >
-                    <Icon icon="solar:trash-bin-trash-bold" className="h-4 w-4" />
-                  </Button>
+                  />
                 )}
               </div>
 
@@ -314,12 +339,9 @@ export function DocumentForm({ document, suggestions, onSave, isSaving, readOnly
 
       {/* Amounts */}
       <div className="space-y-4">
-        <h3 className="font-semibold flex items-center gap-2">
-          <Icon icon="solar:dollar-bold" className="h-5 w-5" />
-          Amounts
-        </h3>
+        <SectionHeader icon="solar:dollar-bold-duotone" title="Amounts" />
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4 rounded-xl border bg-muted/20 p-4">
           <div className="space-y-2">
             <Label htmlFor="subtotal">Subtotal</Label>
             <Input
@@ -374,19 +396,14 @@ export function DocumentForm({ document, suggestions, onSave, isSaving, readOnly
       {/* Save Button */}
       {!readOnly && hasChanges && (
         <div className="flex justify-end">
-          <Button type="submit" disabled={isSaving}>
-            {isSaving ? (
-              <>
-                <Icon icon="solar:refresh-circle-bold" className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Icon icon="solar:diskette-bold" className="mr-2 h-4 w-4" />
-                Save Changes
-              </>
-            )}
-          </Button>
+          <HeaderActionButton
+            type="submit"
+            icon="solar:diskette-bold"
+            loading={isSaving}
+            disabled={isSaving}
+          >
+            {isSaving ? 'Saving...' : 'Save Changes'}
+          </HeaderActionButton>
         </div>
       )}
     </form>

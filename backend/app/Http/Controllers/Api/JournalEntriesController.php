@@ -134,6 +134,7 @@ class JournalEntriesController extends Controller
             'columns.*' => ['required', 'string', 'distinct', 'in:'.implode(',', array_keys(JournalEntriesExport::COLUMNS))],
             'document_ids' => ['nullable', 'array'],
             'document_ids.*' => ['integer', 'distinct', 'exists:journal_entries,id'],
+            'format' => ['nullable', 'in:csv,xlsx'],
         ]);
         $query = JournalEntry::query();
         if ($request->filled('document_ids')) {
@@ -156,7 +157,13 @@ class JournalEntriesController extends Controller
             $query->where(fn ($q) => $q->where('entry_number', 'LIKE', "%{$search}%")->orWhere('description', 'LIKE', "%{$search}%")->orWhere('reference', 'LIKE', "%{$search}%"));
         }
 
-        return Excel::download(new JournalEntriesExport($query->orderByDesc('entry_date')->orderByDesc('id'), $validated['columns']), 'journal_entries_'.now()->format('Y-m-d').'.xlsx');
+        $format = $validated['format'] ?? 'xlsx';
+
+        return Excel::download(
+            new JournalEntriesExport($query->orderByDesc('entry_date')->orderByDesc('id'), $validated['columns']),
+            'journal_entries_'.now()->format('Y-m-d').'.'.$format,
+            $format === 'csv' ? \Maatwebsite\Excel\Excel::CSV : \Maatwebsite\Excel\Excel::XLSX
+        );
     }
 
     /**

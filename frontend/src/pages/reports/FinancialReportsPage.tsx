@@ -1,19 +1,34 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Button } from '@/components/ui/button';
 import { ReportViewer } from '@/components/reports/ReportViewer';
-import { CompactReportFilters } from '@/components/reports/CompactReportFilters';
 import { ReportTable, Column } from '@/components/reports/ReportTable';
 import { ComparisonHierarchyTable, type ReportTreeNode } from '@/components/reports/ComparisonHierarchyTable';
 import { useReportAutoRefresh } from '@/hooks/useReportAutoRefresh';
+import api from '@/lib/api';
 import reportApi from '@/lib/reportApi';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { ReportFilters as ReportFiltersType } from '@/types/reports';
 import type { GeneralLedgerData } from '@/types/reports';
+import {
+  type FiscalYearOption,
+  type FiscalYearSettings,
+  fiscalYearOptions,
+  formatFiscalYearOption,
+} from '@/lib/fiscalYear';
 
 // ─── Comparison period math ─────────────────────────────────────────
 // Yearly/Quarterly/Monthly shift the selected window back by 12/3/1
@@ -22,14 +37,6 @@ import type { GeneralLedgerData } from '@/types/reports';
 // select the fiscal window (1 Sep – 31 Aug) and pick "yearly".
 
 type CompareMode = 'none' | 'yearly' | 'quarterly' | 'monthly' | 'custom';
-
-const COMPARE_MODES: { value: CompareMode; label: string }[] = [
-  { value: 'none', label: 'Off' },
-  { value: 'yearly', label: 'Yearly' },
-  { value: 'quarterly', label: 'Quarterly' },
-  { value: 'monthly', label: 'Monthly' },
-  { value: 'custom', label: 'Custom range' },
-];
 
 const compareMonthsBack = (mode: CompareMode): number | null =>
   mode === 'yearly' ? 12 : mode === 'quarterly' ? 3 : mode === 'monthly' ? 1 : null;
@@ -320,6 +327,11 @@ function buildPlRoots(data: any, compare: any | null): ReportTreeNode[] {
 
 export function FinancialReportsPage() {
   const [activeTab, setActiveTab] = useState('profit-loss');
+  const plRef = useRef<HTMLDivElement>(null);
+  const bsRef = useRef<HTMLDivElement>(null);
+  const cfRef = useRef<HTMLDivElement>(null);
+  const tbRef = useRef<HTMLDivElement>(null);
+  const glRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   useReportAutoRefresh(); // auto-refresh reports after any tracked mutation
   const [filters, setFilters] = useState<ReportFiltersType>({
@@ -328,6 +340,43 @@ export function FinancialReportsPage() {
       .split('T')[0],
     end_date: new Date().toISOString().split('T')[0],
   });
+  const userPickedPeriod = useRef(false);
+
+  // Reporting periods follow the tenant fiscal-year setting (same as the
+  // standalone P&L / Balance Sheet / Trial Balance pages).
+  const { data: fiscalSettings } = useQuery({
+    queryKey: ['fiscal-year'],
+    queryFn: async () => {
+      const response = await api.get('/accounting/settings/fiscal-year');
+      return response.data.data as FiscalYearSettings;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const fyOptions: FiscalYearOption[] = useMemo(
+    () =>
+      fiscalSettings
+        ? fiscalYearOptions(
+            fiscalSettings.fiscal_year_start_month ?? 1,
+            fiscalSettings.fiscal_year_start_day ?? 1,
+          )
+        : [],
+    [fiscalSettings],
+  );
+
+  useEffect(() => {
+    if (userPickedPeriod.current || fyOptions.length === 0) return;
+    const current = fyOptions[0];
+    setFilters((prev) =>
+      prev.start_date === current.start && prev.end_date === current.end
+        ? prev
+        : { ...prev, start_date: current.start, end_date: current.end },
+    );
+  }, [fyOptions]);
+
+  const selectedFy = fyOptions.find(
+    (option) => option.start === filters.start_date && option.end === filters.end_date,
+  );
 
   // Profit & Loss Query — short staleTime ensures real-time data on revisit
   const {
@@ -407,6 +456,9 @@ export function FinancialReportsPage() {
 
   const plComparing = compareMode !== 'none' && !!plCompareFilters && !!plCompareData;
   const bsComparing = compareMode !== 'none' && !!bsCompareAsOf && !!bsCompareData;
+  const isCompareFetching = activeTab === 'profit-loss' ? isPlCmpFetching : isBsCmpFetching;
+  // Only P&L and the Balance Sheet support a comparison window here.
+  const comparisonSupported = activeTab === 'profit-loss' || activeTab === 'balance-sheet';
 
   const plCurrentLabel = `${formatDate(filters.start_date || '')} – ${formatDate(filters.end_date || '')}`;
   const plCompareLabel = plCompareFilters
@@ -415,57 +467,6 @@ export function FinancialReportsPage() {
   const bsCurrentLabel = `As of ${formatDate(filters.end_date || '')}`;
   const bsCompareLabel = bsCompareAsOf ? `As of ${formatDate(bsCompareAsOf)}` : undefined;
 
-  const compareToolbar = (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="text-sm font-medium text-muted-foreground">Comparison:</span>
-      {COMPARE_MODES.map((m) => (
-        <Button
-          key={m.value}
-          size="sm"
-          variant={compareMode === m.value ? 'default' : 'outline'}
-          className="h-8 text-xs"
-          onClick={() => setCompareMode(m.value)}
-        >
-          {m.label}
-        </Button>
-      ))}
-      {compareMode === 'custom' && (
-        <div className="flex items-center gap-2 ml-2">
-          <input
-            type="date"
-            className="h-8 rounded-md border border-input bg-background px-2 text-sm"
-            value={customCmp.start_date}
-            onChange={(e) => setCustomCmp((p) => ({ ...p, start_date: e.target.value }))}
-          />
-          <span className="text-muted-foreground">–</span>
-          <input
-            type="date"
-            className="h-8 rounded-md border border-input bg-background px-2 text-sm"
-            value={customCmp.end_date}
-            onChange={(e) => setCustomCmp((p) => ({ ...p, end_date: e.target.value }))}
-          />
-          <span className="text-xs text-muted-foreground">
-            (P&amp;L window; Balance Sheet uses the end date as its "as of")
-          </span>
-        </div>
-      )}
-      {compareMode !== 'none' && (
-        <span className="text-xs text-muted-foreground ml-2">
-          {activeTab === 'balance-sheet'
-            ? !bsCompareAsOf
-              ? 'Pick a complete custom range to compare.'
-              : isBsCmpFetching && !bsCompareData
-                ? 'Loading comparison…'
-                : ''
-            : !plCompareFilters
-              ? 'Pick a complete custom range to compare.'
-              : isPlCmpFetching && !plCompareData
-                ? 'Loading comparison…'
-                : ''}
-        </span>
-      )}
-    </div>
-  );
 
   // Cash Flow Query
   const {
@@ -505,19 +506,6 @@ export function FinancialReportsPage() {
     enabled: activeTab === 'general-ledger',
     staleTime: 15 * 1000,
   });
-
-  const handleFilterChange = (newFilters: ReportFiltersType) => {
-    setFilters(newFilters);
-  };
-
-  const handleExport = () => {
-    // TODO: Implement export functionality
-    console.log('Export report:', activeTab);
-  };
-
-  const handlePrint = () => {
-    window.print();
-  };
 
   // Cash Flow Columns
   const cfColumns: Column[] = [
@@ -626,21 +614,155 @@ export function FinancialReportsPage() {
         </div>
       </div>
 
-      {/* Filters — compact toolbar (no large filter card) */}
-      <CompactReportFilters
-        onFilterChange={handleFilterChange}
-        initialFilters={filters}
-        showDateRange
-        showComparePeriod
-        showRefresh
-        onRefresh={() => {
-          queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
-          queryClient.invalidateQueries({ queryKey: ['balance-sheet'] });
-          queryClient.invalidateQueries({ queryKey: ['cash-flow'] });
-          queryClient.invalidateQueries({ queryKey: ['trial-balance'] });
-          queryClient.invalidateQueries({ queryKey: ['general-ledger'] });
-        }}
-      />
+      {/* Filters — reporting period and comparison in one toolbar */}
+      <Card className="rounded-xl p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          {fyOptions.length > 0 && (
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">Fiscal Year</Label>
+              <Select
+                value={selectedFy?.label ?? 'custom'}
+                onValueChange={(value) => {
+                  const fy = fyOptions.find((option) => option.label === value);
+                  if (!fy) return;
+                  userPickedPeriod.current = true;
+                  setFilters((prev) => ({ ...prev, start_date: fy.start, end_date: fy.end }));
+                }}
+              >
+                <SelectTrigger className="h-9 w-64 rounded-full text-sm" aria-label="Fiscal year">
+                  <SelectValue placeholder="Fiscal year" />
+                </SelectTrigger>
+                <SelectContent>
+                  {fyOptions.map((option) => (
+                    <SelectItem key={option.label} value={option.label}>
+                      {formatFiscalYearOption(option)}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="custom">Custom range</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <Label htmlFor="report-from" className="text-xs font-medium text-muted-foreground">
+              From
+            </Label>
+            <Input
+              id="report-from"
+              type="date"
+              value={filters.start_date || ''}
+              onChange={(e) => {
+                userPickedPeriod.current = true;
+                setFilters((prev) => ({ ...prev, start_date: e.target.value }));
+              }}
+              className="h-9 w-40 rounded-full text-sm"
+            />
+          </div>
+          <span className="pb-2 text-muted-foreground">→</span>
+          <div className="space-y-1.5">
+            <Label htmlFor="report-to" className="text-xs font-medium text-muted-foreground">
+              To
+            </Label>
+            <Input
+              id="report-to"
+              type="date"
+              value={filters.end_date || ''}
+              onChange={(e) => {
+                userPickedPeriod.current = true;
+                setFilters((prev) => ({ ...prev, end_date: e.target.value }));
+              }}
+              className="h-9 w-40 rounded-full text-sm"
+            />
+          </div>
+
+          {comparisonSupported && (
+            <>
+              <div className="mx-1 hidden h-9 w-px self-end bg-border sm:block" />
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-muted-foreground">Compare</Label>
+                <Select value={compareMode} onValueChange={(value) => setCompareMode(value as CompareMode)}>
+                  <SelectTrigger className="h-9 w-48 rounded-full text-sm" aria-label="Comparison period">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No comparison</SelectItem>
+                    <SelectItem value="yearly">Previous year</SelectItem>
+                    <SelectItem value="quarterly">Previous quarter</SelectItem>
+                    <SelectItem value="monthly">Previous month</SelectItem>
+                    <SelectItem value="custom">Custom range</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {compareMode === 'custom' && (
+                <>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="compare-from" className="text-xs font-medium text-muted-foreground">
+                      Compare from
+                    </Label>
+                    <Input
+                      id="compare-from"
+                      type="date"
+                      value={customCmp.start_date}
+                      onChange={(e) => setCustomCmp((prev) => ({ ...prev, start_date: e.target.value }))}
+                      className="h-9 w-40 rounded-full text-sm"
+                    />
+                  </div>
+                  <span className="pb-2 text-muted-foreground">→</span>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="compare-to" className="text-xs font-medium text-muted-foreground">
+                      Compare to
+                    </Label>
+                    <Input
+                      id="compare-to"
+                      type="date"
+                      value={customCmp.end_date}
+                      onChange={(e) => setCustomCmp((prev) => ({ ...prev, end_date: e.target.value }))}
+                      className="h-9 w-40 rounded-full text-sm"
+                    />
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          <div className="ml-auto flex items-center gap-3 pb-1.5">
+            {comparisonSupported && compareMode === 'custom' && (!customCmp.start_date || !customCmp.end_date) && (
+              <span className="text-xs text-amber-600">Select a complete custom range</span>
+            )}
+            {comparisonSupported && compareMode !== 'none' && compareMode !== 'custom' && (
+              <span className="text-xs text-muted-foreground">
+                {isCompareFetching
+                  ? 'Loading comparison…'
+                  : activeTab === 'balance-sheet'
+                    ? (bsCompareLabel ?? 'Compares against the same period one step back')
+                    : (plCompareLabel ? `vs ${plCompareLabel}` : 'Compares against the prior period')}
+              </span>
+            )}
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:refresh-linear"
+              className="w-9 px-0"
+              aria-label="Refresh reports"
+              onClick={() => {
+                queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
+                queryClient.invalidateQueries({ queryKey: ['balance-sheet'] });
+                queryClient.invalidateQueries({ queryKey: ['cash-flow'] });
+                queryClient.invalidateQueries({ queryKey: ['trial-balance'] });
+                queryClient.invalidateQueries({ queryKey: ['general-ledger'] });
+              }}
+            />
+          </div>
+        </div>
+
+        {comparisonSupported && compareMode === 'custom' && (
+          <p className="mt-3 text-xs text-muted-foreground">
+            Profit &amp; Loss compares this custom window; Balance Sheet compares as of its end date.
+          </p>
+        )}
+      </Card>
 
       {/* Reports Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
@@ -679,12 +801,11 @@ export function FinancialReportsPage() {
             isLoading={isPLLoading}
             error={plError?.message || null}
             onRefresh={refetchPL}
-            onExport={handleExport}
-            onPrint={handlePrint}
+            exportTargetRef={plRef}
+            exportFilename={`profit-and-loss-${filters.start_date || ''}-to-${filters.end_date || ''}`}
           >
             {profitLossData && (
-              <div className="space-y-6">
-                {compareToolbar}
+              <div ref={plRef} className="space-y-6">
                 <ComparisonHierarchyTable
                   roots={buildPlRoots(profitLossData, plComparing ? plCompareData : null)}
                   compareEnabled={plComparing}
@@ -709,12 +830,11 @@ export function FinancialReportsPage() {
             isLoading={isBSLoading}
             error={bsError?.message || null}
             onRefresh={refetchBS}
-            onExport={handleExport}
-            onPrint={handlePrint}
+            exportTargetRef={bsRef}
+            exportFilename={`balance-sheet-${filters.end_date || ''}`}
           >
             {balanceSheetData && (
-              <div className="space-y-6">
-                {compareToolbar}
+              <div ref={bsRef} className="space-y-6">
                 <ComparisonHierarchyTable
                   roots={buildBsRoots(balanceSheetData, bsComparing ? bsCompareData : null)}
                   compareEnabled={bsComparing}
@@ -735,11 +855,11 @@ export function FinancialReportsPage() {
             isLoading={isCFLoading}
             error={cfError?.message || null}
             onRefresh={refetchCF}
-            onExport={handleExport}
-            onPrint={handlePrint}
+            exportTargetRef={cfRef}
+            exportFilename={`cash-flow-${filters.start_date || ''}-to-${filters.end_date || ''}`}
           >
             {cashFlowData && (
-              <div className="space-y-6">
+              <div ref={cfRef} className="space-y-6">
                 {/* Operating Activities */}
                 <div>
                   <h3 className="text-lg font-semibold mb-4 text-primary">
@@ -845,11 +965,11 @@ export function FinancialReportsPage() {
             isLoading={isTBLoading}
             error={tbError?.message || null}
             onRefresh={refetchTB}
-            onExport={handleExport}
-            onPrint={handlePrint}
+            exportTargetRef={tbRef}
+            exportFilename={`trial-balance-${filters.end_date || ''}`}
           >
             {trialBalanceData && (
-              <div className="space-y-6">
+              <div ref={tbRef} className="space-y-6">
                 <ReportTable
                   columns={tbColumns}
                   data={trialBalanceData?.accounts ?? []}
@@ -900,11 +1020,11 @@ export function FinancialReportsPage() {
             isLoading={isGLLoading}
             error={glError?.message || null}
             onRefresh={refetchGL}
-            onExport={handleExport}
-            onPrint={handlePrint}
+            exportTargetRef={glRef}
+            exportFilename={`general-ledger-${filters.start_date || ''}-to-${filters.end_date || ''}`}
           >
             {generalLedgerData && (
-              <div className="space-y-6">
+              <div ref={glRef} className="space-y-6">
                 {/* Account Info */}
                 {generalLedgerData?.account && (
                   <Card className="p-4 bg-blue-50 dark:bg-blue-900/20">

@@ -5,6 +5,7 @@ import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Pagination } from '@/components/ui/Pagination'
 import { WorkOrderCard } from '@/components/field-service/WorkOrderCard'
 import fieldServiceApi, { WorkOrderStatus, WorkOrderPriority, type WorkOrderFilters } from '@/lib/fieldServiceApi'
 
@@ -32,13 +33,14 @@ export function WorkOrdersPage() {
   const [status, setStatus] = useState<WorkOrderStatus | 'all'>('all')
   const [priority, setPriority] = useState<WorkOrderPriority | 'all'>('all')
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
 
   const filters: WorkOrderFilters = {
     search: search || undefined,
     status: status === 'all' ? undefined : status,
     priority: priority === 'all' ? undefined : priority,
     page,
-    per_page: 20,
+    per_page: pageSize,
   }
 
   const { data, isLoading } = useQuery({
@@ -52,40 +54,38 @@ export function WorkOrdersPage() {
   return (
     <div className="p-6 space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold">Work Orders</h1>
-        <Button asChild>
-          <Link to="/field-service/work-orders/new">
-            <Icon icon="solar:add-circle-bold-duotone" width={18} className="mr-1.5" />
-            New Work Order
-          </Link>
-        </Button>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-wrap gap-2">
-        <Input
-          placeholder="Search work orders..."
-          value={search}
-          onChange={e => { setSearch(e.target.value); setPage(1) }}
-          className="max-w-xs"
-        />
-        <Select value={status} onValueChange={v => { setStatus(v as any); setPage(1) }}>
-          <SelectTrigger className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {STATUS_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={priority} onValueChange={v => { setPriority(v as any); setPage(1) }}>
-          <SelectTrigger className="w-36">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {PRIORITY_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            placeholder="Search work orders..."
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1) }}
+            className="h-8 w-64 rounded-full px-3 text-xs"
+          />
+          <Select value={status} onValueChange={v => { setStatus(v as any); setPage(1) }}>
+            <SelectTrigger className="h-8 w-40 rounded-full text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={priority} onValueChange={v => { setPriority(v as any); setPage(1) }}>
+            <SelectTrigger className="h-8 w-36 rounded-full text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PRIORITY_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button asChild>
+            <Link to="/field-service/work-orders/new">
+              <Icon icon="solar:add-circle-bold-duotone" width={18} className="mr-1.5" />
+              New Work Order
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {/* Results */}
@@ -114,17 +114,17 @@ export function WorkOrdersPage() {
       )}
 
       {/* Pagination */}
-      {lastPage > 1 && (
-        <div className="flex items-center justify-center gap-2 mt-4">
-          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
-            <Icon icon="solar:arrow-left-bold" width={16} />
-          </Button>
-          <span className="text-sm text-muted-foreground">Page {page} of {lastPage}</span>
-          <Button variant="outline" size="sm" disabled={page >= lastPage} onClick={() => setPage(p => p + 1)}>
-            <Icon icon="solar:arrow-right-bold" width={16} />
-          </Button>
-        </div>
-      )}
+      <Pagination
+        page={page}
+        totalPages={lastPage}
+        onPageChange={setPage}
+        from={(page - 1) * pageSize + 1}
+        to={Math.min(page * pageSize, data?.total ?? 0)}
+        total={data?.total ?? 0}
+        label="work orders"
+        pageSize={pageSize}
+        onPageSizeChange={(size) => { setPageSize(size); setPage(1) }}
+      />
     </div>
   )
 }

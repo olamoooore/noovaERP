@@ -5,12 +5,12 @@ import type { CustomerCreditNote, CreditNoteFilters, CreateCreditNotePayload } f
 const API_BASE = '/accounting/customers/credit-notes';
 
 // List credit notes
-export function useCustomerCreditNotes(filters: CreditNoteFilters, page: number = 1) {
+export function useCustomerCreditNotes(filters: CreditNoteFilters, page: number = 1, perPage: number = 20) {
   return useQuery({
-    queryKey: ['customer-credit-notes', filters, page],
+    queryKey: ['customer-credit-notes', filters, page, perPage],
     queryFn: async () => {
       const { data } = await api.get(API_BASE, {
-        params: { ...filters, page, per_page: 20 },
+        params: { ...filters, page, per_page: perPage },
       });
       return data;
     },

@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import { ReportExportToolbar } from '@/components/reports/ReportExportToolbar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -16,7 +17,6 @@ import {
 import reportApi from '@/lib/reportApi';
 import { TagFilterSelect } from '@/components/tags/TagFilterSelect';
 import { formatCurrency } from '@/lib/utils';
-import { useToast } from '@/hooks/use-toast';
 
 interface AgedPayablesFilters {
   search?: string;
@@ -27,7 +27,7 @@ interface AgedPayablesFilters {
 
 export function AgedPayablesPage() {
   const navigate = useNavigate();
-  const { toast } = useToast();
+  const reportRef = useRef<HTMLDivElement>(null);
   const [filters, setFilters] = useState<AgedPayablesFilters>({});
 
   // Fetch aged payables data
@@ -74,83 +74,6 @@ export function AgedPayablesPage() {
     );
   };
 
-  // Handle export
-  const handleExport = async (format: 'pdf' | 'excel') => {
-    try {
-      // Validate that we have data to export
-      if (!payablesData || !payablesData.data || payablesData.data.length === 0) {
-        toast({
-          title: 'No Data to Export',
-          description: 'There is no data available to export.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      toast({
-        title: 'Export Started',
-        description: `Exporting report to ${format.toUpperCase()}...`,
-      });
-
-      // Prepare export data with proper structure
-      const exportData = {
-        report_type: 'aged_payables',
-        filters: {} as Record<string, unknown>,
-        report_data: {
-          title: 'Aged Payables Report',
-          generated_at: new Date().toISOString(),
-          filters: filters,
-          summary: payablesData.summary,
-          data: payablesData.data,
-          columns: [
-            { key: 'vendor_name', label: 'Vendor', format: 'text' },
-            { key: 'current', label: 'Current', format: 'currency' },
-            { key: 'days_1_30', label: '1-30 Days', format: 'currency' },
-            { key: 'days_31_60', label: '31-60 Days', format: 'currency' },
-            { key: 'days_61_90', label: '61-90 Days', format: 'currency' },
-            { key: 'days_90_plus', label: '90+ Days', format: 'currency' },
-            { key: 'total', label: 'Total', format: 'currency' },
-          ],
-        },
-        filename: `aged-payables-${new Date().toISOString().split('T')[0]}`,
-        orientation: 'landscape',
-      };
-
-      // Call appropriate export API
-      let response;
-      if (format === 'pdf') {
-        response = await reportApi.exportToPdf(exportData);
-      } else {
-        response = await reportApi.exportToExcel(exportData);
-      }
-
-      // Handle successful export
-      if (response.success && response.download_url) {
-        // Trigger file download
-        const link = document.createElement('a');
-        link.href = response.download_url;
-        link.download = response.filename || `aged-payables.${format}`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-
-        toast({
-          title: 'Export Complete',
-          description: `Report exported successfully to ${format.toUpperCase()}`,
-        });
-      } else {
-        throw new Error('Export failed: No download URL received');
-      }
-    } catch (error) {
-      console.error('Export error:', error);
-      toast({
-        title: 'Export Failed',
-        description: error instanceof Error ? error.message : 'Failed to export report. Please try again.',
-        variant: 'destructive',
-      });
-    }
-  };
-
   // Calculate filtered summary totals
   const filteredSummary = payablesData?.summary || {
     total_vendors: 0,
@@ -165,20 +88,20 @@ export function AgedPayablesPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Aged Payables</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
             View outstanding vendor balances by aging period
           </p>
         </div>
-        <div className="flex gap-2">
-          <HeaderActionButton icon="solar:file-download-bold" variant="outline" onClick={() => handleExport('pdf')}>
-            Export PDF
-          </HeaderActionButton>
-          <HeaderActionButton icon="solar:file-download-bold" variant="outline" onClick={() => handleExport('excel')}>
-            Export Excel
-          </HeaderActionButton>
+        <div className="flex flex-wrap items-center gap-2">
+          <ReportExportToolbar
+            targetRef={reportRef}
+            title="Aged Payables"
+            subtitle="Outstanding vendor balances by aging period"
+            filename={`aged-payables-${new Date().toISOString().split('T')[0]}`}
+          />
           <HeaderActionButton icon="solar:refresh-bold" variant="outline" onClick={() => refetch()}>
             Refresh
           </HeaderActionButton>
@@ -186,74 +109,53 @@ export function AgedPayablesPage() {
       </div>
 
       {/* Filters */}
-      <Card className="p-4">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <div>
-            <label className="text-sm font-medium mb-2 block">
-              Search Vendor
-            </label>
-            <Input
-              placeholder="Search by vendor name..."
-              value={filters.search || ''}
-              onChange={(e) => handleSearchChange(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="text-sm font-medium mb-2 block">
-              Minimum Amount
-            </label>
-            <Input
-              type="number"
-              placeholder="0.00"
-              value={filters.min_amount || ''}
-              onChange={(e) => handleMinAmountChange(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="text-sm font-medium mb-2 block">
-              Aging Bucket
-            </label>
-            <Select
-              value={filters.aging_bucket || 'all'}
-              onValueChange={handleAgingBucketChange}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="All Buckets" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Buckets</SelectItem>
-                <SelectItem value="current">Current</SelectItem>
-                <SelectItem value="days_1_30">1-30 Days</SelectItem>
-                <SelectItem value="days_31_60">31-60 Days</SelectItem>
-                <SelectItem value="days_61_90">61-90 Days</SelectItem>
-                <SelectItem value="days_90_plus">90+ Days</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="text-sm font-medium mb-2 block">
-              Tag
-            </label>
-            <TagFilterSelect
-              className="h-10 w-full"
-              value={filters.tag || ''}
-              onChange={(value) =>
-                setFilters((prev) => ({ ...prev, tag: value || undefined }))
-              }
-            />
-          </div>
-          <div className="flex items-end">
-            <Button
-              variant="outline"
-              onClick={handleClearFilters}
-              className="w-full"
-            >
-              <Icon icon="solar:close-circle-bold" className="mr-2 h-4 w-4" />
-              Clear Filters
-            </Button>
-          </div>
-        </div>
-      </Card>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          placeholder="Search by vendor name..."
+          value={filters.search || ''}
+          onChange={(e) => handleSearchChange(e.target.value)}
+          className="h-8 w-64 rounded-full px-3 text-xs"
+        />
+        <Input
+          type="number"
+          placeholder="0.00"
+          value={filters.min_amount || ''}
+          onChange={(e) => handleMinAmountChange(e.target.value)}
+          className="h-8 w-28 rounded-full px-3 text-xs"
+        />
+        <Select
+          value={filters.aging_bucket || 'all'}
+          onValueChange={handleAgingBucketChange}
+        >
+          <SelectTrigger className="h-8 w-40 rounded-full text-xs">
+            <SelectValue placeholder="All Buckets" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Buckets</SelectItem>
+            <SelectItem value="current">Current</SelectItem>
+            <SelectItem value="days_1_30">1-30 Days</SelectItem>
+            <SelectItem value="days_31_60">31-60 Days</SelectItem>
+            <SelectItem value="days_61_90">61-90 Days</SelectItem>
+            <SelectItem value="days_90_plus">90+ Days</SelectItem>
+          </SelectContent>
+        </Select>
+        <TagFilterSelect
+          className="h-8 w-40 rounded-full text-xs"
+          value={filters.tag || ''}
+          onChange={(value) =>
+            setFilters((prev) => ({ ...prev, tag: value || undefined }))
+          }
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleClearFilters}
+          className="h-8 rounded-full px-3 text-xs"
+        >
+          <Icon icon="solar:close-circle-bold" className="mr-1.5 h-3.5 w-3.5" />
+          Clear Filters
+        </Button>
+      </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
@@ -368,7 +270,7 @@ export function AgedPayablesPage() {
 
       {/* Data Table */}
       <Card>
-        <div className="p-6">
+        <div className="p-6" ref={reportRef}>
           <h2 className="text-lg font-semibold mb-4">Vendor Details</h2>
 
           {/* Loading State */}

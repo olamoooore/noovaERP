@@ -8,10 +8,10 @@ import VendorDebitNotePostButton from './components/VendorDebitNotePostButton';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Pagination } from '@/components/ui/Pagination';
 import { Icon } from '@iconify/react';
 
 function StatusBadge({ status }: { status: string }) {
@@ -33,10 +33,11 @@ export default function VendorDebitNotesPage() {
     search: searchParams.get('search') || undefined,
   });
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingDebitNoteId, setEditingDebitNoteId] = useState<number | null>(null);
 
-  const { data, isLoading, error, refetch } = useVendorDebitNotes(filters, page);
+  const { data, isLoading, error, refetch } = useVendorDebitNotes(filters, page, pageSize);
   const deleteMutation = useDeleteVendorDebitNote();
 
   const handleDelete = async (id: number, status: string) => {
@@ -185,17 +186,17 @@ export default function VendorDebitNotesPage() {
             </div>
           )}
 
-          {pagination.last_page > 1 && (
-            <div className="flex items-center justify-between mt-4 pt-4 border-t">
-              <div className="text-sm text-muted-foreground">
-                Showing {pagination.from} to {pagination.to} of {pagination.total} results
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setPage(page - 1)} disabled={page === 1}>Previous</Button>
-                <Button variant="outline" size="sm" onClick={() => setPage(page + 1)} disabled={page === pagination.last_page}>Next</Button>
-              </div>
-            </div>
-          )}
+          <Pagination
+            page={page}
+            totalPages={pagination.last_page ?? 1}
+            onPageChange={setPage}
+            from={pagination.from}
+            to={pagination.to}
+            total={pagination.total}
+            label="debit notes"
+            pageSize={pageSize}
+            onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+          />
         </CardContent>
       </Card>
 

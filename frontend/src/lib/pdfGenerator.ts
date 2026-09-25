@@ -103,6 +103,9 @@ export function generateReportPDF(
   // Clone the table element
   const tableClone = tableElement.cloneNode(true) as HTMLElement;
 
+  // Drop controls (export/expand buttons) so they never render inside the PDF.
+  tableClone.querySelectorAll('[data-no-export]').forEach((el) => el.remove());
+
   // Style the table for PDF
   const table = tableClone.querySelector('table') || tableClone;
   if (table instanceof HTMLElement) {

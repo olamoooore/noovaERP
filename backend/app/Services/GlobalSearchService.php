@@ -20,6 +20,23 @@ class GlobalSearchService
 {
     private const LIMIT_PER_GROUP = 6;
 
+    private const GROUP_PERMISSIONS = [
+        'invoices' => 'invoices.view',
+        'quotations' => 'sales.view',
+        'sales_orders' => 'sales.view',
+        'delivery_orders' => 'sales.view',
+        'customers' => 'customers.view',
+        'products' => 'products.view',
+    ];
+
+    private ?bool $isSuperAdmin = null;
+
+    private ?int $centralUserId = null;
+
+    private ?string $tenantId = null;
+
+    public function __construct(private readonly TenantRoleService $roleService) {}
+
     /**
      * @param  array<int, string>  $tagSlugs
      * @return array{query: string, tag_slugs: array<int, string>, groups: array<int, array<string, mixed>>, total: int}
@@ -35,20 +52,42 @@ class GlobalSearchService
         if ($term !== '') {
             $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $term).'%';
 
-            $groups[] = $this->group('invoices', 'Invoices', 'solar:bill-list-bold-duotone', $this->invoices($like, $tagSlugs, $limit));
-            $groups[] = $this->group('quotations', 'Quotations', 'solar:file-text-bold-duotone', $this->quotations($like, $tagSlugs, $limit));
-            $groups[] = $this->group('sales_orders', 'Sales Orders', 'solar:cart-large-2-bold-duotone', $this->salesOrders($like, $tagSlugs, $limit));
-            $groups[] = $this->group('delivery_orders', 'Delivery Orders', 'solar:delivery-bold-duotone', $this->deliveryOrders($like, $tagSlugs, $limit));
-            $groups[] = $this->group('customers', 'Customers', 'solar:users-group-rounded-bold-duotone', $this->customers($like, $tagSlugs, $limit));
-            $groups[] = $this->group('products', 'Products', 'solar:box-bold-duotone', $this->products($like, $limit));
+            if ($this->canSearch('invoices')) {
+                $groups[] = $this->group('invoices', 'Invoices', 'solar:bill-list-bold-duotone', $this->invoices($like, $tagSlugs, $limit));
+            }
+            if ($this->canSearch('quotations')) {
+                $groups[] = $this->group('quotations', 'Quotations', 'solar:file-text-bold-duotone', $this->quotations($like, $tagSlugs, $limit));
+            }
+            if ($this->canSearch('sales_orders')) {
+                $groups[] = $this->group('sales_orders', 'Sales Orders', 'solar:cart-large-2-bold-duotone', $this->salesOrders($like, $tagSlugs, $limit));
+            }
+            if ($this->canSearch('delivery_orders')) {
+                $groups[] = $this->group('delivery_orders', 'Delivery Orders', 'solar:delivery-bold-duotone', $this->deliveryOrders($like, $tagSlugs, $limit));
+            }
+            if ($this->canSearch('customers')) {
+                $groups[] = $this->group('customers', 'Customers', 'solar:users-group-rounded-bold-duotone', $this->customers($like, $tagSlugs, $limit));
+            }
+            if ($this->canSearch('products')) {
+                $groups[] = $this->group('products', 'Products', 'solar:box-bold-duotone', $this->products($like, $limit));
+            }
             $groups[] = $this->group('tags', 'Tags', 'solar:tag-bold-duotone', $this->tags($like));
         } elseif ($tagSlugs !== []) {
             // Tag-only browse: everything carrying the selected labels.
-            $groups[] = $this->group('invoices', 'Invoices', 'solar:bill-list-bold-duotone', $this->invoices('%', $tagSlugs, $limit));
-            $groups[] = $this->group('quotations', 'Quotations', 'solar:file-text-bold-duotone', $this->quotations('%', $tagSlugs, $limit));
-            $groups[] = $this->group('sales_orders', 'Sales Orders', 'solar:cart-large-2-bold-duotone', $this->salesOrders('%', $tagSlugs, $limit));
-            $groups[] = $this->group('delivery_orders', 'Delivery Orders', 'solar:delivery-bold-duotone', $this->deliveryOrders('%', $tagSlugs, $limit));
-            $groups[] = $this->group('customers', 'Customers', 'solar:users-group-rounded-bold-duotone', $this->customers('%', $tagSlugs, $limit));
+            if ($this->canSearch('invoices')) {
+                $groups[] = $this->group('invoices', 'Invoices', 'solar:bill-list-bold-duotone', $this->invoices('%', $tagSlugs, $limit));
+            }
+            if ($this->canSearch('quotations')) {
+                $groups[] = $this->group('quotations', 'Quotations', 'solar:file-text-bold-duotone', $this->quotations('%', $tagSlugs, $limit));
+            }
+            if ($this->canSearch('sales_orders')) {
+                $groups[] = $this->group('sales_orders', 'Sales Orders', 'solar:cart-large-2-bold-duotone', $this->salesOrders('%', $tagSlugs, $limit));
+            }
+            if ($this->canSearch('delivery_orders')) {
+                $groups[] = $this->group('delivery_orders', 'Delivery Orders', 'solar:delivery-bold-duotone', $this->deliveryOrders('%', $tagSlugs, $limit));
+            }
+            if ($this->canSearch('customers')) {
+                $groups[] = $this->group('customers', 'Customers', 'solar:users-group-rounded-bold-duotone', $this->customers('%', $tagSlugs, $limit));
+            }
         }
 
         $groups = array_values(array_filter($groups, fn ($g) => $g['items'] !== []));
@@ -60,6 +99,43 @@ class GlobalSearchService
             'groups' => $groups,
             'total' => $total,
         ];
+    }
+
+    private function canSearch(string $group): bool
+    {
+        $permission = self::GROUP_PERMISSIONS[$group] ?? null;
+
+        if ($permission === null) {
+            return true;
+        }
+
+        $user = request()->user();
+
+        if (! $user) {
+            return false;
+        }
+
+        if ($this->isSuperAdmin === null) {
+            $this->isSuperAdmin = ($user->is_super_admin ?? false) || ($user->role ?? null) === 'platform_super_admin';
+        }
+
+        if ($this->isSuperAdmin) {
+            return true;
+        }
+
+        if ($this->tenantId === null) {
+            $this->tenantId = (function_exists('tenant') && tenant())
+                ? (string) tenant('id')
+                : (string) request()->header('X-Tenant-ID', '');
+
+            $this->centralUserId = (int) (DB::table('public.users')->where('email', $user->email)->value('id') ?? $user->id);
+        }
+
+        if ($this->tenantId === '') {
+            return false;
+        }
+
+        return $this->roleService->hasPermission((int) $this->centralUserId, $this->tenantId, $permission);
     }
 
     private function group(string $key, string $label, string $icon, array $items): array

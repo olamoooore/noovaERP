@@ -17,6 +17,7 @@ import { SalesLineColumnMenu, SalesLineColumnVisibility, listingColumns } from '
 import { useBulkSelection } from '@/hooks/use-bulk-selection';
 import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Pagination } from '@/components/ui/Pagination';
 
 /**
  * Customer Invoices Page
@@ -90,7 +91,7 @@ export const CustomerBills: React.FC = () => {
 
   // Fetch invoices
   const { data: invoicesData, isLoading, refetch } = useQuery({
-    queryKey: ['customer-bills', statusFilter, searchQuery, customerFilter, tagFilter, agingBucketFilter, dateFilter, selectedYear, selectedMonth, customStartDate, customEndDate, page],
+    queryKey: ['customer-bills', statusFilter, searchQuery, customerFilter, tagFilter, agingBucketFilter, dateFilter, selectedYear, selectedMonth, customStartDate, customEndDate, page, perPage],
     queryFn: async () => {
       if (isAgingDrilldown) {
         const response = await api.get('/accounting/reports/aged-receivables/details', {
@@ -285,7 +286,7 @@ export const CustomerBills: React.FC = () => {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Customer Invoices</h1>
           <p className="text-muted-foreground mt-1">
@@ -331,6 +332,97 @@ export const CustomerBills: React.FC = () => {
             New Invoice
           </Button>
         </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={statusFilter}
+          onChange={(e) => handleStatusFilterChange(e.target.value)}
+          className="h-8 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          <option value="all">All Status</option>
+          <option value="draft">Draft</option>
+          <option value="posted">Posted</option>
+          <option value="paid">Paid</option>
+          <option value="partial">Partially Paid</option>
+          <option value="overdue">Overdue</option>
+        </select>
+        <input
+          type="text"
+          placeholder="Search by customer, invoice number..."
+          value={searchQuery}
+          onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+          className="h-8 w-64 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+        />
+        <div className="w-48 max-w-full">
+          <CustomerSearchCombobox
+            value={customerFilter || ''}
+            onValueChange={handleCustomerFilterChange}
+            placeholder="All Customers"
+            compact
+          />
+        </div>
+        <select
+          value={tagFilter}
+          onChange={(e) => { setTagFilter(e.target.value); setPage(1); }}
+          aria-label="Filter by tag"
+          className="h-8 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          <option value="">All Tags</option>
+          {allTags.map((t) => (
+            <option key={t.id} value={t.slug}>{t.name}</option>
+          ))}
+        </select>
+        <select
+          value={dateFilter}
+          onChange={(e) => { setDateFilter(e.target.value as typeof dateFilter); setPage(1); }}
+          className="h-8 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          <option value="all">All Dates</option>
+          <option value="yearly">Yearly</option>
+          <option value="monthly">Monthly</option>
+          <option value="custom">Custom Date</option>
+        </select>
+        {dateFilter === 'yearly' && (
+          <input
+            type="number"
+            min="2000"
+            max="2100"
+            value={selectedYear}
+            onChange={(e) => { setSelectedYear(e.target.value); setPage(1); }}
+            aria-label="Invoice year"
+            className="h-8 w-24 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+        )}
+        {dateFilter === 'monthly' && (
+          <input
+            type="month"
+            value={selectedMonth}
+            onChange={(e) => { setSelectedMonth(e.target.value); setPage(1); }}
+            aria-label="Invoice month"
+            className="h-8 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+        )}
+        {dateFilter === 'custom' && (
+          <>
+            <input
+              type="date"
+              value={customStartDate}
+              onChange={(e) => { setCustomStartDate(e.target.value); setPage(1); }}
+              aria-label="Invoice start date"
+              className="h-8 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <input
+              type="date"
+              min={customStartDate || undefined}
+              value={customEndDate}
+              onChange={(e) => { setCustomEndDate(e.target.value); setPage(1); }}
+              aria-label="Invoice end date"
+              className="h-8 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </>
+        )}
       </div>
 
       {/* Quick Stats */}
@@ -453,100 +545,6 @@ export const CustomerBills: React.FC = () => {
           </CardContent>
         </Card>
       )}
-
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-wrap gap-3">
-            <select
-              value={statusFilter}
-              onChange={(e) => handleStatusFilterChange(e.target.value)}
-              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Status</option>
-              <option value="draft">Draft</option>
-              <option value="posted">Posted</option>
-              <option value="paid">Paid</option>
-              <option value="partial">Partially Paid</option>
-              <option value="overdue">Overdue</option>
-            </select>
-            <input
-              type="text"
-              placeholder="Search by customer, invoice number..."
-              value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
-              className="min-w-56 flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <div className="w-48 max-w-full">
-              <CustomerSearchCombobox
-                value={customerFilter || ''}
-                onValueChange={handleCustomerFilterChange}
-                placeholder="All Customers"
-              />
-            </div>
-            <select
-              value={tagFilter}
-              onChange={(e) => { setTagFilter(e.target.value); setPage(1); }}
-              aria-label="Filter by tag"
-              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
-            >
-              <option value="">All Tags</option>
-              {allTags.map((t) => (
-                <option key={t.id} value={t.slug}>{t.name}</option>
-              ))}
-            </select>
-            <select
-              value={dateFilter}
-              onChange={(e) => { setDateFilter(e.target.value as typeof dateFilter); setPage(1); }}
-              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
-            >
-              <option value="all">All Dates</option>
-              <option value="yearly">Yearly</option>
-              <option value="monthly">Monthly</option>
-              <option value="custom">Custom Date</option>
-            </select>
-            {dateFilter === 'yearly' && (
-              <input
-                type="number"
-                min="2000"
-                max="2100"
-                value={selectedYear}
-                onChange={(e) => { setSelectedYear(e.target.value); setPage(1); }}
-                aria-label="Invoice year"
-                className="w-28 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
-              />
-            )}
-            {dateFilter === 'monthly' && (
-              <input
-                type="month"
-                value={selectedMonth}
-                onChange={(e) => { setSelectedMonth(e.target.value); setPage(1); }}
-                aria-label="Invoice month"
-                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
-              />
-            )}
-            {dateFilter === 'custom' && (
-              <>
-                <input
-                  type="date"
-                  value={customStartDate}
-                  onChange={(e) => { setCustomStartDate(e.target.value); setPage(1); }}
-                  aria-label="Invoice start date"
-                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
-                />
-                <input
-                  type="date"
-                  min={customStartDate || undefined}
-                  value={customEndDate}
-                  onChange={(e) => { setCustomEndDate(e.target.value); setPage(1); }}
-                  aria-label="Invoice end date"
-                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
-                />
-              </>
-            )}
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Bulk action bar */}
       {selectedIds.length > 0 && (
@@ -740,33 +738,17 @@ export const CustomerBills: React.FC = () => {
               </Table>
               </SalesLineColumnVisibility>
 
-            {lastPage > 1 && (
-              <div className="flex items-center justify-between pt-4">
-                <span className="text-sm text-muted-foreground">
-                  Page {currentPage} of {lastPage}
-                </span>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage <= 1}
-                  >
-                    <Icon icon="solar:alt-arrow-left-bold" className="mr-1 h-4 w-4" />
-                    Previous
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
-                    disabled={currentPage >= lastPage}
-                  >
-                    Next
-                    <Icon icon="solar:alt-arrow-right-bold" className="ml-1 h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            )}
+            <Pagination
+              page={page}
+              totalPages={lastPage}
+              onPageChange={setPage}
+              from={(page - 1) * perPage + 1}
+              to={Math.min(page * perPage, totalRecords)}
+              total={totalRecords}
+              label="invoices"
+              pageSize={perPage}
+              onPageSizeChange={(size) => { setPerPage(size); setPage(1); }}
+            />
             </>
           )}
         </CardContent>

@@ -13,6 +13,7 @@ export interface VendorCreditNote {
 }
 
 export interface VendorCreditNoteFilters {
+  search?: string;
   status?: string;
   vendor_id?: number;
   bill_id?: number;

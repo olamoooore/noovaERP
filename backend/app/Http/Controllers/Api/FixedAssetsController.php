@@ -111,6 +111,7 @@ class FixedAssetsController extends Controller
         $validated = $request->validate([
             'columns' => ['required', 'array', 'min:1', 'max:'.count(FixedAssetsExport::COLUMNS)],
             'columns.*' => ['required', 'string', 'distinct', 'in:'.implode(',', array_keys(FixedAssetsExport::COLUMNS))],
+            'format' => ['nullable', 'in:csv,xlsx'],
         ]);
         // Issue #233: export() was the one action #163 left unscoped — the CSV
         // leaked every entity's asset register to an entity-scoped user.
@@ -126,7 +127,13 @@ class FixedAssetsController extends Controller
             $query->where(fn ($q) => $q->where('asset_number', 'LIKE', "%{$search}%")->orWhere('name', 'LIKE', "%{$search}%")->orWhere('description', 'LIKE', "%{$search}%"));
         }
 
-        return Excel::download(new FixedAssetsExport($query->orderBy('asset_number'), $validated['columns']), 'fixed_assets_'.now()->format('Y-m-d').'.xlsx');
+        $format = $validated['format'] ?? 'xlsx';
+
+        return Excel::download(
+            new FixedAssetsExport($query->orderBy('asset_number'), $validated['columns']),
+            'fixed_assets_'.now()->format('Y-m-d').'.'.$format,
+            $format === 'csv' ? \Maatwebsite\Excel\Excel::CSV : \Maatwebsite\Excel\Excel::XLSX
+        );
     }
 
     /**

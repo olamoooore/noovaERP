@@ -46,6 +46,7 @@ const settlementsApi = {
     state?: string;
     source_type?: string;
     page?: number;
+    per_page?: number;
   }): Promise<{ data: Settlement[]; current_page: number; last_page: number; total: number }> => {
     const response = await api.get('/accounting/settlements', { params });
     return response.data.data;

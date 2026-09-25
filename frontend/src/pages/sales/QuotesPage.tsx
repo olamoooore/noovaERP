@@ -28,8 +28,8 @@ import { useBulkSelection } from '@/hooks/use-bulk-selection'
 import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice'
 import { TagFilterSelect } from '@/components/tags/TagFilterSelect'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Pagination } from '@/components/ui/Pagination'
 
-const PER_PAGE = 20
 const QUOTATION_EXPORT_COLUMNS = [
   { key: 'quotation_number', label: 'Quotation No', group: 'Quotation', default: true },
   { key: 'quotation_date', label: 'Date', group: 'Quotation', default: true },
@@ -77,17 +77,18 @@ export function QuotesPage() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [tagFilter, setTagFilter] = useState('')
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false)
 
   const queryParams = new URLSearchParams()
-  queryParams.set('per_page', String(PER_PAGE))
+  queryParams.set('per_page', String(pageSize))
   queryParams.set('page', String(page))
   if (searchQuery.trim()) queryParams.set('search', searchQuery.trim())
   if (statusFilter !== 'all') queryParams.set('status', statusFilter)
   if (tagFilter) queryParams.set('tag', tagFilter)
 
   const { data: quotesResponse, isLoading } = useQuery({
-    queryKey: ['quotations', searchQuery, statusFilter, tagFilter, page],
+    queryKey: ['quotations', searchQuery, statusFilter, tagFilter, page, pageSize],
     queryFn: async () => {
       const response = await api.get(`/quotations?${queryParams.toString()}`)
       return response.data
@@ -95,7 +96,6 @@ export function QuotesPage() {
   })
 
   const quotes = quotesResponse?.data || []
-  const currentPage = quotesResponse?.current_page || page
   const lastPage = quotesResponse?.last_page || 1
   const totalRecords = quotesResponse?.total || 0
 
@@ -435,33 +435,17 @@ export function QuotesPage() {
                 </SalesLineColumnVisibility>
               </div>
 
-              {lastPage > 1 && (
-                <div className="flex items-center justify-between pt-2">
-                  <span className="text-sm text-muted-foreground">
-                    Page {currentPage} of {lastPage}
-                  </span>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      disabled={currentPage <= 1}
-                    >
-                      <Icon icon="solar:alt-arrow-left-bold" className="mr-1 h-4 w-4" />
-                      Previous
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
-                      disabled={currentPage >= lastPage}
-                    >
-                      Next
-                      <Icon icon="solar:alt-arrow-right-bold" className="ml-1 h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              )}
+              <Pagination
+                page={page}
+                totalPages={lastPage}
+                onPageChange={setPage}
+                from={(page - 1) * pageSize + 1}
+                to={Math.min(page * pageSize, totalRecords)}
+                total={totalRecords}
+                label="quotes"
+                pageSize={pageSize}
+                onPageSizeChange={(size) => { setPageSize(size); setPage(1) }}
+              />
             </>
           )}
         </CardContent>

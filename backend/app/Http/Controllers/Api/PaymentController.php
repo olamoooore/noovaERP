@@ -103,6 +103,7 @@ class PaymentController extends Controller
             'columns.*' => ['required', 'string', 'distinct', 'in:'.implode(',', array_keys(PaymentsExport::COLUMNS))],
             'document_ids' => ['nullable', 'array'],
             'document_ids.*' => ['integer', 'distinct', 'exists:payments,id'],
+            'format' => ['nullable', 'in:csv,xlsx'],
         ]);
         $query = Payment::query();
         if ($request->filled('document_ids')) {
@@ -131,7 +132,13 @@ class PaymentController extends Controller
                 ->orWhereHas('invoice', fn ($iq) => $iq->where('invoice_number', 'ILIKE', "%{$search}%")));
         }
 
-        return Excel::download(new PaymentsExport($query->orderByDesc('payment_date')->orderByDesc('id'), $validated['columns']), 'payments_'.now()->format('Y-m-d').'.xlsx');
+        $format = $validated['format'] ?? 'xlsx';
+
+        return Excel::download(
+            new PaymentsExport($query->orderByDesc('payment_date')->orderByDesc('id'), $validated['columns']),
+            'payments_'.now()->format('Y-m-d').'.'.$format,
+            $format === 'csv' ? \Maatwebsite\Excel\Excel::CSV : \Maatwebsite\Excel\Excel::XLSX
+        );
     }
 
     /**

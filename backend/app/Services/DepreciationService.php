@@ -103,6 +103,7 @@ class DepreciationService
                             // Issue #162: thread the running accumulated
                             // depreciation into the period calculation.
                             $amount = min($this->calculateDepreciationAmount($asset, $period, $projectedAccumulated), $remaining);
+                            $amount = $this->prorateFirstPeriodAmount($asset, $period, $amount);
                             if ($amount <= 0) {
                                 break;
                             }
@@ -147,6 +148,41 @@ class DepreciationService
                             }
                         }
                         $period->addMonth();
+                    }
+
+                    // Final-period true-up: a mid-month start prorates the
+                    // first period, so the whole-month charges no longer sum
+                    // to the depreciable base by the last scheduled month.
+                    // Charge the remainder in one final period so the asset
+                    // fully depreciates (standard fixed-asset practice).
+                    $scheduledTotal = (float) DepreciationSchedule::where('asset_id', $asset->id)
+                        ->sum('depreciation_amount');
+                    $trueUp = round((float) $asset->purchase_cost - (float) $asset->salvage_value - $scheduledTotal, 2);
+
+                    if ($trueUp > 0.01) {
+                        $trueUpPeriod = $period->copy()->endOfMonth();
+                        $schedule = DepreciationSchedule::create([
+                            'asset_id' => $asset->id,
+                            'period_date' => $trueUpPeriod->toDateString(),
+                            'depreciation_amount' => $trueUp,
+                            'accumulated_depreciation' => round($scheduledTotal + $trueUp, 2),
+                            'book_value' => max((float) $asset->purchase_cost - $scheduledTotal - $trueUp, (float) $asset->salvage_value),
+                            'is_posted' => false,
+                        ]);
+
+                        try {
+                            $journalEntry = $this->createDepreciationDraftJournalEntry($asset, $schedule, $trueUpPeriod);
+                            $schedule->update(['journal_entry_id' => $journalEntry->id]);
+                            $created++;
+                        } catch (\Throwable $e) {
+                            $pending++;
+                            $periodErrors[] = [
+                                'period' => $trueUpPeriod->toDateString(),
+                                'message' => $e->getMessage(),
+                                'schedule_id' => $schedule->id,
+                                'retry_endpoint' => "/api/v1/assets/{$asset->id}/post-schedule",
+                            ];
+                        }
                     }
                 });
 
@@ -274,6 +310,7 @@ class DepreciationService
 
             try {
                 $amount = $this->calculateDepreciationAmount($asset, $periodDate, $cumulative);
+                $amount = $this->prorateFirstPeriodAmount($asset, $periodDate, $amount);
 
                 // Do not depreciate past the depreciable base on the final entry
                 if ($amount > $remaining) {
@@ -348,6 +385,46 @@ class DepreciationService
                 $results['errors'][] = [
                     'period' => $periodDate->format('Y-m-d'),
                     'message' => $e->getMessage(),
+                ];
+            }
+        }
+
+        // Final-period true-up for mid-month starts: the prorated first period
+        // leaves a remainder that the whole-month periods never absorb, so the
+        // asset would never fully depreciate. Charge the remainder in one final
+        // period (standard fixed-asset practice).
+        $scheduledTotal = (float) DepreciationSchedule::where('asset_id', $asset->id)->sum('depreciation_amount');
+        $trueUp = round((float) $asset->purchase_cost - (float) $asset->salvage_value - $scheduledTotal, 2);
+
+        if ($trueUp > 0.01) {
+            $trueUpDate = $this->advancePeriod($startDate, $frequency, $periodsTotal);
+            $schedule = DB::transaction(function () use ($asset, $trueUpDate, $trueUp, $scheduledTotal): DepreciationSchedule {
+                FixedAsset::where('id', $asset->id)->lockForUpdate()->first();
+
+                return DepreciationSchedule::create([
+                    'asset_id' => $asset->id,
+                    'period_date' => $trueUpDate->format('Y-m-d'),
+                    'depreciation_amount' => $trueUp,
+                    'accumulated_depreciation' => round($scheduledTotal + $trueUp, 2),
+                    'book_value' => max((float) $asset->purchase_cost - $scheduledTotal - $trueUp, (float) $asset->salvage_value),
+                    'is_posted' => false,
+                ]);
+            });
+
+            try {
+                $journalEntry = $this->createDepreciationDraftJournalEntry($asset, $schedule, $trueUpDate);
+                $schedule->update([
+                    'journal_entry_id' => $journalEntry->id,
+                    'is_posted' => true,
+                ]);
+                $results['generated']++;
+            } catch (\Throwable $je) {
+                $results['pending_posting'] = ($results['pending_posting'] ?? 0) + 1;
+                $results['errors'][] = [
+                    'period' => $trueUpDate->format('Y-m-d'),
+                    'message' => $je->getMessage(),
+                    'schedule_id' => $schedule->id,
+                    'retry_endpoint' => "/api/v1/assets/{$asset->id}/post-schedule",
                 ];
             }
         }
@@ -518,6 +595,29 @@ class DepreciationService
             default:
                 throw new \Exception("Unsupported depreciation method: {$asset->depreciation_method}");
         }
+    }
+
+    /**
+     * Prorate the FIRST schedule period when the asset's depreciation starts
+     * mid-month. The client's schedule charges the acquisition month by active
+     * days on a 30-day month basis (e.g. acquired 21 May → 11/30 of the monthly
+     * charge; acquired 30 Sep → 1/30). Assets starting on the 1st keep the
+     * full monthly charge, so straight-line assets whose life is expressed in
+     * whole months are unchanged.
+     */
+    protected function prorateFirstPeriodAmount(FixedAsset $asset, Carbon $periodDate, float $amount): float
+    {
+        $start = $asset->depreciation_start_date
+            ? Carbon::parse($asset->depreciation_start_date)
+            : null;
+
+        if (! $start || $start->day === 1 || ! $start->isSameMonth($periodDate)) {
+            return $amount;
+        }
+
+        $daysActive = $start->daysInMonth - $start->day + 1;
+
+        return round($amount * $daysActive / 30, 2);
     }
 
     /**

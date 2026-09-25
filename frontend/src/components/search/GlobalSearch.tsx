@@ -5,9 +5,11 @@ import { Icon } from '@iconify/react'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
+import { baseNavItems, deriveNavPermission, flattenNav } from '@/lib/navigation'
+import { useAuthStore } from '@/store/authStore'
 
 export interface SearchHit {
-  id: number
+  id: number | string
   title: string
   subtitle: string
   url: string
@@ -81,6 +83,46 @@ export function GlobalSearch() {
   const { data: tags } = useTags(open)
   const active = open && (query.trim().length > 0 || tagSlugs.length > 0)
   const { data, isFetching } = useGlobalSearch(query, tagSlugs, active, 6)
+  const { hasPermission } = useAuthStore()
+
+  const pageHits = useMemo<SearchHit[]>(() => {
+    const term = query.trim().toLowerCase()
+    if (!term) return []
+
+    return flattenNav(baseNavItems)
+      .filter((item) => Boolean(item.href))
+      .filter((item) => {
+        const permission = deriveNavPermission(item)
+        return !permission || hasPermission(permission)
+      })
+      .filter((item) => {
+        const haystack = [item.title, ...item.parentTitles, ...(item.keywords ?? [])]
+          .join(' ')
+          .toLowerCase()
+        return haystack.includes(term)
+      })
+      .slice(0, 6)
+      .map((item) => ({
+        id: item.href,
+        title: item.title,
+        subtitle: item.parentTitle ?? 'Page',
+        url: item.href,
+        badges: [],
+      }))
+  }, [query, hasPermission])
+
+  const pagesGroup = useMemo<SearchGroup | null>(
+    () =>
+      pageHits.length
+        ? { key: 'pages', label: 'Pages', icon: 'solar:compass-bold-duotone', items: pageHits }
+        : null,
+    [pageHits],
+  )
+
+  const groups = useMemo(
+    () => (pagesGroup ? [pagesGroup, ...(data?.groups ?? [])] : (data?.groups ?? [])),
+    [pagesGroup, data],
+  )
 
   // Close on outside click
   useEffect(() => {
@@ -254,11 +296,11 @@ export function GlobalSearch() {
 
           {/* Results */}
           <div className="max-h-[55vh] overflow-y-auto">
-            {!active ? null : isFetching && !data ? (
+            {!active ? null : isFetching && !data && groups.length === 0 ? (
               <div className="flex items-center justify-center py-10">
                 <Icon icon="eos-icons:loading" className="h-6 w-6 animate-spin text-primary" />
               </div>
-            ) : (data?.groups ?? []).length === 0 ? (
+            ) : groups.length === 0 ? (
               <div className="flex flex-col items-center gap-1 py-10 text-muted-foreground">
                 <Icon icon="solar:magnifer-bold-duotone" className="h-8 w-8 opacity-40" />
                 <p className="text-sm font-medium">No matches</p>
@@ -266,7 +308,7 @@ export function GlobalSearch() {
               </div>
             ) : (
               <div className="divide-y">
-                {(data?.groups ?? []).map((group) => (
+                {groups.map((group) => (
                   <div key={group.key} className="p-2">
                     <div className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                       <Icon icon={group.icon} className="h-3.5 w-3.5" />

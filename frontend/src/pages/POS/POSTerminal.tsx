@@ -11,6 +11,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
+import { Pagination } from '@/components/ui/Pagination'
 import {
   Select,
   SelectContent,
@@ -297,6 +298,7 @@ export function POSTerminal() {
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null) // Track draft order ID
   const [currentOrderNumber, setCurrentOrderNumber] = useState<string | null>(null)
   const [productPage, setProductPage] = useState(1) // Product pagination
+  const [productPageSize, setProductPageSize] = useState(50)
   const scannerBufferRef = useRef('')
   const scannerLastKeyTsRef = useRef(0)
   const scannerFlushTimerRef = useRef<number | null>(null)
@@ -453,9 +455,9 @@ export function POSTerminal() {
 
   // Fetch Products with pagination
   const { data: productsResponse, isLoading: productsLoading } = useQuery({
-    queryKey: ['pos-products', search, selectedCategory, warehouseId, productPage],
+    queryKey: ['pos-products', search, selectedCategory, warehouseId, productPage, productPageSize],
     queryFn: async () => {
-      const params: Record<string, any> = { per_page: 50, page: productPage }
+      const params: Record<string, any> = { per_page: productPageSize, page: productPage }
       if (search) params.search = search
       if (selectedCategory) params.category_id = selectedCategory
       if (warehouseId && warehouseId !== 'all') params.warehouse_id = warehouseId
@@ -1926,33 +1928,18 @@ export function POSTerminal() {
             </div>
           </ScrollArea>
 
-          {productLastPage > 1 && (
-            <div className="flex items-center justify-between border-t border-slate-200/80 bg-slate-50/70 px-4 py-3 xl:px-5">
-              <span className="text-xs font-medium text-slate-500">
-                {productTotal.toLocaleString()} products · Page {productPage} of {productLastPage}
-              </span>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 rounded-full border-slate-200 bg-white px-3 shadow-sm"
-                  disabled={productPage <= 1}
-                  onClick={() => setProductPage((page) => Math.max(1, page - 1))}
-                >
-                  <Icon icon="solar:alt-arrow-left-bold" className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 rounded-full border-slate-200 bg-white px-3 shadow-sm"
-                  disabled={productPage >= productLastPage}
-                  onClick={() => setProductPage((page) => Math.min(productLastPage, page + 1))}
-                >
-                  <Icon icon="solar:alt-arrow-right-bold" className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          )}
+          <Pagination
+            page={productPage}
+            totalPages={productLastPage}
+            onPageChange={setProductPage}
+            from={(productPage - 1) * productPageSize + 1}
+            to={Math.min(productPage * productPageSize, productTotal)}
+            total={productTotal}
+            label="products"
+            className="border-slate-200/80 bg-slate-50/70 px-4 xl:px-5"
+            pageSize={productPageSize}
+            onPageSizeChange={(size) => { setProductPageSize(size); setProductPage(1) }}
+          />
         </section>
 
         <Card className="flex h-full min-w-0 basis-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-slate-200/80 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.08)]">

@@ -126,14 +126,14 @@ export const CHART_COLORS = {
  * Color palette for multi-series charts
  */
 export const COLOR_PALETTE = [
-  '#3b82f6', // blue
+  '#6366f1', // indigo
   '#8b5cf6', // violet
-  '#10b981', // green
+  '#0ea5e9', // sky
+  '#10b981', // emerald
   '#f59e0b', // amber
-  '#ef4444', // red
-  '#06b6d4', // cyan
-  '#ec4899', // pink
+  '#f43f5e', // rose
   '#14b8a6', // teal
+  '#a855f7', // purple
 ];
 
 /**

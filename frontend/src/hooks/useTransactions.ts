@@ -3,12 +3,12 @@ import api from '@/lib/api';
 import type { ARTransaction, APTransaction, TransactionFilters, CustomerBalance, VendorBalance } from '@/types/transactions';
 
 // AR Transactions
-export function useARTransactions(filters: TransactionFilters, page: number = 1) {
+export function useARTransactions(filters: TransactionFilters, page: number = 1, perPage: number = 20) {
   return useQuery({
-    queryKey: ['ar-transactions', filters, page],
+    queryKey: ['ar-transactions', filters, page, perPage],
     queryFn: async () => {
       const { data } = await api.get('/accounting/customers/transactions', {
-        params: { ...filters, page, per_page: 20 },
+        params: { ...filters, page, per_page: perPage },
       });
       return data;
     },
@@ -51,12 +51,12 @@ export function useExportARTransactions() {
 }
 
 // AP Transactions
-export function useAPTransactions(filters: TransactionFilters, page: number = 1) {
+export function useAPTransactions(filters: TransactionFilters, page: number = 1, perPage: number = 20) {
   return useQuery({
-    queryKey: ['ap-transactions', filters, page],
+    queryKey: ['ap-transactions', filters, page, perPage],
     queryFn: async () => {
       const { data } = await api.get('/accounting/vendors/transactions', {
-        params: { ...filters, page, per_page: 20 },
+        params: { ...filters, page, per_page: perPage },
       });
       return data;
     },

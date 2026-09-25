@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Pagination } from '@/components/ui/Pagination';
 import { Icon } from '@iconify/react';
 
 function StatusBadge({ status }: { status: string }) {
@@ -34,10 +35,11 @@ export default function VendorCreditNotesPage() {
     search: searchParams.get('search') || undefined,
   });
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingCreditNoteId, setEditingCreditNoteId] = useState<number | null>(null);
 
-  const { data, isLoading, error, refetch } = useVendorCreditNotes(filters, page);
+  const { data, isLoading, error, refetch } = useVendorCreditNotes(filters, page, pageSize);
   const deleteMutation = useDeleteVendorCreditNote();
 
   const handleDelete = async (id: number, status: string) => {
@@ -68,44 +70,38 @@ export default function VendorCreditNotesPage() {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Credit Notes</h1>
           <p className="text-muted-foreground mt-1">Manage credit notes for returns and corrections</p>
         </div>
-        <HeaderActionButton icon="solar:add-circle-bold-duotone" onClick={() => setShowCreateDialog(true)}>
-          New Credit Note
-        </HeaderActionButton>
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            type="text"
+            placeholder="Search by credit note number or vendor..."
+            value={searchTerm}
+            onChange={(e) => {
+              const value = e.target.value;
+              setSearchTerm(value);
+              handleFilterChange('search', value || undefined);
+            }}
+            className="h-8 w-64 rounded-full px-3 text-xs"
+          />
+          <select
+            value={filters.status || ''}
+            onChange={(e) => handleFilterChange('status', e.target.value || undefined)}
+            className="h-8 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="">All Status</option>
+            <option value="draft">Draft</option>
+            <option value="posted">Posted</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+          <HeaderActionButton icon="solar:add-circle-bold-duotone" onClick={() => setShowCreateDialog(true)}>
+            New Credit Note
+          </HeaderActionButton>
+        </div>
       </div>
-
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex gap-4">
-            <Input
-              type="text"
-              placeholder="Search by credit note number or vendor..."
-              value={searchTerm}
-              onChange={(e) => {
-                const value = e.target.value;
-                setSearchTerm(value);
-                handleFilterChange('search', value || undefined);
-              }}
-              className="max-w-sm"
-            />
-            <select
-              value={filters.status || ''}
-              onChange={(e) => handleFilterChange('status', e.target.value || undefined)}
-              className="px-3 py-2 border border-input rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="">All Status</option>
-              <option value="draft">Draft</option>
-              <option value="posted">Posted</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Credit Notes List */}
       <Card>
@@ -216,31 +212,17 @@ export default function VendorCreditNotesPage() {
           )}
 
           {/* Pagination */}
-          {pagination.last_page > 1 && (
-            <div className="flex items-center justify-between mt-4 pt-4 border-t">
-              <div className="text-sm text-muted-foreground">
-                Showing {pagination.from} to {pagination.to} of {pagination.total} results
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(page - 1)}
-                  disabled={page === 1}
-                >
-                  Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(page + 1)}
-                  disabled={page === pagination.last_page}
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          )}
+          <Pagination
+            page={page}
+            totalPages={pagination.last_page ?? 1}
+            onPageChange={setPage}
+            from={pagination.from}
+            to={pagination.to}
+            total={pagination.total}
+            label="credit notes"
+            pageSize={pageSize}
+            onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+          />
         </CardContent>
       </Card>
 

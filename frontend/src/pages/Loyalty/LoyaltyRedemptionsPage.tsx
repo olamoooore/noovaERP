@@ -137,65 +137,46 @@ export function LoyaltyRedemptionsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Redemption Management</h1>
           <p className="text-muted-foreground">Manage and process customer redemption requests</p>
         </div>
-        {selectedRedemptions.length > 0 && (
-          <HeaderActionButton icon="solar:check-circle-bold-duotone" onClick={handleBatchComplete} disabled={updateStatusMutation.isPending}>
-            Mark {selectedRedemptions.length} as Completed
-          </HeaderActionButton>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            placeholder="Search customer name..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-8 w-64 rounded-full px-3 text-xs"
+          />
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="h-8 w-40 rounded-full text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="h-8 w-36 rounded-full text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="reward">Reward</SelectItem>
+              <SelectItem value="discount">Discount</SelectItem>
+            </SelectContent>
+          </Select>
+          {selectedRedemptions.length > 0 && (
+            <HeaderActionButton icon="solar:check-circle-bold-duotone" onClick={handleBatchComplete} disabled={updateStatusMutation.isPending}>
+              Mark {selectedRedemptions.length} as Completed
+            </HeaderActionButton>
+          )}
+        </div>
       </div>
-
-      {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Status</label>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Type</label>
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="reward">Reward</SelectItem>
-                  <SelectItem value="discount">Discount</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Search</label>
-              <Input
-                placeholder="Search customer name..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Redemptions Table */}
       <Card>

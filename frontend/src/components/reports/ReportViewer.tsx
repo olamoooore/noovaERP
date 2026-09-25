@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ReportExportToolbar } from '@/components/reports/ReportExportToolbar';
 
 interface ReportViewerProps {
   title: string;
@@ -16,6 +17,9 @@ interface ReportViewerProps {
   onPrint?: () => void;
   showActions?: boolean;
   className?: string;
+  /** When set, renders the working CSV/PDF/Print toolbar for this ref. */
+  exportTargetRef?: React.RefObject<HTMLElement | null>;
+  exportFilename?: string;
 }
 
 /**
@@ -50,12 +54,14 @@ export const ReportViewer: React.FC<ReportViewerProps> = ({
   onPrint,
   showActions = true,
   className = '',
+  exportTargetRef,
+  exportFilename,
 }) => {
   return (
     <Card className={`p-6 ${className}`}>
       {/* Header Section */}
       <div className="mb-6">
-        <div className="flex items-start justify-between">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex-1">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
               {title}
@@ -69,7 +75,16 @@ export const ReportViewer: React.FC<ReportViewerProps> = ({
 
           {/* Action Buttons */}
           {showActions && (
-            <div className="flex gap-2 ml-4">
+            <div className="flex flex-wrap items-center gap-2 ml-4">
+              {exportTargetRef && (
+                <ReportExportToolbar
+                  targetRef={exportTargetRef}
+                  title={title}
+                  subtitle={description}
+                  filename={exportFilename ?? `report-${Date.now()}`}
+                />
+              )}
+
               {onRefresh && (
                 <Button
                   variant="outline"

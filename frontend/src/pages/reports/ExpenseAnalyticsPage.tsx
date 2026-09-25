@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
@@ -10,13 +10,16 @@ import { BarChart } from '@/components/charts/BarChart';
 import { PieChart } from '@/components/charts/PieChart';
 import { useReportAutoRefresh } from '@/hooks/useReportAutoRefresh';
 import reportApi from '@/lib/reportApi';
-import { formatCurrency, formatNumber } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
 import type { ReportFilters as ReportFiltersType } from '@/types/reports';
 
 export function ExpenseAnalyticsPage() {
   const [activeTab, setActiveTab] = useState('by-category');
   const queryClient = useQueryClient();
   useReportAutoRefresh();
+  const categoryRef = useRef<HTMLDivElement>(null);
+  const vendorRef = useRef<HTMLDivElement>(null);
+  const departmentRef = useRef<HTMLDivElement>(null);
   const [filters, setFilters] = useState<ReportFiltersType>({
     start_date: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
       .toISOString()
@@ -65,15 +68,6 @@ export function ExpenseAnalyticsPage() {
 
   const handleFilterChange = (newFilters: ReportFiltersType) => {
     setFilters(newFilters);
-  };
-
-  const handleExport = () => {
-    // TODO: Implement export functionality
-    console.log('Export report:', activeTab);
-  };
-
-  const handlePrint = () => {
-    window.print();
   };
 
   // Expenses by Category Columns
@@ -205,7 +199,7 @@ export function ExpenseAnalyticsPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Expense Analytics</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
@@ -216,6 +210,7 @@ export function ExpenseAnalyticsPage() {
 
       {/* Filters */}
       <CompactReportFilters
+        plain
         onFilterChange={handleFilterChange}
         initialFilters={filters}
         showDateRange
@@ -252,11 +247,11 @@ export function ExpenseAnalyticsPage() {
             isLoading={isCategoryLoading}
             error={categoryError?.message || null}
             onRefresh={refetchCategory}
-            onExport={handleExport}
-            onPrint={handlePrint}
+            exportTargetRef={categoryRef}
+            exportFilename={`expenses-by-category-${filters.start_date}-to-${filters.end_date}`}
           >
             {categoryData && (
-              <div className="space-y-6">
+              <div ref={categoryRef} className="space-y-6">
                 {/* Expense Distribution Charts */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <Card className="p-6">
@@ -266,8 +261,11 @@ export function ExpenseAnalyticsPage() {
                         name: c.account_name,
                         value: c.total_amount,
                       }))}
-                      height={350}
+                      nameKey="name"
+                      valueKey="value"
+                      height={320}
                       formatValue="currency"
+                      innerRadius={62}
                     />
                   </Card>
 
@@ -332,11 +330,11 @@ export function ExpenseAnalyticsPage() {
             isLoading={isVendorLoading}
             error={vendorError?.message || null}
             onRefresh={refetchVendor}
-            onExport={handleExport}
-            onPrint={handlePrint}
+            exportTargetRef={vendorRef}
+            exportFilename={`expenses-by-vendor-${filters.start_date}-to-${filters.end_date}`}
           >
             {vendorData && (
-              <div className="space-y-6">
+              <div ref={vendorRef} className="space-y-6">
                 {/* Top Vendors Chart */}
                 <Card className="p-6">
                   <h3 className="text-lg font-semibold mb-4">Top 10 Vendors by Spending</h3>
@@ -417,11 +415,11 @@ export function ExpenseAnalyticsPage() {
             isLoading={isDepartmentLoading}
             error={departmentError?.message || null}
             onRefresh={refetchDepartment}
-            onExport={handleExport}
-            onPrint={handlePrint}
+            exportTargetRef={departmentRef}
+            exportFilename={`expenses-by-department-${filters.start_date}-to-${filters.end_date}`}
           >
             {departmentData && (
-              <div className="space-y-6">
+              <div ref={departmentRef} className="space-y-6">
                 {/* Department Expenses Chart */}
                 <Card className="p-6">
                   <h3 className="text-lg font-semibold mb-4">Department Expenses</h3>

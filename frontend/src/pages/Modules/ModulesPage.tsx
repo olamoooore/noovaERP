@@ -200,7 +200,7 @@ export function ModulesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Modules &amp; Add-ons</h2>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -209,50 +209,48 @@ export function ModulesPage() {
           </p>
         </div>
 
-        <div className="relative w-full lg:w-72">
-          <Icon
-            icon="solar:magnifer-bold-duotone"
-            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-          />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search modules…"
-            className="pl-9"
-          />
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        {FILTERS.map((f) => {
-          const isActive = filter === f.key
-          return (
-            <button
-              key={f.key}
-              type="button"
-              onClick={() => setFilter(f.key)}
-              className={cn(
-                'inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                isActive
-                  ? 'border-primary/40 bg-primary/10 text-primary shadow-sm'
-                  : 'border-border text-muted-foreground hover:border-primary/30 hover:bg-muted/60 hover:text-foreground',
-              )}
-            >
-              <Icon icon={f.icon} className="h-3.5 w-3.5" />
-              {f.label}
-              <span
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative w-64">
+            <Icon
+              icon="solar:magnifer-bold-duotone"
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search modules…"
+              className="h-8 rounded-full pl-8 pr-3 text-xs"
+            />
+          </div>
+          {FILTERS.map((f) => {
+            const isActive = filter === f.key
+            return (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() => setFilter(f.key)}
                 className={cn(
-                  'rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums',
-                  isActive ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground',
+                  'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-all',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  isActive
+                    ? 'border-primary/40 bg-primary/10 text-primary shadow-sm'
+                    : 'border-border text-muted-foreground hover:border-primary/30 hover:bg-muted/60 hover:text-foreground',
                 )}
               >
-                {counts[f.key]}
-              </span>
-            </button>
-          )
-        })}
+                <Icon icon={f.icon} className="h-3.5 w-3.5" />
+                {f.label}
+                <span
+                  className={cn(
+                    'rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums',
+                    isActive ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground',
+                  )}
+                >
+                  {counts[f.key]}
+                </span>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Grid */}

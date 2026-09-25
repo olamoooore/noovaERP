@@ -26,7 +26,11 @@ class ExchangeRatesController extends Controller
      */
     public function index(Request $request)
     {
-        $query = ExchangeRate::with(['fromCurrency', 'toCurrency']);
+        // NOTE: do NOT eager-load fromCurrency/toCurrency here — their snake_case
+        // serialisation keys (from_currency/to_currency) collide with the code
+        // columns and shadow them with currency OBJECTS, which crashes any UI
+        // that renders the code. The relations are unused by this API.
+        $query = ExchangeRate::query();
 
         // Filter by currency pair
         if ($request->has('from_currency')) {
@@ -56,7 +60,7 @@ class ExchangeRatesController extends Controller
      */
     public function show($id)
     {
-        $rate = ExchangeRate::with(['fromCurrency', 'toCurrency'])->findOrFail($id);
+        $rate = ExchangeRate::findOrFail($id);
 
         return response()->json($rate);
     }
@@ -88,7 +92,7 @@ class ExchangeRatesController extends Controller
 
         return response()->json([
             'message' => 'Exchange rate created successfully',
-            'rate' => $rate->load(['fromCurrency', 'toCurrency']),
+            'rate' => $rate,
         ], 201);
     }
 
@@ -113,7 +117,7 @@ class ExchangeRatesController extends Controller
 
         return response()->json([
             'message' => 'Exchange rate updated successfully',
-            'rate' => $rate->fresh(['fromCurrency', 'toCurrency']),
+            'rate' => $rate->fresh(),
         ]);
     }
 

@@ -108,3 +108,6 @@ __pycache__/
 backend/storage/framework/cache/laravel-excel/
 backend/storage/framework/cache/data/*
 !backend/storage/framework/cache/data/.gitignore
+
+# OCR service uploads (runtime tenant documents - never commit)
+backend/storage/app/ocr-documents/

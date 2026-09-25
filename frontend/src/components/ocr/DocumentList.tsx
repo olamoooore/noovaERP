@@ -1,17 +1,10 @@
 import { useState } from 'react'
 import { Icon } from '@iconify/react'
 import { useNavigate } from 'react-router-dom'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import { getOcrStatusStyle } from '@/components/ocr/ocrStatus'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -40,21 +33,20 @@ interface OcrDocument {
 interface DocumentListProps {
   documents: OcrDocument[]
   onRefresh: () => void
+  searchTerm: string
+  statusFilter: string
 }
 
-const statusConfig = {
-  PENDING: { label: 'Pending', color: 'bg-gray-500', icon: 'solar:clock-circle-bold' },
-  PROCESSING: { label: 'Processing', color: 'bg-blue-500', icon: 'solar:refresh-circle-bold' },
-  NEEDS_REVIEW: { label: 'Needs Review', color: 'bg-yellow-500', icon: 'solar:eye-bold' },
-  POSTED: { label: 'Posted', color: 'bg-green-500', icon: 'solar:check-circle-bold' },
-  EXTRACTION_FAILED: { label: 'Failed', color: 'bg-red-500', icon: 'solar:close-circle-bold' },
+const formatDate = (value?: string | null) => {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-export function DocumentList({ documents, onRefresh }: DocumentListProps) {
+export function DocumentList({ documents, onRefresh, searchTerm, statusFilter }: DocumentListProps) {
   const navigate = useNavigate()
   const { toast } = useToast()
-  const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>('all')
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [unpostDialogOpen, setUnpostDialogOpen] = useState(false)
   const [documentToDelete, setDocumentToDelete] = useState<string | null>(null)
@@ -74,10 +66,10 @@ export function DocumentList({ documents, onRefresh }: DocumentListProps) {
   })
 
   const getStatusBadge = (status: string) => {
-    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.PENDING
+    const config = getOcrStatusStyle(status)
     return (
-      <Badge className={`${config.color} text-white`}>
-        <Icon icon={config.icon} className="mr-1 h-3 w-3" />
+      <Badge variant="outline" className={`gap-1 font-medium ${config.badge}`}>
+        <Icon icon={config.icon} className="h-3.5 w-3.5" />
         {config.label}
       </Badge>
     )
@@ -145,124 +137,104 @@ export function DocumentList({ documents, onRefresh }: DocumentListProps) {
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex gap-4">
-            <div className="flex-1">
-              <Input
-                placeholder="Search by vendor, filename, or amount..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full"
-              />
-            </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="PENDING">Pending</SelectItem>
-                <SelectItem value="PROCESSING">Processing</SelectItem>
-                <SelectItem value="NEEDS_REVIEW">Needs Review</SelectItem>
-                <SelectItem value="POSTED">Posted</SelectItem>
-                <SelectItem value="EXTRACTION_FAILED">Failed</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="icon" onClick={onRefresh}>
-              <Icon icon="solar:refresh-bold" className="h-4 w-4" />
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Document Cards */}
-      <div className="grid gap-4">
+      <div className="grid gap-3">
         {filteredDocuments.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <Icon icon="solar:document-text-bold-duotone" className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">
-                {documents.length === 0
-                  ? 'No documents uploaded yet. Click "Upload Documents" to get started.'
-                  : 'No documents match your filters.'}
-              </p>
+          <Card className="rounded-xl border-dashed">
+            <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
+              <div className="grid h-14 w-14 place-items-center rounded-full bg-muted">
+                <Icon icon="solar:document-text-bold-duotone" className="h-7 w-7 text-muted-foreground" />
+              </div>
+              <div>
+                <p className="font-medium">
+                  {documents.length === 0 ? 'No documents yet' : 'No matching documents'}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {documents.length === 0
+                    ? 'Click "Upload Documents" to process your first invoice or receipt.'
+                    : 'Try a different search or status filter.'}
+                </p>
+              </div>
             </CardContent>
           </Card>
         ) : (
-          filteredDocuments.map((doc) => (
-            <Card
-              key={doc.uuid}
-              className="cursor-pointer hover:shadow-md transition-shadow"
-              onClick={() => navigate(`/ocr/documents/${doc.uuid}`)}
-            >
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 mb-2">
-                      <Icon icon="solar:document-text-bold" className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                      <h3 className="font-semibold truncate">{doc.file_name}</h3>
-                      {getStatusBadge(doc.status)}
+          filteredDocuments.map((doc) => {
+            const config = getOcrStatusStyle(doc.status)
+            return (
+              <Card
+                key={doc.uuid}
+                className="group cursor-pointer rounded-xl transition-shadow hover:shadow-md"
+                onClick={() => navigate(`/ocr/documents/${doc.uuid}`)}
+              >
+                <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+                  {/* Identity */}
+                  <div className="flex min-w-0 flex-1 items-center gap-4">
+                    <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${config.tile}`}>
+                      <Icon icon="solar:document-text-bold" className="h-5 w-5" />
                     </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 text-sm">
-                      <div>
-                        <p className="text-muted-foreground">Vendor</p>
-                        <p className="font-medium">{doc.vendor_name || 'Unknown'}</p>
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <h3 className="truncate font-semibold">{doc.file_name}</h3>
+                        {getStatusBadge(doc.status)}
                       </div>
-                      <div>
-                        <p className="text-muted-foreground">Date</p>
-                        <p className="font-medium">
-                          {doc.document_date
-                            ? new Date(doc.document_date).toLocaleDateString()
-                            : 'N/A'}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Amount</p>
-                        <p className="font-medium">
-                          {formatCurrency(doc.total_amount || 0, doc.currency_code || 'USD')}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Uploaded</p>
-                        <p className="font-medium">
-                          {new Date(doc.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
+                      <p className="mt-1 truncate text-sm text-muted-foreground">
+                        {doc.vendor_name || 'Unknown vendor'}
+                      </p>
                     </div>
                   </div>
 
-                  <div className="flex gap-2 flex-shrink-0">
+                  {/* Facts */}
+                  <div className="grid shrink-0 grid-cols-3 gap-6 text-sm">
+                    <div className="min-w-20">
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Date</p>
+                      <p className="mt-0.5 font-medium">{formatDate(doc.document_date)}</p>
+                    </div>
+                    <div className="min-w-24">
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Amount</p>
+                      <p className="mt-0.5 font-medium">
+                        {formatCurrency(doc.total_amount || 0, doc.currency_code || 'USD')}
+                      </p>
+                    </div>
+                    <div className="min-w-24">
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Uploaded</p>
+                      <p className="mt-0.5 font-medium">{formatDate(doc.created_at)}</p>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div
+                    className="flex shrink-0 items-center gap-2"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     {doc.status === 'POSTED' && (
-                      <Button
+                      <HeaderActionButton
                         variant="outline"
-                        size="icon"
+                        icon="solar:undo-left-bold"
+                        className="text-orange-600 hover:bg-orange-50 hover:text-orange-700"
                         onClick={(e) => handleUnpostClick(e, doc.uuid)}
-                        className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
-                        title="Unpost document"
                       >
-                        <Icon icon="solar:undo-left-bold" className="h-5 w-5" />
-                      </Button>
+                        Unpost
+                      </HeaderActionButton>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
+                    <HeaderActionButton
+                      variant="outline"
+                      icon="solar:trash-bin-trash-bold"
+                      className="text-destructive hover:bg-destructive/5 hover:text-destructive"
                       onClick={(e) => handleDeleteClick(e, doc.uuid)}
-                      className="text-destructive hover:text-destructive"
-                      title="Delete document"
                     >
-                      <Icon icon="solar:trash-bin-trash-bold" className="h-5 w-5" />
-                    </Button>
-                    <Button variant="ghost" size="icon">
-                      <Icon icon="solar:alt-arrow-right-bold" className="h-5 w-5" />
-                    </Button>
+                      Delete
+                    </HeaderActionButton>
+                    <HeaderActionButton
+                      icon="solar:eye-bold"
+                      onClick={() => navigate(`/ocr/documents/${doc.uuid}`)}
+                    >
+                      Review
+                    </HeaderActionButton>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))
+                </CardContent>
+              </Card>
+            )
+          })
         )}
       </div>
 

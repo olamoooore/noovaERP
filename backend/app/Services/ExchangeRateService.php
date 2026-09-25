@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\CompanySettings;
 use App\Models\Currency;
 use App\Models\ExchangeRate;
 use Illuminate\Support\Facades\Http;
@@ -13,7 +14,13 @@ use Illuminate\Support\Facades\Http;
 class ExchangeRateService
 {
     /**
-     * Get the latest exchange rate for a currency pair
+     * Get the latest exchange rate for a currency pair.
+     *
+     * Resolution order: direct rate → inverse rate → cross rate via the
+     * tenant's base currency. Rates are normally stored only against the
+     * base (SGD→USD, SGD→MYR), so without triangulation every non-base pair
+     * (USD→EUR, GBP→MYR, …) failed with "No exchange rate found" and the
+     * converter returned 422.
      */
     public function getLatestRate(string $fromCurrency, string $toCurrency, $asOfDate = null)
     {
@@ -27,23 +34,62 @@ class ExchangeRateService
             ];
         }
 
-        $rate = ExchangeRate::getLatestRate($fromCurrency, $toCurrency, $asOfDate);
+        $resolved = $this->resolveDirectOrInverse($fromCurrency, $toCurrency, $asOfDate);
+        if ($resolved) {
+            return $resolved;
+        }
 
-        if (! $rate) {
-            // Try inverse rate
-            $inverseRate = ExchangeRate::getLatestRate($toCurrency, $fromCurrency, $asOfDate);
-            if ($inverseRate) {
+        // Cross rate via the base currency: X→BASE × BASE→Y.
+        $base = CompanySettings::query()->value('base_currency') ?: 'USD';
+
+        if ($base !== $fromCurrency && $base !== $toCurrency) {
+            $leg1 = $this->resolveDirectOrInverse($fromCurrency, $base, $asOfDate);
+            $leg2 = $this->resolveDirectOrInverse($base, $toCurrency, $asOfDate);
+
+            if ($leg1 && $leg2) {
                 return [
                     'from_currency' => $fromCurrency,
                     'to_currency' => $toCurrency,
-                    'rate' => 1 / (float) $inverseRate->rate,
-                    'effective_date' => $inverseRate->effective_date->format('Y-m-d'),
-                    'source' => 'inverse_'.$inverseRate->source,
+                    'rate' => (float) $leg1['rate'] * (float) $leg2['rate'],
+                    'effective_date' => min($leg1['effective_date'], $leg2['effective_date']),
+                    'source' => 'cross_via_'.$base,
                 ];
             }
         }
 
-        return $rate;
+        return null;
+    }
+
+    /**
+     * Resolve a pair from a stored direct rate, falling back to the inverse.
+     *
+     * @return array{from_currency:string,to_currency:string,rate:float,effective_date:string,source:string}|null
+     */
+    protected function resolveDirectOrInverse(string $fromCurrency, string $toCurrency, $asOfDate = null): ?array
+    {
+        $rate = ExchangeRate::getLatestRate($fromCurrency, $toCurrency, $asOfDate);
+        if ($rate) {
+            return [
+                'from_currency' => $fromCurrency,
+                'to_currency' => $toCurrency,
+                'rate' => (float) $rate->rate,
+                'effective_date' => $rate->effective_date->format('Y-m-d'),
+                'source' => $rate->source ?? 'manual',
+            ];
+        }
+
+        $inverseRate = ExchangeRate::getLatestRate($toCurrency, $fromCurrency, $asOfDate);
+        if ($inverseRate) {
+            return [
+                'from_currency' => $fromCurrency,
+                'to_currency' => $toCurrency,
+                'rate' => 1 / (float) $inverseRate->rate,
+                'effective_date' => $inverseRate->effective_date->format('Y-m-d'),
+                'source' => 'inverse_'.($inverseRate->source ?? 'manual'),
+            ];
+        }
+
+        return null;
     }
 
     /**
@@ -105,30 +151,70 @@ class ExchangeRateService
     }
 
     /**
-     * Sync exchange rates from external API
-     * Using exchangerate-api.com as an example (free tier available)
+     * Fetch the raw rate map (currency code => rate) for a base currency.
+     *
+     * Uses the keyed exchangerate-api.com provider when a key is configured.
+     * Otherwise falls back to keyless public providers so rate syncing works
+     * out of the box (the keyed provider alone silently blocked every sync
+     * because no EXCHANGE_RATE_API_KEY was ever configured).
+     *
+     * @return array<string,float>
+     */
+    protected function fetchRates(string $baseCurrency): array
+    {
+        $apiKey = config('services.exchange_rate.api_key') ?: env('EXCHANGE_RATE_API_KEY');
+
+        if ($apiKey) {
+            $response = Http::timeout(15)->get("https://v6.exchangerate-api.com/v6/{$apiKey}/latest/{$baseCurrency}");
+
+            if (! $response->successful()) {
+                throw new \Exception('Failed to fetch rates from API');
+            }
+
+            return $response->json('conversion_rates') ?? [];
+        }
+
+        // Keyless provider 1: open.er-api.com (broad currency coverage).
+        try {
+            $response = Http::timeout(15)->get("https://open.er-api.com/v6/latest/{$baseCurrency}");
+            if ($response->successful() && $response->json('result') !== 'error') {
+                $rates = $response->json('rates') ?? [];
+                if (! empty($rates)) {
+                    return $rates;
+                }
+            }
+        } catch (\Throwable $e) {
+            // Fall through to the next provider.
+        }
+
+        // Keyless provider 2: frankfurter.app (ECB reference rates).
+        try {
+            $response = Http::timeout(15)->get('https://api.frankfurter.app/latest', ['from' => $baseCurrency]);
+            if ($response->successful()) {
+                $rates = $response->json('rates') ?? [];
+                if (! empty($rates)) {
+                    return $rates;
+                }
+            }
+        } catch (\Throwable $e) {
+            // Fall through to the failure below.
+        }
+
+        throw new \Exception('Unable to fetch exchange rates from any provider (no API key configured and keyless providers unavailable)');
+    }
+
+    /**
+     * Sync exchange rates from an external provider.
+     *
+     * Configured provider: exchangerate-api.com (EXCHANGE_RATE_API_KEY).
+     * Fallback providers (keyless): open.er-api.com, frankfurter.app.
      */
     public function syncRatesFromAPI(string $baseCurrency, array $targetCurrencies): array
     {
         $results = [];
 
         try {
-            // Example using exchangerate-api.com
-            // You would need to sign up for an API key
-            $apiKey = env('EXCHANGE_RATE_API_KEY');
-
-            if (! $apiKey) {
-                throw new \Exception('Exchange rate API key not configured');
-            }
-
-            $response = Http::get("https://v6.exchangerate-api.com/v6/{$apiKey}/latest/{$baseCurrency}");
-
-            if (! $response->successful()) {
-                throw new \Exception('Failed to fetch rates from API');
-            }
-
-            $data = $response->json();
-            $rates = $data['conversion_rates'] ?? [];
+            $rates = $this->fetchRates($baseCurrency);
             $effectiveDate = now()->format('Y-m-d');
 
             foreach ($targetCurrencies as $targetCurrency) {

@@ -349,11 +349,14 @@ export interface InventoryTurnoverData {
 // Analytics Types
 export interface SalesByProductData {
   products: Array<{
-    id: number;
-    name: string;
-    sku: string;
+    id: number | null;
+    name: string | null;
+    product_name?: string | null;
+    sku: string | null;
     total_quantity: number;
+    quantity_sold?: number;
     total_revenue: number;
+    total_sales?: number;
     total_cost: number;
     total_profit: number;
     profit_margin: number;
@@ -377,18 +380,26 @@ export interface SalesByCustomerData {
 export interface SalesTrendsData {
   trends: Array<{
     period: string;
-    invoice_count: number;
-    total_revenue: number;
-    avg_order_value: number;
+    order_count: number;
+    total_sales: number;
+    revenue: number;
+    average_order_value: number;
+    growth_rate: number | null;
   }>;
 }
 
 export interface SalesByCategoryData {
   categories: Array<{
-    category_id: number;
+    category_id: number | null;
     category_name: string;
-    total_revenue: number;
-    percentage: number;
+    product_count: number;
+    quantity_sold: number;
+    revenue: number;
+    total_sales: number;
+    cost: number;
+    profit: number;
+    profit_margin: number;
+    revenue_percentage: number;
   }>;
 }
 
@@ -490,6 +501,8 @@ export interface ExecutiveDashboardData {
   }>;
   top_products: Array<{
     name: string;
+    sku?: string;
+    quantity?: number;
     revenue: number;
   }>;
 }

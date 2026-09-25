@@ -9,15 +9,18 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { toast } from '@/hooks/use-toast'
 import loyaltyApi from '@/lib/loyaltyApi'
+import { Pagination } from '@/components/ui/Pagination'
 
 export function LoyaltyCustomersPage() {
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
   const queryClient = useQueryClient()
 
   const { data: customers, isLoading } = useQuery({
-    queryKey: ['loyalty-customers', search],
+    queryKey: ['loyalty-customers', search, page, pageSize],
     queryFn: async () => {
-      const response = await loyaltyApi.getCustomers(search)
+      const response = await loyaltyApi.getCustomers(search, page, pageSize)
       return response
     },
   })
@@ -85,7 +88,7 @@ export function LoyaltyCustomersPage() {
               <Input
                 placeholder="Search customers..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => { setSearch(e.target.value); setPage(1) }}
                 className="w-64"
               />
             </div>
@@ -179,14 +182,17 @@ export function LoyaltyCustomersPage() {
             </Table>
           )}
           {customers?.meta && (
-            <div className="flex items-center justify-between mt-4 text-sm text-muted-foreground">
-              <span>
-                Showing {customers.data.length} of {customers.meta.total} customers
-              </span>
-              <span>
-                Page {customers.meta.current_page} of {customers.meta.last_page}
-              </span>
-            </div>
+            <Pagination
+              page={customers.meta.current_page}
+              totalPages={customers.meta.last_page}
+              onPageChange={setPage}
+              from={(customers.meta.current_page - 1) * customers.meta.per_page + 1}
+              to={Math.min(customers.meta.current_page * customers.meta.per_page, customers.meta.total)}
+              total={customers.meta.total}
+              label="customers"
+              pageSize={pageSize}
+              onPageSizeChange={(size) => { setPageSize(size); setPage(1) }}
+            />
           )}
         </CardContent>
       </Card>

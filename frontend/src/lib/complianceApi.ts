@@ -62,14 +62,13 @@ class ComplianceApiClient {
   private async downloadFile(
     countryCode: string,
     reportType: string,
-    options: DownloadOptions,
-    format: 'xbrl' | 'excel'
+    options: DownloadOptions
   ): Promise<ComplianceDownloadResult> {
     const normalizedReportType = normalizeReportType(reportType)
     const params = {
       ...options,
       strict_schema_validation: options.strict_schema_validation ? 1 : 0,
-      format,
+      format: 'xbrl',
     }
 
     const response = await api.get(`/accounting/compliance/reports/${countryCode}/${normalizedReportType}/download`, {
@@ -79,7 +78,7 @@ class ComplianceApiClient {
 
     const filename =
       parseFilename(response.headers['content-disposition']) ||
-      `${countryCode}_${normalizedReportType}_${options.as_of_date.replaceAll('-', '')}.${format === 'excel' ? 'xlsx' : 'xbrl'}`
+      `${countryCode}_${normalizedReportType}_${options.as_of_date.replaceAll('-', '')}.xbrl`
 
     return {
       blob: response.data,
@@ -90,11 +89,7 @@ class ComplianceApiClient {
   }
 
   async downloadXbrl(countryCode: string, reportType: string, options: DownloadOptions): Promise<ComplianceDownloadResult> {
-    return this.downloadFile(countryCode, reportType, options, 'xbrl')
-  }
-
-  async downloadExcel(countryCode: string, reportType: string, options: DownloadOptions): Promise<ComplianceDownloadResult> {
-    return this.downloadFile(countryCode, reportType, options, 'excel')
+    return this.downloadFile(countryCode, reportType, options)
   }
 }
 

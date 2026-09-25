@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
+import { Pagination } from '@/components/ui/Pagination';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -80,6 +81,7 @@ export function BankReconciliationPage() {
   const [exceptionEvidence, setExceptionEvidence] = useState('');
   const [statementValidation, setStatementValidation] = useState<any>(null);
   const [statementTransactionPage, setStatementTransactionPage] = useState(1);
+  const [statementTransactionPerPage, setStatementTransactionPerPage] = useState(20);
   const [statementTransactionStatus, setStatementTransactionStatus] = useState<StatementTransactionStatus>('all');
   const [groupStatementIds, setGroupStatementIds] = useState<Set<string>>(new Set());
   const [groupGlIds, setGroupGlIds] = useState<Set<number>>(new Set());
@@ -408,8 +410,8 @@ export function BankReconciliationPage() {
   );
 
   const statementTransactionsQuery = useQuery({
-    queryKey: ['bank-statement-transactions', selectedBankAccount, statementTransactionPage, statementTransactionStatus, filters.search, statementTransactionParam],
-    queryFn: () => reportApi.getBankStatementTransactions(selectedBankAccount!, undefined, statementTransactionPage, 20, statementTransactionStatus, filters.search, statementTransactionParam ? [statementTransactionParam] : undefined),
+    queryKey: ['bank-statement-transactions', selectedBankAccount, statementTransactionPage, statementTransactionPerPage, statementTransactionStatus, filters.search, statementTransactionParam],
+    queryFn: () => reportApi.getBankStatementTransactions(selectedBankAccount!, undefined, statementTransactionPage, statementTransactionPerPage, statementTransactionStatus, filters.search, statementTransactionParam ? [statementTransactionParam] : undefined),
     enabled: selectedBankAccount !== null,
   });
 
@@ -592,14 +594,45 @@ export function BankReconciliationPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Bank Reconciliation</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
             Match bank statement transactions with accounting records
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            id="search"
+            placeholder="Search by description or reference..."
+            value={filters.search}
+            onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
+            className="h-8 w-64 rounded-full px-3 text-xs"
+          />
+          <Select
+            value={filters.status}
+            onValueChange={(value: any) =>
+              setFilters((prev) => ({ ...prev, status: value }))
+            }
+          >
+            <SelectTrigger id="status-filter" className="h-8 rounded-full text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Transactions</SelectItem>
+              <SelectItem value="reconciled">Reconciled</SelectItem>
+              <SelectItem value="unreconciled">Unreconciled</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-full px-3 text-xs"
+            onClick={() => setFilters({ status: 'all', search: '' })}
+          >
+            <Icon icon="solar:close-circle-bold" className="mr-1.5 h-3.5 w-3.5" />
+            Clear Filters
+          </Button>
           <HeaderActionButton icon="solar:document-add-bold" onClick={() => navigate(`/accounting/core/reconciliation/import-history${selectedBankAccount ? `?account=${selectedBankAccount}` : ''}`)} variant="outline">
             Import History
           </HeaderActionButton>
@@ -989,13 +1022,17 @@ export function BankReconciliationPage() {
                     ))}
                   </tbody>
                 </table>
-                <div className="flex items-center justify-between border-t px-3 py-2 text-sm">
-                  <span>Page {statementTransactionsQuery.data?.current_page ?? 1} of {statementTransactionsQuery.data?.last_page ?? 1} · {statementTransactionsQuery.data?.total ?? filteredStatementTransactions.length} transactions</span>
-                  <div className="flex gap-2">
-                    <Button type="button" size="sm" variant="outline" disabled={(statementTransactionsQuery.data?.current_page ?? 1) <= 1 || statementTransactionsQuery.isFetching} onClick={() => setStatementTransactionPage((page) => Math.max(1, page - 1))}>Previous</Button>
-                    <Button type="button" size="sm" variant="outline" disabled={(statementTransactionsQuery.data?.current_page ?? 1) >= (statementTransactionsQuery.data?.last_page ?? 1) || statementTransactionsQuery.isFetching} onClick={() => setStatementTransactionPage((page) => page + 1)}>Next</Button>
-                  </div>
-                </div>
+                <Pagination
+                  page={statementTransactionPage}
+                  totalPages={statementTransactionsQuery.data?.last_page ?? 1}
+                  onPageChange={setStatementTransactionPage}
+                  from={(statementTransactionPage - 1) * statementTransactionPerPage + 1}
+                  to={Math.min(statementTransactionPage * statementTransactionPerPage, statementTransactionsQuery.data?.total ?? filteredStatementTransactions.length)}
+                  total={statementTransactionsQuery.data?.total ?? filteredStatementTransactions.length}
+                  label="transactions"
+                  pageSize={statementTransactionPerPage}
+                  onPageSizeChange={(size) => { setStatementTransactionPerPage(size); setStatementTransactionPage(1); }}
+                />
               </div>
             )}
           </div>
@@ -1117,47 +1154,6 @@ export function BankReconciliationPage() {
               <HeaderActionButton icon="solar:add-circle-bold" onClick={() => setShowAddTransaction(true)} size="sm">
                 Add Adjusting Entry
               </HeaderActionButton>
-            </div>
-
-            {/* Filters */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-              <div>
-                <Label htmlFor="search">Search</Label>
-                <Input
-                  id="search"
-                  placeholder="Search by description or reference..."
-                  value={filters.search}
-                  onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
-                />
-              </div>
-              <div>
-                <Label htmlFor="status-filter">Status</Label>
-                <Select
-                  value={filters.status}
-                  onValueChange={(value: any) =>
-                    setFilters((prev) => ({ ...prev, status: value }))
-                  }
-                >
-                  <SelectTrigger id="status-filter">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Transactions</SelectItem>
-                    <SelectItem value="reconciled">Reconciled</SelectItem>
-                    <SelectItem value="unreconciled">Unreconciled</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-end">
-                <Button
-                  variant="outline"
-                  onClick={() => setFilters({ status: 'all', search: '' })}
-                  className="w-full"
-                >
-                  <Icon icon="solar:close-circle-bold" className="mr-2 h-4 w-4" />
-                  Clear Filters
-                </Button>
-              </div>
             </div>
 
             {/* Loading State */}

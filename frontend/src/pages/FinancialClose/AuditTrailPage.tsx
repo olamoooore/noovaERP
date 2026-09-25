@@ -3,8 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Badge } from '@/components/ui/badge'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Pagination } from '@/components/ui/Pagination'
 import { Input } from '@/components/ui/input'
 import { auditTrailApi, type AuditTrailEntry } from '@/services/closeApi'
 
@@ -30,10 +30,10 @@ export default function AuditTrailPage() {
   const [actionFilter, setActionFilter] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-  const perPage = 50
+  const [perPage, setPerPage] = useState(50)
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['audit-trail', page, actionFilter, dateFrom, dateTo],
+    queryKey: ['audit-trail', page, perPage, actionFilter, dateFrom, dateTo],
     queryFn: () => auditTrailApi.list({
       page,
       per_page: perPage,
@@ -164,21 +164,17 @@ export default function AuditTrailPage() {
                 </table>
               </div>
 
-              {data.meta && (
-                <div className="flex items-center justify-between pt-4">
-                  <p className="text-sm text-muted-foreground">
-                    Page {data.meta.current_page} of {data.meta.last_page} ({data.meta.total} entries)
-                  </p>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
-                      Previous
-                    </Button>
-                    <Button size="sm" variant="outline" disabled={page >= (data.meta.last_page || 1)} onClick={() => setPage(p => p + 1)}>
-                      Next
-                    </Button>
-                  </div>
-                </div>
-              )}
+              <Pagination
+                page={page}
+                totalPages={data.meta?.last_page ?? 1}
+                onPageChange={setPage}
+                from={(page - 1) * perPage + 1}
+                to={Math.min(page * perPage, data.meta?.total ?? 0)}
+                total={data.meta?.total ?? 0}
+                label="entries"
+                pageSize={perPage}
+                onPageSizeChange={(size) => { setPerPage(size); setPage(1) }}
+              />
             </>
           )}
         </CardContent>

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Pagination } from '@/components/ui/Pagination'
 import { useWebShopAuth } from '@/pages/WebShop/hooks/useWebShopAuth'
 import api from '@/lib/api'
 
@@ -18,7 +18,7 @@ interface Order {
   items: { quantity: number }[]
 }
 
-interface Pagination {
+interface OrdersPagination {
   current_page: number
   total: number
   per_page: number
@@ -27,13 +27,14 @@ interface Pagination {
 export function OrdersListPage() {
   const { getAuthHeaders } = useWebShopAuth()
   const [orders, setOrders] = useState<Order[]>([])
-  const [pagination, setPagination] = useState<Pagination>({
+  const [pagination, setPagination] = useState<OrdersPagination>({
     current_page: 1,
     total: 0,
     per_page: 10,
   })
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -41,11 +42,11 @@ export function OrdersListPage() {
         setLoading(true)
         const response = await api.get('/web-shop/orders', {
           headers: getAuthHeaders(),
-          params: { page, per_page: 10 },
+          params: { page, per_page: pageSize },
         })
 
         setOrders(response.data.orders || [])
-        setPagination(response.data.pagination || { current_page: 1, total: 0, per_page: 10 })
+        setPagination(response.data.pagination || { current_page: 1, total: 0, per_page: pageSize })
       } catch (error) {
         console.error('Failed to fetch orders:', error)
       } finally {
@@ -54,7 +55,7 @@ export function OrdersListPage() {
     }
 
     fetchOrders()
-  }, [page, getAuthHeaders])
+  }, [page, pageSize, getAuthHeaders])
 
   const getStatusIcon = (status: string) => {
     switch (status.toLowerCase()) {
@@ -156,31 +157,17 @@ export function OrdersListPage() {
       </Card>
 
       {/* Pagination */}
-      {pagination.total > pagination.per_page && (
-        <div className="flex justify-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-            disabled={page === 1}
-          >
-            <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-1" />
-            Previous
-          </Button>
-          <span className="flex items-center px-4 text-sm text-muted-foreground">
-            Page {page} of {Math.ceil(pagination.total / pagination.per_page)}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setPage(p => p + 1)}
-            disabled={page >= Math.ceil(pagination.total / pagination.per_page)}
-          >
-            Next
-            <Icon icon="solar:arrow-right-bold-duotone" className="h-4 w-4 ml-1" />
-          </Button>
-        </div>
-      )}
+      <Pagination
+        page={page}
+        totalPages={Math.max(1, Math.ceil(pagination.total / pagination.per_page))}
+        onPageChange={setPage}
+        from={(page - 1) * pagination.per_page + 1}
+        to={Math.min(page * pagination.per_page, pagination.total)}
+        total={pagination.total}
+        label="orders"
+        pageSize={pageSize}
+        onPageSizeChange={(size) => { setPageSize(size); setPage(1) }}
+      />
     </div>
   )
 }

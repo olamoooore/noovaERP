@@ -89,9 +89,12 @@ export default function CompanySettingsPage() {
     },
   });
 
-  // Fetch currency settings
+  // Fetch currency settings. Distinct key from MultiCurrencyPage's
+  // ['accounting-currencies'] — both used ['currencies'] with different
+  // endpoints, and because MultiCurrencyPage is embedded here the two
+  // collided in the React Query cache and the currency list rendered empty.
   const { data: currenciesResponse } = useQuery({
-    queryKey: ['currencies'],
+    queryKey: ['currency-settings'],
     queryFn: async () => {
       const response = await api.get('/accounting/settings/currencies');
       return response.data;
@@ -202,7 +205,7 @@ export default function CompanySettingsPage() {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['currencies'] });
+      queryClient.invalidateQueries({ queryKey: ['currency-settings'] });
       toast({
         title: 'Success',
         description: 'Currency settings updated successfully',

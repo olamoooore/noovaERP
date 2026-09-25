@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useAPTransactions, useVendorBalance, useExportAPTransactions } from '@/hooks/useTransactions';
 import type { TransactionFilters } from '@/types/transactions';
 import api from '@/lib/api';
+import { Pagination } from '@/components/ui/Pagination';
 
 function StatusBadge({ status }: { status: string }) {
   const colors = {
@@ -45,9 +46,10 @@ export default function APTransactionsPage() {
   const [searchParams] = useSearchParams();
   const [filters, setFilters] = useState<TransactionFilters>({});
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [vendors, setVendors] = useState<any[]>([]);
 
-  const { data, isLoading, error } = useAPTransactions(filters, page);
+  const { data, isLoading, error } = useAPTransactions(filters, page, pageSize);
   const { data: balanceData } = useVendorBalance(filters.vendor_id || 0);
   const exportMutation = useExportAPTransactions();
 
@@ -283,29 +285,17 @@ export default function APTransactionsPage() {
               </table>
             </div>
 
-            {pagination.last_page > 1 && (
-              <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-                <div className="text-sm text-gray-700">
-                  Showing {pagination.from} to {pagination.to} of {pagination.total} results
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setPage(page - 1)}
-                    disabled={page === 1}
-                    className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Previous
-                  </button>
-                  <button
-                    onClick={() => setPage(page + 1)}
-                    disabled={page === pagination.last_page}
-                    className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
-            )}
+            <Pagination
+              page={page}
+              totalPages={pagination.last_page ?? 1}
+              onPageChange={setPage}
+              from={pagination.from}
+              to={pagination.to}
+              total={pagination.total}
+              label="transactions"
+              pageSize={pageSize}
+              onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+            />
           </>
         )}
       </div>

@@ -6,6 +6,7 @@ import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Pagination } from '@/components/ui/Pagination';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -145,6 +146,7 @@ export const CustomerPayments: React.FC = () => {
   const [dateFrom, setDateFrom] = useState(searchParams.get('date_from') || '');
   const [dateTo, setDateTo] = useState(searchParams.get('date_to') || '');
   const [page, setPage] = useState(Number(searchParams.get('page') || 1));
+  const [perPage, setPerPage] = useState(20);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const [viewingPayment, setViewingPayment] = useState<Payment | null>(null);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
@@ -160,8 +162,8 @@ export const CustomerPayments: React.FC = () => {
 
   // Fetch payments (paginated, filtered)
   const queryKey = useMemo(
-    () => ['customer-payments', { searchQuery, statusFilter, methodFilter, customerFilter, dateFrom, dateTo, invoiceIdParam, page }],
-    [searchQuery, statusFilter, methodFilter, customerFilter, dateFrom, dateTo, invoiceIdParam, page],
+    () => ['customer-payments', { searchQuery, statusFilter, methodFilter, customerFilter, dateFrom, dateTo, invoiceIdParam, page, perPage }],
+    [searchQuery, statusFilter, methodFilter, customerFilter, dateFrom, dateTo, invoiceIdParam, page, perPage],
   );
 
   const { data: payments, isLoading } = useQuery({
@@ -176,7 +178,7 @@ export const CustomerPayments: React.FC = () => {
       if (dateTo) params.append('date_to', dateTo);
       if (invoiceIdParam) params.append('invoice_id', invoiceIdParam);
       params.append('page', String(page));
-      params.append('per_page', '20');
+      params.append('per_page', String(perPage));
 
       const response = await api.get(`/payments?${params.toString()}`);
       return response.data as PaginatedPayments;
@@ -316,12 +318,12 @@ export const CustomerPayments: React.FC = () => {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Customer Payments</h1>
           <p className="text-muted-foreground mt-1">Track payments received from customers</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <SalesDocumentExportMenu endpoint="/payments/export" filenamePrefix="payments" columns={PAYMENT_EXPORT_COLUMNS} filters={paymentFilters} selectedIds={selectedIds} />
           <HeaderActionButton icon="solar:upload-bold-duotone" variant="outline" onClick={() => window.location.href = '/accounting/customers/payments/import'}>
             Import
@@ -351,111 +353,86 @@ export const CustomerPayments: React.FC = () => {
       </div>
 
       {/* Filters */}
-      <Card>
-        <CardContent className="pt-6 space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            <div className="lg:col-span-2">
-              <Label htmlFor="search" className="text-xs">Search</Label>
-              <Input
-                id="search"
-                placeholder="Payment #, reference, customer, invoice..."
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setPage(1);
-                  updateUrl('search', e.target.value);
-                }}
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Status</Label>
-              <Select
-                value={statusFilter || 'all'}
-                onValueChange={(value) => {
-                  setStatusFilter(value === 'all' ? '' : value);
-                  setPage(1);
-                  updateUrl('payment_status', value === 'all' ? '' : value);
-                }}
-              >
-                <SelectTrigger className="mt-1"><SelectValue placeholder="All statuses" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All statuses</SelectItem>
-                  {PAYMENT_STATUS_OPTIONS.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs">Method</Label>
-              <Select
-                value={methodFilter || 'all'}
-                onValueChange={(value) => {
-                  setMethodFilter(value === 'all' ? '' : value);
-                  setPage(1);
-                  updateUrl('method', value === 'all' ? '' : value);
-                }}
-              >
-                <SelectTrigger className="mt-1"><SelectValue placeholder="All methods" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All methods</SelectItem>
-                  {METHOD_OPTIONS.map((m) => (
-                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs">Customer</Label>
-              <div className="mt-1">
-              <CustomerSearchCombobox
-                value={customerFilter}
-                onValueChange={(value) => {
-                  setCustomerFilter(value);
-                  setPage(1);
-                  updateUrl('customer_id', value);
-                }}
-                placeholder="All customers (search name or code)..."
-              />
-              </div>
-            </div>
-            <div>
-              <Label className="text-xs">From</Label>
-              <Input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => {
-                  setDateFrom(e.target.value);
-                  setPage(1);
-                  updateUrl('date_from', e.target.value);
-                }}
-                className="mt-1"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <Label className="text-xs">To</Label>
-              <Input
-                type="date"
-                value={dateTo}
-                onChange={(e) => {
-                  setDateTo(e.target.value);
-                  setPage(1);
-                  updateUrl('date_to', e.target.value);
-                }}
-                className="mt-1"
-              />
-            </div>
-            <div className="flex items-end">
-              <HeaderActionButton icon="solar:refresh-bold-duotone" variant="outline" onClick={clearFilters}>
-                Clear filters
-              </HeaderActionButton>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          id="search"
+          placeholder="Payment #, reference, customer, invoice..."
+          value={searchQuery}
+          onChange={(e) => {
+            setSearchQuery(e.target.value);
+            setPage(1);
+            updateUrl('search', e.target.value);
+          }}
+          className="h-8 w-64 rounded-full px-3 text-xs"
+        />
+        <Select
+          value={statusFilter || 'all'}
+          onValueChange={(value) => {
+            setStatusFilter(value === 'all' ? '' : value);
+            setPage(1);
+            updateUrl('payment_status', value === 'all' ? '' : value);
+          }}
+        >
+          <SelectTrigger className="h-8 w-44 rounded-full text-xs"><SelectValue placeholder="All statuses" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            {PAYMENT_STATUS_OPTIONS.map((s) => (
+              <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={methodFilter || 'all'}
+          onValueChange={(value) => {
+            setMethodFilter(value === 'all' ? '' : value);
+            setPage(1);
+            updateUrl('method', value === 'all' ? '' : value);
+          }}
+        >
+          <SelectTrigger className="h-8 w-40 rounded-full text-xs"><SelectValue placeholder="All methods" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All methods</SelectItem>
+            {METHOD_OPTIONS.map((m) => (
+              <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="w-56 max-w-full">
+          <CustomerSearchCombobox
+            value={customerFilter}
+            onValueChange={(value) => {
+              setCustomerFilter(value);
+              setPage(1);
+              updateUrl('customer_id', value);
+            }}
+            placeholder="All customers (search name or code)..."
+            compact
+          />
+        </div>
+        <Input
+          type="date"
+          value={dateFrom}
+          onChange={(e) => {
+            setDateFrom(e.target.value);
+            setPage(1);
+            updateUrl('date_from', e.target.value);
+          }}
+          className="h-8 w-40 rounded-full px-3 text-xs"
+        />
+        <Input
+          type="date"
+          value={dateTo}
+          onChange={(e) => {
+            setDateTo(e.target.value);
+            setPage(1);
+            updateUrl('date_to', e.target.value);
+          }}
+          className="h-8 w-40 rounded-full px-3 text-xs"
+        />
+        <HeaderActionButton icon="solar:refresh-bold-duotone" variant="outline" onClick={clearFilters}>
+          Clear filters
+        </HeaderActionButton>
+      </div>
 
       {/* Bulk actions bar */}
       {selectedIds.length > 0 && (
@@ -690,33 +667,17 @@ export const CustomerPayments: React.FC = () => {
               </div>
 
               {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between mt-4">
-                  <p className="text-sm text-muted-foreground">
-                    Page {page} of {totalPages}
-                  </p>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => { setPage((p) => Math.max(1, p - 1)); updateUrl('page', String(Math.max(1, page - 1))); }}
-                      disabled={page <= 1}
-                    >
-                      <Icon icon="solar:arrow-left-bold" className="h-4 w-4 mr-1" />
-                      Previous
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => { setPage((p) => Math.min(totalPages, p + 1)); updateUrl('page', String(Math.min(totalPages, page + 1))); }}
-                      disabled={page >= totalPages}
-                    >
-                      Next
-                      <Icon icon="solar:arrow-right-bold" className="h-4 w-4 ml-1" />
-                    </Button>
-                  </div>
-                </div>
-              )}
+              <Pagination
+                page={page}
+                totalPages={totalPages}
+                onPageChange={(next) => { setPage(next); updateUrl('page', String(next)); }}
+                from={(page - 1) * perPage + 1}
+                to={Math.min(page * perPage, totalRecords)}
+                total={totalRecords}
+                label="payments"
+                pageSize={perPage}
+                onPageSizeChange={(size) => { setPerPage(size); setPage(1); updateUrl('page', '1'); }}
+              />
             </>
           )}
         </CardContent>

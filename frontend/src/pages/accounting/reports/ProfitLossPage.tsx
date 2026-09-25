@@ -1,12 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -15,20 +21,74 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import api from '@/lib/api';
 import reportApi from '@/lib/reportApi';
 import { formatCurrency } from '@/lib/utils';
 import { ComparisonTable } from '@/components/reports/ComparisonTable';
+import { ReportExportToolbar } from '@/components/reports/ReportExportToolbar';
+import {
+  type FiscalYearOption,
+  type FiscalYearSettings,
+  fiscalYearForRange,
+  fiscalYearOptions,
+  formatFiscalYearOption,
+  priorFiscalYear,
+} from '@/lib/fiscalYear';
 
 export default function ProfitLossPage() {
   const navigate = useNavigate();
-  const [startDate, setStartDate] = useState(
-    new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]
-  );
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [compareEnabled, setCompareEnabled] = useState(false);
   const [compareStartDate, setCompareStartDate] = useState('');
   const [compareEndDate, setCompareEndDate] = useState('');
   const [collapsedRows, setCollapsedRows] = useState<Set<string>>(new Set());
+  const userEditedDates = useRef(false);
+  const reportRef = useRef<HTMLDivElement>(null);
+
+  // Fiscal-year settings drive the default reporting period (e.g. 1 Aug –
+  // 31 Jul) instead of the calendar year.
+  const { data: fiscalSettings } = useQuery({
+    queryKey: ['fiscal-year'],
+    queryFn: async () => {
+      const response = await api.get('/accounting/settings/fiscal-year');
+      return response.data.data as FiscalYearSettings;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const fyOptions: FiscalYearOption[] = useMemo(
+    () =>
+      fiscalSettings
+        ? fiscalYearOptions(
+            fiscalSettings.fiscal_year_start_month ?? 1,
+            fiscalSettings.fiscal_year_start_day ?? 1,
+          )
+        : [],
+    [fiscalSettings],
+  );
+
+  // Default to the fiscal year containing today until the user edits dates.
+  useEffect(() => {
+    if (!userEditedDates.current && fyOptions.length > 0 && (!startDate || !endDate)) {
+      setStartDate(fyOptions[0].start);
+      setEndDate(fyOptions[0].end);
+    }
+  }, [fyOptions, startDate, endDate]);
+
+  const selectedFiscalYear = fiscalYearForRange(fyOptions, startDate, endDate);
+  const selectedCompareFiscalYear = fiscalYearForRange(fyOptions, compareStartDate, compareEndDate);
+
+  const applyFiscalYear = (fy: FiscalYearOption) => {
+    userEditedDates.current = true;
+    setStartDate(fy.start);
+    setEndDate(fy.end);
+  };
+
+  const applyCompareFiscalYear = (fy: FiscalYearOption) => {
+    setCompareStartDate(fy.start);
+    setCompareEndDate(fy.end);
+  };
 
   const toggleRow = (id: string) => {
     setCollapsedRows((current) => {
@@ -66,84 +126,143 @@ export default function ProfitLossPage() {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Profit & Loss Statement</h1>
           <p className="text-muted-foreground mt-1">
             Show company's financial performance
           </p>
         </div>
-        <HeaderActionButton icon="solar:arrow-left-linear" onClick={() => navigate('/accounting')}>
-          Back to Accounting
-        </HeaderActionButton>
+        <div className="flex flex-wrap items-center gap-2">
+          <HeaderActionButton icon="solar:arrow-left-linear" onClick={() => navigate('/accounting')}>
+            Back to Accounting
+          </HeaderActionButton>
+        </div>
       </div>
 
       {/* Filters */}
-      <Card className="p-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="start_date">Start Date</Label>
+      <div className="flex flex-wrap items-center gap-2">
+        {fyOptions.length > 0 && (
+          <Select
+            value={selectedFiscalYear?.label ?? 'custom'}
+            onValueChange={(value) => {
+              const fy = fyOptions.find((option) => option.label === value);
+              if (fy) applyFiscalYear(fy);
+            }}
+          >
+            <SelectTrigger className="h-8 w-64 rounded-full px-3 text-xs" aria-label="Fiscal year">
+              <SelectValue placeholder="Fiscal year" />
+            </SelectTrigger>
+            <SelectContent>
+              {fyOptions.map((option) => (
+                <SelectItem key={option.label} value={option.label}>
+                  {formatFiscalYearOption(option)}
+                </SelectItem>
+              ))}
+              <SelectItem value="custom">Custom range</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+        <Input
+          id="start_date"
+          type="date"
+          value={startDate}
+          onChange={(e) => {
+            const value = e.target.value;
+            userEditedDates.current = true;
+            setStartDate(value);
+            // Keep the range valid: the API rejects end_date < start_date.
+            if (endDate && value > endDate) setEndDate(value);
+          }}
+          className="h-8 w-40 rounded-full px-3 text-xs"
+        />
+        <Input
+          id="end_date"
+          type="date"
+          value={endDate}
+          onChange={(e) => {
+            const value = e.target.value;
+            userEditedDates.current = true;
+            setEndDate(value);
+            if (startDate && value < startDate) setStartDate(value);
+          }}
+          className="h-8 w-40 rounded-full px-3 text-xs"
+        />
+        <label
+          htmlFor="compare_enabled"
+          className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground"
+        >
+          <input
+            type="checkbox"
+            id="compare_enabled"
+            checked={compareEnabled}
+            onChange={(e) => {
+              const checked = e.target.checked;
+              setCompareEnabled(checked);
+              // Default the comparison to the fiscal year immediately before
+              // the selected reporting period (e.g. FY2026 vs FY2027).
+              if (checked && !compareStartDate && !compareEndDate) {
+                const prior = priorFiscalYear(fyOptions, selectedFiscalYear, startDate)
+                  ?? priorFiscalYear(fyOptions, undefined, startDate)
+                  ?? fyOptions[1];
+                if (prior) {
+                  setCompareStartDate(prior.start);
+                  setCompareEndDate(prior.end);
+                }
+              }
+            }}
+            className="h-3.5 w-3.5 rounded border-gray-300"
+          />
+          Compare with another period
+        </label>
+        {compareEnabled && (
+          <>
+            {fyOptions.length > 0 && (
+              <Select
+                value={selectedCompareFiscalYear?.label ?? 'custom'}
+                onValueChange={(value) => {
+                  const fy = fyOptions.find((option) => option.label === value);
+                  if (fy) applyCompareFiscalYear(fy);
+                }}
+              >
+                <SelectTrigger className="h-8 w-64 rounded-full px-3 text-xs" aria-label="Compare fiscal year">
+                  <SelectValue placeholder="Compare fiscal year" />
+                </SelectTrigger>
+                <SelectContent>
+                  {fyOptions.map((option) => (
+                    <SelectItem key={option.label} value={option.label}>
+                      {formatFiscalYearOption(option)}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="custom">Custom range</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
             <Input
-              id="start_date"
+              id="compare_start_date"
               type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              value={compareStartDate}
+              onChange={(e) => {
+                const value = e.target.value;
+                setCompareStartDate(value);
+                if (compareEndDate && value > compareEndDate) setCompareEndDate(value);
+              }}
+              className="h-8 w-40 rounded-full px-3 text-xs"
             />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="end_date">End Date</Label>
             <Input
-              id="end_date"
+              id="compare_end_date"
               type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
+              value={compareEndDate}
+              onChange={(e) => {
+                const value = e.target.value;
+                setCompareEndDate(value);
+                if (compareStartDate && value < compareStartDate) setCompareStartDate(value);
+              }}
+              className="h-8 w-40 rounded-full px-3 text-xs"
             />
-          </div>
-          <div className="flex items-end gap-2">
-            <HeaderActionButton icon="solar:printer-linear" onClick={() => window.print()} variant="outline" className="flex-1">
-              Print
-            </HeaderActionButton>
-          </div>
-        </div>
-
-        {/* Comparison Toggle */}
-        <div className="mt-4 border-t pt-4">
-          <div className="flex items-center gap-2 mb-3">
-            <input
-              type="checkbox"
-              id="compare_enabled"
-              checked={compareEnabled}
-              onChange={(e) => setCompareEnabled(e.target.checked)}
-              className="rounded border-gray-300"
-            />
-            <Label htmlFor="compare_enabled" className="cursor-pointer font-medium">
-              Compare with another period
-            </Label>
-          </div>
-          {compareEnabled && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="compare_start_date">Comparison Start Date</Label>
-                <Input
-                  id="compare_start_date"
-                  type="date"
-                  value={compareStartDate}
-                  onChange={(e) => setCompareStartDate(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="compare_end_date">Comparison End Date</Label>
-                <Input
-                  id="compare_end_date"
-                  type="date"
-                  value={compareEndDate}
-                  onChange={(e) => setCompareEndDate(e.target.value)}
-                />
-              </div>
-            </div>
-          )}
-        </div>
-      </Card>
+          </>
+        )}
+      </div>
 
       {/* Comparison Table */}
       {compareEnabled && profitLoss?.comparison && (
@@ -175,7 +294,33 @@ export default function ProfitLossPage() {
       )}
 
       {/* Report */}
-      <Card className="p-6">
+      <Card className="rounded-xl">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 border-b pb-4">
+          <div>
+            <CardTitle className="text-base">Profit & Loss Statement</CardTitle>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {new Date(startDate).toLocaleDateString('en-GB', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+              })}{' '}
+              –{' '}
+              {new Date(endDate).toLocaleDateString('en-GB', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+              })}
+            </p>
+          </div>
+          <ReportExportToolbar
+            targetRef={reportRef}
+            title="Profit & Loss Statement"
+            subtitle={`${new Date(startDate).toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })} – ${new Date(endDate).toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })}`}
+            filename={`profit-and-loss-${startDate}-to-${endDate}`}
+          />
+        </CardHeader>
+
+        <CardContent ref={reportRef} className="pt-6">
         {isLoading ? (
           <div className="text-center py-12">
             <Icon icon="svg-spinners:ring-resize" className="w-8 h-8 mx-auto" />
@@ -193,24 +338,9 @@ export default function ProfitLossPage() {
           </div>
         ) : (
           <>
-            <div className="mb-6">
-              <h2 className="text-xl font-semibold">Profit & Loss Statement</h2>
-              <p className="text-sm text-muted-foreground">
-                {new Date(startDate).toLocaleDateString('en-US', { 
-                  year: 'numeric', 
-                  month: 'long', 
-                  day: 'numeric' 
-                })} - {new Date(endDate).toLocaleDateString('en-US', { 
-                  year: 'numeric', 
-                  month: 'long', 
-                  day: 'numeric' 
-                })}
-              </p>
-            </div>
-
             <Table>
               <caption className="caption-top pb-2">
-                <div className="flex justify-end gap-2">
+                <div className="flex justify-end gap-2" data-no-export>
                   <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setCollapsedRows(new Set())}>
                     <Icon icon="solar:maximize-linear" className="w-3.5 h-3.5 mr-1" /> Expand all
                   </Button>
@@ -363,6 +493,7 @@ export default function ProfitLossPage() {
             </Table>
           </>
         )}
+        </CardContent>
       </Card>
     </div>
   );

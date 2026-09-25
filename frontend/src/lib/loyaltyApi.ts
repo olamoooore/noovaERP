@@ -151,9 +151,9 @@ class LoyaltyApi {
   }
 
   // ========== Customers ==========
-  async getCustomers(search?: string): Promise<any> {
+  async getCustomers(search?: string, page?: number, perPage?: number): Promise<any> {
     const response = await api.get('/loyalty/customers', {
-      params: { search },
+      params: { search, page, per_page: perPage },
     });
     return response.data;
   }

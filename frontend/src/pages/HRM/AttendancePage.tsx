@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
+import { Pagination } from '@/components/ui/Pagination'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,7 +38,7 @@ interface AttendanceSummary {
 
 interface PaginatedResponse<T> {
   data: T[]
-  meta: { current_page: number; last_page: number; total: number }
+  meta: { current_page: number; last_page: number; per_page: number; total: number }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -103,15 +104,16 @@ function FilterSelect({
 
 function EventsTab() {
   const [page, setPage]           = useState(1)
+  const [pageSize, setPageSize]   = useState(20)
   const [statusFilter, setStatus] = useState('')
   const [typeFilter, setType]     = useState('')
 
-  const params = new URLSearchParams({ page: String(page) })
+  const params = new URLSearchParams({ page: String(page), per_page: String(pageSize) })
   if (statusFilter) params.set('status', statusFilter)
   if (typeFilter)   params.set('event_type', typeFilter)
 
   const { data, isLoading } = useQuery<PaginatedResponse<AttendanceEvent>>({
-    queryKey: ['hrm-attendance-events', page, statusFilter, typeFilter],
+    queryKey: ['hrm-attendance-events', page, pageSize, statusFilter, typeFilter],
     queryFn: () =>
       api.get(`/hrm/attendance-events?${params}`).then(r => r.data),
   })
@@ -205,14 +207,18 @@ function EventsTab() {
             </table>
           </div>
 
-          {meta && meta.last_page > 1 && (
-            <div className="flex items-center justify-between text-sm text-gray-600">
-              <span>Page {meta.current_page} of {meta.last_page} ({meta.total} events)</span>
-              <div className="flex gap-2">
-                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="rounded border px-3 py-1 disabled:opacity-40">← Prev</button>
-                <button onClick={() => setPage(p => Math.min(meta.last_page, p + 1))} disabled={page === meta.last_page} className="rounded border px-3 py-1 disabled:opacity-40">Next →</button>
-              </div>
-            </div>
+          {meta && (
+            <Pagination
+              page={page}
+              totalPages={meta.last_page}
+              onPageChange={setPage}
+              from={(meta.current_page - 1) * meta.per_page + 1}
+              to={Math.min(meta.current_page * meta.per_page, meta.total)}
+              total={meta.total}
+              label="events"
+              pageSize={pageSize}
+              onPageSizeChange={(size) => { setPageSize(size); setPage(1) }}
+            />
           )}
         </>
       )}
@@ -222,15 +228,16 @@ function EventsTab() {
 
 function SummaryTab() {
   const [page, setPage]                     = useState(1)
+  const [pageSize, setPageSize]             = useState(20)
   const [statusFilter, setStatus]           = useState('')
   const [exceptionsOnly, setExceptionsOnly] = useState(false)
 
-  const params = new URLSearchParams({ page: String(page) })
+  const params = new URLSearchParams({ page: String(page), per_page: String(pageSize) })
   if (statusFilter)   params.set('status', statusFilter)
   if (exceptionsOnly) params.set('has_exception', '1')
 
   const { data, isLoading } = useQuery<PaginatedResponse<AttendanceSummary>>({
-    queryKey: ['hrm-attendance-summaries', page, statusFilter, exceptionsOnly],
+    queryKey: ['hrm-attendance-summaries', page, pageSize, statusFilter, exceptionsOnly],
     queryFn: () =>
       api.get(`/hrm/attendance-summaries?${params}`).then(r => r.data),
   })
@@ -331,14 +338,18 @@ function SummaryTab() {
             </table>
           </div>
 
-          {meta && meta.last_page > 1 && (
-            <div className="flex items-center justify-between text-sm text-gray-600">
-              <span>Page {meta.current_page} of {meta.last_page} ({meta.total} summaries)</span>
-              <div className="flex gap-2">
-                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="rounded border px-3 py-1 disabled:opacity-40">← Prev</button>
-                <button onClick={() => setPage(p => Math.min(meta.last_page, p + 1))} disabled={page === meta.last_page} className="rounded border px-3 py-1 disabled:opacity-40">Next →</button>
-              </div>
-            </div>
+          {meta && (
+            <Pagination
+              page={page}
+              totalPages={meta.last_page}
+              onPageChange={setPage}
+              from={(meta.current_page - 1) * meta.per_page + 1}
+              to={Math.min(meta.current_page * meta.per_page, meta.total)}
+              total={meta.total}
+              label="summaries"
+              pageSize={pageSize}
+              onPageSizeChange={(size) => { setPageSize(size); setPage(1) }}
+            />
           )}
         </>
       )}

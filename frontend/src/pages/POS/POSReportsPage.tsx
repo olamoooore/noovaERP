@@ -113,15 +113,64 @@ export function POSReportsPage() {
   return (
     <div className="flex h-full flex-col gap-4 p-4 overflow-auto">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">POS Reports</h1>
           <p className="text-muted-foreground">Sales analytics and insights</p>
         </div>
-        <Button variant="outline">
-          <Icon icon="solar:download-bold" className="h-4 w-4 mr-2" />
-          Export
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={reportType} onValueChange={(v) => setReportType(v as 'daily' | 'monthly')}>
+            <SelectTrigger className="h-8 w-32 rounded-full text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="daily">Daily</SelectItem>
+              <SelectItem value="monthly">Monthly</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="h-8 w-40 rounded-full px-3 text-xs"
+          />
+          <Input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="h-8 w-40 rounded-full px-3 text-xs"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-full px-3 text-xs"
+            onClick={() => {
+              const date = new Date()
+              setEndDate(date.toISOString().split('T')[0])
+              date.setDate(date.getDate() - 30)
+              setStartDate(date.toISOString().split('T')[0])
+            }}
+          >
+            Last 30 Days
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-full px-3 text-xs"
+            onClick={() => {
+              const date = new Date()
+              setEndDate(date.toISOString().split('T')[0])
+              date.setDate(date.getDate() - 90)
+              setStartDate(date.toISOString().split('T')[0])
+            }}
+          >
+            Last 90 Days
+          </Button>
+          <Button variant="outline" size="sm" className="h-8 rounded-full px-3 text-xs">
+            <Icon icon="solar:download-bold" className="mr-1.5 h-3.5 w-3.5" />
+            Export
+          </Button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -198,64 +247,6 @@ export function POSReportsPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-4">
-          <div className="flex flex-wrap gap-4 items-end">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Report Type</label>
-              <Select value={reportType} onValueChange={(v) => setReportType(v as 'daily' | 'monthly')}>
-                <SelectTrigger className="w-[150px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="daily">Daily</SelectItem>
-                  <SelectItem value="monthly">Monthly</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Start Date</label>
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">End Date</label>
-              <Input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
-            </div>
-            <Button
-              variant="outline"
-              onClick={() => {
-                const date = new Date()
-                setEndDate(date.toISOString().split('T')[0])
-                date.setDate(date.getDate() - 30)
-                setStartDate(date.toISOString().split('T')[0])
-              }}
-            >
-              Last 30 Days
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                const date = new Date()
-                setEndDate(date.toISOString().split('T')[0])
-                date.setDate(date.getDate() - 90)
-                setStartDate(date.toISOString().split('T')[0])
-              }}
-            >
-              Last 90 Days
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Charts and Data */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

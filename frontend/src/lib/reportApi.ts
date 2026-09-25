@@ -778,22 +778,6 @@ class ReportApiClient {
   }
 
   /**
-   * Export Report to Excel
-   */
-  async exportToExcel(request: ExportRequest): Promise<ExportResponse> {
-    try {
-      const response = await api.post<ApiResponse<ExportResponse>>(
-        '/reports/export/excel',
-        request
-      );
-      return response.data.data;
-    } catch (error) {
-      this.handleError(error, 'Failed to export report to Excel');
-      throw error;
-    }
-  }
-
-  /**
    * Export Report to CSV
    */
   async exportToCsv(request: ExportRequest): Promise<ExportResponse> {

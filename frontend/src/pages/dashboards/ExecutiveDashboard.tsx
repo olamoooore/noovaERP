@@ -1,33 +1,82 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { DollarSign, TrendingUp, Wallet, RefreshCw } from 'lucide-react';
+import { BarChart3, DollarSign, LineChart as LineChartIcon, PieChart as PieChartIcon, Package, TrendingUp, Wallet } from 'lucide-react';
+import { Icon } from '@iconify/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { KPICard, DashboardGrid } from '@/components/dashboards';
 import { LineChart } from '@/components/charts/LineChart';
 import { PieChart } from '@/components/charts/PieChart';
 import { BarChart } from '@/components/charts/BarChart';
+import { formatCurrency } from '@/lib/utils';
 import reportApi from '@/lib/reportApi';
 import type { ExecutiveDashboardData } from '@/types/reports';
 
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+interface ChartCardProps {
+  title: string;
+  description: string;
+  loading: boolean;
+  empty: boolean;
+  children: React.ReactNode;
+  icon?: React.ComponentType<{ className?: string }>;
+  iconClassName?: string;
+}
+
+/** Consistent frame for every chart: title + description, one loading state, one empty state. */
+const ChartCard: React.FC<ChartCardProps> = ({ title, description, loading, empty, children, icon: ChartIcon, iconClassName }) => (
+  <Card className="rounded-xl shadow-sm">
+    <CardHeader className="flex flex-row items-center gap-3 space-y-0 border-b pb-4">
+      {ChartIcon && (
+        <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${iconClassName ?? 'bg-slate-100 text-slate-600'}`}>
+          <ChartIcon className="h-4 w-4" />
+        </div>
+      )}
+      <div className="min-w-0">
+        <CardTitle className="text-base">{title}</CardTitle>
+        <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+      </div>
+    </CardHeader>
+    <CardContent className="pt-5">
+      {loading ? (
+        <div className="flex h-[300px] items-center justify-center">
+          <Icon icon="eos-icons:loading" className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : empty ? (
+        <div className="flex h-[300px] flex-col items-center justify-center gap-2 text-muted-foreground">
+          <Icon icon="solar:chart-2-linear" className="h-8 w-8" />
+          <p className="text-sm">No data for this period</p>
+        </div>
+      ) : (
+        children
+      )}
+    </CardContent>
+  </Card>
+);
+
 /**
- * Executive Dashboard Page
- * High-level overview of business performance with key metrics and charts
- * Updated: 2026-01-02
+ * Executive Dashboard
+ * High-level overview of business performance with key metrics and charts.
  */
 export const ExecutiveDashboard: React.FC = () => {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(new Date());
-  
-  // Initialize with current month
+
+  // Initialize with the current month
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth()); // 0-11
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
 
-  // Calculate date range based on selected month/year
   const getDateFilters = () => {
     const startDate = new Date(selectedYear, selectedMonth, 1);
     const endDate = new Date(selectedYear, selectedMonth + 1, 0); // Last day of month
-    
+
     return {
       start_date: startDate.toISOString().split('T')[0],
       end_date: endDate.toISOString().split('T')[0],
@@ -62,8 +111,7 @@ export const ExecutiveDashboard: React.FC = () => {
     queryKey: ['executive-dashboard', selectedMonth, selectedYear],
     queryFn: async () => {
       try {
-        // Since we don't have a dedicated dashboard endpoint yet,
-        // we'll aggregate data from multiple endpoints
+        // No dedicated dashboard endpoint yet — aggregate from the report endpoints.
         const [profitLoss, salesTrends, salesByCategory, expensesByCategory, salesByProduct] =
           await Promise.all([
             reportApi.getProfitLoss(currentMonthFilters).catch(() => null),
@@ -72,15 +120,6 @@ export const ExecutiveDashboard: React.FC = () => {
             reportApi.getExpensesByCategory(currentMonthFilters).catch(() => null),
             reportApi.getSalesByProduct(currentMonthFilters).catch(() => null),
           ]);
-
-        // Transform data into dashboard format
-        console.log('Dashboard API Responses:', {
-          profitLoss,
-          salesTrends,
-          salesByCategory,
-          expensesByCategory,
-          salesByProduct
-        });
 
         // Safely extract data with proper null checks
         const trends = Array.isArray(salesTrends?.trends) ? salesTrends.trends : [];
@@ -113,16 +152,16 @@ export const ExecutiveDashboard: React.FC = () => {
             },
           },
           sales_trends: trends
-            .filter((trend) => trend && typeof trend === 'object' && trend.total_sales != null)
+            .filter((trend) => trend && typeof trend === 'object' && (trend.total_sales ?? trend.revenue) != null)
             .map((trend) => ({
               period: String(trend.period || ''),
-              revenue: Number(trend.total_sales) || 0,
+              revenue: Number(trend.total_sales ?? trend.revenue) || 0,
             })),
           revenue_by_category: categories
-            .filter((cat) => cat && typeof cat === 'object' && cat.total_sales != null)
+            .filter((cat) => cat && typeof cat === 'object' && (cat.total_sales ?? cat.revenue) != null)
             .map((cat) => ({
-              category: String(cat.category_name || 'Unknown'),
-              amount: Number(cat.total_sales) || 0,
+              category: String(cat.category_name || 'Uncategorized'),
+              amount: Number(cat.total_sales ?? cat.revenue) || 0,
             })),
           expense_breakdown: expenses
             .filter((cat) => cat && typeof cat === 'object' && cat.total_amount != null)
@@ -131,11 +170,13 @@ export const ExecutiveDashboard: React.FC = () => {
               amount: Number(cat.total_amount) || 0,
             })),
           top_products: products
-            .filter((prod) => prod && typeof prod === 'object' && prod.total_sales != null)
+            .filter((prod) => prod && typeof prod === 'object' && (prod.total_revenue ?? prod.total_sales) != null)
             .slice(0, 5)
             .map((prod) => ({
-              name: String(prod.product_name || prod.name || 'Unknown Product'),
-              revenue: Number(prod.total_sales || prod.total_revenue) || 0,
+              name: String(prod.name || prod.product_name || prod.sku || 'Unassigned'),
+              sku: prod.sku ? String(prod.sku) : undefined,
+              quantity: Number(prod.quantity_sold ?? prod.total_quantity) || 0,
+              revenue: Number(prod.total_revenue ?? prod.total_sales) || 0,
             })),
         };
       } catch (error) {
@@ -168,30 +209,16 @@ export const ExecutiveDashboard: React.FC = () => {
     refetch();
   };
 
-  // Month names for dropdown
-  const monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
-
   // Generate year options (current year and 2 years back)
   const currentYear = new Date().getFullYear();
   const yearOptions = [currentYear, currentYear - 1, currentYear - 2];
 
-  const handleMonthChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedMonth(parseInt(e.target.value));
-  };
-
-  const handleYearChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedYear(parseInt(e.target.value));
-  };
-
   if (error) {
     return (
       <div className="p-6">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <h3 className="text-red-800 font-medium">Error Loading Dashboard</h3>
-          <p className="text-red-600 text-sm mt-1">
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4">
+          <h3 className="font-medium text-destructive">Error loading dashboard</h3>
+          <p className="mt-1 text-sm text-destructive/90">
             {error instanceof Error ? error.message : 'Failed to load dashboard data'}
           </p>
         </div>
@@ -199,78 +226,88 @@ export const ExecutiveDashboard: React.FC = () => {
     );
   }
 
+  const periodLabel = `${MONTH_NAMES[selectedMonth]} ${selectedYear}`;
+  const salesTrends = data?.sales_trends ?? [];
+  const revenueByCategory = data?.revenue_by_category ?? [];
+  const expenseBreakdown = data?.expense_breakdown ?? [];
+  const topProducts = data?.top_products ?? [];
+  // A series with rows but only zero values renders as an empty plot — treat
+  // it as "no data" so the card shows the empty state instead of bare axes.
+  const hasTrends = salesTrends.some((row: any) => Number(row?.revenue ?? 0) !== 0);
+  const hasCategories = revenueByCategory.some((row: any) => Number(row?.amount ?? 0) !== 0);
+  const hasExpenses = expenseBreakdown.some((row: any) => Number(row?.amount ?? 0) !== 0);
+  const hasProducts = topProducts.length > 0;
+
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6 p-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Executive Dashboard</h1>
-          <p className="text-muted-foreground mt-1">
-            High-level overview of business performance
+          <p className="mt-1 text-muted-foreground">
+            Revenue, profitability and cash at a glance
           </p>
         </div>
-        <div className="flex items-center gap-4">
-          {/* Month/Year Selector */}
-          <div className="flex items-center gap-2">
-            <select
-              value={selectedMonth}
-              onChange={handleMonthChange}
-              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {monthNames.map((month, index) => (
-                <option key={index} value={index}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={String(selectedMonth)} onValueChange={(value) => setSelectedMonth(Number(value))}>
+            <SelectTrigger className="h-8 w-32 rounded-full text-xs" aria-label="Month">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {MONTH_NAMES.map((month, index) => (
+                <SelectItem key={month} value={String(index)}>
                   {month}
-                </option>
+                </SelectItem>
               ))}
-            </select>
-            <select
-              value={selectedYear}
-              onChange={handleYearChange}
-              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
+            </SelectContent>
+          </Select>
+
+          <Select value={String(selectedYear)} onValueChange={(value) => setSelectedYear(Number(value))}>
+            <SelectTrigger className="h-8 w-24 rounded-full text-xs" aria-label="Year">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
               {yearOptions.map((year) => (
-                <option key={year} value={year}>
+                <SelectItem key={year} value={String(year)}>
                   {year}
-                </option>
+                </SelectItem>
               ))}
-            </select>
-          </div>
-          
-          <div className="text-sm text-muted-foreground">
-            Last updated: {lastRefresh.toLocaleTimeString()}
-          </div>
-          <button
-            onClick={handleManualRefresh}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            disabled={isLoading}
+            </SelectContent>
+          </Select>
+
+          <Button
+            variant={autoRefresh ? 'secondary' : 'outline'}
+            className="h-8 rounded-full px-3 text-xs"
+            onClick={() => setAutoRefresh((value) => !value)}
           >
-            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-              className="rounded"
+            <Icon
+              icon={autoRefresh ? 'solar:refresh-circle-bold' : 'solar:refresh-circle-linear'}
+              className="mr-1.5 h-3.5 w-3.5"
             />
-            Auto-refresh (5 min)
-          </label>
+            Auto-refresh {autoRefresh ? 'on' : 'off'}
+          </Button>
+
+          <HeaderActionButton
+            variant="outline"
+            icon="solar:refresh-bold"
+            loading={isLoading}
+            disabled={isLoading}
+            onClick={handleManualRefresh}
+          >
+            Refresh
+          </HeaderActionButton>
         </div>
       </div>
+
+      <p className="-mt-4 text-right text-xs text-muted-foreground">
+        {periodLabel} · last updated {lastRefresh.toLocaleTimeString()}
+      </p>
 
       {/* KPI Cards */}
       <DashboardGrid columns={3} gap="md">
         <KPICard
           title="Total Revenue"
-          value={
-            isLoading
-              ? '...'
-              : `$${(data?.kpis.revenue.current || 0).toLocaleString('en-US', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}`
-          }
+          value={isLoading ? '—' : formatCurrency(data?.kpis.revenue.current || 0)}
           icon={DollarSign}
           trend={
             data
@@ -281,19 +318,12 @@ export const ExecutiveDashboard: React.FC = () => {
                 }
               : undefined
           }
-          subtitle={`${monthNames[selectedMonth]} ${selectedYear}`}
+          subtitle={periodLabel}
           loading={isLoading}
         />
         <KPICard
           title="Net Profit"
-          value={
-            isLoading
-              ? '...'
-              : `$${(data?.kpis.profit.current || 0).toLocaleString('en-US', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}`
-          }
+          value={isLoading ? '—' : formatCurrency(data?.kpis.profit.current || 0)}
           icon={TrendingUp}
           trend={
             data
@@ -304,19 +334,12 @@ export const ExecutiveDashboard: React.FC = () => {
                 }
               : undefined
           }
-          subtitle={`${monthNames[selectedMonth]} ${selectedYear}`}
+          subtitle={periodLabel}
           loading={isLoading}
         />
         <KPICard
           title="Cash Position"
-          value={
-            isLoading
-              ? '...'
-              : `$${(data?.kpis.cash.current || 0).toLocaleString('en-US', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}`
-          }
+          value={isLoading ? '—' : formatCurrency(data?.kpis.cash.current || 0)}
           icon={Wallet}
           trend={
             data
@@ -327,142 +350,120 @@ export const ExecutiveDashboard: React.FC = () => {
                 }
               : undefined
           }
-          subtitle="Available cash"
+          subtitle="Revenue less expenses"
           loading={isLoading}
         />
       </DashboardGrid>
 
-      {/* Charts Row 1 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Sales Trends Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Sales Trends</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="h-[300px] flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-              </div>
-            ) : data && Array.isArray(data.sales_trends) && data.sales_trends.length > 0 ? (
-              <LineChart
-                data={data.sales_trends}
-                xKey="period"
-                yKeys={['revenue']}
-                formatYAxis="currency"
-                height={300}
-              />
-            ) : (
-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                No sales data available
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      {/* Charts */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <ChartCard
+          title="Sales Trends"
+          description={`Daily revenue · ${periodLabel}`}
+          loading={isLoading}
+          empty={!hasTrends}
+          icon={LineChartIcon}
+          iconClassName="bg-indigo-50 text-indigo-600"
+        >
+          <LineChart
+            data={salesTrends}
+            xKey="period"
+            yKeys={['revenue']}
+            formatYAxis="currency"
+            height={300}
+          />
+        </ChartCard>
 
-        {/* Revenue by Category Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Revenue by Category</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="h-[300px] flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-              </div>
-            ) : data && Array.isArray(data.revenue_by_category) && data.revenue_by_category.length > 0 ? (
-              <PieChart
-                data={data.revenue_by_category}
-                nameKey="category"
-                valueKey="amount"
-                formatValue="currency"
-                height={300}
-                innerRadius={60}
-              />
-            ) : (
-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                No category data available
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+        <ChartCard
+          title="Revenue by Category"
+          description={`Where the revenue came from · ${periodLabel}`}
+          loading={isLoading}
+          empty={!hasCategories}
+          icon={PieChartIcon}
+          iconClassName="bg-violet-50 text-violet-600"
+        >
+          <PieChart
+            data={revenueByCategory}
+            nameKey="category"
+            valueKey="amount"
+            formatValue="currency"
+            height={300}
+            innerRadius={60}
+          />
+        </ChartCard>
 
-      {/* Charts Row 2 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Expense Breakdown Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Expense Breakdown</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="h-[300px] flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-              </div>
-            ) : data && Array.isArray(data.expense_breakdown) && data.expense_breakdown.length > 0 ? (
-              <BarChart
-                data={data.expense_breakdown}
-                xKey="category"
-                yKeys={['amount']}
-                formatYAxis="currency"
-                height={300}
-                colors={['#ef4444']}
-              />
-            ) : (
-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                No expense data available
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <ChartCard
+          title="Expense Breakdown"
+          description={`Operating costs by account · ${periodLabel}`}
+          loading={isLoading}
+          empty={!hasExpenses}
+          icon={BarChart3}
+          iconClassName="bg-rose-50 text-rose-600"
+        >
+          <BarChart
+            data={expenseBreakdown}
+            xKey="category"
+            yKeys={['amount']}
+            formatYAxis="currency"
+            height={300}
+            colors={['#f43f5e']}
+            horizontal
+            truncateLabels={30}
+          />
+        </ChartCard>
 
-        {/* Top Products List */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Top Products</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="space-y-3">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <div key={i} className="flex items-center justify-between">
-                    <div className="h-4 w-32 bg-gray-200 animate-pulse rounded" />
-                    <div className="h-4 w-20 bg-gray-200 animate-pulse rounded" />
-                  </div>
-                ))}
-              </div>
-            ) : data && Array.isArray(data.top_products) && data.top_products.length > 0 ? (
-              <div className="space-y-3">
-                {data.top_products
-                  .filter((product) => product && typeof product === 'object' && product.revenue != null)
-                  .map((product, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center justify-center w-8 h-8 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-full font-medium text-sm">
+        <ChartCard
+          title="Top Products"
+          description={`Best sellers by revenue · ${periodLabel}`}
+          loading={isLoading}
+          empty={!hasProducts}
+          icon={Package}
+          iconClassName="bg-emerald-50 text-emerald-600"
+        >
+          <div className="space-y-3">
+            {topProducts
+              .filter((product) => product && typeof product === 'object' && product.revenue != null)
+              .map((product, index) => {
+                const top = Number(topProducts[0]?.revenue) || 0;
+                const share = top > 0 ? (Number(product.revenue) / top) * 100 : 0;
+
+                return (
+                  <div key={`${product.name}-${product.sku ?? index}`} className="space-y-1.5">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <div className="flex min-w-0 items-baseline gap-2">
+                        <span className="w-4 shrink-0 text-xs font-semibold text-muted-foreground">
                           {index + 1}
-                        </div>
-                        <span className="font-medium">{product.name || 'Unknown'}</span>
+                        </span>
+                        <span className="truncate text-sm font-medium">{product.name || 'Unassigned'}</span>
+                        {product.sku && (
+                          <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                            {product.sku}
+                          </span>
+                        )}
                       </div>
-                      <span className="text-green-600 font-medium">
-                        ${Number(product.revenue || 0).toLocaleString('en-US', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
+                      <span className="shrink-0 text-sm font-semibold tabular-nums">
+                        {formatCurrency(Number(product.revenue || 0))}
                       </span>
                     </div>
-                  ))}
-              </div>
-            ) : (
-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                No product data available
-              </div>
-            )}
-          </CardContent>
-        </Card>
+
+                    <div className="flex items-center gap-3 pl-6">
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-primary"
+                          style={{ width: `${Math.max(share, 2)}%` }}
+                        />
+                      </div>
+                      {typeof product.quantity === 'number' && (
+                        <span className="shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
+                          {product.quantity.toLocaleString()} sold
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </ChartCard>
       </div>
     </div>
   );

@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Pagination } from '@/components/ui/Pagination'
 import fieldServiceApi, { type WorkOrderStatus } from '@/lib/fieldServiceApi'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -73,6 +74,7 @@ export function AnalyticsPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [priorityFilter, setPriorityFilter] = useState<string>('all')
   const [jobPage, setJobPage] = useState(1)
+  const [jobPageSize, setJobPageSize] = useState(20)
 
   const { data: dashboard } = useQuery({
     queryKey: ['fs-dashboard'],
@@ -94,14 +96,14 @@ export function AnalyticsPage() {
       date_from: dateFrom,
       date_to: dateTo,
       page: jobPage,
-      per_page: 20,
+      per_page: jobPageSize,
     }
     if (technicianId !== 'all') f.technician_id = Number(technicianId)
     if (typeId !== 'all') f.type_id = Number(typeId)
     if (statusFilter !== 'all') f.status = statusFilter
     if (priorityFilter !== 'all') f.priority = priorityFilter
     return f
-  }, [dateFrom, dateTo, technicianId, typeId, statusFilter, priorityFilter, jobPage])
+  }, [dateFrom, dateTo, technicianId, typeId, statusFilter, priorityFilter, jobPage, jobPageSize])
 
   const { data: jobsData, isFetching: jobsFetching } = useQuery({
     queryKey: ['fs-jobs-analysis', jobFilters],
@@ -160,24 +162,24 @@ export function AnalyticsPage() {
   return (
     <div className="p-6 space-y-5 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Field Service Analytics</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Performance insights and reporting</p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex flex-wrap items-center gap-2">
           <Input
             type="date"
             value={dateFrom}
             onChange={e => { setDateFrom(e.target.value); setJobPage(1) }}
-            className="w-36 text-sm"
+            className="h-8 w-40 rounded-full px-3 text-xs"
           />
-          <span className="text-muted-foreground text-sm">to</span>
+          <span className="text-muted-foreground text-xs">to</span>
           <Input
             type="date"
             value={dateTo}
             onChange={e => { setDateTo(e.target.value); setJobPage(1) }}
-            className="w-36 text-sm"
+            className="h-8 w-40 rounded-full px-3 text-xs"
           />
           <Button variant="outline" size="sm" onClick={handleExport}>
             <Icon icon="solar:export-bold-duotone" width={16} className="mr-1.5" />
@@ -268,9 +270,9 @@ export function AnalyticsPage() {
         {/* ── JOBS ANALYSIS ── */}
         <TabsContent value="jobs" className="mt-4 space-y-4">
           {/* Filters */}
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setJobPage(1) }}>
-              <SelectTrigger className="w-36 text-sm"><SelectValue placeholder="Status" /></SelectTrigger>
+              <SelectTrigger className="h-8 w-36 rounded-full text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
                 {(['draft','scheduled','in_progress','on_hold','completed','invoiced','cancelled'] as WorkOrderStatus[]).map(s => (
@@ -280,7 +282,7 @@ export function AnalyticsPage() {
             </Select>
 
             <Select value={priorityFilter} onValueChange={v => { setPriorityFilter(v); setJobPage(1) }}>
-              <SelectTrigger className="w-32 text-sm"><SelectValue placeholder="Priority" /></SelectTrigger>
+              <SelectTrigger className="h-8 w-32 rounded-full text-xs"><SelectValue placeholder="Priority" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Priorities</SelectItem>
                 {['low','normal','high','urgent'].map(p => (
@@ -290,7 +292,7 @@ export function AnalyticsPage() {
             </Select>
 
             <Select value={typeId} onValueChange={v => { setTypeId(v); setJobPage(1) }}>
-              <SelectTrigger className="w-40 text-sm"><SelectValue placeholder="Type" /></SelectTrigger>
+              <SelectTrigger className="h-8 w-40 rounded-full text-xs"><SelectValue placeholder="Type" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Types</SelectItem>
                 {(workOrderTypes ?? []).map((t: any) => (
@@ -300,7 +302,7 @@ export function AnalyticsPage() {
             </Select>
 
             <Select value={technicianId} onValueChange={v => { setTechnicianId(v); setJobPage(1) }}>
-              <SelectTrigger className="w-44 text-sm"><SelectValue placeholder="Technician" /></SelectTrigger>
+              <SelectTrigger className="h-8 w-44 rounded-full text-xs"><SelectValue placeholder="Technician" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Technicians</SelectItem>
                 {(technicians ?? []).map((t: any) => (
@@ -369,19 +371,17 @@ export function AnalyticsPage() {
           </Card>
 
           {/* Pagination */}
-          {jobsData && (jobsData as any).last_page > 1 && (
-            <div className="flex items-center justify-between text-sm text-muted-foreground">
-              <span>Page {jobPage} of {(jobsData as any).last_page}</span>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" disabled={jobPage <= 1} onClick={() => setJobPage(p => p - 1)}>
-                  Previous
-                </Button>
-                <Button variant="outline" size="sm" disabled={jobPage >= (jobsData as any).last_page} onClick={() => setJobPage(p => p + 1)}>
-                  Next
-                </Button>
-              </div>
-            </div>
-          )}
+          <Pagination
+            page={jobPage}
+            totalPages={(jobsData as any)?.last_page ?? 1}
+            onPageChange={setJobPage}
+            from={(jobPage - 1) * jobPageSize + 1}
+            to={Math.min(jobPage * jobPageSize, (jobsData as any)?.total ?? 0)}
+            total={(jobsData as any)?.total ?? 0}
+            label="jobs"
+            pageSize={jobPageSize}
+            onPageSizeChange={(size) => { setJobPageSize(size); setJobPage(1) }}
+          />
         </TabsContent>
 
         {/* ── TECHNICIAN PERFORMANCE ── */}

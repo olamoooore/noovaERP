@@ -5,7 +5,6 @@ import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -80,58 +79,54 @@ export default function CashFlowPage() {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Cash Flow Statement</h1>
           <p className="text-muted-foreground mt-1">
             Show cash inflows and outflows
           </p>
         </div>
-        <HeaderActionButton icon="solar:arrow-left-linear" onClick={() => navigate('/accounting')}>
-          Back to Accounting
-        </HeaderActionButton>
-      </div>
-
-      {/* Filters */}
-      <Card className="p-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="start_date">Start Date</Label>
-            <Input
-              id="start_date"
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="end_date">End Date</Label>
-            <Input
-              id="end_date"
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="method">Method</Label>
-            <Select value={method} onValueChange={(value: any) => setMethod(value)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="indirect">Indirect Method</SelectItem>
-                <SelectItem value="direct">Direct Method</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-end">
-            <HeaderActionButton icon="solar:printer-linear" onClick={() => window.print()} variant="outline" className="w-full">
-              Print
-            </HeaderActionButton>
-          </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            id="start_date"
+            type="date"
+            value={startDate}
+            onChange={(e) => {
+              const value = e.target.value;
+              setStartDate(value);
+              // Keep the range valid: the API rejects end_date < start_date.
+              if (endDate && value > endDate) setEndDate(value);
+            }}
+            className="h-8 w-40 rounded-full px-3 text-xs"
+          />
+          <Input
+            id="end_date"
+            type="date"
+            value={endDate}
+            onChange={(e) => {
+              const value = e.target.value;
+              setEndDate(value);
+              if (startDate && value < startDate) setStartDate(value);
+            }}
+            className="h-8 w-40 rounded-full px-3 text-xs"
+          />
+          <Select value={method} onValueChange={(value: any) => setMethod(value)}>
+            <SelectTrigger className="h-8 w-40 rounded-full text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="indirect">Indirect Method</SelectItem>
+              <SelectItem value="direct">Direct Method</SelectItem>
+            </SelectContent>
+          </Select>
+          <HeaderActionButton icon="solar:printer-linear" onClick={() => window.print()} variant="outline">
+            Print
+          </HeaderActionButton>
+          <HeaderActionButton icon="solar:arrow-left-linear" onClick={() => navigate('/accounting')}>
+            Back to Accounting
+          </HeaderActionButton>
         </div>
-      </Card>
+      </div>
 
       {/* Report */}
       <Card className="p-6">
