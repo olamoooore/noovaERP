@@ -3,8 +3,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { cn } from '@/lib/utils'
 import { closeTasksApi, closeCyclesApi, readinessApi, type CloseCycle, type CloseTask, type ReadinessAccount, type ReadinessSummary } from '@/services/closeApi'
 
 function KpiCard({
@@ -24,14 +25,14 @@ function KpiCard({
 }) {
   return (
     <Card
-      className={onClick ? 'cursor-pointer border-slate-200/80 transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800' : 'border-slate-200/80 dark:border-slate-800'}
+      className={onClick ? 'cursor-pointer rounded-xl border-slate-200/80 transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800' : 'rounded-xl border-slate-200/80 dark:border-slate-800'}
       onClick={onClick}
     >
       <CardContent className="pt-5 pb-4">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-sm text-muted-foreground">{label}</p>
-            <p className="text-3xl font-bold mt-1">{value}</p>
+            <p className="mt-1 text-3xl font-bold tabular-nums">{value}</p>
             {hint && <p className="text-xs text-muted-foreground mt-2">{hint}</p>}
           </div>
           <div className={`p-2.5 rounded-xl ${iconClass ?? 'bg-primary/10 text-primary'}`}>
@@ -43,12 +44,6 @@ function KpiCard({
   )
 }
 
-const cycleStatusColor: Record<string, string> = {
-  draft:          'secondary',
-  opened:         'default',
-  ready_to_close: 'warning',
-  closed:         'success',
-}
 const cycleStatusLabel: Record<string, string> = {
   draft:          'Draft',
   opened:         'In Progress',
@@ -115,6 +110,7 @@ export function CloseDashboard() {
   const now = new Date()
   const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
   const overdue = myTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled' && new Date(t.created_at) < oneWeekAgo)
+  const completedTasks = myTasks.filter(t => t.status === 'completed').length
   const attentionAccounts = [...(readiness?.accounts ?? [])].sort(attentionSort).slice(0, 3)
   const signedOffAccounts = readiness?.signed_off_accounts ?? 0
   const totalAccounts = readiness?.total_accounts ?? 0
@@ -123,58 +119,62 @@ export function CloseDashboard() {
 
   return (
     <div className="space-y-8">
-      <Card className="overflow-hidden border-slate-200/80 bg-[radial-gradient(circle_at_top_left,_rgba(251,191,36,0.16),_transparent_35%),linear-gradient(135deg,_rgba(255,255,255,1),_rgba(248,250,252,0.95),_rgba(254,242,242,0.85))] dark:border-slate-800 dark:bg-[radial-gradient(circle_at_top_left,_rgba(251,191,36,0.12),_transparent_35%),linear-gradient(135deg,_rgba(2,6,23,1),_rgba(15,23,42,0.96),_rgba(24,24,27,0.96))]">
-        <CardContent className="pt-6 pb-6">
-          <div className="flex items-start justify-between gap-6 flex-wrap">
-            <div className="space-y-4 max-w-2xl">
-              <div>
-                <h1 className="text-3xl font-bold">Financial Close</h1>
-                <div className="flex items-center gap-3 mt-2">
-                  <Select value={entityId} onValueChange={(v) => updateParam('entityId', v)}>
-                    <SelectTrigger className="w-[180px]">
-                      <SelectValue placeholder="Entity" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(entityOptions?.entities ?? ['entity-001']).map(e => (
-                        <SelectItem key={e} value={e}>{e}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={periodId} onValueChange={(v) => updateParam('periodId', v)}>
-                    <SelectTrigger className="w-[160px]">
-                      <SelectValue placeholder="Period" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(entityOptions?.periods ?? ['2026-04']).map(p => (
-                        <SelectItem key={p} value={p}>{p}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="outline" className="px-3 py-1">{activeCycles.length} active cycle{activeCycles.length !== 1 ? 's' : ''}</Badge>
-                <Badge variant="outline" className="px-3 py-1">{openFindings} open findings</Badge>
-                <Badge variant="outline" className="px-3 py-1">{openBlockers} blocked task{openBlockers !== 1 ? 's' : ''}</Badge>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Financial close command center. Review readiness, manage tasks, and investigate AI-generated findings from accounts that need attention.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={() => navigate(`/financial-close/readiness?entityId=${entityId}&periodId=${periodId}${matchCycle ? `&cycleId=${matchCycle.id}` : ''}`)}>
-                <Icon icon="solar:shield-check-bold-duotone" className="mr-2 h-4 w-4" />
-                Open Readiness Cockpit
-              </Button>
-              <Button variant="outline" onClick={() => navigate('/financial-close/cycles')}>
-                <Icon icon="solar:calendar-bold-duotone" className="mr-2 h-4 w-4" />
-                Close Cycles
-              </Button>
-            </div>
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">Financial Close</h1>
+          <p className="mt-1 max-w-2xl text-muted-foreground">
+            Close command center — review readiness, manage tasks, and investigate AI-generated findings from
+            accounts that need attention.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Select value={entityId} onValueChange={(v) => updateParam('entityId', v)}>
+              <SelectTrigger className="h-8 w-[170px] rounded-full text-xs" aria-label="Entity">
+                <SelectValue placeholder="Entity" />
+              </SelectTrigger>
+              <SelectContent>
+                {(entityOptions?.entities ?? ['entity-001']).map(e => (
+                  <SelectItem key={e} value={e}>{e}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={periodId} onValueChange={(v) => updateParam('periodId', v)}>
+              <SelectTrigger className="h-8 w-[150px] rounded-full text-xs" aria-label="Period">
+                <SelectValue placeholder="Period" />
+              </SelectTrigger>
+              <SelectContent>
+                {(entityOptions?.periods ?? ['2026-04']).map(p => (
+                  <SelectItem key={p} value={p}>{p}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Badge variant="outline" className="border-slate-200 bg-slate-100 px-2.5 py-0.5 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+              {activeCycles.length} active cycle{activeCycles.length !== 1 ? 's' : ''}
+            </Badge>
+            {openFindings > 0 && (
+              <Badge variant="outline" className="border-amber-200 bg-amber-50 px-2.5 py-0.5 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+                {openFindings} open finding{openFindings !== 1 ? 's' : ''}
+              </Badge>
+            )}
+            {openBlockers > 0 && (
+              <Badge variant="outline" className="border-rose-200 bg-rose-50 px-2.5 py-0.5 text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
+                {openBlockers} blocked task{openBlockers !== 1 ? 's' : ''}
+              </Badge>
+            )}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <HeaderActionButton
+            icon="solar:shield-check-bold-duotone"
+            onClick={() => navigate(`/financial-close/readiness?entityId=${entityId}&periodId=${periodId}${matchCycle ? `&cycleId=${matchCycle.id}` : ''}`)}
+          >
+            Open Readiness Cockpit
+          </HeaderActionButton>
+          <HeaderActionButton variant="outline" icon="solar:calendar-bold-duotone" onClick={() => navigate('/financial-close/cycles')}>
+            Close Cycles
+          </HeaderActionButton>
+        </div>
+      </div>
 
       {/* KPI row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -227,14 +227,6 @@ export function CloseDashboard() {
           onClick={() => navigate(`/financial-close/readiness?entityId=${entityId}&periodId=${periodId}`)}
         />
         <KpiCard
-          label="Open Blockers"
-          value={openBlockers}
-          icon="solar:danger-bold-duotone"
-          iconClass={openBlockers > 0 ? 'bg-red-500/10 text-red-500' : 'bg-primary/10 text-primary'}
-          hint="Pivot into tasks and approvals"
-          onClick={() => navigate(`/financial-close/readiness?entityId=${entityId}&periodId=${periodId}`)}
-        />
-        <KpiCard
           label="Open AI Findings"
           value={openFindings}
           icon="solar:magic-stick-3-bold-duotone"
@@ -250,6 +242,13 @@ export function CloseDashboard() {
           hint="Open account coverage"
           onClick={() => navigate(`/financial-close/readiness?entityId=${entityId}&periodId=${periodId}`)}
         />
+        <KpiCard
+          label="Completed Tasks"
+          value={completedTasks}
+          icon="solar:check-circle-bold-duotone"
+          iconClass="bg-emerald-500/10 text-emerald-500"
+          hint="Tasks you have cleared"
+        />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
@@ -257,47 +256,42 @@ export function CloseDashboard() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-semibold">Active Cycles</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/financial-close/cycles')}>
+              <HeaderActionButton variant="ghost" icon="solar:arrow-right-linear" onClick={() => navigate('/financial-close/cycles')}>
                 View All
-                <Icon icon="solar:arrow-right-bold" className="ml-1.5 h-4 w-4" />
-              </Button>
+              </HeaderActionButton>
             </div>
           </CardHeader>
           <CardContent>
             {activeCycles.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">No active cycles.</p>
+              <p className="py-4 text-center text-sm text-muted-foreground">No active cycles.</p>
             ) : (
-              <div className="space-y-3">
+              <div className="divide-y divide-border/60">
                 {activeCycles.map(c => (
-                  <div key={c.id} className="rounded-2xl border border-slate-200/80 p-4 dark:border-slate-800">
-                    <div className="flex items-center justify-between gap-3 flex-wrap">
-                      <div>
-                        <p className="font-medium text-sm">{c.entity_id} — {c.period_id}</p>
-                        {c.opened_at && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Opened {new Date(c.opened_at).toLocaleDateString()}
-                          </p>
-                        )}
-                      </div>
+                  <div key={c.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">{c.entity_id} · {c.period_id}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Opened {c.opened_at ? new Date(c.opened_at).toLocaleDateString() : '—'}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="outline" className={cycleBadgeClass(c.status)}>
                         {cycleStatusLabel[c.status]}
                       </Badge>
-                    </div>
-                    <div className="flex items-center gap-2 mt-4">
-                      <Button
-                        size="sm"
+                      <HeaderActionButton
                         variant="outline"
+                        icon="solar:list-check-bold-duotone"
                         onClick={() => navigate(`/financial-close/tasks?cycleId=${c.id}`)}
                       >
                         Tasks
-                      </Button>
-                      <Button
-                        size="sm"
+                      </HeaderActionButton>
+                      <HeaderActionButton
                         variant="outline"
+                        icon="solar:chart-2-bold-duotone"
                         onClick={() => navigate(`/financial-close/forecast?cycleId=${c.id}`)}
                       >
                         Forecast
-                      </Button>
+                      </HeaderActionButton>
                     </div>
                   </div>
                 ))}
@@ -310,67 +304,93 @@ export function CloseDashboard() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-semibold">Account Attention</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate(`/financial-close/readiness?entityId=${entityId}&periodId=${periodId}`)}>
+              <HeaderActionButton variant="ghost" icon="solar:shield-check-bold-duotone" onClick={() => navigate(`/financial-close/readiness?entityId=${entityId}&periodId=${periodId}`)}>
                 Open Cockpit
-              </Button>
+              </HeaderActionButton>
             </div>
           </CardHeader>
           <CardContent>
             {attentionAccounts.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">Refresh readiness to generate account coverage.</p>
+              <p className="py-4 text-center text-sm text-muted-foreground">
+                Refresh readiness to generate account coverage.
+              </p>
             ) : (
-              <div className="space-y-3">
-                {attentionAccounts.map(account => (
-                  <div key={account.review_id} className="rounded-2xl border border-slate-200/80 p-4 dark:border-slate-800">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold">{account.account_code} · {account.account_name}</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {account.open_findings} finding{account.open_findings !== 1 ? 's' : ''} · {account.score}% coverage
-                        </p>
+              <div className="divide-y divide-border/60">
+                {attentionAccounts.map(account => {
+                  const coverage = Math.max(0, Math.min(100, account.score))
+                  const needsReview = account.open_findings > 0
+
+                  return (
+                    <div key={account.review_id} className="py-3 first:pt-0 last:pb-0">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">{account.account_code} · {account.account_name}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {account.open_findings} finding{account.open_findings !== 1 ? 's' : ''} · {coverage}% coverage
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={cn('text-xs font-medium', needsReview ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400')}>
+                            {needsReview ? 'Needs review' : 'On track'}
+                          </span>
+                          <HeaderActionButton
+                            variant={needsReview ? 'default' : 'outline'}
+                            icon={needsReview ? 'solar:magic-stick-3-bold-duotone' : 'solar:shield-check-bold-duotone'}
+                            onClick={() =>
+                              navigate(
+                                needsReview
+                                  ? `/financial-close/findings?reviewId=${account.review_id}`
+                                  : `/financial-close/readiness?entityId=${entityId}&periodId=${periodId}`,
+                              )
+                            }
+                          >
+                            {needsReview ? 'Open Findings' : 'Open Cockpit'}
+                          </HeaderActionButton>
+                          <HeaderActionButton
+                            variant="ghost"
+                            icon="solar:chart-2-bold-duotone"
+                            onClick={() => navigate(`/financial-close/readiness?entityId=${entityId}&periodId=${periodId}`)}
+                          >
+                            Coverage
+                          </HeaderActionButton>
+                        </div>
                       </div>
-                      <span className={`text-sm font-semibold ${account.open_findings > 0 ? 'text-rose-500' : 'text-slate-500'}`}>
-                        {account.open_findings > 0 ? 'Needs review' : 'On track'}
-                      </span>
+                      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                        <div
+                          className={cn('h-full rounded-full', needsReview ? 'bg-rose-500' : 'bg-emerald-500')}
+                          style={{ width: `${coverage}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="flex gap-2 mt-4">
-                      <Button
-                        size="sm"
-                        onClick={() => navigate(account.open_findings > 0 ? `/financial-close/findings?reviewId=${account.review_id}` : `/financial-close/readiness?entityId=${entityId}&periodId=${periodId}`)}
-                      >
-                        {account.open_findings > 0 ? 'Open Findings' : 'Open Cockpit'}
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => navigate(`/financial-close/readiness?entityId=${entityId}&periodId=${periodId}`)}>
-                        Coverage
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Quick Nav */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {/* Quick nav — one row of six */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {[
-          { label: 'My Tasks',        href: '/financial-close/tasks',        icon: 'solar:list-check-bold-duotone' },
-          { label: 'Review Queue',    href: '/financial-close/review-queue', icon: 'solar:inbox-bold-duotone' },
-          { label: 'Readiness',       href: `/financial-close/readiness?entityId=${entityId}&periodId=${periodId}`,    icon: 'solar:shield-check-bold-duotone' },
-          { label: 'Executive View',  href: '/financial-close/executive',    icon: 'solar:chart-bold-duotone' },
-          { label: 'AI Findings',     href: `/financial-close/findings?entityId=${entityId}&periodId=${periodId}&status=open`,     icon: 'solar:magic-stick-3-bold-duotone' },
-          { label: 'Audit Trail',     href: '/financial-close/audit-trail',  icon: 'solar:shield-check-bold-duotone' },
+          { label: 'My Tasks',       href: '/financial-close/tasks',        icon: 'solar:list-check-bold-duotone' },
+          { label: 'Review Queue',   href: '/financial-close/review-queue', icon: 'solar:inbox-bold-duotone' },
+          { label: 'Readiness',      href: `/financial-close/readiness?entityId=${entityId}&periodId=${periodId}`, icon: 'solar:shield-check-bold-duotone' },
+          { label: 'Executive View', href: '/financial-close/executive',    icon: 'solar:chart-bold-duotone' },
+          { label: 'AI Findings',    href: `/financial-close/findings?entityId=${entityId}&periodId=${periodId}&status=open`, icon: 'solar:magic-stick-3-bold-duotone' },
+          { label: 'Audit Trail',    href: '/financial-close/audit-trail',  icon: 'solar:clipboard-list-bold-duotone' },
         ].map(item => (
-          <Button
+          <button
             key={item.href}
-            variant="outline"
-            className="h-auto rounded-2xl border-slate-200/80 py-4 flex-col gap-2 transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800"
+            type="button"
             onClick={() => navigate(item.href)}
+            className="flex items-center gap-3 rounded-xl border border-slate-200/80 bg-card px-3 py-2.5 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md dark:border-slate-800"
           >
-            <Icon icon={item.icon} className="h-6 w-6" />
-            <span className="text-sm font-medium">{item.label}</span>
-          </Button>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Icon icon={item.icon} className="h-4 w-4" />
+            </span>
+            <span className="text-xs font-medium">{item.label}</span>
+          </button>
         ))}
       </div>
     </div>

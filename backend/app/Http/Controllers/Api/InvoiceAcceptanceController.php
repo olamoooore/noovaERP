@@ -105,6 +105,7 @@ class InvoiceAcceptanceController extends Controller
             'withdrawn' => $revoked && $invoice->status === 'draft',
             'expires_at' => $evidence->expires_at?->toIso8601String(),
             'status_trail' => $statusTrail,
+            'company' => \App\Support\TenantBranding::forCurrentTenant(),
         ]);
     }
 

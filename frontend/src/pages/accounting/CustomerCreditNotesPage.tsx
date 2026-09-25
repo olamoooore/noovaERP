@@ -14,6 +14,8 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Pagination } from '@/components/ui/Pagination';
 import { Icon } from '@iconify/react';
+import { SortableHead } from '@/components/ui/SortableHead';
+import { useSort } from '@/hooks/useSort';
 
 function StatusBadge({ status }: { status: string }) {
   const statusConfig: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
@@ -65,6 +67,7 @@ export default function CustomerCreditNotesPage() {
   };
 
   const creditNotes = data?.data || [];
+  const { sorted: sortedCreditNotes, sortKey, sortDir, toggle: toggleSort } = useSort<any>(creditNotes, 'credit_note_date', 'desc');
   const pagination = data?.meta || {};
 
   return (
@@ -141,17 +144,17 @@ export default function CustomerCreditNotesPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Credit Note #</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Invoice #</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead>Status</TableHead>
+                    <SortableHead label="Credit Note #" sortKey="credit_note_number" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Customer" sortKey="customer_name" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Invoice #" sortKey="invoice_number" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Date" sortKey="credit_note_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Amount" sortKey="total_amount" activeKey={sortKey} direction={sortDir} onSort={toggleSort} align="right" />
+                    <SortableHead label="Status" sortKey="status" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {creditNotes.map((creditNote: any) => (
+                  {sortedCreditNotes.map((creditNote: any) => (
                     <TableRow key={creditNote.id} className="hover:bg-accent/50 cursor-pointer">
                       <TableCell 
                         className="font-medium cursor-pointer hover:text-primary"

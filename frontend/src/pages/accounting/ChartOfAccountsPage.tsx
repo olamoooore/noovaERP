@@ -454,17 +454,17 @@ export default function ChartOfAccountsPage({ embedded = false }: { embedded?: b
 
         <TabsContent value="list" className="space-y-4">
           <Card className="p-6">
-            <div className="flex items-center justify-between mb-4">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-xl font-semibold">Accounts</h2>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Input
                   placeholder="Search accounts..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="h-8 rounded-full px-3 text-xs w-64"
+                  className="h-8 w-full rounded-full px-3 text-xs sm:w-64"
                 />
                 <Select value={typeFilter} onValueChange={setTypeFilter}>
-                  <SelectTrigger className="h-8 rounded-full text-xs w-40">
+                  <SelectTrigger className="h-8 w-40 rounded-full text-xs">
                     <SelectValue placeholder="All Types" />
                   </SelectTrigger>
                   <SelectContent>

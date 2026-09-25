@@ -112,7 +112,7 @@ export const ReportTable: React.FC<ReportTableProps> = ({
   // Get sort icon
   const getSortIcon = (key: string) => {
     if (sortConfig.key !== key) {
-      return <Icon icon="solar:sort-bold" className="h-4 w-4 text-gray-400" />;
+      return <Icon icon="solar:sort-vertical-linear" className="h-4 w-4 text-gray-400" />;
     }
     if (sortConfig.direction === 'asc') {
       return <Icon icon="solar:sort-from-bottom-to-top-bold" className="h-4 w-4 text-primary" />;
@@ -120,7 +120,7 @@ export const ReportTable: React.FC<ReportTableProps> = ({
     if (sortConfig.direction === 'desc') {
       return <Icon icon="solar:sort-from-top-to-bottom-bold" className="h-4 w-4 text-primary" />;
     }
-    return <Icon icon="solar:sort-bold" className="h-4 w-4 text-gray-400" />;
+    return <Icon icon="solar:sort-vertical-linear" className="h-4 w-4 text-gray-400" />;
   };
 
   // Filter and sort data
@@ -293,7 +293,13 @@ export const ReportTable: React.FC<ReportTableProps> = ({
                   {column.sortable ? (
                     <button
                       onClick={() => handleSort(column.key)}
-                      className="flex items-center gap-2 hover:text-primary transition-colors font-medium"
+                      className={`flex w-full items-center gap-2 hover:text-primary transition-colors font-medium ${
+                        column.align === 'right'
+                          ? 'justify-end'
+                          : column.align === 'center'
+                            ? 'justify-center'
+                            : 'justify-start'
+                      }`}
                     >
                       {column.label}
                       {getSortIcon(column.key)}

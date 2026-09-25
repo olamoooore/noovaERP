@@ -12,6 +12,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import api from '@/lib/api'
 import { linkableRefs, refLabel, refRoute, resolveNotificationTarget } from '@/lib/notificationLinks'
+import { notificationText } from '@/lib/notificationText'
 
 export interface NotificationItem {
   id: string
@@ -157,7 +158,9 @@ export function NotificationBell() {
             </div>
           ) : (
             <div className="divide-y">
-              {items.map((item) => (
+              {items.map((item) => {
+                const text = notificationText(item)
+                return (
                 <div
                   key={item.id}
                   className={`group flex cursor-pointer gap-3 px-4 py-3 transition-colors hover:bg-muted/40 ${
@@ -168,12 +171,12 @@ export function NotificationBell() {
                   <Icon icon={eventIcon(item.event)} className="mt-0.5 h-5 w-5 shrink-0" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-2">
-                      <div className="truncate text-sm font-medium">{item.subject}</div>
+                      <div className="truncate text-sm font-medium">{text.title}</div>
                       {!item.read_at && (
                         <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
                       )}
                     </div>
-                    <div className="line-clamp-2 text-xs text-muted-foreground">{item.body}</div>
+                    <div className="line-clamp-2 text-xs text-muted-foreground">{text.body}</div>
                     {(() => {
                       const refs = linkableRefs(item.data)
                       if (refs.length === 0) return null
@@ -214,7 +217,8 @@ export function NotificationBell() {
                     </div>
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </ScrollArea>

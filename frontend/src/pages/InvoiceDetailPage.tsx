@@ -5,6 +5,8 @@ import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
@@ -16,7 +18,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import api from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { DocumentTemplateDialog } from '@/components/documents/DocumentTemplateDialog'
 import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Textarea } from '@/components/ui/textarea'
@@ -177,10 +179,7 @@ export function InvoiceDetailPage() {
   const role = useAuthStore((state) => state.role)
   const queryClient = useQueryClient()
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
-  const [selectedTemplateId, setSelectedTemplateId] = useState('')
-  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
   const [chatterOpen, setChatterOpen] = useState(false)
-  const { data: pdfTemplates = [], isLoading: templatesLoading } = useQuery({ queryKey: ['invoice-pdf-templates'], queryFn: async () => (await api.get('/template-builder/templates', { params: { document_type: 'invoice', status: 'published', per_page: 100 } })).data?.data || [], enabled: templateDialogOpen })
 
   const { data: invoice, isLoading } = useQuery({
     queryKey: ['invoice', id],
@@ -211,6 +210,30 @@ export function InvoiceDetailPage() {
         description: awaitingApproval
           ? 'This invoice needs to be approved before it can be posted.'
           : message,
+      })
+    },
+  })
+
+  const createDeliveryOrderMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/invoices/${id}/create-delivery-order`)
+      return response.data
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] })
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['delivery-orders'] })
+      const deliveryOrderId = data?.data?.id
+      toast({ title: 'Delivery order created from invoice' })
+      if (deliveryOrderId) {
+        navigate(`/delivery-orders/${deliveryOrderId}`)
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to create delivery order',
+        description: error.response?.data?.message || error.response?.data?.error || 'An error occurred',
       })
     },
   })
@@ -262,6 +285,8 @@ export function InvoiceDetailPage() {
       const response = await api.post(`/invoices/${id}/acceptance-link`, {
         send_email: true,
         document_type: 'final_invoice',
+        recipient_email: sendRecipientEmail.trim() || undefined,
+        save_customer_email: saveCustomerEmail || undefined,
       })
       return response.data
     },
@@ -287,6 +312,8 @@ export function InvoiceDetailPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [resetDialogOpen, setResetDialogOpen] = useState(false)
   const [sendDialogUrl, setSendDialogUrl] = useState<string | null>(null)
+  const [sendRecipientEmail, setSendRecipientEmail] = useState('')
+  const [saveCustomerEmail, setSaveCustomerEmail] = useState(false)
   const [approvalComment, setApprovalComment] = useState('')
 
   const approveMutation = useMutation({
@@ -405,29 +432,7 @@ export function InvoiceDetailPage() {
   }
 
   const handlePrint = () => {
-    window.print()
-  }
-
-  const handleDownload = async () => {
-    if (!selectedTemplateId) return
-    setIsDownloadingPdf(true)
-    try {
-      const response = await api.get(`/invoices/${id}/pdf`, { params: { template: selectedTemplateId }, responseType: 'blob' })
-      const url = window.URL.createObjectURL(new Blob([response.data]))
-      const link = document.createElement('a')
-      link.href = url
-      link.setAttribute('download', `invoice-${invoice?.invoice_number}.pdf`)
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      setTemplateDialogOpen(false)
-    } catch (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Download failed',
-        description: 'Could not download the PDF. Please try again.',
-      })
-    } finally { setIsDownloadingPdf(false) }
+    setTemplateDialogOpen(true)
   }
 
   if (isLoading) {
@@ -475,39 +480,64 @@ export function InvoiceDetailPage() {
             }
           }}
           actions={<>
+            {/* Send first, subtle green — the most common customer action. */}
             {((invoice.status === 'draft' && invoice.approval_status === 'approved') ||
               ['posted', 'sent', 'partial', 'overdue', 'paid'].includes(invoice.status)) && (
               <HeaderActionButton
                 variant="outline"
                 icon="solar:letter-bold-duotone"
+                className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
                 loading={sendInvoiceMutation.isPending}
                 onClick={() => {
                   setSendDialogUrl(null)
+                  setSendRecipientEmail(invoice.customer?.email ?? '')
+                  setSaveCustomerEmail(false)
                   setSendDialogOpen(true)
                 }}
                 disabled={sendInvoiceMutation.isPending}
               >
-                Send Invoice
+                Send
+              </HeaderActionButton>
+            )}
+            {/* An invoice may be delivered across several delivery orders
+                (split shipments); the action stays available. */}
+            {!['cancelled', 'voided', 'reversed'].includes(invoice.status) && (
+              <HeaderActionButton
+                variant="outline"
+                icon="solar:box-bold-duotone"
+                loading={createDeliveryOrderMutation.isPending}
+                onClick={() => createDeliveryOrderMutation.mutate()}
+                disabled={createDeliveryOrderMutation.isPending}
+              >
+                Create Delivery Order
               </HeaderActionButton>
             )}
             {invoice.status === 'draft' && (
-              <>
-                <HeaderActionButton
-                  variant="outline"
-                  icon="solar:pen-bold-duotone"
-                  onClick={() => navigate(`/invoices/${invoice.id}/edit`)}
-                >
-                  Edit
-                </HeaderActionButton>
-                <HeaderActionButton
-                  icon="solar:check-circle-bold-duotone"
-                  loading={postMutation.isPending}
-                  onClick={() => postMutation.mutate()}
-                  disabled={postMutation.isPending}
-                >
-                  Post Invoice
-                </HeaderActionButton>
-              </>
+              <HeaderActionButton
+                icon="solar:check-circle-bold-duotone"
+                loading={postMutation.isPending}
+                onClick={() => postMutation.mutate()}
+                disabled={postMutation.isPending}
+              >
+                Post Invoice
+              </HeaderActionButton>
+            )}
+            {invoice.status === 'draft' && (
+              <HeaderActionButton
+                variant="outline"
+                icon="solar:pen-bold-duotone"
+                onClick={() => navigate(`/invoices/${invoice.id}/edit`)}
+              >
+                Edit
+              </HeaderActionButton>
+            )}
+            {['posted', 'sent', 'partial', 'overdue'].includes(invoice.status) && invoice.balance > 0 && (
+              <HeaderActionButton
+                icon="solar:card-bold-duotone"
+                onClick={() => navigate(`/invoices/${id}/payment`)}
+              >
+                Record Payment
+              </HeaderActionButton>
             )}
             <HeaderActionButton
               variant="outline"
@@ -519,32 +549,11 @@ export function InvoiceDetailPage() {
             <HeaderActionButton
               variant="outline"
               icon="solar:download-minimalistic-bold-duotone"
+              className="w-9 px-0"
+              aria-label="Download PDF"
+              title="Download PDF"
               onClick={() => setTemplateDialogOpen(true)}
-            >
-              Download PDF
-            </HeaderActionButton>
-            {['posted', 'sent', 'partial', 'overdue'].includes(invoice.status) && invoice.balance > 0 && (
-              <HeaderActionButton
-                icon="solar:card-bold-duotone"
-                onClick={() => navigate(`/invoices/${id}/payment`)}
-              >
-                Record Payment
-              </HeaderActionButton>
-            )}
-            {/* Drafts and cancellations can be deleted outright. */}
-            {['draft', 'cancelled'].includes(invoice.status) && (
-              <HeaderActionButton
-                variant="outline"
-                icon="solar:trash-bin-trash-bold-duotone"
-                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                loading={deleteMutation.isPending}
-                onClick={() => setDeleteDialogOpen(true)}
-                disabled={deleteMutation.isPending}
-              >
-                Delete
-              </HeaderActionButton>
-            )}
-
+            />
             {/* Reverses the GL entry + restores stock — Owner/Admin only,
                 mirroring the documents.reset_to_draft permission. */}
             {(role === 'Owner' || role === 'Admin') &&
@@ -560,6 +569,19 @@ export function InvoiceDetailPage() {
                   Reset to Draft
                 </HeaderActionButton>
               )}
+            {/* Destructive action always last. */}
+            {['draft', 'cancelled'].includes(invoice.status) && (
+              <HeaderActionButton
+                variant="outline"
+                icon="solar:trash-bin-trash-bold-duotone"
+                className="w-9 px-0 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                loading={deleteMutation.isPending}
+                aria-label="Delete invoice"
+                title="Delete"
+                onClick={() => setDeleteDialogOpen(true)}
+                disabled={deleteMutation.isPending}
+              />
+            )}
           </>}
         />
       </div>
@@ -657,11 +679,10 @@ export function InvoiceDetailPage() {
           <button
             type="button"
             onClick={() => navigate(`/quotations/${invoice.quotation!.id}`)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-input bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 text-xs font-medium text-primary transition-colors hover:border-primary/50 hover:bg-primary/10"
           >
             <Icon icon="solar:document-text-bold-duotone" className="h-3.5 w-3.5" />
             {invoice.quotation.quotation_number}
-            <span className="text-muted-foreground/70">Quotation</span>
           </button>
         )}
         {invoice.delivery_orders && invoice.delivery_orders.length > 0 && invoice.delivery_orders.map((d) => (
@@ -669,11 +690,10 @@ export function InvoiceDetailPage() {
             type="button"
             key={d.id}
             onClick={() => navigate(`/delivery-orders/${d.id}`)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-input bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 text-xs font-medium text-primary transition-colors hover:border-primary/50 hover:bg-primary/10"
           >
             <Icon icon="solar:box-bold-duotone" className="h-3.5 w-3.5" />
             {d.delivery_order_number}
-            <span className="text-muted-foreground/70">Delivery Order</span>
           </button>
         ))}
       </div>
@@ -859,12 +879,14 @@ export function InvoiceDetailPage() {
             </div>
           </div>
 
-          <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
-            <DialogContent><DialogHeader><DialogTitle>Download Invoice PDF</DialogTitle><DialogDescription>Select the template to use.</DialogDescription></DialogHeader>
-              <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId} disabled={templatesLoading}><SelectTrigger><SelectValue placeholder={templatesLoading ? 'Loading templates...' : 'Select a template'} /></SelectTrigger><SelectContent>{pdfTemplates.map((t: any) => <SelectItem key={t.id} value={String(t.id)}>{t.name}{t.is_system_default ? ' (Default)' : ''}</SelectItem>)}</SelectContent></Select>
-              <DialogFooter><Button variant="outline" onClick={() => setTemplateDialogOpen(false)}>Cancel</Button><Button onClick={handleDownload} disabled={!selectedTemplateId || isDownloadingPdf || templatesLoading}>{isDownloadingPdf ? 'Downloading...' : 'Download'}</Button></DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <DocumentTemplateDialog
+            open={templateDialogOpen}
+            onOpenChange={setTemplateDialogOpen}
+            documentType="invoice"
+            pdfPath={`/invoices/${id}/pdf`}
+            filename={`invoice-${invoice?.invoice_number || id}.pdf`}
+            title="Invoice"
+          />
 
           <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
             <DialogContent className="max-w-md">
@@ -989,6 +1011,32 @@ export function InvoiceDetailPage() {
                     <div className="text-muted-foreground">{invoice.customer?.email || 'No email on file'}</div>
                   </div>
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="invoice-send-email" className="text-xs font-medium text-muted-foreground">
+                    Send to email
+                  </Label>
+                  <Input
+                    id="invoice-send-email"
+                    type="email"
+                    value={sendRecipientEmail}
+                    onChange={(e) => setSendRecipientEmail(e.target.value)}
+                    placeholder="customer@example.com"
+                  />
+                  {!invoice.customer?.email && (
+                    <p className="text-xs text-amber-600">
+                      The customer has no email on file — enter one to send the invoice.
+                    </p>
+                  )}
+                  <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={saveCustomerEmail}
+                      onChange={(e) => setSaveCustomerEmail(e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-gray-300"
+                    />
+                    Save this email on the customer record
+                  </label>
+                </div>
                 <ul className="text-xs text-muted-foreground space-y-1">
                   <li>• Invoice PDF will be attached to the email</li>
                   <li>• Customer gets a unique signed acceptance link (no login)</li>
@@ -1013,7 +1061,10 @@ export function InvoiceDetailPage() {
                 <Button variant="outline" onClick={() => setSendDialogOpen(false)}>Cancel</Button>
                 <Button
                   onClick={() => sendInvoiceMutation.mutate()}
-                  disabled={sendInvoiceMutation.isPending || !invoice.customer?.email}
+                  disabled={
+                    sendInvoiceMutation.isPending ||
+                    !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(sendRecipientEmail.trim())
+                  }
                 >
                   {sendInvoiceMutation.isPending ? (
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />

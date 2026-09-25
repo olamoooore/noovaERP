@@ -4,6 +4,7 @@ namespace Modules\Sales\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -92,6 +93,16 @@ class DeliveryOrder extends Model
                 $order->delivery_order_number = static::generateNumber();
             }
         });
+
+        // Keep the invoice↔delivery-order pivot in sync with the legacy
+        // `invoice_id` pointer: DOs are also linked from forms/imports that
+        // write `invoice_id` directly, and a DO may accumulate several invoices
+        // (the legacy column stays the primary one).
+        static::saved(function ($order) {
+            if ($order->invoice_id && ($order->wasRecentlyCreated || $order->wasChanged('invoice_id'))) {
+                $order->invoices()->syncWithoutDetaching([$order->invoice_id]);
+            }
+        });
     }
 
     public function salesOrder(): BelongsTo
@@ -139,6 +150,48 @@ class DeliveryOrder extends Model
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(\App\Models\Invoice::class);
+    }
+
+    /**
+     * Every invoice linked to this delivery order — a DO may be billed across
+     * several invoices. The legacy `invoice_id` column remains the primary
+     * invoice; this relation (via `invoice_delivery_orders`) is the full set.
+     */
+    public function invoices(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            \App\Models\Invoice::class,
+            'invoice_delivery_orders',
+            'delivery_order_id',
+            'invoice_id',
+        )->withTimestamps();
+    }
+
+    /**
+     * Quantity of a line that can still be invoiced: delivered (or ordered when
+     * nothing has shipped) minus whatever earlier invoices already billed.
+     */
+    public function invoiceableQuantityForLine(DeliveryOrderLine $line): float
+    {
+        if (($line->line_type ?? 'product') !== 'product') {
+            return 0.0;
+        }
+
+        $billable = (float) ($line->quantity_delivered ?: $line->quantity_ordered)
+            - (float) $line->quantity_invoiced;
+
+        return round(max($billable, 0), 4);
+    }
+
+    public function hasInvoiceableLines(): bool
+    {
+        foreach ($this->lines as $line) {
+            if ($this->invoiceableQuantityForLine($line) > 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function quotation(): BelongsTo

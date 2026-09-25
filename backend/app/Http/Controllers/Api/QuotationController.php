@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Maatwebsite\Excel\Facades\Excel;
+use Modules\Sales\Services\DeliveryOrderService;
 use Modules\Sales\Services\SalesOrderService;
 use Modules\TemplateBuilder\Services\DataSource\CompanyDataSource;
 
@@ -31,6 +32,7 @@ class QuotationController extends Controller
         private LockDateValidationService $lockDateValidator,
         private SalesApprovalGate $approvalGate,
         private CaseImportService $caseImportService,
+        private DeliveryOrderService $deliveryService,
     ) {}
 
     /**
@@ -602,11 +604,21 @@ class QuotationController extends Controller
 
         try {
             $invoice = DB::transaction(function () use ($quotation) {
-                // Allocate and fulfil the SalesOrder
-                $salesOrder = $this->salesOrderService->allocateOrder($quotation->salesOrder);
-                $salesOrder = $this->salesOrderService->fulfilOrder($salesOrder);
+                $salesOrder = $quotation->salesOrder;
 
-                // Create invoice from the SalesOrder
+                // A quotation may be invoiced in stages: only advance the order
+                // through the lifecycle when it has not already reached that
+                // state. Re-running allocation/fulfilment on an already
+                // fulfilled order blocked every second (partial) invoice.
+                if ($salesOrder->isConfirmed()) {
+                    $salesOrder = $this->salesOrderService->allocateOrder($salesOrder);
+                }
+                if ($salesOrder->isAllocated()) {
+                    $salesOrder = $this->salesOrderService->fulfilOrder($salesOrder);
+                }
+
+                // Creates an invoice for whatever is still invoiceable on the
+                // order; throws when nothing remains.
                 $invoice = $this->salesOrderService->createInvoice($salesOrder);
 
                 // Link the invoice back to the quotation
@@ -634,10 +646,125 @@ class QuotationController extends Controller
             ], 201);
 
         } catch (\Exception $e) {
+            // Lifecycle guards and "no invoiceable quantities" are client
+            // conflicts (e.g. the quotation is already fully invoiced), not
+            // server errors.
             return response()->json([
                 'message' => 'Failed to create invoice from quotation',
                 'error' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Quotation → Delivery Order.
+     *
+     * Creates a standalone delivery order carrying the quotation's lines and
+     * link, so a confirmed quotation can be delivered without the manual
+     * "prefilled create form" detour.
+     */
+    public function createDeliveryOrder($id)
+    {
+        $quotation = Quotation::with(['customer', 'lines.product'])->find($id);
+
+        if (! $quotation) {
+            return response()->json(['message' => 'Quotation not found'], 404);
+        }
+
+        if ($quotation->status !== 'confirmed') {
+            return response()->json(['message' => 'Only confirmed quotations can be delivered'], 403);
+        }
+
+        $lines = $quotation->lines
+            ->map(fn ($line) => [
+                'line_type' => $line->line_type ?? 'product',
+                'sequence' => $line->sequence ?? 0,
+                'product_id' => $line->product_id,
+                'model_number' => $line->model_number,
+                'description' => $line->description,
+                'product_notes' => $line->product_notes,
+                'quantity' => (float) $line->quantity,
+                'quantity_delivered' => (float) $line->quantity,
+                'unit_price' => (float) $line->unit_price,
+            ])
+            ->values()
+            ->all();
+
+        if (empty($lines)) {
+            return response()->json(['message' => 'Quotation has no lines to deliver'], 422);
+        }
+
+        $warehouseId = Warehouse::getDefault()?->id ?? Warehouse::query()->value('id');
+        if (! $warehouseId) {
+            return response()->json(['message' => 'No warehouse configured. Create a warehouse before delivering.'], 422);
+        }
+
+        try {
+            $deliveryOrder = $this->deliveryService->createStandaloneDeliveryOrder([
+                'customer_id' => $quotation->customer_id,
+                'quotation_id' => $quotation->id,
+                'warehouse_id' => $warehouseId,
+                'delivery_date' => now()->toDateString(),
+                'po_number' => $quotation->customer_reference,
+                'attention_to' => $quotation->attention_to,
+                'payment_terms' => $quotation->credit_terms,
+                'source' => 'quotation',
+                // Goods may not be received yet — never block the conversion.
+                'allow_backorder' => true,
+                'lines' => $lines,
+            ]);
+
+            $this->deliveryService->logChatter(
+                $deliveryOrder,
+                'created',
+                "Created delivery order {$deliveryOrder->delivery_order_number} from quotation {$quotation->quotation_number}",
+                ['quotation_id' => $quotation->id],
+            );
+            $this->logChatter(
+                'App\\Models\\Quotation',
+                (int) $quotation->id,
+                'delivery_order_created',
+                "Delivery order {$deliveryOrder->delivery_order_number} created from this quotation",
+                [
+                    'delivery_order_id' => $deliveryOrder->id,
+                    'delivery_order_number' => $deliveryOrder->delivery_order_number,
+                ],
+            );
+
+            return response()->json([
+                'message' => 'Delivery order created from quotation',
+                'data' => $deliveryOrder->load(['customer', 'lines.product', 'quotation']),
+            ], 201);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Failed to create delivery order from quotation',
+                'error' => $e->getMessage(),
             ], 500);
+        }
+    }
+
+    /**
+     * Mirror a document event into chatter. Never throws — logging must not
+     * break the conversion flow.
+     */
+    private function logChatter(string $subjectType, int $subjectId, string $event, string $description, array $properties = []): void
+    {
+        try {
+            app(\App\Services\Chatter\ChatterService::class)->logEvent(
+                $subjectType,
+                $subjectId,
+                $event,
+                $description,
+                $properties,
+                Auth::id(),
+                Auth::check() ? get_class(Auth::user()) : null,
+            );
+        } catch (\Throwable $e) {
+            \Log::warning('QuotationController: chatter log failed', [
+                'subject' => $subjectType,
+                'subject_id' => $subjectId,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

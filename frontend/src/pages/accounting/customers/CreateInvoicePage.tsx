@@ -4,7 +4,6 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { todayDateOnly, addCalendarDays, diffCalendarDays, isValidProductQuantity } from '@/lib/dateOnly';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
@@ -791,7 +790,6 @@ export const CreateInvoicePage: React.FC = () => {
     ? subtotal * (discountAmt / 100)
     : discountAmt;
   const total = subtotal + taxTotal - lineDiscounts - documentDiscountAmount;
-  const invoiceNumberPreview = customInvoiceNumber || `INV-${new Date(invoiceDate).getFullYear()}-XXXX`;
 
   const handleCustomerFormSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -979,8 +977,13 @@ export const CreateInvoicePage: React.FC = () => {
     <>
       <div className="p-6 space-y-6">
         <div>
-          <Button variant="ghost" size="sm" onClick={() => navigate(backPath)} className="mb-3">
-            <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate(backPath)}
+            className="-ml-2 mb-3 text-muted-foreground hover:text-foreground"
+          >
+            <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
             Back
           </Button>
           <h1 className="text-3xl font-bold">{isEditMode ? 'Edit' : 'Create'} {documentLabel}</h1>

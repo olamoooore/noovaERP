@@ -3,6 +3,17 @@ import { useCreateVendorDebitNote } from '@/hooks/useVendorDebitNotes';
 import type { CreateVendorDebitNotePayload } from '@/types/vendorDebitNote';
 import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import {
   Command,
@@ -175,17 +186,17 @@ export default function CreateVendorDebitNoteDialog({ onClose, onSuccess, billId
   const exceedsBill = selectedBill && debitNoteTotal > billTotal;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b border-gray-200">
-          <h2 className="text-2xl font-bold text-gray-900">Create Debit Note</h2>
-          <p className="text-gray-600 mt-1">Create a debit note for a vendor bill</p>
-        </div>
+    <Dialog open onOpenChange={(next) => { if (!next) onClose(); }}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Create Debit Note</DialogTitle>
+          <DialogDescription>Create a debit note for a vendor bill</DialogDescription>
+        </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Select Bill *</label>
+              <Label className="mb-1 block">Select Bill *</Label>
               <Popover open={open} onOpenChange={setOpen}>
                 <PopoverTrigger asChild>
                   <Button
@@ -238,34 +249,31 @@ export default function CreateVendorDebitNoteDialog({ onClose, onSuccess, billId
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Debit Note Date *</label>
-              <input
+              <Label className="mb-1 block">Debit Note Date *</Label>
+              <Input
                 type="date"
                 value={formData.debit_note_date}
                 onChange={(e) => setFormData(prev => ({ ...prev, debit_note_date: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 required
               />
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
-              <input
+              <Label className="mb-1 block">Reason</Label>
+              <Input
                 type="text"
                 value={formData.reason}
                 onChange={(e) => setFormData(prev => ({ ...prev, reason: e.target.value }))}
                 placeholder="e.g., Product return, Billing error"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-              <textarea
+              <Label className="mb-1 block">Notes</Label>
+              <Textarea
                 value={formData.notes}
                 onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -273,48 +281,48 @@ export default function CreateVendorDebitNoteDialog({ onClose, onSuccess, billId
           {selectedBill && formData.lines.length > 0 && (
             <div className="mb-6">
               {exceedsBill && (
-                <div className="flex items-center gap-2 p-4 mb-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+                <div className="mb-4 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-destructive">
                   <Icon icon="solar:danger-triangle-bold" className="h-5 w-5 shrink-0" />
                   <p className="text-sm">
                     <strong>Warning:</strong> Debit note total (${debitNoteTotal.toFixed(2)}) exceeds bill total (${billTotal.toFixed(2)}). The bill's remaining balance may not cover this amount.
                   </p>
                 </div>
               )}
-              <h3 className="text-lg font-semibold text-gray-900 mb-3">Line Items</h3>
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <h3 className="mb-3 text-lg font-semibold">Line Items</h3>
+              <div className="overflow-hidden rounded-lg border">
                 <table className="w-full">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-muted/50">
                     <tr>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Description</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Quantity</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Unit Price</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Tax %</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Total</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Description</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Quantity</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Unit Price</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Tax %</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Total</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody className="divide-y divide-border">
                     {formData.lines.map((line, index) => (
                       <tr key={index}>
                         <td className="px-4 py-2 text-sm">{line.description}</td>
                         <td className="px-4 py-2">
-                          <input type="number" value={line.quantity} onChange={(e) => handleLineChange(index, 'quantity', Number(e.target.value))} min="0" step="0.01" className="w-20 px-2 py-1 border border-gray-300 rounded" />
+                          <input type="number" value={line.quantity} onChange={(e) => handleLineChange(index, 'quantity', Number(e.target.value))} min="0" step="0.01" className="w-20 rounded border border-input bg-background px-2 py-1" />
                         </td>
                         <td className="px-4 py-2">
-                          <input type="number" value={line.unit_price} onChange={(e) => handleLineChange(index, 'unit_price', Number(e.target.value))} min="0" step="0.01" className="w-24 px-2 py-1 border border-gray-300 rounded" />
+                          <input type="number" value={line.unit_price} onChange={(e) => handleLineChange(index, 'unit_price', Number(e.target.value))} min="0" step="0.01" className="w-24 rounded border border-input bg-background px-2 py-1" />
                         </td>
                         <td className="px-4 py-2 text-sm">{line.tax_rate}%</td>
                         <td className="px-4 py-2 text-sm font-medium">${calculateLineTotal(line).toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="bg-gray-50">
+                  <tfoot className="bg-muted/50">
                     <tr>
-                      <td colSpan={4} className="px-4 py-2 text-right text-sm text-gray-600">Bill Total:</td>
+                      <td colSpan={4} className="px-4 py-2 text-right text-sm text-muted-foreground">Bill Total:</td>
                       <td className="px-4 py-2 text-sm font-medium">${billTotal.toFixed(2)}</td>
                     </tr>
                     <tr>
                       <td colSpan={4} className="px-4 py-2 text-right font-semibold">Debit Note Total:</td>
-                      <td className={`px-4 py-2 font-bold ${exceedsBill ? 'text-red-600' : ''}`}>${debitNoteTotal.toFixed(2)}</td>
+                      <td className={cn('px-4 py-2 font-bold', exceedsBill && 'text-destructive')}>${debitNoteTotal.toFixed(2)}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -322,14 +330,16 @@ export default function CreateVendorDebitNoteDialog({ onClose, onSuccess, billId
             </div>
           )}
 
-          <div className="flex justify-end gap-3">
-            <button type="button" onClick={onClose} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Cancel</button>
-            <button type="submit" disabled={createMutation.isPending} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={createMutation.isPending}>
               {createMutation.isPending ? 'Creating...' : 'Create Debit Note'}
-            </button>
-          </div>
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

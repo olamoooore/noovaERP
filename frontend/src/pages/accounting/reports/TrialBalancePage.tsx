@@ -338,7 +338,6 @@ export default function TrialBalancePage() {
         <Card className="rounded-xl p-6">
           <ComparisonTable
             title="Trial Balance Comparison"
-            companyName="NoovaERP"
             asOfDate={formatShortDate(asOfDate)}
             compareDate={formatShortDate(trialBalance.comparison.as_of_date)}
             filename={`trial-balance-comparison-${asOfDate}`}

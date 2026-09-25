@@ -57,6 +57,8 @@ import api from '@/lib/api';
 import { useBulkSelection } from '@/hooks/use-bulk-selection';
 import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice';
 import { Pagination } from '@/components/ui/Pagination'
+import { SortableHead } from '@/components/ui/SortableHead'
+import { useSort } from '@/hooks/useSort'
 
 const JOURNAL_EXPORT_COLUMNS = [
   { key: 'entry_number', label: 'Entry No', group: 'Entry', default: true }, { key: 'entry_date', label: 'Date', group: 'Entry', default: true },
@@ -476,6 +478,12 @@ export default function JournalEntriesPage() {
   };
 
   const entries = entriesData?.data || [];
+  // Each journal entry balances, so its amount (total debit) is the row's
+  // balance. Pre-computed so the Balance column sorts numerically.
+  const entryBalance = (entry: any): number =>
+    (entry.lines ?? []).reduce((sum: number, line: any) => sum + (parseFloat(String(line.debit)) || 0), 0);
+  const rowsWithBalance = entries.map((entry: any) => ({ ...entry, entry_balance: entryBalance(entry) }));
+  const { sorted: sortedEntries, sortKey, sortDir, toggle: toggleSort } = useSort<any>(rowsWithBalance, 'entry_date', 'desc');
   const totalPages = entriesData?.last_page || 1;
   const totalRecords = entriesData?.total || 0;
   const journalFilters = { status: activeTab === 'all' || activeTab === 'reversed' ? undefined : activeTab, is_reversal: activeTab === 'reversed' ? 1 : undefined, search: searchTerm || undefined, start_date: dateFrom || undefined, end_date: dateTo || undefined };
@@ -616,34 +624,39 @@ export default function JournalEntriesPage() {
                   </div>
                 </div>
               )}
-              <Table>
+              <div className="overflow-x-auto">
+              <Table className="[&_th]:px-2.5 [&_td]:px-2.5">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-10">
+                    <TableHead className="w-8">
                       <input type="checkbox" checked={allPageSelected} onChange={togglePageSelection} aria-label="Select journal entries on this page" />
                     </TableHead>
-                    <TableHead>Entry Number</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Journal</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Remark</TableHead>
-                    <TableHead>Reference</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <SortableHead label="Entry Number" sortKey="entry_number" activeKey={sortKey} direction={sortDir} onSort={toggleSort} className="w-[9.5rem] whitespace-nowrap" />
+                    <SortableHead label="Date" sortKey="entry_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} className="w-[6.5rem] whitespace-nowrap" />
+                    <SortableHead label="Journal" sortKey="journal.name" activeKey={sortKey} direction={sortDir} onSort={toggleSort} className="w-[7rem]" />
+                    <SortableHead label="Description" sortKey="description" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Remark" sortKey="remark" activeKey={sortKey} direction={sortDir} onSort={toggleSort} className="w-[10rem]" />
+                    <SortableHead label="Reference" sortKey="reference" activeKey={sortKey} direction={sortDir} onSort={toggleSort} className="w-[9rem]" />
+                    <SortableHead label="Balance" sortKey="entry_balance" activeKey={sortKey} direction={sortDir} onSort={toggleSort} align="right" className="w-[7.5rem] whitespace-nowrap" />
+                    <SortableHead label="Status" sortKey="status" activeKey={sortKey} direction={sortDir} onSort={toggleSort} className="w-[6.5rem]" />
+                    <TableHead className="w-[7rem] whitespace-nowrap text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {entries.map((entry) => (
+                  {sortedEntries.map((entry) => (
                     <TableRow key={entry.id} className="cursor-pointer" onClick={() => handleViewEntry(entry)}>
                       <TableCell onClick={(event) => event.stopPropagation()}>
                         <input type="checkbox" checked={selectedIdSet.has(entry.id)} onChange={() => toggleSelect(entry.id)} aria-label={`Select ${entry.entry_number}`} />
                       </TableCell>
-                      <TableCell className="font-mono">{entry.entry_number}</TableCell>
-                      <TableCell>{new Date(entry.entry_date).toLocaleDateString()}</TableCell>
-                      <TableCell className="text-sm">{entry.journal?.name || '-'}</TableCell>
-                      <TableCell>{entry.description}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{entry.remark || '-'}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{entry.reference || '-'}</TableCell>
+                      <TableCell className="whitespace-nowrap font-mono text-sm">{entry.entry_number}</TableCell>
+                      <TableCell className="whitespace-nowrap">{new Date(entry.entry_date).toLocaleDateString()}</TableCell>
+                      <TableCell className="text-sm"><div className="truncate" title={entry.journal?.name || undefined}>{entry.journal?.name || '-'}</div></TableCell>
+                      <TableCell><div className="max-w-[16rem] truncate" title={entry.description || undefined}>{entry.description}</div></TableCell>
+                      <TableCell className="text-sm text-muted-foreground"><div className="max-w-[10rem] truncate" title={entry.remark || undefined}>{entry.remark || '-'}</div></TableCell>
+                      <TableCell className="text-sm text-muted-foreground"><div className="max-w-[9rem] truncate" title={entry.reference || undefined}>{entry.reference || '-'}</div></TableCell>
+                      <TableCell className="whitespace-nowrap text-right font-medium tabular-nums">
+                        {formatCurrency(entryBalance(entry))}
+                      </TableCell>
                       <TableCell>
                         <Badge variant={entry.status === 'posted' ? 'default' : 'secondary'}>
                           {entry.status}
@@ -654,25 +667,25 @@ export default function JournalEntriesPage() {
                           {entry.status === 'draft' && (
                             <>
                               {canPost && (
-                                <Button size="sm" variant="ghost" onClick={() => handlePost(entry.id)}>
-                                  <Icon icon="solar:check-circle-linear" className="w-4 h-4" />
+                                <Button size="icon" variant="ghost" className="h-7 w-7" title="Post" aria-label="Post entry" onClick={() => handlePost(entry.id)}>
+                                  <Icon icon="solar:check-circle-linear" className="h-4 w-4" />
                                 </Button>
                               )}
                               {canWrite && (
-                                <Button size="sm" variant="ghost" title="Edit draft" onClick={() => handleEdit(entry.id)}>
-                                  <Icon icon="solar:pen-linear" className="w-4 h-4" />
+                                <Button size="icon" variant="ghost" className="h-7 w-7" title="Edit draft" aria-label="Edit draft" onClick={() => handleEdit(entry.id)}>
+                                  <Icon icon="solar:pen-linear" className="h-4 w-4" />
                                 </Button>
                               )}
                               {canWrite && (
-                                <Button size="sm" variant="ghost" onClick={() => handleDelete(entry.id)}>
-                                  <Icon icon="solar:trash-bin-trash-linear" className="w-4 h-4" />
+                                <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive" title="Delete draft" aria-label="Delete draft" onClick={() => handleDelete(entry.id)}>
+                                  <Icon icon="solar:trash-bin-trash-linear" className="h-4 w-4" />
                                 </Button>
                               )}
                             </>
                           )}
                           {entry.status === 'posted' && !entry.is_reversal && canReverse && (
-                            <Button size="sm" variant="ghost" onClick={() => handleReverse(entry.id)}>
-                              <Icon icon="solar:refresh-linear" className="w-4 h-4" />
+                            <Button size="icon" variant="ghost" className="h-7 w-7" title="Reverse" aria-label="Reverse entry" onClick={() => handleReverse(entry.id)}>
+                              <Icon icon="solar:refresh-linear" className="h-4 w-4" />
                             </Button>
                           )}
                         </div>
@@ -681,6 +694,7 @@ export default function JournalEntriesPage() {
                   ))}
                 </TableBody>
               </Table>
+              </div>
               </>
             )}
             <Pagination

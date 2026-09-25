@@ -776,7 +776,6 @@ class SalesOrderService
     private function synchronizeInvoiceBookkeeping(SalesOrder $order, \App\Models\Invoice $invoice): void
     {
         $invoiceLines = $invoice->lines;
-        $billByDelivered = (bool) $order->bill_by_delivered_qty;
 
         foreach ($order->lines as $orderLine) {
             // Issue #138: prefer the stable persisted link; only fall back to
@@ -797,12 +796,18 @@ class SalesOrderService
                 return str_starts_with($invoiceLine->description, $orderLine->description);
             });
 
-            $invoicedQty = $matchedInvoiceLine
-                ? ($billByDelivered ? (float) $orderLine->quantity_delivered : (float) $orderLine->quantity)
-                : 0;
+            // Lines that are not part of this invoice (already billed earlier,
+            // or billed later) keep their running invoiced quantity.
+            if (! $matchedInvoiceLine) {
+                continue;
+            }
 
+            // Accumulate what this invoice actually billed. Stamping the full
+            // ordered/delivered quantity here blocked staged invoicing: the
+            // second invoice saw the line as fully invoiced and refused to bill
+            // the remainder.
             $orderLine->update([
-                'quantity_invoiced' => $invoicedQty,
+                'quantity_invoiced' => (float) $orderLine->quantity_invoiced + (float) $matchedInvoiceLine->quantity,
             ]);
         }
     }

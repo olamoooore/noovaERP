@@ -587,10 +587,23 @@ class DeliveryOrderService
                         $stockLevel = $this->inventoryService->getStockLevel((int) $productId, (int) $warehouseId);
                         $available = $stockLevel ? (float) $stockLevel->quantity : 0;
                         if ($quantityDelivered > $available) {
-                            throw new \Exception(
-                                "Insufficient stock for {$product->name}. "
-                                ."Available: {$available}, requested: {$quantityDelivered}."
-                            );
+                            // Document conversions (quotation/invoice → DO) are
+                            // allowed to create backorders: the goods may not be
+                            // received yet. Manual standalone creation stays
+                            // strict unless the caller opts in.
+                            if (empty($data['allow_backorder'])) {
+                                throw new \Exception(
+                                    "Insufficient stock for {$product->name}. "
+                                    ."Available: {$available}, requested: {$quantityDelivered}."
+                                );
+                            }
+
+                            Log::warning('Standalone delivery order created as a backorder — insufficient stock', [
+                                'delivery_order_id' => $deliveryOrder->id,
+                                'product_id' => $productId,
+                                'available' => $available,
+                                'requested' => $quantityDelivered,
+                            ]);
                         }
                     }
                 }

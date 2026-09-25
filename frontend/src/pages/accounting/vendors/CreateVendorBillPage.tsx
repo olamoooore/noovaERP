@@ -407,16 +407,19 @@ export const CreateVendorBillPage: React.FC = () => {
   return (
     <>
       <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={() => navigate('/accounting/vendors/bills')}>
-              <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
-              Back
-            </Button>
-            <div>
-              <h1 className="text-3xl font-bold">Create Vendor Bill</h1>
-              <p className="text-muted-foreground mt-1">Record a new bill from a vendor</p>
-            </div>
+        <div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="-ml-2 mb-3 text-muted-foreground hover:text-foreground"
+            onClick={() => navigate('/accounting/vendors/bills')}
+          >
+            <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
+            Back
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold">Create Vendor Bill</h1>
+            <p className="text-muted-foreground mt-1">Record a new bill from a vendor</p>
           </div>
         </div>
 

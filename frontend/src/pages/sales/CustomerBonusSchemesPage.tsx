@@ -4,12 +4,16 @@ import { Icon } from '@iconify/react'
 import { Pagination } from '@/components/ui/Pagination'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Table, TableBody, TableCell, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import { formatDate } from '@/lib/utils'
 import api from '@/lib/api'
 import { useNavigate } from 'react-router-dom'
+import { SortableHead } from '@/components/ui/SortableHead'
+import { useSort } from '@/hooks/useSort'
 
 const STATUS_COLORS: Record<string, string> = {
   active: 'bg-green-100 text-green-800',
@@ -51,6 +55,7 @@ export function CustomerBonusSchemesPage() {
   })
 
   const assignments = response?.data || []
+  const { sorted: sortedAssignments, sortKey, sortDir, toggle: toggleSort } = useSort<any>(assignments, 'start_date', 'desc')
   const meta = response?.meta || { current_page: 1, last_page: 1, total: 0 }
 
   return (
@@ -69,28 +74,39 @@ export function CustomerBonusSchemesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>All Assignments</CardTitle>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="mr-auto">
+              <CardTitle>All Assignments</CardTitle>
+              <CardDescription>Search, filter and open an assignment</CardDescription>
+            </div>
+
+            <div className="relative w-full sm:w-64">
+              <Icon
+                icon="solar:magnifer-bold-duotone"
+                className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                placeholder="Search assignments..."
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setPage(1) }}
+                className="h-8 rounded-full pl-9 pr-3 text-xs"
+              />
+            </div>
+
+            <Select value={statusFilter} onValueChange={(value) => { setStatusFilter(value); setPage(1) }}>
+              <SelectTrigger className="h-8 w-40 rounded-full text-xs" aria-label="Filter by status">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="suspended">Suspended</SelectItem>
+                <SelectItem value="expired">Expired</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="flex gap-3 mb-4">
-            <input
-              type="text"
-              placeholder="Search assignments..."
-              value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setPage(1) }}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-            />
-            <select
-              value={statusFilter}
-              onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
-              className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-            >
-              <option value="all">All Statuses</option>
-              <option value="active">Active</option>
-              <option value="suspended">Suspended</option>
-              <option value="expired">Expired</option>
-            </select>
-          </div>
 
           {isLoading ? (
             <div className="py-12 text-center">
@@ -107,15 +123,15 @@ export function CustomerBonusSchemesPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Bonus Scheme</TableHead>
-                    <TableHead>Period</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Remarks</TableHead>
+                    <SortableHead label="Customer" sortKey="customer.company_name" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Bonus Scheme" sortKey="bonus_scheme.name" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Period" sortKey="start_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Status" sortKey="status" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Remarks" sortKey="remarks" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {assignments.map((a: any) => (
+                  {sortedAssignments.map((a: any) => (
                     <TableRow key={a.id} className="cursor-pointer" onClick={() => navigate(`/sales/customer-bonus-schemes/${a.id}`)}>
                       <TableCell className="font-medium">{a.customer?.company_name || '-'}</TableCell>
                       <TableCell>{a.bonus_scheme?.name || '-'}</TableCell>

@@ -27,7 +27,7 @@ export const PlaceholderPage: React.FC<PlaceholderPageProps> = ({
           <h1 className="text-3xl font-bold">{title}</h1>
           <p className="text-muted-foreground mt-1">{description}</p>
         </div>
-        <HeaderActionButton icon="solar:arrow-left-bold-duotone" variant="outline" onClick={() => navigate('/accounting/dashboard')}>
+        <HeaderActionButton icon="solar:alt-arrow-left-bold-duotone" variant="outline" onClick={() => navigate('/accounting/dashboard')}>
           Back to Accounting
         </HeaderActionButton>
       </div>

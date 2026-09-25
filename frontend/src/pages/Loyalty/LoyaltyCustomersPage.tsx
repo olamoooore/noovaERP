@@ -10,6 +10,8 @@ import { Badge } from '@/components/ui/badge'
 import { toast } from '@/hooks/use-toast'
 import loyaltyApi from '@/lib/loyaltyApi'
 import { Pagination } from '@/components/ui/Pagination'
+import { SortableHead } from '@/components/ui/SortableHead'
+import { useSort } from '@/hooks/useSort'
 
 export function LoyaltyCustomersPage() {
   const [search, setSearch] = useState('')
@@ -24,6 +26,9 @@ export function LoyaltyCustomersPage() {
       return response
     },
   })
+
+  const customerRows = customers?.data || []
+  const { sorted: sortedCustomers, sortKey, sortDir, toggle: toggleSort } = useSort<any>(customerRows)
 
   const enrollMutation = useMutation({
     mutationFn: async (customerId: number) => {
@@ -103,23 +108,23 @@ export function LoyaltyCustomersPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Current Points</TableHead>
-                  <TableHead className="text-right">Lifetime Points</TableHead>
-                  <TableHead className="text-right">Points Redeemed</TableHead>
+                  <SortableHead label="Customer" sortKey="customer_name" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                  <SortableHead label="Status" sortKey="tier_name" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                  <SortableHead label="Current Points" sortKey="current_points" activeKey={sortKey} direction={sortDir} onSort={toggleSort} align="right" />
+                  <SortableHead label="Lifetime Points" sortKey="lifetime_points" activeKey={sortKey} direction={sortDir} onSort={toggleSort} align="right" />
+                  <SortableHead label="Points Redeemed" sortKey="points_redeemed" activeKey={sortKey} direction={sortDir} onSort={toggleSort} align="right" />
                   <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {customers?.data?.length === 0 && (
+                {sortedCustomers.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                       No customers found
                     </TableCell>
                   </TableRow>
                 )}
-                {customers?.data?.map((customer: any) => (
+                {sortedCustomers.map((customer: any) => (
                   <TableRow key={customer.customer_id}>
                     <TableCell>
                       <div>

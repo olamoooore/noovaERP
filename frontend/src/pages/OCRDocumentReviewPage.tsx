@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { useToast } from '@/hooks/use-toast'
 import { DocumentViewer } from '@/components/ocr/DocumentViewer'
@@ -143,26 +144,26 @@ export function OCRDocumentReviewPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <HeaderActionButton
-            variant="outline"
-            icon="solar:alt-arrow-left-linear"
+        <div className="min-w-0">
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => navigate('/ocr/documents')}
+            className="-ml-2 mb-3 text-muted-foreground hover:text-foreground"
           >
+            <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
             Back
-          </HeaderActionButton>
-          <div className="min-w-0">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <h1 className="truncate text-2xl font-bold">{document.file_name}</h1>
-              <Badge variant="outline" className={`gap-1 font-medium ${status.badge}`}>
-                <Icon icon={status.icon} className="h-3.5 w-3.5" />
-                {status.label}
-              </Badge>
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Review and verify extracted data · Uploaded {formatDate(document.created_at)}
-            </p>
+          </Button>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h1 className="truncate text-2xl font-bold">{document.file_name}</h1>
+            <Badge variant="outline" className={`gap-1 font-medium ${status.badge}`}>
+              <Icon icon={status.icon} className="h-3.5 w-3.5" />
+              {status.label}
+            </Badge>
           </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Review and verify extracted data · Uploaded {formatDate(document.created_at)}
+          </p>
         </div>
 
         {canPost && (

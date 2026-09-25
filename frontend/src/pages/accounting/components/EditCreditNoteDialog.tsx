@@ -1,7 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useUpdateCreditNote, useCustomerCreditNote } from '@/hooks/useCustomerCreditNotes';
-import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import api from '@/lib/api';
 
@@ -45,14 +55,14 @@ export default function EditCreditNoteDialog({ creditNoteId, onClose, onSuccess 
 
   if (isLoadingCreditNote) {
     return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full">
-          <div className="text-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-            <p className="text-muted-foreground mt-4">Loading credit note...</p>
+      <Dialog open onOpenChange={(next) => { if (!next) onClose(); }}>
+        <DialogContent className="sm:max-w-md">
+          <div className="py-8 text-center">
+            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-b-2 border-primary"></div>
+            <p className="mt-4 text-muted-foreground">Loading credit note...</p>
           </div>
-        </div>
-      </div>
+        </DialogContent>
+      </Dialog>
     );
   }
 
@@ -61,63 +71,53 @@ export default function EditCreditNoteDialog({ creditNoteId, onClose, onSuccess 
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-lg w-full">
-        <div className="p-6 border-b">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold">Edit Credit Note</h2>
-              <p className="text-sm text-muted-foreground mt-1">{creditNote.credit_note_number}</p>
-            </div>
-            <Button variant="ghost" size="icon" onClick={onClose}>
-              <Icon icon="solar:close-circle-bold" className="h-5 w-5" />
-            </Button>
-          </div>
-        </div>
+    <Dialog open onOpenChange={(next) => { if (!next) onClose(); }}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Edit Credit Note</DialogTitle>
+          <DialogDescription>{creditNote.credit_note_number}</DialogDescription>
+        </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Credit Note Date *</label>
-            <input
+            <Label className="mb-1 block">Credit Note Date *</Label>
+            <Input
               type="date"
               value={formData.credit_note_date}
               onChange={(e) => setFormData(prev => ({ ...prev, credit_note_date: e.target.value }))}
-              className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Reason</label>
-            <input
+            <Label className="mb-1 block">Reason</Label>
+            <Input
               type="text"
               value={formData.reason}
               onChange={(e) => setFormData(prev => ({ ...prev, reason: e.target.value }))}
               placeholder="e.g., Product return, Billing error"
-              className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Notes</label>
-            <textarea
+            <Label className="mb-1 block">Notes</Label>
+            <Textarea
               value={formData.notes}
               onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
               rows={3}
-              className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-4">
+          <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" disabled={updateMutation.isPending}>
               {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
             </Button>
-          </div>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

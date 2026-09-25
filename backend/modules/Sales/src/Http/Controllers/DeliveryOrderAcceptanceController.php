@@ -91,6 +91,7 @@ class DeliveryOrderAcceptanceController extends Controller
             'already_signed' => $signed,
             'expired' => $expired,
             'expires_at' => $deliveryOrder->acceptance_expires_at?->toIso8601String(),
+            'company' => \App\Support\TenantBranding::forCurrentTenant(),
         ]);
     }
 

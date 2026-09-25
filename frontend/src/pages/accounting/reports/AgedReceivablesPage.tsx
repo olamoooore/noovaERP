@@ -149,12 +149,13 @@ export function AgedReceivablesPage() {
         />
         <Button
           variant="outline"
-          size="sm"
+          size="icon"
           onClick={handleClearFilters}
-          className="h-8 rounded-full px-3 text-xs"
+          className="h-8 w-8 rounded-full"
+          title="Clear filters"
+          aria-label="Clear filters"
         >
-          <Icon icon="solar:close-circle-bold" className="mr-1.5 h-3.5 w-3.5" />
-          Clear Filters
+          <Icon icon="solar:close-circle-bold" className="h-4 w-4" />
         </Button>
       </div>
 

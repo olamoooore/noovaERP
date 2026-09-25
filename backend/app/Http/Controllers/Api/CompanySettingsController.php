@@ -11,6 +11,25 @@ use Illuminate\Support\Facades\Validator;
 
 class CompanySettingsController extends Controller
 {
+    /**
+     * Lightweight tenant branding for documents/PDFs that don't use the
+     * Template Builder (report exports). Deliberately NOT gated behind
+     * settings.view: every tenant user prints reports branded with the
+     * tenant's own logo/name, never the platform brand.
+     */
+    public function branding(): JsonResponse
+    {
+        $settings = DB::table('company_settings')->select('company_name', 'company_logo_url')->first();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'company_name' => $settings->company_name ?? null,
+                'company_logo_url' => $settings->company_logo_url ?? null,
+            ],
+        ]);
+    }
+
     public function index(): JsonResponse
     {
         try {

@@ -106,9 +106,15 @@ export function LeadForm({ mode }: LeadFormProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/crm/leads')}>
-          <Icon icon="solar:arrow-left-bold-duotone" className="h-5 w-5" />
+      <div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="-ml-2 mb-3 text-muted-foreground hover:text-foreground"
+          onClick={() => navigate('/crm/leads')}
+        >
+          <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
+          Back
         </Button>
         <div>
           <h1 className="text-3xl font-bold tracking-tight">

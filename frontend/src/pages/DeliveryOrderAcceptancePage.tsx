@@ -12,7 +12,13 @@ import { SignaturePad } from '@/components/signature/SignaturePad'
 import { DocumentItemsTable } from '@/components/public/DocumentItemsTable'
 import api from '@/lib/api'
 
+interface CompanyBranding {
+  name?: string
+  logo_url?: string
+}
+
 interface AcceptanceResponse {
+  company?: CompanyBranding
   delivery_order: {
     id: number
     delivery_order_number: string
@@ -169,11 +175,21 @@ export default function DeliveryOrderAcceptancePage() {
       <div className="border-b bg-white">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-              <Icon icon="solar:box-bold-duotone" className="h-6 w-6 text-primary" />
-            </div>
+            {data.company?.logo_url ? (
+              <img
+                src={data.company.logo_url}
+                alt={data.company?.name || 'Company logo'}
+                className="h-10 max-w-[160px] object-contain"
+              />
+            ) : (
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                <Icon icon="solar:box-bold-duotone" className="h-6 w-6 text-primary" />
+              </div>
+            )}
             <div>
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">NoovaERP</div>
+              {data.company?.name ? (
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{data.company.name}</div>
+              ) : null}
               <div className="text-sm font-medium">Delivery order portal</div>
             </div>
           </div>
@@ -395,7 +411,7 @@ export default function DeliveryOrderAcceptancePage() {
         )}
 
         <div className="text-center text-xs text-muted-foreground">
-          <p>This is a secure portal — your data is encrypted in transit. Powered by NoovaERP.</p>
+          <p>This is a secure portal — your data is encrypted in transit.</p>
         </div>
       </div>
     </div>

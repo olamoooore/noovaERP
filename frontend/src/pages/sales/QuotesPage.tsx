@@ -29,6 +29,8 @@ import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice'
 import { TagFilterSelect } from '@/components/tags/TagFilterSelect'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Pagination } from '@/components/ui/Pagination'
+import { SortableHead } from '@/components/ui/SortableHead'
+import { useSort } from '@/hooks/useSort'
 
 const QUOTATION_EXPORT_COLUMNS = [
   { key: 'quotation_number', label: 'Quotation No', group: 'Quotation', default: true },
@@ -96,6 +98,7 @@ export function QuotesPage() {
   })
 
   const quotes = quotesResponse?.data || []
+  const { sorted: sortedQuotes, sortKey, sortDir, toggle: toggleSort } = useSort<any>(quotes, 'created_at', 'desc')
   const lastPage = quotesResponse?.last_page || 1
   const totalRecords = quotesResponse?.total || 0
 
@@ -348,19 +351,19 @@ export function QuotesPage() {
                           className="h-4 w-4 rounded border-gray-300"
                         />
                       </TableHead>
-                      <TableHead>Quote #</TableHead>
-                      <TableHead>Customer</TableHead>
-                      <TableHead>Quote Date</TableHead>
-                      <TableHead>Created Date</TableHead>
-                      <TableHead>Valid Until</TableHead>
-                      <TableHead>Reference</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                      <TableHead>Status</TableHead>
+                      <SortableHead label="Quote #" sortKey="quote_number" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                      <SortableHead label="Customer" sortKey="customer_name" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                      <SortableHead label="Quote Date" sortKey="quote_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                      <SortableHead label="Created Date" sortKey="created_at" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                      <SortableHead label="Valid Until" sortKey="valid_until" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                      <SortableHead label="Reference" sortKey="reference" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                      <SortableHead label="Total" sortKey="total" activeKey={sortKey} direction={sortDir} onSort={toggleSort} align="right" />
+                      <SortableHead label="Status" sortKey="status" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {quotes.map((quote: any) => (
+                    {sortedQuotes.map((quote: any) => (
                       <TableRow
                         key={quote.id}
                         className="hover:bg-accent/50 cursor-pointer"

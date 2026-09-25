@@ -193,14 +193,14 @@ export default function JournalsPage() {
 
       {/* Main Content */}
       <Card className="p-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-xl font-semibold">Journal Types</h2>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Input
               placeholder="Search journals..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="h-8 rounded-full px-3 text-xs w-64"
+              className="h-8 w-full rounded-full px-3 text-xs sm:w-64"
             />
             <HeaderActionButton icon="solar:add-circle-linear" onClick={() => handleOpenForm()}>
               Add Journal

@@ -48,7 +48,11 @@
 <body>
     {{-- Company Header --}}
     <div class="header">
-        <div class="company-name">{{ $payload['company']['name'] ?? 'Your Company' }}</div>
+        @if(! empty($payload['company']['logo']))
+            <img src="{{ $payload['company']['logo'] }}" alt="{{ $payload['company']['name'] ?? '' }}" style="max-height: 60px; max-width: 260px; margin-bottom: 4px;" />
+        @else
+            <div class="company-name">{{ $payload['company']['name'] ?? '' }}</div>
+        @endif
         @if(!empty($payload['company']['address']))
         <div class="company-details">{{ $payload['company']['address'] }}</div>
         @endif

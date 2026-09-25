@@ -156,7 +156,10 @@ export const ReportViewer: React.FC<ReportViewerProps> = ({
 
       {/* Content */}
       {!isLoading && !error && (
-        <div className="report-content">
+        <div
+          className="report-content"
+          ref={exportTargetRef as React.RefObject<HTMLDivElement> | undefined}
+        >
           {children}
         </div>
       )}

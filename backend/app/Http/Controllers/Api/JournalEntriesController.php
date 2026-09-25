@@ -104,13 +104,25 @@ class JournalEntriesController extends Controller
             $query->where('entry_date', '<=', $request->end_date);
         }
 
-        // Search by entry number or description
-        if ($request->has('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('entry_number', 'like', "%{$search}%")
-                    ->orWhere('description', 'like', "%{$search}%")
-                    ->orWhere('reference', 'like', "%{$search}%");
+        // Search across the fields users actually reference: entry number,
+        // description, reference, remark, journal name, account code/name and
+        // the creating/posting user. `ilike` keeps it case-insensitive on
+        // Postgres (plain `like` is case-sensitive).
+        if ($request->filled('search')) {
+            $search = trim((string) $request->search);
+            $like = "%{$search}%";
+
+            $query->where(function ($q) use ($like) {
+                $q->where('entry_number', 'ilike', $like)
+                    ->orWhere('description', 'ilike', $like)
+                    ->orWhere('reference', 'ilike', $like)
+                    ->orWhere('remark', 'ilike', $like)
+                    ->orWhereHas('journal', fn ($journal) => $journal->where('name', 'ilike', $like))
+                    ->orWhereHas('lines.account', function ($account) use ($like) {
+                        $account->where('code', 'ilike', $like)->orWhere('name', 'ilike', $like);
+                    })
+                    ->orWhereHas('createdBy', fn ($user) => $user->where('name', 'ilike', $like))
+                    ->orWhereHas('postedBy', fn ($user) => $user->where('name', 'ilike', $like));
             });
         }
 
@@ -186,7 +198,7 @@ class JournalEntriesController extends Controller
             ? $this->entityAccessService->accessibleEntityIds((int) $user->id)
             : [];
 
-        $entry = JournalEntry::with([
+        $query = JournalEntry::with([
             'lines.account',
             'lines.currency',
             'lines.department',
@@ -197,9 +209,16 @@ class JournalEntriesController extends Controller
             'postedBy',
             'reversedEntry',
             'reversalEntry',
-        ])
-            ->accessibleBy($accessibleEntityIds)
-            ->findOrFail($id);
+        ]);
+
+        // Only scope when the user actually has entity access — matching
+        // index(). Calling accessibleBy([]) fails closed (1 = 0) and 404'd
+        // every entry for users/tenants without user_entity_access rows.
+        if ($accessibleEntityIds !== []) {
+            $query->accessibleBy($accessibleEntityIds);
+        }
+
+        $entry = $query->findOrFail($id);
 
         return response()->json($entry);
     }

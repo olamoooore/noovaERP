@@ -300,12 +300,17 @@ export function DeliveryOrderEditPage() {
 
   return (
     <div className="space-y-6 p-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={() => navigate(`/delivery-orders/${id}`)}>
-          <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
-          Back
-        </Button>
+      <div className="flex items-start justify-between gap-4">
         <div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate(`/delivery-orders/${id}`)}
+            className="-ml-2 mb-3 text-muted-foreground hover:text-foreground"
+          >
+            <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
+            Back
+          </Button>
           <h1 className="text-3xl font-bold">Edit Delivery Order</h1>
           <p className="text-muted-foreground mt-1">{deliveryOrder.delivery_order_number}</p>
           {id && <div className="mt-2"><TagEditor subjectType="delivery_order" subjectId={id} /></div>}
@@ -474,10 +479,26 @@ export function DeliveryOrderEditPage() {
                       wrapText
                       value={line.product_id?.toString() || ''}
                       onValueChange={(val, product) => {
-                        updateLine(idx, 'product_id', val ? parseInt(val) : null)
+                        const productId = val ? parseInt(val) : null
+                        // Changing the product must re-price the line from the
+                        // NEW product. Only re-selecting the same product keeps
+                        // the user's edits. (Previously the price was gated on
+                        // `!line.unit_price`, so switching products on a priced
+                        // line silently kept the old product's price.)
+                        const productChanged = productId !== line.product_id
+                        updateLine(idx, 'product_id', productId)
                         updateLine(idx, 'product_name', product?.name || '')
-                        if (!line.description && product) updateLine(idx, 'description', getProductLineDescription(product))
+                        if (product && (productChanged || !line.description)) {
+                          updateLine(idx, 'description', getProductLineDescription(product))
+                        }
                         if (product) {
+                          updateLine(idx, 'model_number', (product as any).manufacturer_part_number || (productChanged ? '' : line.model_number))
+                          if (productChanged || !line.unit_price) {
+                            updateLine(idx, 'unit_price', parseFloat((product as any).price || (product as any).selling_price || '0') || null)
+                          }
+                          if (productChanged || !line.unit || line.unit === 'pcs') {
+                            updateLine(idx, 'unit', (product as any).unit || line.unit)
+                          }
                           setLines((current) => current.map((item, itemIndex) => itemIndex === idx ? { ...item, tracking_method: (product as any).tracking_method || 'none', product_batch_id: null, product_serial_id: null, lot_number: '', serial_number: '', expiry_date: '' } : item))
                         }
                       }}

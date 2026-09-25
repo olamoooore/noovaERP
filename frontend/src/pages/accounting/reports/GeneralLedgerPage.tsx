@@ -1,17 +1,11 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import {
   Table,
   TableBody,
@@ -20,6 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { ReportExportToolbar } from '@/components/reports/ReportExportToolbar';
 import reportApi from '@/lib/reportApi';
 import { formatCurrency } from '@/lib/utils';
 import chartOfAccountsApi from '@/lib/chartOfAccountsApi';
@@ -41,6 +36,8 @@ export default function GeneralLedgerPage() {
     queryKey: ['chart-of-accounts'],
     queryFn: () => chartOfAccountsApi.getAccounts(),
   });
+
+  const reportRef = useRef<HTMLDivElement>(null);
 
   // If accountId from URL is not present in the current tenant's chart of accounts,
   // fall back to "all" instead of crashing with a 422.
@@ -84,21 +81,20 @@ export default function GeneralLedgerPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={effectiveAccountId} onValueChange={setAccountId}>
-            <SelectTrigger className="h-8 w-56 rounded-full text-xs">
-              <SelectValue placeholder="Select account" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Accounts (Summary)</SelectItem>
-              {accounts
-                .filter((acc: any) => acc.is_active)
-                .map((acc: any) => (
-                  <SelectItem key={acc.id} value={acc.id.toString()}>
-                    {acc.code} - {acc.name}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            className="h-8 w-56 rounded-full text-xs"
+            value={effectiveAccountId}
+            onValueChange={setAccountId}
+            placeholder="Search account…"
+            emptyValue="all"
+            emptyLabel="All Accounts (Summary)"
+            items={accounts
+              .filter((acc: any) => acc.is_active)
+              .map((acc: any) => ({
+                value: acc.id.toString(),
+                label: `${acc.code} - ${acc.name}`,
+              }))}
+          />
           <Input
             id="start_date"
             type="date"
@@ -122,9 +118,12 @@ export default function GeneralLedgerPage() {
             }}
             className="h-8 w-40 rounded-full px-3 text-xs"
           />
-          <HeaderActionButton icon="solar:printer-linear" onClick={() => window.print()} variant="outline">
-            Print
-          </HeaderActionButton>
+          <ReportExportToolbar
+            targetRef={reportRef}
+            title="General Ledger"
+            subtitle={`${ledger?.account ? `${ledger.account.code} - ${ledger.account.name}` : 'All Accounts Summary'} · ${startDate} → ${endDate}`}
+            filename={`general-ledger-${ledger?.account?.code ?? 'all'}-${startDate}-${endDate}`}
+          />
           <HeaderActionButton icon="solar:arrow-left-linear" onClick={() => navigate('/accounting')}>
             Back to Accounting
           </HeaderActionButton>
@@ -132,7 +131,7 @@ export default function GeneralLedgerPage() {
       </div>
 
       {/* Report */}
-      <Card className="p-6">
+      <Card className="p-6" ref={reportRef}>
         {isLoading ? (
           <div className="text-center py-12">
             <Icon icon="svg-spinners:ring-resize" className="w-8 h-8 mx-auto" />

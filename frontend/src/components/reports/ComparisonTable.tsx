@@ -31,7 +31,7 @@ export function ComparisonTable({
   rows,
   formatCurrency,
   title = 'Financial Report',
-  companyName = 'NoovaERP',
+  companyName,
   asOfDate,
   compareDate,
   filename = 'report-comparison'

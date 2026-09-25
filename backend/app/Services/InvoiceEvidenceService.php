@@ -297,6 +297,13 @@ class InvoiceEvidenceService
                         .' uploaded '.($data['file_name'] ?? 'a document')
                         ." against invoice {$number} ({$amount}).",
                 ],
+                // Legacy/alternate event name used for customer payment proofs.
+                'invoice.payment_proof_uploaded' => [
+                    "Payment proof uploaded for invoice {$number}",
+                    ($data['customer_name'] ?? $data['signer_name'] ?? 'The customer')
+                        .' uploaded '.($data['file_name'] ?? 'a payment proof')
+                        ." against invoice {$number} ({$amount}).",
+                ],
                 default => [
                     "Update on invoice {$number}",
                     "Invoice {$number} was updated by the customer.",

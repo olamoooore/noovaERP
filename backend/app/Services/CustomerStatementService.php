@@ -96,6 +96,7 @@ class CustomerStatementService
     public function context(Customer $customer): array
     {
         $setting = Setting::first();
+        $companySettings = DB::table('company_settings')->select('company_logo_url')->first();
         $bank = DB::table('bank_accounts')->first();
 
         $billingAddress = $customer->addresses()
@@ -125,6 +126,7 @@ class CustomerStatementService
                 'email' => $setting->company_email ?? '',
                 'phone' => $setting->company_phone ?? '',
                 'registration_number' => $setting->registration_number ?? '',
+                'logo' => $companySettings->company_logo_url ?? '',
             ],
             'customer' => [
                 'id' => $customer->id,

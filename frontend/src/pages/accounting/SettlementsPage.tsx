@@ -27,6 +27,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import settlementsApi, { Settlement } from '@/lib/settlementsApi';
 import { formatCurrency } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { SortableHead } from '@/components/ui/SortableHead';
+import { useSort } from '@/hooks/useSort';
 
 const STATE_COLORS: Record<string, string> = {
   pending: 'bg-gray-100 text-gray-800',
@@ -59,6 +61,9 @@ export default function SettlementsPage() {
       per_page: pageSize,
     }),
   });
+
+  const settlements = data?.data || [];
+  const { sorted: sortedSettlements, sortKey, sortDir, toggle: toggleSort } = useSort<Settlement>(settlements, 'created_at', 'desc');
 
   const allocateMutation = useMutation({
     mutationFn: settlementsApi.allocate,
@@ -175,18 +180,18 @@ export default function SettlementsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>State</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="text-right">Allocated</TableHead>
-                  <TableHead className="text-right">Unapplied</TableHead>
-                  <TableHead>Date</TableHead>
+                  <SortableHead label="ID" sortKey="id" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                  <SortableHead label="State" sortKey="settlement_state" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                  <SortableHead label="Source" sortKey="source_record_type" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                  <SortableHead label="Total" sortKey="total_amount" activeKey={sortKey} direction={sortDir} onSort={toggleSort} align="right" />
+                  <SortableHead label="Allocated" sortKey="allocated_amount" activeKey={sortKey} direction={sortDir} onSort={toggleSort} align="right" />
+                  <SortableHead label="Unapplied" sortKey="unapplied_amount" activeKey={sortKey} direction={sortDir} onSort={toggleSort} align="right" />
+                  <SortableHead label="Date" sortKey="created_at" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.data.map((settlement) => (
+                {sortedSettlements.map((settlement) => (
                   <TableRow key={settlement.id}>
                     <TableCell className="font-mono">#{settlement.id}</TableCell>
                     <TableCell>

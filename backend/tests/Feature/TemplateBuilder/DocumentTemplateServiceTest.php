@@ -97,6 +97,49 @@ class DocumentTemplateServiceTest extends TenantTestCase
         $this->assertSame($first, $second, 'seedDefaults() should not duplicate existing system templates.');
     }
 
+    public function test_seed_defaults_does_not_compete_with_an_existing_active_assignment(): void
+    {
+        $template = $this->service->create([
+            'document_type' => 'quotation',
+            'name' => 'Tenant Quotation',
+            'mode' => DocumentTemplate::MODE_BLOCK,
+            'layout_config' => ['blocks' => [['type' => 'text', 'content' => 'Q']]],
+        ]);
+        $this->service->publish($template->id);
+        $this->service->setDefault($template->id);
+
+        $this->service->seedDefaults();
+
+        $this->assertSame(
+            1,
+            DocumentTemplateAssignment::where('document_type', 'quotation')->where('is_active', true)->count(),
+            'seedDefaults() must not add a competing assignment — same-priority ties resolve as ambiguous.',
+        );
+        $resolved = $this->service->resolveFor('quotation');
+        $this->assertNotNull($resolved);
+        $this->assertSame($template->id, $resolved->id);
+    }
+
+    public function test_seed_defaults_reuses_existing_template_with_same_code(): void
+    {
+        $draft = DocumentTemplate::create([
+            'document_type' => 'quotation',
+            'code' => 'QT-TPL-DEFAULT',
+            'name' => 'Old Default Quotation',
+            'mode' => DocumentTemplate::MODE_BLOCK,
+            'layout_config' => ['blocks' => [['type' => 'text', 'content' => 'old']]],
+            'status' => DocumentTemplate::STATUS_DRAFT,
+        ]);
+
+        $this->service->seedDefaults();
+
+        $this->assertSame(1, DocumentTemplate::where('code', 'QT-TPL-DEFAULT')->count());
+        $draft->refresh();
+        $this->assertSame(DocumentTemplate::STATUS_PUBLISHED, $draft->status);
+        $this->assertTrue($draft->is_system_default);
+        $this->assertSame($draft->id, $this->service->resolveFor('quotation')?->id);
+    }
+
     public function test_duplicate_creates_a_draft_copy(): void
     {
         $template = $this->service->create([

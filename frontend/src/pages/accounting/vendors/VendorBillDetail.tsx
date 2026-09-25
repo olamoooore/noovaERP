@@ -18,7 +18,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
-import api, { accountingApi } from '@/lib/api';
+import { accountingApi } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import BillCreditNotes from '../components/BillCreditNotes';
 import CreateVendorCreditNoteDialog from '../components/CreateVendorCreditNoteDialog';
@@ -173,12 +173,17 @@ export const VendorBillDetail: React.FC = () => {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/accounting/vendors/bills')}>
-            <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
-            Back
-          </Button>
+      <div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="-ml-2 mb-3 text-muted-foreground hover:text-foreground"
+          onClick={() => navigate('/accounting/vendors/bills')}
+        >
+          <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
+          Back
+        </Button>
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-3xl font-bold">Bill {bill.bill_number || `#${bill.id}`}</h1>
             <p className="text-muted-foreground mt-1">Vendor: {bill.vendor?.name || 'Unknown'}</p>
@@ -186,8 +191,7 @@ export const VendorBillDetail: React.FC = () => {
               <TagEditor subjectType="bill" subjectId={id!} />
             </div>
           </div>
-        </div>
-        <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
           {bill.status === 'draft' && (
             <>
               <Button
@@ -211,6 +215,7 @@ export const VendorBillDetail: React.FC = () => {
             <Icon icon="solar:download-bold-duotone" className="h-4 w-4 mr-2" />
             Export
           </Button>
+          </div>
         </div>
       </div>
 

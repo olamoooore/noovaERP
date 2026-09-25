@@ -4,12 +4,16 @@ import { Icon } from '@iconify/react'
 import { Pagination } from '@/components/ui/Pagination'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Table, TableBody, TableCell, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import { formatDate } from '@/lib/utils'
 import api from '@/lib/api'
 import { useNavigate } from 'react-router-dom'
+import { SortableHead } from '@/components/ui/SortableHead'
+import { useSort } from '@/hooks/useSort'
 
 const STATUS_FILTERS = [
   { value: 'all', label: 'All Statuses' },
@@ -64,6 +68,7 @@ export function MedicalCasesPage() {
   })
 
   const cases = response?.data || []
+  const { sorted: sortedCases, sortKey, sortDir, toggle: toggleSort } = useSort<any>(cases, 'case_date', 'desc')
   const meta = response?.meta || { current_page: 1, last_page: 1, total: 0 }
 
   return (
@@ -82,27 +87,38 @@ export function MedicalCasesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>All Medical Cases</CardTitle>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="mr-auto">
+              <CardTitle>All Medical Cases</CardTitle>
+              <CardDescription>Search, filter and open a case</CardDescription>
+            </div>
+
+            <div className="relative w-full sm:w-64">
+              <Icon
+                icon="solar:magnifer-bold-duotone"
+                className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                placeholder="Search cases..."
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setPage(1) }}
+                className="h-8 rounded-full pl-9 pr-3 text-xs"
+              />
+            </div>
+
+            <Select value={statusFilter} onValueChange={(value) => { setStatusFilter(value); setPage(1) }}>
+              <SelectTrigger className="h-8 w-40 rounded-full text-xs" aria-label="Filter by status">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_FILTERS.map((f) => (
+                  <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="flex gap-3 mb-4">
-            <input
-              type="text"
-              placeholder="Search cases..."
-              value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setPage(1) }}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-            />
-            <select
-              value={statusFilter}
-              onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
-              className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-            >
-              {STATUS_FILTERS.map((f) => (
-                <option key={f.value} value={f.value}>{f.label}</option>
-              ))}
-            </select>
-          </div>
 
           {isLoading ? (
             <div className="py-12 text-center">
@@ -119,16 +135,16 @@ export function MedicalCasesPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Case No</TableHead>
-                    <TableHead>Patient Name</TableHead>
-                    <TableHead>Case Date</TableHead>
-                    <TableHead>Location</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Invoice</TableHead>
+                    <SortableHead label="Case No" sortKey="case_no" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Patient Name" sortKey="patient_name" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Case Date" sortKey="case_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Location" sortKey="location" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Status" sortKey="status" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Invoice" sortKey="invoice.invoice_number" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {cases.map((c: any) => (
+                  {sortedCases.map((c: any) => (
                     <TableRow key={c.id} className="cursor-pointer" onClick={() => navigate(`/sales/medical-cases/${c.id}`)}>
                       <TableCell className="font-medium">{c.case_no}</TableCell>
                       <TableCell>{c.patient_name || '-'}</TableCell>

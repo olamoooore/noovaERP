@@ -144,10 +144,13 @@ class ReceiptGeneratorService
     {
         $commands = self::INIT;
 
-        // Header (centered, bold, large)
+        // Header (centered, bold, large) — tenant name, never the ERP brand.
+        $companyName = $this->companyName();
         $commands .= self::ALIGN_CENTER;
         $commands .= self::TEXT_LARGE;
-        $commands .= 'NoovaERP'.self::LF;
+        if ($companyName !== '') {
+            $commands .= $companyName.self::LF;
+        }
         $commands .= self::TEXT_NORMAL;
         $commands .= self::LF;
 
@@ -222,5 +225,15 @@ class ReceiptGeneratorService
     public function decodeFromJson(string $encoded): string
     {
         return base64_decode($encoded);
+    }
+
+    /** Tenant company name for printed headers ('' when not configured). */
+    private function companyName(): string
+    {
+        try {
+            return (string) (\Illuminate\Support\Facades\DB::table('company_settings')->value('company_name') ?? '');
+        } catch (\Throwable) {
+            return '';
+        }
     }
 }

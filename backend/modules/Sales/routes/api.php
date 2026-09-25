@@ -91,6 +91,8 @@ Route::middleware([
         // Lifecycle transitions + bulk operations
         Route::middleware(\App\Http\Middleware\RequirePermission::class.':sales.write')->group(function () {
             Route::post('/sales/delivery-orders/{id}/confirm', [DeliveryOrderController::class, 'confirm']);
+            // Delivery Order → Invoice conversion (accounting-origin path).
+            Route::post('/sales/delivery-orders/{id}/create-invoice', [DeliveryOrderController::class, 'createInvoice']);
             // Delivery-order approval (reviewer actions).
             Route::post('/sales/delivery-orders/{id}/approve', [DeliveryOrderController::class, 'approve']);
             Route::post('/sales/delivery-orders/{id}/reject-approval', [DeliveryOrderController::class, 'rejectApproval']);

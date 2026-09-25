@@ -548,16 +548,23 @@ export const QuotationCreatePage: React.FC = () => {
                         <ProductSearchCombobox
                           value={line.product_id}
                           onValueChange={(val, product) => {
+                            const productChanged = val !== lines[index].product_id
                             updateLine(index, 'product_id', val)
                             if (product) {
                               const updated = [...lines]
                               updated[index] = {
                                 ...updated[index],
                                 product_id: val,
-                                description: getProductLineDescription(product) || updated[index].description,
-                                unit_price: parseFloat((product as any).price || (product as any).selling_price || '0') || updated[index].unit_price,
-                                model_number: (product as any).manufacturer_part_number || updated[index].model_number,
-                                sku: (product as any).sku || updated[index].sku,
+                                description: productChanged
+                                  ? getProductLineDescription(product)
+                                  : (updated[index].description || getProductLineDescription(product)),
+                                // Re-price from the NEW product; only a no-op
+                                // re-select of the same product keeps edits.
+                                unit_price: productChanged
+                                  ? (parseFloat((product as any).price || (product as any).selling_price || '0') || 0)
+                                  : updated[index].unit_price,
+                                model_number: (product as any).manufacturer_part_number || (productChanged ? '' : updated[index].model_number),
+                                sku: (product as any).sku || (productChanged ? '' : updated[index].sku),
                               }
                               setLines(updated)
                             }

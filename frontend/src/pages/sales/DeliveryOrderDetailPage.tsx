@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -10,9 +12,9 @@ import { ChatterDock } from '@/components/chatter'
 import { TagEditor } from '@/components/tags/TagEditor'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
-import { formatCurrency, formatDate, resolveImageUrl } from '@/lib/utils'
+import { formatCurrency, formatDate, resolveImageUrl, cn } from '@/lib/utils'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { DocumentTemplateDialog } from '@/components/documents/DocumentTemplateDialog'
 import { DeliveryOrderColumnVisibility, SalesLineColumnMenu } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
@@ -29,15 +31,17 @@ export function DeliveryOrderDetailPage() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
-  const [selectedTemplateId, setSelectedTemplateId] = useState('')
-  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
   const [chatterOpen, setChatterOpen] = useState(false)
+  const [showInvoicesPanel, setShowInvoicesPanel] = useState(false)
 
   // Product Notes starts hidden, matching the previous default.
   const [hiddenShippedColumns, setHiddenShippedColumns] = useState<number[]>(
     () => SHIPPED_ITEM_COLUMNS.filter((c) => c.label.toLowerCase() === 'product notes').map((c) => c.index)
   )
   const [confirmAction, setConfirmAction] = useState<'delete' | 'reset' | null>(null)
+  const [sendDialogOpen, setSendDialogOpen] = useState(false)
+  const [sendToEmail, setSendToEmail] = useState('')
+  const [sendCc, setSendCc] = useState('')
 
   const { data: deliveryOrder, isLoading } = useQuery({
     queryKey: ['delivery-order', id],
@@ -47,44 +51,6 @@ export function DeliveryOrderDetailPage() {
     },
     enabled: !!id,
   })
-
-  const { data: pdfTemplates = [], isLoading: templatesLoading } = useQuery({
-    queryKey: ['delivery-order-pdf-templates'],
-    queryFn: async () => {
-      const response = await api.get('/delivery-orders/pdf-templates')
-      return response.data?.data || []
-    },
-    enabled: templateDialogOpen,
-  })
-
-  const downloadPdf = async () => {
-    if (!selectedTemplateId) {
-      toast({ variant: 'destructive', title: 'Please select a template' })
-      return
-    }
-
-    setIsDownloadingPdf(true)
-    try {
-      const response = await api.get(`/delivery-orders/${id}/pdf`, {
-        params: { template: selectedTemplateId },
-        responseType: 'blob',
-      })
-      const blob = new Blob([response.data], { type: 'application/pdf' })
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `DO-${deliveryOrder.delivery_order_number}.pdf`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-      setTemplateDialogOpen(false)
-    } catch (error) {
-      toast({ variant: 'destructive', title: 'Failed to download PDF' })
-    } finally {
-      setIsDownloadingPdf(false)
-    }
-  }
 
   const confirmMutation = useMutation({
     mutationFn: async () => {
@@ -101,6 +67,30 @@ export function DeliveryOrderDetailPage() {
         variant: 'destructive',
         title: 'Failed to confirm',
         description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
+  const createInvoiceMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/sales/delivery-orders/${id}/create-invoice`)
+      return response.data
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['delivery-order', id] })
+      queryClient.invalidateQueries({ queryKey: ['delivery-orders'] })
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      const invoiceId = data?.data?.id
+      toast({ title: 'Invoice created from delivery order' })
+      if (invoiceId) {
+        navigate(`/invoices/${invoiceId}`)
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to create invoice',
+        description: error.response?.data?.message || error.response?.data?.error || 'An error occurred',
       })
     },
   })
@@ -211,13 +201,18 @@ export function DeliveryOrderDetailPage() {
   })
 
   const sendToCustomerMutation = useMutation({
-    mutationFn: async () => {
-      const response = await api.post(`/sales/delivery-orders/${id}/customer-link`)
+    mutationFn: async ({ to, cc }: { to: string; cc: string }) => {
+      const response = await api.post(`/sales/delivery-orders/${id}/customer-link`, {
+        send_email: true,
+        recipient_email: to || undefined,
+        cc: cc || undefined,
+      })
       return response.data
     },
     // The link is returned either way; keep it visible so it can be shared
     // manually when the email cannot be sent.
     onSuccess: (data: any) => {
+      setSendDialogOpen(false)
       // The backend reports whether the mail actually went out: the link can be
       // issued without an email (no customer address, or the send failed), and
       // saying "sent" in that case is misleading.
@@ -369,54 +364,52 @@ export function DeliveryOrderDetailPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Send first, subtle green — the most common customer action. */}
+          {deliveryOrder.status !== 'cancelled' &&
+            !['pending', 'rejected'].includes(deliveryOrder.approval_status ?? 'not_required') && (
+              <HeaderActionButton
+                variant="outline"
+                icon="solar:letter-bold-duotone"
+                className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
+                onClick={() => {
+                  setSendToEmail(deliveryOrder.customer?.email ?? '')
+                  setSendCc('')
+                  setSendDialogOpen(true)
+                }}
+              >
+                Send
+              </HeaderActionButton>
+            )}
+          {deliveryOrder.status !== 'cancelled' && (
+            <HeaderActionButton
+              icon="solar:bill-list-bold-duotone"
+              loading={createInvoiceMutation.isPending}
+              onClick={() => createInvoiceMutation.mutate()}
+              disabled={createInvoiceMutation.isPending || deliveryOrder.can_invoice === false}
+              title={deliveryOrder.can_invoice === false ? 'Everything delivered has already been invoiced' : 'Create an invoice for the remaining delivered quantities'}
+            >
+              Create Invoice
+            </HeaderActionButton>
+          )}
           {deliveryOrder.status === 'draft' && (
-            <>
-              <HeaderActionButton
-                icon="solar:check-circle-bold-duotone"
-                loading={confirmMutation.isPending}
-                onClick={() => confirmMutation.mutate()}
-                disabled={confirmMutation.isPending}
-              >
-                Confirm
-              </HeaderActionButton>
-              <HeaderActionButton
-                variant="outline"
-                icon="solar:close-circle-bold-duotone"
-                onClick={() => cancelMutation.mutate()}
-                disabled={cancelMutation.isPending}
-              >
-                Cancel
-              </HeaderActionButton>
-              <HeaderActionButton
-                variant="outline"
-                icon="solar:trash-bin-trash-bold-duotone"
-                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                onClick={() => setConfirmAction('delete')}
-                disabled={deleteMutation.isPending}
-              >
-                Delete
-              </HeaderActionButton>
-            </>
+            <HeaderActionButton
+              icon="solar:check-circle-bold-duotone"
+              loading={confirmMutation.isPending}
+              onClick={() => confirmMutation.mutate()}
+              disabled={confirmMutation.isPending}
+            >
+              Confirm
+            </HeaderActionButton>
           )}
           {deliveryOrder.status === 'confirmed' && (
-            <>
-              <HeaderActionButton
-                icon="solar:box-bold-duotone"
-                loading={completeMutation.isPending}
-                onClick={() => completeMutation.mutate()}
-                disabled={completeMutation.isPending}
-              >
-                Validate / Complete
-              </HeaderActionButton>
-              <HeaderActionButton
-                variant="outline"
-                icon="solar:close-circle-bold-duotone"
-                onClick={() => cancelMutation.mutate()}
-                disabled={cancelMutation.isPending}
-              >
-                Cancel
-              </HeaderActionButton>
-            </>
+            <HeaderActionButton
+              icon="solar:box-bold-duotone"
+              loading={completeMutation.isPending}
+              onClick={() => completeMutation.mutate()}
+              disabled={completeMutation.isPending}
+            >
+              Validate / Complete
+            </HeaderActionButton>
           )}
           {deliveryOrder.status === 'done' && (
             <HeaderActionButton
@@ -443,28 +436,6 @@ export function DeliveryOrderDetailPage() {
               Reset to Draft
             </HeaderActionButton>
           )}
-          <HeaderActionButton
-            variant="outline"
-            icon="solar:download-minimalistic-bold-duotone"
-            onClick={() => setTemplateDialogOpen(true)}
-          >
-            Download PDF
-          </HeaderActionButton>
-          {/* Sending the acceptance link is how a delivery order gets to the
-              customer for signature, so it must be available as soon as the
-              order is not blocked — including an approved draft. */}
-          {deliveryOrder.status !== 'cancelled' &&
-            !['pending', 'rejected'].includes(deliveryOrder.approval_status ?? 'not_required') && (
-            <HeaderActionButton
-              variant="outline"
-              icon="solar:letter-bold-duotone"
-              loading={sendToCustomerMutation.isPending}
-              onClick={() => sendToCustomerMutation.mutate()}
-              disabled={sendToCustomerMutation.isPending}
-            >
-              Send to Customer
-            </HeaderActionButton>
-          )}
           {deliveryOrder.status === 'draft' && (
             <HeaderActionButton
               variant="outline"
@@ -474,35 +445,99 @@ export function DeliveryOrderDetailPage() {
               Edit
             </HeaderActionButton>
           )}
+          {['draft', 'confirmed'].includes(deliveryOrder.status) && (
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:close-circle-bold-duotone"
+              onClick={() => cancelMutation.mutate()}
+              disabled={cancelMutation.isPending}
+            >
+              Cancel
+            </HeaderActionButton>
+          )}
+          <HeaderActionButton
+            variant="outline"
+            icon="solar:printer-bold-duotone"
+            onClick={() => setTemplateDialogOpen(true)}
+          >
+            Print
+          </HeaderActionButton>
+          <HeaderActionButton
+            variant="outline"
+            icon="solar:download-minimalistic-bold-duotone"
+            className="w-9 px-0"
+            aria-label="Download PDF"
+            title="Download PDF"
+            onClick={() => setTemplateDialogOpen(true)}
+          />
+          {/* Destructive action always last. */}
+          {deliveryOrder.status === 'draft' && (
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:trash-bin-trash-bold-duotone"
+              className="w-9 px-0 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              aria-label="Delete delivery order"
+              title="Delete"
+              onClick={() => setConfirmAction('delete')}
+              disabled={deleteMutation.isPending}
+            />
+          )}
         </div>
       </div>
 
-      <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
+      <DocumentTemplateDialog
+        open={templateDialogOpen}
+        onOpenChange={setTemplateDialogOpen}
+        documentType="delivery_order"
+        pdfPath={`/delivery-orders/${id}/pdf`}
+        filename={`DO-${deliveryOrder.delivery_order_number}.pdf`}
+        title="Delivery Order"
+      />
+
+      <Dialog open={sendDialogOpen} onOpenChange={setSendDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Download Delivery Order PDF</DialogTitle>
-            <DialogDescription>Select the template to use for this PDF.</DialogDescription>
+            <DialogTitle>Send Delivery Order</DialogTitle>
+            <DialogDescription>
+              Confirm the recipient for {deliveryOrder.delivery_order_number} — you can add CC addresses.
+            </DialogDescription>
           </DialogHeader>
-          <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId} disabled={templatesLoading}>
-            <SelectTrigger>
-              <SelectValue placeholder={templatesLoading ? 'Loading templates...' : 'Select a template'} />
-            </SelectTrigger>
-            <SelectContent>
-              {pdfTemplates.map((template: any) => (
-                <SelectItem key={template.id} value={template.id}>
-                  {template.name}{template.is_system_default ? ' (Default)' : ''}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {!templatesLoading && pdfTemplates.length === 0 && (
-            <p className="text-sm text-muted-foreground">No published Delivery Order templates are available.</p>
-          )}
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="do-send-to">To</Label>
+              <Input
+                id="do-send-to"
+                type="email"
+                value={sendToEmail}
+                onChange={(e) => setSendToEmail(e.target.value)}
+                placeholder="customer@example.com"
+              />
+              {!deliveryOrder.customer?.email && (
+                <p className="text-xs text-amber-600">
+                  The customer has no email on file — enter one to send the delivery order.
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="do-send-cc">CC (optional)</Label>
+              <Input
+                id="do-send-cc"
+                value={sendCc}
+                onChange={(e) => setSendCc(e.target.value)}
+                placeholder="ops@example.com, finance@example.com"
+              />
+              <p className="text-xs text-muted-foreground">Separate multiple addresses with commas.</p>
+            </div>
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setTemplateDialogOpen(false)} disabled={isDownloadingPdf}>Cancel</Button>
-            <Button onClick={downloadPdf} disabled={!selectedTemplateId || isDownloadingPdf || templatesLoading}>
-              <Icon icon="solar:download-bold" className="mr-2 h-4 w-4" />
-              {isDownloadingPdf ? 'Downloading...' : 'Download'}
+            <Button variant="outline" onClick={() => setSendDialogOpen(false)} disabled={sendToCustomerMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => sendToCustomerMutation.mutate({ to: sendToEmail.trim(), cc: sendCc.trim() })}
+              disabled={sendToCustomerMutation.isPending || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(sendToEmail.trim())}
+            >
+              {sendToCustomerMutation.isPending ? 'Sending...' : 'Send'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -546,30 +581,104 @@ export function DeliveryOrderDetailPage() {
       )}
 
       {/* Odoo-style smart buttons */}
-      <div className="flex gap-3">
-        {deliveryOrder.invoice && (
+      <div className="flex flex-wrap gap-3">
+        {deliveryOrder.invoices && deliveryOrder.invoices.length > 0 && (
           <button
             type="button"
-            onClick={() => navigate(`/invoices/${deliveryOrder.invoice.id}`)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-input bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            onClick={() => setShowInvoicesPanel(!showInvoicesPanel)}
+            className={cn(
+              'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors',
+              showInvoicesPanel
+                ? 'border-primary/60 bg-primary/15 text-primary'
+                : 'border-primary/30 bg-primary/5 text-primary hover:border-primary/50 hover:bg-primary/10',
+            )}
           >
             <Icon icon="solar:bill-list-bold-duotone" className="h-3.5 w-3.5" />
-            {deliveryOrder.invoice.invoice_number}
-            <span className="text-muted-foreground/70">Invoice</span>
+            {deliveryOrder.invoices.length} Invoice{deliveryOrder.invoices.length !== 1 ? 's' : ''}
           </button>
         )}
         {deliveryOrder.quotation && (
           <button
             type="button"
             onClick={() => navigate(`/quotations/${deliveryOrder.quotation.id}`)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-input bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 text-xs font-medium text-primary transition-colors hover:border-primary/50 hover:bg-primary/10"
           >
             <Icon icon="solar:document-text-bold-duotone" className="h-3.5 w-3.5" />
             {deliveryOrder.quotation.quotation_number}
-            <span className="text-muted-foreground/70">Quotation</span>
           </button>
         )}
       </div>
+
+      {/* Linked invoices (expandable) */}
+      {showInvoicesPanel && deliveryOrder.invoices && deliveryOrder.invoices.length > 0 && (
+        <Card className="overflow-hidden">
+          <div className="flex items-center gap-3 border-b bg-muted/20 px-6 py-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
+              <Icon icon="solar:bill-list-bold-duotone" className="h-5 w-5" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-base font-semibold leading-none">Linked Invoices</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Invoices raised from this delivery order.
+              </p>
+            </div>
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+              {deliveryOrder.invoices.length}
+            </span>
+          </div>
+
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Invoice #</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">Balance</TableHead>
+                  <TableHead className="w-[80px]"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {deliveryOrder.invoices.map((inv: any) => {
+                  const status = (inv.lifecycle_status || inv.status || '').toLowerCase()
+                  const statusClass =
+                    status === 'paid'
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                      : status === 'posted' || status === 'sent'
+                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
+                        : status === 'overdue'
+                          ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                          : 'bg-muted text-muted-foreground'
+
+                  return (
+                    <TableRow
+                      key={inv.id}
+                      className="cursor-pointer transition-colors hover:bg-muted/40"
+                      onClick={() => navigate(`/invoices/${inv.id}`)}
+                    >
+                      <TableCell className="font-medium">{inv.invoice_number}</TableCell>
+                      <TableCell>{inv.invoice_date ? formatDate(inv.invoice_date) : '-'}</TableCell>
+                      <TableCell>
+                        <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize', statusClass)}>
+                          {status || 'draft'}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">{formatCurrency(Number(inv.total ?? 0))}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(Number(inv.balance ?? 0))}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="sm" className="h-8 px-2 text-primary">
+                          View
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
@@ -680,7 +789,19 @@ export function DeliveryOrderDetailPage() {
               <div>
                 <div className="text-muted-foreground">Invoice</div>
                 <div className="font-medium">
-                  {deliveryOrder.invoice ? (
+                  {deliveryOrder.invoices && deliveryOrder.invoices.length > 0 ? (
+                    deliveryOrder.invoices.map((inv: any, index: number) => (
+                      <span key={inv.id}>
+                        {index > 0 && <span className="text-muted-foreground">, </span>}
+                        <button
+                          onClick={() => navigate(`/invoices/${inv.id}`)}
+                          className="text-primary hover:underline cursor-pointer"
+                        >
+                          {inv.invoice_number}
+                        </button>
+                      </span>
+                    ))
+                  ) : deliveryOrder.invoice ? (
                     <button
                       onClick={() => navigate(`/invoices/${deliveryOrder.invoice.id}`)}
                       className="text-primary hover:underline cursor-pointer"
@@ -781,7 +902,17 @@ export function DeliveryOrderDetailPage() {
                   <TableCell className="text-right font-medium text-green-600">{line.quantity_delivered}</TableCell>
                   <TableCell className="text-right">{line.unit}</TableCell>
                   <TableCell className="text-right">{line.unit_price ? parseFloat(line.unit_price).toFixed(2) : '-'}</TableCell>
-                  <TableCell className="text-right font-medium">{line.line_total ? parseFloat(line.line_total).toFixed(2) : '-'}</TableCell>
+                  <TableCell className="text-right font-medium">
+                    {(() => {
+                      // Legacy lines can carry a price without a stored
+                      // line_total; fall back to the computed amount instead of
+                      // rendering '-' on an otherwise priced line.
+                      if (line.line_total != null) return parseFloat(line.line_total).toFixed(2)
+                      const unitPrice = Number(line.unit_price || 0)
+                      const quantity = Number(line.quantity_delivered || line.quantity_ordered || 0)
+                      return unitPrice > 0 ? (unitPrice * quantity).toFixed(2) : '-'
+                    })()}
+                  </TableCell>
                   <TableCell>{line.lot_number || '-'}</TableCell>
                   <TableCell>{line.expiry_date ? formatDate(line.expiry_date) : '-'}</TableCell>
                   </>}

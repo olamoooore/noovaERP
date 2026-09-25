@@ -355,10 +355,6 @@ export function DeliveryOrderCreatePage() {
     setLineQuantities((prev) => ({ ...prev, [lineId]: qty }))
   }
 
-  const updateLineLot = (lineId: number, lot: string) => {
-    setLineLotNumbers((prev) => ({ ...prev, [lineId]: lot }))
-  }
-
   const updateLinePatientName = (lineId: number, patientName: string) => {
     setLinePatientNames((prev) => ({ ...prev, [lineId]: patientName }))
   }
@@ -406,7 +402,6 @@ export function DeliveryOrderCreatePage() {
     )
   }
 
-  const products = Array.isArray(productsData) ? productsData : []
   const warehouses = Array.isArray(warehousesData) ? warehousesData : []
   const invoices = Array.isArray(invoicesData) ? invoicesData : []
   const quotations = Array.isArray(quotationsData) ? quotationsData : []
@@ -421,7 +416,7 @@ export function DeliveryOrderCreatePage() {
             onClick={() => navigate('/delivery-orders')}
             className="-ml-2 mb-3 text-muted-foreground hover:text-foreground"
           >
-            <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
+            <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
             Back
           </Button>
           <h1 className="text-3xl font-bold">Create Delivery Order</h1>
@@ -830,13 +825,17 @@ export function DeliveryOrderCreatePage() {
                         <ProductSearchCombobox
                           value={line.product_id?.toString() || ''}
                           onValueChange={(val, product) => {
-                            updateStandaloneLine(idx, 'product_id', val ? parseInt(val) : null)
+                            const productId = val ? parseInt(val) : null
+                            // Switching products re-prices the line from the NEW
+                            // product; re-selecting the same one keeps edits.
+                            const productChanged = productId !== line.product_id
+                            updateStandaloneLine(idx, 'product_id', productId)
                             updateStandaloneLine(idx, 'product_name', product?.name || '')
-                            if (!line.description && product) updateStandaloneLine(idx, 'description', getProductLineDescription(product))
+                            if (product && (productChanged || !line.description)) updateStandaloneLine(idx, 'description', getProductLineDescription(product))
                             if (product) {
-                              updateStandaloneLine(idx, 'sku', (product as any).sku || '')
-                              updateStandaloneLine(idx, 'model_number', (product as any).manufacturer_part_number || '')
-                              if (!line.unit_price) updateStandaloneLine(idx, 'unit_price', parseFloat((product as any).price || (product as any).selling_price || '0') || null)
+                              updateStandaloneLine(idx, 'sku', (product as any).sku || (productChanged ? '' : line.sku))
+                              updateStandaloneLine(idx, 'model_number', (product as any).manufacturer_part_number || (productChanged ? '' : line.model_number))
+                              if (productChanged || !line.unit_price) updateStandaloneLine(idx, 'unit_price', parseFloat((product as any).price || (product as any).selling_price || '0') || null)
                               updateStandaloneLine(idx, 'tracking_method', (product as any).tracking_method || 'none')
                               updateStandaloneLine(idx, 'product_batch_id', null)
                               updateStandaloneLine(idx, 'product_serial_id', null)

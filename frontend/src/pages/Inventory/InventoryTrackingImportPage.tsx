@@ -98,7 +98,17 @@ export function InventoryTrackingImportPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
-      <div className="flex items-center gap-4"><Button variant="ghost" size="icon" onClick={() => navigate('/inventory/tracking')}><Icon icon="solar:arrow-left-linear" className="h-5 w-5" /></Button><div><h1 className="text-2xl font-bold">Import Lots / Serial Numbers</h1><p className="text-muted-foreground">Bulk receive tracked inventory from a CSV file.</p></div></div>
+      <div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="-ml-2 mb-3 text-muted-foreground hover:text-foreground"
+          onClick={() => navigate('/inventory/tracking')}
+        >
+          <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
+          Back
+        </Button>
+        <div><h1 className="text-2xl font-bold">Import Lots / Serial Numbers</h1><p className="text-muted-foreground">Bulk receive tracked inventory from a CSV file.</p></div></div>
 
       <div className="grid gap-6 md:grid-cols-2">
         <div className="space-y-6">

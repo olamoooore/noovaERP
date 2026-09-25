@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
@@ -16,10 +16,9 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
-  TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { ReportExportToolbar } from '@/components/reports/ReportExportToolbar';
 import reportApi from '@/lib/reportApi';
 import { formatCurrency } from '@/lib/utils';
 
@@ -30,6 +29,7 @@ export default function CashFlowPage() {
   );
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
   const [method, setMethod] = useState<'direct' | 'indirect'>('indirect');
+  const reportRef = useRef<HTMLDivElement>(null);
 
   // Fetch cash flow
   const { data, isLoading, error } = useQuery({
@@ -119,9 +119,12 @@ export default function CashFlowPage() {
               <SelectItem value="direct">Direct Method</SelectItem>
             </SelectContent>
           </Select>
-          <HeaderActionButton icon="solar:printer-linear" onClick={() => window.print()} variant="outline">
-            Print
-          </HeaderActionButton>
+          <ReportExportToolbar
+            targetRef={reportRef}
+            title="Cash Flow Statement"
+            subtitle={`${method === 'direct' ? 'Direct' : 'Indirect'} method · ${startDate} → ${endDate}`}
+            filename={`cash-flow-${method}-${startDate}-${endDate}`}
+          />
           <HeaderActionButton icon="solar:arrow-left-linear" onClick={() => navigate('/accounting')}>
             Back to Accounting
           </HeaderActionButton>
@@ -129,7 +132,7 @@ export default function CashFlowPage() {
       </div>
 
       {/* Report */}
-      <Card className="p-6">
+      <Card className="p-6" ref={reportRef}>
         {isLoading ? (
           <div className="text-center py-12">
             <Icon icon="svg-spinners:ring-resize" className="w-8 h-8 mx-auto" />

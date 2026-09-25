@@ -232,8 +232,8 @@ class LabelGeneratorService
         $startY = (int) (($labelHeightDots - $contentHeight) / 2);
         $startY = max(25, $startY);
 
-        // Title - centered
-        $title = 'NoovaERP';
+        // Title - centered — tenant name, never the ERP brand.
+        $title = $this->companyName() ?: 'Label Test';
         $titleX = (int) ($centerX - strlen($title) * 8);
         $commands[] = $this->textCommand($titleX, $startY, '3', 0, 1, 1, $title);
 
@@ -302,6 +302,16 @@ class LabelGeneratorService
         ];
 
         return $map[strtoupper($type)] ?? '128';
+    }
+
+    /** Tenant company name for printed headers ('' when not configured). */
+    private function companyName(): string
+    {
+        try {
+            return (string) (\Illuminate\Support\Facades\DB::table('company_settings')->value('company_name') ?? '');
+        } catch (\Throwable) {
+            return '';
+        }
     }
 
     /**

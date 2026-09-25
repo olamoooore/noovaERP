@@ -673,18 +673,18 @@ export function CustomersPage() {
             <div className="relative w-full sm:w-64">
               <Icon
                 icon="solar:magnifer-bold-duotone"
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
               />
               <Input
                 placeholder="Search customers..."
-                className="h-9 pl-9"
+                className="h-8 rounded-full pl-9 pr-3 text-xs"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
 
             <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="h-9 w-[160px]">
+              <SelectTrigger className="h-8 w-40 rounded-full text-xs" aria-label="Filter by type">
                 <SelectValue placeholder="Filter by type" />
               </SelectTrigger>
               <SelectContent>
@@ -697,6 +697,7 @@ export function CustomersPage() {
             <TagFilterSelect
               value={tagFilter}
               onChange={(value) => setTagFilter(value)}
+              className="h-8 w-36 rounded-full text-xs"
             />
 
             {categories.length > 0 && (

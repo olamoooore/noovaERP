@@ -20,10 +20,12 @@ use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
 use App\Services\SalesApprovalGate;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Maatwebsite\Excel\Facades\Excel;
+use Modules\Sales\Services\DeliveryOrderService;
 use Modules\Sales\Services\SalesOrderService;
 
 class InvoiceController extends Controller
@@ -38,6 +40,7 @@ class InvoiceController extends Controller
         private InvoiceDeliveryService $deliveryService,
         private InvoiceEvidenceService $evidenceService,
         private SalesApprovalGate $approvalGate,
+        private DeliveryOrderService $deliveryOrderService,
     ) {}
 
     public function index(Request $request)
@@ -575,6 +578,125 @@ class InvoiceController extends Controller
         }
 
         return $invoice;
+    }
+
+    /**
+     * Mirror a document event into chatter. Never throws — logging must not
+     * break the conversion flow.
+     */
+    private function logChatter(string $subjectType, int $subjectId, string $event, string $description, array $properties = []): void
+    {
+        try {
+            app(\App\Services\Chatter\ChatterService::class)->logEvent(
+                $subjectType,
+                $subjectId,
+                $event,
+                $description,
+                $properties,
+                Auth::id(),
+                Auth::check() ? get_class(Auth::user()) : null,
+            );
+        } catch (\Throwable $e) {
+            \Log::warning('InvoiceController: chatter log failed', [
+                'subject' => $subjectType,
+                'subject_id' => $subjectId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Invoice → Delivery Order.
+     *
+     * Creates a standalone delivery order carrying the invoice's lines and
+     * link (the service also inherits the invoice's quotation link).
+     */
+    public function createDeliveryOrder($id)
+    {
+        $invoice = Invoice::with(['customer', 'lines.product'])->find($id);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        if (in_array($invoice->status, ['cancelled', 'voided', 'reversed'], true)) {
+            return response()->json(['message' => 'Cancelled or reversed invoices cannot be delivered'], 403);
+        }
+
+        // An invoice may be delivered across several delivery orders (split
+        // shipments); every DO links back through the invoice↔DO pivot.
+
+        $lines = $invoice->lines
+            ->map(fn ($line) => [
+                'line_type' => $line->line_type ?? 'product',
+                'sequence' => $line->sequence ?? 0,
+                'product_id' => $line->product_id,
+                'model_number' => $line->model_number,
+                'description' => $line->description,
+                'product_notes' => $line->product_notes,
+                'quantity' => (float) $line->quantity,
+                'quantity_delivered' => (float) $line->quantity,
+                'unit_price' => (float) $line->unit_price,
+                'lot_number' => $line->lot_number,
+                'serial_number' => $line->serial_number,
+                'product_batch_id' => $line->product_batch_id,
+                'product_serial_id' => $line->product_serial_id,
+                'expiry_date' => $line->expiry_date?->toDateString(),
+            ])
+            ->values()
+            ->all();
+
+        if (empty($lines)) {
+            return response()->json(['message' => 'Invoice has no lines to deliver'], 422);
+        }
+
+        $warehouseId = Warehouse::getDefault()?->id ?? Warehouse::query()->value('id');
+        if (! $warehouseId) {
+            return response()->json(['message' => 'No warehouse configured. Create a warehouse before delivering.'], 422);
+        }
+
+        try {
+            $deliveryOrder = $this->deliveryOrderService->createStandaloneDeliveryOrder([
+                'customer_id' => $invoice->customer_id,
+                'invoice_id' => $invoice->id,
+                'warehouse_id' => $warehouseId,
+                'delivery_date' => now()->toDateString(),
+                'po_number' => $invoice->customer_reference,
+                'attention_to' => $invoice->attention_to,
+                'payment_terms' => $invoice->payment_terms_snapshot,
+                'source' => 'invoice',
+                // Goods may not be received yet — never block the conversion.
+                'allow_backorder' => true,
+                'lines' => $lines,
+            ]);
+
+            $this->deliveryOrderService->logChatter(
+                $deliveryOrder,
+                'created',
+                "Created delivery order {$deliveryOrder->delivery_order_number} from invoice {$invoice->invoice_number}",
+                ['invoice_id' => $invoice->id],
+            );
+            $this->logChatter(
+                'App\\Models\\Invoice',
+                (int) $invoice->id,
+                'delivery_order_created',
+                "Delivery order {$deliveryOrder->delivery_order_number} created from this invoice",
+                [
+                    'delivery_order_id' => $deliveryOrder->id,
+                    'delivery_order_number' => $deliveryOrder->delivery_order_number,
+                ],
+            );
+
+            return response()->json([
+                'message' => 'Delivery order created from invoice',
+                'data' => $deliveryOrder->load(['customer', 'lines.product', 'invoice', 'quotation']),
+            ], 201);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Failed to create delivery order from invoice',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     public function show(Request $request, $id)
@@ -1163,11 +1285,21 @@ class InvoiceController extends Controller
             'expires_in_days' => 'nullable|integer|min:1|max:90',
             'send_email' => 'nullable|boolean',
             'document_type' => 'nullable|string|in:final_invoice,acceptance_copy',
+            // The send dialog lets the operator add an email when the customer
+            // has none, and optionally persist it on the customer record.
+            'recipient_email' => 'nullable|email',
+            'save_customer_email' => 'nullable|boolean',
         ]);
 
         $expiresDays = $validated['expires_in_days'] ?? 30;
         $sendEmail = $validated['send_email'] ?? true;
         $documentType = $validated['document_type'] ?? 'final_invoice';
+        $recipientOverride = $validated['recipient_email'] ?? null;
+
+        if ($sendEmail && $recipientOverride && ! empty($validated['save_customer_email']) && $invoice->customer) {
+            $invoice->customer->update(['email' => $recipientOverride]);
+            $invoice->unsetRelation('customer');
+        }
 
         try {
             $linkData = $this->evidenceService->createPortalAcceptanceLink($invoice, $expiresDays);
@@ -1193,6 +1325,8 @@ class InvoiceController extends Controller
                     $delivery = $this->deliveryService->deliver($invoice, 'email', $request->user(), [
                         'document_type' => $documentType,
                         'portal_url' => $linkData['url'],
+                        // Null keeps the default resolution (contact/customer email).
+                        'recipient' => $recipientOverride,
                     ]);
                 } catch (\Throwable $e) {
                     \Log::warning('Failed to send invoice email after acceptance link creation', [

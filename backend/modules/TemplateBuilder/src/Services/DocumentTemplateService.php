@@ -273,25 +273,45 @@ final class DocumentTemplateService implements DocumentTemplateServiceContract
     public function seedDefaults(): void
     {
         foreach (DefaultTemplates::definitions() as $definition) {
-            $exists = DocumentTemplate::forDocumentType($definition['document_type'])
-                ->where('is_system_default', true)
+            // Never add a starter assignment when the tenant already has an
+            // active one: two active tenant-scope assignments at the same
+            // priority resolve as TEMPLATE_RESOLUTION_AMBIGUOUS, which makes
+            // every render for that document type fail.
+            $hasActiveAssignment = DocumentTemplateAssignment::query()
+                ->where('document_type', $definition['document_type'])
+                ->where('is_active', true)
                 ->exists();
-            if ($exists) {
+            if ($hasActiveAssignment) {
                 continue;
             }
 
-            $template = DocumentTemplate::create($definition);
+            // Reuse an existing template with the same code (older seeds could
+            // leave unpublished duplicates behind) instead of creating another.
+            $template = DocumentTemplate::query()
+                ->where('code', $definition['code'])
+                ->orderByDesc('is_system_default')
+                ->orderByDesc('published_version')
+                ->first();
 
-            // Published version snapshot.
-            $template->versions()->create([
-                'template_id' => $template->id,
-                'version' => 1,
-                'layout_config' => $template->layout_config,
-                'html' => $template->html,
-                'css' => $template->css,
-                'change_note' => 'Seeded starter template',
-                'is_published' => true,
-            ]);
+            if ($template) {
+                $template->fill([
+                    'status' => DocumentTemplate::STATUS_PUBLISHED,
+                    'is_system_default' => true,
+                ])->save();
+            } else {
+                $template = DocumentTemplate::create($definition);
+
+                // Published version snapshot.
+                $template->versions()->create([
+                    'template_id' => $template->id,
+                    'version' => 1,
+                    'layout_config' => $template->layout_config,
+                    'html' => $template->html,
+                    'css' => $template->css,
+                    'change_note' => 'Seeded starter template',
+                    'is_published' => true,
+                ]);
+            }
 
             // Tenant-scope default assignment.
             DocumentTemplateAssignment::create([

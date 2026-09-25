@@ -27,6 +27,8 @@ import {
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
+import { SortableHead } from '@/components/ui/SortableHead'
+import { useSort } from '@/hooks/useSort'
 
 interface Product {
   id: number
@@ -501,6 +503,8 @@ export function StockManagementPage() {
 
   const products = productsData?.data || []
   const movements = movementsData?.data || []
+  const { sorted: sortedProducts, sortKey: productSortKey, sortDir: productSortDir, toggle: toggleProductSort } = useSort<Product>(products)
+  const { sorted: sortedMovements, sortKey: movementSortKey, sortDir: movementSortDir, toggle: toggleMovementSort } = useSort<StockMovement>(movements, 'created_at', 'desc')
   const lowStockItems = lowStockData?.data || []
   const outOfStockItems = outOfStockData?.data || []
   const dialogProducts = Array.from(
@@ -703,12 +707,12 @@ export function StockManagementPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50">
-                      <TableHead className="w-[300px]">Product</TableHead>
-                      <TableHead>SKU</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead className="text-right">Cost</TableHead>
-                      <TableHead className="text-right">Price</TableHead>
-                      <TableHead className="text-right">Stock</TableHead>
+                      <SortableHead label="Product" sortKey="name" activeKey={productSortKey} direction={productSortDir} onSort={toggleProductSort} className="w-[300px]" />
+                      <SortableHead label="SKU" sortKey="sku" activeKey={productSortKey} direction={productSortDir} onSort={toggleProductSort} />
+                      <SortableHead label="Category" sortKey="category.name" activeKey={productSortKey} direction={productSortDir} onSort={toggleProductSort} />
+                      <SortableHead label="Cost" sortKey="cost" activeKey={productSortKey} direction={productSortDir} onSort={toggleProductSort} align="right" />
+                      <SortableHead label="Price" sortKey="price" activeKey={productSortKey} direction={productSortDir} onSort={toggleProductSort} align="right" />
+                      <SortableHead label="Stock" sortKey="stock_quantity" activeKey={productSortKey} direction={productSortDir} onSort={toggleProductSort} align="right" />
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -733,7 +737,7 @@ export function StockManagementPage() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      products.map((product) => {
+                      sortedProducts.map((product) => {
                         const status = getStockStatus(product)
                         return (
                           <TableRow key={product.id} className="group hover:bg-muted/50">
@@ -839,13 +843,13 @@ export function StockManagementPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50">
-                      <TableHead className="w-[200px]">Product</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead className="text-right">Qty Change</TableHead>
-                      <TableHead className="text-right">Balance</TableHead>
-                      <TableHead>Reference</TableHead>
-                      <TableHead>By</TableHead>
-                      <TableHead>Date</TableHead>
+                      <SortableHead label="Product" sortKey="product.name" activeKey={movementSortKey} direction={movementSortDir} onSort={toggleMovementSort} className="w-[200px]" />
+                      <SortableHead label="Type" sortKey="type" activeKey={movementSortKey} direction={movementSortDir} onSort={toggleMovementSort} />
+                      <SortableHead label="Qty Change" sortKey="quantity" activeKey={movementSortKey} direction={movementSortDir} onSort={toggleMovementSort} align="right" />
+                      <SortableHead label="Balance" sortKey="balance_after" activeKey={movementSortKey} direction={movementSortDir} onSort={toggleMovementSort} align="right" />
+                      <SortableHead label="Reference" sortKey="reference" activeKey={movementSortKey} direction={movementSortDir} onSort={toggleMovementSort} />
+                      <SortableHead label="By" sortKey="created_by.name" activeKey={movementSortKey} direction={movementSortDir} onSort={toggleMovementSort} />
+                      <SortableHead label="Date" sortKey="created_at" activeKey={movementSortKey} direction={movementSortDir} onSort={toggleMovementSort} />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -868,7 +872,7 @@ export function StockManagementPage() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      movements.map((movement: StockMovement) => {
+                      sortedMovements.map((movement: StockMovement) => {
                         const config = getTypeConfig(movement.type)
                         const isIncoming = ['in', 'purchase', 'transfer_in', 'return'].includes(movement.type)
                         return (

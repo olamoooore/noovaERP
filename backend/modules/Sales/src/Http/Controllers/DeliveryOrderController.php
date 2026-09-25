@@ -2,11 +2,14 @@
 
 namespace Modules\Sales\Http\Controllers;
 
+use App\Accounting\DTOs\AccountingDocumentLineData;
+use App\Accounting\DTOs\AccountingOriginInvoiceData;
 use App\Exports\DeliveryOrdersExport;
 use App\Models\MedicalCase;
 use App\Models\MedicalCaseItem;
 use App\Platform\BulkDelete\BulkDeleteService;
 use App\Platform\Import\ImportService;
+use App\Services\AccountingOriginInvoiceService;
 use App\Services\CaseImportService;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -15,6 +18,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Sales\Models\DeliveryOrder;
+use Modules\Sales\Models\DeliveryOrderLine;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\DeliveryOrderService;
 
@@ -25,6 +29,7 @@ class DeliveryOrderController extends Controller
         private BulkDeleteService $bulkDeleteService,
         private ImportService $importService,
         private CaseImportService $caseImportService,
+        private AccountingOriginInvoiceService $accountingOriginInvoices,
     ) {}
 
     public function index(Request $request)
@@ -329,6 +334,7 @@ class DeliveryOrderController extends Controller
             'createdBy',
             'confirmedBy',
             'invoice',
+            'invoices:id,invoice_number,invoice_date,due_date,total,balance,status,lifecycle_status',
             'quotation',
         ])->find($id);
 
@@ -358,7 +364,149 @@ class DeliveryOrderController extends Controller
             $deliveryOrder->can_approve = $reviewers->contains('id', (int) $request->user()?->id);
         }
 
+        // A DO can be invoiced more than once; the button stays available while
+        // some delivered quantity is not yet billed.
+        $deliveryOrder->can_invoice = $deliveryOrder->status !== 'cancelled'
+            && $deliveryOrder->hasInvoiceableLines();
+
         return response()->json($deliveryOrder);
+    }
+
+    /**
+     * Mirror a document event into chatter. Never throws — logging must not
+     * break the conversion flow.
+     */
+    private function logChatter(string $subjectType, int $subjectId, string $event, string $description, array $properties = []): void
+    {
+        try {
+            app(\App\Services\Chatter\ChatterService::class)->logEvent(
+                $subjectType,
+                $subjectId,
+                $event,
+                $description,
+                $properties,
+                Auth::id(),
+                Auth::check() ? get_class(Auth::user()) : null,
+            );
+        } catch (\Throwable $e) {
+            \Log::warning('DeliveryOrderController: chatter log failed', [
+                'subject' => $subjectType,
+                'subject_id' => $subjectId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Delivery Order → Invoice.
+     *
+     * The physical delivery already moved stock, so this creates the AR
+     * invoice through the accounting-origin path (no second Sales Order, no
+     * stock reservation / credit re-check) and links it back on the DO.
+     */
+    public function createInvoice($id)
+    {
+        $deliveryOrder = DeliveryOrder::with(['customer', 'lines.product'])->find($id);
+
+        if (! $deliveryOrder) {
+            return response()->json(['message' => 'Delivery order not found'], 404);
+        }
+
+        if ($deliveryOrder->status === 'cancelled') {
+            return response()->json(['message' => 'Cancelled delivery orders cannot be invoiced'], 403);
+        }
+
+        // A delivery order may be billed across several invoices: bill only the
+        // quantity earlier invoices have not already covered (Odoo-style
+        // "qty to invoice"), so repeated Create Invoice never double-bills.
+        $lines = [];
+        $invoicedByLine = [];
+        foreach ($deliveryOrder->lines as $line) {
+            $quantity = $deliveryOrder->invoiceableQuantityForLine($line);
+            if ($quantity <= 0) {
+                continue; // note/section row, or nothing left to invoice
+            }
+            $lines[] = new AccountingDocumentLineData(
+                lineType: 'product',
+                description: $line->description ?: 'Delivered item',
+                quantity: $quantity,
+                unitPrice: (float) $line->unit_price,
+                productId: $line->product_id,
+            );
+            $invoicedByLine[$line->id] = $quantity;
+        }
+
+        if (empty($lines)) {
+            return response()->json([
+                'message' => 'Nothing left to invoice on this delivery order',
+                'invoice_ids' => $deliveryOrder->invoices()->pluck('invoices.id')->all(),
+            ], 422);
+        }
+
+        try {
+            $invoice = DB::transaction(function () use ($deliveryOrder, $lines, $invoicedByLine) {
+                $invoice = $this->accountingOriginInvoices->create(new AccountingOriginInvoiceData(
+                    customerId: (int) $deliveryOrder->customer_id,
+                    lines: $lines,
+                    invoiceDate: now()->toDateString(),
+                    dueDate: now()->addDays(30)->toDateString(),
+                    notes: "Delivery Order #{$deliveryOrder->delivery_order_number}",
+                    customerReference: $deliveryOrder->po_number,
+                    originContext: [
+                        'delivery_order_id' => $deliveryOrder->id,
+                        'delivery_order_number' => $deliveryOrder->delivery_order_number,
+                    ],
+                ));
+
+                foreach ($invoicedByLine as $lineId => $quantity) {
+                    DeliveryOrderLine::whereKey($lineId)->increment('quantity_invoiced', $quantity);
+                }
+
+                // The first invoice stays the legacy primary pointer; every
+                // invoice is linked through the pivot (source of truth for the
+                // linked-invoices smart button).
+                if (! $deliveryOrder->invoice_id) {
+                    $deliveryOrder->update(['invoice_id' => $invoice->id]);
+                } else {
+                    $deliveryOrder->invoices()->syncWithoutDetaching([$invoice->id]);
+                }
+
+                if ($deliveryOrder->quotation_id) {
+                    $invoice->update(['quotation_id' => $deliveryOrder->quotation_id]);
+                }
+
+                return $invoice;
+            });
+
+            $this->logChatter(
+                'App\\Models\\Invoice',
+                (int) $invoice->id,
+                'created',
+                "Created invoice {$invoice->invoice_number} from delivery order {$deliveryOrder->delivery_order_number}",
+                ['delivery_order_id' => $deliveryOrder->id],
+            );
+            $this->deliveryService->logChatter(
+                $deliveryOrder,
+                'invoice_created',
+                "Invoice {$invoice->invoice_number} created from this delivery order",
+                ['invoice_id' => $invoice->id, 'invoice_number' => $invoice->invoice_number],
+            );
+
+            return response()->json([
+                'message' => 'Invoice created from delivery order',
+                'data' => $invoice->fresh(['customer', 'lines.product']),
+            ], 201);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => 'Failed to create invoice from delivery order',
+                'error' => $e->getMessage(),
+            ], 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Failed to create invoice from delivery order',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     public function update(Request $request, $id)
@@ -565,6 +713,10 @@ class DeliveryOrderController extends Controller
         $validated = $request->validate([
             'expires_in_days' => 'nullable|integer|min:1|max:90',
             'send_email' => 'nullable|boolean',
+            // The operator confirms/overrides the recipient before sending and
+            // may add any number of CC addresses.
+            'recipient_email' => 'nullable|email',
+            'cc' => 'nullable',
         ]);
 
         try {
@@ -575,7 +727,13 @@ class DeliveryOrderController extends Controller
 
             $delivery = null;
             $emailError = null;
-            $recipient = $deliveryOrder->customer?->email;
+            $recipient = $validated['recipient_email'] ?? $deliveryOrder->customer?->email;
+            $ccList = collect(is_array($validated['cc'] ?? null) ? $validated['cc'] : explode(',', (string) ($validated['cc'] ?? '')))
+                ->map(fn ($email) => trim((string) $email))
+                ->filter(fn ($email) => filter_var($email, FILTER_VALIDATE_EMAIL))
+                ->unique()
+                ->values()
+                ->all();
 
             if (($validated['send_email'] ?? true) && $recipient) {
                 $customerName = $deliveryOrder->customer->name ?: 'Sir/Madam';
@@ -591,10 +749,13 @@ class DeliveryOrderController extends Controller
                     // goes out as HTML with the tenant's configured From —
                     // sending the raw text body instead produced a bare-link
                     // plain-text message that providers routinely filter.
-                    \Illuminate\Support\Facades\Mail::to($recipient)
-                        ->send(new \App\Mail\CustomerEmail($subject, $body));
+                    $mailer = \Illuminate\Support\Facades\Mail::to($recipient);
+                    if (! empty($ccList)) {
+                        $mailer->cc($ccList);
+                    }
+                    $mailer->send(new \App\Mail\CustomerEmail($subject, $body));
 
-                    $delivery = ['recipient' => $recipient];
+                    $delivery = ['recipient' => $recipient, 'cc' => $ccList];
                 } catch (\Throwable $e) {
                     // The link is already valid — report the failure instead of
                     // failing the whole action, so the operator can copy it.

@@ -517,7 +517,6 @@ export default function BalanceSheetPage({
         <Card className="rounded-xl p-6">
           <ComparisonTable
             title={`${statementTitle} Comparison`}
-            companyName="NoovaERP"
             asOfDate={formatShortDate(asOfDate)}
             compareDate={formatShortDate(balanceSheet.comparison.as_of_date)}
             filename={`balance-sheet-comparison-${asOfDate}`}

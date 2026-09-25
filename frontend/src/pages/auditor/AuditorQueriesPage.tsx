@@ -296,9 +296,13 @@ export default function AuditorQueriesPage() {
             <div className="flex items-end">
               <Button
                 variant="outline"
+                size="icon"
+                className="h-8 w-8 rounded-full"
+                title="Clear filters"
+                aria-label="Clear filters"
                 onClick={() => setFilters({ status: '', severity: '', search: '' })}
               >
-                Clear Filters
+                <Icon icon="solar:close-circle-bold" className="h-4 w-4" />
               </Button>
             </div>
           </div>

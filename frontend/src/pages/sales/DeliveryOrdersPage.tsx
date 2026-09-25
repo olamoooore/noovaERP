@@ -14,10 +14,13 @@ import { SalesLineColumnMenu, SalesLineColumnVisibility, listingColumns } from '
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useBulkSelection } from '@/hooks/use-bulk-selection'
-import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice'
+import { BulkActionBar } from '@/components/ui/bulk-action-bar'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { TagFilterSelect } from '@/components/tags/TagFilterSelect'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Pagination } from '@/components/ui/Pagination'
+import { SortableHead } from '@/components/ui/SortableHead'
+import { useSort } from '@/hooks/useSort'
 
 const DELIVERY_ORDER_EXPORT_COLUMNS = [
   { key: 'delivery_order_number', label: 'Delivery Order No', group: 'Delivery Order', default: true },
@@ -81,6 +84,7 @@ export function DeliveryOrdersPage() {
   })
 
   const deliveryOrders = response?.data || []
+  const { sorted: sortedDeliveryOrders, sortKey, sortDir, toggle: toggleSort } = useSort<any>(deliveryOrders, 'created_at', 'desc')
   const meta = {
     current_page: response?.current_page || 1,
     last_page: response?.last_page || 1,
@@ -199,26 +203,29 @@ export function DeliveryOrdersPage() {
         </div>
       </div>
 
+      <BulkActionBar
+        selectedCount={selectedIds.length}
+        pageSize={deliveryOrders.length}
+        allPageSelected={allPageSelected}
+        allMatchingSelected={allMatchingSelected}
+        isSelectingAll={isSelectingAll}
+        onSelectAllMatching={selectAllMatching}
+        onClearSelection={clearSelection}
+        noun="delivery orders"
+        destructiveAction={
+          <HeaderActionButton
+            variant="destructive"
+            icon="solar:trash-bin-minimalistic-bold"
+            onClick={() => setBulkDeleteOpen(true)}
+          >
+            Delete ({selectedIds.length})
+          </HeaderActionButton>
+        }
+      />
+
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>Delivery Orders</span>
-            {selectedIds.length > 0 && (
-              <div className="flex items-center gap-2">
-              <BulkSelectionNotice pageSize={deliveryOrders.length} allPageSelected={allPageSelected} selectedCount={selectedIds.length} allMatchingSelected={allMatchingSelected} isSelectingAll={isSelectingAll} onSelectAllMatching={selectAllMatching} noun="delivery orders" />
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => {
-                  setBulkDeleteOpen(true)
-                }}
-              >
-                <Icon icon="solar:trash-bin-minimalistic-bold" className="h-4 w-4 mr-1" />
-                Delete ({selectedIds.length})
-              </Button>
-              </div>
-            )}
-          </CardTitle>
+          <CardTitle>Delivery Orders</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -290,18 +297,18 @@ export function DeliveryOrdersPage() {
                         aria-label="Select delivery orders on this page"
                       />
                     </TableHead>
-                    <TableHead>Delivery #</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Delivery Date</TableHead>
-                    <TableHead>Created Date</TableHead>
+                    <SortableHead label="Delivery #" sortKey="delivery_order_number" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Type" sortKey="sales_order_id" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Customer" sortKey="customer.name" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Delivery Date" sortKey="delivery_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Created Date" sortKey="created_at" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                     <TableHead>Lines</TableHead>
-                    <TableHead>Status</TableHead>
+                    <SortableHead label="Status" sortKey="status" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {deliveryOrders.map((do_: any) => (
+                  {sortedDeliveryOrders.map((do_: any) => (
                     <TableRow
                       key={do_.id}
                       className="cursor-pointer"

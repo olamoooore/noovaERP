@@ -14,7 +14,13 @@ import { Separator } from '@/components/ui/separator'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 
+interface CompanyBranding {
+  name?: string
+  logo_url?: string
+}
+
 interface AcceptanceResponse {
+  company?: CompanyBranding
   invoice: {
     id: number
     invoice_number: string
@@ -228,11 +234,21 @@ export default function InvoiceAcceptancePage() {
       <div className="bg-white border-b">
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Icon icon="solar:bill-list-bold-duotone" className="h-6 w-6 text-primary" />
-            </div>
+            {data.company?.logo_url ? (
+              <img
+                src={data.company.logo_url}
+                alt={data.company?.name || 'Company logo'}
+                className="h-10 max-w-[160px] object-contain"
+              />
+            ) : (
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                <Icon icon="solar:bill-list-bold-duotone" className="h-6 w-6 text-primary" />
+              </div>
+            )}
             <div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wide">NoovaERP</div>
+              {data.company?.name ? (
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{data.company.name}</div>
+              ) : null}
               <div className="text-sm font-medium">Invoice acceptance portal</div>
             </div>
           </div>
@@ -600,7 +616,7 @@ export default function InvoiceAcceptancePage() {
         )}
 
         <div className="text-center text-xs text-muted-foreground">
-          <p>This is a secure portal — your data is encrypted in transit. Powered by NoovaERP.</p>
+          <p>This is a secure portal — your data is encrypted in transit.</p>
         </div>
       </div>
     </div>

@@ -31,12 +31,14 @@ import { formatCurrency } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { SalesDocumentExportMenu, type SalesExportColumn } from '@/components/sales/SalesDocumentExportMenu';
 import { useBulkSelection } from '@/hooks/use-bulk-selection';
-import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice';
+import { BulkActionBar } from '@/components/ui/bulk-action-bar';
 import {
   PaymentCorrectionDialog,
   type PaymentCorrectionAction,
   type PaymentCorrectionOutcome,
 } from '@/components/payment/PaymentCorrectionDialog';
+import { SortableHead } from '@/components/ui/SortableHead';
+import { useSort } from '@/hooks/useSort';
 
 interface Payment {
   id: number;
@@ -77,12 +79,22 @@ interface PaginatedPayments {
 // `applied` = posted (journal_entry_id set); `reversed`/`refunded` = terminal
 // corrections. The legacy `draft` / `posted` labels no longer exist in the
 // backend enum — filtering on them silently returned zero rows.
-const PAYMENT_STATUS_OPTIONS = [
-  { value: 'recorded', label: 'Recorded (not in ledger)', icon: 'solar:document-bold-duotone', variant: 'secondary' as const },
-  { value: 'applied', label: 'Applied (posted)', icon: 'solar:check-circle-bold-duotone', variant: 'default' as const },
-  { value: 'unapplied', label: 'Unapplied', icon: 'solar:link-broken-bold-duotone', variant: 'outline' as const },
-  { value: 'reversed', label: 'Reversed', icon: 'solar:undo-left-round-bold', variant: 'destructive' as const },
-  { value: 'refunded', label: 'Refunded', icon: 'solar:refresh-circle-bold-duotone', variant: 'destructive' as const },
+interface PaymentStatusOption {
+  value: string;
+  /** Full label (filter dropdown). */
+  label: string;
+  /** Compact label for the status badge so rows stay short. */
+  shortLabel: string;
+  icon: string;
+  variant: 'default' | 'secondary' | 'outline' | 'destructive';
+}
+
+const PAYMENT_STATUS_OPTIONS: PaymentStatusOption[] = [
+  { value: 'recorded', label: 'Recorded (not in ledger)', shortLabel: 'Recorded', icon: 'solar:document-bold-duotone', variant: 'secondary' },
+  { value: 'applied', label: 'Applied (posted to ledger)', shortLabel: 'Applied', icon: 'solar:check-circle-bold-duotone', variant: 'default' },
+  { value: 'unapplied', label: 'Unapplied', shortLabel: 'Unapplied', icon: 'solar:link-broken-bold-duotone', variant: 'outline' },
+  { value: 'reversed', label: 'Reversed', shortLabel: 'Reversed', icon: 'solar:undo-left-round-bold', variant: 'destructive' },
+  { value: 'refunded', label: 'Refunded', shortLabel: 'Refunded', icon: 'solar:refresh-circle-bold-duotone', variant: 'destructive' },
 ];
 
 // Statuses that represent a completed terminal state — no further correction is
@@ -186,6 +198,7 @@ export const CustomerPayments: React.FC = () => {
   });
 
   const paymentList = payments?.data || [];
+  const { sorted: sortedPayments, sortKey, sortDir, toggle: toggleSort } = useSort<Payment>(paymentList, 'payment_date', 'desc');
   const totalPages = payments?.last_page || 1;
   const totalRecords = payments?.total || 0;
   const paymentFilters = { search: searchQuery || undefined, payment_status: statusFilter || undefined, method: methodFilter || undefined, customer_id: customerFilter || undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, invoice_id: invoiceIdParam || undefined };
@@ -216,7 +229,7 @@ export const CustomerPayments: React.FC = () => {
   const getPaymentMethodBadge = (method: string) => {
     const cfg = METHOD_OPTIONS.find((m) => m.value === method);
     return (
-      <Badge variant="outline" className="gap-1">
+      <Badge variant="outline" className="gap-1 whitespace-nowrap px-1.5 py-0 text-[10px] leading-4">
         <Icon icon={cfg?.icon || 'solar:wallet-bold-duotone'} className="h-3 w-3" />
         {cfg?.label || method}
       </Badge>
@@ -224,16 +237,21 @@ export const CustomerPayments: React.FC = () => {
   };
 
   const getStatusBadge = (status: string) => {
-    const cfg = PAYMENT_STATUS_OPTIONS.find((s) => s.value === status) || {
+    const cfg: PaymentStatusOption = PAYMENT_STATUS_OPTIONS.find((s) => s.value === status) || {
       value: status,
       label: status,
+      shortLabel: status,
       icon: 'solar:document-bold-duotone',
-      variant: 'secondary' as const,
+      variant: 'secondary',
     };
     return (
-      <Badge variant={cfg.variant} className="gap-1">
+      <Badge
+        variant={cfg.variant}
+        title={cfg.label}
+        className="gap-1 whitespace-nowrap px-1.5 py-0 text-[10px] leading-4"
+      >
         <Icon icon={cfg.icon} className="h-3 w-3" />
-        {cfg.label}
+        {cfg.shortLabel}
       </Badge>
     );
   };
@@ -429,54 +447,55 @@ export const CustomerPayments: React.FC = () => {
           }}
           className="h-8 w-40 rounded-full px-3 text-xs"
         />
-        <HeaderActionButton icon="solar:refresh-bold-duotone" variant="outline" onClick={clearFilters}>
-          Clear filters
-        </HeaderActionButton>
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-8 w-8 rounded-full"
+          onClick={clearFilters}
+          title="Clear filters"
+          aria-label="Clear filters"
+        >
+          <Icon icon="solar:close-circle-bold" className="h-4 w-4" />
+        </Button>
       </div>
 
       {/* Bulk actions bar */}
-      {selectedIds.length > 0 && (
-        <Card>
-          <CardContent className="py-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Icon icon="solar:check-square-bold" className="h-4 w-4 text-primary" />
-              <BulkSelectionNotice pageSize={paymentList.length} allPageSelected={allPageSelected} selectedCount={selectedIds.length} allMatchingSelected={allMatchingSelected} isSelectingAll={isSelectingAll} onSelectAllMatching={selectAllMatching} noun="payments" />
-              {lockedSelected > 0 && (
-                <span className="text-xs text-muted-foreground">
-                  ({lockedSelected} posted/locked, only unposted payments can be deleted)
-                </span>
-              )}
-              {allMatchingSelected && (
-                <span className="text-xs text-muted-foreground">Posted payments will be skipped by bulk actions.</span>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                onClick={() => bulkPostMutation.mutate(allMatchingSelected ? selectedIds : postableSelected.map((p) => p.id))}
-                disabled={(!allMatchingSelected && postableSelected.length === 0) || bulkPostMutation.isPending}
-              >
-                <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4 mr-2" />
-                {bulkPostMutation.isPending
-                  ? 'Posting...'
-                  : allMatchingSelected ? 'Post Selected Payments' : `Post ${postableSelected.length > 0 ? `${postableSelected.length} payment(s)` : ''}`}
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setShowBulkDeleteDialog(true)}
-                disabled={!allMatchingSelected && draftSelected.length === 0}
-              >
-                <Icon icon="solar:trash-bin-trash-bold" className="h-4 w-4 mr-2" />
-                {allMatchingSelected ? 'Delete Selected Payments' : `Delete ${draftSelected.length > 0 ? `${draftSelected.length} payment(s)` : ''}`}
-              </Button>
-              <Button variant="outline" size="sm" onClick={clearSelection}>
-                Clear selection
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <BulkActionBar
+        selectedCount={selectedIds.length}
+        pageSize={paymentList.length}
+        allPageSelected={allPageSelected}
+        allMatchingSelected={allMatchingSelected}
+        isSelectingAll={isSelectingAll}
+        onSelectAllMatching={selectAllMatching}
+        onClearSelection={clearSelection}
+        noun="payments"
+        hint={
+          lockedSelected > 0
+            ? `${lockedSelected} posted/locked — only unposted can be deleted`
+            : allMatchingSelected
+              ? 'Posted payments will be skipped by bulk actions'
+              : undefined
+        }
+        destructiveAction={
+          <HeaderActionButton
+            variant="destructive"
+            icon="solar:trash-bin-trash-bold"
+            onClick={() => setShowBulkDeleteDialog(true)}
+            disabled={!allMatchingSelected && draftSelected.length === 0}
+          >
+            {allMatchingSelected ? 'Delete Selected' : `Delete (${draftSelected.length})`}
+          </HeaderActionButton>
+        }
+      >
+        <HeaderActionButton
+          icon="solar:check-circle-bold"
+          loading={bulkPostMutation.isPending}
+          onClick={() => bulkPostMutation.mutate(allMatchingSelected ? selectedIds : postableSelected.map((p) => p.id))}
+          disabled={(!allMatchingSelected && postableSelected.length === 0) || bulkPostMutation.isPending}
+        >
+          {allMatchingSelected ? 'Post Selected' : `Post (${postableSelected.length})`}
+        </HeaderActionButton>
+      </BulkActionBar>
 
       {/* Payments List */}
       <Card>
@@ -519,7 +538,7 @@ export const CustomerPayments: React.FC = () => {
           ) : (
             <>
               <div className="overflow-x-auto">
-                <Table>
+                <Table className="[&_th]:px-[13px] [&_td]:px-[13px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-10">
@@ -529,21 +548,20 @@ export const CustomerPayments: React.FC = () => {
                           aria-label="Select payments on this page"
                         />
                       </TableHead>
-                      <TableHead>Payment #</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Customer</TableHead>
-                      <TableHead>Method</TableHead>
-                      <TableHead>Reference</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
-                      <TableHead>Currency</TableHead>
-                      <TableHead>Allocated To</TableHead>
-                      <TableHead>Created</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <SortableHead label="Payment #" sortKey="payment_number" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                      <SortableHead label="Date" sortKey="payment_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                      <SortableHead label="Status" sortKey="payment_status" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                      <SortableHead label="Customer" sortKey="customer.name" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                      <SortableHead label="Method" sortKey="method" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                      <SortableHead label="Reference" sortKey="reference" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                      <SortableHead label="Amount" sortKey="amount" activeKey={sortKey} direction={sortDir} onSort={toggleSort} align="right" />
+                      <SortableHead label="Allocated To" sortKey="invoice.invoice_number" activeKey={sortKey} direction={sortDir} onSort={toggleSort} className="w-[6.5rem]" />
+                      <SortableHead label="Created" sortKey="created_at" activeKey={sortKey} direction={sortDir} onSort={toggleSort} className="w-[7.5rem] whitespace-nowrap" />
+                      <TableHead className="w-[8.5rem] whitespace-nowrap text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {paymentList.map((payment) => {
+                    {sortedPayments.map((payment) => {
                       const editable = payment.payment_status === 'recorded' && !payment.journal_entry_id;
                       const postable = payment.payment_status === 'recorded' && !payment.journal_entry_id;
                       const correctable = canCorrect && isCorrectable(payment);
@@ -560,24 +578,28 @@ export const CustomerPayments: React.FC = () => {
                             {payment.payment_number || `PAY-${payment.id}`}
                           </TableCell>
                           <TableCell>{formatDate(payment.payment_date)}</TableCell>
-                          <TableCell>{getStatusBadge(payment.payment_status)}</TableCell>
-                          <TableCell>{payment.customer?.name || '-'}</TableCell>
+                          <TableCell className="w-[1%] whitespace-nowrap">{getStatusBadge(payment.payment_status)}</TableCell>
+                          <TableCell className="max-w-[9.5rem]">
+                            <div className="break-words leading-snug" title={payment.customer?.name || undefined}>
+                              {payment.customer?.name || '-'}
+                            </div>
+                          </TableCell>
                           <TableCell>{getPaymentMethodBadge(payment.method)}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {payment.reference || '-'}
+                          <TableCell className="max-w-[8.5rem] text-sm text-muted-foreground">
+                            <div className="break-words leading-snug" title={payment.reference || undefined}>
+                              {payment.reference || '-'}
+                            </div>
                           </TableCell>
                           <TableCell className="text-right font-medium">
                             {formatCurrency(payment.amount || 0)}
                           </TableCell>
-                          <TableCell className="text-sm">
-                            {payment.currency || '-'}
-                          </TableCell>
-                          <TableCell>
+                          <TableCell className="max-w-[6.5rem]">
                             {payment.invoice ? (
                               <button
                                 type="button"
                                 onClick={() => navigate(`/invoices/${payment.invoice!.id}`)}
-                                className="text-sm text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/20 rounded px-1"
+                                className="block max-w-full break-words rounded px-1 text-left text-sm leading-snug text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                title={payment.invoice.invoice_number}
                               >
                                 {payment.invoice.invoice_number}
                               </button>
@@ -585,13 +607,14 @@ export const CustomerPayments: React.FC = () => {
                               <Badge variant="outline" className="font-normal">Unallocated</Badge>
                             )}
                           </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
+                          <TableCell className="w-[7.5rem] whitespace-nowrap text-sm text-muted-foreground">
                             {payment.created_at ? formatDate(payment.created_at) : '-'}
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="w-[8.5rem] whitespace-nowrap text-right">
                             <div className="flex justify-end gap-1">
                               <Button
-                                size="sm"
+                                size="icon"
+                                className="h-7 w-7"
                                 variant="ghost"
                                 onClick={() => setViewingPayment(payment)}
                                 aria-label="View payment"
@@ -600,7 +623,8 @@ export const CustomerPayments: React.FC = () => {
                               </Button>
                               {editable && (
                                 <Button
-                                  size="sm"
+                                  size="icon"
+                                  className="h-7 w-7"
                                   variant="ghost"
                                   onClick={() => setEditingPayment(payment)}
                                   aria-label="Edit unposted payment"
@@ -611,7 +635,8 @@ export const CustomerPayments: React.FC = () => {
                               )}
                               {postable && (
                                 <Button
-                                  size="sm"
+                                  size="icon"
+                                  className="h-7 w-7"
                                   variant="ghost"
                                   disabled={bulkPostMutation.isPending}
                                   onClick={() => bulkPostMutation.mutate([payment.id])}
@@ -624,7 +649,8 @@ export const CustomerPayments: React.FC = () => {
                               {correctable && (
                                 <>
                                   <Button
-                                    size="sm"
+                                    size="icon"
+                                  className="h-7 w-7"
                                     variant="ghost"
                                     onClick={() => setCorrectionTarget({ payment, action: 'reverse' })}
                                     aria-label="Reverse payment"
@@ -633,7 +659,8 @@ export const CustomerPayments: React.FC = () => {
                                     <Icon icon="solar:undo-left-round-bold" className="h-4 w-4 text-destructive" />
                                   </Button>
                                   <Button
-                                    size="sm"
+                                    size="icon"
+                                  className="h-7 w-7"
                                     variant="ghost"
                                     onClick={() => setCorrectionTarget({ payment, action: 'refund' })}
                                     aria-label="Refund payment"
@@ -643,7 +670,8 @@ export const CustomerPayments: React.FC = () => {
                                   </Button>
                                   {payment.invoice && (
                                     <Button
-                                      size="sm"
+                                      size="icon"
+                                  className="h-7 w-7"
                                       variant="ghost"
                                       onClick={() => setCorrectionTarget({ payment, action: 'unapply' })}
                                       aria-label="Unapply payment from invoice"

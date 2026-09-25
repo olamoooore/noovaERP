@@ -28,6 +28,7 @@ export function SearchableSelect({
   placeholder = 'Search…',
   emptyLabel = 'None',
   emptyValue = 'none',
+  className,
 }: {
   value: string
   onValueChange: (value: string) => void
@@ -35,6 +36,7 @@ export function SearchableSelect({
   placeholder?: string
   emptyLabel?: string
   emptyValue?: string
+  className?: string
 }) {
   const [open, setOpen] = useState(false)
   const selected = items.find((i) => i.value === value)
@@ -50,6 +52,7 @@ export function SearchableSelect({
           className={cn(
             'h-9 w-full justify-between font-normal',
             value && value !== emptyValue ? 'text-foreground' : 'text-muted-foreground',
+            className,
           )}
         >
           <span className="truncate">{display}</span>

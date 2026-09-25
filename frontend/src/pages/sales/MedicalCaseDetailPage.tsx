@@ -3,10 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Separator } from '@/components/ui/separator'
 import {
   Dialog,
   DialogContent,
@@ -162,85 +162,98 @@ export function MedicalCaseDetailPage() {
 
   return (
     <div className="container mx-auto py-6 space-y-6">
-      <div className="flex items-center justify-between print:hidden">
-        <Button variant="outline" onClick={() => navigate('/sales/medical-cases')}>
-          <Icon icon="solar:arrow-left-bold-duotone" className="mr-2 h-4 w-4" />
+      <div className="print:hidden">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="-ml-2 mb-3 text-muted-foreground hover:text-foreground"
+          onClick={() => navigate('/sales/medical-cases')}
+        >
+          <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
           Back
         </Button>
-        <div className="flex gap-2">
-          {medicalCase.status === 'draft' && (
-            <>
-              <Button variant="outline" onClick={() => navigate(`/sales/medical-cases/${id}/edit`)}>
-                <Icon icon="solar:pen-bold-duotone" className="mr-2 h-4 w-4" />
-                Edit
-              </Button>
-              <Button onClick={() => openLifecycleDialog('allocate')}>
-                <Icon icon="solar:box-bold-duotone" className="mr-2 h-4 w-4" />
-                Allocate
-              </Button>
-              <Button variant="destructive" onClick={() => cancelMutation.mutate()}>
-                Cancel Case
-              </Button>
-            </>
-          )}
-          {medicalCase.status === 'allocated' && (
-            <>
-              <Button onClick={() => openLifecycleDialog('deliver')}>
-                <Icon icon="solar:delivery-bold-duotone" className="mr-2 h-4 w-4" />
-                Record Delivery
-              </Button>
-              <Button variant="outline" onClick={() => openLifecycleDialog('invoice')}>
-                <Icon icon="solar:file-text-bold-duotone" className="mr-2 h-4 w-4" />
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold">{medicalCase.case_no}</h1>
+            <Badge className={STATUS_COLORS[medicalCase.status] || 'bg-gray-100 text-gray-800'}>
+              {medicalCase.status}
+            </Badge>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {medicalCase.status === 'draft' && (
+              <>
+                <HeaderActionButton
+                  variant="outline"
+                  icon="solar:pen-bold-duotone"
+                  onClick={() => navigate(`/sales/medical-cases/${id}/edit`)}
+                >
+                  Edit
+                </HeaderActionButton>
+                <HeaderActionButton icon="solar:box-bold-duotone" onClick={() => openLifecycleDialog('allocate')}>
+                  Allocate
+                </HeaderActionButton>
+                <HeaderActionButton
+                  variant="outline"
+                  icon="solar:close-circle-bold-duotone"
+                  className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => cancelMutation.mutate()}
+                >
+                  Cancel Case
+                </HeaderActionButton>
+              </>
+            )}
+            {medicalCase.status === 'allocated' && (
+              <>
+                <HeaderActionButton icon="solar:delivery-bold-duotone" onClick={() => openLifecycleDialog('deliver')}>
+                  Record Delivery
+                </HeaderActionButton>
+                <HeaderActionButton
+                  variant="outline"
+                  icon="solar:file-text-bold-duotone"
+                  onClick={() => openLifecycleDialog('invoice')}
+                >
+                  Invoice
+                </HeaderActionButton>
+              </>
+            )}
+            {medicalCase.status === 'delivered' && (
+              <HeaderActionButton icon="solar:file-text-bold-duotone" onClick={() => openLifecycleDialog('invoice')}>
                 Invoice
-              </Button>
-            </>
-          )}
-          {medicalCase.status === 'delivered' && (
-            <Button onClick={() => openLifecycleDialog('invoice')}>
-              <Icon icon="solar:file-text-bold-duotone" className="mr-2 h-4 w-4" />
-              Invoice
-            </Button>
-          )}
-          {medicalCase.status === 'invoiced' && (
-            <Button onClick={() => completeMutation.mutate()}>
-              <Icon icon="solar:check-circle-bold-duotone" className="mr-2 h-4 w-4" />
-              Mark Complete
-            </Button>
-          )}
+              </HeaderActionButton>
+            )}
+            {medicalCase.status === 'invoiced' && (
+              <HeaderActionButton icon="solar:check-circle-bold-duotone" onClick={() => completeMutation.mutate()}>
+                Mark Complete
+              </HeaderActionButton>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        <h1 className="text-3xl font-bold">{medicalCase.case_no}</h1>
-        <Badge className={STATUS_COLORS[medicalCase.status] || 'bg-gray-100 text-gray-800'}>
-          {medicalCase.status}
-        </Badge>
-      </div>
-
       {/* Smart Buttons */}
-      <div className="flex gap-3 print:hidden">
+      <div className="flex flex-wrap gap-2 print:hidden">
         {medicalCase.patient_name && (
-          <button
-            className="inline-flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-muted transition-colors"
-          >
-            <Icon icon="solar:user-bold-duotone" className="h-4 w-4" />
+          <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 text-xs font-medium text-primary">
+            <Icon icon="solar:user-bold-duotone" className="h-3.5 w-3.5" />
             {medicalCase.patient_name}
-          </button>
+          </span>
         )}
         {medicalCase.invoice && (
           <button
+            type="button"
             onClick={() => navigate(`/invoices/${medicalCase.invoice_id}`)}
-            className="inline-flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-muted transition-colors"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 text-xs font-medium text-primary transition-colors hover:border-primary/50 hover:bg-primary/10"
           >
-            <Icon icon="solar:file-text-bold-duotone" className="h-4 w-4" />
+            <Icon icon="solar:file-text-bold-duotone" className="h-3.5 w-3.5" />
             {medicalCase.invoice.invoice_number}
           </button>
         )}
         <button
+          type="button"
           onClick={() => navigate('/sales/bonus-schemes')}
-          className="inline-flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-muted transition-colors"
+          className="inline-flex h-8 items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 text-xs font-medium text-primary transition-colors hover:border-primary/50 hover:bg-primary/10"
         >
-          <Icon icon="solar:gift-bold-duotone" className="h-4 w-4" />
+          <Icon icon="solar:gift-bold-duotone" className="h-3.5 w-3.5" />
           Bonus Schemes
         </button>
       </div>

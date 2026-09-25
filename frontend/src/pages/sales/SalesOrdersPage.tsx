@@ -12,6 +12,8 @@ import { useNavigate } from 'react-router-dom'
 import { formatDate, formatCurrency } from '@/lib/utils'
 import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { Pagination } from '@/components/ui/Pagination'
+import { SortableHead } from '@/components/ui/SortableHead'
+import { useSort } from '@/hooks/useSort'
 
 const STATUS_FILTERS = [
   { value: 'all', label: 'All Statuses' },
@@ -87,6 +89,7 @@ export function SalesOrdersPage() {
   })
 
   const orders = data?.data || []
+  const { sorted: sortedOrders, sortKey, sortDir, toggle: toggleSort } = useSort<any>(orders, 'created_at', 'desc')
   const meta = data?.meta || data
 
   const getStatusBadge = (status: string) => {
@@ -160,18 +163,18 @@ export function SalesOrdersPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Order #</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Channel</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Created Date</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead>Status</TableHead>
+                    <SortableHead label="Order #" sortKey="sales_order_number" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Customer" sortKey="customer.name" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Channel" sortKey="channel" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Date" sortKey="order_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Created Date" sortKey="created_at" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Total" sortKey="total" activeKey={sortKey} direction={sortDir} onSort={toggleSort} align="right" />
+                    <SortableHead label="Status" sortKey="status" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {orders.map((order: any) => (
+                  {sortedOrders.map((order: any) => (
                     <TableRow key={order.id}>
                       <TableCell className="font-medium">
                         <div>{order.sales_order_number}</div>

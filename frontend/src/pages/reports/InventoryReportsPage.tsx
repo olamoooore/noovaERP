@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
@@ -91,14 +91,7 @@ export function InventoryReportsPage() {
     setFilters(newFilters);
   };
 
-  const handleExport = () => {
-    // TODO: Implement export functionality
-    console.log('Export report:', activeTab);
-  };
-
-  const handlePrint = () => {
-    window.print();
-  };
+  const reportRef = useRef<HTMLDivElement>(null);
 
   // Stock Valuation Columns
   const valuationColumns: Column[] = [
@@ -463,8 +456,8 @@ export function InventoryReportsPage() {
             isLoading={isValuationLoading}
             error={valuationError?.message || null}
             onRefresh={refetchValuation}
-            onExport={handleExport}
-            onPrint={handlePrint}
+            exportTargetRef={reportRef}
+            exportFilename={`inventory-${activeTab}-${filters.start_date || 'all'}-${filters.end_date || 'all'}`}
           >
             {valuationData && (
               <div className="space-y-6">
@@ -531,8 +524,8 @@ export function InventoryReportsPage() {
             isLoading={isMovementLoading}
             error={movementError?.message || null}
             onRefresh={refetchMovement}
-            onExport={handleExport}
-            onPrint={handlePrint}
+            exportTargetRef={reportRef}
+            exportFilename={`inventory-${activeTab}-${filters.start_date || 'all'}-${filters.end_date || 'all'}`}
           >
             {movementData && (
               <div className="space-y-6">
@@ -622,8 +615,8 @@ export function InventoryReportsPage() {
             isLoading={isReorderLoading}
             error={reorderError?.message || null}
             onRefresh={refetchReorder}
-            onExport={handleExport}
-            onPrint={handlePrint}
+            exportTargetRef={reportRef}
+            exportFilename={`inventory-${activeTab}-${filters.start_date || 'all'}-${filters.end_date || 'all'}`}
           >
             {reorderData && (
               <div className="space-y-6">
@@ -670,8 +663,8 @@ export function InventoryReportsPage() {
             isLoading={isAgingLoading}
             error={agingError?.message || null}
             onRefresh={refetchAging}
-            onExport={handleExport}
-            onPrint={handlePrint}
+            exportTargetRef={reportRef}
+            exportFilename={`inventory-${activeTab}-${filters.start_date || 'all'}-${filters.end_date || 'all'}`}
           >
             {agingData && (
               <div className="space-y-6">
@@ -723,8 +716,8 @@ export function InventoryReportsPage() {
             isLoading={isTurnoverLoading}
             error={turnoverError?.message || null}
             onRefresh={refetchTurnover}
-            onExport={handleExport}
-            onPrint={handlePrint}
+            exportTargetRef={reportRef}
+            exportFilename={`inventory-${activeTab}-${filters.start_date || 'all'}-${filters.end_date || 'all'}`}
           >
             {turnoverData && (
               <div className="space-y-6">

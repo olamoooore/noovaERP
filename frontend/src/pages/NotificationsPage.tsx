@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {Card, CardContent, CardHeader} from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import {Tabs, TabsList, TabsTrigger} from '@/components/ui/tabs'
 import {
   Select,
   SelectContent,
@@ -17,6 +17,7 @@ import { formatDate } from '@/lib/utils'
 import api from '@/lib/api'
 import { linkableRefs, refLabel, refRoute, resolveNotificationTarget } from '@/lib/notificationLinks'
 import type { NotificationItem } from '@/components/layout/NotificationBell'
+import { notificationText } from '@/lib/notificationText'
 
 const formatRelativeTime = (iso: string | null) => {
   if (!iso) return ''
@@ -169,7 +170,9 @@ export default function NotificationsPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {items.map((item) => (
+              {items.map((item) => {
+                const text = notificationText(item)
+                return (
                 <div
                   key={item.id}
                   className={`group flex cursor-pointer gap-4 rounded-lg border border-l-4 bg-card p-4 transition-colors hover:bg-muted/30 ${eventColor(item.event)} ${
@@ -180,7 +183,7 @@ export default function NotificationsPage() {
                   <div className="flex-1 space-y-1">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{item.subject}</span>
+                        <span className="text-sm font-medium">{text.title}</span>
                         {!item.read_at && (
                           <span className="h-2 w-2 rounded-full bg-primary" />
                         )}
@@ -199,7 +202,7 @@ export default function NotificationsPage() {
                         </button>
                       </div>
                     </div>
-                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{item.body}</p>
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{text.body}</p>
                     {(() => {
                       const refs = linkableRefs(item.data)
                       if (refs.length === 0) return null
@@ -252,7 +255,8 @@ export default function NotificationsPage() {
                     </div>
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </CardContent>

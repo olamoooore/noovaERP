@@ -340,19 +340,22 @@ export const QuotationEditPage: React.FC = () => {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate(`/quotations/${id}`)}>
-            <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
-            Back
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold">Edit Quotation</h1>
-            <p className="text-muted-foreground mt-1">
-              {quotation?.quotation_number ? `Editing ${quotation.quotation_number}` : 'Update quotation details'}
-            </p>
-            {id && <div className="mt-2"><TagEditor subjectType="quotation" subjectId={id} /></div>}
-          </div>
+      <div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="-ml-2 mb-3 text-muted-foreground hover:text-foreground"
+          onClick={() => navigate(`/quotations/${id}`)}
+        >
+          <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
+          Back
+        </Button>
+        <div>
+          <h1 className="text-3xl font-bold">Edit Quotation</h1>
+          <p className="text-muted-foreground mt-1">
+            {quotation?.quotation_number ? `Editing ${quotation.quotation_number}` : 'Update quotation details'}
+          </p>
+          {id && <div className="mt-2"><TagEditor subjectType="quotation" subjectId={id} /></div>}
         </div>
       </div>
 
@@ -625,14 +628,21 @@ export const QuotationEditPage: React.FC = () => {
                         <ProductSearchCombobox
                           value={line.product_id}
                           onValueChange={(val, product) => {
+                            const productChanged = val !== lines[index].product_id
                             updateLine(index, 'product_id', val)
                             if (product) {
                               const updated = [...lines]
                               updated[index] = {
                                 ...updated[index],
                                 product_id: val,
-                                description: getProductLineDescription(product) || updated[index].description,
-                                unit_price: parseFloat((product as any).price || (product as any).selling_price || '0') || updated[index].unit_price,
+                                description: productChanged
+                                  ? getProductLineDescription(product)
+                                  : (updated[index].description || getProductLineDescription(product)),
+                                // Re-price from the NEW product; only a no-op
+                                // re-select of the same product keeps edits.
+                                unit_price: productChanged
+                                  ? (parseFloat((product as any).price || (product as any).selling_price || '0') || 0)
+                                  : updated[index].unit_price,
                               }
                               setLines(updated)
                             }

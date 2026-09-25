@@ -2,12 +2,16 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  SettingsSectionHeader,
+  SettingsSectionNav,
+  type SettingsSectionDef,
+} from '@/components/settings/settings-ui';
 import {
   Select,
   SelectContent,
@@ -24,12 +28,76 @@ import MultiCurrencyPage from '@/pages/accounting/MultiCurrencyPage';
 import AccountingOnboardingPage from '@/pages/accounting/AccountingOnboardingPage';
 import AccountingEntityManagementPage from '@/pages/accounting/AccountingEntityManagementPage';
 
+const COMPANY_SECTIONS: SettingsSectionDef[] = [
+  {
+    key: 'company',
+    title: 'Company Info',
+    description: 'Legal name, tax ID, contact details and logo',
+    icon: 'solar:buildings-bold-duotone',
+    component: () => null,
+  },
+  {
+    key: 'fiscal',
+    title: 'Fiscal Year',
+    description: 'Year start and end dates plus the posting lock date',
+    icon: 'solar:calendar-bold-duotone',
+    component: () => null,
+  },
+  {
+    key: 'currency',
+    title: 'Currency & Formats',
+    description: 'Base currency, date and number formatting',
+    icon: 'solar:dollar-minimalistic-bold-duotone',
+    component: () => null,
+  },
+  {
+    key: 'accounts',
+    title: 'Default Accounts',
+    description: 'GL accounts used by automatic postings',
+    icon: 'solar:wallet-money-bold-duotone',
+    component: () => null,
+  },
+  {
+    key: 'country',
+    title: 'Country Plugin',
+    description: 'Country-specific tax and compliance rules',
+    icon: 'solar:globus-bold-duotone',
+    component: () => null,
+  },
+  {
+    key: 'chart-of-accounts',
+    title: 'Chart of Accounts',
+    description: 'Create and organise the account tree',
+    icon: 'solar:list-check-bold-duotone',
+    component: () => null,
+  },
+  {
+    key: 'multi-currency',
+    title: 'Multi-Currency',
+    description: 'Exchange rates and foreign-currency setup',
+    icon: 'solar:refresh-circle-bold-duotone',
+    component: () => null,
+  },
+  {
+    key: 'entities',
+    title: 'Entities',
+    description: 'Legal entities and their accounting scope',
+    icon: 'solar:buildings-2-bold-duotone',
+    component: () => null,
+  },
+];
+
 export default function CompanySettingsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'company');
+
+  const changeTab = (tab: string) => {
+    setActiveTab(tab);
+    setSearchParams({ tab }, { replace: true });
+  };
 
   // Acme tenants — Acme has its own country plugin configuration managed
   // elsewhere, so the Country Plugin tab is suppressed here for that tenant.
@@ -101,7 +169,6 @@ export default function CompanySettingsPage() {
     },
   });
 
-  const currencies = currenciesResponse?.data || {};
   const availableCurrencies = currenciesResponse?.available_currencies || [];
 
   // Fetch default accounts
@@ -317,9 +384,9 @@ export default function CompanySettingsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Company Settings</h1>
-          <p className="text-muted-foreground mt-1">
-            Configure company information and fiscal year
+          <h1 className="text-3xl font-bold tracking-tight">Company Settings</h1>
+          <p className="mt-1 text-muted-foreground">
+            Company profile, fiscal year, currencies, default accounts and accounting structure.
           </p>
         </div>
         <HeaderActionButton icon="solar:arrow-left-linear" onClick={() => navigate('/accounting')}>
@@ -327,33 +394,28 @@ export default function CompanySettingsPage() {
         </HeaderActionButton>
       </div>
 
-      {/* Tabs */}
-      <Tabs
-        value={activeTab}
-        onValueChange={(tab) => {
-          setActiveTab(tab);
-          setSearchParams({ tab }, { replace: true });
-        }}
-      >
-        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1">
-          <TabsTrigger value="company">Company Info</TabsTrigger>
-          <TabsTrigger value="fiscal">Fiscal Year</TabsTrigger>
-          <TabsTrigger value="currency">Currency & Formats</TabsTrigger>
-          <TabsTrigger value="accounts">Default Accounts</TabsTrigger>
-          {!isAcmeTenant && (
-            <TabsTrigger value="country">Country Plugin</TabsTrigger>
-          )}
-          <TabsTrigger value="chart-of-accounts">Chart of Accounts</TabsTrigger>
-          <TabsTrigger value="multi-currency">Multi-Currency</TabsTrigger>
-          {/* <TabsTrigger value="onboarding">Onboarding</TabsTrigger> */}
-          <TabsTrigger value="entities">Entities</TabsTrigger>
-        </TabsList>
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+        <SettingsSectionNav
+          sections={
+            isAcmeTenant
+              ? COMPANY_SECTIONS.filter((section) => section.key !== 'country')
+              : COMPANY_SECTIONS
+          }
+          activeKey={activeTab}
+          onSelect={changeTab}
+        />
 
-        {/* Company Info Tab */}
-        <TabsContent value="company" className="space-y-4">
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Company Information</h2>
-            <form onSubmit={handleCompanySubmit} className="space-y-4">
+        <div className="min-w-0 flex-1 space-y-4">
+
+        {activeTab === 'company' && (
+          <Card className="overflow-hidden">
+            <SettingsSectionHeader
+              icon="solar:buildings-bold-duotone"
+              title="Company Information"
+              description="These details appear on invoices, quotations, delivery orders and other documents."
+            />
+            <CardContent className="px-6 pb-6 pt-6">
+              <form id="company-info-form" onSubmit={handleCompanySubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="company_name">Company Name</Label>
@@ -465,28 +527,35 @@ export default function CompanySettingsPage() {
                   </p>
                 </div>
               </div>
-              <Button type="submit" disabled={updateCompanyMutation.isPending}>
+              </form>
+            </CardContent>
+            <div className="flex items-center justify-end border-t bg-muted/20 px-6 py-3">
+              <Button
+                type="submit"
+                form="company-info-form"
+                size="sm"
+                disabled={updateCompanyMutation.isPending}
+              >
                 {updateCompanyMutation.isPending ? (
-                  <>
-                    <Icon icon="svg-spinners:ring-resize" className="w-4 h-4 mr-2" />
-                    Saving...
-                  </>
+                  <Icon icon="eos-icons:loading" className="mr-2 h-4 w-4" />
                 ) : (
-                  <>
-                    <Icon icon="solar:diskette-linear" className="w-4 h-4 mr-2" />
-                    Save Settings
-                  </>
+                  <Icon icon="solar:diskette-bold-duotone" className="mr-2 h-4 w-4" />
                 )}
+                Save Settings
               </Button>
-            </form>
+            </div>
           </Card>
-        </TabsContent>
+        )}
 
-        {/* Fiscal Year Tab */}
-        <TabsContent value="fiscal" className="space-y-4">
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Fiscal Year Configuration</h2>
-            <form onSubmit={handleFiscalYearSubmit} className="space-y-4">
+        {activeTab === 'fiscal' && (
+          <Card className="overflow-hidden">
+            <SettingsSectionHeader
+              icon="solar:calendar-bold-duotone"
+              title="Fiscal Year"
+              description="Set the financial year window for reports and the date before which transactions are locked."
+            />
+            <CardContent className="px-6 pb-6 pt-6">
+              <form id="fiscal-year-form" onSubmit={handleFiscalYearSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="fiscal_year_start">Fiscal Year Start Date</Label>
@@ -527,28 +596,35 @@ export default function CompanySettingsPage() {
                   </p>
                 </div>
               </div>
-              <Button type="submit" disabled={updateFiscalYearMutation.isPending}>
+              </form>
+            </CardContent>
+            <div className="flex items-center justify-end border-t bg-muted/20 px-6 py-3">
+              <Button
+                type="submit"
+                form="fiscal-year-form"
+                size="sm"
+                disabled={updateFiscalYearMutation.isPending}
+              >
                 {updateFiscalYearMutation.isPending ? (
-                  <>
-                    <Icon icon="svg-spinners:ring-resize" className="w-4 h-4 mr-2" />
-                    Saving...
-                  </>
+                  <Icon icon="eos-icons:loading" className="mr-2 h-4 w-4" />
                 ) : (
-                  <>
-                    <Icon icon="solar:diskette-linear" className="w-4 h-4 mr-2" />
-                    Save Fiscal Year
-                  </>
+                  <Icon icon="solar:diskette-bold-duotone" className="mr-2 h-4 w-4" />
                 )}
+                Save Fiscal Year
               </Button>
-            </form>
+            </div>
           </Card>
-        </TabsContent>
+        )}
 
-        {/* Currency & Formats Tab */}
-        <TabsContent value="currency" className="space-y-4">
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Currency & Format Settings</h2>
-            <form onSubmit={handleCurrencySubmit} className="space-y-4">
+        {activeTab === 'currency' && (
+          <Card className="overflow-hidden">
+            <SettingsSectionHeader
+              icon="solar:dollar-minimalistic-bold-duotone"
+              title="Currency & Formats"
+              description="The base currency amounts are recorded in, and how dates and numbers are displayed."
+            />
+            <CardContent className="px-6 pb-6 pt-6">
+              <form id="currency-form" onSubmit={handleCurrencySubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="base_currency">Base Currency</Label>
@@ -650,31 +726,35 @@ export default function CompanySettingsPage() {
                   </Select>
                 </div>
               </div>
-              <Button type="submit" disabled={updateCurrenciesMutation.isPending}>
+              </form>
+            </CardContent>
+            <div className="flex items-center justify-end border-t bg-muted/20 px-6 py-3">
+              <Button
+                type="submit"
+                form="currency-form"
+                size="sm"
+                disabled={updateCurrenciesMutation.isPending}
+              >
                 {updateCurrenciesMutation.isPending ? (
-                  <>
-                    <Icon icon="svg-spinners:ring-resize" className="w-4 h-4 mr-2" />
-                    Saving...
-                  </>
+                  <Icon icon="eos-icons:loading" className="mr-2 h-4 w-4" />
                 ) : (
-                  <>
-                    <Icon icon="solar:diskette-linear" className="w-4 h-4 mr-2" />
-                    Save Currency Settings
-                  </>
+                  <Icon icon="solar:diskette-bold-duotone" className="mr-2 h-4 w-4" />
                 )}
+                Save Currency Settings
               </Button>
-            </form>
+            </div>
           </Card>
-        </TabsContent>
+        )}
 
-        {/* Default Accounts Tab */}
-        <TabsContent value="accounts" className="space-y-4">
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Default Accounts</h2>
-            <p className="text-sm text-muted-foreground mb-4">
-              Configure default accounts for common transactions. These accounts will be automatically selected when creating new transactions.
-            </p>
-            <form onSubmit={handleAccountsSubmit} className="space-y-4">
+        {activeTab === 'accounts' && (
+          <Card className="overflow-hidden">
+            <SettingsSectionHeader
+              icon="solar:wallet-money-bold-duotone"
+              title="Default Accounts"
+              description="Accounts selected automatically when creating transactions and running automatic postings."
+            />
+            <CardContent className="px-6 pb-6 pt-6">
+              <form id="default-accounts-form" onSubmit={handleAccountsSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="accounts_receivable">Accounts Receivable</Label>
@@ -837,46 +917,39 @@ export default function CompanySettingsPage() {
                   </Select>
                 </div>
               </div>
-              <Button type="submit" disabled={updateAccountsMutation.isPending}>
+              </form>
+            </CardContent>
+            <div className="flex items-center justify-end border-t bg-muted/20 px-6 py-3">
+              <Button
+                type="submit"
+                form="default-accounts-form"
+                size="sm"
+                disabled={updateAccountsMutation.isPending}
+              >
                 {updateAccountsMutation.isPending ? (
-                  <>
-                    <Icon icon="svg-spinners:ring-resize" className="w-4 h-4 mr-2" />
-                    Saving...
-                  </>
+                  <Icon icon="eos-icons:loading" className="mr-2 h-4 w-4" />
                 ) : (
-                  <>
-                    <Icon icon="solar:diskette-linear" className="w-4 h-4 mr-2" />
-                    Save Default Accounts
-                  </>
+                  <Icon icon="solar:diskette-bold-duotone" className="mr-2 h-4 w-4" />
                 )}
+                Save Default Accounts
               </Button>
-            </form>
+            </div>
           </Card>
-        </TabsContent>
-
-        {/* Country Plugin Tab — suppressed for Acme (managed elsewhere). */}
-        {!isAcmeTenant && (
-          <TabsContent value="country" className="space-y-4">
-            <CountryPluginSettings />
-          </TabsContent>
         )}
 
-        <TabsContent value="chart-of-accounts" className="space-y-4">
-          <ChartOfAccountsPage embedded />
-        </TabsContent>
+        {/* Country Plugin — suppressed for Acme (managed elsewhere). */}
+        {!isAcmeTenant && activeTab === 'country' && <CountryPluginSettings />}
 
-        <TabsContent value="multi-currency" className="space-y-4">
-          <MultiCurrencyPage embedded />
-        </TabsContent>
+        {activeTab === 'chart-of-accounts' && <ChartOfAccountsPage embedded />}
 
-        <TabsContent value="onboarding" className="space-y-4">
-          <AccountingOnboardingPage />
-        </TabsContent>
+        {activeTab === 'multi-currency' && <MultiCurrencyPage embedded />}
 
-        <TabsContent value="entities" className="space-y-4">
-          <AccountingEntityManagementPage embedded />
-        </TabsContent>
-      </Tabs>
+        {/* Kept reachable via the /accounting/core/onboarding deep link. */}
+        {activeTab === 'onboarding' && <AccountingOnboardingPage />}
+
+        {activeTab === 'entities' && <AccountingEntityManagementPage embedded />}
+        </div>
+      </div>
     </div>
   );
 }

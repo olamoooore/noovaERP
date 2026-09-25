@@ -10,14 +10,18 @@ import { useToast } from '@/hooks/use-toast';
 import { useTags } from '@/hooks/use-tags';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '@/lib/api';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 import { INVOICE_EXPORT_COLUMNS, SalesDocumentExportMenu } from '@/components/sales/SalesDocumentExportMenu';
 import { SalesLineColumnMenu, SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility';
 import { useBulkSelection } from '@/hooks/use-bulk-selection';
-import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice';
+import { BulkActionBar } from '@/components/ui/bulk-action-bar';
+import { StatCard } from '@/components/ui/stat-card';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Pagination } from '@/components/ui/Pagination';
+import { SortableHead } from '@/components/ui/SortableHead';
+import { useSort } from '@/hooks/useSort';
 
 /**
  * Customer Invoices Page
@@ -46,6 +50,7 @@ export const CustomerBills: React.FC = () => {
   const [customEndDate, setCustomEndDate] = useState('');
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkDeleteCount, setBulkDeleteCount] = useState(0);
+  const [bulkPostOpen, setBulkPostOpen] = useState(false);
   const { toast } = useToast();
   const { data: allTags = [] } = useTags();
   const queryClient = useQueryClient();
@@ -148,9 +153,19 @@ export const CustomerBills: React.FC = () => {
   });
 
   const invoices = invoicesData?.data || [];
-  const currentPage = invoicesData?.current_page || 1;
+  const { sorted: sortedInvoices, sortKey, sortDir, toggle: toggleSort } = useSort<any>(invoices, 'created_at', 'desc');
   const lastPage = invoicesData?.last_page || 1;
   const totalRecords = invoicesData?.total || 0;
+  // Summary metrics for the current view. Page-scoped money metrics are
+  // labelled as such — the API only paginates, it does not aggregate.
+  const viewInvoices = invoicesData?.data || [];
+  const pageBalance = viewInvoices.reduce((sum: number, invoice: any) => sum + Number(invoice.balance || 0), 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const overdueCount = viewInvoices.filter(
+    (invoice: any) => Number(invoice.balance || 0) > 0 && invoice.due_date && new Date(invoice.due_date) < today,
+  ).length;
+
   const {
     selectedIds, clearSelection, toggleSelect, togglePageSelection,
     selectAllMatching, allPageSelected, allMatchingSelected, isSelectingAll,
@@ -181,6 +196,37 @@ export const CustomerBills: React.FC = () => {
         variant: 'destructive', 
         title: 'Failed to post invoice',
         description: error.response?.data?.message || 'An error occurred'
+      });
+    },
+  });
+
+  const bulkPostMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      const response = await api.post('/invoices/bulk-post', { ids });
+      return response.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['customer-bills'] });
+      clearSelection();
+      const postedCount = data?.posted?.length || 0;
+      const skippedCount = data?.skipped?.length || 0;
+      if (skippedCount > 0) {
+        toast({
+          title: `Bulk post complete: ${postedCount} posted, ${skippedCount} skipped`,
+          description: (data?.skipped || [])
+            .slice(0, 3)
+            .map((skip: any) => `#${skip.id}: ${skip.reason}`)
+            .join('; '),
+        });
+      } else {
+        toast({ title: `${postedCount} invoice(s) posted successfully` });
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Bulk post failed',
+        description: error.response?.data?.message || 'An error occurred',
       });
     },
   });
@@ -425,63 +471,41 @@ export const CustomerBills: React.FC = () => {
         )}
       </div>
 
-      {/* Quick Stats */}
-      {invoices && invoices.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Invoices</p>
-                  <p className="text-2xl font-bold">{totalRecords}</p>
-                </div>
-                <Icon icon="solar:document-text-bold-duotone" className="h-8 w-8 text-blue-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Page</p>
-                  <p className="text-2xl font-bold">
-                    {currentPage} / {lastPage}
-                  </p>
-                </div>
-                <Icon icon="solar:document-bold-duotone" className="h-8 w-8 text-gray-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Selected</p>
-                  <p className="text-2xl font-bold">{selectedIds.length}</p>
-                </div>
-                <Icon icon="solar:check-circle-bold-duotone" className="h-8 w-8 text-orange-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm text-muted-foreground">Per Page</p>
-                  <select
-                    value={perPage}
-                    onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1); }}
-                    className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    {[10, 20, 50, 100].map((n) => (
-                      <option key={n} value={n}>{n}</option>
-                    ))}
-                  </select>
-                </div>
-                <Icon icon="solar:sort-bold-duotone" className="h-8 w-8 text-green-500" />
-              </div>
-            </CardContent>
-          </Card>
+      {/* Summary metrics */}
+      {viewInvoices.length > 0 && (
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <StatCard
+            label="Total Invoices"
+            value={totalRecords}
+            hint="Across all pages"
+            icon="solar:document-text-bold-duotone"
+            tone="bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400"
+          />
+          <StatCard
+            label="Page Balance"
+            value={formatCurrency(pageBalance)}
+            hint="Outstanding on this page"
+            icon="solar:wallet-money-bold-duotone"
+            tone="bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400"
+          />
+          <StatCard
+            label="Selected"
+            value={selectedIds.length}
+            hint="Ready for bulk actions"
+            icon="solar:check-circle-bold-duotone"
+            tone="bg-violet-100 text-violet-600 dark:bg-violet-950/60 dark:text-violet-400"
+          />
+          <StatCard
+            label={overdueCount > 0 ? 'Overdue' : 'No Overdue'}
+            value={overdueCount}
+            hint="On this page"
+            icon="solar:clock-circle-bold-duotone"
+            tone={
+              overdueCount > 0
+                ? 'bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400'
+                : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400'
+            }
+          />
         </div>
       )}
 
@@ -510,12 +534,13 @@ export const CustomerBills: React.FC = () => {
               </div>
               <Button
                 variant="ghost"
-                size="sm"
+                size="icon"
                 onClick={handleClearDrillDownFilters}
-                className="text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                className="h-8 w-8 text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                title="Clear filters"
+                aria-label="Clear filters"
               >
-                <Icon icon="solar:close-circle-bold" className="h-4 w-4 mr-1" />
-                Clear Filters
+                <Icon icon="solar:close-circle-bold" className="h-4 w-4" />
               </Button>
             </div>
           </CardContent>
@@ -526,16 +551,8 @@ export const CustomerBills: React.FC = () => {
       {showUpload && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>Upload Customer Invoices</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowUpload(false)}
-              >
-                <Icon icon="solar:close-circle-bold" className="h-5 w-5" />
-              </Button>
-            </CardTitle>
+            {/* Cancel lives in the DocumentUpload footer — no duplicate close here. */}
+            <CardTitle>Upload Customer Invoices</CardTitle>
           </CardHeader>
           <CardContent>
             <DocumentUpload
@@ -547,29 +564,35 @@ export const CustomerBills: React.FC = () => {
       )}
 
       {/* Bulk action bar */}
-      {selectedIds.length > 0 && (
-        <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950 dark:border-blue-800">
-          <CardContent className="pt-4">
-            <div className="flex items-center justify-between">
-              <BulkSelectionNotice pageSize={invoices.length} allPageSelected={allPageSelected} selectedCount={selectedIds.length} allMatchingSelected={allMatchingSelected} isSelectingAll={isSelectingAll} onSelectAllMatching={selectAllMatching} noun="invoices" />
-              <div className="flex gap-2">
-                <Button variant="ghost" size="sm" onClick={clearSelection}>
-                  Clear selection
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleBulkDelete}
-                  disabled={bulkDeleteMutation.isPending}
-                >
-                  <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-4 w-4 mr-1" />
-                  {bulkDeleteMutation.isPending ? 'Deleting...' : 'Delete Selected'}
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <BulkActionBar
+        selectedCount={selectedIds.length}
+        pageSize={invoices.length}
+        allPageSelected={allPageSelected}
+        allMatchingSelected={allMatchingSelected}
+        isSelectingAll={isSelectingAll}
+        onSelectAllMatching={selectAllMatching}
+        onClearSelection={clearSelection}
+        noun="invoices"
+        destructiveAction={
+          <HeaderActionButton
+            variant="destructive"
+            icon="solar:trash-bin-trash-bold-duotone"
+            disabled={bulkDeleteMutation.isPending}
+            onClick={handleBulkDelete}
+          >
+            Delete ({selectedIds.length})
+          </HeaderActionButton>
+        }
+      >
+        <HeaderActionButton
+          icon="solar:check-circle-bold"
+          loading={bulkPostMutation.isPending}
+          disabled={bulkPostMutation.isPending}
+          onClick={() => setBulkPostOpen(true)}
+        >
+          Bulk Post ({selectedIds.length})
+        </HeaderActionButton>
+      </BulkActionBar>
 
       {/* Bills List */}
       <Card>
@@ -632,20 +655,20 @@ export const CustomerBills: React.FC = () => {
                         title="Select all invoices on this page"
                       />
                     </TableHead>
-                    <TableHead>Invoice #</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Created Date</TableHead>
-                    <TableHead>Due Date</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="text-right">Balance</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Source</TableHead>
+                    <SortableHead label="Invoice #" sortKey="invoice_number" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Customer" sortKey="customer.name" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Date" sortKey="invoice_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Created Date" sortKey="created_at" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Due Date" sortKey="due_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Total" sortKey="total" activeKey={sortKey} direction={sortDir} onSort={toggleSort} align="right" />
+                    <SortableHead label="Balance" sortKey="balance" activeKey={sortKey} direction={sortDir} onSort={toggleSort} align="right" />
+                    <SortableHead label="Status" sortKey="status" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Source" sortKey="ocr_document_id" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {invoices.map((invoice: any) => (
+                  {sortedInvoices.map((invoice: any) => (
                     <TableRow
                       key={invoice.id}
                       className="hover:bg-accent/50 cursor-pointer"
@@ -753,6 +776,21 @@ export const CustomerBills: React.FC = () => {
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={bulkPostOpen}
+        onOpenChange={setBulkPostOpen}
+        title={`Post ${selectedIds.length} invoice(s)?`}
+        description="Each invoice is posted to the general ledger and becomes non-editable. Invoices requiring approval are skipped unless already approved."
+        confirmLabel="Post invoices"
+        tone="warning"
+        icon="solar:check-circle-bold-duotone"
+        isPending={bulkPostMutation.isPending}
+        onConfirm={() => {
+          setBulkPostOpen(false);
+          bulkPostMutation.mutate(selectedIds);
+        }}
+      />
 
       <ConfirmDialog
         open={bulkDeleteOpen}

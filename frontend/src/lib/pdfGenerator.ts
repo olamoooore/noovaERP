@@ -1,6 +1,7 @@
 import html2pdf from 'html2pdf.js';
+import { printPdfBlob } from './printPdf';
 
-interface PDFOptions {
+export interface ReportPdfOptions {
   title: string;
   subtitle?: string;
   companyName?: string;
@@ -8,203 +9,210 @@ interface PDFOptions {
   asOfDate?: string;
   compareDate?: string;
   filename: string;
+  /**
+   * Complete rows (header first). When omitted, the DOM table inside the
+   * target element is used — that table may only hold the current page.
+   */
+  rows?: string[][];
+  /** Per-column alignment for explicit rows; inferred from the DOM otherwise. */
+  columnAligns?: ColumnAlign[];
 }
 
-export function generateReportPDF(
-  tableElement: HTMLElement,
-  options: PDFOptions
-) {
-  const {
-    title,
-    subtitle,
-    companyName = 'NoovaERP',
-    companyLogo,
-    asOfDate,
-    compareDate,
-    filename,
-  } = options;
+type ColumnAlign = 'left' | 'right' | 'center';
 
-  // Create a wrapper div for the PDF content
-  const wrapper = document.createElement('div');
-  wrapper.style.fontFamily = 'Arial, sans-serif';
-  wrapper.style.padding = '40px';
-  wrapper.style.maxWidth = '800px';
-  wrapper.style.margin = '0 auto';
+interface ExtractedTable {
+  aligns: ColumnAlign[];
+  rows: { header: boolean; cells: string[] }[];
+}
 
-  // Header section
-  const header = document.createElement('div');
-  header.style.display = 'flex';
-  header.style.justifyContent = 'space-between';
-  header.style.alignItems = 'center';
-  header.style.marginBottom = '30px';
-  header.style.paddingBottom = '20px';
-  header.style.borderBottom = '3px solid #2563eb';
+const cleanText = (value: string | null) => (value ?? '').replace(/\s+/g, ' ').trim();
 
-  // Company info (left side)
-  const companyInfo = document.createElement('div');
-  if (companyLogo) {
+/**
+ * Pull the report's first table into plain rows + per-column alignment.
+ *
+ * The PDF is built from this data instead of screenshotting the live DOM:
+ * cloning the on-screen card (dark-mode classes, overflow wrappers, sticky
+ * headers, fixed pixel widths) produced clipped, low-quality PDFs.
+ */
+const extractTable = (container: HTMLElement): ExtractedTable | null => {
+  const table = container.querySelector('table');
+  if (!table) return null;
+
+  const aligns: ColumnAlign[] = Array.from(table.querySelectorAll('thead th')).map((th) =>
+    th.className.includes('text-right')
+      ? 'right'
+      : th.className.includes('text-center')
+        ? 'center'
+        : 'left',
+  );
+
+  const rows: { header: boolean; cells: string[] }[] = [];
+  table.querySelectorAll('tr').forEach((tr) => {
+    const cells = Array.from(tr.querySelectorAll('th, td')).map((cell) => cleanText(cell.textContent));
+    if (cells.some(Boolean)) rows.push({ header: !!tr.querySelector('th'), cells });
+  });
+
+  return rows.length > 0 ? { aligns, rows } : null;
+};
+
+const make = (tag: string, style: string, text?: string) => {
+  const node = document.createElement(tag);
+  node.style.cssText = style;
+  if (text !== undefined) node.textContent = text;
+  return node;
+};
+
+/**
+ * Preload the logo before rendering. html2canvas silently drops images that
+ * fail to load, which left the PDF header blank; on failure we fall back to
+ * the tenant company name instead.
+ */
+const loadImage = (src: string): Promise<boolean> =>
+  new Promise((resolve) => {
+    const image = new Image();
+    image.crossOrigin = 'anonymous';
+    const finish = (ok: boolean) => resolve(ok);
+    image.onload = () => finish(true);
+    image.onerror = () => finish(false);
+    window.setTimeout(() => finish(false), 4000);
+    image.src = src;
+  });
+
+const buildReportDocument = async (
+  container: HTMLElement,
+  options: ReportPdfOptions,
+): Promise<HTMLElement> => {
+  const { title, subtitle, companyName, companyLogo, asOfDate, compareDate } = options;
+
+  const wrapper = make(
+    'div',
+    'font-family:Arial,Helvetica,sans-serif;color:#111827;background:#ffffff;padding:4px 2px;max-width:780px;margin:0 auto;',
+  );
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  const header = make(
+    'div',
+    'display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:3px solid #2563eb;padding-bottom:14px;margin-bottom:16px;',
+  );
+
+  // Tenant branding: logo when it actually loads, otherwise the tenant company
+  // name. Never the platform brand — NoovaERP is the ERP, not the issuer.
+  const logoOk = companyLogo ? await loadImage(companyLogo) : false;
+
+  const left = make('div', 'min-width:160px;');
+  if (logoOk && companyLogo) {
     const logo = document.createElement('img');
     logo.src = companyLogo;
-    logo.style.height = '50px';
-    logo.style.marginBottom = '10px';
-    companyInfo.appendChild(logo);
+    logo.style.cssText = 'height:64px;max-width:280px;object-fit:contain;margin-bottom:8px;';
+    left.appendChild(logo);
+  } else if (companyName) {
+    left.appendChild(make('div', 'font-size:20px;font-weight:bold;color:#1e40af;margin-top:6px;', companyName));
   }
-  const companyNameEl = document.createElement('h2');
-  companyNameEl.textContent = companyName;
-  companyNameEl.style.margin = '0';
-  companyNameEl.style.fontSize = '24px';
-  companyNameEl.style.fontWeight = 'bold';
-  companyNameEl.style.color = '#1e40af';
-  companyInfo.appendChild(companyNameEl);
-  header.appendChild(companyInfo);
+  header.appendChild(left);
 
-  // Report info (right side)
-  const reportInfo = document.createElement('div');
-  reportInfo.style.textAlign = 'right';
-
-  const titleEl = document.createElement('h1');
-  titleEl.textContent = title;
-  titleEl.style.margin = '0 0 8px 0';
-  titleEl.style.fontSize = '20px';
-  titleEl.style.fontWeight = 'bold';
-  titleEl.style.color = '#111827';
-  reportInfo.appendChild(titleEl);
-
-  if (subtitle) {
-    const subtitleEl = document.createElement('p');
-    subtitleEl.textContent = subtitle;
-    subtitleEl.style.margin = '0 0 8px 0';
-    subtitleEl.style.fontSize = '14px';
-    subtitleEl.style.color = '#6b7280';
-    reportInfo.appendChild(subtitleEl);
-  }
-
-  if (asOfDate) {
-    const dateEl = document.createElement('p');
-    dateEl.textContent = `As of: ${asOfDate}`;
-    dateEl.style.margin = '0';
-    dateEl.style.fontSize = '14px';
-    dateEl.style.color = '#374151';
-    reportInfo.appendChild(dateEl);
-  }
-
-  if (compareDate) {
-    const compareDateEl = document.createElement('p');
-    compareDateEl.textContent = `Comparison: ${compareDate}`;
-    compareDateEl.style.margin = '4px 0 0 0';
-    compareDateEl.style.fontSize = '14px';
-    compareDateEl.style.color = '#374151';
-    reportInfo.appendChild(compareDateEl);
-  }
-
-  header.appendChild(reportInfo);
+  const right = make('div', 'text-align:right;');
+  right.appendChild(make('div', 'font-size:15px;font-weight:bold;color:#111827;margin-bottom:4px;', title));
+  if (subtitle) right.appendChild(make('div', 'font-size:11px;color:#4b5563;margin-bottom:2px;', subtitle));
+  if (asOfDate) right.appendChild(make('div', 'font-size:11px;color:#4b5563;', `As of: ${asOfDate}`));
+  if (compareDate) right.appendChild(make('div', 'font-size:11px;color:#4b5563;', `Comparison: ${compareDate}`));
+  header.appendChild(right);
   wrapper.appendChild(header);
 
-  // Clone the table element
-  const tableClone = tableElement.cloneNode(true) as HTMLElement;
+  // ── Table ─────────────────────────────────────────────────────────────────
+  const explicitRows = options.rows && options.rows.length > 0 ? options.rows : null;
+  const extracted = explicitRows
+    ? {
+        aligns: options.columnAligns ?? [],
+        rows: explicitRows.map((cells, index) => ({ header: index === 0, cells })),
+      }
+    : extractTable(container);
+  if (extracted) {
+    const columnCount = Math.max(...extracted.rows.map((row) => row.cells.length));
+    const fontSize = columnCount > 7 ? '8.5px' : columnCount > 5 ? '9.5px' : '10.5px';
 
-  // Drop controls (export/expand buttons) so they never render inside the PDF.
-  tableClone.querySelectorAll('[data-no-export]').forEach((el) => el.remove());
+    const table = make('table', `width:100%;border-collapse:collapse;font-size:${fontSize};`);
+    const thead = document.createElement('thead');
+    const tbody = document.createElement('tbody');
 
-  // Style the table for PDF
-  const table = tableClone.querySelector('table') || tableClone;
-  if (table instanceof HTMLElement) {
-    table.style.width = '100%';
-    table.style.borderCollapse = 'collapse';
-    table.style.fontSize = '12px';
+    extracted.rows.forEach((row) => {
+      const tr = document.createElement('tr');
+      row.cells.forEach((value, index) => {
+        const cell = document.createElement(row.header ? 'th' : 'td');
+        const align = extracted.aligns[index] ?? 'left';
+        cell.style.cssText = row.header
+          ? 'padding:6px 7px;text-align:left;background:#f3f4f6;font-weight:bold;color:#111827;border-bottom:2px solid #d1d5db;'
+          : `padding:5px 7px;text-align:${align};border-bottom:1px solid #e5e7eb;${
+              align === 'right' ? 'white-space:nowrap;' : 'overflow-wrap:anywhere;'
+            }`;
+        cell.textContent = value;
+        tr.appendChild(cell);
+      });
+      (row.header ? thead : tbody).appendChild(tr);
+    });
+
+    table.appendChild(thead);
+    if (tbody.childNodes.length > 0) table.appendChild(tbody);
+    wrapper.appendChild(table);
   }
 
-  // Style all cells
-  const cells = tableClone.querySelectorAll('th, td');
-  cells.forEach((cell) => {
-    const el = cell as HTMLElement;
-    el.style.padding = '8px 12px';
-    el.style.borderBottom = '1px solid #e5e7eb';
-    el.style.textAlign = 'left';
-
-    // Right-align numeric columns
-    if (el.classList.contains('text-right') || el.classList.contains('font-mono')) {
-      el.style.textAlign = 'right';
-    }
-  });
-
-  // Style header row
-  const headerCells = tableClone.querySelectorAll('th');
-  headerCells.forEach((cell) => {
-    const el = cell as HTMLElement;
-    el.style.backgroundColor = '#f3f4f6';
-    el.style.fontWeight = 'bold';
-    el.style.color = '#111827';
-    el.style.borderBottom = '2px solid #d1d5db';
-  });
-
-  // Style bold rows
-  const boldRows = tableClone.querySelectorAll('.font-bold, [class*="font-bold"]');
-  boldRows.forEach((row) => {
-    const el = row as HTMLElement;
-    el.style.fontWeight = 'bold';
-    el.style.backgroundColor = '#f9fafb';
-  });
-
-  // Style section header rows
-  const sectionHeaders = tableClone.querySelectorAll('[class*="bg-blue-50"], [class*="bg-primary"]');
-  sectionHeaders.forEach((row) => {
-    const el = row as HTMLElement;
-    el.style.backgroundColor = '#eff6ff';
-    el.style.fontWeight = 'bold';
-  });
-
-  wrapper.appendChild(tableClone);
-
-  // Footer
-  const footer = document.createElement('div');
-  footer.style.marginTop = '30px';
-  footer.style.paddingTop = '20px';
-  footer.style.borderTop = '1px solid #e5e7eb';
-  footer.style.display = 'flex';
-  footer.style.justifyContent = 'space-between';
-  footer.style.fontSize = '10px';
-  footer.style.color = '#9ca3af';
-
-  const generatedAt = document.createElement('span');
-  generatedAt.textContent = `Generated: ${new Date().toLocaleString()}`;
-  footer.appendChild(generatedAt);
-
-  const pageNumber = document.createElement('span');
-  pageNumber.textContent = 'NoovaERP - Financial Reporting';
-  footer.appendChild(pageNumber);
-
+  // ── Footer ────────────────────────────────────────────────────────────────
+  const footer = make(
+    'div',
+    'display:flex;justify-content:space-between;gap:12px;margin-top:18px;padding-top:10px;border-top:1px solid #e5e7eb;font-size:9px;color:#9ca3af;',
+  );
+  footer.appendChild(make('span', '', `Generated: ${new Date().toLocaleString()}`));
+  if (companyName) footer.appendChild(make('span', '', companyName));
   wrapper.appendChild(footer);
 
-  // PDF options
-  const pdfOptions = {
-    margin: [10, 10, 10, 10],
-    filename: `${filename}.pdf`,
-    image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: {
-      scale: 2,
-      useCORS: true,
-      letterRendering: true,
-    },
-    jsPDF: {
-      unit: 'mm',
-      format: 'a4',
-      orientation: 'portrait' as const,
-    },
-    pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
-  };
+  return wrapper;
+};
 
-  // Generate PDF
-  return html2pdf().set(pdfOptions).from(wrapper).save();
+const buildPdfOptions = (filename: string) => ({
+  margin: [10, 10, 12, 10] as [number, number, number, number],
+  filename: `${filename}.pdf`,
+  image: { type: 'jpeg' as const, quality: 0.98 },
+  html2canvas: {
+    scale: 2,
+    useCORS: true,
+    letterRendering: true,
+    backgroundColor: '#ffffff',
+    logging: false,
+  },
+  jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
+  pagebreak: { mode: ['css', 'legacy'], avoid: 'tr' },
+});
+
+/** Build the report PDF and return it as a Blob (used for download + print). */
+export async function generateReportPdfBlob(
+  container: HTMLElement,
+  options: ReportPdfOptions,
+): Promise<Blob> {
+  const wrapper = await buildReportDocument(container, options);
+  return html2pdf().set(buildPdfOptions(options.filename)).from(wrapper).output('blob');
 }
 
-// Helper to extract comparison table data for PDF
-export function extractComparisonTableData(
-  comparisonTableRef: HTMLElement | null
-): HTMLElement | null {
-  if (!comparisonTableRef) return null;
+/** Download the report as PDF. */
+export async function generateReportPDF(
+  container: HTMLElement,
+  options: ReportPdfOptions,
+): Promise<void> {
+  const blob = await generateReportPdfBlob(container, options);
 
-  // Find the table element within the comparison table
-  const table = comparisonTableRef.querySelector('table');
-  return table || comparisonTableRef;
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `${options.filename}.pdf`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+/** Print the report (the generated PDF, not the whole SPA window). */
+export async function printReportPDF(
+  container: HTMLElement,
+  options: ReportPdfOptions,
+): Promise<void> {
+  const blob = await generateReportPdfBlob(container, options);
+  printPdfBlob(blob);
 }

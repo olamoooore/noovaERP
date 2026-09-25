@@ -12,6 +12,16 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import api from '@/lib/api';
 
 interface ReportSchedule {
@@ -354,33 +364,30 @@ const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b">
-          <h2 className="text-2xl font-bold">
-            {schedule ? 'Edit Schedule' : 'Create Schedule'}
-          </h2>
-        </div>
+    <Dialog open onOpenChange={(next) => { if (!next) onClose(); }}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{schedule ? 'Edit Schedule' : 'Create Schedule'}</DialogTitle>
+        </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Schedule Name</label>
-            <input
+            <Label className="mb-1 block">Schedule Name</Label>
+            <Input
               type="text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-3 py-2 border rounded-lg"
               required
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Report Type</label>
+              <Label className="mb-1 block">Report Type</Label>
               <select
                 value={formData.report_type}
                 onChange={(e) => setFormData({ ...formData, report_type: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg"
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               >
                 <option value="profit_loss">Profit & Loss</option>
                 <option value="balance_sheet">Balance Sheet</option>
@@ -393,11 +400,11 @@ const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Frequency</label>
+              <Label className="mb-1 block">Frequency</Label>
               <select
                 value={formData.frequency}
                 onChange={(e) => setFormData({ ...formData, frequency: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg"
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               >
                 <option value="daily">Daily</option>
                 <option value="weekly">Weekly</option>
@@ -409,35 +416,39 @@ const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Recipients</label>
+            <Label className="mb-1 block">Recipients</Label>
             {formData.recipients.map((email, index) => (
               <div key={index} className="flex gap-2 mb-2">
-                <input
+                <Input
                   type="email"
                   value={email}
                   onChange={(e) => updateRecipient(index, e.target.value)}
-                  className="flex-1 px-3 py-2 border rounded-lg"
+                  className="flex-1"
                   placeholder="email@example.com"
                   required
                 />
                 {formData.recipients.length > 1 && (
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon"
                     onClick={() => removeRecipient(index)}
-                    className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
+                    className="h-9 w-9 text-destructive hover:text-destructive"
                   >
                     <Trash2 className="h-4 w-4" />
-                  </button>
+                  </Button>
                 )}
               </div>
             ))}
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={addRecipient}
-              className="text-sm text-blue-600 hover:text-blue-700"
+              className="h-8 px-2 text-xs text-primary hover:text-primary"
             >
               + Add Recipient
-            </button>
+            </Button>
           </div>
 
           <div className="flex items-center gap-2">
@@ -448,30 +459,22 @@ const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
               onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
               className="rounded"
             />
-            <label htmlFor="is_active" className="text-sm font-medium">
+            <Label htmlFor="is_active" className="text-sm font-medium">
               Active
-            </label>
+            </Label>
           </div>
 
-          <div className="flex justify-end gap-2 pt-4 border-t">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
-            >
+          <DialogFooter className="gap-2 border-t pt-4">
+            <Button type="button" variant="outline" onClick={onClose}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saveMutation.isPending}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-            >
+            </Button>
+            <Button type="submit" disabled={saveMutation.isPending}>
               {saveMutation.isPending ? 'Saving...' : schedule ? 'Update' : 'Create'}
-            </button>
-          </div>
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 

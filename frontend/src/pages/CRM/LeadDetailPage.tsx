@@ -98,28 +98,36 @@ const addActivityMutation = useMutation({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/crm/leads')}>
-            <Icon icon="solar:arrow-left-bold-duotone" className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">
-              {lead.first_name} {lead.last_name}
-            </h1>
-            <p className="text-muted-foreground">{lead.company || 'No company'}</p>
+      <div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="-ml-2 mb-3 text-muted-foreground hover:text-foreground"
+          onClick={() => navigate('/crm/leads')}
+        >
+          <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
+          Back
+        </Button>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight">
+                {lead.first_name} {lead.last_name}
+              </h1>
+              <p className="text-muted-foreground">{lead.company || 'No company'}</p>
+            </div>
+            <Badge className={statusColors[lead.status]} variant="secondary">
+              {lead.status}
+            </Badge>
           </div>
-          <Badge className={statusColors[lead.status]} variant="secondary">
-            {lead.status}
-          </Badge>
-        </div>
-        <div className="flex gap-2">
-          <Link to={`/crm/leads/${id}/edit`}>
-            <Button variant="outline">
-              <Icon icon="solar:pen-bold-duotone" className="mr-2 h-4 w-4" />
-              Edit
-            </Button>
-          </Link>
+          <div className="flex gap-2">
+            <Link to={`/crm/leads/${id}/edit`}>
+              <Button variant="outline">
+                <Icon icon="solar:pen-bold-duotone" className="mr-2 h-4 w-4" />
+                Edit
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
 

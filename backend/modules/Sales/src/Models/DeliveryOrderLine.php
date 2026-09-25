@@ -22,6 +22,7 @@ class DeliveryOrderLine extends Model
         'patient_name_encrypted',
         'quantity_ordered',
         'quantity_delivered',
+        'quantity_invoiced',
         'unit_price',
         'line_total',
         'unit',
@@ -38,6 +39,7 @@ class DeliveryOrderLine extends Model
         'sequence' => 'integer',
         'quantity_ordered' => 'decimal:4',
         'quantity_delivered' => 'decimal:4',
+        'quantity_invoiced' => 'decimal:4',
         'unit_price' => 'decimal:2',
         'line_total' => 'decimal:2',
         'serial_numbers' => 'array',
@@ -95,5 +97,4 @@ class DeliveryOrderLine extends Model
             ? null
             : \Illuminate\Support\Facades\Crypt::encryptString((string) $value);
     }
-
 }

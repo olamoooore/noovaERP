@@ -5,6 +5,7 @@ import { Icon } from '@iconify/react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import api, { accountingApi } from '@/lib/api'
@@ -123,7 +124,9 @@ export function ContactsDashboardPage() {
           <h1 className="text-3xl font-bold">Contacts Dashboard</h1>
           <p className="mt-1 text-muted-foreground">Central hub for active contact status and activity.</p>
         </div>
-        <Button asChild><Link to="/customers"><Icon icon="solar:users-group-rounded-bold" className="mr-2 h-4 w-4" />Manage Customers</Link></Button>
+        <HeaderActionButton asChild icon="solar:users-group-rounded-bold">
+          <Link to="/customers">Manage Customers</Link>
+        </HeaderActionButton>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

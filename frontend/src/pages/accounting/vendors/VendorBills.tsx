@@ -1,16 +1,32 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { StatCard } from '@/components/ui/stat-card';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { DocumentUpload } from '@/components/ocr/DocumentUpload';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api, { accountingApi } from '@/lib/api';
-import { formatCurrency } from '@/lib/utils';
+import { SortableHead } from '@/components/ui/SortableHead';
+import { useSort } from '@/hooks/useSort';
+import { cn, formatCurrency } from '@/lib/utils';
+
+const billAmount = (bill: any): number =>
+  Number(
+    bill.extracted_data?.total_amount ??
+      bill.total_amount ??
+      bill.extracted_data?.total ??
+      bill.total ??
+      bill.extracted_data?.amount ??
+      bill.amount ??
+      0,
+  );
 
 export const VendorBills: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -137,6 +153,33 @@ export const VendorBills: React.FC = () => {
     },
   });
 
+  const navigateBill = (bill: any) => {
+    if (bill.source === 'regular') {
+      navigate(`/accounting/vendors/bills/${bill.raw_id}`);
+    } else {
+      navigate(`/ocr/documents/${bill.raw_uuid}`);
+    }
+  };
+
+  // Sortable rows: pre-compute the values shown in the table (the API payloads
+  // carry them under different aliases) so every column sorts correctly.
+  const sortableBills = useMemo(
+    () =>
+      (bills ?? []).map((bill: any) => ({
+        ...bill,
+        sort_amount: billAmount(bill),
+        sort_confidence: Number(bill.confidence_score ?? 0),
+        sort_bill_date: bill.extracted_data?.invoice_date || bill.document_date || '',
+        sort_due_date: bill.extracted_data?.due_date || bill.due_date || '',
+      })),
+    [bills],
+  );
+  const { sorted: sortedBills, sortKey, sortDir, toggle: toggleSort } = useSort(
+    sortableBills,
+    'sort_bill_date',
+    'desc',
+  );
+
   const postBillMutation = useMutation({
     mutationFn: async (bill: any) => {
       if (bill.source === 'ocr') {
@@ -190,19 +233,35 @@ export const VendorBills: React.FC = () => {
   };
 
   const getStatusBadge = (status: string) => {
-    const statusConfig: Record<string, { variant: any; label: string }> = {
-      draft: { variant: 'secondary', label: 'Draft' },
-      pending: { variant: 'secondary', label: 'Pending OCR' },
-      extracted: { variant: 'default', label: 'Extracted' },
-      review: { variant: 'default', label: 'Review' },
-      posted: { variant: 'default', label: 'Posted' },
-      paid: { variant: 'default', label: 'Paid' },
-      failed: { variant: 'destructive', label: 'Failed' },
-      cancelled: { variant: 'secondary', label: 'Cancelled' },
+    const statusConfig: Record<string, { label: string; icon: string; className: string }> = {
+      draft: { label: 'Draft', icon: 'solar:document-bold-duotone', className: 'bg-muted text-muted-foreground' },
+      pending: { label: 'Pending OCR', icon: 'solar:clock-circle-bold-duotone', className: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300' },
+      needs_review: { label: 'Needs Review', icon: 'solar:danger-triangle-bold-duotone', className: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300' },
+      review: { label: 'Needs Review', icon: 'solar:danger-triangle-bold-duotone', className: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300' },
+      extracted: { label: 'Extracted', icon: 'solar:document-text-bold-duotone', className: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300' },
+      posted: { label: 'Posted', icon: 'solar:check-circle-bold-duotone', className: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300' },
+      paid: { label: 'Paid', icon: 'solar:wallet-money-bold-duotone', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300' },
+      failed: { label: 'Failed', icon: 'solar:close-circle-bold-duotone', className: 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300' },
+      cancelled: { label: 'Cancelled', icon: 'solar:close-circle-bold-duotone', className: 'bg-muted text-muted-foreground' },
+      rejected: { label: 'Rejected', icon: 'solar:close-circle-bold-duotone', className: 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300' },
     };
 
-    const config = statusConfig[status] || { variant: 'secondary', label: status };
-    return <Badge variant={config.variant}>{config.label}</Badge>;
+    const key = String(status || '').toLowerCase();
+    const config = statusConfig[key] || {
+      label: key ? key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : '-',
+      icon: 'solar:document-bold-duotone',
+      className: 'bg-muted text-muted-foreground',
+    };
+
+    return (
+      <Badge
+        variant="outline"
+        className={cn('gap-1 whitespace-nowrap border-transparent px-1.5 py-0 text-[10px] font-medium leading-4', config.className)}
+      >
+        <Icon icon={config.icon} className="h-3 w-3" />
+        {config.label}
+      </Badge>
+    );
   };
 
   const formatDate = (date: string) => {
@@ -216,12 +275,39 @@ export const VendorBills: React.FC = () => {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Vendor Bills</h1>
           <p className="text-muted-foreground mt-1">Manage bills from vendors/suppliers</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative w-full sm:w-64">
+            <Icon
+              icon="solar:magnifer-bold-duotone"
+              className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              placeholder="Search by vendor, bill number..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-8 rounded-full pl-9 pr-3 text-xs"
+            />
+          </div>
+
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="h-8 w-40 rounded-full text-xs" aria-label="Filter by status">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="pending">Pending OCR</SelectItem>
+              <SelectItem value="extracted">Extracted</SelectItem>
+              <SelectItem value="review">Review</SelectItem>
+              <SelectItem value="posted">Posted</SelectItem>
+              <SelectItem value="paid">Paid</SelectItem>
+            </SelectContent>
+          </Select>
+
           <HeaderActionButton icon="solar:upload-bold-duotone" variant="outline" onClick={() => setShowUpload(true)}>
             Upload Bill (OCR)
           </HeaderActionButton>
@@ -230,6 +316,15 @@ export const VendorBills: React.FC = () => {
           </HeaderActionButton>
         </div>
       </div>
+
+      {bills && bills.length > 0 && (
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <StatCard label="Total Bills" value={bills.length} icon="solar:bill-list-bold-duotone" tone="bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400" />
+          <StatCard label="Pending Review" value={bills.filter((bill: any) => ['review', 'extracted', 'needs_review'].includes(String(bill.status).toLowerCase())).length} icon="solar:document-bold-duotone" tone="bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400" />
+          <StatCard label="Unpaid" value={bills.filter((bill: any) => bill.status === 'posted').length} icon="solar:clock-circle-bold-duotone" tone="bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400" />
+          <StatCard label="Paid" value={bills.filter((bill: any) => bill.status === 'paid').length} icon="solar:check-circle-bold-duotone" tone="bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400" />
+        </div>
+      )}
 
       {(vendorFilter || agingBucketFilter) && (
         <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950 dark:border-blue-800">
@@ -255,12 +350,13 @@ export const VendorBills: React.FC = () => {
               </div>
               <Button
                 variant="ghost"
-                size="sm"
+                size="icon"
                 onClick={handleClearDrillDownFilters}
-                className="text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                className="h-8 w-8 text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                title="Clear filters"
+                aria-label="Clear filters"
               >
-                <Icon icon="solar:close-circle-bold" className="h-4 w-4 mr-1" />
-                Clear Filters
+                <Icon icon="solar:close-circle-bold" className="h-4 w-4" />
               </Button>
             </div>
           </CardContent>
@@ -270,12 +366,8 @@ export const VendorBills: React.FC = () => {
       {showUpload && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>Upload Vendor Bills</span>
-              <Button variant="ghost" size="sm" onClick={() => setShowUpload(false)}>
-                <Icon icon="solar:close-circle-bold" className="h-5 w-5" />
-              </Button>
-            </CardTitle>
+            {/* Cancel lives in the DocumentUpload footer — no duplicate close here. */}
+            <CardTitle>Upload Vendor Bills</CardTitle>
           </CardHeader>
           <CardContent>
             <DocumentUpload
@@ -300,32 +392,6 @@ export const VendorBills: React.FC = () => {
           </p>
         </div>
       </div>
-
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex gap-4">
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Status</option>
-              <option value="pending">Pending OCR</option>
-              <option value="extracted">Extracted</option>
-              <option value="review">Review</option>
-              <option value="posted">Posted</option>
-              <option value="paid">Paid</option>
-            </select>
-            <input
-              type="text"
-              placeholder="Search by vendor, bill number..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-        </CardContent>
-      </Card>
 
       <Card>
         <CardHeader>
@@ -363,50 +429,33 @@ export const VendorBills: React.FC = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Bill #</TableHead>
-                    <TableHead>Vendor</TableHead>
-                    <TableHead>Bill Date</TableHead>
-                    <TableHead>Due Date</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>OCR Confidence</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <SortableHead label="Bill #" sortKey="extracted_data.invoice_number" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Vendor" sortKey="extracted_data.vendor_name" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Bill Date" sortKey="sort_bill_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Due Date" sortKey="sort_due_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Amount" sortKey="sort_amount" activeKey={sortKey} direction={sortDir} onSort={toggleSort} align="right" />
+                    <SortableHead label="Status" sortKey="status" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="OCR Confidence" sortKey="sort_confidence" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <TableHead className="w-[7.5rem] text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {bills.map((bill: any) => (
-                    <TableRow key={bill.uuid} className="hover:bg-accent/50 cursor-pointer">
-                      <TableCell
-                        className="font-medium"
-                        onClick={() => {
-                          if (bill.source === 'regular') {
-                            navigate(`/accounting/vendors/bills/${bill.raw_id}`);
-                          } else {
-                            navigate(`/ocr/documents/${bill.raw_uuid}`);
-                          }
-                        }}
-                      >
+                  {sortedBills.map((bill: any) => (
+                    <TableRow
+                      key={bill.uuid}
+                      className="cursor-pointer hover:bg-accent/50"
+                      onClick={() => navigateBill(bill)}
+                    >
+                      <TableCell className="font-medium text-primary">
                         {bill.extracted_data?.invoice_number || bill.uuid.toString().slice(0, 8)}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="font-medium text-primary hover:underline">
                         {bill.extracted_data?.vendor_name || bill.vendor_name || '-'}
                       </TableCell>
-                      <TableCell>
-                        {formatDate(bill.extracted_data?.invoice_date || bill.document_date)}
-                      </TableCell>
-                      <TableCell>
-                        {formatDate(bill.extracted_data?.due_date)}
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {formatCurrency(
-                          bill.extracted_data?.total_amount || 
-                          bill.total_amount ||
-                          bill.extracted_data?.total || 
-                          bill.total ||
-                          bill.extracted_data?.amount || 
-                          bill.amount ||
-                          0
-                        )}
+                      <TableCell>{formatDate(bill.sort_bill_date)}</TableCell>
+                      <TableCell>{formatDate(bill.sort_due_date)}</TableCell>
+                      <TableCell className="text-right font-medium tabular-nums">
+                        {formatCurrency(billAmount(bill))}
                       </TableCell>
                       <TableCell>{getStatusBadge(bill.status)}</TableCell>
                       <TableCell>
@@ -432,33 +481,27 @@ export const VendorBills: React.FC = () => {
                           <span className="text-xs text-muted-foreground">-</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex gap-1 justify-end">
-                          {(bill.status === 'review' || (bill.source === 'regular' && bill.status === 'draft')) && (
+                      <TableCell className="w-[7.5rem] text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">
+                          {(['review', 'needs_review'].includes(String(bill.status).toLowerCase())
+                            || (bill.source === 'regular' && bill.status === 'draft')) && (
                             <Button
                               size="sm"
-                              variant="outline"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                postBillMutation.mutate(bill);
-                              }}
+                              className="h-7 rounded-full bg-emerald-600 px-2.5 text-xs text-white hover:bg-emerald-700"
+                              onClick={() => postBillMutation.mutate(bill)}
                               disabled={postBillMutation.isPending}
                             >
-                              <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4 mr-1" />
+                              <Icon icon="solar:check-circle-bold-duotone" className="mr-1 h-3.5 w-3.5" />
                               Post
                             </Button>
                           )}
                           <Button
-                            size="sm"
+                            size="icon"
                             variant="ghost"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (bill.source === 'regular') {
-                                navigate(`/accounting/vendors/bills/${bill.raw_id}`);
-                              } else {
-                                navigate(`/ocr/documents/${bill.raw_uuid}`);
-                              }
-                            }}
+                            className="h-7 w-7"
+                            onClick={() => navigateBill(bill)}
+                            aria-label="View bill"
+                            title="View"
                           >
                             <Icon icon="solar:eye-bold-duotone" className="h-4 w-4" />
                           </Button>
@@ -473,60 +516,6 @@ export const VendorBills: React.FC = () => {
         </CardContent>
       </Card>
 
-      {bills && bills.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Bills</p>
-                  <p className="text-2xl font-bold">{bills.length}</p>
-                </div>
-                <Icon icon="solar:bill-list-bold-duotone" className="h-8 w-8 text-blue-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Pending Review</p>
-                  <p className="text-2xl font-bold">
-                    {bills.filter((bill: any) => bill.status === 'review' || bill.status === 'extracted').length}
-                  </p>
-                </div>
-                <Icon icon="solar:document-bold-duotone" className="h-8 w-8 text-orange-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Unpaid</p>
-                  <p className="text-2xl font-bold">
-                    {bills.filter((bill: any) => bill.status === 'posted').length}
-                  </p>
-                </div>
-                <Icon icon="solar:clock-circle-bold-duotone" className="h-8 w-8 text-red-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Paid</p>
-                  <p className="text-2xl font-bold">
-                    {bills.filter((bill: any) => bill.status === 'paid').length}
-                  </p>
-                </div>
-                <Icon icon="solar:check-circle-bold-duotone" className="h-8 w-8 text-green-500" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
     </div>
   );
 };

@@ -30,7 +30,10 @@ class SalesOrderAcceptanceController extends Controller
             return response()->json(['error' => 'Acceptance link has expired.'], 410);
         }
 
-        return response()->json($this->service->snapshot($order));
+        $snapshot = $this->service->snapshot($order);
+        $snapshot['company'] = \App\Support\TenantBranding::forCurrentTenant();
+
+        return response()->json($snapshot);
     }
 
     public function accept(Request $request, string $token)
@@ -83,6 +86,7 @@ class SalesOrderAcceptanceController extends Controller
                 'token' => $token,
                 'error' => $e->getMessage(),
             ]);
+
             return response()->json(['error' => 'Failed to record acceptance. Please try again.'], 500);
         }
     }

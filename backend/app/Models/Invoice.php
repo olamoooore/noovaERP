@@ -5,13 +5,14 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Invoice extends Model
 {
-    use HasFactory, SoftDeletes;
     use \App\Models\Concerns\GuardsJournalEntryLinks;
+    use HasFactory, SoftDeletes;
 
     // Approval dimension (writer: InvoiceApprovalService)
     public const APPROVAL_NOT_REQUIRED = 'not_required';
@@ -352,9 +353,14 @@ class Invoice extends Model
         return $this->belongsTo(Quotation::class, 'quotation_id');
     }
 
-    public function deliveryOrders(): HasMany
+    public function deliveryOrders(): BelongsToMany
     {
-        return $this->hasMany(\Modules\Sales\Models\DeliveryOrder::class, 'invoice_id');
+        return $this->belongsToMany(
+            \Modules\Sales\Models\DeliveryOrder::class,
+            'invoice_delivery_orders',
+            'invoice_id',
+            'delivery_order_id',
+        )->withTimestamps();
     }
 
     /**
@@ -519,5 +525,4 @@ class Invoice extends Model
             ? null
             : \Illuminate\Support\Facades\Crypt::encryptString((string) $value);
     }
-
 }

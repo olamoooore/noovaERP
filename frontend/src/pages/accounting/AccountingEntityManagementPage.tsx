@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
+import { SettingsSectionHeader } from '@/components/settings/settings-ui';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -28,6 +31,8 @@ type DialogType = 'group' | 'entity' | 'branch' | 'book' | null;
 
 interface EntitySectionProps {
   title: string;
+  description: string;
+  icon: string;
   items: any[];
   emptyLabel: string;
   onAdd: () => void;
@@ -35,54 +40,117 @@ interface EntitySectionProps {
   onDelete: (item: any) => void;
 }
 
+function entityMeta(item: any): { label: string; value: string }[] {
+  const meta: { label: string; value: string }[] = [];
+  if (item.code) meta.push({ label: 'Code', value: item.code });
+  const currency = item.base_currency || item.currency_code;
+  if (currency) meta.push({ label: 'Currency', value: currency });
+  if (item.country_code) meta.push({ label: 'Country', value: item.country_code });
+  if (item.book_type) meta.push({ label: 'Type', value: item.book_type });
+  if (meta.length === 0 && (item.description || item.type)) {
+    meta.push({ label: '', value: String(item.description || item.type) });
+  }
+  return meta;
+}
+
 function EntitySection({
   title,
+  description,
+  icon,
   items,
   emptyLabel,
   onAdd,
   onEdit,
   onDelete,
 }: EntitySectionProps) {
+  const count = items?.length || 0;
+
   return (
-    <Card className="p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">{title}</h2>
-        <Button size="sm" onClick={onAdd}>
-          <Icon icon="solar:add-circle-linear" className="w-4 h-4 mr-2" />
-          Create
-        </Button>
-      </div>
-      {!items || items.length === 0 ? (
-        <div className="text-sm text-muted-foreground">{emptyLabel}</div>
-      ) : (
-        <div className="space-y-3">
-          {items.map((item: any) => (
-            <div key={`${title}-${item.id}`} className="border rounded-lg p-4">
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium">{item.name || item.code || `Record ${item.id}`}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {item.code && `Code: ${item.code}`}
-                    {item.base_currency && ` | Currency: ${item.base_currency}`}
-                    {item.currency_code && ` | Currency: ${item.currency_code}`}
-                    {item.country_code && ` | Country: ${item.country_code}`}
-                    {item.book_type && ` | Type: ${item.book_type}`}
-                    {!item.code && !item.base_currency && !item.book_type && (item.description || item.type || 'No additional details')}
+    <Card className="overflow-hidden">
+      <SettingsSectionHeader
+        icon={icon}
+        title={title}
+        description={description}
+        action={
+          <div className="flex items-center gap-2">
+            <Badge
+              variant="secondary"
+              className="h-6 min-w-6 justify-center px-1.5 text-[11px] font-medium"
+            >
+              {count}
+            </Badge>
+            <HeaderActionButton icon="solar:add-circle-bold-duotone" onClick={onAdd}>
+              Create
+            </HeaderActionButton>
+          </div>
+        }
+      />
+
+      <CardContent className="p-2">
+        {count === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 px-4 py-10 text-center">
+            <Icon icon={icon} className="h-8 w-8 text-muted-foreground/30" />
+            <p className="text-sm text-muted-foreground">{emptyLabel}</p>
+          </div>
+        ) : (
+          <div className="flex flex-col">
+            {items.map((item: any) => {
+              const meta = entityMeta(item);
+              const name = item.name || item.code || `Record ${item.id}`;
+              return (
+                <div
+                  key={`${title}-${item.id}`}
+                  className="group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/50"
+                >
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                    <Icon icon={icon} className="h-4 w-4" />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium" title={name}>
+                      {name}
+                    </div>
+                    {meta.length > 0 && (
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        {meta.map((entry, index) => (
+                          <Badge
+                            key={`${entry.label}-${index}`}
+                            variant="outline"
+                            className="px-1.5 py-0 text-[10px] font-normal leading-4 text-muted-foreground"
+                          >
+                            {entry.label ? `${entry.label}: ${entry.value}` : entry.value}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7"
+                      onClick={() => onEdit(item)}
+                      title={`Edit ${name}`}
+                    >
+                      <Icon icon="solar:pen-bold-duotone" className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 text-destructive hover:text-destructive"
+                      onClick={() => onDelete(item)}
+                      title={`Delete ${name}`}
+                    >
+                      <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-3.5 w-3.5" />
+                    </Button>
                   </div>
                 </div>
-                <div className="flex items-center gap-1 ml-2 shrink-0">
-                  <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => onEdit(item)}>
-                    <Icon icon="solar:pen-linear" className="w-4 h-4" />
-                  </Button>
-                  <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => onDelete(item)}>
-                    <Icon icon="solar:trash-bin-trash-linear" className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
     </Card>
   );
 }
@@ -355,6 +423,8 @@ export default function AccountingEntityManagementPage({ embedded = false }: { e
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           <EntitySection
             title="Groups"
+            description="Top-level groupings used to consolidate entities."
+            icon="solar:layers-minimalistic-bold-duotone"
             items={groups}
             emptyLabel="No groups configured."
             onAdd={() => openCreateDialog('group')}
@@ -363,6 +433,8 @@ export default function AccountingEntityManagementPage({ embedded = false }: { e
           />
           <EntitySection
             title="Legal Entities"
+            description="Companies that keep their own books."
+            icon="solar:buildings-2-bold-duotone"
             items={entities}
             emptyLabel="No legal entities configured."
             onAdd={() => openCreateDialog('entity')}
@@ -371,6 +443,8 @@ export default function AccountingEntityManagementPage({ embedded = false }: { e
           />
           <EntitySection
             title="Branches"
+            description="Operating locations inside a legal entity."
+            icon="solar:map-point-bold-duotone"
             items={data?.branches || []}
             emptyLabel="No branches configured."
             onAdd={() => openCreateDialog('branch')}
@@ -379,6 +453,8 @@ export default function AccountingEntityManagementPage({ embedded = false }: { e
           />
           <EntitySection
             title="Entity Books"
+            description="Books of account kept per entity."
+            icon="solar:notebook-bold-duotone"
             items={data?.books || []}
             emptyLabel="No entity books configured."
             onAdd={() => openCreateDialog('book')}

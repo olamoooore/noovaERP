@@ -2,6 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -90,38 +91,50 @@ export function BonusSchemeDetailPage() {
 
   return (
     <div className="container mx-auto py-6 space-y-6">
-      <div className="flex items-center justify-between print:hidden">
-        <Button variant="outline" onClick={() => navigate('/sales/bonus-schemes')}>
-          <Icon icon="solar:arrow-left-bold-duotone" className="mr-2 h-4 w-4" />
+      <div className="print:hidden">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="-ml-2 mb-3 text-muted-foreground hover:text-foreground"
+          onClick={() => navigate('/sales/bonus-schemes')}
+        >
+          <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
           Back
         </Button>
-        <div className="flex gap-2">
-          {scheme.status === 'draft' && (
-            <>
-              <Button variant="outline" onClick={() => navigate(`/sales/bonus-schemes/${id}/edit`)}>
-                <Icon icon="solar:pen-bold-duotone" className="mr-2 h-4 w-4" />
-                Edit
-              </Button>
-              <Button onClick={() => activateMutation.mutate()}>
-                <Icon icon="solar:play-circle-bold-duotone" className="mr-2 h-4 w-4" />
-                Activate
-              </Button>
-            </>
-          )}
-          {scheme.status === 'active' && (
-            <Button variant="destructive" onClick={() => deactivateMutation.mutate()}>
-              <Icon icon="solar:stop-circle-bold-duotone" className="mr-2 h-4 w-4" />
-              Deactivate
-            </Button>
-          )}
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold">{scheme.name}</h1>
+            <Badge className={STATUS_COLORS[scheme.status] || 'bg-gray-100 text-gray-800'}>
+              {scheme.status}
+            </Badge>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {scheme.status === 'draft' && (
+              <>
+                <HeaderActionButton
+                  variant="outline"
+                  icon="solar:pen-bold-duotone"
+                  onClick={() => navigate(`/sales/bonus-schemes/${id}/edit`)}
+                >
+                  Edit
+                </HeaderActionButton>
+                <HeaderActionButton icon="solar:play-circle-bold-duotone" onClick={() => activateMutation.mutate()}>
+                  Activate
+                </HeaderActionButton>
+              </>
+            )}
+            {scheme.status === 'active' && (
+              <HeaderActionButton
+                variant="outline"
+                icon="solar:stop-circle-bold-duotone"
+                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => deactivateMutation.mutate()}
+              >
+                Deactivate
+              </HeaderActionButton>
+            )}
+          </div>
         </div>
-      </div>
-
-      <div className="flex items-center gap-3">
-        <h1 className="text-3xl font-bold">{scheme.name}</h1>
-        <Badge className={STATUS_COLORS[scheme.status] || 'bg-gray-100 text-gray-800'}>
-          {scheme.status}
-        </Badge>
       </div>
 
       {/* Scheme Details */}

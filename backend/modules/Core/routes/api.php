@@ -47,9 +47,9 @@ use App\Http\Controllers\Api\PaymentTermsController;
 use App\Http\Controllers\Api\ProductAttributeController;
 use App\Http\Controllers\Api\ProductCategoryController;
 use App\Http\Controllers\Api\ProductController;
-use App\Http\Controllers\Api\ProductTrackingController;
 use App\Http\Controllers\Api\ProductCustomFieldController;
 use App\Http\Controllers\Api\ProductFeatureController;
+use App\Http\Controllers\Api\ProductTrackingController;
 use App\Http\Controllers\Api\ProductUnitController;
 use App\Http\Controllers\Api\ProductVariantController;
 use App\Http\Controllers\Api\QuotationController;
@@ -320,6 +320,10 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::post('/invoices/{invoice}/withdraw-approval', [InvoiceController::class, 'withdrawApproval'])
             ->middleware(RequirePermission::using('invoices.write'));
 
+        // Invoice → Delivery Order conversion.
+        Route::post('/invoices/{invoice}/create-delivery-order', [InvoiceController::class, 'createDeliveryOrder'])
+            ->middleware(RequirePermission::using('invoices.write'));
+
         // Delivery (Phase B — delivery without GL posting)
         Route::post('/invoices/{invoice}/deliver', [InvoiceController::class, 'deliver'])
             ->middleware(RequirePermission::using('invoices.send'));
@@ -393,6 +397,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::post('/quotations/{id}/reset-to-draft', [QuotationController::class, 'resetToDraft'])
             ->middleware(RequirePermission::using('documents.reset_to_draft'));
         Route::post('/quotations/{id}/create-invoice', [QuotationController::class, 'createInvoice']);
+        Route::post('/quotations/{id}/create-delivery-order', [QuotationController::class, 'createDeliveryOrder'])
+            ->middleware(RequirePermission::using('sales.write'));
 
         // Payments
         Route::get('/payments', [PaymentController::class, 'index']);
@@ -722,6 +728,10 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::delete('/analytic-accounts/{id}', [AnalyticAccountsController::class, 'destroy']);
         Route::get('/analytic-accounts/{id}/balance', [AnalyticAccountsController::class, 'balance']);
         Route::get('/analytic-accounts/{id}/profit-loss', [AnalyticAccountsController::class, 'profitLoss']);
+
+        // Tenant branding (name + logo) for non-Template-Builder documents
+        // (report PDF/print exports) — any tenant user, no settings gate.
+        Route::get('/settings/branding', [CompanySettingsController::class, 'branding']);
 
         // Company Settings — same OWNER/ADMIN gate as the top-level /settings routes.
         Route::get('/settings', [CompanySettingsController::class, 'index'])

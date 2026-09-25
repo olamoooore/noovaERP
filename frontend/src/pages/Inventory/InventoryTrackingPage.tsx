@@ -7,9 +7,11 @@ import { Pagination } from '@/components/ui/Pagination'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Table, TableBody, TableCell, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { SortableHead } from '@/components/ui/SortableHead'
+import { useSort } from '@/hooks/useSort'
 
 type TrackingType = 'batches' | 'serials'
 
@@ -32,6 +34,8 @@ export function InventoryTrackingPage() {
   const { data: warehouses = [] } = useQuery({ queryKey: ['warehouses'], queryFn: async () => (await api.get('/warehouses')).data || [] })
   const { data: products = [] } = useQuery({ queryKey: ['products-tracking-filter'], queryFn: async () => { const response = await api.get('/products', { params: { per_page: 500 } }); return response.data?.data || response.data || [] } })
   const rows = data?.data || []
+  const { sorted: sortedBatches, sortKey: batchSortKey, sortDir: batchSortDir, toggle: toggleBatchSort } = useSort<any>(rows)
+  const { sorted: sortedSerials, sortKey: serialSortKey, sortDir: serialSortDir, toggle: toggleSerialSort } = useSort<any>(rows)
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -55,15 +59,15 @@ export function InventoryTrackingPage() {
         </div>
 
         <TabsContent value="batches">
-          <Card><CardHeader><CardTitle>Lots / Batches</CardTitle></CardHeader><CardContent><Table><TableHeader><TableRow><TableHead>Product</TableHead><TableHead>Lot / Batch</TableHead><TableHead>Warehouse</TableHead><TableHead className="text-right">On Hand</TableHead><TableHead className="text-right">Reserved</TableHead><TableHead>Expiry</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>
-            {!isLoading && rows.map((row: any) => <TableRow key={row.id}><TableCell><div className="font-medium">{row.product?.name}</div><div className="text-xs text-muted-foreground">{row.product?.sku}</div></TableCell><TableCell>{row.batch_number || row.lot_number || '-'}</TableCell><TableCell>{row.warehouse?.name || '-'}</TableCell><TableCell className="text-right">{row.quantity}</TableCell><TableCell className="text-right">{row.quantity_reserved || 0}</TableCell><TableCell>{row.expiry_date ? String(row.expiry_date).split('T')[0] : '-'}</TableCell><TableCell><Badge variant="outline">{row.status}</Badge></TableCell></TableRow>)}
+          <Card><CardHeader><CardTitle>Lots / Batches</CardTitle></CardHeader><CardContent><Table><TableHeader><TableRow><SortableHead label="Product" sortKey="product.name" activeKey={batchSortKey} direction={batchSortDir} onSort={toggleBatchSort} /><SortableHead label="Lot / Batch" sortKey="batch_number" activeKey={batchSortKey} direction={batchSortDir} onSort={toggleBatchSort} /><SortableHead label="Warehouse" sortKey="warehouse.name" activeKey={batchSortKey} direction={batchSortDir} onSort={toggleBatchSort} /><SortableHead label="On Hand" sortKey="quantity" activeKey={batchSortKey} direction={batchSortDir} onSort={toggleBatchSort} align="right" /><SortableHead label="Reserved" sortKey="quantity_reserved" activeKey={batchSortKey} direction={batchSortDir} onSort={toggleBatchSort} align="right" /><SortableHead label="Expiry" sortKey="expiry_date" activeKey={batchSortKey} direction={batchSortDir} onSort={toggleBatchSort} /><SortableHead label="Status" sortKey="status" activeKey={batchSortKey} direction={batchSortDir} onSort={toggleBatchSort} /></TableRow></TableHeader><TableBody>
+            {!isLoading && sortedBatches.map((row: any) => <TableRow key={row.id}><TableCell><div className="font-medium">{row.product?.name}</div><div className="text-xs text-muted-foreground">{row.product?.sku}</div></TableCell><TableCell>{row.batch_number || row.lot_number || '-'}</TableCell><TableCell>{row.warehouse?.name || '-'}</TableCell><TableCell className="text-right">{row.quantity}</TableCell><TableCell className="text-right">{row.quantity_reserved || 0}</TableCell><TableCell>{row.expiry_date ? String(row.expiry_date).split('T')[0] : '-'}</TableCell><TableCell><Badge variant="outline">{row.status}</Badge></TableCell></TableRow>)}
             {!isLoading && rows.length === 0 && <TableRow><TableCell colSpan={7} className="py-10 text-center text-muted-foreground">No lots or batches found.</TableCell></TableRow>}
           </TableBody></Table></CardContent></Card>
         </TabsContent>
 
         <TabsContent value="serials">
-          <Card><CardHeader><CardTitle>Serial Numbers</CardTitle></CardHeader><CardContent><Table><TableHeader><TableRow><TableHead>Product</TableHead><TableHead>Serial Number</TableHead><TableHead>Lot</TableHead><TableHead>Warehouse</TableHead><TableHead>Status</TableHead><TableHead>Sale Reference</TableHead></TableRow></TableHeader><TableBody>
-            {!isLoading && rows.map((row: any) => <TableRow key={row.id}><TableCell><div className="font-medium">{row.product?.name}</div><div className="text-xs text-muted-foreground">{row.product?.sku}</div></TableCell><TableCell className="font-mono">{row.serial_number}</TableCell><TableCell>{row.batch?.lot_number || row.batch?.batch_number || '-'}</TableCell><TableCell>{row.warehouse?.name || '-'}</TableCell><TableCell><Badge variant="outline">{row.status}</Badge></TableCell><TableCell>{row.sale_reference || '-'}</TableCell></TableRow>)}
+          <Card><CardHeader><CardTitle>Serial Numbers</CardTitle></CardHeader><CardContent><Table><TableHeader><TableRow><SortableHead label="Product" sortKey="product.name" activeKey={serialSortKey} direction={serialSortDir} onSort={toggleSerialSort} /><SortableHead label="Serial Number" sortKey="serial_number" activeKey={serialSortKey} direction={serialSortDir} onSort={toggleSerialSort} /><SortableHead label="Lot" sortKey="batch.lot_number" activeKey={serialSortKey} direction={serialSortDir} onSort={toggleSerialSort} /><SortableHead label="Warehouse" sortKey="warehouse.name" activeKey={serialSortKey} direction={serialSortDir} onSort={toggleSerialSort} /><SortableHead label="Status" sortKey="status" activeKey={serialSortKey} direction={serialSortDir} onSort={toggleSerialSort} /><SortableHead label="Sale Reference" sortKey="sale_reference" activeKey={serialSortKey} direction={serialSortDir} onSort={toggleSerialSort} /></TableRow></TableHeader><TableBody>
+            {!isLoading && sortedSerials.map((row: any) => <TableRow key={row.id}><TableCell><div className="font-medium">{row.product?.name}</div><div className="text-xs text-muted-foreground">{row.product?.sku}</div></TableCell><TableCell className="font-mono">{row.serial_number}</TableCell><TableCell>{row.batch?.lot_number || row.batch?.batch_number || '-'}</TableCell><TableCell>{row.warehouse?.name || '-'}</TableCell><TableCell><Badge variant="outline">{row.status}</Badge></TableCell><TableCell>{row.sale_reference || '-'}</TableCell></TableRow>)}
             {!isLoading && rows.length === 0 && <TableRow><TableCell colSpan={6} className="py-10 text-center text-muted-foreground">No serial numbers found.</TableCell></TableRow>}
           </TableBody></Table></CardContent></Card>
         </TabsContent>

@@ -1,6 +1,12 @@
-import { type RefObject } from 'react';
+import { useState, type RefObject } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
-import { generateReportPDF } from '@/lib/pdfGenerator';
+import {
+  companyBrandingQueryOptions,
+  toCompanyBranding,
+  useCompanyBranding,
+} from '@/hooks/use-company-branding';
+import { generateReportPDF, printReportPDF, type ReportPdfOptions } from '@/lib/pdfGenerator';
 import { downloadCsv } from '@/lib/reportCsv';
 import { cn } from '@/lib/utils';
 
@@ -10,11 +16,15 @@ interface ReportExportToolbarProps {
   title: string;
   filename: string;
   subtitle?: string;
+  /** Overrides the tenant branding fetched automatically when omitted. */
   companyName?: string;
+  companyLogo?: string;
   asOfDate?: string;
   compareDate?: string;
-  /** Optional explicit rows (header + data). Falls back to the DOM table. */
+  /** Complete rows (header first) — keeps exports off the paginated DOM table. */
   rows?: string[][];
+  /** Per-column alignment for the explicit rows. */
+  columnAligns?: ReportPdfOptions['columnAligns'];
   className?: string;
 }
 
@@ -35,9 +45,9 @@ const extractTableRows = (container: HTMLElement | null): string[][] => {
 /**
  * Report export/print actions (CSV, PDF, Print).
  *
- * Always rendered on the report itself so downloads are available whether or
- * not the comparison view is enabled — exports previously lived only inside
- * the comparison panel and silently disappeared without it.
+ * Print no longer calls window.print() (which dumped the whole SPA shell);
+ * it renders the same clean report PDF as the PDF button and prints those
+ * bytes through the browser's PDF viewer.
  */
 export function ReportExportToolbar({
   targetRef,
@@ -45,40 +55,111 @@ export function ReportExportToolbar({
   filename,
   subtitle,
   companyName,
+  companyLogo,
   asOfDate,
   compareDate,
   rows,
+  columnAligns,
   className,
 }: ReportExportToolbarProps) {
+  const [busy, setBusy] = useState<'pdf' | 'print' | null>(null);
+  const queryClient = useQueryClient();
+  // Fall back to the tenant's own logo/company name, never the platform brand.
+  const branding = useCompanyBranding();
+
+  /**
+   * Resolve branding at click time: if the background query hasn't landed yet
+   * (fast first click), await it so every export is branded.
+   */
+  const resolveBranding = async () => {
+    let resolved = branding;
+    if (!resolved.companyName && !resolved.companyLogo) {
+      const data = await queryClient.ensureQueryData(companyBrandingQueryOptions);
+      resolved = toCompanyBranding(data);
+    }
+    return {
+      name: companyName ?? resolved.companyName,
+      logo: companyLogo ?? resolved.companyLogo,
+    };
+  };
+
   const getRows = () => (rows && rows.length > 0 ? rows : extractTableRows(targetRef.current));
 
-  const handleCsv = () => {
+  const handleCsv = async () => {
     const data = getRows();
     if (data.length === 0) return;
-    downloadCsv(`${filename}.csv`, data, { title, subtitle, companyName, asOfDate, compareDate });
+    const { name } = await resolveBranding();
+    downloadCsv(`${filename}.csv`, data, { title, subtitle, companyName: name, asOfDate, compareDate });
   };
 
   const handlePdf = async () => {
-    if (!targetRef.current) return;
-    await generateReportPDF(targetRef.current, {
-      title,
-      subtitle,
-      companyName,
-      asOfDate,
-      compareDate,
-      filename,
-    });
+    if (!targetRef.current || busy) return;
+    setBusy('pdf');
+    try {
+      const { name, logo } = await resolveBranding();
+      await generateReportPDF(targetRef.current, {
+        title,
+        subtitle,
+        companyName: name,
+        companyLogo: logo,
+        asOfDate,
+        compareDate,
+        filename,
+        rows,
+        columnAligns,
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handlePrint = async () => {
+    if (!targetRef.current || busy) return;
+    setBusy('print');
+    try {
+      const { name, logo } = await resolveBranding();
+      await printReportPDF(targetRef.current, {
+        title,
+        subtitle,
+        companyName: name,
+        companyLogo: logo,
+        asOfDate,
+        compareDate,
+        filename,
+        rows,
+        columnAligns,
+      });
+    } finally {
+      setBusy(null);
+    }
   };
 
   return (
     <div className={cn('flex items-center gap-2', className)} data-no-export>
-      <HeaderActionButton variant="outline" icon="solar:file-text-linear" onClick={handleCsv}>
+      <HeaderActionButton
+        variant="outline"
+        icon="solar:file-text-linear"
+        disabled={busy !== null}
+        onClick={handleCsv}
+      >
         CSV
       </HeaderActionButton>
-      <HeaderActionButton variant="outline" icon="solar:file-download-bold" onClick={handlePdf}>
+      <HeaderActionButton
+        variant="outline"
+        icon="solar:file-download-bold"
+        loading={busy === 'pdf'}
+        disabled={busy !== null}
+        onClick={handlePdf}
+      >
         PDF
       </HeaderActionButton>
-      <HeaderActionButton variant="outline" icon="solar:printer-linear" onClick={() => window.print()}>
+      <HeaderActionButton
+        variant="outline"
+        icon="solar:printer-linear"
+        loading={busy === 'print'}
+        disabled={busy !== null}
+        onClick={handlePrint}
+      >
         Print
       </HeaderActionButton>
     </div>

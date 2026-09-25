@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { Pagination } from '@/components/ui/Pagination'
+import { Button } from '@/components/ui/button'
+import { Icon } from '@iconify/react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -147,12 +149,16 @@ function EventsTab() {
           ]}
         />
         {(statusFilter || typeFilter) && (
-          <button
+          <Button
+            variant="outline"
+            size="icon"
+            className="ml-auto h-8 w-8 rounded-full"
             onClick={() => { setStatus(''); setType(''); setPage(1) }}
-            className="ml-auto text-xs text-blue-600 hover:underline"
+            title="Clear filters"
+            aria-label="Clear filters"
           >
-            Clear filters
-          </button>
+            <Icon icon="solar:close-circle-bold" className="h-4 w-4" />
+          </Button>
         )}
       </div>
 
@@ -271,12 +277,16 @@ function SummaryTab() {
           Exceptions only
         </label>
         {(statusFilter || exceptionsOnly) && (
-          <button
+          <Button
+            variant="outline"
+            size="icon"
+            className="ml-auto h-8 w-8 rounded-full"
             onClick={() => { setStatus(''); setExceptionsOnly(false); setPage(1) }}
-            className="ml-auto text-xs text-blue-600 hover:underline"
+            title="Clear filters"
+            aria-label="Clear filters"
           >
-            Clear filters
-          </button>
+            <Icon icon="solar:close-circle-bold" className="h-4 w-4" />
+          </Button>
         )}
       </div>
 

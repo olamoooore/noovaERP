@@ -23,10 +23,15 @@ export const HeaderActionButton = forwardRef<HTMLButtonElement, ComponentProps<t
   { icon, children, className, loading, asChild, ...props },
   ref,
 ) {
+  // Icon-only buttons (no label) drop the right margin so the glyph sits dead
+  // centre in the circular container.
+  const hasLabel = children !== undefined && children !== null && children !== false
+  const iconMargin = hasLabel ? 'mr-1.5' : ''
+
   const leading = loading ? (
-    <span className="mr-1.5 h-3.5 w-3.5 animate-spin rounded-full border-b-2 border-current" />
+    <span className={`${iconMargin} h-3.5 w-3.5 animate-spin rounded-full border-b-2 border-current`} />
   ) : icon ? (
-    <Icon icon={icon} className="mr-1.5 h-3.5 w-3.5" />
+    <Icon icon={icon} className={`${iconMargin} h-3.5 w-3.5`} />
   ) : null
 
   // Radix `asChild` (Slot) requires EXACTLY one element child — rendering the

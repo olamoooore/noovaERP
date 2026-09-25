@@ -17,6 +17,7 @@ import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { DocumentTemplateDialog } from '@/components/documents/DocumentTemplateDialog'
 
 const QUOTATION_LINE_COLUMNS = [
   '#', 'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Qty', 'Unit Price', 'Tax', 'Total',
@@ -78,6 +79,30 @@ export function QuotationDetailPage() {
         variant: 'destructive',
         title: 'Failed to create invoice',
         description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
+  const createDeliveryOrderMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/quotations/${id}/create-delivery-order`)
+      return response.data
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['quotation', id] })
+      queryClient.invalidateQueries({ queryKey: ['quotations'] })
+      queryClient.invalidateQueries({ queryKey: ['delivery-orders'] })
+      const deliveryOrderId = data?.data?.id
+      toast({ title: 'Delivery order created from quotation' })
+      if (deliveryOrderId) {
+        navigate(`/delivery-orders/${deliveryOrderId}`)
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to create delivery order',
+        description: error.response?.data?.message || error.response?.data?.error || 'An error occurred',
       })
     },
   })
@@ -150,7 +175,7 @@ export function QuotationDetailPage() {
     deleteMutation.mutate()
   }
 
-  const [isDownloading, setIsDownloading] = useState(false)
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
 
   // Product Notes starts hidden, matching the previous default.
   const [hiddenLineColumns, setHiddenLineColumns] = useState<number[]>(
@@ -159,28 +184,6 @@ export function QuotationDetailPage() {
   const [showInvoicesPanel, setShowInvoicesPanel] = useState(false)
   const [confirmAction, setConfirmAction] = useState<'delete' | 'reset' | null>(null)
   const [chatterOpen, setChatterOpen] = useState(false)
-  const handleDownloadPdf = async () => {
-    setIsDownloading(true)
-    try {
-      const response = await api.get(`/quotations/${id}/pdf`, { responseType: 'blob' })
-      const url = window.URL.createObjectURL(new Blob([response.data]))
-      const link = document.createElement('a')
-      link.href = url
-      link.setAttribute('download', `quotation-${quotation?.quotation_number}.pdf`)
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      window.URL.revokeObjectURL(url)
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Download failed',
-        description: error.response?.data?.message || 'Could not download the PDF. Please try again.',
-      })
-    } finally {
-      setIsDownloading(false)
-    }
-  }
 
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
@@ -253,70 +256,7 @@ export function QuotationDetailPage() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <HeaderActionButton
-            variant="outline"
-            icon="solar:download-minimalistic-bold-duotone"
-            loading={isDownloading}
-            onClick={handleDownloadPdf}
-            disabled={isDownloading}
-          >
-            Download PDF
-          </HeaderActionButton>
-
-          {quotation.status === 'draft' && (
-            <>
-              <HeaderActionButton
-                icon="solar:check-circle-bold-duotone"
-                loading={confirmMutation.isPending}
-                onClick={() => confirmMutation.mutate()}
-                disabled={confirmMutation.isPending}
-              >
-                Confirm
-              </HeaderActionButton>
-              <HeaderActionButton
-                variant="outline"
-                icon="solar:pen-bold-duotone"
-                onClick={() => navigate(`/quotations/${id}/edit`)}
-              >
-                Edit
-              </HeaderActionButton>
-              <HeaderActionButton
-                variant="outline"
-                icon="solar:trash-bin-trash-bold-duotone"
-                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                loading={deleteMutation.isPending}
-                onClick={handleDelete}
-                disabled={deleteMutation.isPending}
-              >
-                Delete
-              </HeaderActionButton>
-            </>
-          )}
-
-          {quotation.status === 'sent' && (
-            <>
-              <HeaderActionButton
-                icon="solar:check-circle-bold-duotone"
-                loading={confirmMutation.isPending}
-                onClick={() => confirmMutation.mutate()}
-                disabled={confirmMutation.isPending}
-              >
-                Confirm
-              </HeaderActionButton>
-              <HeaderActionButton
-                variant="outline"
-                icon="solar:close-circle-bold-duotone"
-                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                loading={cancelMutation.isPending}
-                onClick={() => cancelMutation.mutate()}
-                disabled={cancelMutation.isPending}
-              >
-                Cancel
-              </HeaderActionButton>
-            </>
-          )}
-
+<div className="flex flex-wrap items-center gap-2">
           {quotation.status === 'confirmed' && (
             <>
               <HeaderActionButton
@@ -327,28 +267,36 @@ export function QuotationDetailPage() {
               >
                 Create Invoice
               </HeaderActionButton>
-              {quotation.sales_order && (
-                <HeaderActionButton
-                  variant="outline"
-                  icon="solar:box-bold-duotone"
-                  onClick={() => navigate(`/delivery-orders/create?sales_order_id=${quotation.sales_order.id}&quotation_id=${quotation.id}`)}
-                >
-                  Create Delivery Order
-                </HeaderActionButton>
-              )}
               <HeaderActionButton
                 variant="outline"
-                icon="solar:close-circle-bold-duotone"
-                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                loading={cancelMutation.isPending}
-                onClick={() => cancelMutation.mutate()}
-                disabled={cancelMutation.isPending}
+                icon="solar:box-bold-duotone"
+                loading={createDeliveryOrderMutation.isPending}
+                onClick={() => createDeliveryOrderMutation.mutate()}
+                disabled={createDeliveryOrderMutation.isPending}
               >
-                Cancel
+                Create Delivery Order
               </HeaderActionButton>
             </>
           )}
-
+          {['draft', 'sent'].includes(quotation.status) && (
+            <HeaderActionButton
+              icon="solar:check-circle-bold-duotone"
+              loading={confirmMutation.isPending}
+              onClick={() => confirmMutation.mutate()}
+              disabled={confirmMutation.isPending}
+            >
+              Confirm
+            </HeaderActionButton>
+          )}
+          {quotation.status === 'draft' && (
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:pen-bold-duotone"
+              onClick={() => navigate(`/quotations/${id}/edit`)}
+            >
+              Edit
+            </HeaderActionButton>
+          )}
           {quotation.status === 'cancelled' && (
             <HeaderActionButton
               variant="outline"
@@ -360,6 +308,45 @@ export function QuotationDetailPage() {
               Reset to Draft
             </HeaderActionButton>
           )}
+          {['sent', 'confirmed'].includes(quotation.status) && (
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:close-circle-bold-duotone"
+              className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              loading={cancelMutation.isPending}
+              onClick={() => cancelMutation.mutate()}
+              disabled={cancelMutation.isPending}
+            >
+              Cancel
+            </HeaderActionButton>
+          )}
+          <HeaderActionButton
+            variant="outline"
+            icon="solar:printer-bold-duotone"
+            onClick={() => setTemplateDialogOpen(true)}
+          >
+            Print
+          </HeaderActionButton>
+          <HeaderActionButton
+            variant="outline"
+            icon="solar:download-minimalistic-bold-duotone"
+            className="w-9 px-0"
+            aria-label="Download PDF"
+            title="Download PDF"
+            onClick={() => setTemplateDialogOpen(true)}
+          />
+          {quotation.status === 'draft' && (
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:trash-bin-trash-bold-duotone"
+              className="w-9 px-0 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              aria-label="Delete quotation"
+              title="Delete"
+              loading={deleteMutation.isPending}
+              onClick={handleDelete}
+              disabled={deleteMutation.isPending}
+            />
+          )}
         </div>
       </div>
 
@@ -370,11 +357,10 @@ export function QuotationDetailPage() {
             type="button"
             onClick={() => setShowInvoicesPanel(!showInvoicesPanel)}
             className={cn(
-              'inline-flex h-8 items-center gap-1.5 rounded-full border bg-background px-3 text-xs font-medium transition-colors',
-              'hover:bg-accent hover:text-accent-foreground',
+              'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors',
               showInvoicesPanel
-                ? 'border-primary/40 bg-primary/10 text-primary'
-                : 'border-input text-muted-foreground',
+                ? 'border-primary/60 bg-primary/15 text-primary'
+                : 'border-primary/30 bg-primary/5 text-primary hover:border-primary/50 hover:bg-primary/10',
             )}
           >
             <Icon icon="solar:bill-list-bold-duotone" className="h-3.5 w-3.5" />
@@ -763,6 +749,15 @@ export function QuotationDetailPage() {
           setConfirmAction(null)
           resetToDraftMutation.mutate()
         }}
+      />
+
+      <DocumentTemplateDialog
+        open={templateDialogOpen}
+        onOpenChange={setTemplateDialogOpen}
+        documentType="quotation"
+        pdfPath={`/quotations/${id}/pdf`}
+        filename={`quotation-${quotation.quotation_number}.pdf`}
+        title="Quotation"
       />
 
       <ChatterDock

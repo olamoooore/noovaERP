@@ -13,12 +13,15 @@ import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
 import { INVOICE_EXPORT_COLUMNS, SalesDocumentExportMenu } from '@/components/sales/SalesDocumentExportMenu'
 import { SalesLineColumnMenu, SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { useBulkSelection } from '@/hooks/use-bulk-selection'
-import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice'
+import { BulkActionBar } from '@/components/ui/bulk-action-bar'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { TagFilterSelect } from '@/components/tags/TagFilterSelect'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Pagination } from '@/components/ui/Pagination'
+import { SortableHead } from '@/components/ui/SortableHead'
+import { useSort } from '@/hooks/useSort'
 
 export function InvoicesPage() {
   const { toast } = useToast()
@@ -69,6 +72,7 @@ export function InvoicesPage() {
   })
 
   const invoices = response?.data || []
+  const { sorted: sortedInvoices, sortKey, sortDir, toggle: toggleSort } = useSort<any>(invoices, 'created_at', 'desc')
   const meta = {
     current_page: response?.current_page || 1,
     last_page: response?.last_page || 1,
@@ -197,32 +201,39 @@ export function InvoicesPage() {
         </div>
       </div>
 
+      <BulkActionBar
+        selectedCount={selectedIds.length}
+        pageSize={invoices.length}
+        allPageSelected={allPageSelected}
+        allMatchingSelected={allMatchingSelected}
+        isSelectingAll={isSelectingAll}
+        onSelectAllMatching={selectAllMatching}
+        onClearSelection={clearSelection}
+        noun="invoices"
+        destructiveAction={
+          <HeaderActionButton
+            variant="destructive"
+            icon="solar:trash-bin-minimalistic-bold"
+            disabled={bulkDeleteMutation.isPending}
+            onClick={() => setBulkAction('delete')}
+          >
+            Delete ({selectedIds.length})
+          </HeaderActionButton>
+        }
+      >
+        <HeaderActionButton
+          icon="solar:check-circle-bold"
+          loading={bulkPostMutation.isPending}
+          disabled={bulkPostMutation.isPending}
+          onClick={() => setBulkAction('post')}
+        >
+          Bulk Post ({selectedIds.length})
+        </HeaderActionButton>
+      </BulkActionBar>
+
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>All Invoices</span>
-            {selectedIds.length > 0 && (
-              <div className="flex gap-2">
-                <BulkSelectionNotice pageSize={invoices.length} allPageSelected={allPageSelected} selectedCount={selectedIds.length} allMatchingSelected={allMatchingSelected} isSelectingAll={isSelectingAll} onSelectAllMatching={selectAllMatching} noun="invoices" />
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setBulkAction('post')
-                  }}
-                  disabled={bulkPostMutation.isPending}
-                >
-                  <Icon icon="solar:check-circle-bold" className="h-4 w-4 mr-1" />
-                  {bulkPostMutation.isPending ? 'Posting...' : `Bulk Post (${selectedIds.length})`}
-                </Button>
-                <Button variant="destructive" size="sm" onClick={() => {
-                  setBulkAction('delete')
-                }}>
-                  <Icon icon="solar:trash-bin-minimalistic-bold" className="h-4 w-4 mr-1" />
-                  Delete ({selectedIds.length})
-                </Button>
-              </div>
-            )}
-          </CardTitle>
+          <CardTitle>All Invoices</CardTitle>
         </CardHeader>
         <CardContent>
           {/* Compact single-row filter bar — filters left, column picker right */}
@@ -369,19 +380,19 @@ export function InvoicesPage() {
                         aria-label="Select invoices on this page"
                       />
                     </TableHead>
-                    <TableHead>Invoice #</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Created Date</TableHead>
-                    <TableHead>Due Date</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="text-right">Balance</TableHead>
-                    <TableHead>Status</TableHead>
+                    <SortableHead label="Invoice #" sortKey="invoice_number" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Customer" sortKey="customer.name" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Date" sortKey="invoice_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Created Date" sortKey="created_at" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Due Date" sortKey="due_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Total" sortKey="total" activeKey={sortKey} direction={sortDir} onSort={toggleSort} align="right" />
+                    <SortableHead label="Balance" sortKey="balance" activeKey={sortKey} direction={sortDir} onSort={toggleSort} align="right" />
+                    <SortableHead label="Status" sortKey="status" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {invoices.map((invoice: any) => (
+                  {sortedInvoices.map((invoice: any) => (
                     <TableRow
                       key={invoice.id}
                       className="cursor-pointer hover:bg-muted/50"

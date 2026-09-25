@@ -149,7 +149,7 @@
             </div>
             @endif
 
-            <div class="store-name">{{ $settings['business_name'] ?? 'NoovaERP Store' }}</div>
+            <div class="store-name">{{ $settings['business_name'] ?? 'Store' }}</div>
 
             @forelse($businessAddresses as $address)
             <div class="store-line">{{ $address }}</div>

@@ -139,7 +139,11 @@
         <table style="width: 100%;">
             <tr>
                 <td style="vertical-align: top; width: 60%;">
-                    <div class="company-name">{{ $company['name'] ?: config('app.name') }}</div>
+                    @if(! empty($company['logo']))
+                        <img src="{{ $company['logo'] }}" alt="{{ $company['name'] }}" style="max-height: 60px; max-width: 260px; margin-bottom: 4px;" />
+                    @else
+                        <div class="company-name">{{ $company['name'] }}</div>
+                    @endif
                     @if(! empty($company['address']))<div class="company-meta">{{ $company['address'] }}</div>@endif
                     <div class="company-meta">
                         @if(! empty($company['email'])){{ $company['email'] }}@endif

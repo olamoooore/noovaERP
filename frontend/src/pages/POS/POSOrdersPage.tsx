@@ -32,6 +32,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { useToast } from '@/hooks/use-toast'
 import { Pagination } from '@/components/ui/Pagination'
+import { SortableHead } from '@/components/ui/SortableHead'
+import { useSort } from '@/hooks/useSort'
 import { formatCurrency, formatDateTime, getApiErrorMessage, resolveImageUrl } from '@/lib/utils'
 
 interface SalesOrder {
@@ -171,6 +173,7 @@ export function POSOrdersPage() {
   })
 
   const orders = data?.data || []
+  const { sorted: sortedOrders, sortKey, sortDir, toggle: toggleSort } = useSort<SalesOrder>(orders, 'created_at', 'desc')
   const pagination = data?.meta || { current_page: 1, last_page: 1 }
   const stats = data?.stats || { total_orders: 0, pos_orders: 0, web_orders: 0, total_revenue: 0 }
 
@@ -403,19 +406,19 @@ export function POSOrdersPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Order #</TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Items</TableHead>
-                    <TableHead>Total</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Payment</TableHead>
+                    <SortableHead label="Order #" sortKey="order_number" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Source" sortKey="source" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Date" sortKey="created_at" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Customer" sortKey="customer.name" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Items" sortKey="items_count" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Total" sortKey="total" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Status" sortKey="status" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Payment" sortKey="payment_status" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {orders.map((order: SalesOrder) => (
+                  {sortedOrders.map((order: SalesOrder) => (
                     <TableRow key={`${order.source}-${order.id}`}>
                       <TableCell className="font-medium">{order.order_number}</TableCell>
                       <TableCell>{getSourceBadge(order.source)}</TableCell>

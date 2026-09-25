@@ -1130,7 +1130,7 @@ class PosOrderController extends Controller
 
         // Get business settings
         $businessSettings = [
-            'business_name' => $companySettings->company_name ?? Setting::getValue('business_name', 'NoovaERP Store'),
+            'business_name' => $companySettings->company_name ?? Setting::getValue('business_name', 'Store'),
             'business_logo_url' => $companySettings->company_logo_url ?? null,
             'business_address' => $businessAddresses[0] ?? Setting::getValue('business_address', ''),
             'business_addresses' => $businessAddresses,

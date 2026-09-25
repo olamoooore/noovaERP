@@ -37,8 +37,15 @@ export default function VendorDebitNotePostButton({ creditNoteId, onSuccess }: V
 
   return (
     <>
-      <Button size="sm" variant="ghost" onClick={() => setShowConfirm(true)}>
-        <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4 text-green-600" />
+      <Button
+        size="icon"
+        variant="ghost"
+        className="h-7 w-7 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/40"
+        onClick={() => setShowConfirm(true)}
+        title="Post"
+        aria-label="Post debit note"
+      >
+        <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4" />
       </Button>
 
       <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
