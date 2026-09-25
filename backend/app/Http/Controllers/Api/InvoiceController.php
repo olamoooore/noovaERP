@@ -2264,19 +2264,11 @@ class InvoiceController extends Controller
                     ];
                 }
 
-                // Optional: post the invoice if status = sent/posted
-                $status = strtolower(trim((string) ($headerRow['status'] ?? '')));
-                if (in_array($status, ['sent', 'posted', 'paid'], true) && $invoice->status !== 'posted') {
-                    try {
-                        $this->invoiceService->postInvoice($invoice);
-                    } catch (\Throwable $postException) {
-                        // Keep as draft (quote) but warn — posting may need GL accounts configured
-                        $errors[] = [
-                            'row' => $firstIndex + 2,
-                            'message' => 'Invoice '.$invoice->invoice_number.' created as draft (posting failed: '.$postException->getMessage().')',
-                        ];
-                    }
-                }
+                // Imports never post. Imported invoices land as DRAFT so the
+                // operator reviews them and posts deliberately (which creates
+                // the ledger entry). Auto-posting from a CSV status column left
+                // imported records posted without the operator ever seeing
+                // them — and posted records cannot be corrected like drafts.
 
                 $created++;
             } catch (\Throwable $e) {

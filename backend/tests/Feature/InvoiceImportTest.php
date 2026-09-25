@@ -8,7 +8,6 @@ use App\Models\Product;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\DB;
 use Tests\TenantTestCase;
 
 class InvoiceImportTest extends TenantTestCase
@@ -219,5 +218,50 @@ class InvoiceImportTest extends TenantTestCase
         $this->assertStringContainsString('Customer not found', $errors[0]['message']);
 
         $this->assertDatabaseCount('invoices', 1);
+    }
+
+    public function test_import_never_auto_posts_even_when_csv_status_is_posted(): void
+    {
+        $user = User::create([
+            'name' => 'Invoice Admin',
+            'email' => 'admin-import-post@test.local',
+            'password' => bcrypt('password'),
+        ]);
+
+        Customer::factory()->create([
+            'code' => 'CUST-001',
+            'name' => 'Acme Corp',
+            'payment_terms' => 30,
+        ]);
+        Product::factory()->create([
+            'sku' => 'SKU-A',
+            'track_inventory' => false,
+            'price' => 100,
+            'cost' => 40,
+        ]);
+
+        // The CSV explicitly says posted — import must still land as DRAFT so the
+        // operator reviews it and posts deliberately (auto-posting from imports
+        // left unreviewed records in the ledger).
+        $csv = implode("\n", [
+            'invoice_number,status,customer_code,invoice_date,due_date,description,quantity,unit_price',
+            'IMP-POST-001,posted,CUST-001,1/25/2026,2/25/2026,Widget,1,100.00',
+        ]);
+
+        $file = UploadedFile::fake()->createWithContent('invoices.csv', $csv);
+
+        $response = $this
+            ->withoutMiddleware()
+            ->actingAs($user)
+            ->post('/api/v1/invoices/import', ['file' => $file]);
+
+        $response->assertStatus(200);
+        $response->assertJson(['created' => 1]);
+
+        $invoice = Invoice::where('invoice_number', 'IMP-POST-001')->first();
+        $this->assertNotNull($invoice);
+        $this->assertSame('draft', $invoice->status);
+        $this->assertNull($invoice->journal_entry_id);
+        $this->assertDatabaseCount('journal_entries', 0);
     }
 }

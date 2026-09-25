@@ -159,7 +159,7 @@ class PaymentImportTest extends TenantTestCase
                     ['email' => 'concurrency@local'],
                     ['name' => 'Concurrency', 'password' => bcrypt('password')],
                 )->id,
-                'payment_status' => 'draft',
+                'payment_status' => 'recorded',
             ]);
         }
 
@@ -202,7 +202,7 @@ class PaymentImportTest extends TenantTestCase
         // The relationship must be via the foreign key, not just text storage.
         $this->assertSame($invoice->id, $payment->invoice_id);
         $this->assertSame((float) 400.00, (float) $payment->amount);
-        $this->assertSame('draft', $payment->payment_status);
+        $this->assertSame('recorded', $payment->payment_status);
         $this->assertMatchesRegularExpression('#^PAY/\d{4}/\d{2}/\d{3}$#', $payment->payment_number);
 
         $invoice->refresh();
@@ -423,7 +423,7 @@ class PaymentImportTest extends TenantTestCase
             'amount' => 200.00,
             'method' => 'cash',
             'received_by' => $user->id,
-            'payment_status' => 'draft',
+            'payment_status' => 'recorded',
         ]);
 
         $this->assertTrue($payment->isEditable());
@@ -484,7 +484,7 @@ class PaymentImportTest extends TenantTestCase
             'amount' => 50.00,
             'method' => 'cash',
             'received_by' => $user->id,
-            'payment_status' => 'draft',
+            'payment_status' => 'recorded',
         ]);
 
         $posted = Payment::create([
@@ -554,7 +554,7 @@ class PaymentImportTest extends TenantTestCase
             'amount' => 50.00,
             'method' => 'cash',
             'received_by' => $user->id,
-            'payment_status' => 'draft',
+            'payment_status' => 'recorded',
         ]);
 
         Payment::create([
@@ -573,7 +573,7 @@ class PaymentImportTest extends TenantTestCase
         $all->assertOk();
         $this->assertSame(2, $all->json('total'));
 
-        $draftOnly = $this->withoutMiddleware()->actingAs($user)->getJson('/api/v1/payments?payment_status=draft');
+        $draftOnly = $this->withoutMiddleware()->actingAs($user)->getJson('/api/v1/payments?payment_status=recorded');
         $draftOnly->assertOk();
         $this->assertSame(1, $draftOnly->json('total'));
         $this->assertSame('PAY/2026/08/FILT-DRAFT', $draftOnly->json('data.0.payment_number'));
@@ -593,7 +593,7 @@ class PaymentImportTest extends TenantTestCase
             'amount' => 25.00,
             'method' => 'cash',
             'received_by' => $user->id,
-            'payment_status' => 'draft',
+            'payment_status' => 'recorded',
         ]);
 
         $byNumber = $this->withoutMiddleware()->actingAs($user)->getJson('/api/v1/payments?search=SEARCH-ME');
@@ -692,7 +692,7 @@ class PaymentImportTest extends TenantTestCase
             'amount' => 100.00,
             'method' => 'cash',
             'received_by' => $user->id,
-            'payment_status' => 'draft',
+            'payment_status' => 'recorded',
         ]);
 
         $response = $this->withoutMiddleware()->actingAs($user)->postJson('/api/v1/payments/bulk-post', [
@@ -749,7 +749,7 @@ class PaymentImportTest extends TenantTestCase
             'amount' => 60.00,
             'method' => 'cash',
             'received_by' => $user->id,
-            'payment_status' => 'draft',
+            'payment_status' => 'recorded',
         ]);
 
         $response = $this->withoutMiddleware()->actingAs($user)->postJson("/api/v1/payments/{$draft->id}/post");

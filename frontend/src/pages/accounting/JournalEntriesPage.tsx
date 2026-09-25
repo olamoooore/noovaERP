@@ -658,9 +658,19 @@ export default function JournalEntriesPage() {
                         {formatCurrency(entryBalance(entry))}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={entry.status === 'posted' ? 'default' : 'secondary'}>
-                          {entry.status}
-                        </Badge>
+                        {entry.is_reversal ? (
+                          <Badge
+                            variant="outline"
+                            className="gap-1 whitespace-nowrap border-transparent bg-rose-100 px-1.5 py-0 text-[10px] font-medium leading-4 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
+                          >
+                            <Icon icon="solar:undo-left-round-bold" className="h-3 w-3" />
+                            Reversed
+                          </Badge>
+                        ) : (
+                          <Badge variant={entry.status === 'posted' ? 'default' : 'secondary'}>
+                            {entry.status}
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-1">

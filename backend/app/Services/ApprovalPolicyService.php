@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
 
@@ -73,7 +74,7 @@ class ApprovalPolicyService
      */
     private function getManualJournalThreshold(): float
     {
-        return (float) settings()->get('accounting.manual_journal_threshold', 10000);
+        return (float) Setting::getValue('accounting.manual_journal_threshold', 10000);
     }
 
     /**
@@ -81,7 +82,7 @@ class ApprovalPolicyService
      */
     private function getReversalThreshold(): float
     {
-        return (float) settings()->get('accounting.reversal_threshold', 5000);
+        return (float) Setting::getValue('accounting.reversal_threshold', 5000);
     }
 
     /**

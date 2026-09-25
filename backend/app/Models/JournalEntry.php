@@ -323,6 +323,37 @@ class JournalEntry extends Model
     }
 
     /**
+     * Generate an entry number for a reversal posting.
+     *
+     * Reversals live in their own `RE-YYYY-NNNN` series: they are corrections,
+     * not new journal entries, so they must not consume the JE sequence (which
+     * made reversal numbers look like duplicated/original entries in the list).
+     * Same advisory-lock + collision strategy as {@see generateEntryNumber()}.
+     */
+    public static function generateReversalEntryNumber(?string $date = null): string
+    {
+        $year = $date ? (int) date('Y', strtotime($date)) : (int) date('Y');
+        $prefix = 'RE-'.$year.'-';
+
+        $lockKey = self::numberGenerationLockKey();
+        \Illuminate\Support\Facades\DB::statement('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
+
+        $latest = static::where('entry_number', 'like', $prefix.'%')
+            ->orderByRaw("CAST(SUBSTRING(entry_number FROM '[0-9]+$') AS INTEGER) DESC")
+            ->first();
+
+        $number = $latest ? (int) substr($latest->entry_number, -4) + 1 : 1;
+        $candidate = $prefix.str_pad($number, 4, '0', STR_PAD_LEFT);
+
+        while (static::withTrashed()->where('entry_number', $candidate)->exists()) {
+            $number++;
+            $candidate = $prefix.str_pad($number, 4, '0', STR_PAD_LEFT);
+        }
+
+        return $candidate;
+    }
+
+    /**
      * Scope to get only posted entries
      */
     public function scopePosted($query)

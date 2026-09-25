@@ -90,7 +90,7 @@ interface PaymentStatusOption {
 }
 
 const PAYMENT_STATUS_OPTIONS: PaymentStatusOption[] = [
-  { value: 'recorded', label: 'Recorded (not in ledger)', shortLabel: 'Recorded', icon: 'solar:document-bold-duotone', variant: 'secondary' },
+  { value: 'recorded', label: 'Draft (imported, not yet posted)', shortLabel: 'Draft', icon: 'solar:document-bold-duotone', variant: 'secondary' },
   { value: 'applied', label: 'Applied (posted to ledger)', shortLabel: 'Applied', icon: 'solar:check-circle-bold-duotone', variant: 'default' },
   { value: 'unapplied', label: 'Unapplied', shortLabel: 'Unapplied', icon: 'solar:link-broken-bold-duotone', variant: 'outline' },
   { value: 'reversed', label: 'Reversed', shortLabel: 'Reversed', icon: 'solar:undo-left-round-bold', variant: 'destructive' },

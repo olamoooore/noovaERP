@@ -401,7 +401,7 @@ class ReversalCorrectionEngine
     ): JournalEntry {
         $reversalEntry = JournalEntry::create([
             'journal_id' => $original->journal_id,
-            'entry_number' => JournalEntry::generateEntryNumber(),
+            'entry_number' => JournalEntry::generateReversalEntryNumber($request->reversalDate),
             'entry_date' => $request->reversalDate,
             'type' => $original->type,
             'reference' => $original->reference,

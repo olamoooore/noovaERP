@@ -2,9 +2,8 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import api from '@/lib/api'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
@@ -15,6 +14,11 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import { StatCard } from '@/components/ui/stat-card'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 
 interface Warehouse {
@@ -35,6 +39,7 @@ export function WarehousesPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<Warehouse | null>(null)
   const [formData, setFormData] = useState({
     name: '',
     code: '',
@@ -137,65 +142,53 @@ export function WarehousesPage() {
           <h1 className="text-3xl font-bold tracking-tight">Warehouses</h1>
           <p className="text-muted-foreground mt-1">Manage your storage locations and facilities</p>
         </div>
-        <Button onClick={() => { resetForm(); setIsDialogOpen(true); }}>
-          <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
-          Add Warehouse
-        </Button>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card className="relative overflow-hidden">
-          <div className="absolute right-0 top-0 h-24 w-24 translate-x-8 -translate-y-4">
-            <div className="absolute h-full w-full rounded-full bg-primary/10" />
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative w-full sm:w-64">
+            <Icon
+              icon="solar:magnifer-bold-duotone"
+              className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              placeholder="Search warehouses…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-8 rounded-full pl-9 pr-3 text-xs"
+            />
           </div>
-          <CardHeader className="pb-2">
-            <CardDescription>Total Warehouses</CardDescription>
-            <CardTitle className="text-3xl font-bold">{warehouses.length}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-muted-foreground">Storage locations</p>
-          </CardContent>
-        </Card>
-
-        <Card className="relative overflow-hidden">
-          <div className="absolute right-0 top-0 h-24 w-24 translate-x-8 -translate-y-4">
-            <div className="absolute h-full w-full rounded-full bg-green-500/10" />
-          </div>
-          <CardHeader className="pb-2">
-            <CardDescription>Active</CardDescription>
-            <CardTitle className="text-3xl font-bold text-green-600">{activeCount}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-muted-foreground">Currently operational</p>
-          </CardContent>
-        </Card>
-
-        <Card className="relative overflow-hidden">
-          <div className="absolute right-0 top-0 h-24 w-24 translate-x-8 -translate-y-4">
-            <div className="absolute h-full w-full rounded-full bg-blue-500/10" />
-          </div>
-          <CardHeader className="pb-2">
-            <CardDescription>Default Warehouse</CardDescription>
-            <CardTitle className="text-xl font-bold truncate">{defaultWarehouse?.name || 'Not set'}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-muted-foreground">Primary location</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Search */}
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Icon icon="solar:magnifer-bold" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search warehouses..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
+          {searchQuery && (
+            <span className="text-xs text-muted-foreground">
+              {filteredWarehouses.length} result{filteredWarehouses.length !== 1 ? 's' : ''}
+            </span>
+          )}
+          <HeaderActionButton icon="solar:add-circle-bold-duotone" onClick={() => { resetForm(); setIsDialogOpen(true); }}>
+            Add Warehouse
+          </HeaderActionButton>
         </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+        <StatCard
+          label="Total Warehouses"
+          value={warehouses.length}
+          hint="Storage locations"
+          icon="solar:buildings-bold-duotone"
+          tone="bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400"
+        />
+        <StatCard
+          label="Active"
+          value={activeCount}
+          hint="Currently operational"
+          icon="solar:check-circle-bold-duotone"
+          tone="bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400"
+        />
+        <StatCard
+          label="Default Warehouse"
+          value={<span className="block truncate">{defaultWarehouse?.name || 'Not set'}</span>}
+          hint="Primary location"
+          icon="solar:star-bold-duotone"
+          tone="bg-violet-100 text-violet-600 dark:bg-violet-950/60 dark:text-violet-400"
+        />
       </div>
 
       {/* Warehouses Grid */}
@@ -217,81 +210,106 @@ export function WarehousesPage() {
               {searchQuery ? 'Try a different search term' : 'Add your first warehouse to get started'}
             </p>
             {!searchQuery && (
-              <Button onClick={() => { resetForm(); setIsDialogOpen(true); }} className="mt-4">
-                <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
+              <HeaderActionButton className="mt-4" icon="solar:add-circle-bold-duotone" onClick={() => { resetForm(); setIsDialogOpen(true); }}>
                 Add Warehouse
-              </Button>
+              </HeaderActionButton>
             )}
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filteredWarehouses.map((warehouse) => (
-            <Card key={warehouse.id} className={`group hover:shadow-lg transition-all ${!warehouse.is_active ? 'opacity-60' : ''} ${warehouse.is_default ? 'border-primary/50' : ''}`}>
+            <Card
+              key={warehouse.id}
+              className={cn(
+                'rounded-xl border-slate-200/80 transition-all hover:shadow-md dark:border-slate-800',
+                !warehouse.is_active && 'opacity-60',
+                warehouse.is_default && 'border-primary/40',
+              )}
+            >
               <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${warehouse.is_default ? 'bg-primary/10' : 'bg-muted'}`}>
-                      <Icon icon="solar:buildings-bold-duotone" className={`h-6 w-6 ${warehouse.is_default ? 'text-primary' : 'text-muted-foreground'}`} />
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div
+                      className={cn(
+                        'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl',
+                        warehouse.is_default ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
+                      )}
+                    >
+                      <Icon icon="solar:buildings-bold-duotone" className="h-5 w-5" />
                     </div>
-                    <div>
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        {warehouse.name}
+                    <div className="min-w-0">
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <span className="truncate">{warehouse.name}</span>
                         {warehouse.is_default && (
-                          <Badge className="bg-primary/10 text-primary border-primary/20">Default</Badge>
+                          <Badge variant="outline" className="border-primary/20 bg-primary/10 text-primary">
+                            Default
+                          </Badge>
                         )}
                       </CardTitle>
-                      <p className="text-sm text-muted-foreground">{warehouse.code || 'No code'}</p>
+                      <p className="mt-0.5 font-mono text-xs text-muted-foreground">{warehouse.code || 'No code'}</p>
                     </div>
                   </div>
-                  <Badge variant={warehouse.is_active ? 'default' : 'secondary'} className={warehouse.is_active ? 'bg-green-100 text-green-800' : ''}>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      'shrink-0 gap-1 whitespace-nowrap border-transparent px-1.5 py-0 text-[10px] font-medium leading-4',
+                      warehouse.is_active
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                        : 'bg-muted text-muted-foreground',
+                    )}
+                  >
+                    <Icon
+                      icon={warehouse.is_active ? 'solar:check-circle-bold-duotone' : 'solar:close-circle-bold-duotone'}
+                      className="h-3 w-3"
+                    />
                     {warehouse.is_active ? 'Active' : 'Inactive'}
                   </Badge>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="space-y-2">
                 {warehouse.address && (
-                  <div className="flex items-start gap-2 text-sm">
-                    <Icon icon="solar:map-point-bold" className="h-4 w-4 text-muted-foreground mt-0.5" />
-                    <span className="text-muted-foreground">{warehouse.address}</span>
+                  <div className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <Icon icon="solar:map-point-bold-duotone" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span className="min-w-0 truncate" title={warehouse.address}>{warehouse.address}</span>
                   </div>
                 )}
                 {warehouse.manager_name && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Icon icon="solar:user-bold" className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">{warehouse.manager_name}</span>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Icon icon="solar:user-bold-duotone" className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{warehouse.manager_name}</span>
                   </div>
                 )}
                 {warehouse.phone && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Icon icon="solar:phone-bold" className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">{warehouse.phone}</span>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Icon icon="solar:phone-bold-duotone" className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{warehouse.phone}</span>
                   </div>
                 )}
                 {warehouse.email && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Icon icon="solar:letter-bold" className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">{warehouse.email}</span>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Icon icon="solar:letter-bold-duotone" className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate" title={warehouse.email}>{warehouse.email}</span>
                   </div>
                 )}
-                
-                <div className="flex items-center gap-2 pt-3 border-t">
-                  <Button variant="outline" size="sm" className="flex-1" onClick={() => handleEdit(warehouse)}>
-                    <Icon icon="solar:pen-bold" className="mr-1 h-4 w-4" />
-                    Edit
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                    onClick={() => {
-                      if (confirm('Are you sure you want to delete this warehouse?')) {
-                        deleteMutation.mutate(warehouse.id)
-                      }
-                    }}
+
+                <div className="flex items-center gap-2 border-t pt-3">
+                  <HeaderActionButton
+                    variant="outline"
+                    icon="solar:pen-bold-duotone"
+                    className="flex-1"
+                    onClick={() => handleEdit(warehouse)}
                   >
-                    <Icon icon="solar:trash-bin-trash-bold" className="h-4 w-4" />
-                  </Button>
+                    Edit
+                  </HeaderActionButton>
+                  <HeaderActionButton
+                    variant="outline"
+                    icon="solar:trash-bin-trash-bold-duotone"
+                    className="w-9 px-0 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    aria-label="Delete warehouse"
+                    title="Delete"
+                    onClick={() => setDeleteTarget(warehouse)}
+                  />
                 </div>
               </CardContent>
             </Card>
@@ -320,7 +338,7 @@ export function WarehousesPage() {
           <div className="space-y-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Name *</label>
+                <Label className="text-sm font-medium">Name *</Label>
                 <Input
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -328,7 +346,7 @@ export function WarehousesPage() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Code</label>
+                <Label className="text-sm font-medium">Code</Label>
                 <Input
                   value={formData.code}
                   onChange={(e) => setFormData({ ...formData, code: e.target.value })}
@@ -338,7 +356,7 @@ export function WarehousesPage() {
             </div>
             
             <div className="space-y-2">
-              <label className="text-sm font-medium">Address</label>
+              <Label className="text-sm font-medium">Address</Label>
               <Input
                 value={formData.address}
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
@@ -348,7 +366,7 @@ export function WarehousesPage() {
             
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Phone</label>
+                <Label className="text-sm font-medium">Phone</Label>
                 <Input
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
@@ -356,7 +374,7 @@ export function WarehousesPage() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Email</label>
+                <Label className="text-sm font-medium">Email</Label>
                 <Input
                   type="email"
                   value={formData.email}
@@ -367,7 +385,7 @@ export function WarehousesPage() {
             </div>
             
             <div className="space-y-2">
-              <label className="text-sm font-medium">Manager Name</label>
+              <Label className="text-sm font-medium">Manager Name</Label>
               <Input
                 value={formData.manager_name}
                 onChange={(e) => setFormData({ ...formData, manager_name: e.target.value })}
@@ -381,33 +399,43 @@ export function WarehousesPage() {
                   checked={formData.is_active}
                   onCheckedChange={(c: boolean) => setFormData({ ...formData, is_active: c })}
                 />
-                <label className="text-sm font-medium">Active</label>
+                <Label className="text-sm font-medium">Active</Label>
               </div>
               <div className="flex items-center gap-3">
                 <Switch
                   checked={formData.is_default}
                   onCheckedChange={(c: boolean) => setFormData({ ...formData, is_default: c })}
                 />
-                <label className="text-sm font-medium">Default Warehouse</label>
+                <Label className="text-sm font-medium">Default Warehouse</Label>
               </div>
             </div>
           </div>
           
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSubmit} disabled={mutation.isPending}>
-              {mutation.isPending ? (
-                <>
-                  <Icon icon="solar:refresh-bold" className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                'Save Warehouse'
-              )}
-            </Button>
+            <HeaderActionButton variant="outline" onClick={() => setIsDialogOpen(false)}>
+              Cancel
+            </HeaderActionButton>
+            <HeaderActionButton icon="solar:diskette-bold-duotone" loading={mutation.isPending} disabled={mutation.isPending} onClick={handleSubmit}>
+              Save Warehouse
+            </HeaderActionButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title={`Delete ${deleteTarget?.name || 'warehouse'}?`}
+        description="Warehouses with stock or documents in use cannot be deleted."
+        confirmLabel="Delete"
+        icon="solar:trash-bin-trash-bold-duotone"
+        isPending={deleteMutation.isPending}
+        onConfirm={() => {
+          if (!deleteTarget) return
+          deleteMutation.mutate(deleteTarget.id)
+          setDeleteTarget(null)
+        }}
+      />
     </div>
   )
 }

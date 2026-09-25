@@ -86,6 +86,14 @@ class JournalEntriesController extends Controller
             $query->where('status', $request->status);
         }
 
+        // Reversal postings are their own state in the UI (RE- entries): they
+        // show under the "Reversed" tab, never under "Posted" — they are
+        // cancellations, not new posted entries. Reports already exclude the
+        // reversed pairs via is_active_version, so this is list presentation.
+        if ($request->input('status') === 'posted' && ! $request->boolean('is_reversal')) {
+            $query->where('is_reversal', false);
+        }
+
         // Filter by reversal
         if ($request->has('is_reversal')) {
             $query->where('is_reversal', filter_var($request->is_reversal, FILTER_VALIDATE_BOOLEAN));

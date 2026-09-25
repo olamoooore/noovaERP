@@ -16,7 +16,9 @@ use Tests\TenantTestCase;
 class PostingEngineComprehensiveTest extends TenantTestCase
 {
     protected string $tenantUuid;
+
     protected PostingEngine $postingEngine;
+
     protected User $user;
 
     protected function setUp(): void
@@ -49,8 +51,8 @@ class PostingEngineComprehensiveTest extends TenantTestCase
 
     public function test_post_creates_balanced_journal_entry(): void
     {
-        $debitAccount = $this->createAccount('PE-1100-' . uniqid(), 'asset');
-        $creditAccount = $this->createAccount('PE-2100-' . uniqid(), 'liability');
+        $debitAccount = $this->createAccount('PE-1100-'.uniqid(), 'asset');
+        $creditAccount = $this->createAccount('PE-2100-'.uniqid(), 'liability');
 
         $request = new PostingRequest(
             documentType: 'journal_entry',
@@ -83,8 +85,8 @@ class PostingEngineComprehensiveTest extends TenantTestCase
 
     public function test_post_rejects_unbalanced_entry(): void
     {
-        $debitAccount = $this->createAccount('PE-UNB-' . uniqid(), 'asset');
-        $creditAccount = $this->createAccount('PE-UNB2-' . uniqid(), 'liability');
+        $debitAccount = $this->createAccount('PE-UNB-'.uniqid(), 'asset');
+        $creditAccount = $this->createAccount('PE-UNB2-'.uniqid(), 'liability');
 
         $request = new PostingRequest(
             documentType: 'journal_entry',
@@ -114,8 +116,8 @@ class PostingEngineComprehensiveTest extends TenantTestCase
 
     public function test_post_is_idempotent(): void
     {
-        $debitAccount = $this->createAccount('PE-IDEM-' . uniqid(), 'asset');
-        $creditAccount = $this->createAccount('PE-IDEM2-' . uniqid(), 'liability');
+        $debitAccount = $this->createAccount('PE-IDEM-'.uniqid(), 'asset');
+        $creditAccount = $this->createAccount('PE-IDEM2-'.uniqid(), 'liability');
         $documentId = rand(1, 999999);
 
         $request = new PostingRequest(
@@ -152,8 +154,8 @@ class PostingEngineComprehensiveTest extends TenantTestCase
 
     public function test_reverse_creates_reversal_entry(): void
     {
-        $debitAccount = $this->createAccount('PE-REV-' . uniqid(), 'asset');
-        $creditAccount = $this->createAccount('PE-REV2-' . uniqid(), 'liability');
+        $debitAccount = $this->createAccount('PE-REV-'.uniqid(), 'asset');
+        $creditAccount = $this->createAccount('PE-REV2-'.uniqid(), 'liability');
 
         $postRequest = new PostingRequest(
             documentType: 'journal_entry',
@@ -192,6 +194,13 @@ class PostingEngineComprehensiveTest extends TenantTestCase
         $this->assertNotNull($reverseResult->journalEntry);
         $this->assertEquals('posted', $reverseResult->journalEntry->status);
         $this->assertTrue($reverseResult->journalEntry->is_reversal);
+
+        // Reversals live in their own RE- series: they must not consume the JE
+        // sequence (which made them look like duplicate original entries).
+        $reversalNumber = $reverseResult->journalEntry->entry_number;
+        $this->assertStringStartsWith('RE-', $reversalNumber);
+        $this->assertStringStartsWith('JE-', $originalEntry->entry_number);
+        $this->assertNotSame($originalEntry->entry_number, $reversalNumber);
     }
 
     public function test_reverse_rejects_draft_entry(): void
@@ -215,8 +224,8 @@ class PostingEngineComprehensiveTest extends TenantTestCase
 
     public function test_reverse_rejects_already_reversed(): void
     {
-        $debitAccount = $this->createAccount('PE-DOUBLE-' . uniqid(), 'asset');
-        $creditAccount = $this->createAccount('PE-DOUBLE2-' . uniqid(), 'liability');
+        $debitAccount = $this->createAccount('PE-DOUBLE-'.uniqid(), 'asset');
+        $creditAccount = $this->createAccount('PE-DOUBLE2-'.uniqid(), 'liability');
 
         $postRequest = new PostingRequest(
             documentType: 'journal_entry',
@@ -265,8 +274,8 @@ class PostingEngineComprehensiveTest extends TenantTestCase
 
     public function test_preview_returns_entry_without_posting(): void
     {
-        $debitAccount = $this->createAccount('PE-PREV-' . uniqid(), 'asset');
-        $creditAccount = $this->createAccount('PE-PREV2-' . uniqid(), 'liability');
+        $debitAccount = $this->createAccount('PE-PREV-'.uniqid(), 'asset');
+        $creditAccount = $this->createAccount('PE-PREV2-'.uniqid(), 'liability');
 
         $request = new PostingRequest(
             documentType: 'journal_entry',
