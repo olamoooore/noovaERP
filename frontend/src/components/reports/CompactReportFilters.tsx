@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { DateRangeSelector } from './DateRangeSelector';
 import { AccountSelector } from './AccountSelector';
 import { DepartmentSelector } from './DepartmentSelector';
 import { TagFilterSelect } from '@/components/tags/TagFilterSelect';
@@ -56,7 +55,7 @@ export const CompactReportFilters: React.FC<CompactReportFiltersProps> = ({
   showInterval = false,
   accountType,
   autoApply = true,
-  showRefresh = true,
+  showRefresh = false,
   onRefresh,
   showTag = false,
   tagLabel = 'All Tags',
@@ -83,31 +82,6 @@ export const CompactReportFilters: React.FC<CompactReportFiltersProps> = ({
   const update = <K extends keyof ReportFiltersType>(key: K, value: ReportFiltersType[K]) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
-
-  const handleResetFilters = () => {
-    const resetFilters: ReportFiltersType = {
-      start_date: '',
-      end_date: '',
-      account_id: undefined,
-      department_id: undefined,
-      account_type: accountType,
-      compare_period: false,
-      interval: 'month',
-      tag: undefined,
-    };
-    setFilters(resetFilters);
-    if (autoApply) onFilterChange(resetFilters);
-  };
-
-  const hasActiveFilters =
-    !!filters.start_date ||
-    !!filters.end_date ||
-    filters.account_id !== undefined ||
-    filters.department_id !== undefined ||
-    (filters.account_type && filters.account_type !== accountType) ||
-    filters.compare_period ||
-    !!filters.tag ||
-    filters.interval !== 'month';
 
   return (
     <div className={plain
@@ -232,16 +206,6 @@ export const CompactReportFilters: React.FC<CompactReportFiltersProps> = ({
 
       {/* Right-side action buttons */}
       <div className="ml-auto flex items-center gap-1.5">
-        {hasActiveFilters && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs text-muted-foreground"
-            onClick={handleResetFilters}
-          >
-            <Icon icon="solar:restart-bold" className="h-3.5 w-3.5" />
-          </Button>
-        )}
         {showRefresh && onRefresh && (
           <Button
             variant="ghost"

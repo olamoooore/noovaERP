@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -15,7 +15,6 @@ import type { ReportFilters as ReportFiltersType } from '@/types/reports';
 
 export function ExpenseAnalyticsPage() {
   const [activeTab, setActiveTab] = useState('by-category');
-  const queryClient = useQueryClient();
   useReportAutoRefresh();
   const categoryRef = useRef<HTMLDivElement>(null);
   const vendorRef = useRef<HTMLDivElement>(null);
@@ -214,12 +213,6 @@ export function ExpenseAnalyticsPage() {
         onFilterChange={handleFilterChange}
         initialFilters={filters}
         showDateRange
-        showRefresh
-        onRefresh={() => {
-          queryClient.invalidateQueries({ queryKey: ['expenses-by-category'] });
-          queryClient.invalidateQueries({ queryKey: ['expenses-by-vendor'] });
-          queryClient.invalidateQueries({ queryKey: ['expenses-by-department'] });
-        }}
       />
 
       {/* Analytics Tabs */}

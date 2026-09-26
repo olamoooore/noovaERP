@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -13,7 +13,6 @@ import type { ReportFilters as ReportFiltersType } from '@/types/reports';
 
 export function InventoryReportsPage() {
   const [activeTab, setActiveTab] = useState('valuation');
-  const queryClient = useQueryClient();
   useReportAutoRefresh();
   const [filters, setFilters] = useState<ReportFiltersType>({
     start_date: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
@@ -413,14 +412,6 @@ export function InventoryReportsPage() {
         onFilterChange={handleFilterChange}
         initialFilters={filters}
         showDateRange
-        showRefresh
-        onRefresh={() => {
-          queryClient.invalidateQueries({ queryKey: ['stock-valuation'] });
-          queryClient.invalidateQueries({ queryKey: ['stock-movement'] });
-          queryClient.invalidateQueries({ queryKey: ['reorder-report'] });
-          queryClient.invalidateQueries({ queryKey: ['inventory-aging'] });
-          queryClient.invalidateQueries({ queryKey: ['inventory-turnover'] });
-        }}
       />
 
       {/* Reports Tabs */}
