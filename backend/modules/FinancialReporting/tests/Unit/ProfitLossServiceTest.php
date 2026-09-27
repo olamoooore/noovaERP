@@ -229,4 +229,44 @@ class ProfitLossServiceTest extends TenantTestCase
 
         $this->assertEquals(0, $report->data['revenue']['total']);
     }
+
+    /** @test */
+    public function it_uses_account_subtype_when_operating_expense_tag_has_no_mappings()
+    {
+        config(['app.report_classification' => 'mapped']);
+
+        $operatingExpense = ChartOfAccount::updateOrCreate(
+            ['code' => '611000'],
+            [
+                'name' => 'Salaries and wages',
+                'type' => 'expense',
+                'subtype' => 'operating_expense',
+                'is_active' => true,
+            ]
+        );
+
+        $entry = $this->createJournalEntry([
+            'description' => 'Posted salary expense',
+        ]);
+
+        JournalEntryLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $operatingExpense->id,
+            'debit' => 1056,
+            'credit' => 0,
+        ]);
+
+        $filter = new ReportFilter(
+            startDate: Carbon::parse('2024-01-01'),
+            endDate: Carbon::parse('2024-01-31')
+        );
+
+        $report = $this->service->generate($filter);
+
+        $this->assertEquals(1056, $report->data['operating_expenses']['total']);
+        $this->assertContains(
+            '611000',
+            array_column($report->data['operating_expenses']['accounts'], 'code')
+        );
+    }
 }

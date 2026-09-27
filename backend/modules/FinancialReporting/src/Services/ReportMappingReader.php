@@ -12,6 +12,20 @@ use Illuminate\Support\Facades\DB;
 class ReportMappingReader
 {
     /**
+     * Semantic fallback used while a tenant has not yet configured a report
+     * tag through the master-COA mapping tables.
+     *
+     * Explicit mappings remain authoritative as soon as at least one account
+     * is mapped to the requested tag.
+     */
+    private const FALLBACK_SUBTYPES = [
+        'PL_COGS' => ['cost_of_goods_sold', 'expense_direct_cost'],
+        'PL_OPERATING_EXPENSES' => ['operating_expense', 'expense', 'expense_depreciation'],
+        'PL_OTHER_INCOME' => ['other_revenue', 'income_other'],
+        'PL_OTHER_EXPENSES' => ['other_expense'],
+    ];
+
+    /**
      * Feature flag: 'mapped' uses report_tags tables, 'legacy' uses code ranges.
      */
     public function isMapped(): bool
@@ -113,7 +127,13 @@ class ReportMappingReader
         if ($this->isMapped()) {
             $ids = $this->accountIdsForTag($tagCode, $legalEntityId);
             if (empty($ids)) {
-                $query->whereRaw('1=0'); // no accounts mapped → zero result
+                $subtypes = self::FALLBACK_SUBTYPES[$tagCode] ?? [];
+
+                if (empty($subtypes)) {
+                    $query->whereRaw('1=0');
+                } else {
+                    $query->whereIn("{$coaAlias}.subtype", $subtypes);
+                }
             } else {
                 $query->whereIn("{$coaAlias}.id", $ids);
             }
