@@ -269,4 +269,36 @@ class ProfitLossServiceTest extends TenantTestCase
             array_column($report->data['operating_expenses']['accounts'], 'code')
         );
     }
+
+    /** @test */
+    public function it_reports_expense_accounts_that_fall_outside_the_legacy_code_bands()
+    {
+        // 6-digit charts (e.g. 657000) sit outside every legacy 4-digit P&L
+        // band. Such accounts must still be reported under Operating Expenses;
+        // dropping them understates costs and overstates profit.
+        $miscExpense = ChartOfAccount::firstOrCreate(
+            ['code' => '657000'],
+            ['name' => 'General and miscellaneous expense', 'type' => 'expense', 'is_active' => true]
+        );
+
+        $entry = $this->createJournalEntry(['description' => 'Misc admin expense']);
+
+        JournalEntryLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $miscExpense->id,
+            'debit' => 4321,
+            'credit' => 0,
+        ]);
+
+        $filter = new ReportFilter(
+            startDate: Carbon::parse('2024-01-01'),
+            endDate: Carbon::parse('2024-01-31')
+        );
+
+        $report = $this->service->generate($filter);
+
+        $this->assertEquals(4321, $report->data['operating_expenses']['total']);
+        $codes = array_column($report->data['operating_expenses']['accounts'], 'code');
+        $this->assertContains('657000', $codes);
+    }
 }

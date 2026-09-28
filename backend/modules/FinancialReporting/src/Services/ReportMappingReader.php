@@ -147,10 +147,31 @@ class ReportMappingReader
             return; // no code filter (e.g. PL_REVENUE uses type filter only)
         }
 
-        $query->where(function ($q) use ($ranges, $coaAlias) {
+        $query->where(function ($q) use ($ranges, $coaAlias, $tagCode) {
             foreach ($ranges as $range) {
                 [$start, $end] = explode('-', $range);
                 $q->orWhereBetween("{$coaAlias}.code", [$start, $end]);
+            }
+
+            // Lossless catch-all: expense accounts outside every explicit P&L
+            // band (e.g. 6-digit charts where administrative expenses live at
+            // 6xxxxx) still belong to Operating Expenses. Dropping them
+            // understates costs and overstates profit. Callers constrain
+            // coa.type = 'expense', so this cannot pull in non-expense rows.
+            if ($tagCode === 'PL_OPERATING_EXPENSES') {
+                $outsideRanges = array_merge(
+                    self::LEGACY_RANGES['PL_COGS'] ?? [],
+                    self::LEGACY_RANGES['PL_OTHER_EXPENSES'] ?? [],
+                );
+
+                if ($outsideRanges !== []) {
+                    $q->orWhere(function ($catchAll) use ($outsideRanges, $coaAlias) {
+                        foreach ($outsideRanges as $range) {
+                            [$start, $end] = explode('-', $range);
+                            $catchAll->whereNotBetween("{$coaAlias}.code", [$start, $end]);
+                        }
+                    });
+                }
             }
         });
     }
@@ -201,10 +222,29 @@ class ReportMappingReader
         }
 
         $query = DB::table('chart_of_accounts');
-        $query->where(function ($q) use ($ranges) {
+        $query->where(function ($q) use ($ranges, $tagCode) {
             foreach ($ranges as $range) {
                 [$start, $end] = explode('-', $range);
                 $q->orWhereBetween('code', [$start, $end]);
+            }
+
+            // Same lossless catch-all as applyFilter(), but the id list has no
+            // caller-supplied type filter — constrain to expenses explicitly.
+            if ($tagCode === 'PL_OPERATING_EXPENSES') {
+                $outsideRanges = array_merge(
+                    self::LEGACY_RANGES['PL_COGS'] ?? [],
+                    self::LEGACY_RANGES['PL_OTHER_EXPENSES'] ?? [],
+                );
+
+                if ($outsideRanges !== []) {
+                    $q->orWhere(function ($catchAll) use ($outsideRanges) {
+                        $catchAll->where('type', 'expense');
+                        foreach ($outsideRanges as $range) {
+                            [$start, $end] = explode('-', $range);
+                            $catchAll->whereNotBetween('code', [$start, $end]);
+                        }
+                    });
+                }
             }
         });
 

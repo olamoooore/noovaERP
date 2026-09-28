@@ -328,9 +328,12 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::post('/invoices/{invoice}/deliver', [InvoiceController::class, 'deliver'])
             ->middleware(RequirePermission::using('invoices.send'));
 
-        // Legacy /send still available for backward compat (combined send+post)
+        // Legacy /send — despite the name it posts to the GL (InvoiceController::send()
+        // calls InvoiceService::postInvoice). Kept for backward compatibility, so it
+        // must require the same right as /post: posting is accounting-only and is
+        // never a sales action.
         Route::post('/invoices/{invoice}/send', [InvoiceController::class, 'send'])
-            ->middleware(RequirePermission::using('invoices.send'));
+            ->middleware(RequirePermission::using('accounting.post'));
 
         // GL Posting (Phase B — GL posting without delivery, separate endpoint)
         Route::post('/invoices/{invoice}/post', [InvoiceController::class, 'post'])

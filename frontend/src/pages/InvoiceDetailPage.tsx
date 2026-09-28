@@ -177,6 +177,10 @@ export function InvoiceDetailPage() {
   const { toast } = useToast()
   const isAcmeTenant = useAuthStore((state) => state.tenantId) === '00000000-0000-0000-0000-000000000001'
   const role = useAuthStore((state) => state.role)
+  const { hasPermission } = useAuthStore()
+  // Posting to the GL is an accounting action — sales may create/approve/send,
+  // never post.
+  const canPost = hasPermission('accounting.post')
   const queryClient = useQueryClient()
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [chatterOpen, setChatterOpen] = useState(false)
@@ -192,7 +196,9 @@ export function InvoiceDetailPage() {
 
   const postMutation = useMutation({
     mutationFn: async () => {
-      const response = await api.post(`/invoices/${id}/send`)
+      // GL posting endpoint (accounting.post). The legacy /send route posts too
+      // and is gated identically server-side.
+      const response = await api.post(`/invoices/${id}/post`)
       return response.data
     },
     onSuccess: () => {
@@ -512,7 +518,7 @@ export function InvoiceDetailPage() {
                 Create Delivery Order
               </HeaderActionButton>
             )}
-            {invoice.status === 'draft' && (
+            {invoice.status === 'draft' && canPost && (
               <HeaderActionButton
                 icon="solar:check-circle-bold-duotone"
                 loading={postMutation.isPending}

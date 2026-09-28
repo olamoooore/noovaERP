@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import api from '@/lib/api'
+import { useAuthStore } from '@/store/authStore'
 import { useNavigate } from 'react-router-dom'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
 import { INVOICE_EXPORT_COLUMNS, SalesDocumentExportMenu } from '@/components/sales/SalesDocumentExportMenu'
@@ -127,6 +128,10 @@ export function InvoicesPage() {
     },
   })
 
+  const { hasPermission } = useAuthStore()
+  // Bulk posting is accounting-only (server enforces accounting.post).
+  const canPost = hasPermission('accounting.post')
+
   const bulkPostMutation = useMutation({
     mutationFn: async (ids: number[]) => {
       const res = await api.post('/invoices/bulk-post', { ids })
@@ -221,14 +226,16 @@ export function InvoicesPage() {
           </HeaderActionButton>
         }
       >
-        <HeaderActionButton
-          icon="solar:check-circle-bold"
-          loading={bulkPostMutation.isPending}
-          disabled={bulkPostMutation.isPending}
-          onClick={() => setBulkAction('post')}
-        >
-          Bulk Post ({selectedIds.length})
-        </HeaderActionButton>
+        {canPost && (
+          <HeaderActionButton
+            icon="solar:check-circle-bold"
+            loading={bulkPostMutation.isPending}
+            disabled={bulkPostMutation.isPending}
+            onClick={() => setBulkAction('post')}
+          >
+            Bulk Post ({selectedIds.length})
+          </HeaderActionButton>
+        )}
       </BulkActionBar>
 
       <Card>

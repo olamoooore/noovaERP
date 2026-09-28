@@ -71,6 +71,14 @@ class FixedAssetsController extends Controller
 
         $this->applyEntityScope($request, $query);
 
+        // Deactivated assets are archived: they leave the default register and
+        // only appear when the Inactive filter (or include_inactive) is asked
+        // for. Previously "delete" only set is_active=false and the row stayed
+        // visible everywhere, so deleting an asset looked like it did nothing.
+        if (! $request->boolean('include_inactive') && $request->input('status') !== 'inactive') {
+            $query->where('is_active', true);
+        }
+
         // Filter by status
         if ($request->has('status')) {
             $query->where('status', $request->status);
@@ -343,7 +351,18 @@ class FixedAssetsController extends Controller
         $validator = Validator::make($request->all(), [
             'asset_number' => 'sometimes|string|max:50|unique:fixed_assets,asset_number,'.$id,
             'name' => 'sometimes|string|max:255',
+            'description' => 'nullable|string',
             'category' => 'sometimes|string|max:100',
+            'purchase_date' => 'sometimes|date',
+            'purchase_cost' => 'sometimes|numeric|min:0',
+            'depreciation_method' => 'sometimes|in:straight_line,declining_balance,units_of_production',
+            'useful_life_years' => 'sometimes|nullable|integer|min:1',
+            'useful_life_units' => 'sometimes|nullable|integer|min:1',
+            'salvage_value' => 'sometimes|nullable|numeric|min:0',
+            'depreciation_start_date' => 'sometimes|date',
+            'asset_account_id' => 'sometimes|exists:chart_of_accounts,id',
+            'depreciation_account_id' => 'sometimes|exists:chart_of_accounts,id',
+            'accumulated_depreciation_account_id' => 'sometimes|exists:chart_of_accounts,id',
             'location' => 'nullable|string|max:255',
             'department_id' => 'nullable|exists:departments,id',
             'responsible_person' => 'nullable|string|max:255',
@@ -354,14 +373,57 @@ class FixedAssetsController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
-        // Only allow updating certain fields after creation
-        $allowedFields = [
-            'name', 'description', 'category', 'location',
-            'department_id', 'responsible_person', 'serial_number',
+        // The form submits the whole asset. Previously only 7 cosmetic fields
+        // were persisted, so "useful life / year" and depreciation settings
+        // silently never saved.
+        $depreciationFields = [
+            'purchase_date', 'purchase_cost', 'depreciation_method', 'useful_life_years',
+            'useful_life_units', 'salvage_value', 'depreciation_start_date',
+            'asset_account_id', 'depreciation_account_id', 'accumulated_depreciation_account_id',
         ];
 
-        $updateData = $request->only($allowedFields);
-        $asset->update($updateData);
+        // Once depreciation has been posted, changing the figures it was
+        // computed from would desync the ledger — require a reversal first.
+        if ($asset->depreciationSchedules()->where('is_posted', true)->exists()) {
+            $changed = [];
+            foreach ($depreciationFields as $field) {
+                if (! $request->has($field)) {
+                    continue;
+                }
+                $current = $asset->getRawOriginal($field);
+                $incoming = $request->input($field);
+                $differs = (is_numeric($current) || is_numeric($incoming))
+                    ? ((float) $current !== (float) $incoming)
+                    : ((string) $current !== (string) $incoming);
+                if ($differs) {
+                    $changed[] = $field;
+                }
+            }
+
+            if ($changed !== []) {
+                return response()->json([
+                    'error' => 'Cannot change depreciation details ('.implode(', ', $changed).') after depreciation has been posted. Reverse the posted depreciation first.',
+                ], 422);
+            }
+        }
+
+        $allowedFields = [
+            'asset_number', 'name', 'description', 'category', 'purchase_date', 'purchase_cost',
+            'depreciation_method', 'useful_life_years', 'useful_life_units', 'salvage_value',
+            'depreciation_start_date', 'asset_account_id', 'depreciation_account_id',
+            'accumulated_depreciation_account_id', 'location', 'department_id',
+            'responsible_person', 'serial_number',
+        ];
+
+        $asset->update($request->only($allowedFields));
+
+        // Book value follows cost/salvage: carrying amount = cost − accumulated.
+        if ($request->has('purchase_cost') || $request->has('salvage_value')) {
+            $asset->refresh();
+            $asset->update([
+                'book_value' => max(0, (float) $asset->purchase_cost - (float) $asset->accumulated_depreciation),
+            ]);
+        }
 
         return response()->json([
             'message' => 'Asset updated successfully',
@@ -387,7 +449,13 @@ class FixedAssetsController extends Controller
             ], 422);
         }
 
-        $asset->update(['is_active' => false]);
+        // Deactivate (assets with posted depreciation must stay in the ledger
+        // history, so this is a status change, not a row delete). Marking the
+        // status too keeps the badge/filter truthful.
+        $asset->update([
+            'is_active' => false,
+            'status' => $asset->status === 'disposed' ? 'disposed' : 'inactive',
+        ]);
 
         return response()->json([
             'message' => 'Asset deactivated successfully',

@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -55,6 +56,7 @@ export default function AssetsManagementPage() {
   const [activeTab, setActiveTab] = useState('assets');
   const [formOpen, setFormOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<FixedAsset | null>(null);
+  const [deactivateTarget, setDeactivateTarget] = useState<FixedAsset | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedAssetId, setSelectedAssetId] = useState<number | null>(null);
@@ -75,7 +77,7 @@ export default function AssetsManagementPage() {
   });
 
   // Fetch assets
-  const { data: assets = [], isLoading } = useQuery({
+  const { data: assets = [], isLoading } = useQuery<FixedAsset[]>({
     queryKey: ['fixed-assets', { search: searchTerm, status: statusFilter }],
     queryFn: () => fixedAssetsApi.getAssets({ 
       search: searchTerm, 
@@ -319,10 +321,8 @@ export default function AssetsManagementPage() {
     }
   };
 
-  const handleDelete = (id: number) => {
-    if (confirm('Are you sure you want to deactivate this asset?')) {
-      deleteMutation.mutate(id);
-    }
+  const handleDelete = (asset: FixedAsset) => {
+    setDeactivateTarget(asset);
   };
 
   const getStatusBadge = (status: string) => {
@@ -431,18 +431,24 @@ export default function AssetsManagementPage() {
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           <Button
-                            size="sm"
+                            size="icon"
                             variant="ghost"
+                            className="h-7 w-7"
+                            title="Edit"
+                            aria-label="Edit asset"
                             onClick={() => handleOpenForm(asset)}
                           >
-                            <Icon icon="solar:pen-linear" className="w-4 h-4" />
+                            <Icon icon="solar:pen-linear" className="h-4 w-4" />
                           </Button>
                           <Button
-                            size="sm"
+                            size="icon"
                             variant="ghost"
-                            onClick={() => handleDelete(asset.id)}
+                            className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            title="Deactivate"
+                            aria-label="Deactivate asset"
+                            onClick={() => handleDelete(asset)}
                           >
-                            <Icon icon="solar:trash-bin-trash-linear" className="w-4 h-4" />
+                            <Icon icon="solar:trash-bin-trash-linear" className="h-4 w-4" />
                           </Button>
                         </div>
                       </TableCell>
@@ -758,6 +764,22 @@ export default function AssetsManagementPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={deactivateTarget !== null}
+        onOpenChange={(open) => !open && setDeactivateTarget(null)}
+        title={`Deactivate ${deactivateTarget?.name || 'asset'}?`}
+        description="The asset is removed from the register and stops depreciating. Assets with posted depreciation stay in the ledger and can be reactivated later."
+        confirmLabel="Deactivate"
+        tone="warning"
+        icon="solar:trash-bin-trash-bold-duotone"
+        isPending={deleteMutation.isPending}
+        onConfirm={() => {
+          if (!deactivateTarget) return;
+          deleteMutation.mutate(deactivateTarget.id);
+          setDeactivateTarget(null);
+        }}
+      />
     </div>
   );
 }
