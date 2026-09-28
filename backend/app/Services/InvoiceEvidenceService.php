@@ -576,7 +576,7 @@ class InvoiceEvidenceService
             $expiresInDays,
         );
 
-        $frontendUrl = rtrim((string) (env('FRONTEND_URL') ?: config('app.url', '')), '/');
+        $frontendUrl = rtrim((string) config('frontend.url'), '/');
 
         return [
             'token' => $esign->token,

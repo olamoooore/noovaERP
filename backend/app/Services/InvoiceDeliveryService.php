@@ -312,7 +312,7 @@ class InvoiceDeliveryService
 
     private function getPortalUrl(Invoice $invoice): string
     {
-        $frontendUrl = rtrim((string) (env('FRONTEND_URL') ?: config('app.url', '')), '/');
+        $frontendUrl = rtrim((string) config('frontend.url'), '/');
 
         return "{$frontendUrl}/invoice-accept/{$invoice->id}";
     }
