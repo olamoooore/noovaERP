@@ -479,6 +479,19 @@ class PayPalGateway implements PaymentGatewayInterface
 
     /**
      * Verify PayPal webhook signature
+     *
+     * DEFECT HISTORY (P-03, fixed): this read the undefined global
+     * config('services.paypal.webhook_id') — no such key existed in
+     * config/services.php and no PAYPAL_WEBHOOK_ID was set anywhere, so
+     * verification ALWAYS failed and every PayPal webhook returned 400.
+     * It also sent $request->all() (Laravel's re-parsed array, which can
+     * differ byte-wise from the signed body) as webhook_event.
+     *
+     * The webhook id is now read from the TENANT's gateway row
+     * (payment_gateways.config.webhook_id — PAY-R9: per-tenant credentials,
+     * not a global constant), with the old global config as a deprecated
+     * fallback, and the verification payload uses the RAW request body so
+     * the bytes match what PayPal signed.
      */
     public function verifyWebhook(Request $request): bool
     {
@@ -488,9 +501,14 @@ class PayPalGateway implements PaymentGatewayInterface
                 return false;
             }
 
-            $webhookId = config('services.paypal.webhook_id');
+            $webhookId = data_get($this->gateway->config, 'webhook_id')
+                ?? data_get($this->gateway->config, 'webhookId')
+                ?? config('services.paypal.webhook_id');
             if (! $webhookId) {
-                \Log::warning('PayPal webhook ID not configured');
+                \Log::warning('PayPal webhook ID not configured for this gateway', [
+                    'gateway_id' => $this->gateway->id,
+                    'hint' => 'Set payment_gateways.config.webhook_id (PayPal app → Webhooks → webhook id).',
+                ]);
 
                 return false;
             }
@@ -503,6 +521,13 @@ class PayPalGateway implements PaymentGatewayInterface
                 'PAYPAL-AUTH-ALGO' => $request->header('PAYPAL-AUTH-ALGO'),
             ];
 
+            // Byte-exact event body as received from PayPal (never the
+            // framework's re-parsed request array).
+            $rawEvent = json_decode($request->getContent(), true);
+            if (! is_array($rawEvent)) {
+                $rawEvent = $request->all();
+            }
+
             $payload = [
                 'transmission_id' => $headers['PAYPAL-TRANSMISSION-ID'],
                 'transmission_time' => $headers['PAYPAL-TRANSMISSION-TIME'],
@@ -510,7 +535,7 @@ class PayPalGateway implements PaymentGatewayInterface
                 'auth_algo' => $headers['PAYPAL-AUTH-ALGO'],
                 'transmission_sig' => $headers['PAYPAL-TRANSMISSION-SIG'],
                 'webhook_id' => $webhookId,
-                'webhook_event' => $request->all(),
+                'webhook_event' => $rawEvent,
             ];
 
             $response = Http::withToken($token)

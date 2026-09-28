@@ -23,7 +23,10 @@ class PlatformRateLimitingTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        // Flush the rate limit key to start clean.
+        // The limiter counts under the scoped guest key ('ip' segment added
+        // when the 2026-09-21 rekey split user/IP buckets); forget both the
+        // current and legacy shapes so repeated runs start clean.
+        Cache::forget('rate_limit:platform:ip:127.0.0.1');
         Cache::forget('rate_limit:platform:127.0.0.1');
     }
 
@@ -99,6 +102,6 @@ class PlatformRateLimitingTest extends TestCase
         $this->handle();
         // The TTL is set on the cache key. We can verify by checking
         // the cache has a value at the key.
-        $this->assertNotNull(Cache::get('rate_limit:platform:127.0.0.1'));
+        $this->assertNotNull(Cache::get('rate_limit:platform:ip:127.0.0.1'));
     }
 }

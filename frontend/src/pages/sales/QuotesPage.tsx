@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useAuthStore } from '@/store/authStore'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -126,7 +127,12 @@ export function QuotesPage() {
     onSelectAllError: () => toast({ variant: 'destructive', title: 'Failed to select all quotations' }),
   })
 
+  const { hasPermission } = useAuthStore()
+  // Posting/confirming sell-side documents is accounting-only (server enforces accounting.post).
+  const canPost = hasPermission('accounting.post')
+
   const confirmMutation = useMutation({
+
     mutationFn: async (id: number) => {
       const response = await api.post(`/quotations/${id}/confirm`)
       return response.data
@@ -268,18 +274,18 @@ export function QuotesPage() {
             <div className="relative w-full sm:w-64">
               <Icon
                 icon="solar:magnifer-bold-duotone"
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
               />
               <Input
                 value={searchQuery}
                 onChange={(event) => handleSearchChange(event.target.value)}
                 placeholder="Search quotation number or customer"
-                className="h-9 pl-9"
+                className="h-8 rounded-full pl-9 pr-3 text-xs"
               />
             </div>
 
             <Select value={statusFilter} onValueChange={handleStatusChange}>
-              <SelectTrigger className="h-9 w-[150px]">
+              <SelectTrigger className="h-8 w-36 rounded-full text-xs">
                 <SelectValue placeholder="All Status" />
               </SelectTrigger>
               <SelectContent>
@@ -292,6 +298,7 @@ export function QuotesPage() {
             </Select>
 
             <TagFilterSelect
+              className="h-8 w-36 rounded-full text-xs"
               value={tagFilter}
               onChange={(value) => { setTagFilter(value); setPage(1) }}
             />
@@ -418,15 +425,17 @@ export function QuotesPage() {
                                 >
                                   <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-3.5 w-3.5" />
                                 </Button>
-                                <Button
-                                  size="sm"
-                                  className="h-7 w-7 bg-emerald-600 p-0 text-white hover:bg-emerald-700"
-                                  onClick={() => confirmMutation.mutate(quote.id)}
-                                  disabled={confirmMutation.isPending}
-                                  title="Confirm"
-                                >
-                                  <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4" />
-                                </Button>
+                                {canPost && (
+                                  <Button
+                                    size="sm"
+                                    className="h-7 w-7 bg-emerald-600 p-0 text-white hover:bg-emerald-700"
+                                    onClick={() => confirmMutation.mutate(quote.id)}
+                                    disabled={confirmMutation.isPending}
+                                    title="Confirm"
+                                  >
+                                    <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4" />
+                                  </Button>
+                                )}
                               </>
                             )}
                           </div>

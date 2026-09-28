@@ -88,9 +88,13 @@ Route::middleware([
             ->only(['store', 'update', 'destroy'])
             ->middleware(\App\Http\Middleware\RequirePermission::class.':sales.write');
 
+        // Confirming a delivery order releases stock/COGS — accounting-only
+        // (Owner/Admin/Accountant), same gate as invoice posting.
+        Route::post('/sales/delivery-orders/{id}/confirm', [DeliveryOrderController::class, 'confirm'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.post'));
+
         // Lifecycle transitions + bulk operations
         Route::middleware(\App\Http\Middleware\RequirePermission::class.':sales.write')->group(function () {
-            Route::post('/sales/delivery-orders/{id}/confirm', [DeliveryOrderController::class, 'confirm']);
             // Delivery Order → Invoice conversion (accounting-origin path).
             Route::post('/sales/delivery-orders/{id}/create-invoice', [DeliveryOrderController::class, 'createInvoice']);
             // Delivery-order approval (reviewer actions).

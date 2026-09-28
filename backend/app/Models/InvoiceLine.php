@@ -55,7 +55,32 @@ class InvoiceLine extends Model
 
         static::saving(function ($line) {
             $line->calculateTotals();
+            $line->fillLotFromBatch();
         });
+    }
+
+    /**
+     * A line linked to a batch always carries the human-readable lot number and
+     * expiry, even when the client only sent the batch id (the invoice form and
+     * conversions used to drop them, so the selected lot never applied).
+     */
+    public function fillLotFromBatch(): void
+    {
+        if (! $this->product_batch_id || filled($this->lot_number)) {
+            return;
+        }
+
+        $batch = ProductBatch::find($this->product_batch_id);
+
+        if (! $batch) {
+            return;
+        }
+
+        $this->lot_number = $batch->batch_number ?: $batch->lot_number;
+
+        if (blank($this->expiry_date) && $batch->expiry_date) {
+            $this->expiry_date = $batch->expiry_date;
+        }
     }
 
     public function invoice(): BelongsTo

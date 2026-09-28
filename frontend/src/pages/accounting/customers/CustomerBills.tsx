@@ -18,6 +18,7 @@ import { useBulkSelection } from '@/hooks/use-bulk-selection';
 import { BulkActionBar } from '@/components/ui/bulk-action-bar';
 import { StatCard } from '@/components/ui/stat-card';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
+import { useAuthStore } from '@/store/authStore'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Pagination } from '@/components/ui/Pagination';
 import { SortableHead } from '@/components/ui/SortableHead';
@@ -180,6 +181,10 @@ export const CustomerBills: React.FC = () => {
     onSelectAllError: () => toast({ variant: 'destructive', title: 'Failed to select all invoices' }),
   });
   const selectedIdSet = new Set(selectedIds);
+  const { hasPermission } = useAuthStore()
+  // Posting/confirming sell-side documents is accounting-only (server enforces accounting.post).
+  const canPost = hasPermission('accounting.post')
+
 
   // Send invoice mutation
   const postInvoiceMutation = useMutation({
@@ -584,14 +589,16 @@ export const CustomerBills: React.FC = () => {
           </HeaderActionButton>
         }
       >
-        <HeaderActionButton
-          icon="solar:check-circle-bold"
-          loading={bulkPostMutation.isPending}
-          disabled={bulkPostMutation.isPending}
-          onClick={() => setBulkPostOpen(true)}
-        >
-          Bulk Post ({selectedIds.length})
-        </HeaderActionButton>
+        {canPost && (
+          <HeaderActionButton
+            icon="solar:check-circle-bold"
+            loading={bulkPostMutation.isPending}
+            disabled={bulkPostMutation.isPending}
+            onClick={() => setBulkPostOpen(true)}
+          >
+            Bulk Post ({selectedIds.length})
+          </HeaderActionButton>
+        )}
       </BulkActionBar>
 
       {/* Bills List */}
@@ -739,18 +746,20 @@ export const CustomerBills: React.FC = () => {
                               >
                                 <Icon icon="solar:pen-bold-duotone" className="h-3.5 w-3.5" />
                               </Button>
-                              <Button
-                                size="sm"
-                                className="h-7 w-7 bg-emerald-600 p-0 text-white hover:bg-emerald-700"
-                                title="Post"
-                                disabled={postInvoiceMutation.isPending}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  postInvoiceMutation.mutate(invoice.id);
-                                }}
-                              >
-                                <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4" />
-                              </Button>
+                              {canPost && (
+                                <Button
+                                  size="sm"
+                                  className="h-7 w-7 bg-emerald-600 p-0 text-white hover:bg-emerald-700"
+                                  title="Post"
+                                  disabled={postInvoiceMutation.isPending}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    postInvoiceMutation.mutate(invoice.id);
+                                  }}
+                                >
+                                  <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4" />
+                                </Button>
+                              )}
                             </>
                           )}
                         </div>

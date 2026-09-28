@@ -123,7 +123,11 @@ class RolePermissionSeeder extends Seeder
         // Accounting
         'accounting.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::VIEWER],
         'accounting.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
-        'accounting.post' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
+        // Posting sell-side documents (invoice post/send, delivery-order
+        // confirm, quotation confirm) is a segregation-of-duties action:
+        // Owner/Admin (implicit) + Accountant only. Managers and sales staff
+        // prepare documents but cannot release them to the ledger.
+        'accounting.post' => [UserRole::OWNER, UserRole::ADMIN, UserRole::ACCOUNTANT],
         'accounting.reverse' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
         'accounting.lock' => [UserRole::OWNER, UserRole::ADMIN],
         'accounting.settings' => [UserRole::OWNER, UserRole::ADMIN],

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { todayDateOnly, addCalendarDays, diffCalendarDays, isValidProductQuantity } from '@/lib/dateOnly';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -267,6 +268,14 @@ export const CreateInvoicePage: React.FC = () => {
   const location = useLocation();
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
+  // The edit form hydrates its state from the server exactly once per invoice.
+  // Background refetches (window focus, invalidation) must not overwrite
+  // in-progress edits — losing the selected lot this way was a real report.
+  const hydratedInvoiceIdRef = useRef<string | null>(null);
+  // Marked true by any interaction inside the line-items grid so a later
+  // background refetch can never overwrite in-progress edits (e.g. the
+  // selected lot). Reset when a different invoice is hydrated.
+  const linesTouchedRef = useRef(false);
   const { toast } = useToast();
   const isQuoteMode = location.pathname.startsWith('/sales/quotes');
   const isEditMode = Boolean(id);
@@ -338,7 +347,7 @@ export const CreateInvoicePage: React.FC = () => {
     });
   };
 
-  const { data: existingInvoice, isLoading: isInvoiceLoading } = useQuery({
+  const { data: existingInvoice, isLoading: isInvoiceLoading, isSuccess: invoiceLoaded } = useQuery({
     queryKey: ['invoice-edit', id],
     queryFn: async () => {
       const response = await api.get(`/invoices/${id}`);
@@ -452,7 +461,13 @@ export const CreateInvoicePage: React.FC = () => {
   }, [isEditMode, originalCustomerId, selectedCustomer]);
 
   useEffect(() => {
-    if (!existingInvoice) return;
+    if (!existingInvoice || !invoiceLoaded) return;
+    const hydrateKey = String(existingInvoice.id);
+    if (hydratedInvoiceIdRef.current !== hydrateKey) {
+      hydratedInvoiceIdRef.current = hydrateKey;
+      linesTouchedRef.current = false;
+    }
+    if (linesTouchedRef.current) return;
 
     const savedCustomerId = existingInvoice.customer_id ? String(existingInvoice.customer_id) : '';
     setOriginalCustomerId(savedCustomerId);
@@ -526,7 +541,7 @@ export const CreateInvoicePage: React.FC = () => {
       discount_amount: line.discount_amount != null ? Number(line.discount_amount) : '',
     }));
     setLines(mappedLines.length ? mappedLines : [emptyLine()]);
-  }, [existingInvoice]);
+  }, [existingInvoice, invoiceLoaded]);
 
   useEffect(() => {
     if (!isEditMode || !existingInvoice || !selectedCustomerDetail) return;
@@ -1460,7 +1475,12 @@ export const CreateInvoicePage: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
+              <div
+                className="overflow-x-auto"
+                onChangeCapture={() => { linesTouchedRef.current = true }}
+                onInputCapture={() => { linesTouchedRef.current = true }}
+                onClickCapture={() => { linesTouchedRef.current = true }}
+              >
                 <LineItemsTable
                   variant="raw"
                   tableClassName="w-full min-w-[1700px] text-sm"

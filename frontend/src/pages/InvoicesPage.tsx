@@ -463,15 +463,17 @@ export function InvoicesPage() {
                               <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => navigate(`/invoices/${invoice.id}/edit`)} title="Edit">
                                 <Icon icon="solar:pen-bold-duotone" className="h-3.5 w-3.5" />
                               </Button>
-                              <Button
-                                size="sm"
-                                className="h-7 w-7 bg-emerald-600 p-0 text-white hover:bg-emerald-700"
-                                onClick={() => sendInvoiceMutation.mutate(invoice.id)}
-                                disabled={sendInvoiceMutation.isPending}
-                                title="Post"
-                              >
-                                <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4" />
-                              </Button>
+                              {canPost && (
+                                <Button
+                                  size="sm"
+                                  className="h-7 w-7 bg-emerald-600 p-0 text-white hover:bg-emerald-700"
+                                  onClick={() => sendInvoiceMutation.mutate(invoice.id)}
+                                  disabled={sendInvoiceMutation.isPending}
+                                  title="Post"
+                                >
+                                  <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4" />
+                                </Button>
+                              )}
                             </>
                           )}
                         </div>

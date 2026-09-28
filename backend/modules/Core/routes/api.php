@@ -393,7 +393,10 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::get('/quotations/export', [QuotationController::class, 'export']);
         Route::post('/quotations/bulk-delete', [QuotationController::class, 'bulkDestroy']);
         Route::apiResource('quotations', QuotationController::class);
-        Route::post('/quotations/{id}/confirm', [QuotationController::class, 'confirm']);
+        // Confirming a quotation is the posting-equivalent release action —
+        // Owner/Admin/Accountant only (requires accounting.write + accounting.post).
+        Route::post('/quotations/{id}/confirm', [QuotationController::class, 'confirm'])
+            ->middleware(RequirePermission::using('accounting.post'));
         Route::post('/quotations/{id}/cancel', [QuotationController::class, 'cancel']);
         // Issue #178/#179: rejection with auto-versioned replacement draft.
         Route::post('/quotations/{id}/reject', [QuotationController::class, 'reject']);

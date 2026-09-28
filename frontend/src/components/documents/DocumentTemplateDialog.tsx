@@ -11,9 +11,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
-import { printPdfBlob } from '@/lib/printPdf'
 
 export type DocumentTemplateType = 'invoice' | 'delivery_order' | 'quotation'
 
@@ -36,10 +36,10 @@ interface TemplateOption {
 }
 
 /**
- * Shared "select a Template Builder template, then print or download" dialog
- * used by the invoice, delivery order and quotation detail pages. Printing and
- * downloading both go through the same render endpoint so the printed document
- * matches the selected template instead of the browser printing the whole SPA.
+ * Shared "select a Template Builder template, then download" dialog used by the
+ * invoice, delivery order and quotation detail pages. The PDF is rendered with
+ * the selected template server-side, so it matches the tenant's document design
+ * instead of the browser printing the whole SPA.
  */
 export function DocumentTemplateDialog({
   open,
@@ -51,7 +51,7 @@ export function DocumentTemplateDialog({
 }: DocumentTemplateDialogProps) {
   const { toast } = useToast()
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
-  const [busy, setBusy] = useState<'download' | 'print' | null>(null)
+  const [busy, setBusy] = useState<'download' | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['document-template-options', documentType],
@@ -88,34 +88,30 @@ export function DocumentTemplateDialog({
     setSelectedTemplateId(String(resolved))
   }, [open, templates, defaultTemplateId, selectedTemplateId])
 
-  const run = async (action: 'download' | 'print') => {
+  const run = async () => {
     if (!selectedTemplateId || busy) return
-    setBusy(action)
+    setBusy('download')
     try {
       const response = await api.get(pdfPath, {
         params: { template: selectedTemplateId },
         responseType: 'blob',
       })
       const blob = new Blob([response.data], { type: 'application/pdf' })
-      if (action === 'print') {
-        printPdfBlob(blob)
-      } else {
-        const url = window.URL.createObjectURL(blob)
-        const link = document.createElement('a')
-        link.href = url
-        link.setAttribute('download', filename)
-        document.body.appendChild(link)
-        link.click()
-        link.remove()
-        window.URL.revokeObjectURL(url)
-      }
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', filename)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
       onOpenChange(false)
     } catch (error: any) {
       const message = await extractBlobError(error)
       toast({
         variant: 'destructive',
-        title: action === 'print' ? 'Print failed' : 'Download failed',
-        description: message || `Could not ${action} the PDF. Please try again.`,
+        title: 'Download failed',
+        description: message || 'Could not generate the PDF. Please try again.',
       })
     } finally {
       setBusy(null)
@@ -124,41 +120,53 @@ export function DocumentTemplateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Print / download {title} PDF</DialogTitle>
+          <DialogTitle>Download {title} PDF</DialogTitle>
           <DialogDescription>
-            Choose the template to use, then print or download the generated PDF.
+            Choose the template to use, then download the generated PDF.
           </DialogDescription>
         </DialogHeader>
-        <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId} disabled={isLoading}>
-          <SelectTrigger>
-            <SelectValue placeholder={isLoading ? 'Loading templates...' : 'Select a template'} />
-          </SelectTrigger>
-          <SelectContent>
-            {templates.map((template) => (
-              <SelectItem key={template.id} value={template.id}>
-                {template.name}{template.is_system_default ? ' (Default)' : ''}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {!isLoading && templates.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            No published templates are available for this document type.
+
+        <div className="space-y-2">
+          <Label>{title} template</Label>
+          <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId} disabled={isLoading}>
+            <SelectTrigger>
+              <SelectValue placeholder={isLoading ? 'Loading templates…' : 'Select a template'} />
+            </SelectTrigger>
+            <SelectContent>
+              {templates.map((template) => (
+                <SelectItem key={template.id} value={template.id}>
+                  <span className="flex items-center gap-2">
+                    <Icon icon="solar:document-text-bold-duotone" className="h-4 w-4 text-muted-foreground" />
+                    {template.name}
+                    {template.is_system_default ? ' (Default)' : ''}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            The PDF is generated with the selected template — no browser print dialog.
           </p>
+        </div>
+
+        {!isLoading && templates.length === 0 && (
+          <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed px-4 py-8 text-center">
+            <Icon icon="solar:document-text-bold-duotone" className="h-8 w-8 text-muted-foreground/30" />
+            <p className="text-sm text-muted-foreground">
+              No published templates are available for this document type.
+            </p>
+          </div>
         )}
+
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy !== null}>
             Cancel
           </Button>
-          <Button variant="outline" onClick={() => run('download')} disabled={!selectedTemplateId || busy !== null || isLoading}>
-            <Icon icon="solar:download-bold" className="mr-2 h-4 w-4" />
-            {busy === 'download' ? 'Downloading...' : 'Download'}
-          </Button>
-          <Button onClick={() => run('print')} disabled={!selectedTemplateId || busy !== null || isLoading}>
-            <Icon icon="solar:printer-bold" className="mr-2 h-4 w-4" />
-            {busy === 'print' ? 'Preparing...' : 'Print'}
+          <Button onClick={() => run()} disabled={!selectedTemplateId || busy !== null || isLoading}>
+            <Icon icon={busy === 'download' ? 'eos-icons:loading' : 'solar:download-bold-duotone'} className="mr-2 h-4 w-4" />
+            {busy === 'download' ? 'Preparing…' : 'Download PDF'}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -399,8 +399,8 @@ export function InventoryReportsPage() {
       {/* Page Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Inventory Reports</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
+          <h1 className="text-3xl font-bold tracking-tight">Inventory Reports</h1>
+          <p className="text-muted-foreground mt-1">
             View comprehensive inventory valuation, movement, and analytics
           </p>
         </div>

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\UserRole;
 use App\Models\Customer;
 use App\Models\Product;
 use App\Models\Tenant;
@@ -28,6 +29,8 @@ class HR175DeliveryOrderPermissionEnforcementTest extends TenantTestCase
     protected User $viewer;
 
     protected User $salesRep;
+
+    protected User $accountant;
 
     protected Customer $customer;
 
@@ -68,9 +71,14 @@ class HR175DeliveryOrderPermissionEnforcementTest extends TenantTestCase
         $this->salesRep = User::factory()->create();
         $this->salesRep->assignRole('Sales');
 
+        // Accountant holds accounting.post (the document-release capability).
+        $this->accountant = User::factory()->create();
+        $this->accountant->assignRole(UserRole::ACCOUNTANT->spatieName());
+
         foreach ([
             ['user' => $this->viewer, 'role' => 'viewer'],
             ['user' => $this->salesRep, 'role' => 'sales'],
+            ['user' => $this->accountant, 'role' => 'accountant'],
         ] as $entry) {
             DB::table('user_company_access')->insert([
                 'user_id' => $entry['user']->id,
@@ -201,12 +209,20 @@ class HR175DeliveryOrderPermissionEnforcementTest extends TenantTestCase
         $this->actingAs($this->viewer)->getJson("/api/v1/sales/delivery-orders/{$id}")->assertStatus(200);
     }
 
-    public function test_sales_rep_can_create_and_complete_delivery_order(): void
+    public function test_only_accountant_can_confirm_a_delivery_order(): void
     {
         $id = $this->createDeliveryOrderAs($this->salesRep);
 
+        // Sales prepares the document but cannot release it (Segregation of Duties).
         $this->actingAs($this->salesRep)->postJson("/api/v1/sales/delivery-orders/{$id}/confirm")
+            ->assertStatus(403);
+        $this->assertSame('draft', \Modules\Sales\Models\DeliveryOrder::findOrFail($id)->status);
+
+        // Accountant holds accounting.post and can confirm.
+        $this->actingAs($this->accountant)->postJson("/api/v1/sales/delivery-orders/{$id}/confirm")
             ->assertStatus(200);
+
+        // Completing stays a warehouse/sales transition once confirmed.
         $this->actingAs($this->salesRep)->postJson("/api/v1/sales/delivery-orders/{$id}/complete")
             ->assertStatus(200);
     }

@@ -30,6 +30,8 @@ import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { SortableHead } from '@/components/ui/SortableHead'
 import { useSort } from '@/hooks/useSort'
+import { StatCard } from '@/components/ui/stat-card'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 
 interface Product {
   id: number
@@ -98,6 +100,9 @@ const normalizePaginatedResponse = <T,>(payload: any): PaginatedResponse<T> => {
     total: payload?.total ?? payload?.meta?.total ?? rows.length,
   }
 }
+
+const formatQty = (value: unknown) =>
+  Number(value ?? 0).toLocaleString(undefined, { maximumFractionDigits: 4 })
 
 type OperationType = 'in' | 'out' | 'adjust'
 type ActiveTab = 'products' | 'movements' | 'low-stock' | 'out-of-stock'
@@ -327,50 +332,6 @@ export function StockManagementPage() {
     })
   }
 
-  const refreshProductStockInCache = async (productId: number) => {
-    const response = await api.get(`/stock/product/${productId}`)
-    const stockLevels = Array.isArray(response.data) ? response.data : []
-    const totalStock = stockLevels.reduce((sum, stockLevel) => sum + Number(stockLevel.quantity ?? 0), 0)
-
-    queryClient.setQueriesData({
-      predicate: (query) => ['products', 'products-stock', 'products-list', 'products-search'].includes(String(query.queryKey[0] ?? '')),
-    }, (existing: any) => {
-      if (!existing) return existing
-
-      if (Array.isArray(existing)) {
-        return existing.map((item) => item?.id === productId ? { ...item, stock_quantity: totalStock, stock: totalStock } : item)
-      }
-
-      if (Array.isArray(existing?.data)) {
-        return {
-          ...existing,
-          data: existing.data.map((item: any) => item?.id === productId ? { ...item, stock_quantity: totalStock, stock: totalStock } : item),
-        }
-      }
-
-      return existing
-    })
-
-    queryClient.setQueriesData({
-      predicate: (query) => String(query.queryKey[0] ?? '') === 'product-detail' && String(query.queryKey[1] ?? '') === String(productId),
-    }, (existing: any) => {
-      if (!existing) return existing
-      return { ...existing, stock_quantity: totalStock, stock: totalStock }
-    })
-
-    return totalStock
-  }
-
-  const refetchStockQueries = async () => {
-    await Promise.all([
-      queryClient.refetchQueries({ queryKey: ['products-stock'], type: 'active' }),
-      queryClient.refetchQueries({ queryKey: ['stock-movements'], type: 'active' }),
-      queryClient.refetchQueries({ queryKey: ['low-stock'], type: 'active' }),
-      queryClient.refetchQueries({ queryKey: ['out-of-stock'], type: 'active' }),
-      queryClient.refetchQueries({ queryKey: ['inventory-dashboard'], type: 'active' }),
-    ])
-  }
-
   const stockInMutation = useMutation({
     mutationFn: async () => {
       const response = await api.post('/stock/in', {
@@ -531,23 +492,23 @@ export function StockManagementPage() {
 
   const getTypeConfig = (type: string) => {
     const configs: Record<string, { color: string; icon: string; label: string }> = {
-      in: { color: 'bg-primary/10 text-primary border-primary/20', icon: 'solar:arrow-down-bold', label: 'Stock In' },
-      out: { color: 'bg-rose-500/10 text-rose-600 border-rose-500/20', icon: 'solar:arrow-up-bold', label: 'Stock Out' },
-      purchase: { color: 'bg-blue-500/10 text-blue-600 border-blue-500/20', icon: 'solar:cart-large-2-bold', label: 'Purchase' },
-      sale: { color: 'bg-amber-500/10 text-amber-600 border-amber-500/20', icon: 'solar:bag-bold', label: 'Sale' },
-      adjustment: { color: 'bg-violet-500/10 text-violet-600 border-violet-500/20', icon: 'solar:tuning-2-bold', label: 'Adjustment' },
-      transfer_in: { color: 'bg-cyan-500/10 text-cyan-600 border-cyan-500/20', icon: 'solar:login-2-bold', label: 'Transfer In' },
-      transfer_out: { color: 'bg-orange-500/10 text-orange-600 border-orange-500/20', icon: 'solar:logout-2-bold', label: 'Transfer Out' },
-      return: { color: 'bg-teal-500/10 text-teal-600 border-teal-500/20', icon: 'solar:undo-left-bold', label: 'Return' },
+      in: { color: 'bg-primary/10 text-primary border-primary/20', icon: 'solar:arrow-down-bold-duotone', label: 'Stock In' },
+      out: { color: 'bg-rose-500/10 text-rose-600 border-rose-500/20', icon: 'solar:arrow-up-bold-duotone', label: 'Stock Out' },
+      purchase: { color: 'bg-blue-500/10 text-blue-600 border-blue-500/20', icon: 'solar:cart-large-2-bold-duotone', label: 'Purchase' },
+      sale: { color: 'bg-amber-500/10 text-amber-600 border-amber-500/20', icon: 'solar:bag-bold-duotone', label: 'Sale' },
+      adjustment: { color: 'bg-violet-500/10 text-violet-600 border-violet-500/20', icon: 'solar:tuning-2-bold-duotone', label: 'Adjustment' },
+      transfer_in: { color: 'bg-cyan-500/10 text-cyan-600 border-cyan-500/20', icon: 'solar:login-2-bold-duotone', label: 'Transfer In' },
+      transfer_out: { color: 'bg-orange-500/10 text-orange-600 border-orange-500/20', icon: 'solar:logout-2-bold-duotone', label: 'Transfer Out' },
+      return: { color: 'bg-teal-500/10 text-teal-600 border-teal-500/20', icon: 'solar:undo-left-bold-duotone', label: 'Return' },
     }
-    return configs[type] || { color: 'bg-gray-500/10 text-gray-600 border-gray-500/20', icon: 'solar:question-circle-bold', label: type }
+    return configs[type] || { color: 'bg-gray-500/10 text-gray-600 border-gray-500/20', icon: 'solar:question-circle-bold-duotone', label: type }
   }
 
   const getStockStatus = (product: Product) => {
     const threshold = product.min_stock_threshold || product.reorder_level || 10
-    if (product.stock_quantity <= 0) return { label: 'Out of Stock', color: 'bg-rose-100 text-rose-800' }
-    if (product.stock_quantity <= threshold) return { label: 'Low Stock', color: 'bg-amber-100 text-amber-800' }
-    return { label: 'In Stock', color: 'bg-green-100 text-green-800' }
+    if (product.stock_quantity <= 0) return { label: 'Out of Stock', color: 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300' }
+    if (product.stock_quantity <= threshold) return { label: 'Low Stock', color: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' }
+    return { label: 'In Stock', color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' }
   }
 
   const renderPagination = (
@@ -597,100 +558,69 @@ export function StockManagementPage() {
           <h1 className="text-3xl font-bold tracking-tight">Stock Management</h1>
           <p className="text-muted-foreground mt-1">Manage your inventory stock levels and movements</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={() => openDialog('in')} className="bg-primary hover:bg-primary/90">
-            <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
+        <div className="flex flex-wrap items-center gap-2">
+          <HeaderActionButton icon="solar:add-circle-bold-duotone" onClick={() => openDialog('in')}>
             Receive Stock
-          </Button>
-          <Button onClick={() => openDialog('out')} variant="destructive">
-            <Icon icon="solar:minus-circle-bold" className="mr-2 h-4 w-4" />
+          </HeaderActionButton>
+          <HeaderActionButton variant="destructive" icon="solar:minus-circle-bold-duotone" onClick={() => openDialog('out')}>
             Remove Stock
-          </Button>
-          <Button onClick={() => openDialog('adjust')} variant="outline">
-            <Icon icon="solar:tuning-2-bold" className="mr-2 h-4 w-4" />
+          </HeaderActionButton>
+          <HeaderActionButton variant="outline" icon="solar:tuning-2-bold-duotone" onClick={() => openDialog('adjust')}>
             Reconcile Count
-          </Button>
+          </HeaderActionButton>
         </div>
       </div>
 
       {/* Quick Stats */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="relative overflow-hidden">
-          <div className="absolute right-0 top-0 h-24 w-24 translate-x-8 -translate-y-4">
-            <div className="absolute h-full w-full rounded-full bg-primary/10" />
-          </div>
-          <CardHeader className="pb-2">
-            <CardDescription>Total Products</CardDescription>
-            <CardTitle className="text-3xl font-bold">{inventoryDashboard?.summary?.total_products ?? products.length}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-muted-foreground">Active inventory items</p>
-          </CardContent>
-        </Card>
-
-        <Card className="relative overflow-hidden">
-          <div className="absolute right-0 top-0 h-24 w-24 translate-x-8 -translate-y-4">
-            <div className="absolute h-full w-full rounded-full bg-blue-500/10" />
-          </div>
-          <CardHeader className="pb-2">
-            <CardDescription>Warehouses</CardDescription>
-            <CardTitle className="text-3xl font-bold">{warehouses?.length || 0}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-muted-foreground">Storage locations</p>
-          </CardContent>
-        </Card>
-
-        <Card className="relative overflow-hidden border-amber-500/50">
-          <div className="absolute right-0 top-0 h-24 w-24 translate-x-8 -translate-y-4">
-            <div className="absolute h-full w-full rounded-full bg-amber-500/10" />
-          </div>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-2">
-              <Icon icon="solar:danger-triangle-bold" className="h-4 w-4 text-amber-500" />
-              Low Stock
-            </CardDescription>
-            <CardTitle className="text-3xl font-bold text-amber-600">{lowStockCount}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-muted-foreground">Items below threshold</p>
-          </CardContent>
-        </Card>
-
-        <Card className="relative overflow-hidden border-rose-500/50">
-          <div className="absolute right-0 top-0 h-24 w-24 translate-x-8 -translate-y-4">
-            <div className="absolute h-full w-full rounded-full bg-rose-500/10" />
-          </div>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-2">
-              <Icon icon="solar:close-circle-bold" className="h-4 w-4 text-rose-500" />
-              Out of Stock
-            </CardDescription>
-            <CardTitle className="text-3xl font-bold text-rose-600">{outOfStockCount}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-muted-foreground">Items need restocking</p>
-          </CardContent>
-        </Card>
+        <StatCard
+          label="Total Products"
+          value={inventoryDashboard?.summary?.total_products ?? products.length}
+          icon="solar:box-bold-duotone"
+          hint="Active inventory items"
+        />
+        <StatCard
+          label="Warehouses"
+          value={warehouses?.length || 0}
+          icon="solar:buildings-2-bold-duotone"
+          tone="bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400"
+          hint="Storage locations"
+        />
+        <StatCard
+          label="Low Stock"
+          value={lowStockCount}
+          icon="solar:danger-triangle-bold-duotone"
+          tone="bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400"
+          hint="Items below threshold"
+          onClick={() => setActiveTab('low-stock')}
+        />
+        <StatCard
+          label="Out of Stock"
+          value={outOfStockCount}
+          icon="solar:close-circle-bold-duotone"
+          tone="bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400"
+          hint="Items need restocking"
+          onClick={() => setActiveTab('out-of-stock')}
+        />
       </div>
 
       {/* Main Content */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ActiveTab)} className="space-y-4">
         <TabsList className="w-fit max-w-full">
           <TabsTrigger value="products" className="gap-2">
-            <Icon icon="solar:box-bold" className="h-4 w-4" />
+            <Icon icon="solar:box-bold-duotone" className="h-4 w-4" />
             Products
           </TabsTrigger>
           <TabsTrigger value="movements" className="gap-2">
-            <Icon icon="solar:history-bold" className="h-4 w-4" />
+            <Icon icon="solar:history-bold-duotone" className="h-4 w-4" />
             Movements
           </TabsTrigger>
           <TabsTrigger value="low-stock" className="gap-2">
-            <Icon icon="solar:danger-triangle-bold" className="h-4 w-4" />
+            <Icon icon="solar:danger-triangle-bold-duotone" className="h-4 w-4" />
             Low Stock
           </TabsTrigger>
           <TabsTrigger value="out-of-stock" className="gap-2">
-            <Icon icon="solar:close-circle-bold" className="h-4 w-4" />
+            <Icon icon="solar:close-circle-bold-duotone" className="h-4 w-4" />
             Out of Stock
           </TabsTrigger>
         </TabsList>
@@ -704,13 +634,13 @@ export function StockManagementPage() {
                   <CardTitle>Product Stock Levels</CardTitle>
                   <CardDescription>View and manage stock for all products</CardDescription>
                 </div>
-                <div className="relative max-w-sm">
-                  <Icon icon="solar:magnifer-bold" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <div className="relative w-full sm:w-64">
+                  <Icon icon="solar:magnifer-bold-duotone" className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     placeholder="Search products..."
                     value={searchProducts}
                     onChange={(e) => setSearchProducts(e.target.value)}
-                    className="pl-9"
+                    className="h-8 rounded-full pl-9 pr-3 text-xs"
                   />
                 </div>
               </div>
@@ -735,7 +665,7 @@ export function StockManagementPage() {
                       <TableRow>
                         <TableCell colSpan={8} className="h-32 text-center">
                           <div className="flex items-center justify-center gap-2">
-                            <Icon icon="solar:refresh-bold" className="h-5 w-5 animate-spin" />
+                            <Icon icon="eos-icons:loading" className="h-6 w-6 animate-spin text-primary" />
                             Loading products...
                           </div>
                         </TableCell>
@@ -773,23 +703,23 @@ export function StockManagementPage() {
                             <TableCell className="text-right">{formatCurrency(product.cost)}</TableCell>
                             <TableCell className="text-right font-medium">{formatCurrency(product.price)}</TableCell>
                             <TableCell className="text-right">
-                              <span className="font-semibold text-lg">{product.stock_quantity ?? 0}</span>
+                              <span className="font-semibold text-lg tabular-nums">{formatQty(product.stock_quantity)}</span>
                             </TableCell>
                             <TableCell>
-                              <Badge variant="outline" className={status.color}>
+                              <Badge variant="outline" className={`whitespace-nowrap ${status.color}`}>
                                 {status.label}
                               </Badge>
                             </TableCell>
                             <TableCell className="text-right">
-                              <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Button size="sm" variant="ghost" onClick={() => openDialog('in', product.id)} title="Stock In">
-                                  <Icon icon="solar:add-circle-bold" className="h-4 w-4 text-primary" />
+                              <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => openDialog('in', product.id)} title="Stock In" aria-label="Stock in">
+                                  <Icon icon="solar:add-circle-bold-duotone" className="h-3.5 w-3.5 text-primary" />
                                 </Button>
-                                <Button size="sm" variant="ghost" onClick={() => openDialog('out', product.id)} title="Stock Out">
-                                  <Icon icon="solar:minus-circle-bold" className="h-4 w-4 text-rose-500" />
+                                <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => openDialog('out', product.id)} title="Stock Out" aria-label="Stock out">
+                                  <Icon icon="solar:minus-circle-bold-duotone" className="h-3.5 w-3.5 text-rose-500" />
                                 </Button>
-                                <Button size="sm" variant="ghost" onClick={() => openDialog('adjust', product.id)} title="Adjust">
-                                  <Icon icon="solar:tuning-2-bold" className="h-4 w-4 text-violet-500" />
+                                <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => openDialog('adjust', product.id)} title="Adjust" aria-label="Adjust stock">
+                                  <Icon icon="solar:tuning-2-bold-duotone" className="h-3.5 w-3.5 text-violet-500" />
                                 </Button>
                               </div>
                             </TableCell>
@@ -814,18 +744,18 @@ export function StockManagementPage() {
                   <CardTitle>Stock Movement History</CardTitle>
                   <CardDescription>Track all inventory changes</CardDescription>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <div className="relative">
-                    <Icon icon="solar:magnifer-bold" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative w-full sm:w-52">
+                    <Icon icon="solar:magnifer-bold-duotone" className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       placeholder="Search movements..."
                       value={searchMovements}
                       onChange={(e) => setSearchMovements(e.target.value)}
-                      className="pl-9 w-[200px]"
+                      className="h-8 rounded-full pl-9 pr-3 text-xs"
                     />
                   </div>
                   <Select value={filterType} onValueChange={setFilterType}>
-                    <SelectTrigger className="w-[140px]">
+                    <SelectTrigger className="h-8 w-36 rounded-full text-xs">
                       <SelectValue placeholder="Type" />
                     </SelectTrigger>
                     <SelectContent>
@@ -838,7 +768,7 @@ export function StockManagementPage() {
                     </SelectContent>
                   </Select>
                   <Select value={filterWarehouse} onValueChange={setFilterWarehouse}>
-                    <SelectTrigger className="w-[160px]">
+                    <SelectTrigger className="h-8 w-40 rounded-full text-xs">
                       <SelectValue placeholder="Warehouse" />
                     </SelectTrigger>
                     <SelectContent>
@@ -870,7 +800,7 @@ export function StockManagementPage() {
                       <TableRow>
                         <TableCell colSpan={7} className="h-32 text-center">
                           <div className="flex items-center justify-center gap-2">
-                            <Icon icon="solar:refresh-bold" className="h-5 w-5 animate-spin" />
+                            <Icon icon="eos-icons:loading" className="h-6 w-6 animate-spin text-primary" />
                             Loading movements...
                           </div>
                         </TableCell>
@@ -940,7 +870,7 @@ export function StockManagementPage() {
             <CardHeader>
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10">
-                  <Icon icon="solar:danger-triangle-bold" className="h-5 w-5 text-amber-500" />
+                  <Icon icon="solar:danger-triangle-bold-duotone" className="h-5 w-5 text-amber-500" />
                 </div>
                 <div>
                   <CardTitle>Low Stock Items</CardTitle>
@@ -952,7 +882,7 @@ export function StockManagementPage() {
               {lowStockLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="flex items-center gap-2 text-muted-foreground">
-                    <Icon icon="solar:refresh-bold" className="h-5 w-5 animate-spin" />
+                    <Icon icon="eos-icons:loading" className="h-6 w-6 animate-spin text-primary" />
                     Loading low stock items...
                   </div>
                 </div>
@@ -965,35 +895,34 @@ export function StockManagementPage() {
                   <p className="text-muted-foreground mt-1">No products are below their minimum threshold</p>
                 </div>
               ) : (
-                <div className="grid gap-3">
+                <div className="grid gap-2">
                   {lowStockItems.map((item: any) => (
-                    <div key={item.id} className="flex items-center justify-between p-4 rounded-lg border bg-amber-500/5 border-amber-500/20">
-                      <div className="flex items-center gap-4">
-                        <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
+                    <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
                           {item.image ? (
                             <img src={item.image} alt="" className="h-full w-full object-cover" />
                           ) : (
-                            <Icon icon="solar:box-bold-duotone" className="h-6 w-6 text-muted-foreground" />
+                            <Icon icon="solar:box-bold-duotone" className="h-5 w-5 text-muted-foreground" />
                           )}
                         </div>
-                        <div>
-                          <p className="font-medium">{item.name}</p>
-                          <p className="text-sm text-muted-foreground">{item.sku}</p>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{item.name}</p>
+                          <p className="text-xs text-muted-foreground">{item.sku}</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-6">
+                      <div className="flex items-center gap-5">
                         <div className="text-right">
-                          <p className="text-sm text-muted-foreground">Current Stock</p>
-                          <p className="text-xl font-bold text-amber-600">{item.stock_quantity}</p>
+                          <p className="text-xs text-muted-foreground">Current Stock</p>
+                          <p className="text-base font-semibold tabular-nums text-amber-600 dark:text-amber-400">{formatQty(item.stock_quantity)}</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-sm text-muted-foreground">Min Threshold</p>
-                          <p className="text-lg font-medium">{item.min_stock_threshold || item.reorder_level || 10}</p>
+                          <p className="text-xs text-muted-foreground">Min Threshold</p>
+                          <p className="text-sm font-medium tabular-nums">{formatQty(item.min_stock_threshold || item.reorder_level || 10)}</p>
                         </div>
-                        <Button size="sm" onClick={() => openDialog('in', item.id)}>
-                          <Icon icon="solar:add-circle-bold" className="mr-1 h-4 w-4" />
+                        <HeaderActionButton icon="solar:add-circle-bold-duotone" onClick={() => openDialog('in', item.id)}>
                           Restock
-                        </Button>
+                        </HeaderActionButton>
                       </div>
                     </div>
                   ))}
@@ -1010,7 +939,7 @@ export function StockManagementPage() {
             <CardHeader>
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-rose-500/10">
-                  <Icon icon="solar:close-circle-bold" className="h-5 w-5 text-rose-500" />
+                  <Icon icon="solar:close-circle-bold-duotone" className="h-5 w-5 text-rose-500" />
                 </div>
                 <div>
                   <CardTitle>Out of Stock Items</CardTitle>
@@ -1022,7 +951,7 @@ export function StockManagementPage() {
               {outOfStockLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="flex items-center gap-2 text-muted-foreground">
-                    <Icon icon="solar:refresh-bold" className="h-5 w-5 animate-spin" />
+                    <Icon icon="eos-icons:loading" className="h-6 w-6 animate-spin text-primary" />
                     Loading out of stock items...
                   </div>
                 </div>
@@ -1035,37 +964,34 @@ export function StockManagementPage() {
                   <p className="text-muted-foreground mt-1">All products have available inventory</p>
                 </div>
               ) : (
-                <div className="grid gap-3">
+                <div className="grid gap-2">
                   {outOfStockItems.map((item: any) => (
-                    <div key={item.id} className="flex items-center justify-between p-4 rounded-lg border bg-rose-500/5 border-rose-500/20">
-                      <div className="flex items-center gap-4">
-                        <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
+                    <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-500/20 bg-rose-500/5 px-4 py-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
                           {item.image ? (
                             <img src={item.image} alt="" className="h-full w-full object-cover" />
                           ) : (
-                            <Icon icon="solar:box-bold-duotone" className="h-6 w-6 text-muted-foreground" />
+                            <Icon icon="solar:box-bold-duotone" className="h-5 w-5 text-muted-foreground" />
                           )}
                         </div>
-                        <div>
-                          <p className="font-medium">{item.name}</p>
-                          <p className="text-sm text-muted-foreground">{item.sku}</p>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{item.name}</p>
+                          <p className="text-xs text-muted-foreground">{item.sku}</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-6">
+                      <div className="flex items-center gap-5">
+                        <Badge variant="destructive" className="gap-1 whitespace-nowrap">
+                          <Icon icon="solar:close-circle-bold-duotone" className="h-3 w-3" />
+                          Out of Stock
+                        </Badge>
                         <div className="text-right">
-                          <Badge variant="destructive" className="gap-1">
-                            <Icon icon="solar:close-circle-bold" className="h-3 w-3" />
-                            Out of Stock
-                          </Badge>
+                          <p className="text-xs text-muted-foreground">Cost</p>
+                          <p className="text-sm font-medium">{formatCurrency(item.cost || 0)}</p>
                         </div>
-                        <div className="text-right">
-                          <p className="text-sm text-muted-foreground">Cost</p>
-                          <p className="font-medium">{formatCurrency(item.cost || 0)}</p>
-                        </div>
-                        <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => openDialog('in', item.id)}>
-                          <Icon icon="solar:add-circle-bold" className="mr-1 h-4 w-4" />
+                        <HeaderActionButton icon="solar:add-circle-bold-duotone" onClick={() => openDialog('in', item.id)}>
                           Add Stock
-                        </Button>
+                        </HeaderActionButton>
                       </div>
                     </div>
                   ))}
@@ -1085,7 +1011,7 @@ export function StockManagementPage() {
               {operationType === 'in' && (
                 <>
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                    <Icon icon="solar:add-circle-bold" className="h-4 w-4 text-primary" />
+                    <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 text-primary" />
                   </div>
                   Receive Stock
                 </>
@@ -1093,7 +1019,7 @@ export function StockManagementPage() {
               {operationType === 'out' && (
                 <>
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-500/10">
-                    <Icon icon="solar:minus-circle-bold" className="h-4 w-4 text-rose-500" />
+                    <Icon icon="solar:minus-circle-bold-duotone" className="h-4 w-4 text-rose-500" />
                   </div>
                   Remove Stock
                 </>
@@ -1101,7 +1027,7 @@ export function StockManagementPage() {
               {operationType === 'adjust' && (
                 <>
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/10">
-                    <Icon icon="solar:tuning-2-bold" className="h-4 w-4 text-violet-500" />
+                    <Icon icon="solar:tuning-2-bold-duotone" className="h-4 w-4 text-violet-500" />
                   </div>
                   Post Stock Count
                 </>

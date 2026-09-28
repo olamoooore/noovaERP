@@ -1,10 +1,10 @@
 import React from 'react';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ReportExportToolbar } from '@/components/reports/ReportExportToolbar';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
 
 interface ReportViewerProps {
   title: string;
@@ -86,42 +86,37 @@ export const ReportViewer: React.FC<ReportViewerProps> = ({
               )}
 
               {onRefresh && (
-                <Button
+                <HeaderActionButton
                   variant="outline"
-                  size="sm"
+                  icon="solar:refresh-bold-duotone"
                   onClick={onRefresh}
                   disabled={isLoading}
+                  loading={isLoading}
                   title="Refresh Report"
-                >
-                  <Icon
-                    icon={isLoading ? 'solar:refresh-bold' : 'solar:refresh-bold'}
-                    className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}
-                  />
-                </Button>
+                  aria-label="Refresh report"
+                />
               )}
 
               {onPrint && (
-                <Button
+                <HeaderActionButton
                   variant="outline"
-                  size="sm"
+                  icon="solar:printer-bold-duotone"
                   onClick={onPrint}
                   disabled={isLoading}
                   title="Print Report"
-                >
-                  <Icon icon="solar:printer-bold" className="h-4 w-4" />
-                </Button>
+                  aria-label="Print report"
+                />
               )}
 
               {onExport && (
-                <Button
+                <HeaderActionButton
                   variant="outline"
-                  size="sm"
+                  icon="solar:download-minimalistic-bold-duotone"
                   onClick={onExport}
                   disabled={isLoading}
                   title="Export Report"
-                >
-                  <Icon icon="solar:download-bold" className="h-4 w-4" />
-                </Button>
+                  aria-label="Export report"
+                />
               )}
             </div>
           )}
@@ -146,8 +141,8 @@ export const ReportViewer: React.FC<ReportViewerProps> = ({
           <Skeleton className="h-8 w-full" />
           <Skeleton className="h-8 w-full" />
           <div className="flex justify-center py-8">
-            <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-              <Icon icon="solar:refresh-bold" className="h-5 w-5 animate-spin" />
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Icon icon="eos-icons:loading" className="h-6 w-6 animate-spin text-primary" />
               <span>Loading report data...</span>
             </div>
           </div>
@@ -166,10 +161,10 @@ export const ReportViewer: React.FC<ReportViewerProps> = ({
 
       {/* Empty State */}
       {!isLoading && !error && !children && (
-        <div className="flex flex-col items-center justify-center py-12 text-gray-500 dark:text-gray-400">
-          <Icon icon="solar:document-bold" className="h-16 w-16 mb-4 opacity-50" />
+        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+          <Icon icon="solar:document-bold-duotone" className="mb-4 h-12 w-12 opacity-30" />
           <p className="text-lg font-medium">No data available</p>
-          <p className="text-sm mt-1">Try adjusting your filters or date range</p>
+          <p className="mt-1 text-sm">Try adjusting your filters or date range</p>
         </div>
       )}
     </Card>

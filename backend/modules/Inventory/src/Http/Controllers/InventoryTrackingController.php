@@ -100,7 +100,11 @@ class InventoryTrackingController extends Controller
                     $warehouse = Warehouse::where('code', trim((string) $row['warehouse_code']))->firstOrFail();
                     $expectedMethod = $type === 'batches' ? Product::TRACKING_BATCH : Product::TRACKING_SERIAL;
                     if ($product->tracking_method !== $expectedMethod) {
-                        throw new \RuntimeException("Product {$product->sku} is not configured for ".($type === 'batches' ? 'batch' : 'serial').' tracking.');
+                        $trackingLabel = $type === 'batches' ? 'Batch/Lot' : 'Serial Number';
+                        throw new \RuntimeException(
+                            "Product {$product->sku} is not configured for ".($type === 'batches' ? 'batch' : 'serial').' tracking. '
+                            ."Set the product's Tracking Method to \"{$trackingLabel}\" and re-import."
+                        );
                     }
 
                     $quantity = $type === 'batches' ? (int) $row['quantity'] : 1;

@@ -11,16 +11,26 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * SecureWebhookAccess
  *
- * Comprehensive security middleware for payment gateway webhooks.
+ * Hardening front door for payment gateway webhooks
+ * (central route group, NO tenancy — see routes/webhooks.php).
  *
- * Workstream 2 (2026-04-15): Addresses critical security gaps:
- *   - Signature verification BEFORE tenant lookup
- *   - Rate limiting to prevent DoS attacks
- *   - IP allowlisting for known gateway sources
- *   - Efficient tenant identification (no cross-tenant enumeration)
- *   - Replay attack prevention via webhook_id deduplication
+ * ACTUAL live-path ordering (Appendix C §C6), stated truthfully:
+ *   1. rate limit per gateway+IP (this middleware)
+ *   2. IP allowlist where the gateway publishes ranges (this middleware)
+ *   3. gateway EVENT id extraction + replay lifecycle (this middleware:
+ *      in-flight marker, done-on-2xx, release-on-failure — P-02)
+ *   4. deterministic tenant resolution from the central lookup table
+ *      (ResolveTenantFromWebhook — written at intent creation since P-01)
+ *   5. signature verification with the TENANT's secret, inside the
+ *      controller, BEFORE any state change (Stripe construct-event, HitPay
+ *      HMAC, PayPal verify API with payment_gateways.config.webhook_id)
+ *   6. at-most-once application via DB webhook_id/processed_at under row
+ *      lock (PaymentWebhookController + PaymentTransactionCompletionService)
  *
- * This middleware must be applied BEFORE any tenant context is established.
+ * Note on step ordering: the schema switch in step 4 happens on the
+ * transaction id BEFORE signature verification (a documented platform
+ * constraint — resolution data is the unforgeable gateway-issued
+ * transaction id; no state change may occur before step 5, and none does).
  */
 class SecureWebhookAccess
 {
@@ -57,10 +67,14 @@ class SecureWebhookAccess
         $clientIp = $request->ip();
         $rateLimitKey = "webhook_rate_limit:{$gateway}:{$clientIp}";
 
-        $attempts = Cache::increment($rateLimitKey);
-        if ($attempts === 1) {
-            Cache::expire($rateLimitKey, 60); // 1 minute window
-        }
+        // LATENT CRASH FIXED: the previous implementation called
+        // Cache::expire() after Cache::increment(). Repository proxies
+        // ->expire() to the underlying STORE, and only Redis/Memcached
+        // stores implement it — on the file (and test array) driver EVERY
+        // first delivery per key hit BadMethodCallException => HTTP 500 on
+        // all webhooks. Use a get/put window that always carries a TTL.
+        $attempts = (int) Cache::get($rateLimitKey, 0) + 1;
+        Cache::put($rateLimitKey, $attempts, 60); // 1 minute window
 
         if ($attempts > self::RATE_LIMIT_PER_MINUTE) {
             Log::warning('Webhook rate limit exceeded', [
@@ -93,23 +107,48 @@ class SecureWebhookAccess
             return response()->json(['error' => 'Missing webhook identifier'], 400);
         }
 
-        // 4. Replay attack prevention - check if webhook already processed
-        $replayKey = "webhook_processed:{$gateway}:{$webhookId}";
-        if (Cache::has($replayKey)) {
-            Log::info('Duplicate webhook detected (replay protection)', [
+        // 4. Replay attack prevention (P-02 fix).
+        //
+        // DEFECT HISTORY: the marker was written BEFORE signature
+        // verification, was keyed on a PER-DELIVERY header (Stripe retries
+        // and HitPay HMAC change every delivery → same event could process
+        // twice), and was never promoted to "done" — so a legitimate retry
+        // of a FAILED delivery was swallowed for 300 s while a replay AFTER
+        // 300 s re-ran a completed event.
+        //
+        // Now (Appendix C §C6 rule 8): in-flight marker only for concurrent
+        // duplicates; "done" is written ONLY on a 2xx outcome, keyed on the
+        // gateway EVENT id; failures delete the marker so gateway retries
+        // can re-run. Permanent dedup remains DB-side (webhook_id +
+        // processed_at under row lock) — this cache is the fast front door.
+        $replayKey = self::replayKey($gateway, $webhookId);
+        $state = Cache::get($replayKey);
+
+        if ($state === 'done') {
+            Log::info('Duplicate webhook detected (already processed)', [
                 'gateway' => $gateway,
                 'webhook_id' => $webhookId,
             ]);
 
-            // Return success to prevent gateway retries, but don't process
+            // Return success to stop gateway retries, don't reprocess.
             return response()->json(['status' => 'already processed']);
         }
 
-        // 5. Store webhook_id in request for controller to mark as processed
+        if ($state === 'processing') {
+            Log::info('Concurrent duplicate webhook ignored (in-flight)', [
+                'gateway' => $gateway,
+                'webhook_id' => $webhookId,
+            ]);
+
+            return response()->json(['status' => 'already processed']);
+        }
+
+        // 5. Store webhook_id + replay key for the controller.
         $request->attributes->set('webhook_id', $webhookId);
         $request->attributes->set('gateway', $gateway);
+        $request->attributes->set('webhook_replay_key', $replayKey);
 
-        // 6. Mark as "processing" to prevent concurrent duplicate processing
+        // 6. Mark in-flight so concurrent deliveries don't double-run.
         Cache::put($replayKey, 'processing', 300); // 5 minutes to complete
 
         Log::info('Webhook security checks passed', [
@@ -118,31 +157,51 @@ class SecureWebhookAccess
             'ip' => $clientIp,
         ]);
 
-        return $next($request);
+        $response = $next($request);
+
+        // 7. Lifecycle (P-02): success → permanent window "done"; any
+        //    non-2xx (signature failure, tenant 404, processing error) →
+        //    release so the gateway's retry is genuinely retryable.
+        if ($response->getStatusCode() >= 200 && $response->getStatusCode() < 300) {
+            Cache::put($replayKey, 'done', 86400);
+        } else {
+            Cache::forget($replayKey);
+        }
+
+        return $response;
     }
 
     /**
-     * Extract webhook ID from request based on gateway
+     * Public for observability/tests: the dedupe cache key for a delivery.
+     */
+    public static function replayKey(string $gateway, string $eventId): string
+    {
+        return "webhook_processed:{$gateway}:{$eventId}";
+    }
+
+    /**
+     * Extract the GATEWAY EVENT ID for dedupe (never per-delivery headers —
+     * retry deliveries of one event must map to one key).
      */
     private function extractWebhookId(Request $request, string $gateway): ?string
     {
         $payload = $request->all();
 
         return match ($gateway) {
-            'stripe' => $request->header('Stripe-Signature')
-                ?? $payload['id']
+            'stripe' => $payload['id']
+                ?? $request->header('Stripe-Signature')
                 ?? null,
-            'hitpay' => $payload['hmac']
-                ?? $request->header('X-HitPay-Signature')
+            'hitpay' => $payload['id']
                 ?? $payload['payment_request_id']
-                ?? $payload['id']
+                ?? $request->header('X-HitPay-Signature')
+                ?? $payload['hmac']
                 ?? null,
-            'paypal' => $request->header('PayPal-Transmission-Id')
-                ?? $payload['id']
+            'paypal' => $payload['id']
+                ?? $request->header('PayPal-Transmission-Id')
                 ?? $payload['resource']['id']
                 ?? null,
-            default => $request->header('X-Webhook-ID')
-                ?? $payload['id']
+            default => $payload['id']
+                ?? $request->header('X-Webhook-ID')
                 ?? $payload['webhook_id']
                 ?? null,
         };

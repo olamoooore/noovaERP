@@ -130,6 +130,27 @@ class InvoicePostingPermissionTest extends TenantTestCase
         ]);
     }
 
+    /**
+     * Segregation of duties: Manager prepares/approves operational documents but
+     * no longer holds accounting.post, so it cannot release invoices either.
+     */
+    public function test_manager_cannot_post_invoices(): void
+    {
+        $accountant = $this->actingAsRole(UserRole::ACCOUNTANT);
+        $manager = $this->actingAsRole(UserRole::MANAGER);
+
+        $invoiceId = $this->createDraftInvoice($accountant);
+
+        $this->actingAs($manager)->postJson("/api/v1/invoices/{$invoiceId}/post")
+            ->assertStatus(403);
+        $this->actingAs($manager)->postJson("/api/v1/invoices/{$invoiceId}/send")
+            ->assertStatus(403);
+        $this->actingAs($manager)->postJson('/api/v1/invoices/bulk-post', ['ids' => [$invoiceId]])
+            ->assertStatus(403);
+
+        $this->assertSame('draft', Invoice::query()->find($invoiceId)->status);
+    }
+
     public function test_accountant_can_post_and_the_invoice_becomes_posted(): void
     {
         $accountant = $this->actingAsRole(UserRole::ACCOUNTANT);

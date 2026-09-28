@@ -153,6 +153,14 @@ class ResolveTenantFromWebhook
 
     /**
      * Run request in tenant context
+     *
+     * LATENT CRASH FIXED: this called Tenancy::run(), a method that does
+     * not exist on stancl/tenancy v3.9 (initialize/end/central only). The
+     * bug was invisible in production because the lookup table was never
+     * written (P-01), so execution never reached this line — every
+     * resolvable webhook would have 500'd. Tenancy v3.9 idiom: initialize,
+     * serve, and ALWAYS end in finally (webhook routes must not leak tenant
+     * state into later requests on the same worker).
      */
     private function runInTenantContext(Tenant $tenant, Request $request, Closure $next): Response
     {
@@ -160,9 +168,12 @@ class ResolveTenantFromWebhook
         $request->attributes->set('tenant', $tenant);
         $request->attributes->set('tenant_id', $tenant->id);
 
-        // Initialize tenancy
-        return Tenancy::run($tenant, function () use ($request, $next) {
+        Tenancy::initialize($tenant);
+
+        try {
             return $next($request);
-        });
+        } finally {
+            Tenancy::end();
+        }
     }
 }

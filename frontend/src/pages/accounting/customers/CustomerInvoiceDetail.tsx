@@ -61,6 +61,8 @@ export const CustomerInvoiceDetail: React.FC = () => {
   const queryClient = useQueryClient();
   const isAcmeTenant = useAuthStore((state) => state.tenantId) === '00000000-0000-0000-0000-000000000001';
   const role = useAuthStore((state) => state.role);
+  // Posting/confirming sell-side documents is accounting-only (server enforces accounting.post).
+  const canPost = useAuthStore((state) => state.hasPermission('accounting.post'));
   // Product Notes starts hidden, matching the previous default.
   const [hiddenLineColumns, setHiddenLineColumns] = useState<number[]>(
     () => INVOICE_LINE_COLUMNS.filter((c) => c.label.toLowerCase() === 'product notes').map((c) => c.index)
@@ -284,13 +286,15 @@ export const CustomerInvoiceDetail: React.FC = () => {
                     Edit
                   </HeaderActionButton>
                 )}
-                <HeaderActionButton
-                  icon="solar:check-circle-bold-duotone"
-                  loading={postMutation.isPending}
-                  onClick={() => postMutation.mutate()}
-                >
-                  {isQuoteMode ? 'Convert to Invoice' : 'Post Invoice'}
-                </HeaderActionButton>
+                {canPost && (
+                  <HeaderActionButton
+                    icon="solar:check-circle-bold-duotone"
+                    loading={postMutation.isPending}
+                    onClick={() => postMutation.mutate()}
+                  >
+                    {isQuoteMode ? 'Convert to Invoice' : 'Post Invoice'}
+                  </HeaderActionButton>
+                )}
                 <HeaderActionButton
                   variant="outline"
                   icon="solar:trash-bin-trash-bold-duotone"

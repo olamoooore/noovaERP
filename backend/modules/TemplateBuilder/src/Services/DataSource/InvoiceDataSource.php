@@ -47,6 +47,9 @@ class InvoiceDataSource implements DataSourceContract
                 'tax_rate' => (float) $line->tax_rate,
                 'discount' => (float) ($line->discount_amount ?? 0),
                 'line_total' => $isProduct ? (float) $line->line_total : null,
+                'lot_number' => $line->lot_number ?? '',
+                'serial_number' => $line->serial_number ?? '',
+                'expiry_date' => optional($line->expiry_date)->format('Y-m-d') ?? '',
                 'salesperson' => $salesperson,
                 'doctor' => $doctor,
                 'requestor' => $requestor,
@@ -178,6 +181,9 @@ class InvoiceDataSource implements DataSourceContract
             ]],
             ['group' => 'Line Items', 'fields' => [
                 ['token' => 'lines', 'label' => 'Line items table (binds a Table block)'],
+                ['token' => 'lines.lot_number', 'label' => 'Lot / Batch Number'],
+                ['token' => 'lines.expiry_date', 'label' => 'Expiry Date'],
+                ['token' => 'lines.serial_number', 'label' => 'Serial Number'],
             ]],
         ];
     }
@@ -224,9 +230,9 @@ class InvoiceDataSource implements DataSourceContract
             ],
             'company' => CompanyDataSource::sample(),
             'lines' => [
-                ['index' => 1, 'sku' => 'SKU-1001', 'description' => 'Enterprise licence — 50 seats', 'quantity' => 1, 'unit_price' => 4500.00, 'tax_rate' => 6.0, 'discount' => 0, 'line_total' => 4770.00],
-                ['index' => 2, 'sku' => 'SKU-2099', 'description' => 'On-site training (2 days)',     'quantity' => 2, 'unit_price' => 1200.00, 'tax_rate' => 6.0, 'discount' => 0, 'line_total' => 2544.00],
-                ['index' => 3, 'sku' => 'SKU-3300', 'description' => 'Premium support — annual',      'quantity' => 1, 'unit_price' => 800.00,  'tax_rate' => 6.0, 'discount' => 100, 'line_total' => 742.00],
+                ['index' => 1, 'sku' => 'SKU-1001', 'description' => 'Enterprise licence — 50 seats', 'quantity' => 1, 'unit_price' => 4500.00, 'tax_rate' => 6.0, 'discount' => 0, 'line_total' => 4770.00, 'lot_number' => 'LOT-2607A', 'expiry_date' => '2029-06-07'],
+                ['index' => 2, 'sku' => 'SKU-2099', 'description' => 'On-site training (2 days)',     'quantity' => 2, 'unit_price' => 1200.00, 'tax_rate' => 6.0, 'discount' => 0, 'line_total' => 2544.00, 'lot_number' => '', 'expiry_date' => ''],
+                ['index' => 3, 'sku' => 'SKU-3300', 'description' => 'Premium support — annual',      'quantity' => 1, 'unit_price' => 800.00,  'tax_rate' => 6.0, 'discount' => 100, 'line_total' => 742.00, 'lot_number' => 'LOT-2511B', 'expiry_date' => '2028-09-27'],
             ],
             'totals' => [
                 'subtotal' => 7600.00, 'tax' => 456.00, 'discount' => 100.00, 'shipping' => 0.00,

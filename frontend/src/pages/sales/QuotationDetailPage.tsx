@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useAuthStore } from '@/store/authStore'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
@@ -38,7 +39,12 @@ export function QuotationDetailPage() {
     enabled: !!id,
   })
 
+  const { hasPermission } = useAuthStore()
+  // Posting/confirming sell-side documents is accounting-only (server enforces accounting.post).
+  const canPost = hasPermission('accounting.post')
+
   const confirmMutation = useMutation({
+
     mutationFn: async () => {
       const response = await api.post(`/quotations/${id}/confirm`)
       return response.data
@@ -278,7 +284,7 @@ export function QuotationDetailPage() {
               </HeaderActionButton>
             </>
           )}
-          {['draft', 'sent'].includes(quotation.status) && (
+          {['draft', 'sent'].includes(quotation.status) && canPost && (
             <HeaderActionButton
               icon="solar:check-circle-bold-duotone"
               loading={confirmMutation.isPending}
@@ -322,19 +328,12 @@ export function QuotationDetailPage() {
           )}
           <HeaderActionButton
             variant="outline"
-            icon="solar:printer-bold-duotone"
-            onClick={() => setTemplateDialogOpen(true)}
-          >
-            Print
-          </HeaderActionButton>
-          <HeaderActionButton
-            variant="outline"
             icon="solar:download-minimalistic-bold-duotone"
-            className="w-9 px-0"
-            aria-label="Download PDF"
             title="Download PDF"
             onClick={() => setTemplateDialogOpen(true)}
-          />
+          >
+            PDF
+          </HeaderActionButton>
           {quotation.status === 'draft' && (
             <HeaderActionButton
               variant="outline"

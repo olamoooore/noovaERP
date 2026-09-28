@@ -564,10 +564,23 @@ class InvoiceController extends Controller
             empty($invoiceOverrides) ? null : $invoiceOverrides
         );
 
-        // Lot/expiry values belong to the invoice lines rather than sales-order lines.
+        // Lot/expiry values belong to the invoice lines rather than sales-order
+        // lines. Match by the source line's `sequence` (stable even when the
+        // SalesOrder lifecycle skips a line, e.g. qty 0) and fall back to the
+        // positional index.
         $invoice->load('lines');
+        $sourceLines = $data['lines'];
+        $sourceBySequence = [];
+        $sequences = array_map(fn ($line, $index) => (string) ($line['sequence'] ?? $index), $sourceLines, array_keys($sourceLines));
+        if (count(array_unique($sequences)) === count($sequences)) {
+            foreach ($sourceLines as $index => $line) {
+                $sourceBySequence[(string) ($line['sequence'] ?? $index)] = $line;
+            }
+        }
         foreach ($invoice->lines->values() as $index => $invoiceLine) {
-            $sourceLine = $data['lines'][$index] ?? [];
+            $sourceLine = $sourceBySequence[(string) ($invoiceLine->sequence ?? '')]
+                ?? $sourceLines[$index]
+                ?? [];
             $invoiceLine->update([
                 'lot_number' => $sourceLine['lot_number'] ?? null,
                 'serial_number' => $sourceLine['serial_number'] ?? null,

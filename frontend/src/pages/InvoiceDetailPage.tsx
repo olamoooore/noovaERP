@@ -437,10 +437,6 @@ export function InvoiceDetailPage() {
     return <Badge variant={config.variant}>{config.label}</Badge>
   }
 
-  const handlePrint = () => {
-    setTemplateDialogOpen(true)
-  }
-
   if (isLoading) {
     return (
       <div className="container mx-auto py-6 space-y-6">
@@ -547,19 +543,12 @@ export function InvoiceDetailPage() {
             )}
             <HeaderActionButton
               variant="outline"
-              icon="solar:printer-bold-duotone"
-              onClick={handlePrint}
-            >
-              Print
-            </HeaderActionButton>
-            <HeaderActionButton
-              variant="outline"
               icon="solar:download-minimalistic-bold-duotone"
-              className="w-9 px-0"
-              aria-label="Download PDF"
               title="Download PDF"
               onClick={() => setTemplateDialogOpen(true)}
-            />
+            >
+              PDF
+            </HeaderActionButton>
             {/* Reverses the GL entry + restores stock — Owner/Admin only,
                 mirroring the documents.reset_to_draft permission. */}
             {(role === 'Owner' || role === 'Admin') &&

@@ -329,32 +329,6 @@ export function ProductsPage() {
               </Button>
             )}
 
-            <div className="ml-auto flex items-center gap-2">
-              <div className="flex overflow-hidden rounded-full border">
-                <Button
-                  type="button"
-                  variant={viewMode === 'list' ? 'default' : 'ghost'}
-                  size="icon"
-                  className="h-8 w-8 rounded-none"
-                  onClick={() => setViewMode('list')}
-                  title="List view"
-                  aria-label="List view"
-                >
-                  <Icon icon="solar:list-bold" className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  type="button"
-                  variant={viewMode === 'grid' ? 'default' : 'ghost'}
-                  size="icon"
-                  className="h-8 w-8 rounded-none"
-                  onClick={() => setViewMode('grid')}
-                  title="Grid view"
-                  aria-label="Grid view"
-                >
-                  <Icon icon="solar:widget-2-bold" className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
           </div>
         </CardContent>
       </Card>
@@ -393,11 +367,39 @@ export function ProductsPage() {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>All Products {totalProducts > 0 && <span className="text-muted-foreground font-normal text-base">({totalProducts})</span>}</span>
-            <SalesLineColumnMenu
-              columns={listingColumns(['Select', 'Product', 'Type', 'Category', 'SKU', 'Created Date', 'Cost', 'Price', 'Stock', 'Status', 'Actions'])}
-              hidden={hiddenProductColumns}
-              setHidden={setHiddenProductColumns}
-            />
+            <div className="flex items-center gap-2">
+              {/* View mode sits with the column picker — both control how the
+                  table below is displayed, so they share one row. */}
+              <div className="flex overflow-hidden rounded-full border">
+                <Button
+                  type="button"
+                  variant={viewMode === 'list' ? 'default' : 'ghost'}
+                  size="icon"
+                  className="h-8 w-8 rounded-none"
+                  onClick={() => setViewMode('list')}
+                  title="List view"
+                  aria-label="List view"
+                >
+                  <Icon icon="solar:list-bold" className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  type="button"
+                  variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                  size="icon"
+                  className="h-8 w-8 rounded-none"
+                  onClick={() => setViewMode('grid')}
+                  title="Grid view"
+                  aria-label="Grid view"
+                >
+                  <Icon icon="solar:widget-2-bold" className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              <SalesLineColumnMenu
+                columns={listingColumns(['Select', 'Product', 'Type', 'Category', 'SKU', 'Created Date', 'Cost', 'Price', 'Stock', 'Status', 'Actions'])}
+                hidden={hiddenProductColumns}
+                setHidden={setHiddenProductColumns}
+              />
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent>

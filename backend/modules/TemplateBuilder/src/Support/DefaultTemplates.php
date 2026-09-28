@@ -61,10 +61,12 @@ final class DefaultTemplates
                     ['type' => 'spacer', 'height' => 12],
                     ['type' => 'table', 'source' => 'lines', 'paginate' => true, 'show_page_subtotal' => true, 'subtotal_label' => 'Page Subtotal', 'subtotal_field' => 'line_total', 'subtotal_format' => 'money', 'columns' => [
                         ['label' => '#', 'field' => 'index', 'width' => '6%', 'align' => 'center'],
-                        ['label' => 'Description', 'field' => 'description', 'width' => '46%'],
-                        ['label' => 'Qty', 'field' => 'quantity', 'width' => '12%', 'align' => 'right'],
-                        ['label' => 'Unit Price', 'field' => 'unit_price', 'width' => '18%', 'align' => 'right', 'format' => 'money'],
-                        ['label' => 'Amount', 'field' => 'line_total', 'width' => '18%', 'align' => 'right', 'format' => 'money'],
+                        ['label' => 'Description', 'field' => 'description', 'width' => '34%'],
+                        ['label' => 'Lot/Batch', 'field' => 'lot_number', 'width' => '12%'],
+                        ['label' => 'Expiry', 'field' => 'expiry_date', 'width' => '12%'],
+                        ['label' => 'Qty', 'field' => 'quantity', 'width' => '10%', 'align' => 'right'],
+                        ['label' => 'Unit Price', 'field' => 'unit_price', 'width' => '13%', 'align' => 'right', 'format' => 'money'],
+                        ['label' => 'Amount', 'field' => 'line_total', 'width' => '13%', 'align' => 'right', 'format' => 'money'],
                     ]],
                     ['type' => 'spacer', 'height' => 10],
                     ['type' => 'conditional', 'condition' => '{{ totals.paid }} > 0', 'children' => [

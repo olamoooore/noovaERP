@@ -9,13 +9,6 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Pagination } from '@/components/ui/Pagination';
 
 export interface Column {
@@ -235,23 +228,23 @@ export const ReportTable: React.FC<ReportTableProps> = ({
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           {/* Search */}
           {showSearch && (
-            <div className="relative flex-1 max-w-sm">
+            <div className="relative w-full max-w-sm flex-1 sm:w-64">
               <Icon
-                icon="solar:magnifer-bold"
-                className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"
+                icon="solar:magnifer-bold-duotone"
+                className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
               />
               <Input
                 type="text"
                 placeholder="Search..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                className="h-8 rounded-full pl-9 pr-3 text-xs"
               />
             </div>
           )}
 
           {/* Results count */}
-          <div className="text-sm text-gray-600 dark:text-gray-400">
+          <div className="whitespace-nowrap rounded-full border bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
             Showing {paginatedData.length} of {processedData.length} results
             {processedData.length !== data.length && ` (filtered from ${data.length})`}
           </div>
@@ -281,7 +274,7 @@ export const ReportTable: React.FC<ReportTableProps> = ({
       )}
 
       {/* Table */}
-      <div className="rounded-md border">
+      <div className="overflow-hidden rounded-xl border border-slate-200/80 dark:border-slate-800">
         <Table>
           <TableHeader>
             <TableRow>
@@ -346,38 +339,20 @@ export const ReportTable: React.FC<ReportTableProps> = ({
         </Table>
       </div>
 
-      {/* Pagination */}
+      {/* Pagination — range summary, rows-per-page and paging controls all
+          live in the shared Pagination component. */}
       {showPagination && processedData.length > 0 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-          {/* Items per page selector */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600 dark:text-gray-400">Rows per page:</span>
-            <Select value={String(itemsPerPage)} onValueChange={handleItemsPerPageChange}>
-              <SelectTrigger className="w-20 h-8">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="10">10</SelectItem>
-                <SelectItem value="20">20</SelectItem>
-                <SelectItem value="50">50</SelectItem>
-                <SelectItem value="100">100</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Pagination controls */}
-          <Pagination
-            page={currentPage}
-            totalPages={totalPages}
-            onPageChange={handlePageChange}
-            from={startIndex + 1}
-            to={Math.min(endIndex, processedData.length)}
-            total={processedData.length}
-            label="rows"
-            pageSize={itemsPerPage}
-            onPageSizeChange={(size) => handleItemsPerPageChange(String(size))}
-          />
-        </div>
+        <Pagination
+          page={currentPage}
+          totalPages={totalPages}
+          onPageChange={handlePageChange}
+          from={startIndex + 1}
+          to={Math.min(endIndex, processedData.length)}
+          total={processedData.length}
+          label="rows"
+          pageSize={itemsPerPage}
+          onPageSizeChange={(size) => handleItemsPerPageChange(String(size))}
+        />
       )}
     </div>
   );
