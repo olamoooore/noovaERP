@@ -41,7 +41,7 @@ export function InventoryTrackingPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div><h1 className="text-3xl font-bold">Lot & Serial Tracking</h1><p className="text-muted-foreground">Review tracked inventory and import lots or serial numbers by product.</p></div>
         <div className="flex flex-wrap items-center gap-2">
-          <HeaderActionButton icon="solar:box-minimalistic-bold-duotone" variant="outline" onClick={() => navigate('/inventory/operations')}>
+          <HeaderActionButton icon="solar:box-minimalistic-bold-duotone" variant="outline" onClick={() => navigate('/inventory/stock?operation=in')}>
             Receive Stock
           </HeaderActionButton>
           <HeaderActionButton icon="solar:upload-bold" onClick={() => navigate(`/inventory/tracking/import?type=${type}`)}>
