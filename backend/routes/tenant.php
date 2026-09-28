@@ -91,10 +91,37 @@ Route::middleware([
             // Cookie-session protected subset: StorefrontAccountAuth re-checks
             // session + account status EVERY request (FR-ID-08) and enforces
             // the double-submit CSRF header on mutations (FR-ID-09).
+            Route::middleware([\Modules\Storefront\Http\Middleware\StorefrontAccountAuth::class, 'throttle:60,1,sf-account'])->prefix('account')->group(function () {
+                Route::get('/', [\Modules\Storefront\Http\Controllers\Public\AccountController::class, 'show']);
+
+                // Orders (FR-DASH-02)
+                Route::get('/orders', [\Modules\Storefront\Http\Controllers\Public\AccountController::class, 'orders']);
+                Route::get('/orders/{order}', [\Modules\Storefront\Http\Controllers\Public\AccountController::class, 'order'])
+                    ->whereNumber('order');
+                Route::post('/orders/{order}/cancel', [\Modules\Storefront\Http\Controllers\Public\AccountController::class, 'cancelOrder'])
+                    ->whereNumber('order');
+                Route::post('/orders/{order}/reorder', [\Modules\Storefront\Http\Controllers\Public\AccountController::class, 'reorder'])
+                    ->whereNumber('order');
+
+                // Addresses (FR-DASH-03)
+                Route::get('/addresses', [\Modules\Storefront\Http\Controllers\Public\AccountController::class, 'addresses']);
+                Route::post('/addresses', [\Modules\Storefront\Http\Controllers\Public\AccountController::class, 'storeAddress']);
+                Route::put('/addresses/{address}', [\Modules\Storefront\Http\Controllers\Public\AccountController::class, 'updateAddress'])
+                    ->whereNumber('address');
+                Route::delete('/addresses/{address}', [\Modules\Storefront\Http\Controllers\Public\AccountController::class, 'destroyAddress'])
+                    ->whereNumber('address');
+
+                // Profile / security (FR-DASH-04, FR-ID-03/06)
+                Route::put('/profile', [\Modules\Storefront\Http\Controllers\Public\AccountController::class, 'updateProfile']);
+                Route::post('/password', [\Modules\Storefront\Http\Controllers\Public\AccountController::class, 'changePassword']);
+                Route::get('/sessions', [\Modules\Storefront\Http\Controllers\Public\AccountController::class, 'sessions']);
+                Route::delete('/sessions/{session}', [\Modules\Storefront\Http\Controllers\Public\AccountController::class, 'revokeSession'])
+                    ->whereNumber('session');
+            });
+
             Route::middleware([\Modules\Storefront\Http\Middleware\StorefrontAccountAuth::class, 'throttle:60,1,sf-account'])->group(function () {
                 Route::post('/auth/logout', [\Modules\Storefront\Http\Controllers\Public\AuthController::class, 'logout']);
                 Route::post('/auth/refresh', [\Modules\Storefront\Http\Controllers\Public\AuthController::class, 'refresh']);
-                Route::get('/account', [\Modules\Storefront\Http\Controllers\Public\AccountController::class, 'show']);
             });
         });
 

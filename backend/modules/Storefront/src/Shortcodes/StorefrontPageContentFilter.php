@@ -41,14 +41,37 @@ final class StorefrontPageContentFilter implements PageContentFilter
             return $this->renderer->stripTokens($html);
         }
 
-        return $this->renderer->render($html, new Context(
+        return $this->injectRuntime($this->renderer->render($html, new Context(
             tenantId: $tenantId,
             mode: Context::MODE_PUBLIC,
             pageId: isset($context['page_id']) ? (int) $context['page_id'] : null,
             pageVersionId: isset($context['page_version_id']) ? (int) $context['page_version_id'] : null,
             websiteSlug: (string) ($context['website_slug'] ?? ''),
             locale: (string) ($context['locale'] ?? app()->getLocale()),
-        ));
+        )));
+    }
+
+    /**
+     * One versioned, tenant-neutral runtime bundle (FR-PLAT-06 / Appendix B
+     * §B5): injected once, only when the rendered page actually contains
+     * Tier B islands. defer + external src only — no inline JS, CSP-safe.
+     */
+    private function injectRuntime(string $html): string
+    {
+        if (! str_contains($html, 'data-sf-island') || str_contains($html, '/storefront/assets/')) {
+            return $html;
+        }
+
+        $version = \Modules\Storefront\Support\StorefrontRuntime::VERSION;
+        $base = '/storefront/assets/'.$version;
+
+        $tags = '<link rel="stylesheet" href="'.$base.'/storefront.css">'."\n"
+            .'<script src="'.$base.'/storefront.js" defer data-sf-runtime="'.$version.'"></script>';
+
+        // After the last island's markup so the defer script still loads
+        // before first paint of interactivity; append is fine because this
+        // fragment is injected into <body> by the page renderer.
+        return $html."\n".$tags;
     }
 
     private function storefrontActive(string $tenantId): bool

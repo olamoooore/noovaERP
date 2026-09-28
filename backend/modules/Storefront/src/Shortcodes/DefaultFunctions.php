@@ -20,6 +20,10 @@ final class DefaultFunctions
     {
         $registry->register(self::products($catalog));
         $registry->register(self::product($catalog));
+
+        // Tier B cart/account shells (FR-CO-01, FR-ID-01, FR-DASH-01).
+        CartFunctions::register($registry);
+        AccountFunctions::register($registry);
     }
 
     private static function products(CatalogQuery $catalog): Definition

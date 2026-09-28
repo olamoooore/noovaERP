@@ -14,6 +14,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import { SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { ChatterDock } from '@/components/chatter'
 import { TagEditor } from '@/components/tags/TagEditor'
+import { DocumentLinkChip } from '@/components/documents/DocumentLinkChip'
 import { PageHeader } from '@/components/layout/PageHeader'
 import api from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
@@ -741,25 +742,19 @@ export function InvoiceDetailPage() {
       <div className="flex flex-wrap items-center gap-2 print:hidden">
         <TagEditor subjectType="invoice" subjectId={id as string} />
         {invoice.quotation && (
-          <button
-            type="button"
+          <DocumentLinkChip
+            kind="quotation"
+            label={invoice.quotation.quotation_number}
             onClick={() => navigate(`/quotations/${invoice.quotation!.id}`)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 text-xs font-medium text-primary transition-colors hover:border-primary/50 hover:bg-primary/10"
-          >
-            <Icon icon="solar:document-text-bold-duotone" className="h-3.5 w-3.5" />
-            {invoice.quotation.quotation_number}
-          </button>
+          />
         )}
         {invoice.delivery_orders && invoice.delivery_orders.length > 0 && invoice.delivery_orders.map((d) => (
-          <button
-            type="button"
+          <DocumentLinkChip
             key={d.id}
+            kind="delivery_order"
+            label={d.delivery_order_number}
             onClick={() => navigate(`/delivery-orders/${d.id}`)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 text-xs font-medium text-primary transition-colors hover:border-primary/50 hover:bg-primary/10"
-          >
-            <Icon icon="solar:box-bold-duotone" className="h-3.5 w-3.5" />
-            {d.delivery_order_number}
-          </button>
+          />
         ))}
       </div>
 

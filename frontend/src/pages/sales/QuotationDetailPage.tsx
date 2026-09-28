@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { TagEditor } from '@/components/tags/TagEditor'
+import { DocumentLinkChip } from '@/components/documents/DocumentLinkChip'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { QuotationCaseInformationDisplay } from '@/components/sales/QuotationCaseInformation'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -18,6 +19,7 @@ import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DocumentTemplateDialog } from '@/components/documents/DocumentTemplateDialog'
 
 const QUOTATION_LINE_COLUMNS = [
@@ -222,6 +224,7 @@ export function QuotationDetailPage() {
     () => QUOTATION_LINE_COLUMNS.filter((c) => c.label.toLowerCase() === 'product notes').map((c) => c.index)
   )
   const [showInvoicesPanel, setShowInvoicesPanel] = useState(false)
+  const [showDeliveryOrdersDialog, setShowDeliveryOrdersDialog] = useState(false)
   const [confirmAction, setConfirmAction] = useState<'delete' | 'reset' | null>(null)
   const [chatterOpen, setChatterOpen] = useState(false)
 
@@ -392,37 +395,83 @@ export function QuotationDetailPage() {
       {/* Linked-document smart buttons */}
       <div className="flex flex-wrap gap-2">
         {quotation.invoices && quotation.invoices.length > 0 && (
-          <button
-            type="button"
+          <DocumentLinkChip
+            kind="invoice"
+            active={showInvoicesPanel}
+            label={`${quotation.invoices.length} Invoice${quotation.invoices.length !== 1 ? 's' : ''}`}
             onClick={() => setShowInvoicesPanel(!showInvoicesPanel)}
-            className={cn(
-              'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors',
-              showInvoicesPanel
-                ? 'border-primary/60 bg-primary/15 text-primary'
-                : 'border-primary/30 bg-primary/5 text-primary hover:border-primary/50 hover:bg-primary/10',
-            )}
-          >
-            <Icon icon="solar:bill-list-bold-duotone" className="h-3.5 w-3.5" />
-            {quotation.invoices.length} Invoice{quotation.invoices.length !== 1 ? 's' : ''}
-          </button>
+            title="Toggle linked invoices"
+          />
         )}
         {quotation.delivery_orders && quotation.delivery_orders.length > 0 && (
-          <button
-            type="button"
+          <DocumentLinkChip
+            kind="delivery_order"
+            label={`${quotation.delivery_orders.length} Delivery Order${quotation.delivery_orders.length !== 1 ? 's' : ''}`}
+            title={quotation.delivery_orders.length === 1 ? 'Open delivery order' : 'Choose a delivery order'}
             onClick={() => (quotation.delivery_orders.length === 1
               ? navigate(`/delivery-orders/${quotation.delivery_orders[0].id}`)
-              : navigate('/delivery-orders'))}
-            className={cn(
-              'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors',
-              'border-amber-300/60 bg-amber-50 text-amber-700 hover:border-amber-400 hover:bg-amber-100',
-              'dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-950/60',
-            )}
-          >
-            <Icon icon="solar:delivery-bold-duotone" className="h-3.5 w-3.5" />
-            {quotation.delivery_orders.length} Delivery Order{quotation.delivery_orders.length !== 1 ? 's' : ''}
-          </button>
+              : setShowDeliveryOrdersDialog(true))}
+          />
         )}
       </div>
+
+      {/* Linked delivery orders — choose which one to open */}
+      <Dialog open={showDeliveryOrdersDialog} onOpenChange={setShowDeliveryOrdersDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Linked Delivery Orders</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              {quotation.delivery_orders?.length} delivery order
+              {quotation.delivery_orders?.length === 1 ? '' : 's'} created from this quotation — pick one to open.
+            </p>
+          </DialogHeader>
+          <div className="max-h-80 space-y-2 overflow-y-auto py-2">
+            {(quotation.delivery_orders ?? []).map((order: any) => {
+              const status = String(order.status ?? 'draft').toLowerCase()
+              const statusClass =
+                status === 'completed' || status === 'delivered'
+                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                  : status === 'confirmed'
+                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
+                    : status === 'cancelled'
+                      ? 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300'
+                      : 'bg-muted text-muted-foreground'
+
+              return (
+                <button
+                  key={order.id}
+                  type="button"
+                  onClick={() => {
+                    setShowDeliveryOrdersDialog(false)
+                    navigate(`/delivery-orders/${order.id}`)
+                  }}
+                  className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200/80 p-3 text-left transition-colors hover:bg-muted/40 dark:border-slate-800"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400">
+                      <Icon icon="solar:delivery-bold-duotone" className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{order.delivery_order_number}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {order.delivery_date ? formatDate(order.delivery_date) : 'No delivery date'}
+                      </p>
+                    </div>
+                  </div>
+                  <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize', statusClass)}>
+                    {status}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          <DialogFooter>
+            <HeaderActionButton variant="outline" onClick={() => setShowDeliveryOrdersDialog(false)}>
+              Close
+            </HeaderActionButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Linked invoices (expandable) */}
       {showInvoicesPanel && quotation.invoices && quotation.invoices.length > 0 && (

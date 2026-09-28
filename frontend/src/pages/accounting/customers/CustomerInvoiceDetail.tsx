@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
+import { DocumentLinkChip } from '@/components/documents/DocumentLinkChip';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
@@ -358,27 +359,21 @@ export const CustomerInvoiceDetail: React.FC = () => {
       {(invoice.quotation || (invoice.delivery_orders && invoice.delivery_orders.length > 0)) && (
         <div className="flex flex-wrap gap-3 print:hidden">
           {invoice.quotation && (
-            <button
-              type="button"
+            <DocumentLinkChip
+              kind="quotation"
+              label={invoice.quotation.quotation_number}
+              title="Open quotation"
               onClick={() => navigate(`/quotations/${invoice.quotation.id}`)}
-              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-input bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            >
-              <Icon icon="solar:document-text-bold-duotone" className="h-3.5 w-3.5" />
-              {invoice.quotation.quotation_number}
-              <span className="text-muted-foreground/70">Quotation</span>
-            </button>
+            />
           )}
           {invoice.delivery_orders?.map((deliveryOrder: any) => (
-            <button
-              type="button"
+            <DocumentLinkChip
               key={deliveryOrder.id}
+              kind="delivery_order"
+              label={deliveryOrder.delivery_order_number}
+              title="Open delivery order"
               onClick={() => navigate(`/delivery-orders/${deliveryOrder.id}`)}
-              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-input bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            >
-              <Icon icon="solar:box-bold-duotone" className="h-3.5 w-3.5" />
-              {deliveryOrder.delivery_order_number}
-              <span className="text-muted-foreground/70">Delivery Order</span>
-            </button>
+            />
           ))}
         </div>
       )}

@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast'
 import { ChatterDock } from '@/components/chatter'
 import { TagEditor } from '@/components/tags/TagEditor'
+import { DocumentLinkChip } from '@/components/documents/DocumentLinkChip'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
 import { formatCurrency, formatDate, resolveImageUrl, cn } from '@/lib/utils'
@@ -604,29 +605,20 @@ export function DeliveryOrderDetailPage() {
       {/* Odoo-style smart buttons */}
       <div className="flex flex-wrap gap-3">
         {deliveryOrder.invoices && deliveryOrder.invoices.length > 0 && (
-          <button
-            type="button"
+          <DocumentLinkChip
+            kind="invoice"
+            active={showInvoicesPanel}
+            label={`${deliveryOrder.invoices.length} Invoice${deliveryOrder.invoices.length !== 1 ? 's' : ''}`}
             onClick={() => setShowInvoicesPanel(!showInvoicesPanel)}
-            className={cn(
-              'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors',
-              showInvoicesPanel
-                ? 'border-primary/60 bg-primary/15 text-primary'
-                : 'border-primary/30 bg-primary/5 text-primary hover:border-primary/50 hover:bg-primary/10',
-            )}
-          >
-            <Icon icon="solar:bill-list-bold-duotone" className="h-3.5 w-3.5" />
-            {deliveryOrder.invoices.length} Invoice{deliveryOrder.invoices.length !== 1 ? 's' : ''}
-          </button>
+            title="Toggle linked invoices"
+          />
         )}
         {deliveryOrder.quotation && (
-          <button
-            type="button"
+          <DocumentLinkChip
+            kind="quotation"
+            label={deliveryOrder.quotation.quotation_number}
             onClick={() => navigate(`/quotations/${deliveryOrder.quotation.id}`)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 text-xs font-medium text-primary transition-colors hover:border-primary/50 hover:bg-primary/10"
-          >
-            <Icon icon="solar:document-text-bold-duotone" className="h-3.5 w-3.5" />
-            {deliveryOrder.quotation.quotation_number}
-          </button>
+          />
         )}
       </div>
 
