@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
@@ -110,6 +111,7 @@ const isReasonAllowedForOperation = (reason: AdjustmentReason, operationType: Op
 export function StockManagementPage() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
   
   // Tab state
   const [activeTab, setActiveTab] = useState<ActiveTab>('products')
@@ -146,6 +148,14 @@ export function StockManagementPage() {
   const [outOfStockPageSize, setOutOfStockPageSize] = useState(25)
 
   useEffect(() => {
+    if (searchParams.get('operation') !== 'in') return
+
+    setOperationType('in')
+    setIsDialogOpen(true)
+    setSearchParams({}, { replace: true })
+  }, [searchParams, setSearchParams])
+
+  useEffect(() => {
     setProductsPage(1)
   }, [searchProducts])
 
@@ -172,6 +182,8 @@ export function StockManagementPage() {
       const res = await api.get('/warehouses')
       return res.data
     },
+    staleTime: 0,
+    refetchOnMount: 'always',
   })
 
   const { data: reasons } = useQuery<AdjustmentReason[]>({
@@ -244,6 +256,7 @@ export function StockManagementPage() {
       'low-stock',
       'out-of-stock',
       'inventory-dashboard',
+      'inventory-tracking',
     ])
 
     queryClient.invalidateQueries({

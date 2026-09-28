@@ -586,7 +586,9 @@ export function POSTerminal() {
 
   // Fetch Warehouses
   const { data: warehouses } = useQuery<Warehouse[]>({
-    queryKey: ['warehouses'],
+    // POS uses a dedicated endpoint whose response can differ from the
+    // inventory warehouse list. Do not let the two screens share cached IDs.
+    queryKey: ['pos-warehouses'],
     queryFn: async () => {
       const response = await api.get('/pos/warehouses')
       return Array.isArray(response.data) ? response.data : (response.data.data || [])
