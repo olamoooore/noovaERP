@@ -142,10 +142,21 @@ class FindingController extends Controller
     public function refreshFindings(Request $request): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $entityId = $request->input('entity_id', 'entity-001');
-        $periodId = $request->input('period_id', date('Y-m'));
 
-        $result = $this->aiAnalysisService->analyze($tenantId, $entityId, $periodId, true);
+        // Never default to a demo scope: a scan without an explicit entity and
+        // period used to write findings under 'entity-001', which matches no
+        // real tenant data and hid them from every scoped view.
+        $data = $request->validate([
+            'entity_id' => ['required', 'string', 'max:64'],
+            'period_id' => ['required', 'string', 'max:32'],
+        ]);
+
+        $result = $this->aiAnalysisService->analyze(
+            $tenantId,
+            $data['entity_id'],
+            $data['period_id'],
+            true
+        );
 
         return response()->json([
             'message' => 'Findings refreshed.',

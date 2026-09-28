@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { Icon } from '@iconify/react';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
+import { StatCard } from '@/components/ui/stat-card';
 import {
   Select,
   SelectContent,
@@ -21,367 +22,454 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import accountingFindingsApi, { AccountingFinding } from '@/lib/accountingFindingsApi';
-import { formatCurrency } from '@/lib/utils';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { findingsApi, readinessApi, type AiFinding } from '@/services/closeApi';
 import { useToast } from '@/hooks/use-toast';
+import { useAuthStore } from '@/store/authStore';
+import { formatDate } from '@/lib/utils';
 
-const SEVERITY_COLORS: Record<string, string> = {
-  low: 'bg-blue-100 text-blue-800',
-  medium: 'bg-yellow-100 text-yellow-800',
-  high: 'bg-orange-100 text-orange-800',
-  critical: 'bg-red-100 text-red-800',
+/**
+ * Accounting Findings — the review inbox for anomalies detected by the close
+ * automation (negative asset / liability balances, unusual balances, missing
+ * support, unposted entries, overdue invoices, …) plus anything raised
+ * manually.
+ *
+ * Source of truth for detected findings is the close-analysis store
+ * (`/close/findings`); the analysis writes findings on every scan run
+ * (Financial Close → AI Findings → Refresh, or the "Run scan" button here).
+ */
+
+const RISK_STYLES: Record<string, string> = {
+  low: 'bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300',
+  medium: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300',
+  high: 'bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300',
+  critical: 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300',
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  open: 'bg-gray-100 text-gray-800',
-  acknowledged: 'bg-blue-100 text-blue-800',
-  investigating: 'bg-purple-100 text-purple-800',
-  resolved: 'bg-green-100 text-green-800',
-  dismissed: 'bg-slate-100 text-slate-800',
-  escalated: 'bg-red-100 text-red-800',
+const STATUS_STYLES: Record<string, { label: string; className: string }> = {
+  open: { label: 'Open', className: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300' },
+  accepted: { label: 'Accepted', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300' },
+  dismissed: { label: 'Dismissed', className: 'bg-muted text-muted-foreground' },
+  escalated: { label: 'Escalated', className: 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300' },
+  edited: { label: 'Edited', className: 'bg-muted text-muted-foreground' },
 };
+
+const TYPE_LABELS: Record<string, string> = {
+  anomaly: 'Anomaly',
+  missing_support: 'Missing support',
+  unposted_entries: 'Unposted entries',
+  overdue_invoices: 'Overdue invoices',
+};
+
+const typeLabel = (type?: string) =>
+  TYPE_LABELS[type ?? ''] ?? (type ? type.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()) : '—');
 
 export default function AccountingFindingsPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [entityId, setEntityId] = useState('default');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [severityFilter, setSeverityFilter] = useState<string>('all');
-  const [selectedFinding, setSelectedFinding] = useState<AccountingFinding | null>(null);
+  const { hasPermission } = useAuthStore();
+
+  const [entityFilter, setEntityFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [riskFilter, setRiskFilter] = useState('all');
+  const [selected, setSelected] = useState<AiFinding | null>(null);
   const [showDetail, setShowDetail] = useState(false);
-  const [resolveNotes, setResolveNotes] = useState('');
-  const [dismissReason, setDismissReason] = useState('');
-  const [escalateReason, setEscalateReason] = useState('');
 
-  const { data: findings = [], isLoading } = useQuery({
-    queryKey: ['accounting-findings', entityId, statusFilter, severityFilter],
-    queryFn: () => accountingFindingsApi.getFindings(entityId, {
-      status: statusFilter === 'all' ? undefined : statusFilter,
-      severity: severityFilter === 'all' ? undefined : severityFilter,
-    }),
+  const canManage = hasPermission('accounting.close.finding_write');
+
+  const { data: scope } = useQuery({
+    queryKey: ['close-finding-scope'],
+    queryFn: () => readinessApi.entities().then((r) => r.data.data),
+    staleTime: 5 * 60 * 1000,
   });
 
-  const { data: summary } = useQuery({
-    queryKey: ['accounting-findings-summary', entityId],
-    queryFn: () => accountingFindingsApi.getSummary(entityId),
+  const { data: findings = [], isLoading, isError } = useQuery<AiFinding[]>({
+    queryKey: ['ai-findings', entityFilter, statusFilter, riskFilter],
+    queryFn: () =>
+      findingsApi
+        .listAll({
+          entity_id: entityFilter === 'all' ? undefined : entityFilter,
+          status: statusFilter === 'all' ? undefined : statusFilter,
+          risk_status: riskFilter === 'all' ? undefined : riskFilter,
+        })
+        .then((r) => r.data.data),
   });
 
-  const acknowledgeMutation = useMutation({
-    mutationFn: (id: string) => accountingFindingsApi.acknowledge(id),
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['ai-findings'] });
+
+  const acceptMutation = useMutation({
+    mutationFn: (id: string) => findingsApi.accept(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['accounting-findings'] });
-      toast({ title: 'Finding acknowledged' });
-    },
-  });
-
-  const investigateMutation = useMutation({
-    mutationFn: (id: string) => accountingFindingsApi.investigate(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['accounting-findings'] });
-      toast({ title: 'Finding marked as investigating' });
-    },
-  });
-
-  const resolveMutation = useMutation({
-    mutationFn: ({ id, notes }: { id: string; notes?: string }) =>
-      accountingFindingsApi.resolve(id, notes),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['accounting-findings'] });
+      invalidate();
       setShowDetail(false);
-      setResolveNotes('');
-      toast({ title: 'Finding resolved' });
+      toast({ title: 'Finding accepted' });
     },
+    onError: () => toast({ title: 'Action failed', variant: 'destructive' }),
   });
 
   const dismissMutation = useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
-      accountingFindingsApi.dismiss(id, reason),
+    mutationFn: (id: string) => findingsApi.dismiss(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['accounting-findings'] });
+      invalidate();
       setShowDetail(false);
-      setDismissReason('');
       toast({ title: 'Finding dismissed' });
     },
+    onError: () => toast({ title: 'Action failed', variant: 'destructive' }),
   });
 
   const escalateMutation = useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
-      accountingFindingsApi.escalate(id, reason),
+    mutationFn: (id: string) => findingsApi.escalate(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['accounting-findings'] });
+      invalidate();
       setShowDetail(false);
-      setEscalateReason('');
       toast({ title: 'Finding escalated' });
     },
+    onError: () => toast({ title: 'Action failed', variant: 'destructive' }),
   });
 
-  const openDetail = (finding: AccountingFinding) => {
-    setSelectedFinding(finding);
+  const scanMutation = useMutation({
+    mutationFn: () =>
+      findingsApi.refreshFindings(entityFilter, scope?.periods?.[0] ?? ''),
+    onSuccess: (res) => {
+      invalidate();
+      const created = res.data?.findings_created ?? 0;
+      toast({
+        title: created > 0 ? `Scan complete — ${created} new finding(s)` : 'Scan complete — no new findings',
+      });
+    },
+    onError: () => toast({ title: 'Scan failed', variant: 'destructive' }),
+  });
+
+  const openDetail = (finding: AiFinding) => {
+    setSelected(finding);
     setShowDetail(true);
-    setResolveNotes('');
-    setDismissReason('');
-    setEscalateReason('');
+  };
+
+  const total = findings.length;
+  const openCount = findings.filter((f) => f.status === 'open').length;
+  const highCriticalCount = findings.filter(
+    (f) => f.risk_status === 'critical' || f.risk_status === 'high',
+  ).length;
+  const escalatedCount = findings.filter((f) => f.status === 'escalated').length;
+
+  const renderRiskBadge = (risk: string) => (
+    <Badge variant="outline" className={`border-transparent font-normal capitalize ${RISK_STYLES[risk] ?? 'bg-muted text-muted-foreground'}`}>
+      {risk}
+    </Badge>
+  );
+
+  const renderStatusBadge = (status: string) => {
+    const cfg = STATUS_STYLES[status] ?? { label: status, className: 'bg-muted text-muted-foreground' };
+    return (
+      <Badge variant="outline" className={`border-transparent font-normal ${cfg.className}`}>
+        {cfg.label}
+      </Badge>
+    );
+  };
+
+  const renderActions = (finding: AiFinding, compact = false) => {
+    const isOpen = finding.status === 'open';
+    const pending =
+      acceptMutation.isPending || dismissMutation.isPending || escalateMutation.isPending;
+
+    if (!canManage || !isOpen) {
+      return compact ? <span className="text-xs text-muted-foreground">—</span> : null;
+    }
+
+    const btn = compact ? 'h-7 w-7' : 'h-8';
+
+    return (
+      <div className="flex items-center gap-1">
+        <Button
+          size="icon"
+          variant="ghost"
+          className={`${btn} text-emerald-600 hover:text-emerald-700`}
+          title="Accept finding"
+          aria-label="Accept finding"
+          disabled={pending}
+          onClick={() => acceptMutation.mutate(finding.id)}
+        >
+          <Icon icon="solar:check-circle-bold-duotone" className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          className={`${btn} text-muted-foreground`}
+          title="Dismiss finding"
+          aria-label="Dismiss finding"
+          disabled={pending}
+          onClick={() => dismissMutation.mutate(finding.id)}
+        >
+          <Icon icon="solar:close-circle-bold-duotone" className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          className={`${btn} text-red-600 hover:text-red-700`}
+          title="Escalate finding"
+          aria-label="Escalate finding"
+          disabled={pending}
+          onClick={() => escalateMutation.mutate(finding.id)}
+        >
+          <Icon icon="solar:arrow-up-bold-duotone" className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    );
   };
 
   return (
     <div className="p-6 space-y-6">
+      {/* Header — filters sit with the actions so the page does not spend a
+          whole row on three selects. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Accounting Findings</h1>
-          <p className="text-muted-foreground mt-1">
-            Review and resolve accounting findings and anomalies
+          <p className="mt-1 text-muted-foreground">
+            Review and resolve accounting findings and anomalies detected by the close automation.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Input
-            value={entityId}
-            onChange={(e) => setEntityId(e.target.value)}
-            placeholder="Entity ID"
-            className="h-8 w-32 rounded-full px-3 text-xs"
-          />
+          <Select value={entityFilter} onValueChange={setEntityFilter}>
+            <SelectTrigger className="h-8 w-40 rounded-full text-xs" aria-label="Filter by entity">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All entities</SelectItem>
+              {(scope?.entities ?? []).map((entity) => (
+                <SelectItem key={entity} value={entity}>
+                  {entity}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="h-8 w-44 rounded-full text-xs">
+            <SelectTrigger className="h-8 w-36 rounded-full text-xs" aria-label="Filter by status">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="all">All statuses</SelectItem>
               <SelectItem value="open">Open</SelectItem>
-              <SelectItem value="acknowledged">Acknowledged</SelectItem>
-              <SelectItem value="investigating">Investigating</SelectItem>
-              <SelectItem value="resolved">Resolved</SelectItem>
-              <SelectItem value="dismissed">Dismissed</SelectItem>
+              <SelectItem value="accepted">Accepted</SelectItem>
               <SelectItem value="escalated">Escalated</SelectItem>
+              <SelectItem value="dismissed">Dismissed</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={severityFilter} onValueChange={setSeverityFilter}>
-            <SelectTrigger className="h-8 w-40 rounded-full text-xs">
+
+          <Select value={riskFilter} onValueChange={setRiskFilter}>
+            <SelectTrigger className="h-8 w-36 rounded-full text-xs" aria-label="Filter by risk">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Severities</SelectItem>
-              <SelectItem value="low">Low</SelectItem>
-              <SelectItem value="medium">Medium</SelectItem>
-              <SelectItem value="high">High</SelectItem>
+              <SelectItem value="all">All risk levels</SelectItem>
               <SelectItem value="critical">Critical</SelectItem>
+              <SelectItem value="high">High</SelectItem>
+              <SelectItem value="medium">Medium</SelectItem>
+              <SelectItem value="low">Low</SelectItem>
             </SelectContent>
           </Select>
+
+          {canManage && (
+            <HeaderActionButton
+              icon="solar:refresh-bold-duotone"
+              variant="outline"
+              loading={scanMutation.isPending}
+              disabled={entityFilter === 'all' || scanMutation.isPending}
+              title={
+                entityFilter === 'all'
+                  ? 'Select an entity to run a new scan'
+                  : 'Run the close analysis again for this entity'
+              }
+              onClick={() => scanMutation.mutate()}
+            >
+              Run scan
+            </HeaderActionButton>
+          )}
         </div>
       </div>
 
-      {/* Summary Cards */}
-      {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card className="p-4">
-            <div className="text-sm text-muted-foreground">Total</div>
-            <div className="text-2xl font-bold">{summary.total}</div>
-          </Card>
-          <Card className="p-4">
-            <div className="text-sm text-muted-foreground">Open</div>
-            <div className="text-2xl font-bold text-gray-600">{summary.by_status?.open || 0}</div>
-          </Card>
-          <Card className="p-4">
-            <div className="text-sm text-muted-foreground">Critical</div>
-            <div className="text-2xl font-bold text-red-600">{summary.by_severity?.critical || 0}</div>
-          </Card>
-          <Card className="p-4">
-            <div className="text-sm text-muted-foreground">Escalated</div>
-            <div className="text-2xl font-bold text-orange-600">{summary.by_status?.escalated || 0}</div>
-          </Card>
-        </div>
-      )}
+      {/* Summary */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard label="Total" value={total} icon="solar:document-text-bold-duotone" />
+        <StatCard
+          label="Open"
+          value={openCount}
+          icon="solar:hourglass-bold-duotone"
+          tone="bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400"
+        />
+        <StatCard
+          label="High & critical"
+          value={highCriticalCount}
+          icon="solar:danger-triangle-bold-duotone"
+          tone="bg-red-100 text-red-600 dark:bg-red-950/60 dark:text-red-400"
+        />
+        <StatCard
+          label="Escalated"
+          value={escalatedCount}
+          icon="solar:arrow-up-bold-duotone"
+          tone="bg-orange-100 text-orange-600 dark:bg-orange-950/60 dark:text-orange-400"
+        />
+      </div>
 
-      {/* Findings Table */}
-      <Card className="p-6">
-        {isLoading ? (
-          <div className="text-center py-12">
-            <Icon icon="svg-spinners:ring-resize" className="w-8 h-8 mx-auto" />
-            <p className="text-muted-foreground mt-2">Loading findings...</p>
-          </div>
-        ) : findings.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <Icon icon="solar:check-circle-bold-duotone" className="w-16 h-16 mx-auto mb-4 opacity-50" />
-            <p>No findings found</p>
-          </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Severity</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Account</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {findings.map((finding) => (
-                <TableRow
-                  key={finding.id}
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => openDetail(finding)}
-                >
-                  <TableCell className="font-medium">{finding.title}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{finding.finding_type}</TableCell>
-                  <TableCell>
-                    <Badge className={SEVERITY_COLORS[finding.severity] || ''}>
-                      {finding.severity}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={STATUS_COLORS[finding.status] || ''}>
-                      {finding.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="font-mono text-sm">{finding.account_code || '-'}</TableCell>
-                  <TableCell className="text-right font-mono">
-                    {finding.amount != null ? formatCurrency(finding.amount) : '-'}
-                  </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <div className="flex gap-1">
-                      {finding.status === 'open' && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => acknowledgeMutation.mutate(finding.id)}
-                        >
-                          Ack
-                        </Button>
-                      )}
-                      {(finding.status === 'open' || finding.status === 'acknowledged') && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => investigateMutation.mutate(finding.id)}
-                        >
-                          Investigate
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
+      {/* Findings list */}
+      <Card className="overflow-hidden rounded-xl">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 border-b pb-4">
+          <CardTitle className="text-base">Findings</CardTitle>
+          {total > 0 && (
+            <span className="text-sm font-normal text-muted-foreground">
+              {total} finding(s)
+            </span>
+          )}
+        </CardHeader>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="py-12 text-center text-muted-foreground">
+              <Icon icon="eos-icons:loading" className="mx-auto h-7 w-7 animate-spin" />
+              <p className="mt-2 text-sm">Loading findings…</p>
+            </div>
+          ) : isError ? (
+            <div className="py-12 text-center text-muted-foreground">
+              <Icon icon="solar:danger-triangle-bold-duotone" className="mx-auto h-8 w-8 text-red-500" />
+              <p className="mt-2 text-sm">Could not load findings. Try again.</p>
+            </div>
+          ) : total === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-2 px-4 py-14 text-center">
+              <Icon icon="solar:check-circle-bold-duotone" className="h-10 w-10 text-emerald-500/60" />
+              <p className="text-sm font-medium">No findings found</p>
+              <p className="max-w-md text-xs text-muted-foreground">
+                Nothing is outstanding for the current filters. Findings appear here after the close
+                analysis runs — select an entity and use “Run scan”, or change the filters above.
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Finding</TableHead>
+                  <TableHead className="w-[9rem]">Type</TableHead>
+                  <TableHead className="w-[7rem]">Account</TableHead>
+                  <TableHead className="w-[6.5rem]">Risk</TableHead>
+                  <TableHead className="w-[7rem]">Status</TableHead>
+                  <TableHead className="w-[7.5rem]">Detected</TableHead>
+                  <TableHead className="w-[1%] whitespace-nowrap text-right">Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
+              </TableHeader>
+              <TableBody>
+                {findings.map((finding) => (
+                  <TableRow
+                    key={finding.id}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => openDetail(finding)}
+                  >
+                    <TableCell>
+                      <div className="line-clamp-2 text-sm">{finding.description}</div>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {typeLabel(finding.finding_type)}
+                    </TableCell>
+                    <TableCell className="text-sm tabular-nums">
+                      {finding.account_code || '—'}
+                    </TableCell>
+                    <TableCell>{renderRiskBadge(finding.risk_status)}</TableCell>
+                    <TableCell>{renderStatusBadge(finding.status)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {finding.created_at ? formatDate(finding.created_at) : '—'}
+                    </TableCell>
+                    <TableCell
+                      className="text-right"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      {renderActions(finding, true)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
       </Card>
 
-      {/* Detail Dialog */}
+      {/* Detail */}
       <Dialog open={showDetail} onOpenChange={setShowDetail}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{selectedFinding?.title}</DialogTitle>
+            <DialogTitle className="flex flex-wrap items-center gap-2">
+              {selected && renderRiskBadge(selected.risk_status)}
+              {selected && renderStatusBadge(selected.status)}
+              <span>{typeLabel(selected?.finding_type)}</span>
+            </DialogTitle>
+            <DialogDescription>
+              {selected?.account_code ? `Account ${selected.account_code}` : 'Accounting finding'}
+              {selected?.confidence != null && ` · confidence ${Math.round(selected.confidence * 100)}%`}
+              {selected?.entity_id && ` · ${selected.entity_id}`}
+            </DialogDescription>
           </DialogHeader>
-          {selectedFinding && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+
+          {selected && (
+            <div className="space-y-4 py-2">
+              <div className="rounded-lg border bg-muted/30 p-4 text-sm">{selected.description}</div>
+
+              {selected.likely_cause && (
                 <div>
-                  <Label className="text-xs text-muted-foreground">Type</Label>
-                  <p>{selectedFinding.finding_type}</p>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Severity</Label>
-                  <p><Badge className={SEVERITY_COLORS[selectedFinding.severity]}>{selectedFinding.severity}</Badge></p>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Status</Label>
-                  <p><Badge className={STATUS_COLORS[selectedFinding.status]}>{selectedFinding.status}</Badge></p>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Account</Label>
-                  <p className="font-mono">{selectedFinding.account_code || '-'}</p>
-                </div>
-                {selectedFinding.amount != null && (
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Amount</Label>
-                    <p className="font-mono font-semibold">{formatCurrency(selectedFinding.amount)}</p>
-                  </div>
-                )}
-                {selectedFinding.confidence != null && (
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Confidence</Label>
-                    <p>{(selectedFinding.confidence * 100).toFixed(0)}%</p>
-                  </div>
-                )}
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">Description</Label>
-                <p className="mt-1">{selectedFinding.description}</p>
-              </div>
-              {selectedFinding.recommendation && (
-                <div>
-                  <Label className="text-xs text-muted-foreground">Recommendation</Label>
-                  <p className="mt-1">{selectedFinding.recommendation}</p>
-                </div>
-              )}
-              {selectedFinding.status === 'resolved' && selectedFinding.resolution_notes && (
-                <div>
-                  <Label className="text-xs text-muted-foreground">Resolution Notes</Label>
-                  <p className="mt-1">{selectedFinding.resolution_notes}</p>
+                  <p className="text-sm font-medium">Likely cause</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{selected.likely_cause}</p>
                 </div>
               )}
 
-              {/* Action Sections */}
-              {selectedFinding.status !== 'resolved' && selectedFinding.status !== 'dismissed' && (
-                <>
-                  {selectedFinding.status !== 'investigating' && (
-                    <div className="border-t pt-4">
-                      <Label className="text-xs text-muted-foreground">Resolve</Label>
-                      <Textarea
-                        className="mt-1"
-                        placeholder="Resolution notes (optional)"
-                        value={resolveNotes}
-                        onChange={(e) => setResolveNotes(e.target.value)}
-                      />
-                      <Button
-                        className="mt-2"
-                        onClick={() => resolveMutation.mutate({ id: selectedFinding.id, notes: resolveNotes })}
-                      >
-                        Resolve Finding
-                      </Button>
+              {selected.recommendation && (
+                <div>
+                  <p className="text-sm font-medium">Recommendation</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{selected.recommendation}</p>
+                </div>
+              )}
+
+              {(selected.detail_items?.length ?? 0) > 0 && (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {selected.detail_items.map((item) => (
+                    <div key={item.label} className="rounded-lg border p-3">
+                      <p className="text-xs text-muted-foreground">{item.label}</p>
+                      <p className="mt-0.5 text-sm font-medium tabular-nums">{item.value}</p>
                     </div>
-                  )}
-                  <div className="border-t pt-4">
-                    <Label className="text-xs text-muted-foreground">Dismiss</Label>
-                    <Input
-                      className="mt-1"
-                      placeholder="Dismiss reason (optional)"
-                      value={dismissReason}
-                      onChange={(e) => setDismissReason(e.target.value)}
-                    />
-                    <Button
-                      className="mt-2"
-                      variant="outline"
-                      onClick={() => dismissMutation.mutate({ id: selectedFinding.id, reason: dismissReason })}
-                    >
-                      Dismiss Finding
-                    </Button>
+                  ))}
+                </div>
+              )}
+
+              {(selected.source_refs?.length ?? 0) > 0 && (
+                <div>
+                  <p className="text-sm font-medium">Sources</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {selected.source_refs!.map((ref) => (
+                      <button
+                        key={`${ref.type}-${ref.id}`}
+                        type="button"
+                        disabled={!ref.route}
+                        onClick={() => ref.route && navigate(ref.route)}
+                        className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted disabled:opacity-60"
+                        title={ref.meta?.reference ? `Reference ${ref.meta.reference}` : ref.label}
+                      >
+                        <Icon icon="solar:link-bold-duotone" className="h-3 w-3" />
+                        {ref.label}
+                      </button>
+                    ))}
                   </div>
-                  <div className="border-t pt-4">
-                    <Label className="text-xs text-muted-foreground">Escalate</Label>
-                    <Input
-                      className="mt-1"
-                      placeholder="Escalation reason (optional)"
-                      value={escalateReason}
-                      onChange={(e) => setEscalateReason(e.target.value)}
-                    />
-                    <Button
-                      className="mt-2"
-                      variant="destructive"
-                      onClick={() => escalateMutation.mutate({ id: selectedFinding.id, reason: escalateReason })}
-                    >
-                      Escalate Finding
-                    </Button>
-                  </div>
-                </>
+                </div>
               )}
             </div>
           )}
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDetail(false)}>Close</Button>
+            <Button variant="outline" onClick={() => setShowDetail(false)}>
+              Close
+            </Button>
+            {selected && renderActions(selected)}
           </DialogFooter>
         </DialogContent>
       </Dialog>

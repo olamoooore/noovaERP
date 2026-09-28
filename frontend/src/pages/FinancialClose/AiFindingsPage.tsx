@@ -1,10 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon } from '@iconify/react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { findingsApi, type AiFinding } from '@/services/closeApi'
+import { findingsApi, readinessApi, type AiFinding } from '@/services/closeApi'
 import { useToast } from '@/hooks/use-toast'
 import { useState } from 'react'
 import {
@@ -39,8 +39,19 @@ export function AiFindingsPage() {
   const queryClient = useQueryClient()
   const [riskFilter, setRiskFilter] = useState<string>('all')
 
-  const entityId = params.get('entityId') ?? 'entity-001'
-  const periodId = params.get('periodId') ?? '2026-04'
+  // Entity/period come from the review scope in the URL. Without params we fall
+  // back to the tenant's own scope (first entity, latest period) rather than a
+  // demo literal — the previous hard-coded values never matched real data and
+  // the page opened empty.
+  const { data: scope } = useQuery({
+    queryKey: ['close-finding-scope'],
+    queryFn: () => readinessApi.entities().then((r) => r.data.data),
+    staleTime: 5 * 60 * 1000,
+  })
+  const entityId = params.get('entityId') ?? scope?.entities?.[0] ?? ''
+  const periodId =
+    params.get('periodId') ??
+    (scope?.periods?.length ? scope.periods[scope.periods.length - 1] : '')
   const statusFilter = params.get('status') ?? 'open'
 
   const { data: findings = [], isLoading } = useQuery<AiFinding[]>({
@@ -48,7 +59,9 @@ export function AiFindingsPage() {
     queryFn: () =>
       reviewId
         ? findingsApi.list(reviewId).then(r => r.data.data)
-        : findingsApi.listAll({ entity_id: entityId, status: statusFilter }).then(r => r.data.data),
+        : findingsApi
+            .listAll({ entity_id: entityId || undefined, status: statusFilter })
+            .then(r => r.data.data),
   })
 
   const refreshMutation = useMutation({
@@ -111,8 +124,9 @@ export function AiFindingsPage() {
           </Select>
           <Button
             variant="outline"
+            title={!entityId || !periodId ? 'Open this page from a close review to run a scan' : undefined}
             onClick={() => refreshMutation.mutate()}
-            disabled={refreshMutation.isPending}
+            disabled={refreshMutation.isPending || !entityId || !periodId}
           >
             <Icon
               icon="solar:refresh-bold"

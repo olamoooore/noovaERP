@@ -142,4 +142,45 @@ class HR216DepreciationAccumulatedConsistencyTest extends TenantTestCase
         $this->assertSame($postedSum, round((float) DepreciationSchedule::where('asset_id', $asset->id)->where('is_posted', true)->sum('depreciation_amount'), 2));
         $this->assertSame($draftSum, round((float) DepreciationSchedule::where('asset_id', $asset->id)->where('is_posted', false)->sum('depreciation_amount'), 2));
     }
+
+    /**
+     * Production regression (Acme Production, Asset-001): an asset whose
+     * depreciation is already fully recorded (imported accumulated baseline)
+     * and which has NO schedule rows must not receive a "true-up" period that
+     * charges the entire depreciable base in one go.
+     *
+     * The true-up may only close the mid-month proration rounding gap, so it
+     * must measure the remainder against asset.accumulated_depreciation +
+     * unposted drafts — not against the schedule rows alone.
+     */
+    public function test_true_up_does_not_charge_the_whole_base_when_accumulated_is_already_recorded(): void
+    {
+        $asset = $this->asset();
+        $asset->update([
+            'purchase_cost' => 39118.00,
+            'salvage_value' => 0,
+            'useful_life_years' => 3,
+            'depreciation_method' => 'straight_line',
+            'depreciation_start_date' => '2022-09-01',
+            'purchase_date' => '2020-09-01',
+            'accumulated_depreciation' => 39118.00,
+            'book_value' => 0.00,
+            'last_depreciation_date' => '2023-08-31',
+        ]);
+
+        $service = app(DepreciationService::class);
+        $service->calculateDepreciationForPeriod(now()->toDateString(), [$asset->id]);
+
+        $this->assertSame(
+            0,
+            DepreciationSchedule::where('asset_id', $asset->id)->count(),
+            'A fully depreciated asset with no schedule history must not get a full-cost true-up row'
+        );
+
+        $this->assertSame(
+            39118.00,
+            round((float) $asset->fresh()->accumulated_depreciation, 2),
+            'The posted accumulated baseline must be untouched'
+        );
+    }
 }

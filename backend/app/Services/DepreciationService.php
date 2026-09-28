@@ -157,16 +157,52 @@ class DepreciationService
                     // fully depreciates (standard fixed-asset practice).
                     $scheduledTotal = (float) DepreciationSchedule::where('asset_id', $asset->id)
                         ->sum('depreciation_amount');
-                    $trueUp = round((float) $asset->purchase_cost - (float) $asset->salvage_value - $scheduledTotal, 2);
+                    $unpostedTotal = (float) DepreciationSchedule::where('asset_id', $asset->id)
+                        ->where('is_posted', false)
+                        ->sum('depreciation_amount');
 
-                    if ($trueUp > 0.01) {
+                    // Issue #216 semantics: asset.accumulated_depreciation is the
+                    // POSTED baseline and unposted schedule rows sit on top (the
+                    // loop above measures remaining the same way). The true-up may
+                    // only close the mid-month proration rounding gap — measuring
+                    // it against the schedule rows alone charged the ENTIRE
+                    // depreciable base for assets whose depreciation predates this
+                    // module (opening balances / imports), producing a single
+                    // bogus full-cost period (e.g. asset fully depreciated with
+                    // zero schedule rows).
+                    $trueUp = round(
+                        (float) $asset->purchase_cost - (float) $asset->salvage_value
+                            - (float) $asset->accumulated_depreciation - $unpostedTotal,
+                        2
+                    );
+
+                    // A proration gap can never exceed one period's charge; capping
+                    // here also stops a true-up from covering a base the loop
+                    // deliberately stopped short of (e.g. zero-amount breaks).
+                    $periodCharge = round(
+                        $this->calculateDepreciationAmount(
+                            $asset,
+                            $period->copy()->endOfMonth(),
+                            (float) $asset->accumulated_depreciation + $unpostedTotal
+                        ),
+                        2
+                    );
+
+                    if ($trueUp > 0.01 && $trueUp <= $periodCharge + 0.01) {
                         $trueUpPeriod = $period->copy()->endOfMonth();
+                        $trueUpAccumulated = round(
+                            (float) $asset->accumulated_depreciation + $unpostedTotal + $trueUp,
+                            2
+                        );
                         $schedule = DepreciationSchedule::create([
                             'asset_id' => $asset->id,
                             'period_date' => $trueUpPeriod->toDateString(),
                             'depreciation_amount' => $trueUp,
-                            'accumulated_depreciation' => round($scheduledTotal + $trueUp, 2),
-                            'book_value' => max((float) $asset->purchase_cost - $scheduledTotal - $trueUp, (float) $asset->salvage_value),
+                            'accumulated_depreciation' => $trueUpAccumulated,
+                            'book_value' => max(
+                                round((float) $asset->purchase_cost - $trueUpAccumulated, 2),
+                                (float) $asset->salvage_value
+                            ),
                             'is_posted' => false,
                         ]);
 
