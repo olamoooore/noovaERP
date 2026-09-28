@@ -30,6 +30,7 @@ class DeliveryOrderController extends Controller
         private ImportService $importService,
         private CaseImportService $caseImportService,
         private AccountingOriginInvoiceService $accountingOriginInvoices,
+        private \App\Services\SalesApprovalGate $approvalGate,
     ) {}
 
     public function index(Request $request)
@@ -114,13 +115,13 @@ class DeliveryOrderController extends Controller
 
     private function filteredDeliveryOrderQuery(Request $request)
     {
-        // Sort by the most recent of (created_at, updated_at), with NULL
-        // timestamps sent to the END so that imported/migrated rows with
-        // empty timestamps don't float to the top. Ties broken by id DESC
-        // so the highest id wins when timestamps are missing or equal —
-        // i.e. the user's newly-created record always surfaces first.
+        // Newest first by creation date. `updated_at` is deliberately NOT a
+        // fallback: data repairs touch old rows and used to float decades-old
+        // documents above this week's. Legacy rows now carry a backfilled
+        // created_at (their delivery date), and delivery_date breaks ties.
         $query = DeliveryOrder::query()
-            ->orderByRaw('COALESCE(created_at, updated_at) DESC NULLS LAST')
+            ->orderByRaw('created_at DESC NULLS LAST')
+            ->orderByRaw('delivery_date DESC NULLS LAST')
             ->orderBy('id', 'desc');
 
         if ($request->filled('status')) {
@@ -441,6 +442,29 @@ class DeliveryOrderController extends Controller
                 'message' => 'Nothing left to invoice on this delivery order',
                 'invoice_ids' => $deliveryOrder->invoices()->pluck('invoices.id')->all(),
             ], 422);
+        }
+
+        // Approval gate no matter the route: a DO that came from a quotation
+        // (or a sales order) may only be invoiced after that document's
+        // approval request is approved; a standalone DO is gated on itself.
+        $gateSubject = $deliveryOrder->quotation ?? $deliveryOrder->salesOrder;
+        $gateType = $deliveryOrder->quotation
+            ? \App\Services\SalesApprovalGate::REQUEST_TYPE_QUOTATION
+            : \App\Services\SalesApprovalGate::REQUEST_TYPE_SALES_ORDER;
+        $gateAmount = $gateSubject ? (float) $gateSubject->total : (float) $deliveryOrder->total;
+
+        if (! $gateSubject) {
+            $gateSubject = $deliveryOrder;
+            $gateType = \App\Services\SalesApprovalGate::REQUEST_TYPE_DELIVERY_ORDER;
+        }
+
+        if ($approval = $this->approvalGate->requestIfNeeded($gateSubject, $gateType, $gateAmount, Auth::user())) {
+            return response()->json([
+                'message' => 'Approval required before this delivery order can be invoiced',
+                'requires_approval' => true,
+                'approval_request' => $approval,
+                'threshold' => $this->approvalGate->threshold(),
+            ], 202);
         }
 
         try {

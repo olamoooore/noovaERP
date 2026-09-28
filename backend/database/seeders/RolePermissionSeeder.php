@@ -66,6 +66,13 @@ class RolePermissionSeeder extends Seeder
         'sales.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
         'sales.settings' => [UserRole::OWNER, UserRole::ADMIN],
 
+        // Quotations — sales documents (no ledger entry on confirm), so the
+        // preparers keep access; the accounting SOD gate lives on the ledger
+        // release actions of the documents a quotation spawns (invoice post,
+        // DO confirm) and remains accounting.post. Mappings mirror invoices.*.
+        'quotations.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT, UserRole::CASHIER, UserRole::VIEWER],
+        'quotations.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT],
+
         // Invoices — standardized flow (MRD invoice-standardized-flow-mrd.md §7.1).
         // invoices.post is intentionally absent: posting reuses accounting.post
         // (EnsureAccountingPostAccess) rather than forking a parallel permission.
@@ -235,6 +242,21 @@ class RolePermissionSeeder extends Seeder
         'survey.export' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
     ];
 
+    /**
+     * The permission names the matrix grants to a role — the canonical
+     * default used by the Roles & Permissions editor to decide whether a
+     * tenant customization has been reverted to the default set.
+     *
+     * @return string[]
+     */
+    public static function defaultPermissionsFor(UserRole $role): array
+    {
+        return array_keys(array_filter(
+            self::PERMISSION_MATRIX,
+            fn (array $roles) => in_array($role, $roles, true),
+        ));
+    }
+
     public function run(): void
     {
         // Ensure Spatie tables exist before seeding
@@ -281,6 +303,16 @@ class RolePermissionSeeder extends Seeder
 
     private function syncRolePermissions(): void
     {
+        // Tenant admins can edit role permissions through Team Members →
+        // Roles & Permissions. Those roles are marked in the tenant settings;
+        // skip them entirely so re-seeding a tenant does not revert the
+        // tenant's own configuration.
+        $customizedRoles = array_map(
+            fn (string $value) => UserRole::tryFrom($value)?->spatieName(),
+            app(\App\Services\RoleCustomizationService::class)->customizedRoles(),
+        );
+        $customizedRoles = array_filter($customizedRoles);
+
         foreach (self::PERMISSION_MATRIX as $permissionName => $roleEnums) {
             $permission = Permission::findByName($permissionName, 'web');
 
@@ -295,6 +327,9 @@ class RolePermissionSeeder extends Seeder
                 ->get();
 
             foreach ($rolesToGrant as $role) {
+                if (in_array($role->name, $customizedRoles, true)) {
+                    continue;
+                }
                 if (! $role->hasPermissionTo($permission)) {
                     $role->givePermissionTo($permission);
                 }
@@ -309,6 +344,9 @@ class RolePermissionSeeder extends Seeder
                 ->get();
 
             foreach ($staleRoles as $role) {
+                if (in_array($role->name, $customizedRoles, true)) {
+                    continue;
+                }
                 if ($role->hasPermissionTo($permission)) {
                     $role->revokePermissionTo($permission);
                 }

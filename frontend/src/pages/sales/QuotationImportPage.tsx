@@ -1,28 +1,24 @@
-import { useState, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Icon } from '@iconify/react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import {
+  ImportDropzone,
+  ImportFieldTable,
+  ImportPageHeader,
+  ImportResults,
+  ImportStepCard,
+  type ImportTemplateColumn,
+} from '@/components/import/ImportPageKit'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 
 interface ImportResult {
   created: number
   errors: Array<{ row: number; message: string }>
 }
 
-const TEMPLATE_COLUMNS = [
+const TEMPLATE_COLUMNS: ImportTemplateColumn[] = [
   { name: 'quotation_number', required: false, description: 'Groups rows into one quotation. Rows sharing this number become line items. Blank = single-line quotation. Auto-generated if empty.' },
   { name: 'customer_code', required: true, description: 'Customer code (preferred). Falls back to customer_name or customer_id.' },
   { name: 'customer_name', required: false, description: 'Customer name (used if customer_code is blank).' },
@@ -34,7 +30,7 @@ const TEMPLATE_COLUMNS = [
   { name: 'attention_to', required: false, description: 'Attention To — primary contact name for this quote.' },
   { name: 'contact_email', required: false, description: 'Contact email address.' },
   { name: 'contact_phone', required: false, description: 'Contact phone number.' },
-  { name: 'billing_contact', required: false, description: 'Billing contact name. Auto-creates the contact if it doesn\'t exist.' },
+  { name: 'billing_contact', required: false, description: "Billing contact name. Auto-creates the contact if it doesn't exist." },
   { name: 'shipping_contact', required: false, description: 'Shipping / delivery contact name. Auto-creates if not found.' },
   { name: 'billing_address_snapshot', required: false, description: 'Billing address (free text).' },
   { name: 'shipping_address_snapshot', required: false, description: 'Shipping / delivery address (free text).' },
@@ -63,19 +59,17 @@ const TEMPLATE_COLUMNS = [
   { name: 'line_discount_amount', required: false, description: 'Line item: discount amount. Default: 0' },
 ]
 
-const csvValue = (v: string) => {
-  if (/[",\n]/.test(v)) {
-    return `"${v.replace(/"/g, '""')}"`
+const csvValue = (value: string) => {
+  if (/[",\n]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`
   }
-  return v
+  return value
 }
 
 export function QuotationImportPage() {
-  const navigate = useNavigate()
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
-  const [dragActive, setDragActive] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
 
@@ -117,45 +111,12 @@ export function QuotationImportPage() {
     },
   })
 
-  const handleDrag = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setDragActive(true)
-    } else if (e.type === 'dragleave') {
-      setDragActive(false)
-    }
-  }, [])
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setDragActive(false)
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const file = e.dataTransfer.files[0]
-      if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
-        setSelectedFile(file)
-        setImportResult(null)
-      } else {
-        toast({ title: 'Invalid file type', description: 'Please upload a CSV file.', variant: 'destructive' })
-      }
-    }
-  }, [toast])
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setSelectedFile(e.target.files[0])
-      setImportResult(null)
-    }
-  }
-
   const handleDownloadTemplate = () => {
-    const headers = TEMPLATE_COLUMNS.map((col) => col.name).join(',')
-
+    const headers = TEMPLATE_COLUMNS.map((column) => column.name).join(',')
     const sampleCustomerCode = customers?.[0]?.code || 'YOUR-CUST-CODE'
     const sampleCustomerName = customers?.[0]?.name || 'Your Customer Name'
 
-        const sampleRows = [
+    const sampleRows = [
       ['QUO-2026-0001', sampleCustomerCode, sampleCustomerName, '7/10/2026', '8/9/2026', 'PO-123', 'PROJECT-001, FST-002', 'Net 30 days', 'Dr. Tan', 'contact@hospital.com', '+65 9123 4567', 'Billing Dept', 'Dr. Lee', '100 Pasir Panjang Rd, Singapore 118530', '50 Science Park Rd, Singapore 117588', 'John Sales', '2 weeks', 'Express', 'FOB', '30 days', 'INV-2026-0001', 'Please deliver by end of month', 'Net 30', '0', 'SKU-001', 'Widget A', '10', '50.00', '10', '0'],
       ['QUO-2026-0001', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', 'SKU-002', 'Widget B', '5', '20.00', '10', '0'],
     ].map((row) => row.map(csvValue).join(','))
@@ -174,211 +135,71 @@ export function QuotationImportPage() {
     toast({ title: 'Template downloaded', description: 'Fill in the template and upload it to import quotations.' })
   }
 
-  const handleImport = () => {
-    if (selectedFile) {
-      importMutation.mutate(selectedFile)
-    }
-  }
-
-  const handleReset = () => {
+  const reset = () => {
     setSelectedFile(null)
     setImportResult(null)
   }
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="-ml-2 mb-3 text-muted-foreground hover:text-foreground"
-          onClick={() => navigate('/quotations')}
+      <ImportPageHeader
+        title="Import Quotations"
+        subtitle="Bulk import quotations from a CSV file"
+        backTo="/quotations"
+      />
+
+      <div className="grid items-start gap-6 lg:grid-cols-2">
+        <ImportStepCard
+          step={1}
+          title="Download Template"
+          description="One row per line item. Rows sharing a quotation_number are grouped into one quotation. Leave it blank for single-line quotations (auto-generated)."
+          icon="solar:download-minimalistic-bold-duotone"
         >
-          <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
-          Back
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold">Import Quotations</h1>
-          <p className="text-muted-foreground">Bulk import quotations from a CSV file</p>
-        </div>
-      </div>
+          <HeaderActionButton variant="outline" icon="solar:document-text-bold-duotone" onClick={handleDownloadTemplate}>
+            Download Import Template
+          </HeaderActionButton>
+          <ImportFieldTable columns={TEMPLATE_COLUMNS} />
+        </ImportStepCard>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Icon icon="solar:download-minimalistic-bold" className="h-5 w-5 text-primary" />
-                Step 1: Download Template
-              </CardTitle>
-              <CardDescription>
-                One row per line item. Rows sharing a <strong>quotation_number</strong> are grouped into one quotation.
-                Leave <strong>quotation_number</strong> blank for single-line quotations (auto-generated).
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button onClick={handleDownloadTemplate} className="w-full" variant="outline">
-                <Icon icon="solar:document-text-bold" className="mr-2 h-4 w-4" />
-                Download Import Template
-              </Button>
-            </CardContent>
-          </Card>
+        <ImportStepCard
+          step={2}
+          title="Upload CSV File"
+          description="Fill in the template and upload it here."
+          icon="solar:upload-minimalistic-bold-duotone"
+          tone="bg-blue-500/10"
+          glyph="text-blue-600 dark:text-blue-400"
+        >
+          <ImportDropzone
+            selectedFile={selectedFile}
+            onFile={(file) => { setSelectedFile(file); setImportResult(null) }}
+            onClear={reset}
+          />
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Icon icon="solar:list-check-bold" className="h-5 w-5 text-primary" />
-                Template Fields
-              </CardTitle>
-              <CardDescription>Required fields are marked with an asterisk (*).</CardDescription>
-            </CardHeader>
-            <CardContent className="max-h-[400px] overflow-y-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[170px]">Field</TableHead>
-                    <TableHead>Description</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {TEMPLATE_COLUMNS.map((col) => (
-                    <TableRow key={col.name}>
-                      <TableCell className="font-medium">
-                        {col.name}
-                        {col.required && <span className="text-destructive ml-1">*</span>}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">{col.description}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Icon icon="solar:upload-minimalistic-bold" className="h-5 w-5 text-primary" />
-                Step 2: Upload CSV File
-              </CardTitle>
-              <CardDescription>Fill in the template and upload it here.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div
-                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-                  dragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/25'
-                } ${selectedFile ? 'bg-muted/50' : ''}`}
-                onDragEnter={handleDrag}
-                onDragLeave={handleDrag}
-                onDragOver={handleDrag}
-                onDrop={handleDrop}
+          {selectedFile && !importResult && (
+            <div className="space-y-3">
+              <HeaderActionButton
+                icon="solar:import-bold-duotone"
+                loading={importMutation.isPending}
+                disabled={importMutation.isPending}
+                onClick={() => importMutation.mutate(selectedFile)}
               >
-                {selectedFile ? (
-                  <div className="space-y-3">
-                    <Icon icon="solar:file-check-bold" className="h-12 w-12 mx-auto text-green-500" />
-                    <div>
-                      <p className="font-medium">{selectedFile.name}</p>
-                      <p className="text-sm text-muted-foreground">{(selectedFile.size / 1024).toFixed(2)} KB</p>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={handleReset}>
-                      <Icon icon="solar:trash-bin-trash-bold" className="mr-2 h-4 w-4" />
-                      Remove
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <Icon icon="solar:cloud-upload-bold-duotone" className="h-12 w-12 mx-auto text-muted-foreground" />
-                    <div>
-                      <p className="font-medium">Drag and drop your CSV file here</p>
-                      <p className="text-sm text-muted-foreground">or click the button below to browse</p>
-                    </div>
-                    <Button variant="outline" size="sm" asChild>
-                      <label className="cursor-pointer">
-                        <Icon icon="solar:folder-open-bold" className="mr-2 h-4 w-4" />
-                        Browse Files
-                        <input type="file" accept=".csv,text/csv" onChange={handleFileSelect} className="hidden" />
-                      </label>
-                    </Button>
-                  </div>
-                )}
-              </div>
-
-              {selectedFile && !importResult && (
-                <Button onClick={handleImport} className="w-full" disabled={importMutation.isPending}>
-                  {importMutation.isPending ? (
-                    <>
-                      <Icon icon="solar:refresh-circle-bold" className="mr-2 h-4 w-4 animate-spin" />
-                      Importing...
-                    </>
-                  ) : (
-                    <>
-                      <Icon icon="solar:import-bold" className="mr-2 h-4 w-4" />
-                      Import Quotations
-                    </>
-                  )}
-                </Button>
-              )}
-
+                Import Quotations
+              </HeaderActionButton>
               {importMutation.isPending && <Progress value={undefined} className="w-full" />}
-            </CardContent>
-          </Card>
+            </div>
+          )}
 
           {importResult && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Icon
-                    icon={importResult.created > 0 ? 'solar:check-circle-bold' : 'solar:close-circle-bold'}
-                    className={`h-5 w-5 ${importResult.created > 0 ? 'text-green-500' : 'text-destructive'}`}
-                  />
-                  Import Results
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="text-center p-4 bg-green-50 dark:bg-green-950/20 rounded-lg">
-                    <div className="text-2xl font-bold text-green-600">{importResult.created}</div>
-                    <div className="text-sm text-muted-foreground">Created</div>
-                  </div>
-                  <div className="text-center p-4 bg-red-50 dark:bg-red-950/20 rounded-lg">
-                    <div className="text-2xl font-bold text-red-600">{importResult.errors.length}</div>
-                    <div className="text-sm text-muted-foreground">Errors</div>
-                  </div>
-                </div>
-
-                {importResult.errors.length > 0 && (
-                  <Alert variant="destructive">
-                    <Icon icon="solar:danger-triangle-bold" className="h-4 w-4" />
-                    <AlertTitle>Import Errors</AlertTitle>
-                    <AlertDescription>
-                      <div className="mt-2 max-h-[200px] overflow-y-auto space-y-1 text-sm">
-                        {importResult.errors.map((err, idx) => (
-                          <div key={idx} className="flex gap-2">
-                            <span className="font-medium">Row {err.row}:</span>
-                            <span>{err.message}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                <div className="flex gap-3">
-                  <Button variant="outline" onClick={handleReset} className="flex-1">
-                    <Icon icon="solar:upload-bold" className="mr-2 h-4 w-4" />
-                    Import Another File
-                  </Button>
-                  <Button onClick={() => navigate('/quotations')} className="flex-1">
-                    <Icon icon="solar:file-text-bold-duotone" className="mr-2 h-4 w-4" />
-                    View Quotations
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            <ImportResults
+              created={importResult.created}
+              errors={importResult.errors || []}
+              onReset={reset}
+              doneTo="/quotations"
+              doneLabel="View Quotations"
+              doneIcon="solar:document-text-bold-duotone"
+            />
           )}
-        </div>
+        </ImportStepCard>
       </div>
     </div>
   )

@@ -108,6 +108,7 @@ export const baseNavItems: NavItem[] = [
         title: 'Report',
         href: '/products/report',
         icon: 'solar:document-text-bold-duotone',
+        requiredPermission: 'reports.view',
       },
       {
         title: 'Product Settings',
@@ -195,6 +196,7 @@ export const baseNavItems: NavItem[] = [
         title: 'Report',
         href: '/reports/inventory',
         icon: 'solar:box-bold-duotone',
+        requiredPermission: 'reports.view',
       },
       {
         title: 'Settings',
@@ -263,6 +265,7 @@ export const baseNavItems: NavItem[] = [
         title: 'Report',
         href: '/reports/sales-analytics',
         icon: 'solar:chart-2-bold-duotone',
+        requiredPermission: 'reports.view',
       },
       {
         title: 'Settings',
@@ -563,6 +566,7 @@ export const baseNavItems: NavItem[] = [
         title: 'Expense Analytics',
         href: '/reports/expense-analytics',
         icon: 'solar:wallet-money-bold-duotone',
+        requiredPermission: 'reports.view',
       },
       {
         title: 'Compliance Reports',

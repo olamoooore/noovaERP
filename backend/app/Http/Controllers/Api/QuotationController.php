@@ -475,6 +475,62 @@ class QuotationController extends Controller
      * Confirm a quotation.
      * Creates a SalesOrder from the quotation lines and marks the quotation as confirmed.
      */
+    /**
+     * Release a quotation: create and confirm its linked Sales Order and mark
+     * the quotation confirmed. Shared by the explicit Confirm action and by
+     * the quote→invoice / quote→DO conversions, so a child document can be
+     * created straight from a draft quote without a separate confirm click.
+     */
+    private function releaseQuotation(Quotation $quotation): Quotation
+    {
+        return DB::transaction(function () use ($quotation) {
+            // Build SalesOrder lines from quotation lines
+            $salesLines = $quotation->lines->map(fn ($line) => [
+                'line_type' => $line->line_type ?? 'product',
+                'sequence' => $line->sequence ?? 0,
+                'product_id' => $line->product_id,
+                'description' => $line->description,
+                'quantity' => $line->quantity,
+                'unit_price' => $line->unit_price,
+                'tax_rate' => $line->tax_rate,
+                'discount_amount' => $line->discount_amount,
+            ])->toArray();
+
+            // Resolve warehouse if needed
+            $warehouseId = null;
+            $productIds = array_filter(array_column($salesLines, 'product_id'));
+            if (! empty($productIds)) {
+                $hasStockTracked = Product::whereIn('id', $productIds)
+                    ->where('track_inventory', true)
+                    ->exists();
+                if ($hasStockTracked) {
+                    $warehouse = Warehouse::getDefault() ?? Warehouse::first();
+                    $warehouseId = $warehouse?->id;
+                }
+            }
+
+            // Create SalesOrder
+            $salesOrder = $this->salesOrderService->createOrder([
+                'customer_id' => $quotation->customer_id,
+                'channel' => 'admin',
+                'notes' => "Quotation #{$quotation->quotation_number}",
+                'lines' => $salesLines,
+                'warehouse_id' => $warehouseId,
+            ]);
+
+            // Confirm the SalesOrder
+            $salesOrder = $this->salesOrderService->confirmOrder($salesOrder);
+
+            // Link the SalesOrder to the quotation
+            $quotation->update([
+                'status' => 'confirmed',
+                'sales_order_id' => $salesOrder->id,
+            ]);
+
+            return $quotation->fresh(['customer', 'lines.product', 'salesOrder']);
+        });
+    }
+
     public function confirm($id)
     {
         $quotation = Quotation::with(['customer', 'lines.product'])->find($id);
@@ -491,14 +547,14 @@ class QuotationController extends Controller
         // or exceed the tenant's threshold to proceed; otherwise an
         // ApprovalRequest is created and the quotation stays in its current
         // status. The SalesOrder is NOT created until approval lands.
-        if ($this->approvalGate->requiresApproval(Quotation::class, (float) $quotation->total)) {
-            $approval = $this->approvalGate->createRequest(
-                $quotation,
-                Auth::user(),
-                SalesApprovalGate::REQUEST_TYPE_QUOTATION,
-                "Quotation total {$quotation->total} meets the tenant approval threshold."
-            );
-
+        // requestIfNeeded also lets a re-run proceed once the request is
+        // approved, which is how the workflow resumes.
+        if ($approval = $this->approvalGate->requestIfNeeded(
+            $quotation,
+            SalesApprovalGate::REQUEST_TYPE_QUOTATION,
+            (float) $quotation->total,
+            Auth::user(),
+        )) {
             return response()->json([
                 'message' => 'Approval required',
                 'requires_approval' => true,
@@ -509,52 +565,7 @@ class QuotationController extends Controller
         }
 
         try {
-            $quotation = DB::transaction(function () use ($quotation) {
-                // Build SalesOrder lines from quotation lines
-                $salesLines = $quotation->lines->map(fn ($line) => [
-                    'line_type' => $line->line_type ?? 'product',
-                    'sequence' => $line->sequence ?? 0,
-                    'product_id' => $line->product_id,
-                    'description' => $line->description,
-                    'quantity' => $line->quantity,
-                    'unit_price' => $line->unit_price,
-                    'tax_rate' => $line->tax_rate,
-                    'discount_amount' => $line->discount_amount,
-                ])->toArray();
-
-                // Resolve warehouse if needed
-                $warehouseId = null;
-                $productIds = array_filter(array_column($salesLines, 'product_id'));
-                if (! empty($productIds)) {
-                    $hasStockTracked = Product::whereIn('id', $productIds)
-                        ->where('track_inventory', true)
-                        ->exists();
-                    if ($hasStockTracked) {
-                        $warehouse = Warehouse::getDefault() ?? Warehouse::first();
-                        $warehouseId = $warehouse?->id;
-                    }
-                }
-
-                // Create SalesOrder
-                $salesOrder = $this->salesOrderService->createOrder([
-                    'customer_id' => $quotation->customer_id,
-                    'channel' => 'admin',
-                    'notes' => "Quotation #{$quotation->quotation_number}",
-                    'lines' => $salesLines,
-                    'warehouse_id' => $warehouseId,
-                ]);
-
-                // Confirm the SalesOrder
-                $salesOrder = $this->salesOrderService->confirmOrder($salesOrder);
-
-                // Link the SalesOrder to the quotation
-                $quotation->update([
-                    'status' => 'confirmed',
-                    'sales_order_id' => $salesOrder->id,
-                ]);
-
-                return $quotation->fresh(['customer', 'lines.product', 'salesOrder']);
-            });
+            $quotation = $this->releaseQuotation($quotation);
 
             $this->logQuotationChatter(
                 $quotation,
@@ -594,12 +605,49 @@ class QuotationController extends Controller
             return response()->json(['message' => 'Quotation not found'], 404);
         }
 
+        if (! in_array($quotation->status, ['draft', 'sent', 'confirmed'], true)) {
+            return response()->json(['message' => 'Only draft, sent or confirmed quotations can be invoiced'], 403);
+        }
+
+        // Converting is enough — release the quotation (create + confirm its
+        // Sales Order) first when it has not been confirmed yet, so quote→
+        // invoice works straight from a draft quote.
         if ($quotation->status !== 'confirmed') {
-            return response()->json(['message' => 'Only confirmed quotations can be invoiced'], 403);
+            if ($approval = $this->approvalGate->requestIfNeeded(
+                $quotation,
+                SalesApprovalGate::REQUEST_TYPE_QUOTATION,
+                (float) $quotation->total,
+                Auth::user(),
+            )) {
+                return response()->json([
+                    'message' => 'Approval required before this quotation can be invoiced',
+                    'requires_approval' => true,
+                    'approval_request' => $approval,
+                    'threshold' => $this->approvalGate->threshold(),
+                ], 202);
+            }
+            $quotation = $this->releaseQuotation($quotation);
         }
 
         if (! $quotation->sales_order_id) {
             return response()->json(['message' => 'Quotation has no linked Sales Order'], 422);
+        }
+
+        // The approval gate applies to every downstream route, not just
+        // confirm: a quotation that meets the threshold may only be invoiced
+        // once its approval request is approved (or when no threshold is set).
+        if ($approval = $this->approvalGate->requestIfNeeded(
+            $quotation,
+            SalesApprovalGate::REQUEST_TYPE_QUOTATION,
+            (float) $quotation->total,
+            Auth::user(),
+        )) {
+            return response()->json([
+                'message' => 'Approval required before this quotation can be invoiced',
+                'requires_approval' => true,
+                'approval_request' => $approval,
+                'threshold' => $this->approvalGate->threshold(),
+            ], 202);
         }
 
         try {
@@ -671,8 +719,42 @@ class QuotationController extends Controller
             return response()->json(['message' => 'Quotation not found'], 404);
         }
 
+        if (! in_array($quotation->status, ['draft', 'sent', 'confirmed'], true)) {
+            return response()->json(['message' => 'Only draft, sent or confirmed quotations can be delivered'], 403);
+        }
+
+        // Same as invoicing: converting releases the quotation when needed.
         if ($quotation->status !== 'confirmed') {
-            return response()->json(['message' => 'Only confirmed quotations can be delivered'], 403);
+            if ($approval = $this->approvalGate->requestIfNeeded(
+                $quotation,
+                SalesApprovalGate::REQUEST_TYPE_QUOTATION,
+                (float) $quotation->total,
+                Auth::user(),
+            )) {
+                return response()->json([
+                    'message' => 'Approval required before this quotation can be delivered',
+                    'requires_approval' => true,
+                    'approval_request' => $approval,
+                    'threshold' => $this->approvalGate->threshold(),
+                ], 202);
+            }
+            $quotation = $this->releaseQuotation($quotation);
+        }
+
+        // Same approval gate as invoicing: meeting the threshold requires an
+        // approved request before the delivery order may be created.
+        if ($approval = $this->approvalGate->requestIfNeeded(
+            $quotation,
+            SalesApprovalGate::REQUEST_TYPE_QUOTATION,
+            (float) $quotation->total,
+            Auth::user(),
+        )) {
+            return response()->json([
+                'message' => 'Approval required before this quotation can be delivered',
+                'requires_approval' => true,
+                'approval_request' => $approval,
+                'threshold' => $this->approvalGate->threshold(),
+            ], 202);
         }
 
         $lines = $quotation->lines

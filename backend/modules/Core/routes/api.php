@@ -388,23 +388,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             Route::post('/accounting/budgets/{budget}/archive', [\App\Http\Controllers\Api\BudgetController::class, 'archive']);
         });
 
-        // Quotations
-        Route::post('/quotations/import', [QuotationController::class, 'import']);
-        Route::get('/quotations/export', [QuotationController::class, 'export']);
-        Route::post('/quotations/bulk-delete', [QuotationController::class, 'bulkDestroy']);
-        Route::apiResource('quotations', QuotationController::class);
-        // Confirming a quotation is the posting-equivalent release action —
-        // Owner/Admin/Accountant only (requires accounting.write + accounting.post).
-        Route::post('/quotations/{id}/confirm', [QuotationController::class, 'confirm'])
-            ->middleware(RequirePermission::using('accounting.post'));
-        Route::post('/quotations/{id}/cancel', [QuotationController::class, 'cancel']);
-        // Issue #178/#179: rejection with auto-versioned replacement draft.
-        Route::post('/quotations/{id}/reject', [QuotationController::class, 'reject']);
-        Route::post('/quotations/{id}/reset-to-draft', [QuotationController::class, 'resetToDraft'])
-            ->middleware(RequirePermission::using('documents.reset_to_draft'));
-        Route::post('/quotations/{id}/create-invoice', [QuotationController::class, 'createInvoice']);
-        Route::post('/quotations/{id}/create-delivery-order', [QuotationController::class, 'createDeliveryOrder'])
-            ->middleware(RequirePermission::using('sales.write'));
+        // Quotations are registered further down, outside the accounting-write group.
 
         // Payments
         Route::get('/payments', [PaymentController::class, 'index']);
@@ -422,6 +406,31 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         // Issue #155: split payments / unapplied credit.
         Route::get('/payments/{payment}/allocations', [PaymentController::class, 'allocations']);
         Route::post('/payments/{payment}/allocations', [PaymentController::class, 'allocate']);
+    });
+
+    // Quotations — sales documents guarded by the sales permission family
+    // (quotations.view / quotations.write), NOT the accounting-write group:
+    // confirming a quote only creates its Sales Order and converting spawns a
+    // draft/approval-gated child document, so preparers (Sales/Manager) and
+    // Accountant stay able to run the quote flow. Ledger release actions of
+    // the children (invoice post, DO confirm) remain accounting.post.
+    Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class])->group(function () {
+        Route::get('/quotations', [QuotationController::class, 'index'])->middleware(RequirePermission::using('quotations.view'));
+        Route::get('/quotations/export', [QuotationController::class, 'export'])->middleware(RequirePermission::using('quotations.view'));
+        Route::post('/quotations/import', [QuotationController::class, 'import'])->middleware(RequirePermission::using('quotations.write'));
+        Route::post('/quotations/bulk-delete', [QuotationController::class, 'bulkDestroy'])->middleware(RequirePermission::using('quotations.write'));
+        Route::post('/quotations', [QuotationController::class, 'store'])->middleware(RequirePermission::using('quotations.write'));
+        Route::get('/quotations/{quotation}', [QuotationController::class, 'show'])->middleware(RequirePermission::using('quotations.view'));
+        Route::put('/quotations/{quotation}', [QuotationController::class, 'update'])->middleware(RequirePermission::using('quotations.write'));
+        Route::patch('/quotations/{quotation}', [QuotationController::class, 'update'])->middleware(RequirePermission::using('quotations.write'));
+        Route::delete('/quotations/{quotation}', [QuotationController::class, 'destroy'])->middleware(RequirePermission::using('quotations.write'));
+        Route::post('/quotations/{id}/confirm', [QuotationController::class, 'confirm'])->middleware(RequirePermission::using('quotations.write'));
+        Route::post('/quotations/{id}/cancel', [QuotationController::class, 'cancel'])->middleware(RequirePermission::using('quotations.write'));
+        // Issue #178/#179: rejection with auto-versioned replacement draft.
+        Route::post('/quotations/{id}/reject', [QuotationController::class, 'reject'])->middleware(RequirePermission::using('quotations.write'));
+        Route::post('/quotations/{id}/reset-to-draft', [QuotationController::class, 'resetToDraft'])->middleware(RequirePermission::using('documents.reset_to_draft'));
+        Route::post('/quotations/{id}/create-invoice', [QuotationController::class, 'createInvoice'])->middleware(RequirePermission::using('quotations.write'));
+        Route::post('/quotations/{id}/create-delivery-order', [QuotationController::class, 'createDeliveryOrder'])->middleware(RequirePermission::using('quotations.write'));
     });
 
     // Accounting

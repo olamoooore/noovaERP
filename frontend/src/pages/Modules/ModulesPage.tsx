@@ -1,19 +1,10 @@
-import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { Icon } from '@iconify/react'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Dialog, DialogContent, DialogFooter, DialogTitle } from '@/components/ui/dialog'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { cn } from '@/lib/utils'
-import api from '@/lib/api'
-
-interface Feature {
-  id: string
-  name: string
-  key: string
-  description: string
-  is_core: boolean
-  enabled: boolean
-}
+import { useFeatureAccess } from '@/hooks/use-feature-access'
 
 interface ModuleVisual {
   icon: string
@@ -126,6 +117,119 @@ function visualFor(key: string): ModuleVisual {
   return MODULE_VISUALS[key] ?? FALLBACK_VISUAL
 }
 
+const normalizeKey = (key: string) => key.toLowerCase().replace(/[\s_]+/g, '-')
+
+/**
+ * Marketing copy for the module detail popup: a tagline plus the concrete
+ * things the module gives you — this is also how add-ons get sold.
+ */
+const MODULE_CONTENT: Record<string, { tagline: string; features: string[] }> = {
+  core: {
+    tagline: 'The foundation every organization runs on.',
+    features: ['Users, roles and granular permissions', 'Tenant-wide settings and preferences', 'Approval policies and audit trail', 'Dashboards, search and navigation'],
+  },
+  accounting: {
+    tagline: 'Your books, always balanced and close-ready.',
+    features: ['General ledger with double-entry posting', 'Accounts receivable and payables with aging', 'Bank reconciliation and cash controls', 'Lock dates, journals and financial close'],
+  },
+  inventory: {
+    tagline: 'Know exactly what you have, where, and what it cost.',
+    features: ['Real-time stock by warehouse', 'Lot, batch and serial tracking with expiry', 'Transfers, adjustments and stock counts', 'Purchase orders and goods receipts'],
+  },
+  contact: {
+    tagline: 'One clean record for every customer and contact.',
+    features: ['Customer and vendor master data', 'Contacts, addresses and communication history', 'Status, categories and tags', 'Import and de-duplication tools'],
+  },
+  sales: {
+    tagline: 'From quote to cash without the spreadsheet chase.',
+    features: ['Quotations, sales orders and delivery orders', 'Linked, staged invoicing', 'Approval gates and credit checks', 'Customer and product performance reporting'],
+  },
+  pos: {
+    tagline: 'Fast counter sales that stay perfectly in sync.',
+    features: ['Touch-friendly checkout terminal', 'Cash sessions and shift control', 'Receipts, returns and exchanges', 'Offline queue with automatic sync'],
+  },
+  'website-builder': {
+    tagline: 'Your own website, no developer required.',
+    features: ['Drag-and-drop page designer', 'Blog, SEO and media management', 'Publish to your own domain', 'Lead and enquiry capture'],
+  },
+  ecommerce: {
+    tagline: 'Sell online with a storefront that matches your brand.',
+    features: ['Product catalogue and online checkout', 'Web orders flowing into stock and invoices', 'Customer accounts and order history', 'Shipping and fulfilment status'],
+  },
+  'template-builder': {
+    tagline: 'Every document, on your letterhead.',
+    features: ['Design invoices, statements and receipts', 'Brand colours, logos and layouts', 'Versioning with publish and restore', 'Consistent PDFs and email templates'],
+  },
+  hrm: {
+    tagline: 'Everything you need to run your people operations.',
+    features: ['Employee records and org structure', 'Attendance, leave and holidays', 'Payroll runs and payslips', 'HR reports and compliance'],
+  },
+  whatsapp: {
+    tagline: 'Reach customers where they already are.',
+    features: ['Send invoices and statements', 'Payment and delivery reminders', 'Template message management', 'Delivery status tracking'],
+  },
+  'event-management': {
+    tagline: 'Plan, sell and run events end to end.',
+    features: ['Events, sessions and venues', 'Ticketing and bookings', 'Staff rosters and live operations', 'Attendee feedback and reports'],
+  },
+  'field-service': {
+    tagline: 'Schedule work, dispatch teams, close jobs.',
+    features: ['Work orders and service scheduling', 'Technician assignment and routes', 'On-site checklists and evidence', 'Service performance analytics'],
+  },
+  'financial-reporting': {
+    tagline: 'See the numbers that drive decisions.',
+    features: ['Profit & loss, balance sheet and cash flow', 'Trial balance and general ledger', 'Aged receivables and payables', 'Excel, PDF and Word exports'],
+  },
+  'ocr-bookkeeping': {
+    tagline: 'Snap a document, get a journal.',
+    features: ['OCR capture of supplier invoices', 'Auto-matching to bills and accounts', 'Smart field extraction and review', 'Faster, cleaner period close'],
+  },
+  'payment-gateway': {
+    tagline: 'Get paid online, reconciled automatically.',
+    features: ['Pay-by-link and hosted checkout', 'Cards and local payment methods', 'Automatic allocation to invoices', 'Gateway transaction audit trail'],
+  },
+  loyalty: {
+    tagline: 'Turn first-time buyers into regulars.',
+    features: ['Points earning and redemption', 'Tiers and rewards programmes', 'Customer loyalty statements', 'Campaign performance reporting'],
+  },
+  crm: {
+    tagline: 'Never let a lead go cold.',
+    features: ['Leads and pipeline stages', 'Activities, calls and follow-ups', 'Conversion analytics', 'Complete customer 360 view'],
+  },
+  iot: {
+    tagline: 'Connect devices to your operations.',
+    features: ['Terminal and device registry', 'Live monitoring dashboards', 'Threshold alerts and notifications', 'Device health and usage reporting'],
+  },
+  ai: {
+    tagline: 'A copilot for your business data.',
+    features: ['Ask questions in plain language', 'Drafting and summarisation', 'Insight suggestions across modules', 'Chat right inside your workflow'],
+  },
+  'financial-close': {
+    tagline: 'Close the period with confidence.',
+    features: ['Close checklists and task owners', 'Balance checks and findings inbox', 'Sign-offs and full audit trail', 'Deadline tracking and reminders'],
+  },
+  fulfillment: {
+    tagline: 'Pick, pack and ship without errors.',
+    features: ['Order fulfilment queue', 'Picking, packing and handover', 'Carrier and tracking data', 'Exception handling and backorders'],
+  },
+  storefront: {
+    tagline: 'Embed a shop inside your website.',
+    features: ['Drop-in storefront shortcodes', 'Customer account tokens', 'Catalogue browsing and checkout', 'Order history and reordering'],
+  },
+  'accounting-foundation': {
+    tagline: 'Set up accounting the way your business works.',
+    features: ['Chart of accounts foundation', 'Opening balances and imports', 'Accounting controls and policies', 'Country-ready configuration'],
+  },
+  accountingcountry: {
+    tagline: 'Tax and e-invoicing compliance, handled.',
+    features: ['Malaysia MyInvois e-invoicing', 'Submission status tracking', 'Compliance error resolution', 'Country-specific tax rules'],
+  },
+  communication: {
+    tagline: 'Messages and notifications in one place.',
+    features: ['In-app inbox and alerts', 'Email and SMS outbox', 'Reusable message templates', 'Delivery and read status'],
+  },
+}
+
 type Filter = 'all' | 'active' | 'core' | 'inactive'
 
 const FILTERS: Array<{ key: Filter; label: string; icon: string }> = [
@@ -136,39 +240,30 @@ const FILTERS: Array<{ key: Filter; label: string; icon: string }> = [
 ]
 
 export function ModulesPage() {
-  const tenantId = localStorage.getItem('tenant_id') || 'default'
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
 
-  const { data: features, isLoading } = useQuery<Feature[]>({
-    queryKey: ['features', tenantId],
-    queryFn: async () => {
-      const response = await api.get('/features', {
-        headers: { 'X-Feature-Gate-Fresh': '1' },
-      })
-      return response.data
-    },
-  })
-
+  // The hub is the full platform catalogue, but the Active badge must reflect
+  // what THIS tenant actually owns (platform enabled flag + tenant blocks).
+  const { features, isLoading, isFeatureEnabled } = useFeatureAccess()
+  const [selected, setSelected] = useState<any | null>(null)
   const list = features ?? []
+  const isModuleActive = (feature: any) => Boolean(feature.enabled) && isFeatureEnabled(feature.key)
 
-  const counts = useMemo(
-    () => ({
-      all: list.length,
-      active: list.filter((f) => f.enabled).length,
-      core: list.filter((f) => f.is_core).length,
-      inactive: list.filter((f) => !f.enabled).length,
-    }),
-    [list],
-  )
+  const counts = {
+    all: list.length,
+    active: list.filter((f) => isModuleActive(f)).length,
+    core: list.filter((f) => f.is_core).length,
+    inactive: list.filter((f) => !isModuleActive(f)).length,
+  }
 
-  const visible = useMemo(() => {
+  const visible = (() => {
     const term = search.trim().toLowerCase()
     return list
       .filter((f) => {
-        if (filter === 'active') return f.enabled
+        if (filter === 'active') return isModuleActive(f)
         if (filter === 'core') return f.is_core
-        if (filter === 'inactive') return !f.enabled
+        if (filter === 'inactive') return !isModuleActive(f)
         return true
       })
       .filter((f) => {
@@ -181,10 +276,12 @@ export function ModulesPage() {
       })
       .sort((a, b) => {
         if (a.is_core !== b.is_core) return a.is_core ? -1 : 1
-        if (a.enabled !== b.enabled) return a.enabled ? -1 : 1
-        return a.name.localeCompare(b.name)
+        const aActive = isModuleActive(a)
+        const bActive = isModuleActive(b)
+        if (aActive !== bActive) return aActive ? -1 : 1
+        return (a.name ?? a.key).localeCompare(b.name ?? b.key)
       })
-  }, [list, filter, search])
+  })()
 
   if (isLoading) {
     return (
@@ -204,8 +301,8 @@ export function ModulesPage() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Modules &amp; Add-ons</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Every capability entitled for this organization. Core modules are always on; add-ons can be
-            enabled by your platform administrator.
+            Every capability available on the platform. Active modules are enabled for this
+            organization; other modules are managed by your platform administrator.
           </p>
         </div>
 
@@ -264,20 +361,22 @@ export function ModulesPage() {
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
           {visible.map((feature) => {
             const visual = visualFor(feature.key)
-            const isActive = feature.enabled
+            const isActive = isModuleActive(feature)
             return (
-              <div
+              <button
                 key={feature.id}
+                type="button"
+                onClick={() => setSelected(feature)}
                 className={cn(
-                  'group relative flex aspect-square flex-col overflow-hidden rounded-2xl border bg-card p-4 shadow-sm transition-all duration-200',
-                  'ring-1 ring-transparent hover:-translate-y-0.5 hover:shadow-lg',
+                  'group relative flex aspect-square w-full flex-col overflow-hidden rounded-2xl border bg-card p-4 text-left shadow-sm transition-all duration-200',
+                  'ring-1 ring-transparent hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   visual.ring,
-                  !isActive && !feature.is_core && 'opacity-60 hover:opacity-100',
+                  !isActive && 'opacity-60 hover:opacity-100',
                 )}
               >
                 {/* Status chip */}
                 <div className="absolute right-3 top-3">
-                  {feature.is_core ? (
+                  {feature.is_core && isActive ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-slate-900/90 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm dark:bg-slate-100/90 dark:text-slate-900">
                       <Icon icon="solar:shield-check-bold" className="h-3 w-3" />
                       Core
@@ -317,11 +416,91 @@ export function ModulesPage() {
                     </span>
                   </div>
                 </div>
-              </div>
+              </button>
             )
           })}
         </div>
       )}
+
+      {/* Module detail popup — a mini marketing card: what you get, and status */}
+      <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
+        <DialogContent className="max-w-lg gap-0 overflow-hidden rounded-2xl p-0">
+          {selected && (() => {
+            const content = MODULE_CONTENT[normalizeKey(selected.key)]
+            const active = isModuleActive(selected)
+            return (
+              <>
+                <div className="bg-gradient-to-br from-primary/12 via-primary/5 to-transparent p-5">
+                  <div className="flex items-start gap-4">
+                    <div className={cn('flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl shadow-sm', visualFor(selected.key).tile)}>
+                      <Icon icon={visualFor(selected.key).icon} className="h-7 w-7" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <DialogTitle className="text-lg">{selected.name}</DialogTitle>
+                        {active ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                            Active
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                            <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
+                            Inactive
+                          </span>
+                        )}
+                        {selected.is_core && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-900/90 px-2 py-0.5 text-[11px] font-semibold text-white dark:bg-slate-100/90 dark:text-slate-900">
+                            <Icon icon="solar:shield-check-bold" className="h-3 w-3" />
+                            Core
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-sm font-medium text-primary">
+                        {content?.tagline ?? selected.description ?? 'A platform module.'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4 px-5 pt-4">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">What you get</p>
+                    <ul className="mt-2.5 space-y-2">
+                      {(content?.features ?? [
+                        'Enablement is managed by your platform administrator.',
+                        'Ask about adding this module to your plan.',
+                      ]).map((feature) => (
+                        <li key={feature} className="flex items-start gap-2.5 text-sm">
+                          <Icon icon="solar:check-circle-bold" className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                          <span>{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <p className={cn(
+                    'rounded-xl px-3.5 py-2.5 text-xs',
+                    active
+                      ? 'bg-emerald-50/70 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
+                      : 'bg-amber-50/70 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300',
+                  )}>
+                    {active
+                      ? 'Enabled for your organization — it is live in your workspace.'
+                      : 'Not in your plan yet. Enablement is managed by your platform administrator.'}
+                  </p>
+                </div>
+
+                <DialogFooter className="px-5 pb-5 pt-4">
+                  <HeaderActionButton variant="outline" onClick={() => setSelected(null)}>
+                    Close
+                  </HeaderActionButton>
+                </DialogFooter>
+              </>
+            )
+          })()}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

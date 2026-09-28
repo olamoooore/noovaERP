@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ReportViewer } from '@/components/reports/ReportViewer';
 import { CompactReportFilters } from '@/components/reports/CompactReportFilters';
@@ -394,9 +394,12 @@ export function InventoryReportsPage() {
     },
   ];
 
+const valuationTotal = Number(valuationData?.total_value ?? 0);
+  const valuationByCategory = Object.entries(valuationData?.by_category ?? {}).sort((a, b) => Number(b[1]) - Number(a[1]));
+  const valuationByLocation = Object.entries(valuationData?.by_location ?? {}).sort((a, b) => Number(b[1]) - Number(a[1]));
+
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Inventory Reports</h1>
@@ -462,46 +465,83 @@ export function InventoryReportsPage() {
                 />
 
                 {/* Summary Section */}
-                <Card className="p-6 bg-gray-50 dark:bg-gray-800">
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center pt-3 border-t">
-                      <span className="text-xl font-bold">Total Inventory Value:</span>
-                      <span className="text-2xl font-bold text-blue-600">
-                        {formatCurrency(valuationData?.total_value ?? 0)}
-                      </span>
-                    </div>
-
-                    {/* By Category Breakdown */}
-                    {valuationData?.by_category && Object.keys(valuationData.by_category).length > 0 && (
-                      <div className="pt-3 border-t">
-                        <h4 className="font-semibold mb-2">Value by Category:</h4>
-                        <div className="grid grid-cols-2 gap-2">
-                          {Object.entries(valuationData.by_category).map(([category, value]) => (
-                            <div key={category} className="flex justify-between text-sm">
-                              <span className="text-gray-600 dark:text-gray-400">{category}:</span>
-                              <span className="font-medium">{formatCurrency(value as number)}</span>
-                            </div>
-                          ))}
-                        </div>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {/* Total value tile */}
+                  <Card className="overflow-hidden rounded-xl">
+                    <CardContent className="flex items-center justify-between gap-4 p-5">
+                      <div className="min-w-0">
+                        <p className="text-sm text-muted-foreground">Total inventory value</p>
+                        <p className="mt-1 text-2xl font-bold tabular-nums">{formatCurrency(valuationTotal)}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">Valued at cost across all warehouses</p>
                       </div>
-                    )}
-
-                    {/* By Location Breakdown */}
-                    {valuationData?.by_location && Object.keys(valuationData.by_location).length > 0 && (
-                      <div className="pt-3 border-t">
-                        <h4 className="font-semibold mb-2">Value by Location:</h4>
-                        <div className="grid grid-cols-2 gap-2">
-                          {Object.entries(valuationData?.by_location ?? {}).map(([location, value]) => (
-                            <div key={location} className="flex justify-between text-sm">
-                              <span className="text-gray-600 dark:text-gray-400">{location}:</span>
-                              <span className="font-medium">{formatCurrency(value as number)}</span>
-                            </div>
-                          ))}
-                        </div>
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
+                        <Icon icon="solar:wallet-money-bold-duotone" className="h-5 w-5" />
                       </div>
-                    )}
-                  </div>
-                </Card>
+                    </CardContent>
+                  </Card>
+
+                  {/* By Category Breakdown */}
+                  {valuationByCategory.length > 0 && (
+                    <Card className="overflow-hidden rounded-xl">
+                      <CardContent className="p-5">
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold">Value by category</p>
+                          <Icon icon="solar:layers-minimalistic-bold-duotone" className="h-4 w-4 text-muted-foreground/60" />
+                        </div>
+                        <div className="space-y-3">
+                          {valuationByCategory.map(([category, value]) => {
+                            const share = valuationTotal > 0 ? (Number(value) / valuationTotal) * 100 : 0;
+                            return (
+                              <div key={category}>
+                                <div className="flex items-center justify-between gap-3 text-sm">
+                                  <span className="truncate text-muted-foreground">{category}</span>
+                                  <span className="shrink-0 font-medium tabular-nums">{formatCurrency(Number(value))}</span>
+                                </div>
+                                <div className="mt-1 flex items-center gap-2">
+                                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                                    <div className="h-full rounded-full bg-primary/60" style={{ width: `${Math.min(100, share)}%` }} />
+                                  </div>
+                                  <span className="w-11 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{share.toFixed(1)}%</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* By Location Breakdown */}
+                  {valuationByLocation.length > 0 && (
+                    <Card className="overflow-hidden rounded-xl">
+                      <CardContent className="p-5">
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold">Value by location</p>
+                          <Icon icon="solar:map-point-bold-duotone" className="h-4 w-4 text-muted-foreground/60" />
+                        </div>
+                        <div className="space-y-3">
+                          {valuationByLocation.map(([location, value]) => {
+                            const share = valuationTotal > 0 ? (Number(value) / valuationTotal) * 100 : 0;
+                            return (
+                              <div key={location}>
+                                <div className="flex items-center justify-between gap-3 text-sm">
+                                  <span className="truncate text-muted-foreground">{location}</span>
+                                  <span className="shrink-0 font-medium tabular-nums">{formatCurrency(Number(value))}</span>
+                                </div>
+                                <div className="mt-1 flex items-center gap-2">
+                                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                                    <div className="h-full rounded-full bg-emerald-500/60" style={{ width: `${Math.min(100, share)}%` }} />
+                                  </div>
+                                  <span className="w-11 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{share.toFixed(1)}%</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
               </div>
             )}
           </ReportViewer>

@@ -9,6 +9,8 @@ use Illuminate\Support\ServiceProvider;
 use Modules\Inventory\Models\StockLevel;
 use Modules\Storefront\Models\StorefrontSettings;
 use Modules\Storefront\Services\CatalogQuery;
+use Modules\Storefront\Services\OrderService;
+use Modules\Storefront\Services\OrderStateMachine;
 use Modules\Storefront\Services\StorefrontCache;
 use Modules\Storefront\Shortcodes\DefaultFunctions;
 use Modules\Storefront\Shortcodes\Parser;
@@ -50,12 +52,49 @@ class StorefrontServiceProvider extends ServiceProvider
         ));
 
         $this->app->singleton(StorefrontPageContentFilter::class);
+
+        // The ONE order state machine + writer service (FR-ORD-01). All
+        // writers (checkout, webhook completion, admin, customer) resolve
+        // OrderService from the container — no private transition maps.
+        $this->app->singleton(OrderStateMachine::class);
+        $this->app->singleton(OrderService::class, fn ($app): OrderService => new OrderService(
+            $app->make(OrderStateMachine::class),
+        ));
     }
 
     public function boot(): void
     {
         $this->registerExtensionPoints();
         $this->registerCacheInvalidation();
+        $this->registerCommunicationSubtypes();
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                \Modules\Storefront\Console\Commands\ExpireStorefrontCarts::class,
+            ]);
+        }
+    }
+
+    /**
+     * Declare our customer-facing event subtypes on the Communication
+     * engine's registry — the sanctioned boot-time path (the registry's own
+     * docblock). Without this, engine entrances throw InvalidArgumentException
+     * inside the queued listener and the mail silently never sends (the live
+     * P-05 defect pattern: invoice.delivered / invoice.approval_submitted
+     * are unregistered producers today).
+     */
+    protected function registerCommunicationSubtypes(): void
+    {
+        $registry = \Modules\Communication\Support\EventSubtypeRegistry::class;
+
+        if (class_exists($registry)) {
+            $registry::register(
+                'storefront.customer.registered',
+                'storefront.customer.email_verification',
+                'storefront.customer.email_verified',
+                'storefront.customer.password_reset',
+            );
+        }
     }
 
     /**

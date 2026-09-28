@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -56,10 +56,18 @@ export function SalesOrdersPage() {
 
   const confirmMutation = useMutation({
     mutationFn: async (id: number) => {
-      return await api.post(`/sales/orders/${id}/confirm`)
+      const response = await api.post(`/sales/orders/${id}/confirm`)
+      return response.data
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['sales-orders'] })
+      if (data?.requires_approval) {
+        toast({
+          title: 'Approval required',
+          description: data?.message || 'An approval request has been submitted for this order.',
+        })
+        return
+      }
       toast({ title: 'Order confirmed — stock reserved' })
     },
     onError: (error: any) => {
@@ -204,7 +212,7 @@ export function SalesOrdersPage() {
                         <Badge variant="outline" className="capitalize">{order.channel || 'admin'}</Badge>
                       </TableCell>
                       <TableCell>{order.order_date ? formatDate(order.order_date) : '-'}</TableCell>
-                      <TableCell>{formatDate(order.created_at)}</TableCell>
+                      <TableCell>{formatDate(order.created_at || order.order_date)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(order.total || 0)}</TableCell>
                       <TableCell>
                         <Badge variant="secondary" className={getStatusBadge(order.status)}>

@@ -143,6 +143,8 @@ Route::prefix('v1/auth')->middleware([\App\Http\Middleware\EnsurePublicSchemaFor
     // global 120/min IP rate limit (PlatformRateLimitMiddleware) is
     // not credential-guessing-appropriate.
     Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
+    Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
+    Route::post('/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:5,1');
     Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
     Route::get('/me', [AuthController::class, 'me'])->middleware('auth:sanctum');
 
@@ -188,6 +190,8 @@ Route::prefix('v1/feature-gate')->middleware([
 Route::prefix('auth')->group(function () {
     Route::post('/signup', [TenantController::class, 'signup'])->middleware('throttle:5,1');
     Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
+    Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
+    Route::post('/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:5,1');
     Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
     Route::get('/me', [AuthController::class, 'me'])->middleware('auth:sanctum');
     Route::get('/health', fn () => response()->json(['status' => 'ok']));

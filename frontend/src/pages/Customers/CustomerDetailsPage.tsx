@@ -984,28 +984,30 @@ export function CustomerDetailsPage() {
                   {customer.addresses.map(address => (
                     <div key={address.id} className="group relative rounded-xl border border-slate-200/80 bg-card p-4 transition-all hover:shadow-md dark:border-slate-800">
                       <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                        <HeaderActionButton
+                        <Button
+                          size="sm"
                           variant="ghost"
-                          className="h-7 px-2"
-                          icon="solar:pen-bold"
+                          className="h-7 w-7 p-0"
                           onClick={() => {
                             setEditingAddressId(address.id)
                             setAddressForm({ ...address })
                             setAddressDialogOpen(true)
                           }}
                           title="Edit address"
+                          aria-label="Edit address"
                         >
-                          <span className="sr-only">Edit</span>
-                        </HeaderActionButton>
-                        <HeaderActionButton
+                          <Icon icon="solar:pen-bold-duotone" className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="sm"
                           variant="ghost"
-                          className="h-7 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          icon="solar:trash-bin-trash-bold"
+                          className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
                           onClick={() => deleteAddressMutation.mutate(address.id)}
                           title="Delete address"
+                          aria-label="Delete address"
                         >
-                          <span className="sr-only">Delete</span>
-                        </HeaderActionButton>
+                          <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
                       <div className="mb-2 flex flex-wrap items-center gap-2">
                         <span
@@ -1488,28 +1490,30 @@ export function CustomerDetailsPage() {
                         className="group relative rounded-xl border border-slate-200/80 bg-card p-4 transition-all hover:shadow-md dark:border-slate-800"
                       >
                         <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                          <HeaderActionButton
+                          <Button
+                            size="sm"
                             variant="ghost"
-                            className="h-7 px-2"
-                            icon="solar:pen-bold"
+                            className="h-7 w-7 p-0"
                             onClick={() => {
                               setEditingContactId(contact.id)
                               setContactForm({ ...contact })
                               setContactDialogOpen(true)
                             }}
                             title="Edit contact"
+                            aria-label="Edit contact"
                           >
-                            <span className="sr-only">Edit</span>
-                          </HeaderActionButton>
-                          <HeaderActionButton
+                            <Icon icon="solar:pen-bold-duotone" className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
                             variant="ghost"
-                            className="h-7 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                            icon="solar:trash-bin-trash-bold"
+                            className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
                             onClick={() => deleteContactMutation.mutate(contact.id)}
                             title="Delete contact"
+                            aria-label="Delete contact"
                           >
-                            <span className="sr-only">Delete</span>
-                          </HeaderActionButton>
+                            <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-3.5 w-3.5" />
+                          </Button>
                         </div>
 
                         <div className="flex items-start gap-3">

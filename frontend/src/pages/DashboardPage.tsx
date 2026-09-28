@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   Area,
   AreaChart,
@@ -14,13 +14,15 @@ import {
   YAxis,
 } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { MasterReportsTab } from '@/components/dashboard/MasterReportsTab'
+import { useFeatureAccess } from '@/hooks/use-feature-access'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import api from '@/lib/api'
 
-type Range = '7d' | '30d' | '90d'
+type Range = '7d' | '30d' | '90d' | '180d' | '365d'
 
 type RevenuePoint = {
   month?: string
@@ -33,6 +35,8 @@ const RANGE_LABEL: Record<Range, string> = {
   '7d': 'Last 7 days',
   '30d': 'Last 30 days',
   '90d': 'Last 90 days',
+  '180d': 'Last 6 months',
+  '365d': 'Last 12 months',
 }
 
 const MODULES: Array<{
@@ -43,9 +47,12 @@ const MODULES: Array<{
   to: string
   accent: string
   iconBg: string
+  /** Tenant feature key this cockpit card is gated on. */
+  featureKey: string
 }> = [
   {
     key: 'finance',
+    featureKey: 'accounting',
     label: 'Accounting',
     description: 'Ledger, AR/AP, close',
     icon: 'solar:wallet-money-bold-duotone',
@@ -55,6 +62,7 @@ const MODULES: Array<{
   },
   {
     key: 'inventory',
+    featureKey: 'inventory',
     label: 'Inventory',
     description: 'Stock, transfers, PO',
     icon: 'solar:box-bold-duotone',
@@ -64,6 +72,7 @@ const MODULES: Array<{
   },
   {
     key: 'contacts',
+    featureKey: 'master-contacts',
     label: 'Contacts',
     description: 'Customers, activity and status',
     icon: 'solar:users-group-rounded-bold-duotone',
@@ -73,6 +82,7 @@ const MODULES: Array<{
   },
   {
     key: 'sales',
+    featureKey: 'sales',
     label: 'Sales',
     description: 'Quotes & invoices',
     icon: 'solar:bill-list-bold-duotone',
@@ -82,6 +92,7 @@ const MODULES: Array<{
   },
   {
     key: 'template-builder',
+    featureKey: 'template_builder',
     label: 'Template Builder',
     description: 'Document & PDF templates',
     icon: 'solar:document-text-bold-duotone',
@@ -91,6 +102,7 @@ const MODULES: Array<{
   },
   {
     key: 'hrm',
+    featureKey: 'hrm',
     label: 'HRM & Payroll',
     description: 'People & pay runs',
     icon: 'solar:users-group-two-rounded-bold-duotone',
@@ -100,6 +112,7 @@ const MODULES: Array<{
   },
   {
     key: 'products',
+    featureKey: 'inventory',
     label: 'Products',
     description: 'Catalog, availability and reports',
     icon: 'solar:box-minimalistic-bold-duotone',
@@ -148,6 +161,10 @@ function Delta({ value }: { value?: number }) {
 
 export function DashboardPage() {
   const [range, setRange] = useState<Range>('30d')
+  const navigate = useNavigate()
+  // Module cockpit is entitlement-gated: only modules this tenant owns show.
+  const { isFeatureEnabled } = useFeatureAccess()
+  const visibleModules = MODULES.filter((module) => isFeatureEnabled(module.featureKey))
   const [activeTab, setActiveTab] = useState('view')
 
   const { data: stats } = useQuery({
@@ -205,15 +222,15 @@ export function DashboardPage() {
 
           {activeTab === 'view' && (
             <>
-              <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+              <div className="flex h-8 items-center rounded-full bg-muted p-1">
                 {(Object.keys(RANGE_LABEL) as Range[]).map((r) => (
                   <button
                     key={r}
                     onClick={() => setRange(r)}
-                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                    className={`h-6 rounded-full px-3 text-xs font-medium transition-all ${
                       range === r
-                        ? 'bg-slate-900 text-white shadow-sm'
-                        : 'text-slate-600 hover:text-slate-900'
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
                     {RANGE_LABEL[r]}
@@ -221,12 +238,6 @@ export function DashboardPage() {
                 ))}
               </div>
 
-              <Button asChild className="h-9 rounded-lg bg-slate-900 px-3 text-xs font-semibold hover:bg-slate-800">
-                <Link to="/invoices/create">
-                  <Icon icon="solar:add-circle-bold" className="mr-1.5 h-4 w-4" />
-                  New invoice
-                </Link>
-              </Button>
             </>
           )}
         </div>
@@ -275,7 +286,7 @@ export function DashboardPage() {
           <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
             <div>
               <CardTitle className="text-base font-semibold text-slate-900">Revenue trend</CardTitle>
-              <p className="mt-1 text-xs text-slate-500">Daily invoice revenue · {RANGE_LABEL[range]}</p>
+              <p className="mt-1 text-xs text-slate-500">{range === '180d' || range === '365d' ? 'Monthly invoice revenue' : 'Daily invoice revenue'} · {RANGE_LABEL[range]}</p>
             </div>
             <div className="text-right">
               <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Total</p>
@@ -404,7 +415,7 @@ export function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {MODULES.map((m) => (
+              {visibleModules.map((m) => (
                 <Link
                   key={m.key}
                   to={m.to}
@@ -468,64 +479,70 @@ export function DashboardPage() {
         </Card>
       </div>
 
-      <Card className="rounded-xl border-slate-200/80 shadow-sm">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+      <Card className="rounded-xl border-slate-200/80 dark:border-slate-800">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <div>
-            <CardTitle className="text-base font-semibold text-slate-900">Recent invoices</CardTitle>
-            <p className="mt-1 text-xs text-slate-500">Latest activity in receivables.</p>
+            <CardTitle className="text-lg">Recent invoices</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">Latest activity in receivables.</p>
           </div>
-          <Link
-            to="/invoices"
-            className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-900"
+          <HeaderActionButton
+            variant="ghost"
+            icon="solar:alt-arrow-right-bold"
+            onClick={() => navigate('/invoices')}
           >
             View all
-            <Icon icon="solar:arrow-right-bold" className="h-3.5 w-3.5" />
-          </Link>
+          </HeaderActionButton>
         </CardHeader>
-        <CardContent className="px-0">
-          <div className="overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-y border-slate-200/80 bg-slate-50/60 text-[11px] font-medium uppercase tracking-wide text-slate-500">
-                  <th className="px-6 py-2.5 text-left">Invoice</th>
-                  <th className="px-6 py-2.5 text-left">Customer</th>
-                  <th className="px-6 py-2.5 text-left">Date</th>
-                  <th className="px-6 py-2.5 text-left">Status</th>
-                  <th className="px-6 py-2.5 text-right">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {((stats?.recent_invoices as any[]) ?? []).length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-6 py-10 text-center">
-                      <div className="flex flex-col items-center gap-2 text-slate-400">
-                        <Icon icon="solar:document-bold-duotone" className="h-10 w-10" />
-                        <p className="text-sm font-medium text-slate-600">No invoices yet</p>
-                        <p className="text-xs">Create your first invoice to see activity here.</p>
-                        <Button asChild size="sm" className="mt-1 h-8 rounded-md bg-slate-900 px-3 text-xs hover:bg-slate-800">
-                          <Link to="/invoices/create">Create invoice</Link>
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  ((stats?.recent_invoices as any[]) ?? []).map((invoice: any) => (
-                    <tr key={invoice.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
-                      <td className="px-6 py-3 font-medium text-slate-900">{invoice.invoice_number}</td>
-                      <td className="px-6 py-3 text-slate-700">{invoice.customer?.name ?? '-'}</td>
-                      <td className="px-6 py-3 text-slate-500">{formatDate(invoice.invoice_date)}</td>
-                      <td className="px-6 py-3">
+        <CardContent>
+          {((stats?.recent_invoices as any[]) ?? []).length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-300 py-12 text-center dark:border-slate-700">
+              <Icon icon="solar:document-text-bold-duotone" className="mx-auto mb-2 h-10 w-10 text-muted-foreground opacity-40" />
+              <p className="text-sm font-medium">No invoices yet</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Create your first invoice to see activity here.</p>
+              <div className="mt-4 flex justify-center">
+                <HeaderActionButton icon="solar:add-circle-bold" onClick={() => navigate('/invoices/create')}>
+                  Create invoice
+                </HeaderActionButton>
+              </div>
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-slate-200/80 dark:border-slate-800">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/40 hover:bg-muted/40">
+                    <TableHead>Invoice</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {((stats?.recent_invoices as any[]) ?? []).map((invoice: any) => (
+                    <TableRow
+                      key={invoice.id}
+                      className="cursor-pointer"
+                      onClick={() => navigate(`/invoices/${invoice.id}`, { state: { from: '/dashboard' } })}
+                    >
+                      <TableCell className="font-medium text-primary">{invoice.invoice_number}</TableCell>
+                      <TableCell className="max-w-[220px] truncate text-muted-foreground">
+                        {invoice.customer?.name ?? '—'}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {formatDate(invoice.invoice_date || invoice.created_at)}
+                      </TableCell>
+                      <TableCell>
                         <StatusPill status={invoice.status} />
-                      </td>
-                      <td className="px-6 py-3 text-right font-semibold text-slate-900">
+                      </TableCell>
+                      <TableCell className="text-right font-medium tabular-nums">
                         {formatCurrency(invoice.total)}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
         </>
@@ -576,16 +593,19 @@ function KpiTile({
 
 function StatusPill({ status }: { status?: string }) {
   const map: Record<string, string> = {
-    paid: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-    sent: 'bg-sky-50 text-sky-700 ring-sky-200',
-    draft: 'bg-slate-100 text-slate-600 ring-slate-200',
-    overdue: 'bg-rose-50 text-rose-700 ring-rose-200',
-    void: 'bg-slate-100 text-slate-500 ring-slate-200',
+    paid: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300',
+    sent: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300',
+    posted: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300',
+    partial: 'bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300',
+    draft: 'bg-muted text-muted-foreground',
+    overdue: 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300',
+    cancelled: 'bg-muted text-muted-foreground',
+    void: 'bg-muted text-muted-foreground',
   }
-  const cls = map[status ?? 'draft'] ?? 'bg-slate-100 text-slate-600 ring-slate-200'
+  const cls = map[status ?? 'draft'] ?? 'bg-muted text-muted-foreground'
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${cls}`}>
-      {status ?? '-'}
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize ${cls}`}>
+      {status ? status.replace(/_/g, ' ') : '-'}
     </span>
   )
 }

@@ -40,8 +40,11 @@ export function QuotationDetailPage() {
   })
 
   const { hasPermission } = useAuthStore()
-  // Posting/confirming sell-side documents is accounting-only (server enforces accounting.post).
-  const canPost = hasPermission('accounting.post')
+  // Quotations are sales documents: confirming creates the linked Sales Order
+  // (no ledger entry) and converting spawns a draft/approval-gated invoice or
+  // DO. Server gates match (quotations.write). Ledger release actions of the
+  // children (invoice post, DO confirm) remain accounting.post.
+  const canManageQuotation = hasPermission('quotations.write')
 
   const confirmMutation = useMutation({
 
@@ -49,9 +52,16 @@ export function QuotationDetailPage() {
       const response = await api.post(`/quotations/${id}/confirm`)
       return response.data
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['quotation', id] })
       queryClient.invalidateQueries({ queryKey: ['quotations'] })
+      if (data?.requires_approval) {
+        toast({
+          title: 'Approval required',
+          description: data?.message || 'An approval request has been submitted for this quotation.',
+        })
+        return
+      }
       toast({ title: 'Quotation confirmed — Sales Order created' })
     },
     onError: (error: any) => {
@@ -72,12 +82,23 @@ export function QuotationDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['quotation', id] })
       queryClient.invalidateQueries({ queryKey: ['quotations'] })
       queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      if (data?.requires_approval) {
+        toast({
+          title: 'Approval required',
+          description: data?.message || 'An approval request has been submitted for this quotation.',
+        })
+        return
+      }
       const invoiceId = data?.data?.id
+      const invoiceNeedsApproval = Boolean(data?.data?.requires_approval) && data?.data?.approval_status !== 'approved'
+      toast({
+        title: 'Invoice created from quotation',
+        description: invoiceNeedsApproval
+          ? 'The invoice has been sent for approval before it can be posted.'
+          : undefined,
+      })
       if (invoiceId) {
-        toast({ title: 'Invoice created from quotation' })
         navigate(`/invoices/${invoiceId}`)
-      } else {
-        toast({ title: 'Invoice created from quotation' })
       }
     },
     onError: (error: any) => {
@@ -98,8 +119,21 @@ export function QuotationDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['quotation', id] })
       queryClient.invalidateQueries({ queryKey: ['quotations'] })
       queryClient.invalidateQueries({ queryKey: ['delivery-orders'] })
+      if (data?.requires_approval) {
+        toast({
+          title: 'Approval required',
+          description: data?.message || 'An approval request has been submitted for this quotation.',
+        })
+        return
+      }
       const deliveryOrderId = data?.data?.id
-      toast({ title: 'Delivery order created from quotation' })
+      const doNeedsApproval = Boolean(data?.data?.requires_approval) && data?.data?.approval_status !== 'approved'
+      toast({
+        title: 'Delivery order created from quotation',
+        description: doNeedsApproval
+          ? 'The delivery order has been sent for approval before it can be confirmed.'
+          : undefined,
+      })
       if (deliveryOrderId) {
         navigate(`/delivery-orders/${deliveryOrderId}`)
       }
@@ -227,8 +261,8 @@ export function QuotationDetailPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="space-y-2">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1 space-y-2">
           <Button
             variant="ghost"
             size="sm"
@@ -238,14 +272,17 @@ export function QuotationDetailPage() {
             <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
             Back
           </Button>
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-bold">{quotation.quotation_number}</h1>
-              <Badge variant="secondary" className={getStatusBadge(quotation.status)}>
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-3">
+              <h1 className="truncate text-3xl font-bold">{quotation.quotation_number}</h1>
+              <Badge variant="secondary" className={cn('shrink-0 capitalize', getStatusBadge(quotation.status))}>
                 {quotation.status}
               </Badge>
             </div>
-            <p className="text-muted-foreground mt-1">
+            <p
+              className="mt-1 max-w-lg truncate text-muted-foreground"
+              title={quotation.customer ? `Created ${formatDate(quotation.created_at)} for ${quotation.customer.name}` : undefined}
+            >
               Created {formatDate(quotation.created_at)} for{' '}
               {quotation.customer ? (
                 <Link
@@ -262,8 +299,11 @@ export function QuotationDetailPage() {
           </div>
         </div>
 
-<div className="flex flex-wrap items-center gap-2">
-          {quotation.status === 'confirmed' && (
+<div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          {/* Convert straight from the quote (draft, sent or confirmed): the
+              server releases the quotation first and the spawned invoice/DO
+              follow the tenant's required-approval config. */}
+          {['draft', 'sent', 'confirmed'].includes(quotation.status) && canManageQuotation && (
             <>
               <HeaderActionButton
                 icon="solar:bill-list-bold-duotone"
@@ -284,7 +324,7 @@ export function QuotationDetailPage() {
               </HeaderActionButton>
             </>
           )}
-          {['draft', 'sent'].includes(quotation.status) && canPost && (
+          {['draft', 'sent'].includes(quotation.status) && canManageQuotation && (
             <HeaderActionButton
               icon="solar:check-circle-bold-duotone"
               loading={confirmMutation.isPending}
@@ -368,14 +408,18 @@ export function QuotationDetailPage() {
         )}
         {quotation.delivery_orders && quotation.delivery_orders.length > 0 && (
           <button
-            onClick={() => navigate('/delivery-orders')}
-            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
+            type="button"
+            onClick={() => (quotation.delivery_orders.length === 1
+              ? navigate(`/delivery-orders/${quotation.delivery_orders[0].id}`)
+              : navigate('/delivery-orders'))}
+            className={cn(
+              'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors',
+              'border-amber-300/60 bg-amber-50 text-amber-700 hover:border-amber-400 hover:bg-amber-100',
+              'dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-950/60',
+            )}
           >
-            <Icon icon="solar:package-bold" className="h-5 w-5 text-orange-600" />
-            <div className="text-left">
-              <div className="font-bold text-foreground">{quotation.delivery_orders.length}</div>
-              <div className="text-xs text-muted-foreground">Delivery Order{quotation.delivery_orders.length !== 1 ? 's' : ''}</div>
-            </div>
+            <Icon icon="solar:delivery-bold-duotone" className="h-3.5 w-3.5" />
+            {quotation.delivery_orders.length} Delivery Order{quotation.delivery_orders.length !== 1 ? 's' : ''}
           </button>
         )}
       </div>

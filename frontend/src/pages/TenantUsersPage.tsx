@@ -4,6 +4,7 @@ import { Icon } from '@iconify/react'
 import api from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -32,6 +33,7 @@ import {
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import { useAuthStore } from '@/store/authStore'
+import { RolesPermissionsDialog } from '@/components/team/RolesPermissionsDialog'
 import { cn, formatDate } from '@/lib/utils'
 
 interface TenantUser {
@@ -119,8 +121,9 @@ async function removeTenantUser(userId: number): Promise<void> {
   await api.delete(`/tenant-users/${userId}`)
 }
 
-async function inviteTenantUser(email: string, role: string, name?: string): Promise<void> {
-  await api.post('/tenant-users', { email, role, name })
+async function inviteTenantUser(email: string, role: string, name?: string): Promise<{ email_sent?: boolean }> {
+  const res = await api.post('/tenant-users', { email, role, name })
+  return res.data ?? {}
 }
 
 export default function TenantUsersPage() {
@@ -132,6 +135,7 @@ export default function TenantUsersPage() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState('viewer')
   const [inviteName, setInviteName] = useState('')
+  const [rolesOpen, setRolesOpen] = useState(false)
 
   const canManageRoles = currentRole === 'Owner' || currentRole === 'Admin'
   const canRemoveUsers = currentRole === 'Owner'
@@ -173,9 +177,16 @@ export default function TenantUsersPage() {
 
   const inviteMutation = useMutation({
     mutationFn: () => inviteTenantUser(inviteEmail, inviteRole, inviteName || undefined),
-    onSuccess: () => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['tenant-users'] })
-      toast({ title: 'User invited successfully' })
+      if (data?.email_sent === false) {
+        toast({
+          title: 'Member added — email not delivered',
+          description: 'The invitation email could not be sent. Ask them to use "Forgot password" on the sign-in page.',
+        })
+      } else {
+        toast({ title: 'Invitation sent', description: 'They will receive an email with a link to set their password.' })
+      }
       setInviteEmail('')
       setInviteName('')
       setInviteRole('viewer')
@@ -190,7 +201,7 @@ export default function TenantUsersPage() {
     },
   })
 
-  const users = data ?? []
+  const users = useMemo(() => data ?? [], [data])
 
   const roleCounts = useMemo(() => {
     const counts = new Map<string, number>()
@@ -214,10 +225,14 @@ export default function TenantUsersPage() {
           </p>
         </div>
         {canManageRoles && (
-          <Button onClick={() => setInviteOpen(true)}>
-            <Icon icon="solar:user-plus-bold-duotone" className="mr-2 h-4 w-4" />
-            Invite Team Member
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <HeaderActionButton variant="outline" icon="solar:shield-keyhole-bold-duotone" onClick={() => setRolesOpen(true)}>
+              Roles &amp; Permissions
+            </HeaderActionButton>
+            <HeaderActionButton icon="solar:user-plus-bold-duotone" onClick={() => setInviteOpen(true)}>
+              Invite Team Member
+            </HeaderActionButton>
+          </div>
         )}
       </div>
 
@@ -387,6 +402,9 @@ export default function TenantUsersPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Roles & permissions matrix */}
+      <RolesPermissionsDialog open={rolesOpen} onOpenChange={setRolesOpen} />
 
       {/* Invite dialog */}
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>

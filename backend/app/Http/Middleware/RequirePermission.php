@@ -69,7 +69,7 @@ class RequirePermission
         }
 
         // Resolve central user id — user_company_access stores central IDs, not tenant schema IDs
-        $centralUserId = $this->resolveCentralUserId($user);
+        $centralUserId = self::resolveCentralUserId($user);
 
         $hasPerm = $this->roleService->hasPermission($centralUserId, $tenantId, $permission);
 
@@ -104,7 +104,13 @@ class RequirePermission
         return null;
     }
 
-    private function resolveCentralUserId(\App\Models\User $user): int
+    /**
+     * Resolve the CENTRAL user id for a request user. After
+     * SyncTenantUserFromCentralAuth the instance is the tenant-schema user,
+     * but public.user_company_access stores central ids — every controller
+     * resolving roles/tenants must use this instead of $user->id.
+     */
+    public static function resolveCentralUserId(\App\Models\User $user): int
     {
         $centralUserId = \Illuminate\Support\Facades\DB::table('public.users')
             ->where('email', $user->email)

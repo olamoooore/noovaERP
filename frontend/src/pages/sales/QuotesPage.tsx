@@ -128,8 +128,10 @@ export function QuotesPage() {
   })
 
   const { hasPermission } = useAuthStore()
-  // Posting/confirming sell-side documents is accounting-only (server enforces accounting.post).
-  const canPost = hasPermission('accounting.post')
+  // Quotation confirm is a sales action (creates the linked Sales Order, no
+  // ledger entry) — server enforces quotations.write. Invoice/DO posting of
+  // the spawned documents stays accounting.post on their own pages.
+  const canConfirm = hasPermission('quotations.write')
 
   const confirmMutation = useMutation({
 
@@ -137,8 +139,15 @@ export function QuotesPage() {
       const response = await api.post(`/quotations/${id}/confirm`)
       return response.data
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['quotations'] })
+      if (data?.requires_approval) {
+        toast({
+          title: 'Approval required',
+          description: data?.message || 'An approval request has been submitted for this quotation.',
+        })
+        return
+      }
       toast({ title: 'Quotation confirmed and Sales Order created' })
     },
     onError: (error: any) => {
@@ -425,7 +434,7 @@ export function QuotesPage() {
                                 >
                                   <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-3.5 w-3.5" />
                                 </Button>
-                                {canPost && (
+                                {canConfirm && (
                                   <Button
                                     size="sm"
                                     className="h-7 w-7 bg-emerald-600 p-0 text-white hover:bg-emerald-700"

@@ -126,9 +126,16 @@ export function DeliveryOrdersPage() {
       const response = await api.post(`/sales/delivery-orders/${id}/confirm`)
       return response.data
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['delivery-orders'] })
       queryClient.invalidateQueries({ queryKey: ['sales-orders'] })
+      if (data?.requires_approval) {
+        toast({
+          title: 'Approval required',
+          description: data?.message || 'An approval request has been submitted for this document.',
+        })
+        return
+      }
       toast({ title: 'Delivery order confirmed' })
     },
     onError: (error: any) => {
@@ -332,7 +339,7 @@ export function DeliveryOrdersPage() {
                       </TableCell>
                       <TableCell>{do_.customer?.name || '-'}</TableCell>
                       <TableCell>{do_.delivery_date ? formatDate(do_.delivery_date) : '-'}</TableCell>
-                      <TableCell>{formatDate(do_.created_at)}</TableCell>
+                      <TableCell>{formatDate(do_.created_at || do_.delivery_date)}</TableCell>
                       <TableCell>{do_.lines?.length || 0}</TableCell>
                       <TableCell>
                         {/* A draft that is sitting in approval should not read as

@@ -2,11 +2,10 @@ import { Link, useLocation } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import { cn } from '@/lib/utils'
 import { NOOVAERP_LOGO_URL } from '@/lib/assets'
-import { useQuery } from '@tanstack/react-query'
-import api from '@/lib/api'
 import { useState } from 'react'
 import { useAuthStore } from '@/store/authStore'
 import { baseNavItems, deriveNavPermission, type NavItem } from '@/lib/navigation'
+import { useFeatureAccess } from '@/hooks/use-feature-access'
 
 export function Sidebar() {
   const location = useLocation()
@@ -24,97 +23,9 @@ export function Sidebar() {
     })
   }
 
-  // Issue: sidebar blanked (only Master Dashboard / Website / Settings showed)
-  // whenever GET /features returned 429 (platform rate limit) or any error.
-  // Root causes fixed here:
-  //   1. Removed the `X-Feature-Gate-Fresh: 1` header — it forced a server-side
-  //      cache bypass (full DB re-resolve) on EVERY sidebar render, feeding the
-  //      request storm that tripped the rate limit in the first place.
-  //   2. `retry` now retries transient failures (429/5xx) with backoff so a
-  //      momentary throttle self-recovers instead of permanently hiding modules.
-  //   3. `placeholderData: keepPreviousData` keeps the last-known-good feature
-  //      set on screen during background refetch — the nav never blanks.
-  //   4. `isError` is consumed below so a FAILED fetch fails OPEN (modules shown)
-  //      rather than closed. The sidebar is UX only; entitlements are still
-  //      enforced server-side by EnsureEntitlementAccess on every API route, so
-  //      failing open here cannot bypass any real authorization.
-  const { data: features, isError: featuresError } = useQuery({
-    queryKey: ['features', tenantId],
-    queryFn: async () => {
-      const response = await api.get('/features')
-      const data = response.data
-      return Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : [])
-    },
-    // Don't retry 429s — the Retry-After header says exactly when the
-    // bucket resets; piling on more requests just makes the throttling
-    // worse and the user wait longer. Server-side failures (5xx) still
-    // retry with backoff.
-    retry: (failureCount, error: any) => {
-      const status = error?.response?.status
-      if (status === 429) return false
-      if (status >= 500 && status < 600) return failureCount < 3
-      if (status >= 400 && status < 500) return false
-      return failureCount < 3
-    },
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 15000),
-    staleTime: 1000 * 60 * 10,
-    placeholderData: (prev: any) => prev,
-  })
-
-  const normalizeFeatureKey = (key: string) => key.toLowerCase().replace(/[\s_]+/g, '-')
-
-  const featureStatusByKey = new Map(
-    (features || []).map((f: any) => [normalizeFeatureKey(String(f.key || '')), Boolean(f.enabled)])
-  )
-
-  const featureKeyAliases: Record<string, string[]> = {
-    hrm: ['human-resources', 'human_resources'],
-    'field-service': ['field_service'],
-    'event-management': ['event_management'],
-    'financial-reporting': ['financial_reporting'],
-  }
-
-  // Tenant-specific hard blocks for modules that must never appear in navigation.
-  const tenantForceDisabledFeatures: Record<string, string[]> = {
-    'c194ebd3-a0af-4aca-a9b5-1f3275318228': ['field-service'],
-    '00000000-0000-0000-0000-000000000001': ['ecommerce', 'crm', 'hrm', 'pos', 'auditor-portal', 'myinvoice'],
-    '00000000-0000-0000-0000-000000000002': ['ecommerce', 'crm', 'hrm', 'pos', 'auditor-portal', 'myinvoice'],
-  }
-
-  const isFeatureEnabled = (featureKey?: string) => {
-    if (!featureKey) return true
-
-    // Fail-closed only while the FIRST fetch is genuinely in flight (no data
-    // yet and no error). Once the fetch has ERRORED (e.g. a 429 rate-limit or
-    // network blip), fail OPEN: show the module rather than blanking the whole
-    // sidebar. This is safe because the sidebar is UX only — every API route
-    // independently enforces entitlements via EnsureEntitlementAccess, so a
-    // visible-but-unentitled module still cannot read or write data.
-    if (!features) {
-      return featuresError ? true : false
-    }
-
-    const normalizedKey = normalizeFeatureKey(featureKey)
-    const forceDisabledForTenant = (tenantForceDisabledFeatures[tenantId] || []).map((key) =>
-      normalizeFeatureKey(key)
-    )
-
-    if (forceDisabledForTenant.includes(normalizedKey)) {
-      return false
-    }
-
-    const keysToCheck = [
-      normalizedKey,
-      ...(featureKeyAliases[normalizedKey] || []).map((key) => normalizeFeatureKey(key)),
-    ]
-    const matchedKey = keysToCheck.find((key) => featureStatusByKey.has(key))
-
-    if (!matchedKey) {
-      return true
-    }
-
-    return featureStatusByKey.get(matchedKey) === true
-  }
+  // Tenant module entitlements come from the shared hook so the sidebar and
+  // every other module surface gate identically (single source of truth).
+  const { features, isFeatureEnabled } = useFeatureAccess()
 
   // RBAC: derive required permission from featureKey or explicit override
   const { hasPermission } = useAuthStore()

@@ -33,6 +33,7 @@ class SalesApprovalGate
     public const REQUEST_TYPE_SALES_ORDER = 'sales_order_approval';
     public const REQUEST_TYPE_QUOTATION = 'quotation_approval';
     public const REQUEST_TYPE_INVOICE = 'invoice_threshold_approval';
+    public const REQUEST_TYPE_DELIVERY_ORDER = 'delivery_order_approval';
 
     public function requiresApproval(string $subjectClass, float $amount): bool
     {
@@ -51,6 +52,50 @@ class SalesApprovalGate
             return null;
         }
         return (float) $raw;
+    }
+
+    /**
+     * Whether this document already has an approved request of the given type.
+     * A downstream action (invoice/DO from a quotation) may proceed once the
+     * underlying document has been approved.
+     */
+    public function hasApprovedRequest(Model $document, string $requestType): bool
+    {
+        return ApprovalRequest::query()
+            ->where('subject_type', $document::class)
+            ->where('subject_id', $document->id)
+            ->where('request_type', $requestType)
+            ->where('status', 'approved')
+            ->exists();
+    }
+
+    /**
+     * Gate a downstream action on a document.
+     *
+     * Returns null when the action may proceed — either the gate is disabled
+     * or the document already carries an approved request. Otherwise returns
+     * the pending `ApprovalRequest` (an existing pending request is reused,
+     * never duplicated) and the caller must stop and return 202.
+     */
+    public function requestIfNeeded(Model $document, string $requestType, float $amount, User $user): ?ApprovalRequest
+    {
+        if (! $this->requiresApproval($document::class, $amount)) {
+            return null;
+        }
+
+        if ($this->hasApprovedRequest($document, $requestType)) {
+            return null;
+        }
+
+        $pending = ApprovalRequest::query()
+            ->where('subject_type', $document::class)
+            ->where('subject_id', $document->id)
+            ->where('request_type', $requestType)
+            ->where('status', 'pending')
+            ->latest('id')
+            ->first();
+
+        return $pending ?? $this->createRequest($document, $user, $requestType);
     }
 
     /**
@@ -78,6 +123,9 @@ class SalesApprovalGate
                 $metadata['customer_id'] = $document->customer_id;
             } elseif ($document instanceof \App\Models\Invoice) {
                 $metadata['invoice_number'] = $document->invoice_number ?? null;
+                $metadata['customer_id'] = $document->customer_id;
+            } elseif ($document instanceof \Modules\Sales\Models\DeliveryOrder) {
+                $metadata['delivery_order_number'] = $document->delivery_order_number ?? null;
                 $metadata['customer_id'] = $document->customer_id;
             }
 

@@ -85,7 +85,7 @@ class TenantUserController extends Controller
         }
 
         // Only Owner and Admin can change roles
-        $currentRole = $this->roleService->getRole($this->resolveCentralUserId($currentUser), $tenantId);
+        $currentRole = $this->roleService->getRole(\App\Http\Middleware\RequirePermission::resolveCentralUserId($currentUser), $tenantId);
         if (! $currentRole || ! in_array($currentRole->value, UserRole::superRoles(), true)) {
             return response()->json([
                 'message' => 'You do not have permission to change user roles.',
@@ -141,7 +141,7 @@ class TenantUserController extends Controller
         }
 
         // Only Owner can remove users
-        $currentRole = $this->roleService->getRole($this->resolveCentralUserId($currentUser), $tenantId);
+        $currentRole = $this->roleService->getRole(\App\Http\Middleware\RequirePermission::resolveCentralUserId($currentUser), $tenantId);
         if ($currentRole !== UserRole::OWNER) {
             return response()->json([
                 'message' => 'Only the tenant owner can remove users.',
@@ -193,7 +193,7 @@ class TenantUserController extends Controller
         }
 
         // Only Owner and Admin can invite users
-        $currentRole = $this->roleService->getRole($this->resolveCentralUserId($currentUser), $tenantId);
+        $currentRole = $this->roleService->getRole(\App\Http\Middleware\RequirePermission::resolveCentralUserId($currentUser), $tenantId);
         if (! $currentRole || ! in_array($currentRole->value, UserRole::superRoles(), true)) {
             return response()->json([
                 'message' => 'You do not have permission to invite users.',
@@ -246,7 +246,7 @@ class TenantUserController extends Controller
             ], 201);
         }
 
-// Create new central user
+        // Create new central user
         // Pillar 2 Part 1 §3.4 / Pillar 1 P0-0: previously this row wrote
         // `'role' => 'platform_super_admin'` — combined with the column
         // schema default of `'platform_super_admin'`, any
@@ -286,8 +286,29 @@ class TenantUserController extends Controller
             'updated_at' => now(),
         ]);
 
+        // Deliver an actual invitation: a set-password link the new member
+        // can use to sign in (the temporary password above is never shared).
+        // A mail outage must not roll back the membership, so failures are
+        // reported via `email_sent` instead of a 500.
+        $linkService = app(\App\Services\PasswordLinkService::class);
+        $token = $linkService->issue($email);
+        $emailSent = true;
+        try {
+            $linkService->send($email, $name, $token, 'invite', tenant('name'));
+        } catch (\Throwable $e) {
+            $emailSent = false;
+            \Illuminate\Support\Facades\Log::warning('Tenant invite email failed to send', [
+                'email' => $email,
+                'tenant_id' => $tenantId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
         return response()->json([
-            'message' => 'Invitation sent. User created and added to workspace.',
+            'message' => $emailSent
+                ? 'Invitation sent. User created and added to workspace.'
+                : 'User added to the workspace, but the invitation email could not be sent. Use "Forgot password" to resend the link.',
+            'email_sent' => $emailSent,
             'data' => [
                 'id' => $newUserId,
                 'name' => $name,
@@ -312,14 +333,5 @@ class TenantUserController extends Controller
         }
 
         return null;
-    }
-
-    private function resolveCentralUserId(\App\Models\User $user): int
-    {
-        $centralUserId = DB::table('public.users')
-            ->where('email', $user->email)
-            ->value('id');
-
-        return (int) ($centralUserId ?? $user->id);
     }
 }

@@ -69,6 +69,17 @@ Route::middleware(['auth:sanctum', 'inventory.access'])->group(function () {
         Route::get('/tracking/serials', [InventoryTrackingController::class, 'serials']);
         Route::get('/tracking/{type}/template', [InventoryTrackingController::class, 'template']);
         Route::post('/tracking/{type}/import', [InventoryTrackingController::class, 'import'])->middleware(\App\Http\Middleware\RequirePermission::class.':inventory.write');
+        // Lot/batch + serial CRUD from the tracking page. Descriptive fields
+        // only — on-hand quantity moves through stock operations, never a
+        // direct edit.
+        Route::put('/tracking/batches/{id}', [InventoryTrackingController::class, 'updateBatch'])
+            ->middleware(\App\Http\Middleware\RequirePermission::class.':inventory.write');
+        Route::delete('/tracking/batches/{id}', [InventoryTrackingController::class, 'destroyBatch'])
+            ->middleware(\App\Http\Middleware\RequirePermission::class.':inventory.write');
+        Route::put('/tracking/serials/{id}', [InventoryTrackingController::class, 'updateSerial'])
+            ->middleware(\App\Http\Middleware\RequirePermission::class.':inventory.write');
+        Route::delete('/tracking/serials/{id}', [InventoryTrackingController::class, 'destroySerial'])
+            ->middleware(\App\Http\Middleware\RequirePermission::class.':inventory.write');
         Route::get('/dashboard', [InventoryReportController::class, 'dashboard']);
         Route::get('/valuation', [InventoryReportController::class, 'valuation']);
         Route::get('/reports/low-stock', [InventoryReportController::class, 'lowStockReport']);

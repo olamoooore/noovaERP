@@ -11,6 +11,7 @@ use App\Accounting\Services\ReversalCorrectionEngine;
 use App\Accounting\Services\RevisionPolicyResolver;
 use App\Accounting\Services\StateTransitionService;
 use App\Accounting\Services\StructuredObservabilityService;
+use App\Listeners\DeliveryOrderApprovalDecisionListener;
 use App\Listeners\InvoiceApprovalDecisionListener;
 use App\Listeners\PreventDangerousMigrations;
 use Illuminate\Support\Facades\Event;
@@ -70,6 +71,18 @@ class AppServiceProvider extends ServiceProvider
 
         // Wire invoice approval callbacks to the generic approval decision event
         Event::listen(ApprovalDecisionEvent::class, InvoiceApprovalDecisionListener::class);
+        Event::listen(ApprovalDecisionEvent::class, DeliveryOrderApprovalDecisionListener::class);
+
+        // Register the approval-flow communication subtypes. Without this the
+        // Communication engine rejects 'invoice.approval_submitted' with
+        // "Unknown communication subtype" and the chatter/notification event
+        // is lost (it also aborted InvoiceApprovalService::submit() mid-flight
+        // for auto-submitted invoices).
+        if (class_exists(\Modules\Communication\Support\EventSubtypeRegistry::class)) {
+            \Modules\Communication\Support\EventSubtypeRegistry::register(
+                'invoice.approval_submitted',
+            );
+        }
 
         // Factory resolver for module models
         \Illuminate\Database\Eloquent\Factories\Factory::guessFactoryNamesUsing(function (string $modelName) {

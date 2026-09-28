@@ -43,6 +43,61 @@ Route::middleware([
     // Guest checkout (no login required for buying)
     Route::post('/web-shop/checkout/guest', [\Modules\Ecommerce\Http\Controllers\WebCheckoutController::class, 'guestCheckout']);
 
+    // -------------------------------------------------------------------------
+    // Storefront public runtime (generic commerce module, MRD P1).
+    // Tenant from host (InitializeTenantForPublicAccess, fail-closed), gated by
+    // entitlement:storefront so an unentitled tenant 403s here AND its published
+    // pages strip functions (A-04). Prices/totals are server-computed only.
+    // -------------------------------------------------------------------------
+    // IMPORTANT (discovered by SF009): Laravel's anonymous throttle signs the
+    // bucket as sha1(domain|ip) WITHOUT the route, so stacked `throttle:`
+    // middlewares (and sibling routes) would share ONE counter. Every
+    // limiter below therefore carries an explicit PREFIX (3rd arg) to keep
+    // abuse on one endpoint from locking out the others (FR-PLAT-05).
+    Route::middleware(['entitlement:storefront'])
+        ->prefix('storefront')
+        ->group(function () {
+            Route::get('/catalog/products', [\Modules\Storefront\Http\Controllers\Public\CatalogController::class, 'products'])
+                ->middleware('throttle:120,1,sf-catalog');
+            Route::get('/cart', [\Modules\Storefront\Http\Controllers\Public\CartController::class, 'show'])
+                ->middleware('throttle:120,1,sf-cart');
+            Route::post('/cart/items', [\Modules\Storefront\Http\Controllers\Public\CartController::class, 'storeItem'])
+                ->middleware('throttle:60,1,sf-cart');
+            Route::put('/cart/items/{item}', [\Modules\Storefront\Http\Controllers\Public\CartController::class, 'updateItem'])
+                ->whereNumber('item')
+                ->middleware('throttle:60,1,sf-cart');
+            Route::patch('/cart/items/{item}', [\Modules\Storefront\Http\Controllers\Public\CartController::class, 'updateItem'])
+                ->whereNumber('item')
+                ->middleware('throttle:60,1,sf-cart');
+            Route::delete('/cart/items/{item}', [\Modules\Storefront\Http\Controllers\Public\CartController::class, 'destroyItem'])
+                ->whereNumber('item')
+                ->middleware('throttle:60,1,sf-cart');
+
+            // Account identity (FR-ID-*). Brute-force-specific throttles,
+            // each in its OWN bucket (see prefix note above).
+            Route::prefix('auth')->group(function () {
+                Route::post('/register', [\Modules\Storefront\Http\Controllers\Public\AuthController::class, 'register'])
+                    ->middleware('throttle:10,1,sf-register');
+                Route::post('/login', [\Modules\Storefront\Http\Controllers\Public\AuthController::class, 'login'])
+                    ->middleware('throttle:10,1,sf-login');
+                Route::post('/forgot-password', [\Modules\Storefront\Http\Controllers\Public\AuthController::class, 'forgotPassword'])
+                    ->middleware('throttle:10,1,sf-forgot');
+                Route::post('/reset-password', [\Modules\Storefront\Http\Controllers\Public\AuthController::class, 'resetPassword'])
+                    ->middleware('throttle:10,1,sf-reset');
+                Route::post('/verify-email', [\Modules\Storefront\Http\Controllers\Public\AuthController::class, 'verifyEmail'])
+                    ->middleware('throttle:20,1,sf-verify');
+            });
+
+            // Cookie-session protected subset: StorefrontAccountAuth re-checks
+            // session + account status EVERY request (FR-ID-08) and enforces
+            // the double-submit CSRF header on mutations (FR-ID-09).
+            Route::middleware([\Modules\Storefront\Http\Middleware\StorefrontAccountAuth::class, 'throttle:60,1,sf-account'])->group(function () {
+                Route::post('/auth/logout', [\Modules\Storefront\Http\Controllers\Public\AuthController::class, 'logout']);
+                Route::post('/auth/refresh', [\Modules\Storefront\Http\Controllers\Public\AuthController::class, 'refresh']);
+                Route::get('/account', [\Modules\Storefront\Http\Controllers\Public\AccountController::class, 'show']);
+            });
+        });
+
     // Payment confirmation (called after Stripe success)
     Route::post('/web-shop/checkout/confirm-payment', [\Modules\Ecommerce\Http\Controllers\WebCheckoutController::class, 'confirmPayment']);
 
@@ -191,6 +246,13 @@ Route::middleware([
         Route::put('/{id}/role', [\App\Http\Controllers\Api\TenantUserController::class, 'updateRole'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.write');
         Route::delete('/{id}', [\App\Http\Controllers\Api\TenantUserController::class, 'destroy'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.delete');
     });
+
+    // Tenant roles & permissions (matrix editable by Owner/Admin — enforced
+    // in-controller too, since users.write is also granted to Manager).
+    Route::get('/tenant-roles', [\App\Http\Controllers\Api\TenantRoleController::class, 'index'])
+        ->middleware(\App\Http\Middleware\RequirePermission::class.':users.write');
+    Route::put('/tenant-roles/{role}', [\App\Http\Controllers\Api\TenantRoleController::class, 'updatePermissions'])
+        ->middleware(\App\Http\Middleware\RequirePermission::class.':users.write');
 
     // Version/correction chain endpoints
     Route::get('/invoices/{id}/correction-chain', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'getInvoiceCorrectionChain']);

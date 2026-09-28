@@ -1,19 +1,25 @@
-import { useCallback, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { Progress } from '@/components/ui/progress'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import {
+  ImportDropzone,
+  ImportErrorList,
+  ImportFieldTable,
+  ImportPageHeader,
+  ImportResultTiles,
+  ImportStepCard,
+  type ImportTemplateColumn,
+} from '@/components/import/ImportPageKit'
 import { Icon } from '@iconify/react'
 import api from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Progress } from '@/components/ui/progress'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 type TrackingType = 'batches' | 'serials'
 
-const FIELDS = {
+const FIELDS: Record<TrackingType, ImportTemplateColumn[]> = {
   batches: [
     { name: 'product_sku', required: true, description: 'Existing product SKU. Product must use Batch/Lot tracking.' },
     { name: 'warehouse_code', required: true, description: 'Existing warehouse code receiving the stock.' },
@@ -33,13 +39,11 @@ const FIELDS = {
 }
 
 export function InventoryTrackingImportPage() {
-  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const initialType = searchParams.get('type') === 'serials' ? 'serials' : 'batches'
   const [type, setType] = useState<TrackingType>(initialType)
-  const [dragActive, setDragActive] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [result, setResult] = useState<any>(null)
 
@@ -63,21 +67,6 @@ export function InventoryTrackingImportPage() {
     onError: (error: any) => toast({ title: 'Import failed', description: error.response?.data?.message || 'Unable to import file.', variant: 'destructive' }),
   })
 
-  const selectFile = (file?: File) => {
-    if (!file) return
-    if (!file.name.toLowerCase().endsWith('.csv')) {
-      toast({ title: 'Invalid file type', description: 'Please upload a CSV file.', variant: 'destructive' })
-      return
-    }
-    setSelectedFile(file)
-    setResult(null)
-  }
-  const handleDrag = useCallback((event: React.DragEvent) => {
-    event.preventDefault()
-    event.stopPropagation()
-    setDragActive(event.type === 'dragenter' || event.type === 'dragover')
-  }, [])
-
   const downloadTemplate = async () => {
     const response = await api.get(`/inventory/tracking/${type}/template`, { responseType: 'blob' })
     const url = URL.createObjectURL(response.data)
@@ -96,41 +85,123 @@ export function InventoryTrackingImportPage() {
     setResult(null)
   }
 
+  const reset = () => {
+    setSelectedFile(null)
+    setResult(null)
+  }
+
+  const failedRows: Array<{ row: number; message: string }> = result?.results
+    ? result.results.filter((row: any) => row.status === 'failed').map((row: any) => ({ row: row.row, message: row.message }))
+    : []
+
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
-      <div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="-ml-2 mb-3 text-muted-foreground hover:text-foreground"
-          onClick={() => navigate('/inventory/tracking')}
+      <ImportPageHeader
+        title="Import Lots / Serial Numbers"
+        subtitle="Bulk receive tracked inventory from a CSV file."
+        backTo="/inventory/tracking"
+      />
+
+      <div className="grid items-start gap-6 lg:grid-cols-2">
+        <ImportStepCard
+          step={1}
+          title="Download Template"
+          description={type === 'batches' ? 'One row per product lot/batch.' : 'One row per serial number. Each row receives one inventory unit.'}
+          icon="solar:download-minimalistic-bold-duotone"
         >
-          <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
-          Back
-        </Button>
-        <div><h1 className="text-2xl font-bold">Import Lots / Serial Numbers</h1><p className="text-muted-foreground">Bulk receive tracked inventory from a CSV file.</p></div></div>
+          <HeaderActionButton variant="outline" icon="solar:document-text-bold-duotone" onClick={downloadTemplate}>
+            Download Import Template
+          </HeaderActionButton>
+          <ImportFieldTable columns={FIELDS[type]} />
+        </ImportStepCard>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <div className="space-y-6">
-          <Card><CardHeader><CardTitle className="flex items-center gap-2"><Icon icon="solar:download-minimalistic-bold" className="h-5 w-5 text-primary" />Step 1: Download Template</CardTitle><CardDescription>{type === 'batches' ? 'One row per product lot/batch.' : 'One row per serial number. Each row receives one inventory unit.'}</CardDescription></CardHeader><CardContent><Button variant="outline" className="w-full" onClick={downloadTemplate}><Icon icon="solar:document-text-bold" className="mr-2 h-4 w-4" />Download Import Template</Button></CardContent></Card>
+        <ImportStepCard
+          step={2}
+          title="Upload CSV File"
+          description="Choose the import type, then upload the completed template."
+          icon="solar:upload-minimalistic-bold-duotone"
+          tone="bg-blue-500/10"
+          glyph="text-blue-600 dark:text-blue-400"
+        >
+          <div className="space-y-2">
+            <label className="text-xs font-medium">Import type</label>
+            <Select value={type} onValueChange={(value) => changeType(value as TrackingType)}>
+              <SelectTrigger className="h-8 w-full rounded-full text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="batches">Lots / Batches</SelectItem>
+                <SelectItem value="serials">Serial Numbers</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {type === 'batches'
+                ? 'One row per product lot/batch. Existing matching lots are increased.'
+                : 'One row per serial number — each row receives one inventory unit.'}
+            </p>
+          </div>
 
-          <Card><CardHeader><CardTitle className="flex items-center gap-2"><Icon icon="solar:list-check-bold" className="h-5 w-5 text-primary" />Template Fields</CardTitle><CardDescription>Required fields are marked with an asterisk (*).</CardDescription></CardHeader><CardContent><Table><TableHeader><TableRow><TableHead>Field</TableHead><TableHead>Description</TableHead></TableRow></TableHeader><TableBody>{FIELDS[type].map((field) => <TableRow key={field.name}><TableCell className="font-medium">{field.name}{field.required && <span className="ml-1 text-destructive">*</span>}</TableCell><TableCell className="text-sm text-muted-foreground">{field.description}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card>
-        </div>
+          <ImportDropzone
+            selectedFile={selectedFile}
+            onFile={(file) => { setSelectedFile(file); setResult(null) }}
+            onClear={reset}
+          />
 
-        <div className="space-y-6">
-          <Card><CardHeader><CardTitle className="flex items-center gap-2"><Icon icon="solar:upload-minimalistic-bold" className="h-5 w-5 text-primary" />Step 2: Upload CSV File</CardTitle><CardDescription>Choose the import type, then upload the completed template.</CardDescription></CardHeader><CardContent className="space-y-4">
-            <div className="space-y-2"><label className="text-sm font-medium">Import type</label><Select value={type} onValueChange={(value) => changeType(value as TrackingType)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="batches">Lots / Batches</SelectItem><SelectItem value="serials">Serial Numbers</SelectItem></SelectContent></Select><p className="text-xs text-muted-foreground">{type === 'batches' ? 'One row per product lot/batch. Existing matching lots are increased.' : 'One row per serial number — each row receives one inventory unit.'}</p></div>
-            <div className={`rounded-lg border-2 border-dashed p-8 text-center transition-colors ${dragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/25'} ${selectedFile ? 'bg-muted/50' : ''}`} onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={(event) => { handleDrag(event); setDragActive(false); selectFile(event.dataTransfer.files?.[0]) }}>
-              {selectedFile ? <div className="space-y-3"><Icon icon="solar:file-check-bold" className="mx-auto h-12 w-12 text-green-500" /><div><p className="font-medium">{selectedFile.name}</p><p className="text-sm text-muted-foreground">{(selectedFile.size / 1024).toFixed(2)} KB</p></div><Button variant="ghost" size="sm" onClick={() => { setSelectedFile(null); setResult(null) }}><Icon icon="solar:trash-bin-trash-bold" className="mr-2 h-4 w-4" />Remove</Button></div> : <div className="space-y-3"><Icon icon="solar:cloud-upload-bold-duotone" className="mx-auto h-12 w-12 text-muted-foreground" /><div><p className="font-medium">Drag and drop your CSV file here</p><p className="text-sm text-muted-foreground">or click below to browse</p></div><Button variant="outline" size="sm" asChild><label className="cursor-pointer"><Icon icon="solar:folder-open-bold" className="mr-2 h-4 w-4" />Browse Files<input type="file" accept=".csv,text/csv" className="hidden" onChange={(event) => selectFile(event.target.files?.[0])} /></label></Button></div>}
+          {selectedFile && !result && (
+            <div className="space-y-3">
+              <HeaderActionButton
+                icon="solar:import-bold-duotone"
+                loading={importMutation.isPending}
+                disabled={importMutation.isPending}
+                onClick={() => importMutation.mutate()}
+              >
+                Import {type === 'batches' ? 'Lots / Batches' : 'Serial Numbers'}
+              </HeaderActionButton>
+              {importMutation.isPending && <Progress value={undefined} />}
             </div>
-            {selectedFile && !result && <Button className="w-full" disabled={importMutation.isPending} onClick={() => importMutation.mutate()}>{importMutation.isPending ? <><Icon icon="solar:refresh-circle-bold" className="mr-2 h-4 w-4 animate-spin" />Importing…</> : <><Icon icon="solar:import-bold" className="mr-2 h-4 w-4" />Import {type === 'batches' ? 'Lots / Batches' : 'Serial Numbers'}</>}</Button>}
-            {importMutation.isPending && <Progress value={undefined} />}
-          </CardContent></Card>
+          )}
 
-          {result && <Card><CardHeader><CardTitle className="flex items-center gap-2"><Icon icon={result.imported > 0 ? 'solar:check-circle-bold' : 'solar:close-circle-bold'} className={result.imported > 0 ? 'h-5 w-5 text-green-500' : 'h-5 w-5 text-destructive'} />Import Results</CardTitle></CardHeader><CardContent className="space-y-4"><div className="grid grid-cols-2 gap-4"><div className="rounded-lg bg-green-50 p-4 text-center dark:bg-green-950/20"><div className="text-2xl font-bold text-green-600">{result.imported}</div><div className="text-sm text-muted-foreground">Imported</div></div><div className="rounded-lg bg-red-50 p-4 text-center dark:bg-red-950/20"><div className="text-2xl font-bold text-red-600">{result.failed}</div><div className="text-sm text-muted-foreground">Errors</div></div></div>
-            {result.failed > 0 && <Alert variant="destructive"><Icon icon="solar:danger-triangle-bold" className="h-4 w-4" /><AlertTitle>Import Errors</AlertTitle><AlertDescription><div className="mt-2 max-h-64 space-y-1 overflow-y-auto text-sm">{result.results.filter((row: any) => row.status === 'failed').map((row: any) => <div key={row.row}><span className="font-medium">Row {row.row}:</span> {row.message}</div>)}</div></AlertDescription></Alert>}
-            <div className="flex gap-3"><Button variant="outline" className="flex-1" onClick={() => { setSelectedFile(null); setResult(null) }}><Icon icon="solar:upload-bold" className="mr-2 h-4 w-4" />Import Another File</Button><Button className="flex-1" onClick={() => navigate('/inventory/tracking')}><Icon icon="solar:box-bold-duotone" className="mr-2 h-4 w-4" />View Tracking List</Button></div></CardContent></Card>}
-        </div>
+          {result && (
+            <div className="space-y-4 border-t pt-4">
+              <div className="flex items-center gap-3">
+                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                  Number(result.imported) > 0
+                    ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400'
+                    : 'bg-red-100 text-red-600 dark:bg-red-950/60 dark:text-red-400'
+                }`}>
+                  <Icon
+                    icon={Number(result.imported) > 0 ? 'solar:check-circle-bold-duotone' : 'solar:close-circle-bold-duotone'}
+                    className="h-5 w-5"
+                  />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">Import results</p>
+                  <p className="text-xs text-muted-foreground">
+                    {Number(result.imported)} imported{Number(result.failed) ? `, ${Number(result.failed)} failed` : ''}
+                  </p>
+                </div>
+              </div>
+
+              <ImportResultTiles
+                tiles={[
+                  { label: 'Imported', value: Number(result.imported || 0), tone: 'border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/40', glyph: 'text-emerald-600 dark:text-emerald-400' },
+                  { label: 'Errors', value: Number(result.failed || 0), tone: 'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40', glyph: 'text-red-600 dark:text-red-400' },
+                ]}
+              />
+
+              <ImportErrorList errors={failedRows} />
+
+              <div className="flex flex-wrap items-center gap-2">
+                <HeaderActionButton variant="outline" icon="solar:upload-bold-duotone" onClick={reset}>
+                  Import Another File
+                </HeaderActionButton>
+                <HeaderActionButton icon="solar:box-bold-duotone" asChild>
+                  <Link to="/inventory/tracking">View Tracking List</Link>
+                </HeaderActionButton>
+              </div>
+            </div>
+          )}
+        </ImportStepCard>
       </div>
     </div>
   )

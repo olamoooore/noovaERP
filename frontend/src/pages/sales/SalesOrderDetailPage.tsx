@@ -185,8 +185,8 @@ export function SalesOrderDetailPage() {
   return (
     <div className="container mx-auto py-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="space-y-2">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1 space-y-2">
         <Button
           variant="ghost"
           size="sm"
@@ -196,14 +196,17 @@ export function SalesOrderDetailPage() {
           <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
           Back
         </Button>
-          <div>
-            <h1 className="text-2xl font-bold">Sales Order {order.sales_order_number}</h1>
-            <p className="text-muted-foreground text-sm">
+          <div className="min-w-0">
+            <h1 className="truncate text-2xl font-bold">Sales Order {order.sales_order_number}</h1>
+            <p
+              className="mt-1 max-w-lg truncate text-sm text-muted-foreground"
+              title={`Created on ${formatDate(order.created_at)} for ${order.customer?.name || 'Unknown Customer'}`}
+            >
               Created on {formatDate(order.created_at)} for {order.customer?.name || 'Unknown Customer'}
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           {getStatusBadge(order.status)}
           <TagEditor subjectType="sales_order" subjectId={id!} />
           <HeaderActionButton

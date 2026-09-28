@@ -180,13 +180,20 @@ class ApprovalService
      */
     public function userCanApprove(User $user, string $requestType, float $amount): bool
     {
-        // Invoice approval is reviewer-driven (Sales Settings → Approval
-        // Workflow), not entitlement-driven. A configured reviewer may always
-        // decide — that list is the operator's intent and must not be
-        // second-guessed by the entitlement/role heuristic below. This must run
-        // BEFORE the entitlement map lookup, which has no invoice_approval key.
+        // Invoice AND delivery-order approval are reviewer-driven (Sales
+        // Settings → Approval Workflow), not entitlement-driven. A configured
+        // reviewer may always decide — that list is the operator's intent and
+        // must not be second-guessed by the entitlement/role heuristic below.
+        // This must run BEFORE the entitlement map lookup, which has no key for
+        // either request type.
         if ($requestType === \App\Services\InvoiceApprovalService::REQUEST_TYPE) {
             return app(\App\Services\InvoiceApprovalService::class)
+                ->resolveReviewers(null)
+                ->contains('id', $user->id);
+        }
+
+        if ($requestType === \App\Services\SalesApprovalGate::REQUEST_TYPE_DELIVERY_ORDER) {
+            return app(\Modules\Sales\Services\DeliveryOrderService::class)
                 ->resolveReviewers(null)
                 ->contains('id', $user->id);
         }

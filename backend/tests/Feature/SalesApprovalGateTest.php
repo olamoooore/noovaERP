@@ -346,4 +346,112 @@ class SalesApprovalGateTest extends TenantTestCase
             'Invoice must NOT be promoted when total is below the threshold.'
         );
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 4. The gate applies to every downstream route, not just confirm
+    // ─────────────────────────────────────────────────────────────────────
+
+    public function test_quotation_invoice_conversion_requires_approval_when_threshold_is_met(): void
+    {
+        Setting::setValue(SalesApprovalGate::SETTING_KEY, null);
+        $quotation = $this->makeDraftQuotation(2500);
+        $this->actingAs($this->user)->postJson("/api/v1/quotations/{$quotation->id}/confirm")->assertOk();
+        $quotation->refresh();
+        $this->assertNotNull($quotation->sales_order_id);
+
+        // Threshold enabled after the quotation already exists.
+        Setting::setValue(SalesApprovalGate::SETTING_KEY, 1000);
+
+        $response = $this->actingAs($this->user)
+            ->postJson("/api/v1/quotations/{$quotation->id}/create-invoice");
+
+        $response->assertStatus(202);
+        $response->assertJsonPath('requires_approval', true);
+
+        $approval = ApprovalRequest::firstOrFail();
+        $this->assertSame(SalesApprovalGate::REQUEST_TYPE_QUOTATION, $approval->request_type);
+        $this->assertSame(Quotation::class, $approval->subject_type);
+        $this->assertSame($quotation->id, $approval->subject_id);
+
+        $this->assertSame(
+            0,
+            Invoice::where('sales_order_id', $quotation->sales_order_id)->count(),
+            'No invoice may be created while the approval is pending.'
+        );
+    }
+
+    public function test_quotation_delivery_conversion_requires_approval_when_threshold_is_met(): void
+    {
+        Setting::setValue(SalesApprovalGate::SETTING_KEY, null);
+        $quotation = $this->makeDraftQuotation(2500);
+        $this->actingAs($this->user)->postJson("/api/v1/quotations/{$quotation->id}/confirm")->assertOk();
+
+        Setting::setValue(SalesApprovalGate::SETTING_KEY, 1000);
+
+        $response = $this->actingAs($this->user)
+            ->postJson("/api/v1/quotations/{$quotation->id}/create-delivery-order");
+
+        $response->assertStatus(202);
+        $response->assertJsonPath('requires_approval', true);
+
+        $this->assertSame(1, ApprovalRequest::count());
+        $this->assertSame(
+            0,
+            \Modules\Sales\Models\DeliveryOrder::where('quotation_id', $quotation->id)->count(),
+            'No delivery order may be created while the approval is pending.'
+        );
+    }
+
+    public function test_quotation_conversion_proceeds_once_the_request_is_approved(): void
+    {
+        Setting::setValue(SalesApprovalGate::SETTING_KEY, null);
+        $quotation = $this->makeDraftQuotation(2500);
+        $this->actingAs($this->user)->postJson("/api/v1/quotations/{$quotation->id}/confirm")->assertOk();
+        $quotation->refresh();
+        $this->assertNotNull($quotation->sales_order_id);
+
+        Setting::setValue(SalesApprovalGate::SETTING_KEY, 1000);
+        $this->actingAs($this->user)
+            ->postJson("/api/v1/quotations/{$quotation->id}/create-invoice")
+            ->assertStatus(202);
+
+        ApprovalRequest::firstOrFail()->update([
+            'status' => 'approved',
+            'reviewed_by' => $this->user->id,
+            'reviewed_at' => now(),
+        ]);
+
+        $this->actingAs($this->user)
+            ->postJson("/api/v1/quotations/{$quotation->id}/create-invoice")
+            ->assertStatus(201);
+
+        $this->assertGreaterThan(0, Invoice::where('sales_order_id', $quotation->sales_order_id)->count());
+        $this->assertSame(1, ApprovalRequest::count(), 'The approved request is reused, never duplicated.');
+    }
+
+    public function test_quotation_confirm_resumes_after_approval(): void
+    {
+        Setting::setValue(SalesApprovalGate::SETTING_KEY, 1000);
+        $quotation = $this->makeDraftQuotation(2500);
+
+        $this->actingAs($this->user)
+            ->postJson("/api/v1/quotations/{$quotation->id}/confirm")
+            ->assertStatus(202);
+        $this->assertSame('draft', $quotation->fresh()->status);
+
+        ApprovalRequest::firstOrFail()->update([
+            'status' => 'approved',
+            'reviewed_by' => $this->user->id,
+            'reviewed_at' => now(),
+        ]);
+
+        $this->actingAs($this->user)
+            ->postJson("/api/v1/quotations/{$quotation->id}/confirm")
+            ->assertOk();
+
+        $quotation->refresh();
+        $this->assertSame('confirmed', $quotation->status);
+        $this->assertNotNull($quotation->sales_order_id);
+        $this->assertSame(1, ApprovalRequest::count(), 'Re-running confirm after approval must not duplicate the request.');
+    }
 }

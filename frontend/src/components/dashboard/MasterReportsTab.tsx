@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -20,15 +22,24 @@ import { Button } from '@/components/ui/button'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { downloadReportDocx, downloadReportXlsx } from '@/lib/reportFiles'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { formatCurrency } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 
-type Range = '7d' | '30d' | '90d'
+type Range = '7d' | '30d' | '90d' | '180d' | '365d'
+
+const RANGE_OPTIONS: Array<{ value: Range; label: string }> = [
+  { value: '7d', label: 'Last 7 days' },
+  { value: '30d', label: 'Last 30 days' },
+  { value: '90d', label: 'Last 90 days' },
+  { value: '180d', label: 'Last 6 months' },
+  { value: '365d', label: 'Last 12 months' },
+]
+
+const RANGE_LABEL = Object.fromEntries(RANGE_OPTIONS.map((option) => [option.value, option.label])) as Record<Range, string>
 type MetricKey = 'revenue' | 'outstanding' | 'customers' | 'products' | 'orders' | 'stockAlerts'
-type ChartType = 'bar' | 'pie'
+type ChartType = 'bar' | 'line' | 'area' | 'pie'
 
 interface MasterReportsTabProps {
   stats: any
@@ -148,7 +159,7 @@ export function MasterReportsTab({ stats, range, onRangeChange }: MasterReportsT
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div><h2 className="text-xl font-semibold">Overall performance report</h2><p className="text-sm text-muted-foreground">A broad view of financial and operational performance.</p></div>
           <div className="flex gap-2">
-            <Select value={range} onValueChange={(value) => onRangeChange(value as Range)}><SelectTrigger className="w-40"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="7d">Last 7 days</SelectItem><SelectItem value="30d">Last 30 days</SelectItem><SelectItem value="90d">Last 90 days</SelectItem></SelectContent></Select>
+            <Select value={range} onValueChange={(value) => onRangeChange(value as Range)}><SelectTrigger className="h-8 w-40 rounded-full text-xs"><SelectValue /></SelectTrigger><SelectContent>{RANGE_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select>
             <HeaderActionButton variant="outline" icon="solar:file-text-bold-duotone" onClick={exportOverallXlsx}>
               Excel
             </HeaderActionButton>
@@ -174,15 +185,167 @@ export function MasterReportsTab({ stats, range, onRangeChange }: MasterReportsT
       <TabsContent value="domain" className="space-y-5">
         <div><h2 className="text-xl font-semibold">Domain-specific reports</h2><p className="text-sm text-muted-foreground">Open focused reports for a particular part of the organization.</p></div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {DOMAINS.map((domain) => <Link key={domain.title} to={domain.href} className="group"><Card className="h-full transition hover:border-primary/40 hover:shadow-md"><CardContent className="p-6"><div className={`inline-flex rounded-xl p-3 ${domain.color}`}><Icon icon={domain.icon} className="h-6 w-6" /></div><h3 className="mt-4 font-semibold">{domain.title}</h3><p className="mt-1 text-sm text-muted-foreground">{domain.description}</p><span className="mt-5 inline-flex items-center text-sm font-medium text-primary">Generate report <Icon icon="solar:arrow-right-linear" className="ml-1 h-4 w-4 transition group-hover:translate-x-1" /></span></CardContent></Card></Link>)}
+          {DOMAINS.map((domain) => (
+            <Link key={domain.title} to={domain.href} className="group">
+              <Card className="h-full rounded-xl border-slate-200/80 transition hover:border-primary/40 hover:shadow-md dark:border-slate-800">
+                <CardContent className="flex items-center gap-3 p-4">
+                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', domain.color)}>
+                    <Icon icon={domain.icon} className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-semibold">{domain.title}</h3>
+                    <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{domain.description}</p>
+                  </div>
+                  <Icon
+                    icon="solar:alt-arrow-right-bold"
+                    className="h-4 w-4 shrink-0 text-muted-foreground transition group-hover:translate-x-0.5 group-hover:text-primary"
+                  />
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
         </div>
       </TabsContent>
 
       <TabsContent value="custom" className="space-y-5">
         <div><h2 className="text-xl font-semibold">Custom report builder</h2><p className="text-sm text-muted-foreground">Choose the measures, period and visualization for a tailored report.</p></div>
         <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
-          <Card><CardHeader><CardTitle className="text-base">Report configuration</CardTitle></CardHeader><CardContent className="space-y-5"><div className="space-y-2"><Label>Reporting period</Label><Select value={range} onValueChange={(value) => onRangeChange(value as Range)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="7d">Last 7 days</SelectItem><SelectItem value="30d">Last 30 days</SelectItem><SelectItem value="90d">Last 90 days</SelectItem></SelectContent></Select></div><div className="space-y-3"><Label>Metrics</Label>{METRICS.map((metric) => <label key={metric.key} className="flex cursor-pointer items-center gap-3 rounded-md border p-3"><Checkbox checked={selectedMetrics.includes(metric.key)} onCheckedChange={() => toggleMetric(metric.key)} /><span className="text-sm">{metric.label}</span></label>)}</div><div className="space-y-2"><Label>Visualization</Label><Select value={chartType} onValueChange={(value) => setChartType(value as ChartType)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="bar">Bar chart</SelectItem><SelectItem value="pie">Pie chart</SelectItem></SelectContent></Select></div><Button className="w-full" disabled={!selectedMetrics.length} onClick={() => setGenerated({ metrics: selectedMetrics, chart: chartType })}><Icon icon="solar:chart-square-bold-duotone" className="mr-2 h-4 w-4" />Generate custom report</Button></CardContent></Card>
-          <Card><CardHeader className="flex-row items-center justify-between"><div><CardTitle className="text-base">Generated report</CardTitle><p className="mt-1 text-sm text-muted-foreground">{generated ? `${generated.metrics.length} metrics · ${range}` : 'Configure and generate a report to preview it.'}</p></div>{generated && <div className="flex gap-2"><HeaderActionButton variant="outline" icon="solar:file-text-bold-duotone" onClick={exportCustomXlsx}>Excel</HeaderActionButton><HeaderActionButton variant="outline" icon="solar:document-text-bold-duotone" onClick={exportCustomDocx}>Word</HeaderActionButton></div>}</CardHeader><CardContent>{!generated ? <div className="flex h-96 flex-col items-center justify-center rounded-lg border border-dashed text-center"><Icon icon="solar:chart-2-bold-duotone" className="h-12 w-12 text-muted-foreground" /><p className="mt-3 font-medium">No custom report generated</p><p className="text-sm text-muted-foreground">Select metrics and a visualization to begin.</p></div> : <div className="h-96"><ResponsiveContainer width="100%" height="100%">{generated.chart === 'bar' ? <BarChart data={customData}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis /><Tooltip /><Bar dataKey="value" fill="#0ea5e9" radius={[6, 6, 0, 0]} /></BarChart> : <PieChart><Pie data={customData} dataKey="value" nameKey="name" outerRadius={130} label>{customData.map((_, index) => <Cell key={index} fill={COLORS[index % COLORS.length]} />)}</Pie><Tooltip /><Legend /></PieChart>}</ResponsiveContainer></div>}</CardContent></Card>
+          <Card className="rounded-xl border-slate-200/80 dark:border-slate-800">
+            <CardHeader><CardTitle className="text-base">Report configuration</CardTitle></CardHeader>
+            <CardContent className="space-y-5">
+              <div className="space-y-2">
+                <Label>Reporting period</Label>
+                <Select value={range} onValueChange={(value) => onRangeChange(value as Range)}>
+                  <SelectTrigger className="h-8 rounded-full text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>{RANGE_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Metrics</Label>
+                  <span className="text-[11px] text-muted-foreground">{selectedMetrics.length} selected</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {METRICS.map((metric) => {
+                    const active = selectedMetrics.includes(metric.key)
+                    return (
+                      <button
+                        key={metric.key}
+                        type="button"
+                        onClick={() => toggleMetric(metric.key)}
+                        className={cn(
+                          'flex items-center gap-2 rounded-xl border p-3 text-left text-sm font-medium transition-colors',
+                          active
+                            ? 'border-primary/40 bg-primary/5 text-foreground'
+                            : 'border-slate-200/80 text-muted-foreground hover:bg-muted/40 dark:border-slate-800',
+                        )}
+                      >
+                        <Icon
+                          icon={active ? 'solar:check-circle-bold' : 'solar:circle-bold'}
+                          className={cn('h-4 w-4 shrink-0', active ? 'text-primary' : 'opacity-50')}
+                        />
+                        <span className="truncate">{metric.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Visualization</Label>
+                <Select value={chartType} onValueChange={(value) => setChartType(value as ChartType)}>
+                  <SelectTrigger className="h-8 rounded-full text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                  <SelectItem value="bar">Bar chart</SelectItem>
+                  <SelectItem value="line">Line chart</SelectItem>
+                  <SelectItem value="area">Area chart</SelectItem>
+                  <SelectItem value="pie">Pie chart</SelectItem>
+                </SelectContent>
+                </Select>
+              </div>
+
+              <Button className="h-9 w-full rounded-full" disabled={!selectedMetrics.length} onClick={() => setGenerated({ metrics: selectedMetrics, chart: chartType })}>
+                <Icon icon="solar:chart-square-bold-duotone" className="mr-1.5 h-4 w-4" />
+                Generate custom report
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-xl border-slate-200/80 dark:border-slate-800">
+            <CardHeader className="flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-base">Generated report</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {generated
+                    ? `${generated.metrics.length} metric${generated.metrics.length === 1 ? '' : 's'} · ${RANGE_LABEL[range]}`
+                    : 'Configure and generate a report to preview it.'}
+                </p>
+              </div>
+              {generated && (
+                <div className="flex gap-2">
+                  <HeaderActionButton variant="outline" icon="solar:file-text-bold-duotone" onClick={exportCustomXlsx}>Excel</HeaderActionButton>
+                  <HeaderActionButton variant="outline" icon="solar:document-text-bold-duotone" onClick={exportCustomDocx}>Word</HeaderActionButton>
+                </div>
+              )}
+            </CardHeader>
+            <CardContent>
+              {!generated ? (
+                <div className="flex h-96 flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 text-center dark:border-slate-700">
+                  <Icon icon="solar:chart-2-bold-duotone" className="h-12 w-12 text-muted-foreground opacity-40" />
+                  <p className="mt-3 font-medium">No custom report generated</p>
+                  <p className="text-sm text-muted-foreground">Select metrics and a visualization to begin.</p>
+                </div>
+              ) : (
+                <div className="h-96">
+                  <ResponsiveContainer width="100%" height="100%">
+                    {generated.chart === 'bar' && (
+                      <BarChart data={customData}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                        <YAxis />
+                        <Tooltip />
+                        <Bar dataKey="value" fill="#0ea5e9" radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    )}
+                    {generated.chart === 'line' && (
+                      <LineChart data={customData}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                        <YAxis />
+                        <Tooltip />
+                        <Line type="monotone" dataKey="value" stroke="#0ea5e9" strokeWidth={3} dot={{ r: 4 }} />
+                      </LineChart>
+                    )}
+                    {generated.chart === 'area' && (
+                      <AreaChart data={customData}>
+                        <defs>
+                          <linearGradient id="customReportArea" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#0ea5e9" stopOpacity={0.35} />
+                            <stop offset="100%" stopColor="#0ea5e9" stopOpacity={0.03} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                        <YAxis />
+                        <Tooltip />
+                        <Area type="monotone" dataKey="value" stroke="#0ea5e9" strokeWidth={2} fill="url(#customReportArea)" />
+                      </AreaChart>
+                    )}
+                    {generated.chart === 'pie' && (
+                      <PieChart>
+                        <Pie data={customData} dataKey="value" nameKey="name" outerRadius={130} label>
+                          {customData.map((_, index) => <Cell key={index} fill={COLORS[index % COLORS.length]} />)}
+                        </Pie>
+                        <Tooltip />
+                        <Legend />
+                      </PieChart>
+                    )}
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </TabsContent>
     </Tabs>

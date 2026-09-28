@@ -3,6 +3,14 @@
 namespace Modules\Storefront\Contracts;
 
 use App\Modules\Contracts\BaseModuleContract;
+use Modules\Storefront\Models\StorefrontAccount;
+use Modules\Storefront\Models\StorefrontCart;
+use Modules\Storefront\Models\StorefrontCartItem;
+use Modules\Storefront\Models\StorefrontOrder;
+use Modules\Storefront\Models\StorefrontOrderItem;
+use Modules\Storefront\Models\StorefrontOrderPaymentAttempt;
+use Modules\Storefront\Models\StorefrontOrderStatusHistory;
+use Modules\Storefront\Models\StorefrontSession;
 use Modules\Storefront\Models\StorefrontSettings;
 
 /**
@@ -66,6 +74,14 @@ class StorefrontModuleContract extends BaseModuleContract
     {
         return [
             StorefrontSettings::class,
+            StorefrontAccount::class,
+            StorefrontSession::class,
+            StorefrontCart::class,
+            StorefrontCartItem::class,
+            StorefrontOrder::class,
+            StorefrontOrderItem::class,
+            StorefrontOrderStatusHistory::class,
+            StorefrontOrderPaymentAttempt::class,
         ];
     }
 

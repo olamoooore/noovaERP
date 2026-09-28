@@ -158,6 +158,118 @@ class DeliveryOrderService
     /**
      * Create a delivery order from a confirmed/allocated/fulfilled sales order.
      */
+
+    /**
+     * Resolve the requires_approval flag for a new delivery order: an explicit
+     * caller value always wins, otherwise the tenant's configured default
+     * (sales.delivery_order.default_requires_approval) applies. Server-side
+     * creation paths (quotation→DO, invoice→DO, imports) must honour the
+     * tenant setting exactly like the create form does.
+     */
+    private function resolveRequiresApproval(array $data): bool
+    {
+        if (array_key_exists('requires_approval', $data)) {
+            return ! empty($data['requires_approval']);
+        }
+
+        return (bool) \App\Models\Setting::getValue('sales.delivery_order.default_requires_approval', false);
+    }
+
+    /**
+     * Send a pending delivery order to the approval channel: an ApprovalRequest
+     * (listed by the approvals inbox) plus a notification for every configured
+     * reviewer. Mirrors the invoice approval flow, and is idempotent — an
+     * existing pending/approved request is never duplicated.
+     */
+    public function submitForApproval(DeliveryOrder $deliveryOrder): void
+    {
+        if (! $deliveryOrder->requires_approval || $deliveryOrder->approval_status !== 'pending') {
+            return;
+        }
+
+        $requester = Auth::user();
+
+        if (! $requester) {
+            return;
+        }
+
+        try {
+            $alreadySubmitted = \App\Models\ApprovalRequest::query()
+                ->where('subject_type', DeliveryOrder::class)
+                ->where('subject_id', $deliveryOrder->id)
+                ->where('request_type', 'delivery_order_approval')
+                ->whereIn('status', ['pending', 'approved'])
+                ->exists();
+
+            if (! $alreadySubmitted) {
+                \App\Models\ApprovalRequest::create([
+                    'request_type' => 'delivery_order_approval',
+                    'subject_type' => DeliveryOrder::class,
+                    'subject_id' => $deliveryOrder->id,
+                    'amount' => (float) ($deliveryOrder->total ?? 0),
+                    'reason' => "Delivery order {$deliveryOrder->delivery_order_number} requires approval before it can be confirmed.",
+                    'metadata' => [
+                        'delivery_order_number' => $deliveryOrder->delivery_order_number,
+                        'customer_id' => $deliveryOrder->customer_id,
+                        'source' => $deliveryOrder->source,
+                    ],
+                    'requested_by' => $requester->id,
+                    'requested_at' => now(),
+                    'status' => 'pending',
+                    'expires_at' => now()->addDays(7),
+                ]);
+            }
+
+            $notificationService = app(\App\Platform\Notifications\NotificationService::class);
+
+            foreach ($this->resolveReviewers((int) $deliveryOrder->created_by) as $reviewer) {
+                $notificationService->dispatch('approval.requested', $reviewer, array_merge([
+                    'subject' => "Delivery order {$deliveryOrder->delivery_order_number} requires approval",
+                    'body' => "Delivery order {$deliveryOrder->delivery_order_number} requires your approval.",
+                    'type' => 'delivery_order_approval',
+                    'amount' => (float) ($deliveryOrder->total ?? 0),
+                    'delivery_order_id' => $deliveryOrder->id,
+                    'delivery_order_number' => $deliveryOrder->delivery_order_number,
+                    'requested_by' => $requester->name,
+                ], \App\Platform\Notifications\NotificationReferences::forDeliveryOrder($deliveryOrder)));
+            }
+        } catch (\Throwable $e) {
+            // A channel hiccup must never roll back the delivery order itself.
+            Log::warning('DeliveryOrderService: approval submission failed', [
+                'delivery_order_id' => $deliveryOrder->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Settle the delivery order's pending ApprovalRequest after a decision was
+     * taken through the document endpoints (so the approvals inbox never shows
+     * a stale pending request).
+     */
+    private function settleApprovalRequest(DeliveryOrder $deliveryOrder, string $status, ?int $reviewedBy = null, ?string $notes = null): void
+    {
+        try {
+            \App\Models\ApprovalRequest::query()
+                ->where('subject_type', DeliveryOrder::class)
+                ->where('subject_id', $deliveryOrder->id)
+                ->where('request_type', 'delivery_order_approval')
+                ->where('status', 'pending')
+                ->update([
+                    'status' => $status,
+                    'reviewed_by' => $reviewedBy,
+                    'reviewed_at' => now(),
+                    'review_notes' => $notes,
+                    'updated_at' => now(),
+                ]);
+        } catch (\Throwable $e) {
+            Log::warning('DeliveryOrderService: settling approval request failed', [
+                'delivery_order_id' => $deliveryOrder->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     public function createDeliveryOrder(SalesOrder $order, array $data): DeliveryOrder
     {
         if (! $order->isConfirmed() && ! $order->isAllocated() && ! $order->isFulfilled() && $order->status !== 'invoiced') {
@@ -240,8 +352,8 @@ class DeliveryOrderService
             'quotation_id' => $quotationId,
             'notes' => $data['notes'] ?? null,
             'created_by' => $actorId,
-            'requires_approval' => ! empty($data['requires_approval']),
-            'approval_status' => ! empty($data['requires_approval']) ? 'pending' : 'not_required',
+            'requires_approval' => $this->resolveRequiresApproval($data),
+            'approval_status' => $this->resolveRequiresApproval($data) ? 'pending' : 'not_required',
         ]);
 
         $lines = $data['lines'] ?? [];
@@ -311,7 +423,10 @@ class DeliveryOrderService
             throw new \Exception('Set Deliver Now greater than zero for at least one product before creating the delivery order.');
         }
 
-        return $deliveryOrder->fresh(['lines.salesOrderLine', 'customer', 'salesOrder']);
+        $deliveryOrder = $deliveryOrder->fresh(['lines.salesOrderLine', 'customer', 'salesOrder']);
+        $this->submitForApproval($deliveryOrder);
+
+        return $deliveryOrder;
     }
 
     /**
@@ -544,7 +659,7 @@ class DeliveryOrderService
             }
         }
 
-        return DB::transaction(function () use ($data, $customerId, $warehouseId, $lines, $quotationId, $invoiceId) {
+        $deliveryOrder = DB::transaction(function () use ($data, $customerId, $warehouseId, $lines, $quotationId, $invoiceId) {
             $actorId = TenantUserHelper::requireTenantUserId($data['created_by'] ?? Auth::id());
 
             $deliveryOrder = DeliveryOrder::create([
@@ -568,8 +683,8 @@ class DeliveryOrderService
                 'quotation_id' => $quotationId,
                 'notes' => $data['notes'] ?? null,
                 'created_by' => $actorId,
-                'requires_approval' => ! empty($data['requires_approval']),
-                'approval_status' => ! empty($data['requires_approval']) ? 'pending' : 'not_required',
+                'requires_approval' => $this->resolveRequiresApproval($data),
+                'approval_status' => $this->resolveRequiresApproval($data) ? 'pending' : 'not_required',
             ]);
 
             foreach ($lines as $lineData) {
@@ -644,6 +759,10 @@ class DeliveryOrderService
 
             return $deliveryOrder->fresh(['lines.product', 'customer']);
         });
+
+        $this->submitForApproval($deliveryOrder);
+
+        return $deliveryOrder;
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -1161,6 +1280,7 @@ class DeliveryOrderService
         }
 
         $deliveryOrder->update(['approval_status' => 'approved']);
+        $this->settleApprovalRequest($deliveryOrder, 'approved', (int) $user->id);
 
         $this->logChatter($deliveryOrder, 'status_changed', "Approved {$deliveryOrder->delivery_order_number}", [
             'state' => 'pending → approved',
@@ -1175,6 +1295,7 @@ class DeliveryOrderService
             'approval_status' => 'rejected',
             'status' => 'draft',
         ]);
+        $this->settleApprovalRequest($deliveryOrder, 'rejected', (int) $user->id, $reason);
 
         $this->logChatter($deliveryOrder, 'status_changed', "Rejected {$deliveryOrder->delivery_order_number}", [
             'state' => 'pending → rejected',

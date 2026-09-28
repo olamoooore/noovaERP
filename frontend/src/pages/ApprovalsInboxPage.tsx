@@ -81,12 +81,12 @@ export default function ApprovalsInboxPage() {
     queryKey: ['approvals', tab],
     queryFn: async () => {
       if (tab === 'pending') {
-        const res = await api.get('/approvals', { params: { type: 'invoice_approval' } })
+        const res = await api.get('/approvals')
         return { data: res.data.data ?? [], count: res.data.count ?? 0 }
       }
       const res = await api.get('/approvals/my-requests', { params: { status: 'all' } })
       const items = Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data) ? res.data : [])
-      return { data: items.filter((r: ApprovalRequest) => r.request_type === 'invoice_approval'), count: items.length }
+      return { data: items, count: items.length }
     },
     refetchInterval: 30000,
   })
@@ -104,7 +104,7 @@ export default function ApprovalsInboxPage() {
       queryClient.invalidateQueries({ queryKey: ['approvals'] })
       queryClient.invalidateQueries({ queryKey: ['notifications'] })
       toast({
-        title: vars.action === 'approve' ? 'Invoice approved' : 'Invoice rejected',
+        title: vars.action === 'approve' ? 'Request approved' : 'Request rejected',
         description: 'The requester has been notified.',
       })
       setDecisionDialog(null)
@@ -145,7 +145,7 @@ export default function ApprovalsInboxPage() {
         <div>
           <h1 className="text-2xl font-bold">Approvals Inbox</h1>
           <p className="text-sm text-muted-foreground">
-            Invoice approval requests waiting for your decision
+            Invoices, quotations and delivery orders waiting for your decision
           </p>
         </div>
         <Button variant="outline" onClick={() => navigate('/notifications')}>
@@ -188,9 +188,14 @@ export default function ApprovalsInboxPage() {
             <div className="space-y-3">
               {items.map((request) => {
                 const meta = request.metadata || {}
-                const invoiceId = meta.invoice_id || (request.subject_type?.includes('Invoice') ? request.subject_id : null)
+                const type = request.request_type || ''
+                const typeMeta = type.startsWith('delivery_order')
+                  ? { label: 'Delivery Order', icon: 'solar:box-bold-duotone', path: `/delivery-orders/${request.subject_id}` }
+                  : type.startsWith('quotation')
+                    ? { label: 'Quotation', icon: 'solar:document-text-bold-duotone', path: `/quotations/${request.subject_id}` }
+                    : { label: 'Invoice', icon: 'solar:bill-list-bold-duotone', path: `/invoices/${request.subject_id}` }
                 const customerName = meta.customer_name || request.invoice?.customer?.name
-                const invoiceNumber = meta.invoice_number || request.invoice?.invoice_number || `#${request.subject_id}`
+                const reference = meta.delivery_order_number || meta.quotation_number || meta.invoice_number || request.invoice?.invoice_number || `#${request.subject_id}`
                 const amount = request.amount ?? 0
                 const currency = meta.currency || request.invoice?.currency_code || 'USD'
                 const isPending = request.status === 'pending'
@@ -204,8 +209,12 @@ export default function ApprovalsInboxPage() {
                           <Badge variant={statusVariant(request.status) as any}>
                             {request.status}
                           </Badge>
+                          <Badge variant="outline" className="gap-1 font-normal">
+                            <Icon icon={typeMeta.icon} className="h-3 w-3" />
+                            {typeMeta.label}
+                          </Badge>
                           <Badge variant="outline" className="font-mono">
-                            {invoiceNumber}
+                            {reference}
                           </Badge>
                           {customerName && (
                             <span className="text-sm text-muted-foreground">
@@ -259,14 +268,14 @@ export default function ApprovalsInboxPage() {
                       </div>
 
                       <div className="flex shrink-0 flex-col items-end gap-2">
-                        {invoiceId && (
+                        {request.subject_id && (
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => navigate(`/invoices/${invoiceId}`)}
+                            onClick={() => navigate(typeMeta.path)}
                           >
                             <Icon icon="solar:eye-bold-duotone" className="mr-1 h-4 w-4" />
-                            View invoice
+                            View {typeMeta.label.toLowerCase()}
                           </Button>
                         )}
                         {isPending && (

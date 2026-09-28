@@ -110,6 +110,24 @@ class InvoiceService
             // ADR-003A: Populate snapshot fields from authoritative customer/contact records
             app(DocumentSnapshotService::class)->populateInvoiceSnapshot($invoice);
 
+            // Tenant policy (sales.invoice.default_requires_approval=true) means
+            // every created invoice must go through the approval channel before
+            // posting — submit it right away so it never sits in draft with no
+            // pending request (which left quote→invoices unapprovable).
+            if ($invoice->requires_approval) {
+                try {
+                    $actor = \Illuminate\Support\Facades\Auth::user();
+                    if ($actor && $invoice->lines()->exists()) {
+                        app(\App\Services\InvoiceApprovalService::class)->submit($invoice, $actor);
+                    }
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning('Invoice auto-submit for approval failed', [
+                        'invoice_id' => $invoice->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
             return $invoice->load(['customer', 'lines.product']);
         });
     }

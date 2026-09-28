@@ -59,22 +59,36 @@ class ApprovalRequest extends Model
     }
 
     /**
-     * Generate unique request number
+     * Generate unique request number.
+     *
+     * Takes the max of the well-formed numeric suffixes for today and adds one.
+     * Malformed historical values (e.g. "…9.2233720368548E+18" left behind by a
+     * float-overflow in the old suffix parse) are ignored — previously they
+     * sorted to the top, the regex matched their trailing digits, and every new
+     * request collided with the same existing number.
      */
     public static function generateRequestNumber(): string
     {
         $date = now()->format('Ymd');
-        $last = static::where('request_number', 'like', "APR{$date}%")
-            ->orderBy('request_number', 'desc')
-            ->first();
+        $prefix = 'APR'.$date;
 
-        if ($last && preg_match('/(\d+)$/', $last->request_number, $matches)) {
-            $number = intval($matches[1]) + 1;
-        } else {
-            $number = 1;
-        }
+        $max = static::where('request_number', 'like', $prefix.'%')
+            ->pluck('request_number')
+            ->reduce(function (int $carry, $value) use ($prefix) {
+                $suffix = substr((string) $value, strlen($prefix));
 
-        return 'APR'.$date.str_pad($number, 6, '0', STR_PAD_LEFT);
+                // Only N.NNNNNN-style numeric suffixes count; anything else is
+                // corrupt history and must not break the sequence.
+                if (! ctype_digit($suffix) || $suffix === '' || strlen($suffix) > 6) {
+                    return $carry;
+                }
+
+                return max($carry, (int) $suffix);
+            }, 0);
+
+        $number = $max + 1;
+
+        return $prefix.str_pad((string) $number, 6, '0', STR_PAD_LEFT);
     }
 
     /**

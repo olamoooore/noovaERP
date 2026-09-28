@@ -1,26 +1,25 @@
-import { useState, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Icon } from '@iconify/react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Progress } from '@/components/ui/progress'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import {
+  ImportDropzone,
+  ImportFieldTable,
+  ImportPageHeader,
+  ImportResults,
+  ImportStepCard,
+  type ImportRowIssue,
+  type ImportTemplateColumn,
+} from '@/components/import/ImportPageKit'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 
 interface ImportResult {
   created: number
   errors: Array<{ row: number; message: string; group?: string }>
 }
 
-const TEMPLATE_COLUMNS = [
+const TEMPLATE_COLUMNS: ImportTemplateColumn[] = [
   { name: 'delivery_order_number', required: false, description: 'Groups rows into one DO. Blank = auto-generated.' },
   { name: 'customer_code', required: true, description: 'Customer code (preferred). Falls back to customer_name.' },
   { name: 'customer_name', required: false, description: 'Customer name (used if customer_code is blank).' },
@@ -51,19 +50,17 @@ const TEMPLATE_COLUMNS = [
   { name: 'expiry_date', required: false, description: 'Lot expiry date (M/D/YYYY or YYYY-MM-DD).' },
 ]
 
-const csvValue = (v: string) => {
-  if (/[",\n]/.test(v)) {
-    return `"${v.replace(/"/g, '""')}"`
+const csvValue = (value: string) => {
+  if (/[",\n]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`
   }
-  return v
+  return value
 }
 
 export function DeliveryOrderImportPage() {
-  const navigate = useNavigate()
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
-  const [dragActive, setDragActive] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
 
@@ -93,30 +90,10 @@ export function DeliveryOrderImportPage() {
     },
   })
 
-  const handleFile = useCallback((file: File) => {
-    if (!file.name.endsWith('.csv') && !file.name.endsWith('.txt')) {
-      toast({ title: 'Invalid file type', description: 'Please select a CSV file.', variant: 'destructive' })
-      return
-    }
-    setSelectedFile(file)
-    setImportResult(null)
-  }, [toast])
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setDragActive(false)
-    if (e.dataTransfer.files?.[0]) handleFile(e.dataTransfer.files[0])
-  }, [handleFile])
-
-  const handleImport = () => {
-    if (!selectedFile) return
-    importMutation.mutate(selectedFile)
-  }
-
   const downloadTemplate = () => {
-    const headers = TEMPLATE_COLUMNS.map((c) => c.name)
-    const example = TEMPLATE_COLUMNS.map((c) => {
-      switch (c.name) {
+    const headers = TEMPLATE_COLUMNS.map((column) => column.name)
+    const example = TEMPLATE_COLUMNS.map((column) => {
+      switch (column.name) {
         case 'customer_code': return 'CUST-001'
         case 'delivery_date': return '2026-07-14'
         case 'expected_date': return '2026-07-15'
@@ -138,135 +115,82 @@ export function DeliveryOrderImportPage() {
     a.download = 'delivery-order-import-template.csv'
     a.click()
     URL.revokeObjectURL(url)
+    toast({ title: 'Template downloaded', description: 'Fill in the template and upload it in Step 2.' })
   }
+
+  const reset = () => {
+    setSelectedFile(null)
+    setImportResult(null)
+  }
+
+  const errors: ImportRowIssue[] = (importResult?.errors || []).map((error) => ({
+    row: error.row,
+    message: error.group ? `${error.group}: ${error.message}` : error.message,
+  }))
 
   return (
     <div className="space-y-6 p-6">
-      <div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="-ml-2 mb-3 text-muted-foreground hover:text-foreground"
-          onClick={() => navigate('/delivery-orders')}
+      <ImportPageHeader
+        title="Import Delivery Orders"
+        subtitle="Upload a CSV file to create delivery orders in bulk. Each row group (by delivery_order_number) becomes one delivery order with line items."
+        backTo="/delivery-orders"
+      />
+
+      <div className="grid items-start gap-6 lg:grid-cols-2">
+        <ImportStepCard
+          step={1}
+          title="Download Template"
+          description="Start by downloading the CSV template with all supported delivery order columns."
+          icon="solar:download-minimalistic-bold-duotone"
         >
-          <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
-          Back
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold">Import Delivery Orders</h1>
-          <p className="text-muted-foreground mt-1">Upload a CSV file to create delivery orders in bulk.</p>
-        </div>
-      </div>
+          <HeaderActionButton variant="outline" icon="solar:document-text-bold-duotone" onClick={downloadTemplate}>
+            Download Import Template
+          </HeaderActionButton>
+          <ImportFieldTable columns={TEMPLATE_COLUMNS} hint="Rows sharing a delivery_order_number are combined into one delivery order." />
+        </ImportStepCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Upload CSV</CardTitle>
-          <CardDescription>
-            Each row group (by delivery_order_number) becomes one delivery order with line items.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div
-            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-              dragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/25'
-            }`}
-            onDragOver={(e) => { e.preventDefault(); setDragActive(true) }}
-            onDragLeave={() => setDragActive(false)}
-            onDrop={handleDrop}
-          >
-            <Icon icon="solar:upload-bold-duotone" className="mx-auto h-12 w-12 text-muted-foreground/50" />
-            <p className="mt-4 text-sm text-muted-foreground">
-              Drag and drop a CSV file here, or{' '}
-              <label className="text-primary cursor-pointer hover:underline">
-                browse
-                <input type="file" className="hidden" accept=".csv,.txt" onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} />
-              </label>
-            </p>
-            {selectedFile && (
-              <p className="mt-2 text-sm font-medium text-green-600">{selectedFile.name}</p>
-            )}
-          </div>
+        <ImportStepCard
+          step={2}
+          title="Upload CSV File"
+          description="Fill in the template and upload it here."
+          icon="solar:upload-minimalistic-bold-duotone"
+          tone="bg-blue-500/10"
+          glyph="text-blue-600 dark:text-blue-400"
+        >
+          <ImportDropzone
+            selectedFile={selectedFile}
+            onFile={(file) => { setSelectedFile(file); setImportResult(null) }}
+            onClear={reset}
+            accept=".csv,.txt,text/csv"
+            allowedExtensions={['.csv', '.txt']}
+          />
 
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={downloadTemplate}>
-              <Icon icon="solar:download-bold" className="h-4 w-4 mr-2" />
-              Download Template
-            </Button>
-            <Button onClick={handleImport} disabled={!selectedFile || importMutation.isPending}>
-              {importMutation.isPending ? 'Importing...' : 'Import'}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {importResult && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Import Results</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 rounded-lg bg-green-50 border border-green-200">
-                <div className="text-2xl font-bold text-green-700">{importResult.created}</div>
-                <div className="text-sm text-green-600">Delivery Orders Created</div>
-              </div>
-              <div className="p-4 rounded-lg bg-red-50 border border-red-200">
-                <div className="text-2xl font-bold text-red-700">{importResult.errors.length}</div>
-                <div className="text-sm text-red-600">Errors</div>
-              </div>
+          {selectedFile && !importResult && (
+            <div className="space-y-3">
+              <HeaderActionButton
+                icon="solar:import-bold-duotone"
+                loading={importMutation.isPending}
+                disabled={importMutation.isPending}
+                onClick={() => importMutation.mutate(selectedFile)}
+              >
+                Import Delivery Orders
+              </HeaderActionButton>
+              {importMutation.isPending && <Progress value={undefined} className="w-full" />}
             </div>
+          )}
 
-            {importResult.errors.length > 0 && (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Row / Group</TableHead>
-                    <TableHead>Error</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {importResult.errors.map((err, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell>{err.group || err.row}</TableCell>
-                      <TableCell className="text-red-600">{err.message}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-
-            <Button variant="outline" onClick={() => navigate('/delivery-orders')}>
-              Go to Delivery Orders
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>CSV Format Reference</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Column</TableHead>
-                <TableHead>Required</TableHead>
-                <TableHead>Description</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {TEMPLATE_COLUMNS.map((col) => (
-                <TableRow key={col.name}>
-                  <TableCell className="font-mono text-sm">{col.name}</TableCell>
-                  <TableCell>{col.required ? 'Yes' : 'No'}</TableCell>
-                  <TableCell className="text-muted-foreground">{col.description}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+          {importResult && (
+            <ImportResults
+              created={importResult.created}
+              errors={errors}
+              onReset={reset}
+              doneTo="/delivery-orders"
+              doneLabel="View Delivery Orders"
+              doneIcon="solar:box-bold-duotone"
+            />
+          )}
+        </ImportStepCard>
+      </div>
     </div>
   )
 }

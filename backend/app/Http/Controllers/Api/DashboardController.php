@@ -36,7 +36,7 @@ class DashboardController extends Controller
         $this->resolveEntityScope($request);
 
         $range = $request->validate([
-            'range' => 'nullable|in:7d,30d,90d',
+            'range' => 'nullable|in:7d,30d,90d,180d,365d',
         ])['range'] ?? '30d';
         $days = (int) rtrim($range, 'd');
         $startDate = now()->startOfDay()->subDays($days - 1);
@@ -73,7 +73,7 @@ class DashboardController extends Controller
             'pos_orders_today' => $this->getPosOrdersToday(),
             'low_stock_products' => $this->getLowStockProducts(),
             'recent_invoices' => $this->getRecentInvoices(),
-            'revenue_trend' => $this->getRevenueTrend($startDate, $endDate),
+            'revenue_trend' => $this->getRevenueTrend($startDate, $endDate, $days >= 180),
         ];
 
         return response()->json($stats);
@@ -279,8 +279,31 @@ class DashboardController extends Controller
             ->get();
     }
 
-    private function getRevenueTrend($startDate, $endDate): array
+    private function getRevenueTrend($startDate, $endDate, bool $byMonth = false): array
     {
+        // Ranges of six months or more render month buckets — 365 daily points
+        // are unreadable and inflate the payload.
+        if ($byMonth) {
+            $revenueByMonth = $this->applyInvoiceEntityScope(
+                Invoice::select(
+                    DB::raw("TO_CHAR(DATE_TRUNC('month', invoice_date), 'YYYY-MM') as revenue_month"),
+                    DB::raw('SUM(total) as revenue'),
+                )
+                    ->whereIn('status', ['sent', 'paid', 'overdue'])
+                    ->whereBetween('invoice_date', [$startDate->toDateString(), $endDate->toDateString()])
+            )
+                ->groupBy(DB::raw("DATE_TRUNC('month', invoice_date)"))
+                ->pluck('revenue', 'revenue_month');
+
+            $series = [];
+            for ($month = $startDate->copy()->startOfMonth(); $month->lte($endDate); $month->addMonth()) {
+                $key = $month->format('Y-m');
+                $series[] = ['x' => $key, 'v' => (float) ($revenueByMonth[$key] ?? 0)];
+            }
+
+            return $series;
+        }
+
         $revenueByDate = $this->applyInvoiceEntityScope(
             Invoice::select(
                 DB::raw('CAST(invoice_date AS DATE) as revenue_date'),

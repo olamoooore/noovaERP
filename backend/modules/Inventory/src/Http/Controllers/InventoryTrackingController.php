@@ -3,12 +3,14 @@
 namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Models\BatchConsumption;
 use App\Models\Product;
 use App\Models\ProductBatch;
 use App\Models\ProductSerial;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Modules\Inventory\Services\StockAdjustmentService;
 
@@ -150,5 +152,110 @@ class InventoryTrackingController extends Controller
             'failed' => collect($results)->where('status', 'failed')->count(),
             'results' => $results,
         ]);
+    }
+
+    /**
+     * Edit a lot/batch's descriptive fields. Quantity is deliberately NOT
+     * editable here: changing stock on hand must go through a stock movement
+     * (Receive Stock / adjustment) so the ledger and batch layers stay in step.
+     */
+    public function updateBatch(Request $request, int $id)
+    {
+        $batch = ProductBatch::findOrFail($id);
+
+        $validated = $request->validate([
+            'batch_number' => [
+                'required', 'string', 'max:100',
+                Rule::unique('product_batches', 'batch_number')
+                    ->ignore($batch->id)
+                    ->where(fn ($query) => $query->where('product_id', $batch->product_id)),
+            ],
+            'lot_number' => 'nullable|string|max:100',
+            'warehouse_id' => 'nullable|integer|exists:warehouses,id',
+            'status' => 'required|in:available,quarantine,expired,recalled',
+            'expiry_date' => 'nullable|date',
+            'manufacturing_date' => 'nullable|date',
+            'received_date' => 'nullable|date',
+            'supplier_batch_number' => 'nullable|string|max:100',
+            'cost' => 'nullable|numeric|min:0',
+            'notes' => 'nullable|string',
+        ]);
+
+        $batch->update($validated);
+
+        return response()->json([
+            'message' => 'Lot/batch updated',
+            'data' => $batch->fresh(['product:id,name,sku', 'warehouse:id,name,code']),
+        ]);
+    }
+
+    public function destroyBatch(int $id)
+    {
+        $batch = ProductBatch::findOrFail($id);
+
+        $blockers = [];
+        if ((float) $batch->quantity > 0) {
+            $blockers[] = 'it still has stock on hand';
+        }
+        if ((float) $batch->quantity_reserved > 0) {
+            $blockers[] = 'it has reserved stock';
+        }
+        if (ProductSerial::where('batch_id', $batch->id)->exists()) {
+            $blockers[] = 'serial numbers reference it';
+        }
+        if (BatchConsumption::where('batch_id', $batch->id)->exists()) {
+            $blockers[] = 'it has consumption history';
+        }
+
+        if ($blockers !== []) {
+            return response()->json([
+                'message' => 'Cannot delete this lot/batch because '.implode(' and ', $blockers).'. Adjust the stock to zero first.',
+            ], 422);
+        }
+
+        $batch->delete();
+
+        return response()->json(['message' => 'Lot/batch deleted']);
+    }
+
+    public function updateSerial(Request $request, int $id)
+    {
+        $serial = ProductSerial::findOrFail($id);
+
+        $validated = $request->validate([
+            'serial_number' => ['required', 'string', 'max:100', Rule::unique('product_serials', 'serial_number')->ignore($serial->id)],
+            'warehouse_id' => 'nullable|integer|exists:warehouses,id',
+            'batch_id' => 'nullable|integer|exists:product_batches,id',
+            'status' => 'required|in:available,reserved,sold,returned,defective,scrapped',
+            'cost' => 'nullable|numeric|min:0',
+            'mac_address' => 'nullable|string|max:100',
+            'imei' => 'nullable|string|max:100',
+            'manufacturing_date' => 'nullable|date',
+            'warranty_start_date' => 'nullable|date',
+            'warranty_end_date' => 'nullable|date|after_or_equal:warranty_start_date',
+            'notes' => 'nullable|string',
+        ]);
+
+        $serial->update($validated);
+
+        return response()->json([
+            'message' => 'Serial number updated',
+            'data' => $serial->fresh(['product:id,name,sku', 'warehouse:id,name,code', 'batch:id,batch_number,lot_number,expiry_date']),
+        ]);
+    }
+
+    public function destroySerial(int $id)
+    {
+        $serial = ProductSerial::findOrFail($id);
+
+        if (in_array($serial->status, ['sold', 'reserved'], true) || $serial->sold_at || $serial->sale_reference) {
+            return response()->json([
+                'message' => 'Cannot delete a sold or reserved serial number — it is part of a sale/reservation history.',
+            ], 422);
+        }
+
+        $serial->delete();
+
+        return response()->json(['message' => 'Serial number deleted']);
     }
 }

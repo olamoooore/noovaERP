@@ -194,6 +194,44 @@ export function InvoiceDetailPage() {
     enabled: !!id,
   })
 
+  const submitApprovalMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/invoices/${id}/submit-approval`)
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] })
+      queryClient.invalidateQueries({ queryKey: ['approvals'] })
+      toast({ title: 'Invoice submitted for approval', description: 'Reviewers have been notified.' })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to submit for approval',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
+  const withdrawApprovalMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/invoices/${id}/withdraw-approval`)
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] })
+      queryClient.invalidateQueries({ queryKey: ['approvals'] })
+      toast({ title: 'Approval request withdrawn' })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to withdraw approval',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
   const postMutation = useMutation({
     mutationFn: async () => {
       // GL posting endpoint (accounting.post). The legacy /send route posts too
@@ -226,6 +264,13 @@ export function InvoiceDetailPage() {
       return response.data
     },
     onSuccess: (data) => {
+      if (data?.requires_approval) {
+        toast({
+          title: 'Approval required',
+          description: data?.message || 'This invoice must be approved before it can be delivered.',
+        })
+        return
+      }
       queryClient.invalidateQueries({ queryKey: ['invoice', id] })
       queryClient.invalidateQueries({ queryKey: ['invoices'] })
       queryClient.invalidateQueries({ queryKey: ['delivery-orders'] })
@@ -522,6 +567,31 @@ export function InvoiceDetailPage() {
                 disabled={postMutation.isPending}
               >
                 Post Invoice
+              </HeaderActionButton>
+            )}
+            {/* Approval channel: required invoices must be submitted before
+                they can be posted; pending ones can be withdrawn. */}
+            {invoice.status === 'draft' &&
+              invoice.requires_approval &&
+              !['pending', 'approved'].includes(invoice.approval_status ?? '') && (
+                <HeaderActionButton
+                  icon="solar:clipboard-check-bold-duotone"
+                  loading={submitApprovalMutation.isPending}
+                  onClick={() => submitApprovalMutation.mutate()}
+                  disabled={submitApprovalMutation.isPending}
+                >
+                  Submit for Approval
+                </HeaderActionButton>
+              )}
+            {invoice.approval_status === 'pending' && (
+              <HeaderActionButton
+                variant="outline"
+                icon="solar:undo-left-round-bold-duotone"
+                loading={withdrawApprovalMutation.isPending}
+                onClick={() => withdrawApprovalMutation.mutate()}
+                disabled={withdrawApprovalMutation.isPending}
+              >
+                Withdraw Approval
               </HeaderActionButton>
             )}
             {invoice.status === 'draft' && (

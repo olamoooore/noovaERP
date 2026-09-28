@@ -26,6 +26,7 @@ class EnsurePublicSchemaForAuth
         // Only set public schema for Sanctum auth routes
         // WebCustomerAuth routes and public storefront routes need tenant context first
         $isTenantScopedRoute = str_contains($request->path(), 'website-public/')
+            || str_contains($request->path(), 'storefront/')
             || (str_contains($request->path(), 'web-shop/')
                 && ! str_contains($request->path(), 'web-shop/auth/')
                 && ! str_contains($request->path(), 'web-shop/checkout/')

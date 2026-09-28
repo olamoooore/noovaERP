@@ -253,7 +253,6 @@ export function ProductCreatePage() {
   const [barcodeScannerError, setBarcodeScannerError] = useState<string | null>(null)
 
   const productSectionRef = useRef<HTMLDivElement | null>(null)
-  const importInputRef = useRef<HTMLInputElement | null>(null)
   const channelsSectionRef = useRef<HTMLDivElement | null>(null)
   const commercialSectionRef = useRef<HTMLDivElement | null>(null)
   const detailTabsRef = useRef<HTMLDivElement | null>(null)
@@ -603,27 +602,6 @@ export function ProductCreatePage() {
     },
   })
 
-  const importMutation = useMutation({
-    mutationFn: async (file: File) => {
-      const fd = new FormData()
-      fd.append('file', file)
-      const response = await api.post('/products/import', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
-      return response.data as { created: number; errors: Array<{ row: number; message: string }> }
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['products'] })
-      const errorCount = data.errors?.length || 0
-      toast({
-        title: `Import complete: ${data.created} created${errorCount ? `, ${errorCount} errors` : ''}`,
-      })
-    },
-    onError: () => {
-      toast({ variant: 'destructive', title: 'Import failed' })
-    },
-  })
-
   const handlePickMainImage = async (file: File | null) => {
     if (!file) return
     try {
@@ -899,29 +877,16 @@ export function ProductCreatePage() {
           <h1 className="text-3xl font-bold mt-1">Add Product</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <input
-            ref={importInputRef}
-            type="file"
-            accept=".csv,text/csv"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0]
-              if (file) importMutation.mutate(file)
-              e.currentTarget.value = ''
-            }}
-          />
           <HeaderActionButton variant="outline" icon="solar:alt-arrow-left-bold-duotone" asChild>
             <Link to="/products">Back</Link>
           </HeaderActionButton>
           <HeaderActionButton
             variant="outline"
             icon="solar:upload-bold-duotone"
-            loading={importMutation.isPending}
-            disabled={importMutation.isPending}
-            title="Bulk-create products from a CSV — required columns: name, cost, price. Optional: sku, barcode, type, category_id, stock_quantity."
-            onClick={() => importInputRef.current?.click()}
+            title="Bulk-create products from a CSV file"
+            asChild
           >
-            Import
+            <Link to="/products/import">Import</Link>
           </HeaderActionButton>
           <HeaderActionButton
             variant="outline"

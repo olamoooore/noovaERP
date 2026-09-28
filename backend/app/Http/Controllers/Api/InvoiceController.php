@@ -636,6 +636,16 @@ class InvoiceController extends Controller
             return response()->json(['message' => 'Cancelled or reversed invoices cannot be delivered'], 403);
         }
 
+        // An invoice flagged for approval must be approved before it can be
+        // turned into a delivery order — same rule as its posting flow.
+        if ($invoice->requires_approval && $invoice->approval_status !== 'approved') {
+            return response()->json([
+                'message' => 'This invoice requires approval before a delivery order can be created',
+                'requires_approval' => true,
+                'approval_status' => $invoice->approval_status,
+            ], 202);
+        }
+
         // An invoice may be delivered across several delivery orders (split
         // shipments); every DO links back through the invoice↔DO pivot.
 

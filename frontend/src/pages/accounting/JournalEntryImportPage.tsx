@@ -1,12 +1,19 @@
-import { useCallback, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Icon } from '@iconify/react'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import {
+  ImportDropzone,
+  ImportErrorList,
+  ImportFieldTable,
+  ImportPageHeader,
+  ImportResultTiles,
+  ImportStepCard,
+  type ImportRowIssue,
+  type ImportTemplateColumn,
+} from '@/components/import/ImportPageKit'
+import { Icon } from '@iconify/react'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 
@@ -15,24 +22,22 @@ interface ImportResult {
   errors: Array<{ row: number; entry_key?: string; message: string }>
 }
 
-const columns = [
-  ['entry_key', true, 'Groups lines into one journal entry (for example, JE-001).'],
-  ['entry_date', true, 'Entry date in YYYY-MM-DD format.'],
-  ['journal_code', false, 'Existing journal code. Leave blank for no journal.'],
-  ['reference', false, 'External or internal reference.'],
-  ['description', true, 'Journal entry description.'],
-  ['remark', false, 'Optional journal entry remark (maximum 255 characters).'],
-  ['account_code', true, 'Existing chart-of-accounts code.'],
-  ['line_description', false, 'Description for this entry line.'],
-  ['debit', true, 'Debit amount; use 0 for a credit line.'],
-  ['credit', true, 'Credit amount; use 0 for a debit line.'],
-] as const
+const TEMPLATE_COLUMNS: ImportTemplateColumn[] = [
+  { name: 'entry_key', required: true, description: 'Groups lines into one journal entry (for example, JE-001).' },
+  { name: 'entry_date', required: true, description: 'Entry date in YYYY-MM-DD format.' },
+  { name: 'journal_code', required: false, description: 'Existing journal code. Leave blank for no journal.' },
+  { name: 'reference', required: false, description: 'External or internal reference.' },
+  { name: 'description', required: true, description: 'Journal entry description.' },
+  { name: 'remark', required: false, description: 'Optional journal entry remark (maximum 255 characters).' },
+  { name: 'account_code', required: true, description: 'Existing chart-of-accounts code.' },
+  { name: 'line_description', required: false, description: 'Description for this entry line.' },
+  { name: 'debit', required: true, description: 'Debit amount; use 0 for a credit line.' },
+  { name: 'credit', required: true, description: 'Credit amount; use 0 for a debit line.' },
+]
 
 export default function JournalEntryImportPage() {
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { toast } = useToast()
-  const [dragActive, setDragActive] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [result, setResult] = useState<ImportResult | null>(null)
 
@@ -63,24 +68,8 @@ export default function JournalEntryImportPage() {
     }),
   })
 
-  const chooseFile = (selected?: File) => {
-    if (!selected) return
-    if (!selected.name.toLowerCase().endsWith('.csv')) {
-      toast({ title: 'Invalid file type', description: 'Please select a CSV file.', variant: 'destructive' })
-      return
-    }
-    setFile(selected)
-    setResult(null)
-  }
-
-  const handleDrag = useCallback((event: React.DragEvent) => {
-    event.preventDefault()
-    event.stopPropagation()
-    setDragActive(event.type === 'dragenter' || event.type === 'dragover')
-  }, [])
-
   const downloadTemplate = () => {
-    const header = columns.map(([name]) => name).join(',')
+    const header = TEMPLATE_COLUMNS.map((column) => column.name).join(',')
     const rows = [
       'JE-001,2026-09-03,GJ,MONTH-END,September accrual,Review before posting,6100,Accrued expense,1000.00,0',
       'JE-001,2026-09-03,GJ,MONTH-END,September accrual,Review before posting,2100,Accrued liability,0,1000.00',
@@ -91,6 +80,7 @@ export default function JournalEntryImportPage() {
     anchor.download = 'journal_entries_import_template.csv'
     anchor.click()
     URL.revokeObjectURL(url)
+    toast({ title: 'Template downloaded', description: 'Fill in the template and upload it in Step 2.' })
   }
 
   const reset = () => {
@@ -98,63 +88,102 @@ export default function JournalEntryImportPage() {
     setResult(null)
   }
 
-  const dropClassName = [
-    'border-2 border-dashed rounded-lg p-8 text-center',
-    dragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/25',
-    file ? 'bg-muted/50' : '',
-  ].join(' ')
+  const errors: ImportRowIssue[] = (result?.errors || []).map((error) => ({
+    row: error.row,
+    message: error.entry_key ? `${error.entry_key} — ${error.message}` : error.message,
+  }))
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="-ml-2 mb-3 text-muted-foreground hover:text-foreground"
-          onClick={() => navigate('/accounting/core/journal-entries')}
+      <ImportPageHeader
+        title="Import Journal Entries"
+        subtitle="Bulk create editable draft journal entries from a CSV file"
+        backTo="/accounting/core/journal-entries"
+      />
+
+      <div className="grid items-start gap-6 lg:grid-cols-2">
+        <ImportStepCard
+          step={1}
+          title="Download Template"
+          description="Rows with the same entry_key are combined. Each entry must balance."
+          icon="solar:download-minimalistic-bold-duotone"
         >
-          <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
-          Back
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold">Import Journal Entries</h1>
-          <p className="text-muted-foreground">Bulk create editable draft journal entries from a CSV file</p>
-        </div>
-      </div>
-      <div className="grid gap-6 md:grid-cols-2">
-        <div className="space-y-6">
-          <Card>
-            <CardHeader><CardTitle>Step 1: Download Template</CardTitle><CardDescription>Rows with the same entry_key are combined. Each entry must balance.</CardDescription></CardHeader>
-            <CardContent><Button variant="outline" className="w-full" onClick={downloadTemplate}><Icon icon="solar:download-minimalistic-bold" className="h-4 w-4 mr-2" />Download Import Template</Button></CardContent>
-          </Card>
-          <Card>
-            <CardHeader><CardTitle>Template Fields</CardTitle><CardDescription>Required fields are marked with an asterisk (*).</CardDescription></CardHeader>
-            <CardContent className="max-h-[430px] overflow-y-auto">
-              <Table>
-                <TableHeader><TableRow><TableHead>Field</TableHead><TableHead>Description</TableHead></TableRow></TableHeader>
-                <TableBody>{columns.map(([name, required, description]) => <TableRow key={name}><TableCell className="font-medium">{name}{required && <span className="text-destructive ml-1">*</span>}</TableCell><TableCell className="text-sm text-muted-foreground">{description}</TableCell></TableRow>)}</TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </div>
-        <div className="space-y-6">
-          <Card>
-            <CardHeader><CardTitle>Step 2: Upload CSV File</CardTitle><CardDescription>Imported entries are saved as drafts so they can be reviewed and edited before posting.</CardDescription></CardHeader>
-            <CardContent className="space-y-4">
-              <div className={dropClassName} onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={(event) => { handleDrag(event); chooseFile(event.dataTransfer.files[0]) }}>
-                {file ? <div className="space-y-3"><Icon icon="solar:file-check-bold" className="h-12 w-12 mx-auto text-green-500" /><p className="font-medium">{file.name}</p><p className="text-sm text-muted-foreground">{(file.size / 1024).toFixed(2)} KB</p><Button variant="ghost" size="sm" onClick={reset}>Remove</Button></div>
-                  : <div className="space-y-3"><Icon icon="solar:cloud-upload-bold-duotone" className="h-12 w-12 mx-auto text-muted-foreground" /><p className="font-medium">Drag and drop your CSV file here</p><Button variant="outline" size="sm" asChild><label className="cursor-pointer">Browse Files<input className="hidden" type="file" accept=".csv,text/csv" onChange={(event) => chooseFile(event.target.files?.[0])} /></label></Button></div>}
-              </div>
-              {file && !result && <Button className="w-full" disabled={mutation.isPending} onClick={() => mutation.mutate(file)}>{mutation.isPending ? 'Importing...' : 'Import Journal Entries'}</Button>}
+          <HeaderActionButton variant="outline" icon="solar:document-text-bold-duotone" onClick={downloadTemplate}>
+            Download Import Template
+          </HeaderActionButton>
+          <ImportFieldTable columns={TEMPLATE_COLUMNS} />
+        </ImportStepCard>
+
+        <ImportStepCard
+          step={2}
+          title="Upload CSV File"
+          description="Imported entries are saved as drafts so they can be reviewed and edited before posting."
+          icon="solar:upload-minimalistic-bold-duotone"
+          tone="bg-blue-500/10"
+          glyph="text-blue-600 dark:text-blue-400"
+        >
+          <ImportDropzone
+            selectedFile={file}
+            onFile={(selected) => { setFile(selected); setResult(null) }}
+            onClear={reset}
+          />
+
+          {file && !result && (
+            <div className="space-y-3">
+              <HeaderActionButton
+                icon="solar:import-bold-duotone"
+                loading={mutation.isPending}
+                disabled={mutation.isPending}
+                onClick={() => mutation.mutate(file)}
+              >
+                Import Journal Entries
+              </HeaderActionButton>
               {mutation.isPending && <Progress value={undefined} />}
-            </CardContent>
-          </Card>
-          {result && <Card><CardHeader><CardTitle>Import Results</CardTitle></CardHeader><CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4"><div className="p-4 text-center rounded-lg bg-green-50 dark:bg-green-950/20"><div className="text-2xl font-bold text-green-600">{result.created}</div><div className="text-sm text-muted-foreground">Drafts created</div></div><div className="p-4 text-center rounded-lg bg-red-50 dark:bg-red-950/20"><div className="text-2xl font-bold text-red-600">{result.errors.length}</div><div className="text-sm text-muted-foreground">Errors</div></div></div>
-            {result.errors.length > 0 && <Alert variant="destructive"><AlertTitle>Import Errors</AlertTitle><AlertDescription><div className="mt-2 max-h-52 overflow-y-auto space-y-1">{result.errors.map((error, index) => <p key={index} className="text-sm">{error.entry_key ? error.entry_key + ' — ' : ''}Row {error.row}: {error.message}</p>)}</div></AlertDescription></Alert>}
-            <div className="flex gap-3"><Button variant="outline" className="flex-1" onClick={reset}>Import Another File</Button><Button className="flex-1" onClick={() => navigate('/accounting/core/journal-entries')}>View Journal Entries</Button></div>
-          </CardContent></Card>}
-        </div>
+            </div>
+          )}
+
+          {result && (
+            <div className="space-y-4 border-t pt-4">
+              <div className="flex items-center gap-3">
+                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                  result.created > 0
+                    ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400'
+                    : 'bg-red-100 text-red-600 dark:bg-red-950/60 dark:text-red-400'
+                }`}>
+                  <Icon
+                    icon={result.created > 0 ? 'solar:check-circle-bold-duotone' : 'solar:close-circle-bold-duotone'}
+                    className="h-5 w-5"
+                  />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">Import results</p>
+                  <p className="text-xs text-muted-foreground">
+                    {result.created} draft journal {result.created === 1 ? 'entry' : 'entries'} created
+                    {result.errors.length ? `, ${result.errors.length} errors` : ''}
+                  </p>
+                </div>
+              </div>
+
+              <ImportResultTiles
+                tiles={[
+                  { label: 'Drafts created', value: result.created, tone: 'border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/40', glyph: 'text-emerald-600 dark:text-emerald-400' },
+                  { label: 'Errors', value: result.errors.length, tone: 'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40', glyph: 'text-red-600 dark:text-red-400' },
+                ]}
+              />
+
+              <ImportErrorList errors={errors} />
+
+              <div className="flex flex-wrap items-center gap-2">
+                <HeaderActionButton variant="outline" icon="solar:upload-bold-duotone" onClick={reset}>
+                  Import Another File
+                </HeaderActionButton>
+                <HeaderActionButton icon="solar:document-text-bold-duotone" asChild>
+                  <Link to="/accounting/core/journal-entries">View Journal Entries</Link>
+                </HeaderActionButton>
+              </div>
+            </div>
+          )}
+        </ImportStepCard>
       </div>
     </div>
   )

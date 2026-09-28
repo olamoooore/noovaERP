@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from '@/components/ui/toaster'
@@ -6,8 +6,11 @@ import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { MainLayout } from '@/components/layout/MainLayout'
 import { POSLayout } from '@/components/layout/POSLayout'
 import { LoginPage } from '@/pages/LoginPage'
+import { ForgotPasswordPage } from '@/pages/ForgotPasswordPage'
+import { ResetPasswordPage } from '@/pages/ResetPasswordPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { RequireSettingsAccess } from '@/components/auth/RequireSettingsAccess'
+import { RequirePermissionAccess } from '@/components/auth/RequirePermissionAccess'
 import { useAuthStore } from '@/store/authStore'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useStripeDevtoolsGuard } from '@/hooks/useStripeDevtoolsGuard'
@@ -297,6 +300,23 @@ const PageLoader = () => (
 
 const queryClient = createOptimizedQueryClient()
 
+/**
+ * Gate for the reporting area: reports.view is seeded for Owner, Admin,
+ * Manager, Accountant and Viewer — Sales/Cashier users get a clear
+ * capability message instead of a page that 403s on every request.
+ */
+function ReportsGate({ children }: { children: ReactNode }) {
+  return (
+    <RequirePermissionAccess
+      permission="reports.view"
+      title="Reports access required"
+      description="Your role does not include the reports.view permission, which is required for reporting pages. Ask an Owner or Admin if you need access."
+    >
+      {children}
+    </RequirePermissionAccess>
+  )
+}
+
 function App() {
   // Subscribe at the top-level so currency changes re-render the app
   const currencyCode = useSettingsStore((s) => s.currencyCode)
@@ -312,6 +332,8 @@ function App() {
             {/* Public website + auth */}
             <Route path="/" element={<HomeGate />} />
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/signup" element={<SignupPage />} />
             <Route path="/invoice-accept/:token" element={<InvoiceAcceptancePage />} />
             <Route path="/quotation-accept/:token" element={<QuotationAcceptancePage />} />
@@ -490,11 +512,11 @@ function App() {
                 <Route path="/pos/settings" element={<POSSettingsPage />} />
                 <Route path="/ocr/documents" element={<OCRDocumentsPage />} />
                 <Route path="/ocr/documents/:uuid" element={<OCRDocumentReviewPage />} />
-                <Route path="/reports/financial" element={<FinancialReportsPage />} />
-                <Route path="/reports/inventory" element={<InventoryReportsPage />} />
-                <Route path="/products/report" element={<SalesAnalyticsPage productOnly />} />
-                <Route path="/reports/sales-analytics" element={<SalesAnalyticsPage />} />
-                <Route path="/reports/expense-analytics" element={<ExpenseAnalyticsPage />} />
+                <Route path="/reports/financial" element={<ReportsGate><FinancialReportsPage /></ReportsGate>} />
+                <Route path="/reports/inventory" element={<ReportsGate><InventoryReportsPage /></ReportsGate>} />
+                <Route path="/products/report" element={<ReportsGate><SalesAnalyticsPage productOnly /></ReportsGate>} />
+                <Route path="/reports/sales-analytics" element={<ReportsGate><SalesAnalyticsPage /></ReportsGate>} />
+                <Route path="/reports/expense-analytics" element={<ReportsGate><ExpenseAnalyticsPage /></ReportsGate>} />
                 <Route path="/dashboards/executive" element={<ExecutiveDashboard />} />
                 <Route path="/dashboards/sales" element={<SalesDashboard />} />
                 <Route path="/dashboards/inventory" element={<InventoryDashboard />} />

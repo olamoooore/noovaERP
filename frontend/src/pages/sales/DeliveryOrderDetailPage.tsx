@@ -63,9 +63,16 @@ export function DeliveryOrderDetailPage() {
       const response = await api.post(`/sales/delivery-orders/${id}/confirm`)
       return response.data
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['delivery-order', id] })
       queryClient.invalidateQueries({ queryKey: ['delivery-orders'] })
+      if (data?.requires_approval) {
+        toast({
+          title: 'Approval required',
+          description: data?.message || 'An approval request has been submitted for this document.',
+        })
+        return
+      }
       toast({ title: 'Delivery order confirmed' })
     },
     onError: (error: any) => {
@@ -86,8 +93,21 @@ export function DeliveryOrderDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['delivery-order', id] })
       queryClient.invalidateQueries({ queryKey: ['delivery-orders'] })
       queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      if (data?.requires_approval) {
+        toast({
+          title: 'Approval required',
+          description: data?.message || 'An approval request has been submitted for this document.',
+        })
+        return
+      }
       const invoiceId = data?.data?.id
-      toast({ title: 'Invoice created from delivery order' })
+      const invoiceNeedsApproval = Boolean(data?.data?.requires_approval) && data?.data?.approval_status !== 'approved'
+      toast({
+        title: 'Invoice created from delivery order',
+        description: invoiceNeedsApproval
+          ? 'The invoice has been sent for approval before it can be posted.'
+          : undefined,
+      })
       if (invoiceId) {
         navigate(`/invoices/${invoiceId}`)
       }
@@ -451,7 +471,8 @@ export function DeliveryOrderDetailPage() {
               Edit
             </HeaderActionButton>
           )}
-          {['draft', 'confirmed'].includes(deliveryOrder.status) && (
+          {/* Drafts are deleted; Cancel is a confirmed-state action. */}
+          {deliveryOrder.status === 'confirmed' && (
             <HeaderActionButton
               variant="outline"
               icon="solar:close-circle-bold-duotone"
@@ -472,14 +493,15 @@ export function DeliveryOrderDetailPage() {
           {/* Destructive action always last. */}
           {deliveryOrder.status === 'draft' && (
             <HeaderActionButton
-              variant="outline"
+              variant="destructive"
               icon="solar:trash-bin-trash-bold-duotone"
-              className="w-9 px-0 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              loading={deleteMutation.isPending}
               aria-label="Delete delivery order"
-              title="Delete"
               onClick={() => setConfirmAction('delete')}
               disabled={deleteMutation.isPending}
-            />
+            >
+              Delete
+            </HeaderActionButton>
           )}
         </div>
       </div>
