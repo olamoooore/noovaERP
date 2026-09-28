@@ -129,6 +129,24 @@ export const ExecutiveDashboard: React.FC = () => {
         const netProfit = getProfitAmount(profitLoss?.net_profit);
         const totalExpenses = getExpenseTotal(profitLoss);
 
+        const mappedTrends = trends
+          .filter((trend) => trend && typeof trend === 'object' && (trend.total_sales ?? trend.revenue) != null)
+          .map((trend) => ({
+            period: String(trend.period || ''),
+            revenue: Number(trend.total_sales ?? trend.revenue) || 0,
+          }));
+
+        // Booked = orders + POS line items (the charts); posted = ledger (P&L).
+        const bookedRevenue = mappedTrends.reduce((total, row) => total + row.revenue, 0);
+        const bookedOrders = Number(
+          (salesTrends as any)?.summary?.total_orders
+            ?? trends.reduce((total: number, row: any) => total + (Number(row?.order_count) || 0), 0)
+        ) || 0;
+        const bookedProfit = Number(
+          (salesByProduct as any)?.summary?.total_profit
+            ?? products.reduce((total: number, prod: any) => total + (Number(prod?.total_profit) || 0), 0)
+        ) || 0;
+
         return {
           kpis: {
             revenue: {
@@ -151,12 +169,13 @@ export const ExecutiveDashboard: React.FC = () => {
               change_percentage: 0,
             },
           },
-          sales_trends: trends
-            .filter((trend) => trend && typeof trend === 'object' && (trend.total_sales ?? trend.revenue) != null)
-            .map((trend) => ({
-              period: String(trend.period || ''),
-              revenue: Number(trend.total_sales ?? trend.revenue) || 0,
-            })),
+          basis: {
+            booked_revenue: bookedRevenue,
+            booked_profit: bookedProfit,
+            booked_orders: bookedOrders,
+            posted_revenue: Number(profitLoss?.revenue?.total ?? 0) || 0,
+          },
+          sales_trends: mappedTrends,
           revenue_by_category: categories
             .filter((cat) => cat && typeof cat === 'object' && (cat.total_sales ?? cat.revenue) != null)
             .map((cat) => ({
@@ -303,11 +322,29 @@ export const ExecutiveDashboard: React.FC = () => {
         {periodLabel} · last updated {lastRefresh.toLocaleTimeString()}
       </p>
 
+      {/* Ledger-lag notice: booked sales exist but the period has no postings,
+          so profit/cash (posted) and the charts (booked) cannot agree yet. */}
+      {!isLoading && (data?.basis?.posted_revenue ?? 0) === 0 && (data?.basis?.booked_revenue ?? 0) > 0 && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-sm dark:border-amber-900/60 dark:bg-amber-950/30">
+          <Icon
+            icon="solar:info-circle-bold-duotone"
+            className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
+          />
+          <p className="text-amber-900 dark:text-amber-200">
+            <span className="font-medium">Ledger postings are behind.</span>{' '}
+            {(data?.basis?.booked_orders ?? 0).toLocaleString()} orders worth{' '}
+            {formatCurrency(data?.basis?.booked_revenue ?? 0)} are booked for {periodLabel}, but nothing is posted
+            for this period yet. Revenue and the charts show <span className="font-medium">booked</span> sales;
+            profit and cash show <span className="font-medium">posted</span> figures only.
+          </p>
+        </div>
+      )}
+
       {/* KPI Cards */}
       <DashboardGrid columns={3} gap="md">
         <KPICard
-          title="Total Revenue"
-          value={isLoading ? '—' : formatCurrency(data?.kpis.revenue.current || 0)}
+          title="Revenue (booked)"
+          value={isLoading ? '—' : formatCurrency(data?.basis?.booked_revenue ?? data?.kpis.revenue.current ?? 0)}
           icon={DollarSign}
           trend={
             data
@@ -322,8 +359,8 @@ export const ExecutiveDashboard: React.FC = () => {
           loading={isLoading}
         />
         <KPICard
-          title="Net Profit"
-          value={isLoading ? '—' : formatCurrency(data?.kpis.profit.current || 0)}
+          title="Gross profit (booked)"
+          value={isLoading ? '—' : formatCurrency(data?.basis?.booked_profit ?? data?.kpis.profit.current ?? 0)}
           icon={TrendingUp}
           trend={
             data
@@ -338,7 +375,7 @@ export const ExecutiveDashboard: React.FC = () => {
           loading={isLoading}
         />
         <KPICard
-          title="Cash Position"
+          title="Cash position (posted)"
           value={isLoading ? '—' : formatCurrency(data?.kpis.cash.current || 0)}
           icon={Wallet}
           trend={

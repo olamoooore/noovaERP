@@ -1,10 +1,16 @@
 {
-  "key": "ecommerce",
-  "name": "Website",
-  "type": "addon",
-  "providers": [
-    "Modules\\Ecommerce\\Providers\\EcommerceServiceProvider",
-    "Modules\\Ecommerce\\Providers\\EventServiceProvider"
-  ],
-  "dependencies": ["sales", "inventory"]
+    "key": "ecommerce",
+    "name": "Website",
+    "type": "addon",
+    "deprecated": true,
+    "deprecated_reason": "Legacy single-tenant commerce stack archived per MRD ecommerce-Enterprice (FR-ARC-01..03, Appendix A). Frozen 2026-09-28: no new features; admin read-only; superseded by the generic 'storefront' module.",
+    "replacement": "storefront",
+    "providers": [
+        "Modules\\Ecommerce\\Providers\\EcommerceServiceProvider",
+        "Modules\\Ecommerce\\Providers\\EventServiceProvider"
+    ],
+    "dependencies": [
+        "sales",
+        "inventory"
+    ]
 }

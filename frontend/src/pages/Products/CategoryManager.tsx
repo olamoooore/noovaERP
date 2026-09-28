@@ -3,6 +3,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import { SettingsSectionHeader } from '@/components/settings/settings-ui'
+import { PRODUCT_SETTINGS_SECTIONS } from './productSettingsSections'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -185,19 +188,17 @@ export function CategoryManager() {
   if (isLoading) return <div>Loading categories...</div>
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-lg font-semibold">Product Categories</div>
-          <div className="text-sm text-muted-foreground">
-            Create clear hierarchies like <span className="font-medium">Men / Shoes / Lifestyle Shoes</span>
-          </div>
-        </div>
-        <Button type="button" onClick={() => openCreate()}>
-          <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
-          Add Category
-        </Button>
-      </div>
+    <Card className="overflow-hidden">
+      <SettingsSectionHeader
+        icon={PRODUCT_SETTINGS_SECTIONS.categories.icon}
+        title={PRODUCT_SETTINGS_SECTIONS.categories.title}
+        description={PRODUCT_SETTINGS_SECTIONS.categories.description}
+        action={
+          <HeaderActionButton icon="solar:add-circle-bold-duotone" onClick={() => openCreate()}>
+            Add Category
+          </HeaderActionButton>
+        }
+      />
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
@@ -254,7 +255,6 @@ export function CategoryManager() {
         </DialogContent>
       </Dialog>
 
-      <Card>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
@@ -262,7 +262,7 @@ export function CategoryManager() {
                 <TableHead>Category</TableHead>
                 <TableHead>Path</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead className="w-[1%] whitespace-nowrap text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -286,31 +286,37 @@ export function CategoryManager() {
                       {cat.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </TableCell>
-                  <TableCell className="text-right">
-                    <div className="inline-flex items-center gap-1">
+                  <TableCell className="w-[1%] whitespace-nowrap text-right">
+                    <div className="flex items-center justify-end gap-1">
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
+                        className="h-7 w-7"
                         title="Add subcategory"
+                        aria-label="Add subcategory"
                         onClick={() => openCreate(cat.id)}
                       >
-                        <Icon icon="solar:add-square-bold" className="h-4 w-4" />
+                        <Icon icon="solar:add-square-bold-duotone" className="h-3.5 w-3.5" />
                       </Button>
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
-                        title="Edit"
+                        className="h-7 w-7"
+                        title="Edit category"
+                        aria-label="Edit category"
                         onClick={() => openEdit(cat)}
                       >
-                        <Icon icon="solar:pen-bold" className="h-4 w-4" />
+                        <Icon icon="solar:pen-bold-duotone" className="h-3.5 w-3.5" />
                       </Button>
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
-                        title="Delete"
+                        className="h-7 w-7 text-destructive hover:text-destructive"
+                        title="Delete category"
+                        aria-label="Delete category"
                         onClick={() => {
                           const ok = confirm(`Delete “${cat.name}”? This cannot be undone.`)
                           if (!ok) return
@@ -318,7 +324,7 @@ export function CategoryManager() {
                         }}
                         disabled={deleteMutation.isPending}
                       >
-                        <Icon icon="solar:trash-bin-trash-bold" className="h-4 w-4 text-red-500" />
+                        <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                   </TableCell>
@@ -326,15 +332,18 @@ export function CategoryManager() {
               ))}
               {tree.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                    No categories yet
+                  <TableCell colSpan={4} className="py-10 text-center">
+                    <Icon
+                      icon={PRODUCT_SETTINGS_SECTIONS.categories.icon}
+                      className="mx-auto h-8 w-8 text-muted-foreground/30"
+                    />
+                    <p className="mt-2 text-sm text-muted-foreground">No categories yet</p>
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
         </CardContent>
-      </Card>
-    </div>
+    </Card>
   )
 }

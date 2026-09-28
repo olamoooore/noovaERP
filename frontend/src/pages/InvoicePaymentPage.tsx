@@ -66,7 +66,10 @@ export function InvoicePaymentPage() {
       return response.data
     },
     onSuccess: () => {
-      toast({ title: 'Payment recorded successfully' })
+      toast({
+        title: 'Draft payment recorded',
+        description: 'Review and post it from Accounting → Customer Payments to hit the ledger.',
+      })
       navigate(`/invoices/${id}`)
     },
     onError: (error: any) => {

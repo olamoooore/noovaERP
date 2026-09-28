@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
 import { Icon } from '@iconify/react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import { SettingsSectionHeader } from '@/components/settings/settings-ui'
+import { PRODUCT_SETTINGS_SECTIONS } from './productSettingsSections'
 import {
   Table,
   TableBody,
@@ -122,18 +125,18 @@ export function MetaManager() {
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Custom Fields (Meta)</CardTitle>
+    <Card className="overflow-hidden">
+      <SettingsSectionHeader
+        icon={PRODUCT_SETTINGS_SECTIONS.meta.icon}
+        title={PRODUCT_SETTINGS_SECTIONS.meta.title}
+        description={PRODUCT_SETTINGS_SECTIONS.meta.description}
+        action={
         <Dialog open={open} onOpenChange={(val) => {
             setOpen(val)
             if (!val) resetForm()
         }}>
           <DialogTrigger asChild>
-            <Button>
-              <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
-              Add Field
-            </Button>
+            <HeaderActionButton icon="solar:add-circle-bold-duotone">Add Field</HeaderActionButton>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
@@ -202,7 +205,8 @@ export function MetaManager() {
             </form>
           </DialogContent>
         </Dialog>
-      </CardHeader>
+              }
+      />
       <CardContent>
         <Table>
           <TableHeader>
@@ -211,7 +215,7 @@ export function MetaManager() {
               <TableHead>Type</TableHead>
               <TableHead>Required</TableHead>
               <TableHead>Default</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead className="w-[1%] whitespace-nowrap text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -227,20 +231,40 @@ export function MetaManager() {
                   )}
                 </TableCell>
                 <TableCell>{field.default_value || '-'}</TableCell>
-                <TableCell className="text-right space-x-2">
-                  <Button variant="ghost" size="sm" onClick={() => handleEdit(field)}>
-                    <Icon icon="solar:pen-bold" className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => handleDelete(field.id)}>
-                    <Icon icon="solar:trash-bin-trash-bold" className="h-4 w-4 text-red-500" />
-                  </Button>
+                <TableCell className="w-[1%] whitespace-nowrap text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      title="Edit field"
+                      aria-label="Edit field"
+                      onClick={() => handleEdit(field)}
+                    >
+                      <Icon icon="solar:pen-bold-duotone" className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-destructive hover:text-destructive"
+                      title="Delete field"
+                      aria-label="Delete field"
+                      onClick={() => handleDelete(field.id)}
+                    >
+                      <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
             {fields.length === 0 && !loading && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground">
-                  No custom fields found.
+                <TableCell colSpan={5} className="py-10 text-center">
+                  <Icon
+                    icon={PRODUCT_SETTINGS_SECTIONS.meta.icon}
+                    className="mx-auto h-8 w-8 text-muted-foreground/30"
+                  />
+                  <p className="mt-2 text-sm text-muted-foreground">No custom fields found.</p>
                 </TableCell>
               </TableRow>
             )}

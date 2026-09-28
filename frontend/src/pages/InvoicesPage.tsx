@@ -249,14 +249,14 @@ export function InvoicesPage() {
             <div className="relative w-full sm:w-60">
               <Icon
                 icon="solar:magnifer-bold-duotone"
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
               />
               <Input
                 type="text"
                 placeholder="Search invoices…"
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value); setPage(1) }}
-                className="h-9 pl-9"
+                className="h-8 rounded-full pl-9 pr-3 text-xs"
               />
             </div>
 
@@ -264,7 +264,7 @@ export function InvoicesPage() {
               value={statusFilter}
               onValueChange={(value) => { setStatusFilter(value); setPage(1) }}
             >
-              <SelectTrigger className="h-9 w-[150px]">
+              <SelectTrigger className="h-8 w-36 rounded-full px-3 text-xs">
                 <SelectValue placeholder="All Status" />
               </SelectTrigger>
               <SelectContent>
@@ -281,6 +281,7 @@ export function InvoicesPage() {
 
             <div className="w-full sm:w-52">
               <CustomerSearchCombobox
+                compact
                 value={customerFilter}
                 onValueChange={(value) => { setCustomerFilter(value); setPage(1) }}
                 placeholder="All Customers"
@@ -288,6 +289,7 @@ export function InvoicesPage() {
             </div>
 
             <TagFilterSelect
+              className="h-8 w-36 rounded-full text-xs"
               value={tagFilter}
               onChange={(value) => { setTagFilter(value); setPage(1) }}
             />
@@ -296,7 +298,7 @@ export function InvoicesPage() {
               value={dateFilter}
               onValueChange={(value) => { setDateFilter(value as typeof dateFilter); setPage(1) }}
             >
-              <SelectTrigger className="h-9 w-[140px]">
+              <SelectTrigger className="h-8 w-32 rounded-full text-xs">
                 <SelectValue placeholder="All Dates" />
               </SelectTrigger>
               <SelectContent>
@@ -315,7 +317,7 @@ export function InvoicesPage() {
                 value={selectedYear}
                 onChange={(e) => { setSelectedYear(e.target.value); setPage(1) }}
                 aria-label="Invoice year"
-                className="h-9 w-28"
+                className="h-8 w-24 rounded-full px-3 text-xs"
               />
             )}
             {dateFilter === 'monthly' && (
@@ -324,7 +326,7 @@ export function InvoicesPage() {
                 value={selectedMonth}
                 onChange={(e) => { setSelectedMonth(e.target.value); setPage(1) }}
                 aria-label="Invoice month"
-                className="h-9 w-[150px]"
+                className="h-8 w-36 rounded-full px-3 text-xs"
               />
             )}
             {dateFilter === 'custom' && (
@@ -334,7 +336,7 @@ export function InvoicesPage() {
                   value={customStartDate}
                   onChange={(e) => { setCustomStartDate(e.target.value); setPage(1) }}
                   aria-label="Invoice start date"
-                  className="h-9 w-[150px]"
+                  className="h-8 w-36 rounded-full px-3 text-xs"
                 />
                 <Input
                   type="date"
@@ -342,7 +344,7 @@ export function InvoicesPage() {
                   value={customEndDate}
                   onChange={(e) => { setCustomEndDate(e.target.value); setPage(1) }}
                   aria-label="Invoice end date"
-                  className="h-9 w-[150px]"
+                  className="h-8 w-36 rounded-full px-3 text-xs"
                 />
               </>
             )}

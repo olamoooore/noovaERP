@@ -89,6 +89,7 @@ final class ModuleManager
                 basePath: $dir,
                 providers: is_array($providers) ? $providers : [],
                 dependencies: is_array($dependencies) ? $dependencies : [],
+                deprecated: (bool) ($raw['deprecated'] ?? false),
             );
 
             $modules[] = $module;

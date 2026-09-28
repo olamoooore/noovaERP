@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, resolveImageUrl } from '@/lib/utils'
 import api from '@/lib/api'
 import { SalesLineColumnMenu, SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { SalesDocumentExportMenu, type SalesExportColumn } from '@/components/sales/SalesDocumentExportMenu'
@@ -56,13 +56,6 @@ type SortDir = 'asc' | 'desc'
 type StatusFilter = 'all' | 'active' | 'inactive' | 'new_arrival' | 'preorder' | 'out_of_stock'
 type TypeFilter = 'all' | 'product' | 'service'
 
-function resolveImageUrl(path: string | null | undefined): string {
-  if (!path) return ''
-  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:') || path.startsWith('blob:')) return path
-  if (path.startsWith('/storage/')) return path
-  return `/storage/${path.replace(/^\//, '')}`
-}
-
 export function ProductsPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -77,6 +70,13 @@ export function ProductsPage() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
   const [hiddenProductColumns, setHiddenProductColumns] = useState<number[]>([])
+
+  const hasActiveFilters =
+    search.trim() !== '' ||
+    type !== 'all' ||
+    status !== 'all' ||
+    categoryId !== 'all' ||
+    tagFilter !== ''
 
   const clearFilters = () => {
     setSearch('')
@@ -220,128 +220,138 @@ export function ProductsPage() {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-5 lg:flex-1">
-              <div className="space-y-1">
-                <div className="text-xs text-muted-foreground">Search</div>
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Name, SKU, barcode…"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <div className="text-xs text-muted-foreground">Type</div>
-                <Select value={type} onValueChange={(v) => setType(v as TypeFilter)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All</SelectItem>
-                    <SelectItem value="product">Product</SelectItem>
-                    <SelectItem value="service">Service</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1">
-                <div className="text-xs text-muted-foreground">Status</div>
-                <Select value={status} onValueChange={(v) => setStatus(v as StatusFilter)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All</SelectItem>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
-                    <SelectItem value="new_arrival">New Arrival</SelectItem>
-                    <SelectItem value="preorder">Pre-order</SelectItem>
-                    <SelectItem value="out_of_stock">Out of Stock</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1">
-                <div className="text-xs text-muted-foreground">Category</div>
-                <Select value={categoryId} onValueChange={(v) => setCategoryId(v)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All</SelectItem>
-                    {sortedCategories.map((cat) => (
-                      <SelectItem key={cat.id} value={String(cat.id)}>
-                        {cat.parent_id ? `— ${cat.name}` : cat.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1">
-                <div className="text-xs text-muted-foreground">Tag</div>
-                <TagFilterSelect
-                  className="h-10 w-full"
-                  value={tagFilter}
-                  onChange={(value) => { setTagFilter(value); setPage(1) }}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <div className="text-xs text-muted-foreground">Sort</div>
-                <div className="flex gap-2">
-                  <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortBy)}>
-                    <SelectTrigger className="flex-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="name">Name</SelectItem>
-                      <SelectItem value="price">Price</SelectItem>
-                      <SelectItem value="cost">Cost</SelectItem>
-                      <SelectItem value="stock_quantity">Stock</SelectItem>
-                      <SelectItem value="created_at">Created</SelectItem>
-                      <SelectItem value="updated_at">Updated</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
-                    title="Toggle sort direction"
-                  >
-                    <Icon
-                      icon={
-                        sortDir === 'asc'
-                          ? 'solar:sort-from-top-to-bottom-bold'
-                          : 'solar:sort-from-bottom-to-top-bold'
-                      }
-                      className="h-4 w-4"
-                    />
-                  </Button>
-                </div>
-              </div>
+          {/* Filters — compact pills in one row (no field labels). */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-full sm:w-72">
+              <Icon
+                icon="solar:magnifer-bold-duotone"
+                className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Name, SKU, barcode…"
+                aria-label="Search products"
+                className="h-8 rounded-full pl-9 pr-3 text-xs"
+              />
             </div>
 
-            <div className="flex items-center gap-2">
-              <Button type="button" variant="ghost" onClick={clearFilters}>
-                Clear
-              </Button>
+            <Select value={type} onValueChange={(v) => setType(v as TypeFilter)}>
+              <SelectTrigger className="h-8 w-32 rounded-full text-xs" aria-label="Filter by type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All types</SelectItem>
+                <SelectItem value="product">Product</SelectItem>
+                <SelectItem value="service">Service</SelectItem>
+              </SelectContent>
+            </Select>
 
-              <div className="flex rounded-md border overflow-hidden">
+            <Select value={status} onValueChange={(v) => setStatus(v as StatusFilter)}>
+              <SelectTrigger className="h-8 w-36 rounded-full text-xs" aria-label="Filter by status">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="new_arrival">New Arrival</SelectItem>
+                <SelectItem value="preorder">Pre-order</SelectItem>
+                <SelectItem value="out_of_stock">Out of Stock</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={categoryId} onValueChange={(v) => setCategoryId(v)}>
+              <SelectTrigger className="h-8 w-40 rounded-full text-xs" aria-label="Filter by category">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All categories</SelectItem>
+                {sortedCategories.map((cat) => (
+                  <SelectItem key={cat.id} value={String(cat.id)}>
+                    {cat.parent_id ? `— ${cat.name}` : cat.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <TagFilterSelect
+              className="h-8 w-36 rounded-full text-xs"
+              value={tagFilter}
+              onChange={(value) => { setTagFilter(value); setPage(1) }}
+            />
+
+            <div className="flex items-center gap-1">
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortBy)}>
+                <SelectTrigger className="h-8 w-36 rounded-full text-xs" aria-label="Sort by">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name">Name</SelectItem>
+                  <SelectItem value="price">Price</SelectItem>
+                  <SelectItem value="cost">Cost</SelectItem>
+                  <SelectItem value="stock_quantity">Stock</SelectItem>
+                  <SelectItem value="created_at">Created</SelectItem>
+                  <SelectItem value="updated_at">Updated</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 rounded-full"
+                onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+                title="Toggle sort direction"
+                aria-label="Toggle sort direction"
+              >
+                <Icon
+                  icon={
+                    sortDir === 'asc'
+                      ? 'solar:sort-from-top-to-bottom-bold'
+                      : 'solar:sort-from-bottom-to-top-bold'
+                  }
+                  className="h-3.5 w-3.5"
+                />
+              </Button>
+            </div>
+
+            {hasActiveFilters && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-full text-muted-foreground"
+                onClick={clearFilters}
+                title="Clear filters"
+                aria-label="Clear filters"
+              >
+                <Icon icon="solar:close-circle-bold" className="h-4 w-4" />
+              </Button>
+            )}
+
+            <div className="ml-auto flex items-center gap-2">
+              <div className="flex overflow-hidden rounded-full border">
                 <Button
                   type="button"
                   variant={viewMode === 'list' ? 'default' : 'ghost'}
+                  size="icon"
+                  className="h-8 w-8 rounded-none"
                   onClick={() => setViewMode('list')}
+                  title="List view"
+                  aria-label="List view"
                 >
-                  <Icon icon="solar:list-bold" className="h-4 w-4" />
+                  <Icon icon="solar:list-bold" className="h-3.5 w-3.5" />
                 </Button>
                 <Button
                   type="button"
                   variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                  size="icon"
+                  className="h-8 w-8 rounded-none"
                   onClick={() => setViewMode('grid')}
+                  title="Grid view"
+                  aria-label="Grid view"
                 >
-                  <Icon icon="solar:widget-2-bold" className="h-4 w-4" />
+                  <Icon icon="solar:widget-2-bold" className="h-3.5 w-3.5" />
                 </Button>
               </div>
             </div>

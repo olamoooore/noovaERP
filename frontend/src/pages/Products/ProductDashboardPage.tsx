@@ -3,11 +3,12 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { StatCard } from '@/components/ui/stat-card'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, resolveImageUrl } from '@/lib/utils'
 import api from '@/lib/api'
 import type { Product } from '@/types/product'
 
@@ -16,11 +17,15 @@ interface ProductsResponse {
   total?: number
 }
 
-const imageUrl = (path?: string | null) => {
-  if (!path) return ''
-  if (/^(https?:|data:|blob:)/.test(path) || path.startsWith('/storage/')) return path
-  return `/storage/${path.replace(/^\//, '')}`
-}
+const AVAILABLE_BADGE =
+  'border-transparent bg-emerald-100 font-normal text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+const OUT_OF_STOCK_BADGE =
+  'border-transparent bg-red-100 font-normal text-red-700 dark:bg-red-950/60 dark:text-red-300'
+const INACTIVE_BADGE = 'border-transparent bg-muted font-normal text-muted-foreground'
+
+/** Services and untracked goods are always sellable; tracked goods need stock. */
+const isAvailable = (product: Product) =>
+  product.type === 'service' || !product.track_inventory || product.stock_quantity > 0
 
 export function ProductDashboardPage() {
   const [search, setSearch] = useState('')
@@ -35,7 +40,7 @@ export function ProductDashboardPage() {
     },
   })
 
-  const products = data?.data ?? []
+  const products = useMemo(() => data?.data ?? [], [data])
   const metrics = useMemo(() => {
     const stocked = products.filter((product) => product.type === 'product' && product.track_inventory)
     const lowStock = stocked.filter((product) => {
@@ -46,9 +51,7 @@ export function ProductDashboardPage() {
     return {
       total: data?.total ?? products.length,
       active: products.filter((product) => product.is_active).length,
-      available: products.filter(
-        (product) => product.is_active && (product.type === 'service' || !product.track_inventory || product.stock_quantity > 0)
-      ).length,
+      available: products.filter((product) => product.is_active && isAvailable(product)).length,
       lowStock,
       outOfStock: stocked.filter((product) => product.stock_quantity <= 0),
       online: products.filter((product) => product.show_on_website).length,
@@ -70,112 +73,232 @@ export function ProductDashboardPage() {
       .slice(0, 10)
   }, [products, search])
 
-  const statCards = [
-    { label: 'Total offerings', value: metrics.total, hint: 'Products and services', icon: 'solar:box-bold-duotone', color: 'text-blue-600 bg-blue-50 dark:bg-blue-950/40' },
-    { label: 'Available', value: metrics.available, hint: 'Ready to offer', icon: 'solar:check-circle-bold-duotone', color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40' },
-    { label: 'Low stock', value: metrics.lowStock.length, hint: 'Needs attention', icon: 'solar:danger-triangle-bold-duotone', color: 'text-amber-600 bg-amber-50 dark:bg-amber-950/40' },
-    { label: 'Out of stock', value: metrics.outOfStock.length, hint: 'Unavailable items', icon: 'solar:close-circle-bold-duotone', color: 'text-red-600 bg-red-50 dark:bg-red-950/40' },
-  ]
+  const attention = [...metrics.outOfStock, ...metrics.lowStock]
+
+  const stockCell = (product: Product) => {
+    if (product.type === 'service' || !product.track_inventory) {
+      return <span className="text-muted-foreground">Not tracked</span>
+    }
+    const quantity = Number(product.stock_quantity || 0)
+    const threshold = product.reorder_level ?? product.min_stock_threshold ?? 0
+    if (quantity <= 0) {
+      return <span className="font-medium tabular-nums text-red-600 dark:text-red-400">{quantity}</span>
+    }
+    if (quantity <= threshold) {
+      return <span className="font-medium tabular-nums text-amber-600 dark:text-amber-400">{quantity}</span>
+    }
+    return <span className="tabular-nums">{quantity}</span>
+  }
+
+  const statusBadge = (product: Product) => {
+    if (!product.is_active) return <Badge variant="outline" className={INACTIVE_BADGE}>Inactive</Badge>
+    if (isAvailable(product)) return <Badge variant="outline" className={AVAILABLE_BADGE}>Available</Badge>
+    return <Badge variant="outline" className={OUT_OF_STOCK_BADGE}>Out of stock</Badge>
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Product Dashboard</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Product Dashboard</h1>
           <p className="mt-1 text-muted-foreground">
             Maintain a central catalog and monitor the availability of every offering.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" asChild>
+        <div className="flex flex-wrap items-center gap-2">
+          <HeaderActionButton variant="outline" icon="solar:box-bold-duotone" asChild>
             <Link to="/products">View Catalog</Link>
-          </Button>
-          <Button asChild>
-            <Link to="/products/new">
-              <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
-              Add Product
-            </Link>
-          </Button>
+          </HeaderActionButton>
+          <HeaderActionButton icon="solar:add-circle-bold-duotone" asChild>
+            <Link to="/products/new">Add Product</Link>
+          </HeaderActionButton>
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {statCards.map((stat) => (
-          <Card key={stat.label}>
-            <CardContent className="flex items-center justify-between p-5">
-              <div>
-                <p className="text-sm text-muted-foreground">{stat.label}</p>
-                <p className="mt-1 text-3xl font-bold">{isLoading ? '—' : stat.value}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{stat.hint}</p>
-              </div>
-              <div className={`rounded-xl p-3 ${stat.color}`}>
-                <Icon icon={stat.icon} className="h-6 w-6" />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+      {/* Primary metrics */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Total offerings"
+          value={isLoading ? '—' : metrics.total}
+          hint="Products and services"
+          icon="solar:box-bold-duotone"
+        />
+        <StatCard
+          label="Available"
+          value={isLoading ? '—' : metrics.available}
+          hint="Ready to offer"
+          icon="solar:check-circle-bold-duotone"
+          tone="bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400"
+        />
+        <StatCard
+          label="Low stock"
+          value={isLoading ? '—' : metrics.lowStock.length}
+          hint="Needs attention"
+          icon="solar:danger-triangle-bold-duotone"
+          tone="bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400"
+        />
+        <StatCard
+          label="Out of stock"
+          value={isLoading ? '—' : metrics.outOfStock.length}
+          hint="Unavailable items"
+          icon="solar:close-circle-bold-duotone"
+          tone="bg-red-100 text-red-600 dark:bg-red-950/60 dark:text-red-400"
+        />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card><CardContent className="p-5"><p className="text-sm text-muted-foreground">Active catalog</p><p className="mt-2 text-2xl font-semibold">{metrics.active}</p></CardContent></Card>
-        <Card><CardContent className="p-5"><p className="text-sm text-muted-foreground">Published online</p><p className="mt-2 text-2xl font-semibold">{metrics.online}</p></CardContent></Card>
-        <Card><CardContent className="p-5"><p className="text-sm text-muted-foreground">Categories represented</p><p className="mt-2 text-2xl font-semibold">{metrics.categories}</p></CardContent></Card>
-        <Card><CardContent className="p-5"><p className="text-sm text-muted-foreground">Inventory value</p><p className="mt-2 text-2xl font-semibold">{formatCurrency(metrics.inventoryValue)}</p></CardContent></Card>
-      </div>
+      {/* Secondary metrics — one bordered strip instead of four loose cards */}
+      <Card className="overflow-hidden rounded-xl">
+        <div className="grid grid-cols-2 gap-px bg-border sm:grid-cols-4">
+          {[
+            { label: 'Active catalog', value: metrics.active, icon: 'solar:box-bold-duotone' },
+            { label: 'Published online', value: metrics.online, icon: 'solar:globus-bold-duotone' },
+            { label: 'Categories represented', value: metrics.categories, icon: 'solar:layers-minimalistic-bold-duotone' },
+            { label: 'Inventory value', value: formatCurrency(metrics.inventoryValue), icon: 'solar:wallet-money-bold-duotone' },
+          ].map((tile) => (
+            <div key={tile.label} className="flex items-center justify-between gap-3 bg-card px-5 py-4">
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">{tile.label}</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums">{isLoading ? '—' : tile.value}</p>
+              </div>
+              <Icon icon={tile.icon} className="h-4 w-4 shrink-0 text-muted-foreground/60" />
+            </div>
+          ))}
+        </div>
+      </Card>
 
       <div className="grid gap-6 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
-          <CardHeader className="gap-4 sm:flex-row sm:items-center sm:justify-between">
+        {/* Catalog */}
+        <Card className="overflow-hidden rounded-xl xl:col-span-2">
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 border-b">
             <div>
-              <CardTitle>Catalog overview</CardTitle>
+              <CardTitle className="text-base">Catalog overview</CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">Recently updated goods and services</p>
             </div>
-            <div className="relative w-full sm:w-72">
-              <Icon icon="solar:magnifer-linear" className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search catalog" className="pl-9" />
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative w-full sm:w-64">
+                <Icon
+                  icon="solar:magnifer-bold-duotone"
+                  className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+                />
+                <Input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search catalog"
+                  aria-label="Search catalog"
+                  className="h-8 rounded-full pl-9 pr-3 text-xs"
+                />
+              </div>
+              <HeaderActionButton variant="outline" icon="solar:arrow-right-bold-duotone" asChild>
+                <Link to="/products">View all</Link>
+              </HeaderActionButton>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0">
             {isError ? (
-              <div className="py-10 text-center">
-                <p className="text-sm text-muted-foreground">Unable to load the product catalog.</p>
-                <Button variant="outline" className="mt-3" onClick={() => refetch()}>Try again</Button>
+              <div className="py-12 text-center">
+                <Icon icon="solar:danger-triangle-bold-duotone" className="mx-auto h-8 w-8 text-red-500" />
+                <p className="mt-2 text-sm text-muted-foreground">Unable to load the product catalog.</p>
+                <HeaderActionButton variant="outline" className="mt-3" onClick={() => refetch()}>
+                  Try again
+                </HeaderActionButton>
+              </div>
+            ) : isLoading ? (
+              <div className="py-12 text-center text-muted-foreground">
+                <Icon icon="eos-icons:loading" className="mx-auto h-6 w-6 animate-spin" />
+                <p className="mt-2 text-sm">Loading catalog…</p>
+              </div>
+            ) : visibleProducts.length === 0 ? (
+              <div className="py-12 text-center text-muted-foreground">
+                <Icon icon="solar:box-bold-duotone" className="mx-auto h-8 w-8 opacity-40" />
+                <p className="mt-2 text-sm">No products found.</p>
               </div>
             ) : (
               <Table>
-                <TableHeader><TableRow><TableHead>Offering</TableHead><TableHead>Category</TableHead><TableHead>Stock</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Price</TableHead></TableRow></TableHeader>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Offering</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead className="text-right">Stock</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Price</TableHead>
+                  </TableRow>
+                </TableHeader>
                 <TableBody>
-                  {!isLoading && visibleProducts.length === 0 && <TableRow><TableCell colSpan={5} className="h-24 text-center text-muted-foreground">No products found.</TableCell></TableRow>}
-                  {visibleProducts.map((product) => {
-                    const available = product.type === 'service' || !product.track_inventory || product.stock_quantity > 0
-                    return (
-                      <TableRow key={product.id}>
-                        <TableCell><Link to={`/products/${product.id}`} className="flex items-center gap-3 font-medium hover:underline"><div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-md bg-muted">{product.image ? <img src={imageUrl(product.image)} alt="" className="h-full w-full object-cover" /> : <Icon icon="solar:box-bold-duotone" className="h-5 w-5 text-muted-foreground" />}</div><div><div>{product.name}</div><div className="text-xs font-normal text-muted-foreground">{product.sku}</div></div></Link></TableCell>
-                        <TableCell>{product.category?.name ?? 'Uncategorized'}</TableCell>
-                        <TableCell>{product.type === 'service' || !product.track_inventory ? 'Not tracked' : product.stock_quantity}</TableCell>
-                        <TableCell><Badge variant={product.is_active && available ? 'default' : 'secondary'}>{!product.is_active ? 'Inactive' : available ? 'Available' : 'Out of stock'}</Badge></TableCell>
-                        <TableCell className="text-right">{formatCurrency(Number(product.price || 0))}</TableCell>
-                      </TableRow>
-                    )
-                  })}
+                  {visibleProducts.map((product) => (
+                    <TableRow key={product.id} className="hover:bg-muted/50">
+                      <TableCell>
+                        <Link
+                          to={`/products/${product.id}`}
+                          className="flex items-center gap-3 font-medium hover:underline"
+                        >
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">
+                            {product.image ? (
+                              <img src={resolveImageUrl(product.image)} alt="" className="h-full w-full object-cover" />
+                            ) : (
+                              <Icon icon="solar:box-bold-duotone" className="h-5 w-5 text-muted-foreground" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="truncate">{product.name}</div>
+                            <div className="text-xs font-normal text-muted-foreground">{product.sku}</div>
+                          </div>
+                        </Link>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {product.category?.name ?? 'Uncategorized'}
+                      </TableCell>
+                      <TableCell className="text-right text-sm">{stockCell(product)}</TableCell>
+                      <TableCell>{statusBadge(product)}</TableCell>
+                      <TableCell className="text-right text-sm tabular-nums">
+                        {formatCurrency(Number(product.price || 0))}
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             )}
-            <div className="mt-4 flex justify-end"><Button variant="ghost" asChild><Link to="/products">View all products <Icon icon="solar:arrow-right-linear" className="ml-2 h-4 w-4" /></Link></Button></div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader><CardTitle>Stock attention</CardTitle><p className="text-sm text-muted-foreground">Items at or below their reorder level</p></CardHeader>
-          <CardContent className="space-y-3">
-            {[...metrics.outOfStock, ...metrics.lowStock].slice(0, 6).map((product) => (
-              <Link key={product.id} to={`/products/${product.id}`} className="flex items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/50">
-                <div className="min-w-0"><p className="truncate text-sm font-medium">{product.name}</p><p className="text-xs text-muted-foreground">{product.sku}</p></div>
-                <Badge variant={product.stock_quantity <= 0 ? 'destructive' : 'secondary'}>{product.stock_quantity} left</Badge>
+        {/* Stock attention */}
+        <Card className="overflow-hidden rounded-xl">
+          <CardHeader className="border-b">
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="text-base">Stock attention</CardTitle>
+              {attention.length > 0 && (
+                <Badge variant="outline" className={OUT_OF_STOCK_BADGE}>
+                  {attention.length}
+                </Badge>
+              )}
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">Items at or below their reorder level</p>
+          </CardHeader>
+          <CardContent className="p-2">
+            {attention.slice(0, 6).map((product) => (
+              <Link
+                key={product.id}
+                to={`/products/${product.id}`}
+                className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/50"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{product.name}</p>
+                  <p className="text-xs text-muted-foreground">{product.sku}</p>
+                </div>
+                <Badge
+                  variant="outline"
+                  className={Number(product.stock_quantity) <= 0 ? OUT_OF_STOCK_BADGE : 'border-transparent bg-amber-100 font-normal text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'}
+                >
+                  {product.stock_quantity} left
+                </Badge>
               </Link>
             ))}
-            {!isLoading && metrics.outOfStock.length + metrics.lowStock.length === 0 && (
-              <div className="py-10 text-center"><Icon icon="solar:check-circle-bold-duotone" className="mx-auto h-10 w-10 text-emerald-500" /><p className="mt-2 font-medium">Stock levels look healthy</p><p className="text-sm text-muted-foreground">No items currently need attention.</p></div>
+            {!isLoading && attention.length === 0 && (
+              <div className="flex flex-col items-center justify-center gap-1 px-4 py-12 text-center">
+                <Icon icon="solar:check-circle-bold-duotone" className="h-10 w-10 text-emerald-500/60" />
+                <p className="text-sm font-medium">Stock levels look healthy</p>
+                <p className="text-xs text-muted-foreground">No items currently need attention.</p>
+              </div>
             )}
           </CardContent>
         </Card>

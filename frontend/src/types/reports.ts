@@ -470,6 +470,17 @@ export interface CustomerSegmentationData {
 
 // Dashboard Types
 export interface ExecutiveDashboardData {
+  /**
+   * Reconciliation basis for the selected period:
+   *  - booked_*  → sales orders + POS line items (what the charts show)
+   *  - posted_*  → the general ledger (P&L) for profitability and cash
+   */
+  basis?: {
+    booked_revenue: number;
+    booked_profit: number;
+    booked_orders: number;
+    posted_revenue: number;
+  };
   kpis: {
     revenue: {
       current: number;

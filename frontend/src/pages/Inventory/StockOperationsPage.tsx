@@ -387,7 +387,7 @@ export function StockOperationsPage() {
       )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3 lg:w-[400px]">
+        <TabsList className="w-fit max-w-full">
           <TabsTrigger value="stock-in" className="flex items-center gap-2">
             <Icon icon="solar:arrow-down-bold" className="h-4 w-4" />
             Receive Stock

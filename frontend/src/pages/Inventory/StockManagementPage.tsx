@@ -663,7 +663,7 @@ export function StockManagementPage() {
 
       {/* Main Content */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ActiveTab)} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4 lg:w-[500px]">
+        <TabsList className="w-fit max-w-full">
           <TabsTrigger value="products" className="gap-2">
             <Icon icon="solar:box-bold" className="h-4 w-4" />
             Products

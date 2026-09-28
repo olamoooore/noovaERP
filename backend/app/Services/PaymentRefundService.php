@@ -139,6 +139,8 @@ class PaymentRefundService
                     'notes' => "Refund via {$transaction->gateway->gateway_name}: {$reason}",
                     'received_by' => $actorUserId,
                     'journal_entry_id' => $journalEntry?->id,
+                    'payment_status' => 'refunded',
+                    'refunded_at' => now(),
                 ]);
             }
 

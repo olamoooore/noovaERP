@@ -47,7 +47,7 @@ export const HeaderActionButton = forwardRef<HTMLButtonElement, ComponentProps<t
       <Button
         ref={ref}
         size="sm"
-        className={cn('h-8 rounded-full px-3 text-xs', className)}
+        className={cn('h-8 gap-0 rounded-full px-3 text-xs', className)}
         asChild
         {...props}
       >
@@ -60,7 +60,7 @@ export const HeaderActionButton = forwardRef<HTMLButtonElement, ComponentProps<t
     <Button
       ref={ref}
       size="sm"
-      className={cn('h-8 rounded-full px-3 text-xs', className)}
+      className={cn('h-8 gap-0 rounded-full px-3 text-xs', className)}
       {...props}
     >
       {leading}

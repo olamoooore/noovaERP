@@ -400,7 +400,7 @@ export function CustomersPage() {
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-6">
               <Tabs defaultValue="basic" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList className="w-fit max-w-full">
                   <TabsTrigger value="basic">Basic Info</TabsTrigger>
                   <TabsTrigger value="addresses">Addresses</TabsTrigger>
                   <TabsTrigger value="financial">Financial</TabsTrigger>
@@ -1123,7 +1123,7 @@ export function CustomersPage() {
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Same form as create but for editing */}
               <Tabs defaultValue="basic" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList className="w-fit max-w-full">
                   <TabsTrigger value="basic">Basic Info</TabsTrigger>
                   <TabsTrigger value="addresses">Addresses</TabsTrigger>
                   <TabsTrigger value="financial">Financial</TabsTrigger>

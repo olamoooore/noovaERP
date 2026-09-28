@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -27,7 +28,7 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { useSettingsStore } from '@/store/settingsStore'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, resolveImageUrl } from '@/lib/utils'
 import {
   Command,
   CommandEmpty,
@@ -139,6 +140,20 @@ type ProductStatus = 'draft' | 'pending_approval' | 'active' | 'discontinued' | 
 type TrackingMethod = 'none' | 'quantity' | 'batch' | 'serial'
 type TopTabKey = 'product' | 'commercial' | 'inventory' | 'operations' | 'channels' | 'control' | 'media'
 
+interface SectionTab {
+  key: TopTabKey
+  label: string
+  icon: string
+  description: string
+}
+
+const SECTION_TABS: SectionTab[] = [
+  { key: 'product', label: 'Product', icon: 'solar:box-bold-duotone', description: 'Basics, description, pricing and variants.' },
+  { key: 'commercial', label: 'Commercial', icon: 'solar:dollar-minimalistic-bold-duotone', description: 'Pricing, suppliers and tax.' },
+  { key: 'inventory', label: 'Inventory & Details', icon: 'solar:layers-minimalistic-bold-duotone', description: 'Stock levels, attributes, features and custom fields.' },
+  { key: 'channels', label: 'Channels', icon: 'solar:globus-bold-duotone', description: 'Storefront and sales channel controls.' },
+]
+
 interface BarcodeDetectorWindow extends Window {
   BarcodeDetector?: new (options?: { formats?: string[] }) => {
     detect: (source: ImageBitmapSource) => Promise<Array<{ rawValue?: string }>>
@@ -154,13 +169,6 @@ function generateSku(name: string): string {
   const base = slugSkuBase(name)
   const rand = Math.random().toString(36).slice(2, 8).toUpperCase()
   return `${base}-${rand}`
-}
-
-function resolveImageUrl(path: string | null | undefined): string {
-  if (!path) return ''
-  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:') || path.startsWith('blob:')) return path
-  if (path.startsWith('/storage/')) return path
-  return `/storage/${path.replace(/^\//, '')}`
 }
 
 export function ProductCreatePage() {
@@ -245,6 +253,7 @@ export function ProductCreatePage() {
   const [barcodeScannerError, setBarcodeScannerError] = useState<string | null>(null)
 
   const productSectionRef = useRef<HTMLDivElement | null>(null)
+  const importInputRef = useRef<HTMLInputElement | null>(null)
   const channelsSectionRef = useRef<HTMLDivElement | null>(null)
   const commercialSectionRef = useRef<HTMLDivElement | null>(null)
   const detailTabsRef = useRef<HTMLDivElement | null>(null)
@@ -619,7 +628,7 @@ export function ProductCreatePage() {
     if (!file) return
     try {
       const res = await uploadMutation.mutateAsync({ file, folder: 'products' })
-      setFormData((prev) => ({ ...prev, image: res.url }))
+      setFormData((prev) => ({ ...prev, image: resolveImageUrl(res.url) }))
       toast({ title: 'Main image uploaded' })
     } catch {
       toast({ variant: 'destructive', title: 'Failed to upload image' })
@@ -633,7 +642,7 @@ export function ProductCreatePage() {
     for (const file of files) {
       try {
         const res = await uploadMutation.mutateAsync({ file, folder: 'products/gallery' })
-        nextUrls.push(res.url)
+        nextUrls.push(resolveImageUrl(res.url))
       } catch {
         // stop after first failure to avoid partial confusion
         toast({ variant: 'destructive', title: 'Failed to upload a gallery image' })
@@ -846,56 +855,37 @@ export function ProductCreatePage() {
     return formData.tax_mode
   }, [formData.tax_mode, formData.tax_id])
 
-  const scrollToSection = (ref: { current: HTMLDivElement | null }) => {
-    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  /**
+   * The app scrolls inside <main> (MainLayout), not the window. Sections swap
+   * in place now, so reset that container on every switch — otherwise the
+   * previous section's scroll offset survives and shows blank canvas at the
+   * bottom of a shorter section.
+   */
+  const resetScroll = () => {
+    const scroll = () => {
+      const main = document.querySelector('main')
+      if (main) main.scrollTo({ top: 0, behavior: 'auto' })
+      else window.scrollTo({ top: 0, behavior: 'auto' })
+    }
+    scroll()
+    requestAnimationFrame(scroll)
   }
 
   const handleTopTabClick = (tab: TopTabKey) => {
     setActiveTopTab(tab)
 
-    if (tab === 'product') {
-      scrollToSection(productSectionRef)
-      return
-    }
-
-    if (tab === 'commercial') {
-      setTimeout(() => {
-        if (!hasVariants && commercialSectionRef.current) {
-          scrollToSection(commercialSectionRef)
-          return
-        }
-        scrollToSection(detailTabsRef)
-      }, 50)
-      return
-    }
-
-    if (tab === 'inventory') {
+    // Keep the nested details sub-tab in sync with the section.
+    if (tab === 'inventory' || tab === 'operations') {
       setDetailsTab('inventory')
-      setTimeout(() => scrollToSection(detailTabsRef), 50)
-      return
     }
-
-    if (tab === 'operations') {
-      setDetailsTab('inventory')
-      setTimeout(() => scrollToSection(operationsSectionRef), 50)
-      return
-    }
-
-    if (tab === 'channels') {
-      scrollToSection(channelsSectionRef)
-      return
-    }
-
     if (tab === 'control') {
       setDetailsTab('features')
-      setTimeout(() => scrollToSection(controlSectionRef), 50)
-      return
     }
 
-    if (tab === 'media') {
-      scrollToSection(mediaSectionRef)
-    }
+    resetScroll()
   }
+
+  const activeSectionTab = SECTION_TABS.find((tab) => tab.key === activeTopTab) ?? SECTION_TABS[0]
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-6">
@@ -908,94 +898,73 @@ export function ProductCreatePage() {
           </div>
           <h1 className="text-3xl font-bold mt-1">Add Product</h1>
         </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" asChild>
-            <Link to="/products">
-              <Icon icon="solar:alt-arrow-left-bold" className="mr-2 h-4 w-4" />
-              Back
-            </Link>
-          </Button>
-          <Button type="submit" form="product-form" disabled={createMutation.isPending}>
-            <Icon icon="solar:check-circle-bold" className="mr-2 h-4 w-4" />
-            Save
-          </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) importMutation.mutate(file)
+              e.currentTarget.value = ''
+            }}
+          />
+          <HeaderActionButton variant="outline" icon="solar:alt-arrow-left-bold-duotone" asChild>
+            <Link to="/products">Back</Link>
+          </HeaderActionButton>
+          <HeaderActionButton
+            variant="outline"
+            icon="solar:upload-bold-duotone"
+            loading={importMutation.isPending}
+            disabled={importMutation.isPending}
+            title="Bulk-create products from a CSV — required columns: name, cost, price. Optional: sku, barcode, type, category_id, stock_quantity."
+            onClick={() => importInputRef.current?.click()}
+          >
+            Import
+          </HeaderActionButton>
+          <HeaderActionButton
+            variant="outline"
+            icon="solar:document-add-bold-duotone"
+            onClick={handleSaveAndAddDetails}
+            disabled={createMutation.isPending}
+          >
+            Save &amp; Add Details
+          </HeaderActionButton>
+          <HeaderActionButton
+            type="submit"
+            form="product-form"
+            icon="solar:check-circle-bold-duotone"
+            loading={createMutation.isPending}
+            disabled={createMutation.isPending}
+          >
+            Save Product
+          </HeaderActionButton>
         </div>
       </div>
 
-      <Card className="border-2 border-primary/25 bg-gradient-to-b from-white to-blue-50/40 shadow-sm">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base text-green-700">Quick Create Mode</CardTitle>
-          <div className="text-sm text-muted-foreground">
-            Default SME-friendly entry. Create the product quickly, then complete more details later.
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <div className="space-y-2">
-              <Label htmlFor="quick-name">Product Name</Label>
-              <Input
-                id="quick-name"
-                placeholder="e.g. Mineral Water 500ml"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="quick-unit">Unit</Label>
-              <Input
-                id="quick-unit"
-                placeholder="e.g. pcs"
-                value={formData.unit}
-                onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="quick-price">Selling Price</Label>
-              <Input
-                id="quick-price"
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                value={formData.price}
-                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-              />
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" form="product-form" disabled={createMutation.isPending}>Save Product</Button>
-            <Button type="button" variant="secondary" onClick={handleSaveAndAddDetails} disabled={createMutation.isPending}>Save & Add Details</Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="sticky top-0 z-40 max-w-[calc(100%-364px)] border-b border-[#dfe6f2] bg-[#f6f8fc] py-3 shadow-sm max-lg:max-w-none">
-        <div className="rounded-xl bg-[#eef3fb] p-2">
-          <div className="grid grid-cols-2 gap-2 text-sm font-medium md:grid-cols-4 xl:grid-cols-7">
-          {([
-            { key: 'product', label: 'Product' },
-            { key: 'commercial', label: 'Commercial' },
-            { key: 'inventory', label: 'Inventory' },
-            { key: 'operations', label: 'Operations' },
-            { key: 'channels', label: 'Channels' },
-            { key: 'control', label: 'Control' },
-            { key: 'media', label: 'Media' },
-          ] as Array<{ key: TopTabKey; label: string }>).map((tab) => (
+      {/* Section switcher — app TabsList styling on the page canvas colour.
+          The before: pseudo-element paints the 24px strip the sticky bar cannot
+          cover (= <main>'s p-6) so nothing shows through above the tabs. */}
+      <div className="sticky top-0 z-40 bg-[#f6f8fc] pb-3 before:absolute before:inset-x-0 before:-top-6 before:h-6 before:bg-[#f6f8fc] before:content-['']">
+        <div className="inline-flex flex-wrap items-center gap-1 rounded-full bg-muted p-1 text-muted-foreground shadow-sm">
+          {SECTION_TABS.map((tab) => (
             <button
               key={tab.key}
               type="button"
               onClick={() => handleTopTabClick(tab.key)}
               className={cn(
-                'rounded-md px-3 py-2 text-center transition-colors',
+                'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition-all',
                 activeTopTab === tab.key
                   ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'
+                  : 'hover:text-foreground',
               )}
             >
+              <Icon icon={tab.icon} className="h-3.5 w-3.5 shrink-0" />
               {tab.label}
             </button>
           ))}
         </div>
-      </div>
       </div>
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
@@ -1003,13 +972,22 @@ export function ProductCreatePage() {
           <div ref={productSectionRef}>
           <Card>
             <CardHeader>
-              <div className="mb-1 inline-flex w-fit rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-primary">Tab 1</div>
-              <CardTitle>Product</CardTitle>
+              {/* Follows the active tab so the card never claims to be
+                  "Product" while another section is on screen. */}
+              <CardTitle className="flex items-center gap-2">
+                <Icon icon={activeSectionTab.icon} className="h-4 w-4 text-muted-foreground" />
+                {activeSectionTab.label}
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">{activeSectionTab.description}</p>
             </CardHeader>
             <CardContent>
               <form id="product-form" onSubmit={handleSubmit} className="space-y-5">
+                {/* Everything from Basic Info through Variants belongs to the
+                    Product tab; the wrapper must span the whole region or the
+                    later sections leak into every other tab. */}
+                <div className={cn('space-y-5', activeTopTab !== 'product' && 'hidden')}>
                 <div className="space-y-4">
-                  <h3 className="text-lg font-semibold">Basic Info</h3>
+                  <h3 className="flex items-center gap-2 text-lg font-semibold"><Icon icon="solar:box-bold-duotone" className="h-4 w-4 text-muted-foreground" />Basic Info</h3>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="name">Product Name *</Label>
@@ -1770,13 +1748,14 @@ export function ProductCreatePage() {
                     </div>
                   </div>
                 )}
+                </div>
 
-                <Separator />
-
-                <div ref={commercialSectionRef} className="space-y-5 rounded-lg border p-4">
+                <div
+                  ref={commercialSectionRef}
+                  className={cn('space-y-5 rounded-lg border p-4', activeTopTab !== 'commercial' && 'hidden')}
+                >
                   <div>
-                    <div className="mb-1 inline-flex w-fit rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-primary">Tab 2</div>
-                    <h2 className="text-2xl font-semibold">Commercial</h2>
+                    <h3 className="flex items-center gap-2 text-lg font-semibold"><Icon icon="solar:dollar-minimalistic-bold-duotone" className="h-4 w-4 text-muted-foreground" />Commercial</h3>
                   </div>
 
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -2027,11 +2006,9 @@ export function ProductCreatePage() {
                   </div>
                 </div>
 
-                <Separator />
-
-                <div ref={detailTabsRef}>
+                <div ref={detailTabsRef} className={cn(activeTopTab !== 'inventory' && 'hidden')}>
                 <Tabs value={detailsTab} onValueChange={setDetailsTab} className="w-full">
-                  <TabsList className="grid w-full grid-cols-4">
+                  <TabsList className="w-fit max-w-full">
                     <TabsTrigger value="inventory">Inventory</TabsTrigger>
                     <TabsTrigger value="attributes" disabled={hasVariants}>Attributes</TabsTrigger>
                     <TabsTrigger value="features">Features</TabsTrigger>
@@ -2041,8 +2018,7 @@ export function ProductCreatePage() {
                   <TabsContent value="inventory" className="pt-4">
                     <div className="space-y-5 rounded-lg border p-4">
                       <div>
-                        <div className="mb-1 inline-flex w-fit rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-primary">Tab 3</div>
-                        <h2 className="text-2xl font-semibold">Inventory</h2>
+                        <h3 className="flex items-center gap-2 text-lg font-semibold"><Icon icon="solar:layers-minimalistic-bold-duotone" className="h-4 w-4 text-muted-foreground" />Inventory</h3>
                       </div>
                       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div className="space-y-2">
@@ -2260,8 +2236,15 @@ export function ProductCreatePage() {
 
                       {!hasVariants ? (
                         <div className="space-y-4">
-                          <div className="text-xs text-muted-foreground">
-                            Pulled from Product Settings → Attributes.
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="text-xs text-muted-foreground">Pulled from Product Settings → Attributes.</div>
+                            <HeaderActionButton
+                              variant="outline"
+                              icon="solar:add-circle-bold-duotone"
+                              onClick={() => setSingleAttributes((prev) => [...prev, { attributeId: '', values: [] }])}
+                            >
+                              Add Attribute
+                            </HeaderActionButton>
                           </div>
 
                           {singleAttributes.length ? (
@@ -2281,9 +2264,9 @@ export function ProductCreatePage() {
                                 return (
                                   <div
                                     key={index}
-                                    className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start border p-3 rounded-md bg-background"
+                                    className="flex flex-wrap items-end gap-3 rounded-md border bg-background p-3"
                                   >
-                                    <div className="space-y-2">
+                                    <div className="min-w-[14rem] flex-[1.2] space-y-2">
                                       <Label>Attribute</Label>
                                       <div className="flex gap-2">
                                         <Popover
@@ -2401,7 +2384,7 @@ export function ProductCreatePage() {
                                       ) : null}
                                     </div>
 
-                                    <div className="space-y-2">
+                                    <div className="min-w-[14rem] flex-1 space-y-2">
                                       <Label>Values</Label>
 
                                       {isExisting && selectedAttr?.values?.length ? (
@@ -2479,13 +2462,16 @@ export function ProductCreatePage() {
                                       type="button"
                                       variant="ghost"
                                       size="icon"
+                                      className="mb-1 h-7 w-7 shrink-0 text-destructive hover:text-destructive"
+                                      title="Remove attribute"
+                                      aria-label="Remove attribute"
                                       onClick={() => {
                                         const next = [...singleAttributes]
                                         next.splice(index, 1)
                                         setSingleAttributes(next)
                                       }}
                                     >
-                                      <Icon icon="solar:trash-bin-trash-bold" className="text-red-500" />
+                                      <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-3.5 w-3.5" />
                                     </Button>
                                   </div>
                                 )
@@ -2495,16 +2481,6 @@ export function ProductCreatePage() {
                             <div className="text-sm text-muted-foreground">No attributes selected yet.</div>
                           )}
 
-                          <div className="flex gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              onClick={() => setSingleAttributes((prev) => [...prev, { attributeId: '', values: [] }])}
-                            >
-                              <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
-                              Add Attribute
-                            </Button>
-                          </div>
                         </div>
                       ) : (
                         <div className="text-sm text-muted-foreground">Attributes are managed in the Variants section above.</div>
@@ -2515,8 +2491,7 @@ export function ProductCreatePage() {
                   <TabsContent value="features" className="pt-4">
                     <div ref={controlSectionRef} className="space-y-4 rounded-lg border p-4">
                       <div>
-                        <div className="mb-1 inline-flex w-fit rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-primary">Tab 6</div>
-                        <h2 className="text-2xl font-semibold">Control</h2>
+                        <h3 className="text-lg font-semibold">Control</h3>
                       </div>
                       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div className="space-y-2">
@@ -2698,12 +2673,12 @@ export function ProductCreatePage() {
                 </Tabs>
                 </div>
 
-                <Separator />
-
-                <div ref={channelsSectionRef} className="space-y-5 rounded-lg border p-4">
+                <div
+                  ref={channelsSectionRef}
+                  className={cn('space-y-5 rounded-lg border p-4', activeTopTab !== 'channels' && 'hidden')}
+                >
                   <div>
-                    <div className="mb-1 inline-flex w-fit rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-primary">Tab 5</div>
-                    <h2 className="text-2xl font-semibold">Channels</h2>
+                    <h3 className="flex items-center gap-2 text-lg font-semibold"><Icon icon="solar:globus-bold-duotone" className="h-4 w-4 text-muted-foreground" />Channels</h3>
                   </div>
 
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -2853,8 +2828,14 @@ export function ProductCreatePage() {
               />
 
               {formData.image ? (
-                <div className="rounded-md border p-2">
-                  <img src={resolveImageUrl(formData.image)} alt="Main" className="h-40 w-full object-cover rounded" />
+                <div className="space-y-2 rounded-md border p-2">
+                  <div className="overflow-hidden rounded-md bg-muted/40">
+                    <img
+                      src={resolveImageUrl(formData.image)}
+                      alt="Main"
+                      className="aspect-square w-full object-contain"
+                    />
+                  </div>
                   <Button
                     type="button"
                     variant="ghost"
@@ -2888,7 +2869,7 @@ export function ProductCreatePage() {
                       onClick={() => setFormData((p) => ({ ...p, gallery: p.gallery.filter((g) => g !== url) }))}
                       title="Click to remove"
                     >
-                      <img src={url} alt="Gallery" className="h-20 w-full object-cover rounded" />
+                      <img src={url} alt="Gallery" className="aspect-square w-full rounded object-contain" />
                     </button>
                   ))}
                 </div>
@@ -2896,29 +2877,6 @@ export function ProductCreatePage() {
             </CardContent>
           </Card>
 
-          <Card id="import">
-            <CardHeader>
-              <CardTitle>Import products</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="text-sm text-muted-foreground">
-                Upload a CSV to bulk-create products.
-              </div>
-              <Input
-                type="file"
-                accept=".csv,text/csv"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) importMutation.mutate(file)
-                  e.currentTarget.value = ''
-                }}
-                disabled={importMutation.isPending}
-              />
-              <div className="text-xs text-muted-foreground">
-                Required columns: <span className="font-medium">name</span>, <span className="font-medium">cost</span>, <span className="font-medium">price</span>. Optional: sku, barcode, type, category_id, stock_quantity.
-              </div>
-            </CardContent>
-          </Card>
         </div>
       </div>
 

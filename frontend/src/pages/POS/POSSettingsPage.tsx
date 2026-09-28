@@ -216,7 +216,7 @@ export function POSSettingsPage() {
 
       {/* Tabs */}
       <Tabs defaultValue="general" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-5">
+        <TabsList className="w-fit max-w-full">
           <TabsTrigger value="general">
             <Icon icon="solar:settings-bold-duotone" className="mr-1.5 h-4 w-4 hidden md:inline" />
             General

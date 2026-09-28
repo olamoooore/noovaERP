@@ -2147,7 +2147,7 @@ export function POSTerminal() {
           {(cart.length > 0 || appliedCoupon || loyaltyRedemption.pointsToRedeem > 0) && (
             <div className="overflow-hidden rounded-[1.2rem] border border-slate-200 bg-white shadow-sm">
               <Tabs value={activeDiscountTab} onValueChange={(v) => setActiveDiscountTab(v as any)} className="w-full">
-                <TabsList className="grid w-full grid-cols-3 rounded-none border-b border-slate-200 bg-slate-50">
+                <TabsList className="w-fit max-w-full bg-slate-50">
                   <TabsTrigger value="discount" className="text-xs gap-1">
                     <Icon icon="solar:tag-bold" className="h-3.5 w-3.5" />
                     Discount

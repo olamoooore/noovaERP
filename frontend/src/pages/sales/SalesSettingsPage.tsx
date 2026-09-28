@@ -72,7 +72,7 @@ export function SalesSettingsPage() {
       </div>
 
       <Tabs defaultValue="settings" className="space-y-6">
-        <TabsList className="h-11 w-full max-w-md justify-start gap-1 rounded-lg bg-muted/60 p-1">
+        <TabsList className="h-10 w-fit max-w-full justify-start gap-1 bg-muted p-1">
           <TabsTrigger value="settings" className="gap-2 px-5">
             <Icon icon="solar:settings-bold-duotone" className="h-4 w-4" />
             <span>Settings</span>

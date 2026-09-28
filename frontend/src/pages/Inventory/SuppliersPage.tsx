@@ -311,7 +311,7 @@ export function SuppliersPage() {
           </DialogHeader>
           
           <Tabs defaultValue="basic" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="w-fit max-w-full">
               <TabsTrigger value="basic">Basic Info</TabsTrigger>
               <TabsTrigger value="business">Business Details</TabsTrigger>
               <TabsTrigger value="ratings">Ratings & Notes</TabsTrigger>

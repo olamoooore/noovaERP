@@ -204,6 +204,7 @@ abstract class TenantTestCase extends TestCase
             'modules/PaymentGateway/database/migrations/tenant',
             'modules/Fulfillment/database/migrations/tenant',
             'modules/WhatsApp/database/migrations/tenant',
+            'modules/Storefront/database/migrations/tenant',
         ];
     }
 
@@ -243,7 +244,8 @@ abstract class TenantTestCase extends TestCase
     }
 
     protected function bindTenantContext(string $tenantId = 'test-tenant', array $attributes = []): Tenant
-    {        $tenant = new Tenant(array_merge([
+    {
+        $tenant = new Tenant(array_merge([
             'id' => $tenantId,
             'name' => 'Test Tenant',
         ], $attributes));

@@ -1,0 +1,13 @@
+{
+    "key": "storefront",
+    "name": "Storefront",
+    "type": "addon",
+    "description": "Builder-native, tenant-generic e-commerce: storefront shortcodes rendered inside WebsiteBuilder pages, composing platform inventory, pricing, tax, payments, invoices and messaging.",
+    "providers": [
+        "Modules\\Storefront\\Providers\\StorefrontServiceProvider"
+    ],
+    "dependencies": [
+        "sales",
+        "inventory"
+    ]
+}

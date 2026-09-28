@@ -209,6 +209,12 @@ class PaymentController extends Controller
             $discountAmount = $validated['discount_amount'] ?? 0;
             $totalApplied = $validated['amount'] + $discountAmount;
 
+            if ($totalApplied <= 0) {
+                return response()->json([
+                    'message' => 'Payment amount must be greater than zero.',
+                ], 422);
+            }
+
             if ($totalApplied > $invoice->balance) {
                 return response()->json([
                     'message' => 'Payment amount exceeds invoice balance',
@@ -241,10 +247,14 @@ class PaymentController extends Controller
                 }
             }
 
-            $payment = $this->invoiceService->recordPayment($invoice, $validated);
+            // Manual recording creates a DRAFT payment (no journal entry). The
+            // operator reviews and posts it from the Payments page — creating
+            // it previously posted to the GL immediately, which surprised
+            // operators who expected a draft to review first.
+            $payment = $this->invoiceService->recordPayment($invoice, $validated, postImmediately: false);
 
             return response()->json([
-                'message' => 'Payment recorded successfully',
+                'message' => 'Draft payment recorded — post it from the Payments page to hit the ledger',
                 'id' => $payment->id,
                 'data' => $payment,
             ], 201);

@@ -32,6 +32,21 @@ class EncryptedOrLegacyString implements CastsAttributes
         try {
             return Crypt::decryptString($value);
         } catch (DecryptException) {
+            // A Laravel ciphertext payload that cannot be decrypted means a key
+            // mismatch (data moved between environments with different
+            // APP_KEYs). Returning it leaked the raw blob into the UI (a
+            // "Patient Name" rendering as eyJpdiI6…), so hide it instead.
+            if (self::looksEncrypted($value)) {
+                Log::warning('Encrypted value unreadable with the current APP_KEY — hidden', [
+                    'model' => $model::class,
+                    'key' => $key,
+                    'id' => $model->getKey(),
+                ]);
+
+                return null;
+            }
+
+            // Genuine legacy plaintext (not ciphertext-shaped) stays readable.
             Log::warning('Unreadable encrypted value returned as legacy plaintext', [
                 'model' => $model::class,
                 'key' => $key,
@@ -40,6 +55,14 @@ class EncryptedOrLegacyString implements CastsAttributes
 
             return (string) $value;
         }
+    }
+
+    /** Does the value look like a Laravel encrypted payload? */
+    private static function looksEncrypted(string $value): bool
+    {
+        $decoded = json_decode($value, true);
+
+        return is_array($decoded) && isset($decoded['iv'], $decoded['value'], $decoded['mac']);
     }
 
     public function set(Model $model, string $key, mixed $value, array $attributes): array

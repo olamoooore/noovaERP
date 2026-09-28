@@ -37,6 +37,10 @@ class CustomerStatementController extends Controller
             'as_of' => 'nullable|date',
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
+            // pdf (default) renders the statement; json exposes the same
+            // canonical payload so the SPA can build Excel/Word exports
+            // client-side without a second data assembly path.
+            'format' => 'nullable|string|in:pdf,json',
         ]);
 
         $customer = Customer::with(['customerContacts', 'addresses'])->findOrFail($customerId);
@@ -75,6 +79,16 @@ class CustomerStatementController extends Controller
             'generated_by' => Auth::id(),
         ]);
 
+        $filenameBase = sprintf('SOA_%s_%s', $customer->code ?? 'UNKNOWN', $asOf->format('Ymd'));
+
+        if (($validated['format'] ?? 'pdf') === 'json') {
+            return response()->json([
+                'statement_id' => (string) $statement->id,
+                'filename' => $filenameBase,
+                'payload' => $payload,
+            ]);
+        }
+
         // Render through the tenant's own template when one is published, and
         // otherwise fall back to the built-in statement layout. The renderer
         // throws when a tenant has no published customer_statement template,
@@ -98,7 +112,7 @@ class CustomerStatementController extends Controller
             ])->output();
         }
 
-        $filename = sprintf('SOA_%s_%s.pdf', $customer->code ?? 'UNKNOWN', $asOf->format('Ymd'));
+        $filename = $filenameBase.'.pdf';
 
         return response($bytes, 200, [
             'Content-Type' => 'application/pdf',

@@ -78,6 +78,29 @@ class PublicWebsiteRenderController extends Controller
         // Fix relative logo path — rewrite noovaerplogo.png to /storage/noovaerplogo.png
         $html = str_replace('noovaerplogo.png', '/storage/noovaerplogo.png', $html);
 
+        // Platform page-content filters (tagged 'page_content_filters') —
+        // server-side component rendering such as the Storefront shortcode
+        // renderer runs HERE, in the single canonical render path (no
+        // parallel renderer). Each filter owns its own degradation; a filter
+        // failure must never fatalt the page.
+        foreach ($this->pageContentFilters() as $filter) {
+            try {
+                $html = $filter->filterHtml($html, [
+                    'website_slug' => $website->slug,
+                    'page_id' => $page->id,
+                    'page_version_id' => $page->currentVersion?->id,
+                    'mode' => 'public',
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::error('Page content filter failed', [
+                    'filter' => get_class($filter),
+                    'website_slug' => $website->slug,
+                    'page_id' => $page->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         // Get shop settings from website
         $shopSettings = $website->settings['shop'] ?? null;
 
@@ -265,6 +288,21 @@ RENDER_OUTPUT;
         })->join("\n");
 
         return $links;
+    }
+
+    /**
+     * Tagged platform page-content filters (e.g. Storefront shortcodes).
+     * Resolved lazily so a missing module never fatals the render path.
+     *
+     * @return iterable<\App\Contracts\PageContentFilter>
+     */
+    private function pageContentFilters(): iterable
+    {
+        try {
+            return app()->tagged('page_content_filters');
+        } catch (\Throwable $e) {
+            return [];
+        }
     }
 
     /**

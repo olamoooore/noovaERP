@@ -68,6 +68,7 @@
             "Modules\\Fulfillment\\": "modules/Fulfillment/src/",
             "Modules\\TemplateBuilder\\": "modules/TemplateBuilder/src/",
             "Modules\\AccountingFoundation\\": "modules/AccountingFoundation/src/",
+            "Modules\\Storefront\\": "modules/Storefront/src/",
             "Database\\Factories\\": "database/factories/",
             "Database\\Seeders\\": "database/seeders/"
         },

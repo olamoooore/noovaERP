@@ -345,7 +345,7 @@ const MyEventsDashboard: React.FC = () => {
 
       {/* Main Content Tabs - Simplified to match API */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="w-fit max-w-full">
           <TabsTrigger value="upcoming">Upcoming Events</TabsTrigger>
           <TabsTrigger value="bookings">My Bookings</TabsTrigger>
           <TabsTrigger value="manage">Manage Events</TabsTrigger>

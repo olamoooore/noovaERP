@@ -456,7 +456,7 @@ export function IoTDevicesPage() {
 
       {/* Tabs */}
       <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-4">
-        <TabsList className="w-full justify-start">
+        <TabsList className="w-fit max-w-full justify-start">
           <TabsTrigger value="configured" className="gap-2">
             <Icon icon="solar:settings-bold" className="h-4 w-4" />
             All Devices

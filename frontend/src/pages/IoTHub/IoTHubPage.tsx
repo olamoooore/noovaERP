@@ -366,7 +366,7 @@ export function IoTHubPage() {
 
       {/* Tabs: Configured Devices vs Discovery */}
       <Tabs value={selectedTab} onValueChange={setSelectedTab}>
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="w-fit max-w-full">
           <TabsTrigger value="configured">
             Configured Devices ({deviceConfigs.length})
           </TabsTrigger>

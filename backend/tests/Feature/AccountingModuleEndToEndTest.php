@@ -143,8 +143,12 @@ class AccountingModuleEndToEndTest extends TenantTestCase
             'reconciliation.complete',
         ]);
         Role::findByName('Accountant', 'web')->givePermissionTo([
+            'invoices.write', 'invoices.view',
             'accounting.write', 'accounting.post', 'accounting.reverse',
             'reconciliation.complete',
+        ]);
+        Role::findByName('Admin', 'web')->givePermissionTo([
+            'invoices.write', 'invoices.view',
         ]);
 
         $roleAssignments = [
@@ -185,6 +189,8 @@ class AccountingModuleEndToEndTest extends TenantTestCase
         $roleViewer = Role::firstOrCreate(['name' => 'viewer', 'guard_name' => 'web']);
 
         $permissions = [
+            'invoices.write',
+            'invoices.view',
             'accounting.write',
             'accounting.post',
             'accounting.reverse',
@@ -201,6 +207,10 @@ class AccountingModuleEndToEndTest extends TenantTestCase
 
         $roleAdmin->givePermissionTo($permissions);
         $roleAccountant->givePermissionTo([
+            // Matrix parity: the seeded `accountant` role has invoices.write /
+            // invoices.view, and POST /invoices is gated on invoices.write.
+            'invoices.write',
+            'invoices.view',
             'accounting.write',
             'accounting.post',
             'accounting.reverse',

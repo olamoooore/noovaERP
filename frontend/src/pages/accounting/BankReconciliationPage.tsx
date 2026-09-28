@@ -602,20 +602,39 @@ export function BankReconciliationPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Input
-            id="search"
-            placeholder="Search by description or reference..."
-            value={filters.search}
-            onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
-            className="h-8 w-64 rounded-full px-3 text-xs"
-          />
+          <HeaderActionButton icon="solar:document-add-bold" onClick={() => navigate(`/accounting/core/reconciliation/import-history${selectedBankAccount ? `?account=${selectedBankAccount}` : ''}`)} variant="outline">
+            Import History
+          </HeaderActionButton>
+          <HeaderActionButton icon="solar:history-bold" onClick={() => navigate('/accounting/core/reconciliation/history')} variant="outline">
+            View History
+          </HeaderActionButton>
+        </div>
+      </div>
+
+      {/* Filters — one row, below the header (was crammed into the title row
+          and wrapped/stacked on narrower screens) */}
+      <Card className="rounded-xl p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative w-full sm:w-80">
+            <Icon
+              icon="solar:magnifer-bold-duotone"
+              className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              id="search"
+              placeholder="Search by description or reference..."
+              value={filters.search}
+              onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
+              className="h-8 rounded-full pl-9 pr-3 text-xs"
+            />
+          </div>
           <Select
             value={filters.status}
             onValueChange={(value: any) =>
               setFilters((prev) => ({ ...prev, status: value }))
             }
           >
-            <SelectTrigger id="status-filter" className="h-8 rounded-full text-xs">
+            <SelectTrigger id="status-filter" className="h-8 w-44 rounded-full text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -634,14 +653,8 @@ export function BankReconciliationPage() {
           >
             <Icon icon="solar:close-circle-bold" className="h-4 w-4" />
           </Button>
-          <HeaderActionButton icon="solar:document-add-bold" onClick={() => navigate(`/accounting/core/reconciliation/import-history${selectedBankAccount ? `?account=${selectedBankAccount}` : ''}`)} variant="outline">
-            Import History
-          </HeaderActionButton>
-          <HeaderActionButton icon="solar:history-bold" onClick={() => navigate('/accounting/core/reconciliation/history')} variant="outline">
-            View History
-          </HeaderActionButton>
         </div>
-      </div>
+      </Card>
 
       {/* Bank Account Selection */}
       <Card className="p-6">
@@ -714,22 +727,39 @@ export function BankReconciliationPage() {
       </Card>
 
       {selectedBankAccount && (
-        <Card className="p-6 space-y-5">
-          <div>
-            <h2 className="text-lg font-semibold">1. Import bank statement</h2>
-            <p className="text-sm text-muted-foreground">CSV or XLSX only. Importing creates external statement records and never creates payments or journal entries.</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-            <div className="md:col-span-2">
-              <Label htmlFor="statement-file">Statement file</Label>
-              <Input id="statement-file" type="file" accept=".csv,.xlsx" onChange={(e) => { setStatementFile(e.target.files?.[0] ?? null); setStatementPreview(null); }} />
+        <Card className="rounded-xl p-6 space-y-5">
+          <div className="flex items-start gap-3">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">1</span>
+            <div>
+              <h2 className="text-base font-semibold">Import bank statement</h2>
+              <p className="text-sm text-muted-foreground">CSV or XLSX only. Importing creates external statement records and never creates payments or journal entries.</p>
             </div>
-            <Button type="button" variant="outline" disabled={!statementFile || previewStatementMutation.isPending} onClick={() => previewStatementMutation.mutate()}>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:items-end">
+            <div className="space-y-1.5 md:col-span-2">
+              <Label htmlFor="statement-file">Statement file</Label>
+              <Input
+                id="statement-file"
+                type="file"
+                accept=".csv,.xlsx"
+                onChange={(e) => { setStatementFile(e.target.files?.[0] ?? null); setStatementPreview(null); }}
+                className="h-9 cursor-pointer rounded-lg file:mr-3 file:rounded-full file:border-0 file:bg-primary/10 file:px-3 file:py-1 file:text-xs file:font-medium file:text-primary hover:file:bg-primary/20"
+              />
+              {statementFile && (
+                <p className="text-xs text-muted-foreground">Selected: {statementFile.name}</p>
+              )}
+            </div>
+            <HeaderActionButton
+              icon="solar:document-add-bold-duotone"
+              className="md:justify-self-end"
+              disabled={!statementFile || previewStatementMutation.isPending}
+              onClick={() => previewStatementMutation.mutate()}
+            >
               {previewStatementMutation.isPending ? 'Inspecting…' : 'Map & Preview'}
-            </Button>
+            </HeaderActionButton>
           </div>
           {statementPreview && (
-            <div className="rounded-lg border p-4 space-y-4">
+            <div className="rounded-xl border p-4 space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <div><span className="text-muted-foreground">Rows</span><p className="font-semibold">{statementPreview.source_rows}</p></div>
                 <div><span className="text-muted-foreground">Columns</span><p className="font-semibold">{statementPreview.headers.length}</p></div>
@@ -772,19 +802,29 @@ export function BankReconciliationPage() {
                   {(!statementDate || statementOpeningBalance === '' || statementBalance === '') && (
                     <p className="text-sm text-amber-600">Enter the statement ending date, opening balance, and ending balance to enable import.</p>
                   )}
-                  <Button type="button" disabled={!statementDate || statementOpeningBalance === '' || statementBalance === '' || importStatementMutation.isPending} onClick={() => importStatementMutation.mutate()}>
+                  <HeaderActionButton
+                    icon="solar:check-circle-bold-duotone"
+                    disabled={!statementDate || statementOpeningBalance === '' || statementBalance === '' || importStatementMutation.isPending}
+                    onClick={() => importStatementMutation.mutate()}
+                  >
                     {importStatementMutation.isPending ? 'Importing…' : 'Confirm Import'}
-                  </Button>
+                  </HeaderActionButton>
                 </div>
               )}
             </div>
           )}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-medium">Imported bank transactions</h3>
-              <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="space-y-3 border-t pt-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">2</span>
+                <div>
+                  <h3 className="text-base font-semibold">Imported bank transactions</h3>
+                  <p className="text-sm text-muted-foreground">Match each statement line to a posted GL line.</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
                 <Select value={statementTransactionStatus} onValueChange={(value) => setStatementTransactionStatus(value as StatementTransactionStatus)}>
-                  <SelectTrigger className="w-[190px]" aria-label="Imported transaction status">
+                  <SelectTrigger className="h-8 w-[190px] rounded-full text-xs" aria-label="Imported transaction status">
                     <SelectValue placeholder="Filter by status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -798,29 +838,33 @@ export function BankReconciliationPage() {
                     <SelectItem value="reversed">Reversed</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button
-                  type="button"
-                  size="sm"
+                <HeaderActionButton
                   variant="outline"
+                  icon="solar:magic-stick-3-bold-duotone"
                   title={activeStatementImport ? 'Generate match suggestions' : 'Import a statement before generating suggestions'}
                   disabled={!activeStatementImport || suggestMatchesMutation.isPending}
                   onClick={() => activeStatementImport && suggestMatchesMutation.mutate(activeStatementImport.id)}
                 >
                   {suggestMatchesMutation.isPending ? 'Scoring…' : 'Suggest Matches'}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
+                </HeaderActionButton>
+                <HeaderActionButton
                   variant="outline"
+                  icon="solar:check-circle-bold-duotone"
                   title={activeStatementImport ? 'Accept unique suggestions scoring at least 95%' : 'Import a statement before accepting suggestions'}
                   disabled={!activeStatementImport || bulkAcceptMatchesMutation.isPending}
                   onClick={() => activeStatementImport && bulkAcceptMatchesMutation.mutate(activeStatementImport.id)}
                 >
                   {bulkAcceptMatchesMutation.isPending ? 'Accepting…' : 'Accept 95%+ unique'}
-                </Button>
-                <Button type="button" size="sm" variant="ghost" onClick={() => statementTransactionsQuery.refetch()} disabled={statementTransactionsQuery.isFetching}>
-                  {statementTransactionsQuery.isFetching ? 'Refreshing…' : 'Refresh'}
-                </Button>
+                </HeaderActionButton>
+                <HeaderActionButton
+                  variant="ghost"
+                  icon="solar:refresh-bold-duotone"
+                  loading={statementTransactionsQuery.isFetching}
+                  onClick={() => statementTransactionsQuery.refetch()}
+                  disabled={statementTransactionsQuery.isFetching}
+                >
+                  Refresh
+                </HeaderActionButton>
               </div>
             </div>
             {groupStatementIds.size > 0 && (
@@ -854,7 +898,11 @@ export function BankReconciliationPage() {
             ) : statementTransactionsQuery.error ? (
               <p className="text-sm text-destructive">Unable to load imported transactions.</p>
             ) : filteredStatementTransactions.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No imported statement transactions match the selected status and search filters.</p>
+              <div className="rounded-xl border border-dashed py-10 text-center text-muted-foreground">
+                <Icon icon="solar:inbox-bold-duotone" className="mx-auto mb-3 h-10 w-10 opacity-50" />
+                <p className="text-sm font-medium">No imported statement transactions</p>
+                <p className="mt-1 text-xs">Nothing matches the selected status and search filters.</p>
+              </div>
             ) : (
               <div className="overflow-x-auto rounded-lg border">
                 <table className="w-full text-sm">
@@ -1069,23 +1117,30 @@ export function BankReconciliationPage() {
 
       {/* Statement Information */}
       {selectedBankAccount && (
-        <Card className="p-6">
-          <h2 className="text-lg font-semibold mb-4">Statement Information</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="rounded-xl p-6 space-y-5">
+          <div className="flex items-start gap-3">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">3</span>
             <div>
-              <Label htmlFor="statement-start-date">Statement Start Date</Label>
-              <Input id="statement-start-date" type="date" value={statementStartDate} onChange={(e) => setStatementStartDate(e.target.value)} />
+              <h2 className="text-base font-semibold">Statement Information</h2>
+              <p className="text-sm text-muted-foreground">The bank statement's own dates and closing balance, used to compute the reconciliation difference.</p>
             </div>
-            <div>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="statement-start-date">Statement Start Date</Label>
+              <Input id="statement-start-date" type="date" value={statementStartDate} onChange={(e) => setStatementStartDate(e.target.value)} className="h-9 rounded-lg" />
+            </div>
+            <div className="space-y-1.5">
               <Label htmlFor="statement-date">Statement Ending Date</Label>
               <Input
                 id="statement-date"
                 type="date"
                 value={statementDate}
                 onChange={(e) => setStatementDate(e.target.value)}
+                className="h-9 rounded-lg"
               />
             </div>
-            <div>
+            <div className="space-y-1.5">
               <Label htmlFor="statement-balance">Statement Ending Balance</Label>
               <Input
                 id="statement-balance"
@@ -1094,6 +1149,7 @@ export function BankReconciliationPage() {
                 placeholder="0.00"
                 value={statementBalance}
                 onChange={(e) => setStatementBalance(e.target.value)}
+                className="h-9 rounded-lg"
               />
             </div>
           </div>

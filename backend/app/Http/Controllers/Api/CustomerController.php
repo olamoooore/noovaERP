@@ -968,12 +968,14 @@ class CustomerController extends Controller
             ->first();
 
         $invoiceStats = $customer->invoices()
-            ->whereIn('status', ['sent', 'paid'])
+            ->whereIn('status', Customer::PURCHASE_INVOICE_STATUSES)
+            ->notSuperseded()
             ->selectRaw('
                 COUNT(*) as total_invoices,
                 SUM(total) as total_invoiced,
                 SUM(balance) as outstanding_balance,
-                SUM(CASE WHEN status = \'paid\' THEN total ELSE 0 END) as paid_amount
+                SUM(CASE WHEN status = \'paid\' THEN total ELSE 0 END) as paid_amount,
+                MAX(invoice_date) as last_invoice_date
             ')
             ->first();
 
@@ -988,8 +990,11 @@ class CustomerController extends Controller
             ->get();
 
         // Favorite products
+        // Qualify the columns: the products join also has a `status` column,
+        // so a bare `status` is ambiguous (SQLSTATE 42702).
         $favoriteProducts = $customer->posOrders()
-            ->where('status', 'paid')
+            ->where('pos_orders.status', 'paid')
+            ->where('pos_orders.is_return', false)
             ->join('pos_order_items', 'pos_orders.id', '=', 'pos_order_items.pos_order_id')
             ->join('products', 'pos_order_items.product_id', '=', 'products.id')
             ->selectRaw('products.id, products.name, SUM(pos_order_items.quantity) as total_qty, SUM(pos_order_items.line_total) as total_spent')
@@ -998,6 +1003,8 @@ class CustomerController extends Controller
             ->limit(5)
             ->get();
 
+        $lastPaymentDate = $customer->payments()->max('payment_date');
+
         return response()->json([
             'pos_orders' => $posOrderStats,
             'invoices' => $invoiceStats,
@@ -1005,7 +1012,14 @@ class CustomerController extends Controller
             'favorite_products' => $favoriteProducts,
             'loyalty_points' => $customer->loyalty_points,
             'customer_since' => $customer->customer_since,
-            'last_interaction' => $customer->last_interaction_at,
+            'last_interaction' => collect([
+                $customer->last_interaction_at,
+                $posOrderStats?->last_order_date,
+                $invoiceStats?->last_invoice_date,
+                $lastPaymentDate,
+            ])->filter()
+                ->map(fn ($date) => \Illuminate\Support\Carbon::parse($date)->toIso8601String())
+                ->max(),
         ]);
     }
 

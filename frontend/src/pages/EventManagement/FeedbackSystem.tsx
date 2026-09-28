@@ -338,7 +338,7 @@ const FeedbackSystem: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="w-fit max-w-full">
           <TabsTrigger value="submit">Submit Feedback</TabsTrigger>
           <TabsTrigger value="my-feedback">My Feedback</TabsTrigger>
           <TabsTrigger value="browse">Browse Reviews</TabsTrigger>

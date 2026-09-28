@@ -7,6 +7,9 @@ final readonly class Module
     /**
      * @param  array<int, class-string>  $providers
      * @param  array<int, string>  $dependencies  Module keys this module depends on
+     * @param  bool  $deprecated  FR-ARC-01 archive flag (module.json "deprecated") —
+     *                            parsed on the live discovery path so governance
+     *                            consumers (catalog UI, guards, tooling) can read it.
      */
     public function __construct(
         public string $key,
@@ -15,11 +18,17 @@ final readonly class Module
         public string $basePath,
         public array $providers,
         public array $dependencies = [],
+        public bool $deprecated = false,
     ) {}
 
     public function isCore(): bool
     {
         return $this->type === 'core';
+    }
+
+    public function isDeprecated(): bool
+    {
+        return $this->deprecated;
     }
 
     /**

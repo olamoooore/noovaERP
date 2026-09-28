@@ -8,7 +8,11 @@ import {
 } from '@/hooks/use-company-branding';
 import { generateReportPDF, printReportPDF, type ReportPdfOptions } from '@/lib/pdfGenerator';
 import { downloadCsv } from '@/lib/reportCsv';
+import { downloadReportDocx, downloadReportXlsx } from '@/lib/reportFiles';
 import { cn } from '@/lib/utils';
+
+/** Which export buttons to render (defaults to the original CSV/PDF/Print set). */
+export type ReportExportFormat = 'csv' | 'excel' | 'pdf' | 'docx' | 'print';
 
 interface ReportExportToolbarProps {
   /** Container holding the report (its first <table> is used for CSV/PDF). */
@@ -25,6 +29,8 @@ interface ReportExportToolbarProps {
   rows?: string[][];
   /** Per-column alignment for the explicit rows. */
   columnAligns?: ReportPdfOptions['columnAligns'];
+  /** Buttons to render, in a fixed order. Default: csv, pdf, print. */
+  formats?: ReportExportFormat[];
   className?: string;
 }
 
@@ -43,7 +49,8 @@ const extractTableRows = (container: HTMLElement | null): string[][] => {
 };
 
 /**
- * Report export/print actions (CSV, PDF, Print).
+ * Report export/print actions. Defaults to CSV/PDF/Print; pages opt into
+ * the Excel / PDF / Word set. Pages can opt into the legacy CSV/Print via `formats`.
  *
  * Print no longer calls window.print() (which dumped the whole SPA shell);
  * it renders the same clean report PDF as the PDF button and prints those
@@ -60,9 +67,10 @@ export function ReportExportToolbar({
   compareDate,
   rows,
   columnAligns,
+  formats = ['excel', 'pdf', 'docx'],
   className,
 }: ReportExportToolbarProps) {
-  const [busy, setBusy] = useState<'pdf' | 'print' | null>(null);
+  const [busy, setBusy] = useState<ReportExportFormat | null>(null);
   const queryClient = useQueryClient();
   // Fall back to the tenant's own logo/company name, never the platform brand.
   const branding = useCompanyBranding();
@@ -90,6 +98,31 @@ export function ReportExportToolbar({
     if (data.length === 0) return;
     const { name } = await resolveBranding();
     downloadCsv(`${filename}.csv`, data, { title, subtitle, companyName: name, asOfDate, compareDate });
+  };
+
+  const handleExcel = async () => {
+    if (busy) return;
+    const data = getRows();
+    if (data.length === 0) return;
+    setBusy('excel');
+    try {
+      await downloadReportXlsx(data, { filename, title, subtitle });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleDocx = async () => {
+    if (busy) return;
+    const data = getRows();
+    if (data.length === 0) return;
+    setBusy('docx');
+    try {
+      const { name } = await resolveBranding();
+      await downloadReportDocx(data, { filename, title, subtitle, companyName: name });
+    } finally {
+      setBusy(null);
+    }
   };
 
   const handlePdf = async () => {
@@ -136,32 +169,60 @@ export function ReportExportToolbar({
 
   return (
     <div className={cn('flex items-center gap-2', className)} data-no-export>
-      <HeaderActionButton
-        variant="outline"
-        icon="solar:file-text-linear"
-        disabled={busy !== null}
-        onClick={handleCsv}
-      >
-        CSV
-      </HeaderActionButton>
-      <HeaderActionButton
-        variant="outline"
-        icon="solar:file-download-bold"
-        loading={busy === 'pdf'}
-        disabled={busy !== null}
-        onClick={handlePdf}
-      >
-        PDF
-      </HeaderActionButton>
-      <HeaderActionButton
-        variant="outline"
-        icon="solar:printer-linear"
-        loading={busy === 'print'}
-        disabled={busy !== null}
-        onClick={handlePrint}
-      >
-        Print
-      </HeaderActionButton>
+      {formats.includes('csv') && (
+        <HeaderActionButton
+          variant="outline"
+          icon="solar:file-text-linear"
+          disabled={busy !== null}
+          onClick={handleCsv}
+        >
+          CSV
+        </HeaderActionButton>
+      )}
+      {formats.includes('excel') && (
+        <HeaderActionButton
+          variant="outline"
+          icon="solar:file-text-bold-duotone"
+          loading={busy === 'excel'}
+          disabled={busy !== null}
+          onClick={handleExcel}
+        >
+          Excel
+        </HeaderActionButton>
+      )}
+      {formats.includes('pdf') && (
+        <HeaderActionButton
+          variant="outline"
+          icon="solar:file-download-bold"
+          loading={busy === 'pdf'}
+          disabled={busy !== null}
+          onClick={handlePdf}
+        >
+          PDF
+        </HeaderActionButton>
+      )}
+      {formats.includes('docx') && (
+        <HeaderActionButton
+          variant="outline"
+          icon="solar:document-text-bold-duotone"
+          loading={busy === 'docx'}
+          disabled={busy !== null}
+          onClick={handleDocx}
+        >
+          Word
+        </HeaderActionButton>
+      )}
+      {formats.includes('print') && (
+        <HeaderActionButton
+          variant="outline"
+          icon="solar:printer-linear"
+          loading={busy === 'print'}
+          disabled={busy !== null}
+          onClick={handlePrint}
+        >
+          Print
+        </HeaderActionButton>
+      )}
     </div>
   );
 }

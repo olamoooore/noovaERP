@@ -161,6 +161,15 @@ class RolePermissionSeeder extends Seeder
         'loyalty.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
         'loyalty.settings' => [UserRole::OWNER, UserRole::ADMIN],
 
+        // Storefront (generic commerce module — MRD ecommerce-Enterprice FR-MOD-03).
+        // Coarse platform convention (storefront.view/write/settings) matching the
+        // exact RequirePermission strings on modules/Storefront/routes/api.php.
+        // settings is Owner/Admin: store policies/notifications and (from P2)
+        // gateway/channel configuration are sensitive.
+        'storefront.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::VIEWER],
+        'storefront.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
+        'storefront.settings' => [UserRole::OWNER, UserRole::ADMIN],
+
         // Reports
         'reports.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::VIEWER],
         // Issue #103: reporting configuration/mutations (schedules, exports

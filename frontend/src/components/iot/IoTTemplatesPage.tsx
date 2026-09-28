@@ -175,7 +175,7 @@ export function IoTTemplatesPage() {
 
       {/* Category Tabs */}
       <Tabs value={selectedCategory} onValueChange={setSelectedCategory} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="w-fit max-w-full">
           <TabsTrigger value="all" className="gap-2">
             <Icon icon="solar:widget-bold" className="h-4 w-4" />
             All

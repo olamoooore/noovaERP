@@ -190,12 +190,23 @@ export function resolveImageUrl(path: string | null | undefined): string {
     return ''
   }
 
-  if (
-    path.startsWith('http://')
-    || path.startsWith('https://')
-    || path.startsWith('data:')
-    || path.startsWith('blob:')
-  ) {
+  // Absolute storage URLs are rewritten to a relative /storage path: the host
+  // they were generated with (APP_URL, e.g. a dev-proxy hostname) is not
+  // necessarily reachable from the browser. Relative paths work in dev
+  // (Vite proxies /storage) and in production (nginx serves /storage).
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    try {
+      const url = new URL(path)
+      if (url.pathname.startsWith('/storage/')) {
+        return url.pathname
+      }
+    } catch {
+      // not a parseable URL — fall through and return it untouched
+    }
+    return path
+  }
+
+  if (path.startsWith('data:') || path.startsWith('blob:')) {
     return path
   }
 

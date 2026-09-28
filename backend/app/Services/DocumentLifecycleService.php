@@ -19,6 +19,8 @@ class DocumentLifecycleService
             'voided_at' => now(),
             'is_active_version' => false,
         ]);
+
+        $this->refreshCustomerStats($document);
     }
 
     public function markReversed(Invoice|Bill|JournalEntry $document, CorrectionRequest $request, ?int $reversalJournalEntryId = null): void
@@ -32,6 +34,8 @@ class DocumentLifecycleService
             'reversal_journal_entry_id' => $reversalJournalEntryId,
             'is_active_version' => false,
         ]);
+
+        $this->refreshCustomerStats($document);
     }
 
     public function markCredited(Invoice|Bill $document, CorrectionRequest $request, int $creditNoteId): void
@@ -45,6 +49,8 @@ class DocumentLifecycleService
             'credit_note_id' => $creditNoteId,
             'is_active_version' => false,
         ]);
+
+        $this->refreshCustomerStats($document);
     }
 
     public function markSuperseded(Invoice|Bill|JournalEntry $document, CorrectionRequest $request): void
@@ -57,6 +63,28 @@ class DocumentLifecycleService
             'superseded_at' => now(),
             'is_active_version' => false,
         ]);
+
+        $this->refreshCustomerStats($document);
+    }
+
+    /**
+     * Keep the customer's stored receivables/purchase figures in step with a
+     * lifecycle change (void / reverse / credit / supersede) on an invoice.
+     */
+    private function refreshCustomerStats(Invoice|Bill|JournalEntry $document): void
+    {
+        if (! $document instanceof Invoice) {
+            return;
+        }
+
+        $customer = $document->customer;
+
+        if (! $customer) {
+            return;
+        }
+
+        $customer->updateOutstanding();
+        $customer->updatePurchaseStats();
     }
 
     public function markAsActiveVersion(Invoice|Bill|JournalEntry $document, int $versionNumber): void

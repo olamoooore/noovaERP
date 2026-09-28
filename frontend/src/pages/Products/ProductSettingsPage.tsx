@@ -1,65 +1,65 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import {
+  SettingsSectionNav,
+  type SettingsSectionDef,
+} from '@/components/settings/settings-ui'
 import { CategoryManager } from '@/pages/Products/CategoryManager'
+import { BrandManager } from '@/pages/Products/BrandManager'
 import { UnitManager } from '@/pages/Products/UnitManager'
 import { AttributeManager } from '@/pages/Products/AttributeManager'
 import { FeatureManager } from '@/pages/Products/FeatureManager'
 import { MetaManager } from '@/pages/Products/MetaManager'
-import { BrandManager } from '@/pages/Products/BrandManager'
-import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import { TaxManager } from '@/pages/Products/TaxManager'
+import { PRODUCT_SETTINGS_SECTIONS } from '@/pages/Products/productSettingsSections'
+
+/**
+ * Every catalog dimension a product can carry, in one place — the same
+ * section-nav layout as Sales / Company / Inventory settings.
+ */
+const SECTIONS: SettingsSectionDef[] = [
+  { key: 'categories', ...PRODUCT_SETTINGS_SECTIONS.categories, component: CategoryManager },
+  { key: 'brands', ...PRODUCT_SETTINGS_SECTIONS.brands, component: BrandManager },
+  { key: 'units', ...PRODUCT_SETTINGS_SECTIONS.units, component: UnitManager },
+  { key: 'attributes', ...PRODUCT_SETTINGS_SECTIONS.attributes, component: AttributeManager },
+  { key: 'features', ...PRODUCT_SETTINGS_SECTIONS.features, component: FeatureManager },
+  { key: 'taxes', ...PRODUCT_SETTINGS_SECTIONS.taxes, component: TaxManager },
+  { key: 'meta', ...PRODUCT_SETTINGS_SECTIONS.meta, component: MetaManager },
+]
 
 export function ProductSettingsPage() {
+  const [activeSection, setActiveSection] = useState<string>('categories')
+  const ActiveComponent =
+    SECTIONS.find((section) => section.key === activeSection)?.component ?? CategoryManager
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Product Settings</h1>
-          <div className="text-sm text-muted-foreground">
-            Configure product catalog settings.
-          </div>
+          <h1 className="text-3xl font-bold tracking-tight">Product Settings</h1>
+          <p className="mt-1 text-muted-foreground">
+            Configure product catalog settings — categories, brands, units, attributes, features,
+            taxes and custom fields.
+          </p>
         </div>
-
-        <HeaderActionButton icon="solar:arrow-left-bold" variant="secondary" asChild>
-          <Link to="/products">
-            Back to Products
-          </Link>
+        <HeaderActionButton variant="outline" icon="solar:alt-arrow-left-bold-duotone" asChild>
+          <Link to="/products">Back to Products</Link>
         </HeaderActionButton>
       </div>
 
-      <Tabs defaultValue="categories" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-6">
-          <TabsTrigger value="categories">Categories</TabsTrigger>
-          <TabsTrigger value="brands">Brands</TabsTrigger>
-          <TabsTrigger value="units">Units</TabsTrigger>
-          <TabsTrigger value="attributes">Attributes</TabsTrigger>
-          <TabsTrigger value="features">Features</TabsTrigger>
-          <TabsTrigger value="meta">Meta</TabsTrigger>
-        </TabsList>
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+        <SettingsSectionNav
+          sections={SECTIONS}
+          activeKey={activeSection}
+          onSelect={setActiveSection}
+        />
 
-        <TabsContent value="categories" className="mt-4">
-          <CategoryManager />
-        </TabsContent>
-
-        <TabsContent value="brands" className="mt-4">
-          <BrandManager />
-        </TabsContent>
-
-        <TabsContent value="units" className="mt-4">
-          <UnitManager />
-        </TabsContent>
-
-        <TabsContent value="attributes" className="mt-4">
-          <AttributeManager />
-        </TabsContent>
-
-        <TabsContent value="features" className="mt-4">
-          <FeatureManager />
-        </TabsContent>
-
-        <TabsContent value="meta" className="mt-4">
-          <MetaManager />
-        </TabsContent>
-      </Tabs>
+        <div className="min-w-0 flex-1">
+          <ActiveComponent />
+        </div>
+      </div>
     </div>
   )
 }

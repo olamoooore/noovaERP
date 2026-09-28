@@ -685,12 +685,9 @@ export const baseNavItems: NavItem[] = [
         icon: 'solar:buildings-bold-duotone',
         featureKey: 'website-builder',
       },
-      {
-        title: 'Online Shop',
-        href: '/store',
-        icon: 'solar:bag-4-bold-duotone',
-        featureKey: 'ecommerce',
-      },
+      // FR-ARC-02 (legacy freeze): the 'Online Shop' (/store) entry was
+      // removed from navigation — the legacy ecommerce stack is archived and
+      // must not be discoverable. Do not re-add.
     ],
   },
   {
@@ -802,7 +799,8 @@ export function deriveNavPermission(item: NavItem): string | undefined {
     loyalty: 'loyalty.view',
     'event-management': 'event_management.view',
     'website-builder': 'settings.view',
-    ecommerce: 'sales.view',
+    // 'ecommerce' intentionally REMOVED (FR-ARC-02): legacy commerce nav is
+    // archived; no nav item may carry its featureKey. Do not re-add.
     iot: 'iot.view',
     ai: 'ai.view',
     'field-service': 'field_service.view',

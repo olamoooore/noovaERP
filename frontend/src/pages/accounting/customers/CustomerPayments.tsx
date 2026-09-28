@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Pagination } from '@/components/ui/Pagination';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -166,6 +166,9 @@ export const CustomerPayments: React.FC = () => {
     payment: Payment;
     action: PaymentCorrectionAction;
   } | null>(null);
+  const [bulkReverseOpen, setBulkReverseOpen] = useState(false);
+  const [bulkReverseCode, setBulkReverseCode] = useState('DUPLICATE_PAYMENT');
+  const [bulkReverseReason, setBulkReverseReason] = useState('');
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { hasPermission } = useAuthStore();
@@ -259,15 +262,53 @@ export const CustomerPayments: React.FC = () => {
   // `recorded` is the canonical pre-posting status (Payment::scopeDraft()
   // maps draft → recorded). Unposted rows are editable/deletable; posting
   // flips them to `applied` and sets journal_entry_id.
-  const draftSelected = paymentList.filter(
-    (p) => selectedIdSet.has(p.id) && p.payment_status === 'recorded' && !p.journal_entry_id,
-  );
+  // A `recorded` row is postable even when it already carries a journal entry:
+  // that is a legacy stuck label, and posting it repairs the status
+  // idempotently without creating a second entry. Only rows WITHOUT an entry
+  // can be deleted outright — posted ones must be reversed.
   const postableSelected = paymentList.filter(
+    (p) => selectedIdSet.has(p.id) && p.payment_status === 'recorded',
+  );
+  const deletableSelected = paymentList.filter(
     (p) => selectedIdSet.has(p.id) && p.payment_status === 'recorded' && !p.journal_entry_id,
   );
-  const lockedSelected = allMatchingSelected ? 0 : selectedIds.length - draftSelected.length;
+  // Selected rows that cannot be posted at all (already applied/reversed/…).
+  const lockedSelected = allMatchingSelected ? 0 : selectedIds.length - postableSelected.length;
+
+  // Posted payments selected on this page that can still be corrected. Bulk
+  // reversal is deliberately limited to explicit page selections — never
+  // "select all matching", which could reverse hundreds in one click.
+  const reversibleSelected = allMatchingSelected
+    ? []
+    : paymentList.filter((p) => selectedIdSet.has(p.id) && isCorrectable(p));
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['customer-payments'] });
+
+  const bulkReverseMutation = useMutation({
+    mutationFn: async ({ ids, reasonCode, reasonText }: { ids: number[]; reasonCode: string; reasonText: string }) => {
+      const results = await Promise.allSettled(
+        ids.map((id) => api.post(`/corrections/payments/${id}/reverse`, {
+          reason_code: reasonCode,
+          reason_text: reasonText || null,
+        })),
+      );
+      return results;
+    },
+    onSuccess: (results) => {
+      invalidate();
+      clearSelection();
+      const reversed = results.filter((result) => result.status === 'fulfilled').length;
+      const failures = results.filter((result) => result.status === 'rejected') as PromiseRejectedResult[];
+      const firstError = failures[0]?.reason?.response?.data?.message;
+      toast({
+        title: `${reversed} payment(s) reversed`,
+        description: failures.length
+          ? `${failures.length} failed${firstError ? `: ${firstError}` : ''}`
+          : 'Reversing journal entries posted to the ledger.',
+        variant: failures.length ? 'destructive' : 'default',
+      });
+    },
+  });
 
   const handleCorrectionSuccess = (outcome: PaymentCorrectionOutcome) => {
     invalidate();
@@ -471,7 +512,7 @@ export const CustomerPayments: React.FC = () => {
         noun="payments"
         hint={
           lockedSelected > 0
-            ? `${lockedSelected} posted/locked — only unposted can be deleted`
+            ? `${lockedSelected} already in the ledger — posted payments are reversed, not deleted`
             : allMatchingSelected
               ? 'Posted payments will be skipped by bulk actions'
               : undefined
@@ -481,12 +522,26 @@ export const CustomerPayments: React.FC = () => {
             variant="destructive"
             icon="solar:trash-bin-trash-bold"
             onClick={() => setShowBulkDeleteDialog(true)}
-            disabled={!allMatchingSelected && draftSelected.length === 0}
+            disabled={!allMatchingSelected && deletableSelected.length === 0}
           >
-            {allMatchingSelected ? 'Delete Selected' : `Delete (${draftSelected.length})`}
+            {allMatchingSelected ? 'Delete Selected' : `Delete (${deletableSelected.length})`}
           </HeaderActionButton>
         }
       >
+        {canCorrect && reversibleSelected.length > 0 && (
+          <HeaderActionButton
+            variant="outline"
+            icon="solar:undo-left-round-bold"
+            className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={() => {
+              setBulkReverseCode('DUPLICATE_PAYMENT');
+              setBulkReverseReason('');
+              setBulkReverseOpen(true);
+            }}
+          >
+            Reverse ({reversibleSelected.length})
+          </HeaderActionButton>
+        )}
         <HeaderActionButton
           icon="solar:check-circle-bold"
           loading={bulkPostMutation.isPending}
@@ -563,7 +618,9 @@ export const CustomerPayments: React.FC = () => {
                   <TableBody>
                     {sortedPayments.map((payment) => {
                       const editable = payment.payment_status === 'recorded' && !payment.journal_entry_id;
-                      const postable = payment.payment_status === 'recorded' && !payment.journal_entry_id;
+                      // Stuck legacy rows (recorded + JE) remain postable: the
+                      // backend repairs their status without double-posting.
+                      const postable = payment.payment_status === 'recorded';
                       const correctable = canCorrect && isCorrectable(payment);
                       return (
                         <TableRow key={payment.id} className="hover:bg-accent/50">
@@ -750,6 +807,66 @@ export const CustomerPayments: React.FC = () => {
         />
       )}
 
+      {/* Bulk reverse confirmation */}
+      <Dialog open={bulkReverseOpen} onOpenChange={(open) => !bulkReverseMutation.isPending && setBulkReverseOpen(open)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reverse {reversibleSelected.length} payment(s)?</DialogTitle>
+            <DialogDescription>
+              Each payment gets a reversing journal entry and moves to Reversed. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="bulk-reverse-code">Reason</Label>
+              <Select value={bulkReverseCode} onValueChange={setBulkReverseCode} disabled={bulkReverseMutation.isPending}>
+                <SelectTrigger id="bulk-reverse-code"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[
+                    { value: 'DATA_ENTRY_ERROR', label: 'Data entry error' },
+                    { value: 'DUPLICATE_PAYMENT', label: 'Duplicate payment' },
+                    { value: 'CUSTOMER_REQUEST', label: 'Customer request' },
+                    { value: 'BANK_ERROR', label: 'Bank error' },
+                    { value: 'OVERPAYMENT', label: 'Overpayment' },
+                    { value: 'OTHER', label: 'Other' },
+                  ].map((option) => (
+                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="bulk-reverse-text">Notes (optional)</Label>
+              <Input
+                id="bulk-reverse-text"
+                value={bulkReverseReason}
+                onChange={(event) => setBulkReverseReason(event.target.value)}
+                placeholder="e.g. Duplicate of PAY/2026/09/xxx"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkReverseOpen(false)} disabled={bulkReverseMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={bulkReverseMutation.isPending || reversibleSelected.length === 0}
+              onClick={() => {
+                bulkReverseMutation.mutate({
+                  ids: reversibleSelected.map((payment) => payment.id),
+                  reasonCode: bulkReverseCode,
+                  reasonText: bulkReverseReason,
+                });
+                setBulkReverseOpen(false);
+              }}
+            >
+              {bulkReverseMutation.isPending ? 'Reversing…' : 'Reverse payments'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Bulk Delete Confirmation */}
       <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
         <AlertDialogContent>
@@ -758,7 +875,7 @@ export const CustomerPayments: React.FC = () => {
             <AlertDialogDescription>
               {lockedSelected > 0 && (
                 <p className="mb-2 text-amber-600">
-                  {lockedSelected} selected payment(s) are posted/locked and will be skipped.
+                  {lockedSelected} selected payment(s) are already in the ledger and will be skipped.
                   Use refund or reversal to correct posted payments.
                 </p>
               )}
@@ -770,7 +887,7 @@ export const CustomerPayments: React.FC = () => {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                const ids = allMatchingSelected ? selectedIds : draftSelected.map((p) => p.id);
+                const ids = allMatchingSelected ? selectedIds : deletableSelected.map((p) => p.id);
                 if (ids.length === 0) return;
                 api.post('/payments/bulk-delete', { ids })
                   .then((res) => {
@@ -969,9 +1086,15 @@ const RecordPaymentForm: React.FC<{
   initialInvoiceId?: string;
   onSuccess: () => void;
 }> = ({ unpaidInvoices, initialInvoiceId, onSuccess }) => {
+  // Pin the deep-link id on mount: the parent strips ?invoice_id right after
+  // opening the dialog, and reading the live prop made the preselect query
+  // switch keys (and cancel) before its data arrived — leaving Amount blank
+  // on the first open.
+  const [pinnedInvoiceId] = useState(initialInvoiceId ?? '');
+
   const [formData, setFormData] = useState({
     customer_id: '',
-    invoice_id: initialInvoiceId || '',
+    invoice_id: pinnedInvoiceId,
     amount: '',
     payment_date: new Date().toISOString().split('T')[0],
     method: 'bank_transfer',
@@ -979,28 +1102,35 @@ const RecordPaymentForm: React.FC<{
     notes: '',
   });
 
-  // When initialInvoiceId is provided (deep-linked from invoice detail page),
-  // fetch that specific invoice and pre-fill customer + amount. This works
-  // regardless of whether the unpaid-invoices list has loaded yet.
+  // When deep-linked from an invoice, fetch that invoice and pre-fill
+  // customer + amount. Works regardless of whether the unpaid-invoices list
+  // has loaded yet.
   const { data: preselectedInvoice } = useQuery<InvoiceSearchItem>({
-    queryKey: ['invoice-preselect', initialInvoiceId],
+    queryKey: ['invoice-preselect', pinnedInvoiceId],
     queryFn: async () => {
-      const res = await api.get(`/invoices/${initialInvoiceId}`);
+      const res = await api.get(`/invoices/${pinnedInvoiceId}`);
       return res.data;
     },
-    enabled: !!initialInvoiceId,
+    enabled: !!pinnedInvoiceId,
   });
 
   useEffect(() => {
-    if (preselectedInvoice && !formData.customer_id) {
-      setFormData((prev) => ({
-        ...prev,
-        invoice_id: String(preselectedInvoice.id),
-        customer_id: String(preselectedInvoice.customer_id || ''),
-        amount: String(preselectedInvoice.balance ?? preselectedInvoice.total ?? ''),
-      }));
-    }
-  }, [preselectedInvoice]);
+    if (! pinnedInvoiceId || formData.customer_id) return;
+
+    // Prefer the dedicated fetch; fall back to the page's unpaid-invoice list
+    // (covers the case where the preselect request is still in flight).
+    const source = preselectedInvoice
+      ?? unpaidInvoices.find((invoice) => String(invoice.id) === String(pinnedInvoiceId));
+
+    if (! source) return;
+
+    setFormData((prev) => ({
+      ...prev,
+      invoice_id: String(source.id),
+      customer_id: String(source.customer_id || ''),
+      amount: String(source.balance ?? source.total ?? ''),
+    }));
+  }, [pinnedInvoiceId, preselectedInvoice, unpaidInvoices]);
 
   const { toast } = useToast();
 

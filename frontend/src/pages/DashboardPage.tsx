@@ -191,7 +191,7 @@ export function DashboardPage() {
 
         <div className="flex flex-wrap items-center gap-2">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid grid-cols-2">
+            <TabsList className="w-fit max-w-full">
               <TabsTrigger value="view">
                 <Icon icon="solar:eye-bold-duotone" className="mr-2 h-4 w-4" />
                 View

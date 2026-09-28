@@ -211,44 +211,17 @@ class SalesAnalyticsService
         $salesOrderIds = $this->salesOrderIdsForTag($filter->tag ?? null);
 
         try {
-            $posTrends = DB::table('pos_orders')
-                ->select([
-                    DB::raw("TO_CHAR(paid_at, '{$dateFormat}') as period"),
-                    DB::raw('COUNT(*) as order_count'),
-                    DB::raw('SUM(total) as total_revenue'),
-                    DB::raw('AVG(total) as average_order_value'),
-                ])
-                ->whereBetween('paid_at', [$startDate, $endDate->endOfDay()])
-                ->where('status', 'paid')
-                ->where('is_return', false)
-                ->groupBy('period');
-
-            $salesTrends = DB::table('sales_orders as so')
-                ->select([
-                    DB::raw("TO_CHAR(COALESCE(order_date, created_at), '{$dateFormat}') as period"),
-                    DB::raw('COUNT(*) as order_count'),
-                    DB::raw('SUM(COALESCE(total, 0)) as total_revenue'),
-                    DB::raw('AVG(COALESCE(total, 0)) as average_order_value'),
-                ])
-                ->whereNotIn('status', ['draft', 'cancelled'])
-                ->where('accounting_status', '!=', 'reversed')
-                // Issue #236: pos-synced sales orders are counted via pos_orders.
-                ->where('channel', '!=', 'pos')
-                ->whereBetween(DB::raw('COALESCE(order_date, created_at)'), [$startDate, $endDate->endOfDay()])
-                ->groupBy('period');
-
-            if ($salesOrderIds !== null) {
-                $posTrends->whereRaw('1 = 0');
-                $salesTrends->whereIn('so.id', $salesOrderIds !== [] ? $salesOrderIds : [-1]);
-            }
-
+            // Same line-item base as getSalesByCategory() / getSalesByProduct(),
+            // so the trend series, the category split and the product table all
+            // reconcile for the selected period (document totals include tax and
+            // shipping and would never match the line-based widgets).
             $trends = DB::query()
-                ->fromSub($posTrends->unionAll($salesTrends), 't')
+                ->fromSub($this->lineItemsUnion($startDate, $endDate, $salesOrderIds), 'li')
                 ->select([
-                    'period',
-                    DB::raw('SUM(order_count) as order_count'),
-                    DB::raw('SUM(total_revenue) as total_revenue'),
-                    DB::raw('CASE WHEN SUM(order_count) > 0 THEN SUM(total_revenue) / SUM(order_count) ELSE 0 END as average_order_value'),
+                    DB::raw("TO_CHAR(li.revenue_date, '{$dateFormat}') as period"),
+                    DB::raw('COUNT(DISTINCT li.order_ref) as order_count'),
+                    DB::raw('SUM(li.line_total) as total_revenue'),
+                    DB::raw('CASE WHEN COUNT(DISTINCT li.order_ref) > 0 THEN SUM(li.line_total) / COUNT(DISTINCT li.order_ref) ELSE 0 END as average_order_value'),
                 ])
                 ->groupBy('period')
                 ->orderBy('period')
@@ -447,7 +420,8 @@ class SalesAnalyticsService
                    poi.line_total,
                    poi.quantity,
                    po.paid_at AS revenue_date,
-                   'pos' AS channel
+                   'pos' AS channel,
+                   'pos:' || po.id AS order_ref
             FROM pos_order_items poi
             JOIN pos_orders po ON po.id = poi.pos_order_id
             WHERE po.paid_at BETWEEN '{$start}' AND '{$end}'
@@ -459,7 +433,8 @@ class SalesAnalyticsService
                    COALESCE(sol.line_total, 0) AS line_total,
                    COALESCE(sol.quantity, 0) AS quantity,
                    COALESCE(so.order_date, so.created_at) AS revenue_date,
-                   so.channel
+                   so.channel,
+                   'so:' || so.id AS order_ref
             FROM sales_order_lines sol
             JOIN sales_orders so ON so.id = sol.sales_order_id
             WHERE so.status NOT IN ('draft', 'cancelled')

@@ -17,6 +17,8 @@ import {
   YAxis,
 } from 'recharts'
 import { Button } from '@/components/ui/button'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import { downloadReportDocx, downloadReportXlsx } from '@/lib/reportFiles'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
@@ -95,20 +97,48 @@ export function MasterReportsTab({ stats, range, onRangeChange }: MasterReportsT
       : [...current, key])
   }
 
-  const exportCustomReport = () => {
-    const rows = ['Metric,Value', ...customData.map((row) => `"${row.name}",${row.value}`)]
-    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = `custom-master-report-${range}.csv`
-    anchor.click()
-    URL.revokeObjectURL(url)
-  }
+  const toMetricRows = (data: Array<{ name: string; value: number | string }>) => [
+    ['Metric', 'Value'],
+    ...data.map((row) => [row.name, String(row.value)]),
+  ]
+
+  const exportCustomXlsx = () =>
+    downloadReportXlsx(toMetricRows(customData), {
+      filename: `custom-master-report-${range}`,
+      title: 'Custom Master Report',
+    })
+
+  const exportCustomDocx = () =>
+    downloadReportDocx(toMetricRows(customData), {
+      filename: `custom-master-report-${range}`,
+      title: 'Custom Master Report',
+      subtitle: `Reporting period: ${range}`,
+    })
+
+  const overallRows = [
+    ['Metric', 'Value'],
+    ['Revenue', formatCurrency(values.revenue)],
+    ['Outstanding', formatCurrency(values.outstanding)],
+    ['Customers', values.customers.toLocaleString()],
+    ['Products', values.products.toLocaleString()],
+  ]
+
+  const exportOverallXlsx = () =>
+    downloadReportXlsx(overallRows, {
+      filename: `overall-report-${range}`,
+      title: 'Overall Performance Report',
+    })
+
+  const exportOverallDocx = () =>
+    downloadReportDocx(overallRows, {
+      filename: `overall-report-${range}`,
+      title: 'Overall Performance Report',
+      subtitle: `Reporting period: ${range}`,
+    })
 
   return (
     <Tabs defaultValue="overall" className="space-y-5">
-      <TabsList className="grid w-full max-w-2xl grid-cols-3">
+      <TabsList className="w-fit max-w-full">
         <TabsTrigger value="overall">Overall reports</TabsTrigger>
         <TabsTrigger value="domain">Domain reports</TabsTrigger>
         <TabsTrigger value="custom">Custom reports</TabsTrigger>
@@ -119,7 +149,12 @@ export function MasterReportsTab({ stats, range, onRangeChange }: MasterReportsT
           <div><h2 className="text-xl font-semibold">Overall performance report</h2><p className="text-sm text-muted-foreground">A broad view of financial and operational performance.</p></div>
           <div className="flex gap-2">
             <Select value={range} onValueChange={(value) => onRangeChange(value as Range)}><SelectTrigger className="w-40"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="7d">Last 7 days</SelectItem><SelectItem value="30d">Last 30 days</SelectItem><SelectItem value="90d">Last 90 days</SelectItem></SelectContent></Select>
-            <Button variant="outline" onClick={() => window.print()}><Icon icon="solar:printer-bold-duotone" className="mr-2 h-4 w-4" />Print</Button>
+            <HeaderActionButton variant="outline" icon="solar:file-text-bold-duotone" onClick={exportOverallXlsx}>
+              Excel
+            </HeaderActionButton>
+            <HeaderActionButton variant="outline" icon="solar:document-text-bold-duotone" onClick={exportOverallDocx}>
+              Word
+            </HeaderActionButton>
           </div>
         </div>
 
@@ -147,7 +182,7 @@ export function MasterReportsTab({ stats, range, onRangeChange }: MasterReportsT
         <div><h2 className="text-xl font-semibold">Custom report builder</h2><p className="text-sm text-muted-foreground">Choose the measures, period and visualization for a tailored report.</p></div>
         <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
           <Card><CardHeader><CardTitle className="text-base">Report configuration</CardTitle></CardHeader><CardContent className="space-y-5"><div className="space-y-2"><Label>Reporting period</Label><Select value={range} onValueChange={(value) => onRangeChange(value as Range)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="7d">Last 7 days</SelectItem><SelectItem value="30d">Last 30 days</SelectItem><SelectItem value="90d">Last 90 days</SelectItem></SelectContent></Select></div><div className="space-y-3"><Label>Metrics</Label>{METRICS.map((metric) => <label key={metric.key} className="flex cursor-pointer items-center gap-3 rounded-md border p-3"><Checkbox checked={selectedMetrics.includes(metric.key)} onCheckedChange={() => toggleMetric(metric.key)} /><span className="text-sm">{metric.label}</span></label>)}</div><div className="space-y-2"><Label>Visualization</Label><Select value={chartType} onValueChange={(value) => setChartType(value as ChartType)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="bar">Bar chart</SelectItem><SelectItem value="pie">Pie chart</SelectItem></SelectContent></Select></div><Button className="w-full" disabled={!selectedMetrics.length} onClick={() => setGenerated({ metrics: selectedMetrics, chart: chartType })}><Icon icon="solar:chart-square-bold-duotone" className="mr-2 h-4 w-4" />Generate custom report</Button></CardContent></Card>
-          <Card><CardHeader className="flex-row items-center justify-between"><div><CardTitle className="text-base">Generated report</CardTitle><p className="mt-1 text-sm text-muted-foreground">{generated ? `${generated.metrics.length} metrics · ${range}` : 'Configure and generate a report to preview it.'}</p></div>{generated && <div className="flex gap-2"><Button variant="outline" size="sm" onClick={exportCustomReport}>Export CSV</Button><Button variant="outline" size="sm" onClick={() => window.print()}>Print</Button></div>}</CardHeader><CardContent>{!generated ? <div className="flex h-96 flex-col items-center justify-center rounded-lg border border-dashed text-center"><Icon icon="solar:chart-2-bold-duotone" className="h-12 w-12 text-muted-foreground" /><p className="mt-3 font-medium">No custom report generated</p><p className="text-sm text-muted-foreground">Select metrics and a visualization to begin.</p></div> : <div className="h-96"><ResponsiveContainer width="100%" height="100%">{generated.chart === 'bar' ? <BarChart data={customData}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis /><Tooltip /><Bar dataKey="value" fill="#0ea5e9" radius={[6, 6, 0, 0]} /></BarChart> : <PieChart><Pie data={customData} dataKey="value" nameKey="name" outerRadius={130} label>{customData.map((_, index) => <Cell key={index} fill={COLORS[index % COLORS.length]} />)}</Pie><Tooltip /><Legend /></PieChart>}</ResponsiveContainer></div>}</CardContent></Card>
+          <Card><CardHeader className="flex-row items-center justify-between"><div><CardTitle className="text-base">Generated report</CardTitle><p className="mt-1 text-sm text-muted-foreground">{generated ? `${generated.metrics.length} metrics · ${range}` : 'Configure and generate a report to preview it.'}</p></div>{generated && <div className="flex gap-2"><HeaderActionButton variant="outline" icon="solar:file-text-bold-duotone" onClick={exportCustomXlsx}>Excel</HeaderActionButton><HeaderActionButton variant="outline" icon="solar:document-text-bold-duotone" onClick={exportCustomDocx}>Word</HeaderActionButton></div>}</CardHeader><CardContent>{!generated ? <div className="flex h-96 flex-col items-center justify-center rounded-lg border border-dashed text-center"><Icon icon="solar:chart-2-bold-duotone" className="h-12 w-12 text-muted-foreground" /><p className="mt-3 font-medium">No custom report generated</p><p className="text-sm text-muted-foreground">Select metrics and a visualization to begin.</p></div> : <div className="h-96"><ResponsiveContainer width="100%" height="100%">{generated.chart === 'bar' ? <BarChart data={customData}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis /><Tooltip /><Bar dataKey="value" fill="#0ea5e9" radius={[6, 6, 0, 0]} /></BarChart> : <PieChart><Pie data={customData} dataKey="value" nameKey="name" outerRadius={130} label>{customData.map((_, index) => <Cell key={index} fill={COLORS[index % COLORS.length]} />)}</Pie><Tooltip /><Legend /></PieChart>}</ResponsiveContainer></div>}</CardContent></Card>
         </div>
       </TabsContent>
     </Tabs>

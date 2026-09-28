@@ -1,0 +1,95 @@
+<?php
+
+namespace Modules\Storefront\Shortcodes;
+
+use App\Contracts\PageContentFilter;
+use App\SuperAdmin\Application\FeatureGateService;
+use Illuminate\Support\Facades\Log;
+use Modules\Storefront\Models\StorefrontSettings;
+use Throwable;
+
+/**
+ * The Storefront implementation of the platform page-content extension point.
+ * WebsiteBuilder's /w/{slug} renderer applies every tagged
+ * 'page_content_filters' implementation — this is the single render path
+ * for storefront tokens (Appendix B §B8 "one renderer, no parallel path").
+ *
+ * Governance (FR-MOD-02/04, A-04):
+ *  - not entitled for `storefront` → tokens are STRIPPED (published pages
+ *    never fatal and never leak raw tokens to visitors);
+ *  - merchant disabled the shop (`storefront_settings.enabled = false`)
+ *    → same graceful strip;
+ *  - entitlement resolution failure → fail closed (strip), never fail open.
+ */
+final class StorefrontPageContentFilter implements PageContentFilter
+{
+    public function __construct(
+        private readonly Renderer $renderer,
+        private readonly FeatureGateService $featureGate,
+    ) {}
+
+    public function filterHtml(string $html, array $context): string
+    {
+        $tenantId = $this->currentTenantId();
+
+        if ($tenantId === null) {
+            // No tenancy context at all — nothing can be rendered safely.
+            return $this->renderer->stripTokens($html);
+        }
+
+        if (! $this->storefrontActive($tenantId)) {
+            return $this->renderer->stripTokens($html);
+        }
+
+        return $this->renderer->render($html, new Context(
+            tenantId: $tenantId,
+            mode: Context::MODE_PUBLIC,
+            pageId: isset($context['page_id']) ? (int) $context['page_id'] : null,
+            pageVersionId: isset($context['page_version_id']) ? (int) $context['page_version_id'] : null,
+            websiteSlug: (string) ($context['website_slug'] ?? ''),
+            locale: (string) ($context['locale'] ?? app()->getLocale()),
+        ));
+    }
+
+    private function storefrontActive(string $tenantId): bool
+    {
+        try {
+            $entitled = $this->featureGate->check($tenantId, 'storefront')['is_entitled'] ?? false;
+        } catch (Throwable $e) {
+            Log::warning('Storefront: entitlement check failed on public render, stripping functions', [
+                'tenant_id' => $tenantId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+
+        if (! $entitled) {
+            return false;
+        }
+
+        try {
+            return StorefrontSettings::current()->enabled;
+        } catch (Throwable $e) {
+            // Table missing (module not migrated for this tenant yet) → the
+            // shop cannot render; degrade silently rather than fatalt the page.
+            Log::warning('Storefront: settings unavailable on public render, stripping functions', [
+                'tenant_id' => $tenantId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    private function currentTenantId(): ?string
+    {
+        if (! function_exists('tenant') || ! tenant()) {
+            return null;
+        }
+
+        $id = tenant('id');
+
+        return ($id === null || $id === '') ? null : (string) $id;
+    }
+}

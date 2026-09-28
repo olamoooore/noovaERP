@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
-import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import {
@@ -72,15 +72,25 @@ export default function GeneralLedgerPage() {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* Header — the action pills align with the bottom of the title block so
+          they sit level with the subtitle, not centred against the title. */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="-ml-2 mb-3 text-muted-foreground hover:text-foreground"
+            onClick={() => navigate('/accounting')}
+          >
+            <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
+            Back
+          </Button>
           <h1 className="text-3xl font-bold">General Ledger</h1>
           <p className="text-muted-foreground mt-1">
             Detailed transaction listing by account
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
           <SearchableSelect
             className="h-8 w-56 rounded-full text-xs"
             value={effectiveAccountId}
@@ -124,9 +134,6 @@ export default function GeneralLedgerPage() {
             subtitle={`${ledger?.account ? `${ledger.account.code} - ${ledger.account.name}` : 'All Accounts Summary'} · ${startDate} → ${endDate}`}
             filename={`general-ledger-${ledger?.account?.code ?? 'all'}-${startDate}-${endDate}`}
           />
-          <HeaderActionButton icon="solar:arrow-left-linear" onClick={() => navigate('/accounting')}>
-            Back to Accounting
-          </HeaderActionButton>
         </div>
       </div>
 

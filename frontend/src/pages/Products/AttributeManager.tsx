@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
 import { Icon } from '@iconify/react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import { SettingsSectionHeader } from '@/components/settings/settings-ui'
+import { PRODUCT_SETTINGS_SECTIONS } from './productSettingsSections'
 import {
   Table,
   TableBody,
@@ -139,18 +142,18 @@ export function AttributeManager() {
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Attributes</CardTitle>
+    <Card className="overflow-hidden">
+      <SettingsSectionHeader
+        icon={PRODUCT_SETTINGS_SECTIONS.attributes.icon}
+        title={PRODUCT_SETTINGS_SECTIONS.attributes.title}
+        description={PRODUCT_SETTINGS_SECTIONS.attributes.description}
+        action={
         <Dialog open={open} onOpenChange={(val) => {
             setOpen(val)
             if (!val) resetForm()
         }}>
           <DialogTrigger asChild>
-            <Button>
-              <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
-              Add Attribute
-            </Button>
+            <HeaderActionButton icon="solar:add-circle-bold-duotone">Add Attribute</HeaderActionButton>
           </DialogTrigger>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
@@ -230,7 +233,8 @@ export function AttributeManager() {
             </form>
           </DialogContent>
         </Dialog>
-      </CardHeader>
+              }
+      />
       <CardContent>
         <Table>
           <TableHeader>
@@ -238,7 +242,7 @@ export function AttributeManager() {
               <TableHead>Name</TableHead>
               <TableHead>Type</TableHead>
               <TableHead>Values</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead className="w-[1%] whitespace-nowrap text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -261,20 +265,40 @@ export function AttributeManager() {
                     ))}
                   </div>
                 </TableCell>
-                <TableCell className="text-right space-x-2">
-                  <Button variant="ghost" size="sm" onClick={() => handleEdit(attr)}>
-                    <Icon icon="solar:pen-bold" className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => handleDelete(attr.id)}>
-                    <Icon icon="solar:trash-bin-trash-bold" className="h-4 w-4 text-red-500" />
-                  </Button>
+                <TableCell className="w-[1%] whitespace-nowrap text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      title="Edit attribute"
+                      aria-label="Edit attribute"
+                      onClick={() => handleEdit(attr)}
+                    >
+                      <Icon icon="solar:pen-bold-duotone" className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-destructive hover:text-destructive"
+                      title="Delete attribute"
+                      aria-label="Delete attribute"
+                      onClick={() => handleDelete(attr.id)}
+                    >
+                      <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
             {attributes.length === 0 && !loading && (
               <TableRow>
-                <TableCell colSpan={4} className="text-center text-muted-foreground">
-                  No attributes found.
+                <TableCell colSpan={4} className="py-10 text-center">
+                  <Icon
+                    icon={PRODUCT_SETTINGS_SECTIONS.attributes.icon}
+                    className="mx-auto h-8 w-8 text-muted-foreground/30"
+                  />
+                  <p className="mt-2 text-sm text-muted-foreground">No attributes found.</p>
                 </TableCell>
               </TableRow>
             )}

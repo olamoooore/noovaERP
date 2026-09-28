@@ -336,8 +336,10 @@ class InvoiceService
                 }
             }
 
-            // Update customer outstanding
+            // Update customer outstanding + purchase stats so the customer
+            // detail figures reflect the posted invoice immediately.
             $invoice->customer->updateOutstanding();
+            $invoice->customer->updatePurchaseStats();
 
             DB::commit();
 
@@ -354,7 +356,16 @@ class InvoiceService
     /**
      * Record payment against invoice
      */
-    public function recordPayment(Invoice $invoice, array $paymentData): Payment
+    /**
+     * Record a payment against an invoice.
+     *
+     * $postImmediately=true keeps the historical behaviour (used by channel
+     * flows where the money has already settled and the ledger must move with
+     * the record). The manual "Record Payment" UI passes false so the payment
+     * lands as a DRAFT (`recorded`, no journal entry) and the operator posts it
+     * deliberately from the Payments page.
+     */
+    public function recordPayment(Invoice $invoice, array $paymentData, bool $postImmediately = true): Payment
     {
         DB::beginTransaction();
 
@@ -372,6 +383,16 @@ class InvoiceService
 
             $payment = new Payment($paymentData);
             $payment->save();
+
+            if (! $postImmediately) {
+                // Draft payment: no journal entry yet. syncInvoicePaymentState
+                // below still reflects the allocation, exactly like an imported
+                // recorded payment; posting later creates the ledger entry.
+                $this->syncInvoicePaymentState($invoice, (float) $payment->amount, $payment);
+                DB::commit();
+
+                return $payment->fresh();
+            }
 
             // Post to accounting ledger via PostingEngine (replaces AccountingService::postPayment)
             $lines = [];
@@ -428,6 +449,10 @@ class InvoiceService
 
             $payment->update([
                 'journal_entry_id' => $result->journalEntryId,
+                // Posting flips the canonical status to `applied`. Without this
+                // the payment stayed `recorded` while carrying a posted JE — the
+                // "Draft but locked" rows that could not be posted or deleted.
+                'payment_status' => 'applied',
             ]);
 
             // Update invoice paid amount and balance — single canonical path
@@ -586,6 +611,10 @@ class InvoiceService
         $paymentData['invoice_id'] = $invoice->id;
         $paymentData['payment_date'] = $paymentData['payment_date'] ?? now();
         $paymentData['received_by'] = TenantUserHelper::resolveTenantUserId($paymentData['received_by'] ?? $invoice->created_by);
+        // The channel (POS / e-commerce / gateway) already posted the ledger
+        // entry. The payment record is therefore settled on creation — a
+        // `recorded` row here showed as Draft and offered to post again.
+        $paymentData['payment_status'] = $paymentData['payment_status'] ?? 'applied';
 
         $payment = Payment::create($paymentData);
 

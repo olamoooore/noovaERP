@@ -13,6 +13,9 @@ use Modules\POS\Models\PosOrder;
 
 class Customer extends Model
 {
+    /** Invoice statuses that represent a real (non-draft) purchase. */
+    public const PURCHASE_INVOICE_STATUSES = ['posted', 'sent', 'partial', 'overdue', 'paid'];
+
     use HasFactory, Notifiable, SoftDeletes;
 
     protected $fillable = [
@@ -285,6 +288,7 @@ class Customer extends Model
     {
         $this->total_outstanding = $this->invoices()
             ->whereIn('status', ['posted', 'sent', 'overdue', 'partial'])
+            ->notSuperseded()
             ->sum('balance');
         $this->save();
     }
@@ -296,18 +300,25 @@ class Customer extends Model
     {
         // POS orders use 'paid' status, not 'completed'
         $posOrderCount = $this->posOrders()->where('status', 'paid')->where('is_return', false)->count();
-        $invoiceCount = $this->invoices()->whereIn('status', ['sent', 'paid'])->count();
+        // Every non-draft, non-voided invoice counts as a purchase — posting
+        // alone makes it a real sale, so sent/paid alone undercounts.
+        $invoiceCount = $this->invoices()
+            ->whereIn('status', self::PURCHASE_INVOICE_STATUSES)
+            ->notSuperseded()
+            ->count();
         $this->total_orders = $posOrderCount + $invoiceCount;
 
         $posTotal = $this->posOrders()->where('status', 'paid')->where('is_return', false)->sum('total');
-        $invoiceTotal = $this->invoices()->whereIn('status', ['sent', 'paid'])->sum('total');
+        $invoiceTotal = $this->invoices()
+            ->whereIn('status', self::PURCHASE_INVOICE_STATUSES)
+            ->notSuperseded()
+            ->sum('total');
         $this->total_purchases = $posTotal + $invoiceTotal;
 
         $this->average_order_value = $this->total_orders > 0
             ? $this->total_purchases / $this->total_orders
             : 0;
 
-        $this->last_interaction_at = now();
         $this->save();
     }
 

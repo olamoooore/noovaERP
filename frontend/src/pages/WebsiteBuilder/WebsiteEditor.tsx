@@ -1253,7 +1253,7 @@ export function WebsiteEditor() {
           </DialogHeader>
           
           <Tabs defaultValue="general" className="mt-4">
-            <TabsList className="bg-zinc-800 border-zinc-700">
+            <TabsList className="border border-zinc-700 bg-zinc-800">
               <TabsTrigger value="general" className="data-[state=active]:bg-zinc-700">General</TabsTrigger>
               <TabsTrigger value="colors" className="data-[state=active]:bg-zinc-700">Colors</TabsTrigger>
               <TabsTrigger value="pages" className="data-[state=active]:bg-zinc-700">Pages</TabsTrigger>

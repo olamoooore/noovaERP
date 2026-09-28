@@ -113,7 +113,7 @@ export function ProfilePage() {
       </header>
 
       <Tabs defaultValue="profile" className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+        <TabsList className="w-fit max-w-full">
           <TabsTrigger value="profile" className="gap-2">
             <Icon icon="solar:user-circle-bold-duotone" className="h-4 w-4" />
             Profile

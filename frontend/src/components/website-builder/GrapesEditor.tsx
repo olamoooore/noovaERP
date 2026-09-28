@@ -9,7 +9,7 @@ import { styleManagerConfig } from './config/styleManager'
 import { deviceManagerConfig } from './config/devices'
 
 // Blocks
-import { registerCustomBlocks } from './blocks'
+import { registerCustomBlocks, setupStorefrontBlocks } from './blocks'
 
 // Panels
 import { customizePanelIcons, addUploadButton, addPresetsPanel, addIconSearch, resetPanelCustomization } from './panels'
@@ -101,6 +101,10 @@ export function GrapesEditor({ initialContent, onSave, onLoad }: GrapesEditorPro
 
     // Register custom blocks
     registerCustomBlocks(editor)
+
+    // Storefront: Store block group + shortcode component, generated from
+    // the backend registry (no-ops silently when the tenant is unentitled).
+    void setupStorefrontBlocks(editor)
     
     // Register custom video component type with editable traits
     editor.DomComponents.addType('video', {

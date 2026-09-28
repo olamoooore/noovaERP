@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { StatCard } from '@/components/ui/stat-card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
@@ -22,6 +23,7 @@ import api from '@/lib/api'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { TagEditor } from '@/components/tags/TagEditor'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import { downloadReportDocx, downloadReportXlsx } from '@/lib/reportFiles'
 
 const numericPhoneValue = (value: string) => value.replace(/\D/g, '')
 
@@ -55,6 +57,54 @@ const formatLegacyAddress = (address: string) => {
     // Ignore error, treat as string
   }
   return address
+}
+
+/**
+ * Flatten a customer-statement payload into the report-table grid used by the
+ * Excel/Word exporters: header row, ledger lines, totals, then the aging block.
+ */
+const statementExportRows = (payload: any): string[][] => {
+  const rows: string[][] = []
+  const txRows = payload?.transactions ?? []
+
+  rows.push(['Date', 'Type', 'Document', 'Description', 'Reference', 'Due Date', 'Amount', 'Debit', 'Credit', 'Outstanding', 'Balance'])
+  txRows.forEach((tx: any) => {
+    rows.push([
+      tx.date ?? '',
+      tx.type ?? '',
+      tx.document_number ?? '',
+      tx.description ?? '',
+      tx.reference ?? '',
+      tx.due_date ?? '',
+      tx.inv_amount ? formatCurrency(tx.inv_amount) : '',
+      tx.debit ? formatCurrency(tx.debit) : '',
+      tx.credit ? formatCurrency(tx.credit) : '',
+      tx.outstanding !== null && tx.outstanding !== undefined ? formatCurrency(tx.outstanding) : '',
+      tx.balance !== null && tx.balance !== undefined ? formatCurrency(tx.balance) : '',
+    ])
+  })
+  rows.push([
+    '', '', '', '', '', '',
+    '',
+    formatCurrency(payload?.total_debits || 0),
+    formatCurrency(payload?.total_credits || 0),
+    'Closing Balance',
+    formatCurrency(payload?.closing_balance || 0),
+  ])
+
+  const aging = payload?.aging ?? {}
+  rows.push([])
+  rows.push(['Aging', 'Current', '1-30 Days', '31-60 Days', '61-90 Days', '90+ Days', 'Total'])
+  rows.push([
+    'Outstanding',
+    formatCurrency(aging.current || 0),
+    formatCurrency(aging.days_1_30 || 0),
+    formatCurrency(aging.days_31_60 || 0),
+    formatCurrency(aging.days_61_90 || 0),
+    formatCurrency(aging.days_90_plus || 0),
+    formatCurrency(aging.total || 0),
+  ])
+  return rows
 }
 
 interface Customer {
@@ -240,6 +290,7 @@ export function CustomerDetailsPage() {
   const [emailForm, setEmailForm] = useState({ subject: '', body: '' })
   const [statementAsOf, setStatementAsOf] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [statementDialogOpen, setStatementDialogOpen] = useState(false)
+  const [statementBusy, setStatementBusy] = useState<'pdf' | 'xlsx' | 'docx' | null>(null)
 
   // Fetch customer details
   const { data: customer, isLoading } = useQuery<Customer>({
@@ -271,21 +322,32 @@ export function CustomerDetailsPage() {
     enabled: !!id,
   })
 
-  // Fetch customer statistics
+  // Fetch customer statistics (live POS + invoice aggregates)
   const { data: statsData } = useQuery({
     queryKey: ['customer-statistics', id],
     queryFn: async () => {
       const response = await api.get(`/customers/${id}/statistics`)
       return response.data
     },
-    enabled: !!id && activeTab === 'financial',
+    enabled: !!id,
   })
 
-  // Fetch AR aging data for this customer
+  // Fetch AR aging data for this customer (live receivables)
   const { data: agingData } = useQuery({
     queryKey: ['customer-aging', id],
     queryFn: async () => {
       const response = await api.get(`/customers/${id}/aging`)
+      return response.data
+    },
+    enabled: !!id,
+  })
+
+  // Full invoice list for the Invoices tab (paginated, not the 10-row preview)
+  const [invoicePage, setInvoicePage] = useState(1)
+  const { data: invoicesData, isLoading: invoicesLoading } = useQuery({
+    queryKey: ['customer-invoices', id, invoicePage],
+    queryFn: async () => {
+      const response = await api.get(`/customers/${id}/invoices?per_page=25&page=${invoicePage}`)
       return response.data
     },
     enabled: !!id && activeTab === 'invoices',
@@ -541,9 +603,81 @@ export function CustomerDetailsPage() {
     return colors[status] || 'bg-gray-500'
   }
 
-  const creditUsedPercent = customer.credit_limit > 0 
-    ? (customer.total_outstanding / customer.credit_limit) * 100 
+  // Live figures: prefer the freshly aggregated endpoints over the stored
+  // customer columns, which only move when a POS payment or manual recalc
+  // touches them. Outstanding comes from the live AR aging endpoint so it
+  // always matches the Receivables report.
+  const asNumber = (value: unknown) => Number(value) || 0
+  const statsPos = statsData?.pos_orders
+  const statsInv = statsData?.invoices
+  const liveTotalOrders = statsData
+    ? asNumber(statsPos?.total_orders) + asNumber(statsInv?.total_invoices)
+    : customer.total_orders || 0
+  const liveTotalPurchases = statsData
+    ? asNumber(statsPos?.total_revenue) + asNumber(statsInv?.total_invoiced)
+    : customer.total_purchases || 0
+  const liveAvgOrderValue = liveTotalOrders > 0
+    ? liveTotalPurchases / liveTotalOrders
+    : customer.average_order_value || 0
+  const liveOutstanding = agingData?.total_outstanding ?? customer.total_outstanding ?? 0
+  const lastActivityAt = statsData?.last_interaction || customer.last_interaction_at
+
+  const creditUsedPercent = customer.credit_limit > 0
+    ? (liveOutstanding / customer.credit_limit) * 100
     : 0
+
+  const downloadStatement = async (exportFormat: 'pdf' | 'xlsx' | 'docx') => {
+    setStatementBusy(exportFormat)
+    try {
+      const customerCode = customer?.code || 'UNKNOWN'
+      const dateStr = statementAsOf.replace(/-/g, '')
+
+      if (exportFormat === 'pdf') {
+        const response = await api.get(`/accounting/customers/${id}/statement`, {
+          params: { as_of: statementAsOf },
+          responseType: 'blob',
+        })
+        const blob = new Blob([response.data], { type: 'application/pdf' })
+        const url = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `SOA_${customerCode}_${dateStr}.pdf`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(url)
+      } else {
+        const response = await api.get(`/accounting/customers/${id}/statement`, {
+          params: { as_of: statementAsOf, format: 'json' },
+        })
+        const payload = response.data?.payload
+        if (!payload) throw new Error('Statement data unavailable')
+        const rows = statementExportRows(payload)
+        const options = {
+          filename: `SOA_${customerCode}_${dateStr}`,
+          title: 'Statement of Account',
+          subtitle: `${payload.customer?.name || customer?.name || ''} · As of ${format(new Date(statementAsOf), 'MMM d, yyyy')}`,
+          companyName: payload.company?.name,
+        }
+        if (exportFormat === 'xlsx') {
+          await downloadReportXlsx(rows, options)
+        } else {
+          await downloadReportDocx(rows, options)
+        }
+      }
+
+      setStatementDialogOpen(false)
+      toast({ title: `Statement downloaded (${exportFormat.toUpperCase()})` })
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to generate statement',
+        description: getApiErrorMessage(error),
+      })
+    } finally {
+      setStatementBusy(null)
+    }
+  }
 
   return (
     <div className="space-y-6 pb-10">
@@ -649,95 +783,60 @@ export function CustomerDetailsPage() {
       </PageHeader>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Purchases</p>
-                <p className="text-2xl font-bold">{formatCurrency(customer.total_purchases || 0)}</p>
-              </div>
-              <div className="p-3 rounded-full bg-green-100">
-                <Icon icon="solar:wallet-money-bold" className="h-6 w-6 text-green-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Orders</p>
-                <p className="text-2xl font-bold">{customer.total_orders || 0}</p>
-              </div>
-              <div className="p-3 rounded-full bg-blue-100">
-                <Icon icon="solar:cart-large-2-bold" className="h-6 w-6 text-blue-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Avg. Order Value</p>
-                <p className="text-2xl font-bold">{formatCurrency(customer.average_order_value || 0)}</p>
-              </div>
-              <div className="p-3 rounded-full bg-purple-100">
-                <Icon icon="solar:chart-2-bold" className="h-6 w-6 text-purple-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Outstanding</p>
-                <p className="text-2xl font-bold text-orange-600">{formatCurrency(customer.total_outstanding || 0)}</p>
-              </div>
-              <div className="p-3 rounded-full bg-orange-100">
-                <Icon icon="solar:bill-list-bold" className="h-6 w-6 text-orange-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Loyalty Points</p>
-                <p className="text-2xl font-bold">{customer.loyalty_points || 0}</p>
-              </div>
-              <div className="p-3 rounded-full bg-yellow-100">
-                <Icon icon="solar:star-bold" className="h-6 w-6 text-yellow-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+        <StatCard
+          label="Total Purchases"
+          value={formatCurrency(liveTotalPurchases)}
+          icon="solar:wallet-money-bold-duotone"
+          tone="bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400"
+        />
+        <StatCard
+          label="Total Orders"
+          value={liveTotalOrders}
+          icon="solar:cart-large-2-bold-duotone"
+          tone="bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400"
+        />
+        <StatCard
+          label="Avg. Order Value"
+          value={formatCurrency(liveAvgOrderValue)}
+          icon="solar:chart-2-bold-duotone"
+          tone="bg-violet-100 text-violet-600 dark:bg-violet-950/60 dark:text-violet-400"
+        />
+        <StatCard
+          label="Outstanding"
+          value={<span className="text-orange-600 dark:text-orange-400">{formatCurrency(liveOutstanding)}</span>}
+          icon="solar:bill-list-bold-duotone"
+          tone="bg-orange-100 text-orange-600 dark:bg-orange-950/60 dark:text-orange-400"
+        />
+        <StatCard
+          label="Loyalty Points"
+          value={customer.loyalty_points || 0}
+          icon="solar:star-bold-duotone"
+          tone="bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400"
+        />
       </div>
 
       {/* Main Content with Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="overview">
-            <Icon icon="solar:home-2-bold" className="h-4 w-4 mr-2" />
+        <TabsList className="h-10 w-fit rounded-full">
+          <TabsTrigger value="overview" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:home-2-bold-duotone" className="h-4 w-4" />
             Overview
           </TabsTrigger>
-          <TabsTrigger value="activity">
-            <Icon icon="solar:history-bold" className="h-4 w-4 mr-2" />
+          <TabsTrigger value="activity" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:history-bold-duotone" className="h-4 w-4" />
             Activity
           </TabsTrigger>
-          <TabsTrigger value="invoices">
-            <Icon icon="solar:document-text-bold" className="h-4 w-4 mr-2" />
+          <TabsTrigger value="invoices" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:document-text-bold-duotone" className="h-4 w-4" />
             Invoices
           </TabsTrigger>
-          <TabsTrigger value="contacts">
-            <Icon icon="solar:users-group-rounded-bold" className="h-4 w-4 mr-2" />
+          <TabsTrigger value="contacts" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:users-group-rounded-bold-duotone" className="h-4 w-4" />
             Contacts
           </TabsTrigger>
-          <TabsTrigger value="financial">
-            <Icon icon="solar:wallet-bold" className="h-4 w-4 mr-2" />
+          <TabsTrigger value="financial" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:wallet-bold-duotone" className="h-4 w-4" />
             Financial
           </TabsTrigger>
         </TabsList>
@@ -746,7 +845,7 @@ export function CustomerDetailsPage() {
         <TabsContent value="overview" className="space-y-6 mt-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Contact Information */}
-            <Card className="lg:col-span-2">
+            <Card className="rounded-xl border-slate-200/80 dark:border-slate-800 lg:col-span-2">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Icon icon="solar:user-id-bold" className="h-5 w-5" />
@@ -802,7 +901,7 @@ export function CustomerDetailsPage() {
             </Card>
 
             {/* Credit & Payment */}
-            <Card>
+            <Card className="rounded-xl border-slate-200/80 dark:border-slate-800">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Icon icon="solar:wallet-bold" className="h-5 w-5" />
@@ -811,21 +910,32 @@ export function CustomerDetailsPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span>Credit Used</span>
-                    <span>{formatCurrency(customer.total_outstanding)} / {formatCurrency(customer.credit_limit)}</span>
+                  <div className="mb-2 flex justify-between text-sm">
+                    <span className="text-muted-foreground">Credit Used</span>
+                    <span className="font-medium tabular-nums">
+                      {formatCurrency(customer.total_outstanding)}
+                      {customer.credit_limit > 0 && (
+                        <span className="text-muted-foreground"> / {formatCurrency(customer.credit_limit)}</span>
+                      )}
+                    </span>
                   </div>
-                  <Progress 
-                    value={Math.min(creditUsedPercent, 100)} 
-                    className={cn(
-                      "h-3",
-                      creditUsedPercent > 90 ? "[&>div]:bg-red-500" : 
-                      creditUsedPercent > 70 ? "[&>div]:bg-yellow-500" : 
-                      "[&>div]:bg-green-500"
-                    )}
-                  />
-                  {creditUsedPercent > 90 && (
-                    <p className="text-xs text-red-500 mt-1">⚠️ Credit limit almost reached</p>
+                  {customer.credit_limit > 0 ? (
+                    <>
+                      <Progress
+                        value={Math.min(creditUsedPercent, 100)}
+                        className={cn(
+                          'h-2.5 rounded-full',
+                          creditUsedPercent > 90 ? '[&>div]:bg-red-500' :
+                          creditUsedPercent > 70 ? '[&>div]:bg-amber-500' :
+                          '[&>div]:bg-emerald-500'
+                        )}
+                      />
+                      {creditUsedPercent > 90 && (
+                        <p className="mt-1 text-xs text-red-500">Credit limit almost reached</p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No credit limit set for this customer</p>
                   )}
                 </div>
                 <Separator />
@@ -850,34 +960,34 @@ export function CustomerDetailsPage() {
           </div>
 
           {/* Addresses */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
+          <Card className="rounded-xl border-slate-200/80 dark:border-slate-800">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <CardTitle className="flex items-center gap-2">
                 <Icon icon="solar:map-point-bold" className="h-5 w-5" />
                 Addresses
               </CardTitle>
-              <Button
-                size="sm"
+              <HeaderActionButton
+                variant="outline"
+                icon="solar:add-circle-bold"
                 onClick={() => {
                   setEditingAddressId(null)
                   setAddressForm({})
                   setAddressDialogOpen(true)
                 }}
               >
-                <Icon icon="solar:add-circle-bold" className="h-4 w-4 mr-2" />
                 Add Address
-              </Button>
+              </HeaderActionButton>
             </CardHeader>
             <CardContent>
               {customer.addresses?.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {customer.addresses.map(address => (
-                    <div key={address.id} className="p-4 border rounded-lg relative group">
-                      <div className="absolute top-2 right-2 flex opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button
+                    <div key={address.id} className="group relative rounded-xl border border-slate-200/80 bg-card p-4 transition-all hover:shadow-md dark:border-slate-800">
+                      <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        <HeaderActionButton
                           variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
+                          className="h-7 px-2"
+                          icon="solar:pen-bold"
                           onClick={() => {
                             setEditingAddressId(address.id)
                             setAddressForm({ ...address })
@@ -885,24 +995,41 @@ export function CustomerDetailsPage() {
                           }}
                           title="Edit address"
                         >
-                          <Icon icon="solar:pen-bold" className="h-4 w-4" />
-                        </Button>
-                        <Button
+                          <span className="sr-only">Edit</span>
+                        </HeaderActionButton>
+                        <HeaderActionButton
                           variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
+                          className="h-7 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          icon="solar:trash-bin-trash-bold"
                           onClick={() => deleteAddressMutation.mutate(address.id)}
                           title="Delete address"
                         >
-                          <Icon icon="solar:trash-bin-trash-bold" className="h-4 w-4 text-red-500" />
-                        </Button>
+                          <span className="sr-only">Delete</span>
+                        </HeaderActionButton>
                       </div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <Badge variant="outline" className="capitalize">{address.type}</Badge>
-                        {address.is_default && <Badge variant="secondary">Default</Badge>}
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <span
+                          className={cn(
+                            'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize',
+                            address.type === 'billing'
+                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
+                              : 'bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300',
+                          )}
+                        >
+                          <Icon
+                            icon={address.type === 'billing' ? 'solar:bill-list-bold-duotone' : 'solar:delivery-bold-duotone'}
+                            className="h-3 w-3"
+                          />
+                          {address.type}
+                        </span>
+                        {address.is_default && (
+                          <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                            Default
+                          </span>
+                        )}
                         {address.label && <span className="text-sm text-muted-foreground">{address.label}</span>}
                       </div>
-                      <p className="text-sm">
+                      <p className="text-sm leading-relaxed text-muted-foreground">
                         {[address.street, address.street2, address.city, address.state, address.zip, address.country]
                           .filter(Boolean)
                           .join(', ')}
@@ -911,9 +1038,9 @@ export function CustomerDetailsPage() {
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Icon icon="solar:map-point-wave-bold" className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p>No addresses added yet</p>
+                <div className="rounded-xl border border-dashed border-slate-300 py-10 text-center text-muted-foreground dark:border-slate-700">
+                  <Icon icon="solar:map-point-wave-bold" className="mx-auto mb-2 h-10 w-10 opacity-40" />
+                  <p className="text-sm">No addresses added yet</p>
                 </div>
               )}
               
@@ -923,13 +1050,13 @@ export function CustomerDetailsPage() {
                   <Separator className="my-4" />
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {customer.billing_address && (
-                      <div className="p-4 border rounded-lg">
+                      <div className="rounded-xl border border-slate-200/80 p-4 dark:border-slate-800">
                         <Badge variant="outline" className="mb-2">Billing (Legacy)</Badge>
                         <p className="text-sm whitespace-pre-line">{formatLegacyAddress(customer.billing_address)}</p>
                       </div>
                     )}
                     {customer.shipping_address && (
-                      <div className="p-4 border rounded-lg">
+                      <div className="rounded-xl border border-slate-200/80 p-4 dark:border-slate-800">
                         <Badge variant="outline" className="mb-2">Shipping (Legacy)</Badge>
                         <p className="text-sm whitespace-pre-line">{formatLegacyAddress(customer.shipping_address)}</p>
                       </div>
@@ -942,7 +1069,7 @@ export function CustomerDetailsPage() {
 
           {/* Notes */}
           {customer.notes && (
-            <Card>
+            <Card className="rounded-xl border-slate-200/80 dark:border-slate-800">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Icon icon="solar:notes-bold" className="h-5 w-5" />
@@ -956,7 +1083,7 @@ export function CustomerDetailsPage() {
           )}
 
           {/* Recent Activity */}
-          <Card>
+          <Card className="rounded-xl border-slate-200/80 dark:border-slate-800">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Icon icon="solar:history-bold" className="h-5 w-5" />
@@ -964,54 +1091,57 @@ export function CustomerDetailsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {customer.pos_orders?.slice(0, 3).map(order => (
-                  <div key={order.id} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-full bg-green-100">
-                        <Icon icon="solar:cart-check-bold" className="h-4 w-4 text-green-600" />
+                  <div
+                    key={order.id}
+                    className="flex items-center justify-between gap-4 rounded-xl border border-slate-200/80 p-3.5 transition-colors hover:bg-muted/40 dark:border-slate-800"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
+                        <Icon icon="solar:cart-check-bold-duotone" className="h-4 w-4" />
                       </div>
-                      <div>
-                        <p className="font-medium">POS Order #{order.order_number}</p>
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">POS Order #{order.order_number}</p>
                         <p className="text-sm text-muted-foreground">
                           {order.paid_at ? format(new Date(order.paid_at), 'MMM d, yyyy h:mm a') : format(new Date(order.created_at), 'MMM d, yyyy h:mm a')}
                         </p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-medium">{formatCurrency(order.total)}</p>
+                    <div className="shrink-0 text-right">
+                      <p className="font-medium tabular-nums">{formatCurrency(order.total)}</p>
                       <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
                     </div>
                   </div>
                 ))}
                 {customer.invoices?.slice(0, 3).map(invoice => (
-                  <Link 
-                    key={invoice.id} 
+                  <Link
+                    key={invoice.id}
                     to={`/invoices/${invoice.id}`}
                     state={{ from: `/customers/${customer.id}` }}
-                    className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+                    className="flex items-center justify-between gap-4 rounded-xl border border-slate-200/80 p-3.5 transition-colors hover:bg-muted/40 dark:border-slate-800"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-full bg-blue-100">
-                        <Icon icon="solar:document-text-bold" className="h-4 w-4 text-blue-600" />
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
+                        <Icon icon="solar:document-text-bold-duotone" className="h-4 w-4" />
                       </div>
-                      <div>
-                        <p className="font-medium text-blue-600">Invoice #{invoice.invoice_number}</p>
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-primary">Invoice #{invoice.invoice_number}</p>
                         <p className="text-sm text-muted-foreground">
                           {format(new Date(invoice.invoice_date), 'MMM d, yyyy')}
                         </p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-medium">{formatCurrency(invoice.total)}</p>
+                    <div className="shrink-0 text-right">
+                      <p className="font-medium tabular-nums">{formatCurrency(invoice.total)}</p>
                       <Badge className={getStatusColor(invoice.status)}>{invoice.status}</Badge>
                     </div>
                   </Link>
                 ))}
                 {(!customer.pos_orders?.length && !customer.invoices?.length) && (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <Icon icon="solar:history-bold" className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                    <p>No recent activity</p>
+                  <div className="rounded-xl border border-dashed border-slate-300 py-10 text-center text-muted-foreground dark:border-slate-700">
+                    <Icon icon="solar:history-bold" className="mx-auto mb-2 h-10 w-10 opacity-40" />
+                    <p className="text-sm">No recent activity</p>
                   </div>
                 )}
               </div>
@@ -1179,112 +1309,144 @@ export function CustomerDetailsPage() {
         {/* Invoices Tab */}
         <TabsContent value="invoices" className="mt-6">
           <div className="space-y-6">
-            {/* AR Aging Panel */}
-            {agingData && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">AR Aging Summary</CardTitle>
-                  <CardDescription>Outstanding receivables by aging period (as of today)</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                    <div className="p-4 border rounded-lg bg-green-50">
-                      <p className="text-xs font-medium text-green-700 uppercase">Not Due</p>
-                      <p className="text-xl font-bold text-green-800 mt-1">
-                        {formatCurrency(agingData.buckets?.not_due?.amount || 0)}
-                      </p>
-                    </div>
-                    <div className="p-4 border rounded-lg bg-blue-50">
-                      <p className="text-xs font-medium text-blue-700 uppercase">1-30 Days</p>
-                      <p className="text-xl font-bold text-blue-800 mt-1">
-                        {formatCurrency(agingData.buckets?.['1_30']?.amount || 0)}
-                      </p>
-                    </div>
-                    <div className="p-4 border rounded-lg bg-yellow-50">
-                      <p className="text-xs font-medium text-yellow-700 uppercase">31-60 Days</p>
-                      <p className="text-xl font-bold text-yellow-800 mt-1">
-                        {formatCurrency(agingData.buckets?.['31_60']?.amount || 0)}
-                      </p>
-                    </div>
-                    <div className="p-4 border rounded-lg bg-orange-50">
-                      <p className="text-xs font-medium text-orange-700 uppercase">61-90 Days</p>
-                      <p className="text-xl font-bold text-orange-800 mt-1">
-                        {formatCurrency(agingData.buckets?.['61_90']?.amount || 0)}
-                      </p>
-                    </div>
-                    <div className="p-4 border rounded-lg bg-red-50">
-                      <p className="text-xs font-medium text-red-700 uppercase">91-180 Days</p>
-                      <p className="text-xl font-bold text-red-800 mt-1">
-                        {formatCurrency(agingData.buckets?.['91_180']?.amount || 0)}
-                      </p>
-                    </div>
-                    <div className="p-4 border rounded-lg bg-red-100">
-                      <p className="text-xs font-medium text-red-700 uppercase">180+ Days</p>
-                      <p className="text-xl font-bold text-red-900 mt-1">
-                        {formatCurrency(agingData.buckets?.['180_plus']?.amount || 0)}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="mt-4 pt-4 border-t flex justify-between items-center">
-                    <span className="font-medium text-muted-foreground">Total Outstanding</span>
-                    <span className="text-2xl font-bold">
-                      {formatCurrency(agingData.total_outstanding || 0)}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            {/* AR Aging Summary — live receivables by bucket */}
+            <Card className="rounded-xl border-slate-200/80 dark:border-slate-800">
+              <CardHeader className="space-y-1">
+                <CardTitle className="text-lg">AR Aging Summary</CardTitle>
+                <CardDescription>Outstanding receivables by aging period (as of today)</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+                  {[
+                    { key: 'not_due', label: 'Not Due', tone: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' },
+                    { key: '1_30', label: '1–30 Days', tone: 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300' },
+                    { key: '31_60', label: '31–60 Days', tone: 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300' },
+                    { key: '61_90', label: '61–90 Days', tone: 'bg-orange-50 text-orange-700 dark:bg-orange-950/50 dark:text-orange-300' },
+                    { key: '91_180', label: '91–180 Days', tone: 'bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300' },
+                    { key: '180_plus', label: '180+ Days', tone: 'bg-red-100 text-red-800 dark:bg-red-950/70 dark:text-red-200' },
+                  ].map((bucket) => {
+                    const bucketInvoices = (agingData?.invoices ?? []).filter((inv: any) => inv.aging_bucket === bucket.key)
+                    return (
+                      <div key={bucket.key} className={cn('rounded-xl p-3', bucket.tone)}>
+                        <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80">{bucket.label}</p>
+                        <p className="mt-1 text-lg font-bold tabular-nums">
+                          {formatCurrency(agingData?.buckets?.[bucket.key]?.amount || 0)}
+                        </p>
+                        <p className="text-[11px] opacity-70">
+                          {bucketInvoices.length} invoice{bucketInvoices.length === 1 ? '' : 's'}
+                        </p>
+                      </div>
+                    )
+                  })}
+                </div>
+                <div className="mt-4 flex items-center justify-between rounded-xl bg-muted/60 px-4 py-3">
+                  <span className="text-sm font-medium text-muted-foreground">Total Outstanding</span>
+                  <span className="text-2xl font-bold tabular-nums">
+                    {formatCurrency(agingData?.total_outstanding || 0)}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
 
-            {/* Invoices Table */}
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
+            {/* Invoices Table — full (paginated) list, not just the 10-row preview */}
+            <Card className="rounded-xl border-slate-200/80 dark:border-slate-800">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
                 <div>
                   <CardTitle>Invoices</CardTitle>
                   <CardDescription>All invoices for this customer</CardDescription>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setStatementDialogOpen(true)}>
-                    <Icon icon="solar:document-text-bold" className="h-4 w-4 mr-2" />
+                  <HeaderActionButton
+                    variant="outline"
+                    icon="solar:document-text-bold"
+                    onClick={() => setStatementDialogOpen(true)}
+                  >
                     Generate Statement
-                  </Button>
-                  <Button onClick={() => navigate('/invoices/new?customer=' + customer.id)}>
-                    <Icon icon="solar:add-circle-bold" className="h-4 w-4 mr-2" />
+                  </HeaderActionButton>
+                  <HeaderActionButton
+                    icon="solar:add-circle-bold"
+                    onClick={() => navigate('/invoices/new?customer=' + customer.id)}
+                  >
                     Create Invoice
-                  </Button>
+                  </HeaderActionButton>
                 </div>
               </CardHeader>
               <CardContent>
-                {customer.invoices?.length > 0 ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Invoice #</TableHead>
-                        <TableHead>Issue Date</TableHead>
-                        <TableHead>Due Date</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Total</TableHead>
-                        <TableHead className="text-right">Balance</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {customer.invoices.map(invoice => (
-                        <TableRow key={invoice.id}>
-                          <TableCell className="font-medium">{invoice.invoice_number}</TableCell>
-                          <TableCell>{format(new Date(invoice.invoice_date), 'MMM d, yyyy')}</TableCell>
-                          <TableCell>{format(new Date(invoice.due_date), 'MMM d, yyyy')}</TableCell>
-                          <TableCell>
-                            <Badge className={getStatusColor(invoice.status)}>{invoice.status}</Badge>
-                          </TableCell>
-                          <TableCell className="text-right font-medium">{formatCurrency(invoice.total)}</TableCell>
-                          <TableCell className="text-right font-medium">{formatCurrency(invoice.balance)}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                {invoicesLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
+                  </div>
+                ) : (invoicesData?.data ?? customer.invoices ?? []).length > 0 ? (
+                  <>
+                    <div className="overflow-hidden rounded-xl border border-slate-200/80 dark:border-slate-800">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/40 hover:bg-muted/40">
+                            <TableHead>Invoice #</TableHead>
+                            <TableHead>Issue Date</TableHead>
+                            <TableHead>Due Date</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead className="text-right">Total</TableHead>
+                            <TableHead className="text-right">Balance</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {(invoicesData?.data ?? customer.invoices ?? []).map((invoice: Invoice) => {
+                            const isOverdue = Number(invoice.balance) > 0 && invoice.due_date && new Date(invoice.due_date) < new Date()
+                            return (
+                              <TableRow
+                                key={invoice.id}
+                                className="cursor-pointer"
+                                onClick={() => navigate(`/invoices/${invoice.id}`, { state: { from: `/customers/${customer.id}` } })}
+                              >
+                                <TableCell className="font-medium text-primary">{invoice.invoice_number}</TableCell>
+                                <TableCell>{format(new Date(invoice.invoice_date), 'MMM d, yyyy')}</TableCell>
+                                <TableCell className={cn(isOverdue && 'font-medium text-red-600 dark:text-red-400')}>
+                                  {format(new Date(invoice.due_date), 'MMM d, yyyy')}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge className={getStatusColor(invoice.status)}>{invoice.status}</Badge>
+                                </TableCell>
+                                <TableCell className="text-right font-medium tabular-nums">{formatCurrency(invoice.total)}</TableCell>
+                                <TableCell className="text-right font-medium tabular-nums">
+                                  {Number(invoice.balance) > 0 ? formatCurrency(invoice.balance) : '—'}
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    {invoicesData && invoicesData.last_page > 1 && (
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-4">
+                        <p className="text-xs text-muted-foreground">
+                          Page {invoicesData.current_page} of {invoicesData.last_page} · {invoicesData.total} invoices
+                        </p>
+                        <div className="flex gap-2">
+                          <HeaderActionButton
+                            variant="outline"
+                            icon="solar:alt-arrow-left-bold"
+                            disabled={invoicePage <= 1}
+                            onClick={() => setInvoicePage((page) => Math.max(1, page - 1))}
+                          >
+                            Previous
+                          </HeaderActionButton>
+                          <HeaderActionButton
+                            variant="outline"
+                            disabled={invoicePage >= invoicesData.last_page}
+                            onClick={() => setInvoicePage((page) => page + 1)}
+                          >
+                            Next
+                            <Icon icon="solar:alt-arrow-right-bold" className="ml-1.5 h-3.5 w-3.5" />
+                          </HeaderActionButton>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 ) : (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <Icon icon="solar:document-text-bold" className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                    <p>No invoices yet</p>
+                  <div className="rounded-xl border border-dashed border-slate-300 py-12 text-center text-muted-foreground dark:border-slate-700">
+                    <Icon icon="solar:document-text-bold" className="mx-auto mb-3 h-12 w-12 opacity-40" />
+                    <p className="text-sm">No invoices yet</p>
                   </div>
                 )}
               </CardContent>
@@ -1294,105 +1456,130 @@ export function CustomerDetailsPage() {
 
         {/* Contacts Tab */}
         <TabsContent value="contacts" className="mt-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
+          <Card className="rounded-xl border-slate-200/80 dark:border-slate-800">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <div>
                 <CardTitle>Contacts</CardTitle>
                 <CardDescription>People associated with this customer</CardDescription>
               </div>
-              <Button
+              <HeaderActionButton
+                icon="solar:add-circle-bold"
                 onClick={() => {
                   setEditingContactId(null)
                   setContactForm({})
                   setContactDialogOpen(true)
                 }}
               >
-                <Icon icon="solar:add-circle-bold" className="h-4 w-4 mr-2" />
                 Add Contact
-              </Button>
+              </HeaderActionButton>
             </CardHeader>
             <CardContent>
               {customer.customer_contacts?.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {customer.customer_contacts.map(contact => (
-                    <div key={contact.id} className="p-4 border rounded-lg relative group">
-                      <div className="flex items-start gap-3">
-                        <Avatar>
-                          <AvatarFallback>{getInitials(contact.name)}</AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium truncate">{contact.name}</p>
-                            {contact.is_primary && <Badge variant="secondary">Primary</Badge>}
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {customer.customer_contacts.map(contact => {
+                    // Legacy contacts store the same value in both category and
+                    // type ("billing"/"doctor") — show each chip once.
+                    const typeChips = Array.from(new Set([contact.contact_category, contact.contact_type].filter(Boolean)))
+                    const hasAddress = [contact.street, contact.street2, contact.city, contact.state, contact.zip, contact.country].some(Boolean)
+
+                    return (
+                      <div
+                        key={contact.id}
+                        className="group relative rounded-xl border border-slate-200/80 bg-card p-4 transition-all hover:shadow-md dark:border-slate-800"
+                      >
+                        <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                          <HeaderActionButton
+                            variant="ghost"
+                            className="h-7 px-2"
+                            icon="solar:pen-bold"
+                            onClick={() => {
+                              setEditingContactId(contact.id)
+                              setContactForm({ ...contact })
+                              setContactDialogOpen(true)
+                            }}
+                            title="Edit contact"
+                          >
+                            <span className="sr-only">Edit</span>
+                          </HeaderActionButton>
+                          <HeaderActionButton
+                            variant="ghost"
+                            className="h-7 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            icon="solar:trash-bin-trash-bold"
+                            onClick={() => deleteContactMutation.mutate(contact.id)}
+                            title="Delete contact"
+                          >
+                            <span className="sr-only">Delete</span>
+                          </HeaderActionButton>
+                        </div>
+
+                        <div className="flex items-start gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                            {getInitials(contact.name)}
                           </div>
-                          {contact.job_title && (
-                            <p className="text-sm text-muted-foreground">{contact.job_title}</p>
-                          )}
-                          {(contact.contact_category || contact.contact_type) && (
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {contact.contact_category && <Badge variant="outline">{contact.contact_category}</Badge>}
-                              {contact.contact_type && <Badge variant="secondary">{contact.contact_type}</Badge>}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2 pr-14">
+                              <p className="truncate font-medium">{contact.name}</p>
+                              {contact.is_primary && (
+                                <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                                  Primary
+                                </span>
+                              )}
                             </div>
-                          )}
-                          <div className="mt-2 space-y-1 text-sm">
-                            {contact.email && (
-                              <p className="flex items-center gap-2">
-                                <Icon icon="solar:letter-bold" className="h-3 w-3" />
-                                {contact.email}
-                              </p>
+                            {contact.job_title && (
+                              <p className="text-sm text-muted-foreground">{contact.job_title}</p>
                             )}
-                            {contact.phone && (
-                              <p className="flex items-center gap-2">
-                                <Icon icon="solar:phone-bold" className="h-3 w-3" />
-                                {contact.phone}
-                              </p>
-                            )}
-                            {contact.mobile && (
-                              <p className="flex items-center gap-2">
-                                <Icon icon="solar:smartphone-bold" className="h-3 w-3" />
-                                {contact.mobile}
-                              </p>
-                            )}
-                            {(contact.street || contact.street2 || contact.city || contact.state || contact.zip || contact.country) && (
-                              <div className="flex items-start gap-2 pt-1 text-muted-foreground">
-                                <Icon icon="solar:map-point-bold" className="h-3 w-3 mt-1 shrink-0" />
-                                <p>
-                                  {[contact.street, contact.street2, contact.city, contact.state, contact.zip, contact.country]
-                                    .filter(Boolean)
-                                    .join(', ')}
-                                </p>
+                            {typeChips.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {typeChips.map((chip) => (
+                                  <span
+                                    key={chip}
+                                    className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium capitalize text-muted-foreground"
+                                  >
+                                    {chip}
+                                  </span>
+                                ))}
                               </div>
                             )}
+                            <div className="mt-3 space-y-1.5 text-sm">
+                              {contact.email && (
+                                <a href={`mailto:${contact.email}`} className="flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground">
+                                  <Icon icon="solar:letter-bold" className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="truncate">{contact.email}</span>
+                                </a>
+                              )}
+                              {contact.phone && (
+                                <a href={`tel:${contact.phone}`} className="flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground">
+                                  <Icon icon="solar:phone-bold" className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="truncate">{contact.phone}</span>
+                                </a>
+                              )}
+                              {contact.mobile && (
+                                <a href={`tel:${contact.mobile}`} className="flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground">
+                                  <Icon icon="solar:smartphone-bold" className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="truncate">{contact.mobile}</span>
+                                </a>
+                              )}
+                              {hasAddress && (
+                                <div className="flex items-start gap-2 pt-0.5 text-muted-foreground">
+                                  <Icon icon="solar:map-point-bold" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                  <p className="leading-relaxed">
+                                    {[contact.street, contact.street2, contact.city, contact.state, contact.zip, contact.country]
+                                      .filter(Boolean)
+                                      .join(', ')}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
-                      <div className="absolute top-2 right-2 flex opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            setEditingContactId(contact.id)
-                            setContactForm({ ...contact })
-                            setContactDialogOpen(true)
-                          }}
-                        >
-                          <Icon icon="solar:pen-bold" className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => deleteContactMutation.mutate(contact.id)}
-                        >
-                          <Icon icon="solar:trash-bin-trash-bold" className="h-4 w-4 text-red-500" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               ) : (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Icon icon="solar:users-group-rounded-bold" className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                  <p>No contacts added yet</p>
+                <div className="rounded-xl border border-dashed border-slate-300 py-12 text-center text-muted-foreground dark:border-slate-700">
+                  <Icon icon="solar:users-group-rounded-bold" className="mx-auto mb-3 h-12 w-12 opacity-40" />
+                  <p className="text-sm">No contacts added yet</p>
                 </div>
               )}
             </CardContent>
@@ -1484,97 +1671,121 @@ export function CustomerDetailsPage() {
 
         {/* Financial Tab */}
         <TabsContent value="financial" className="mt-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {/* Credit Information */}
+            <Card className="rounded-xl border-slate-200/80 dark:border-slate-800">
               <CardHeader>
                 <CardTitle>Credit Information</CardTitle>
+                <CardDescription>Based on live receivables and POS activity</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-muted-foreground">Credit Limit</Label>
-                    <p className="text-2xl font-bold">{formatCurrency(customer.credit_limit || 0)}</p>
+                  <div className="rounded-xl bg-muted/50 p-4">
+                    <p className="text-xs text-muted-foreground">Credit Limit</p>
+                    <p className="mt-1 text-xl font-bold tabular-nums">
+                      {customer.credit_limit > 0 ? formatCurrency(customer.credit_limit) : 'No limit'}
+                    </p>
                   </div>
-                  <div>
-                    <Label className="text-muted-foreground">Outstanding Balance</Label>
-                    <p className="text-2xl font-bold text-orange-600">{formatCurrency(customer.total_outstanding || 0)}</p>
+                  <div className="rounded-xl bg-muted/50 p-4">
+                    <p className="text-xs text-muted-foreground">Outstanding Balance</p>
+                    <p className="mt-1 text-xl font-bold tabular-nums text-orange-600 dark:text-orange-400">
+                      {formatCurrency(liveOutstanding)}
+                    </p>
                   </div>
                 </div>
-                <div>
-                  <Label className="text-muted-foreground">Available Credit</Label>
-                  <p className="text-2xl font-bold text-green-600">
-                    {formatCurrency(Math.max(0, (customer.credit_limit || 0) - (customer.total_outstanding || 0)))}
+                {customer.credit_limit > 0 ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="rounded-xl bg-muted/50 p-4">
+                        <p className="text-xs text-muted-foreground">Available Credit</p>
+                        <p className="mt-1 text-xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+                          {formatCurrency(Math.max(0, customer.credit_limit - liveOutstanding))}
+                        </p>
+                      </div>
+                      <div className="rounded-xl bg-muted/50 p-4">
+                        <p className="text-xs text-muted-foreground">Credit Utilization</p>
+                        <p className="mt-1 text-xl font-bold tabular-nums">{creditUsedPercent.toFixed(1)}%</p>
+                      </div>
+                    </div>
+                    <div>
+                      <Progress
+                        value={Math.min(creditUsedPercent, 100)}
+                        className={cn(
+                          'h-2.5 rounded-full',
+                          creditUsedPercent > 90 ? '[&>div]:bg-red-500' :
+                          creditUsedPercent > 70 ? '[&>div]:bg-amber-500' :
+                          '[&>div]:bg-emerald-500'
+                        )}
+                      />
+                      {creditUsedPercent > 90 && (
+                        <p className="mt-1 text-xs text-red-500">Credit limit almost reached</p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    No credit limit set for this customer — the outstanding balance is not capped.
                   </p>
-                </div>
-                <div>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span>Credit Utilization</span>
-                    <span>{creditUsedPercent.toFixed(1)}%</span>
-                  </div>
-                  <Progress 
-                    value={Math.min(creditUsedPercent, 100)} 
-                    className={cn(
-                      "h-4",
-                      creditUsedPercent > 90 ? "[&>div]:bg-red-500" : 
-                      creditUsedPercent > 70 ? "[&>div]:bg-yellow-500" : 
-                      "[&>div]:bg-green-500"
-                    )}
-                  />
-                </div>
+                )}
               </CardContent>
             </Card>
 
-            <Card>
+            {/* Payment Terms */}
+            <Card className="rounded-xl border-slate-200/80 dark:border-slate-800">
               <CardHeader>
                 <CardTitle>Payment Terms</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-muted-foreground">Payment Terms</Label>
-                    <p className="text-2xl font-bold">{customer.payment_terms || 30} days</p>
+                  <div className="rounded-xl bg-muted/50 p-4">
+                    <p className="text-xs text-muted-foreground">Payment Terms</p>
+                    <p className="mt-1 text-xl font-bold">{customer.payment_terms || 30} days</p>
                   </div>
-                  <div>
-                    <Label className="text-muted-foreground">Price List</Label>
-                    <p className="text-lg font-medium">{customer.price_list?.name || 'Default'}</p>
+                  <div className="rounded-xl bg-muted/50 p-4">
+                    <p className="text-xs text-muted-foreground">Price List</p>
+                    <p className="mt-1 text-xl font-bold">{customer.price_list?.name || 'Default'}</p>
                   </div>
                 </div>
+                {customer.salesperson && (
+                  <div className="rounded-xl bg-muted/50 p-4">
+                    <p className="text-xs text-muted-foreground">Assigned Salesperson</p>
+                    <p className="mt-1 font-medium">{customer.salesperson.name}</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle>Purchase Summary</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-4 gap-6">
-                  <div className="text-center p-4 bg-muted rounded-lg">
-                    <p className="text-3xl font-bold">{customer.total_orders || 0}</p>
-                    <p className="text-sm text-muted-foreground">Total Orders</p>
-                  </div>
-                  <div className="text-center p-4 bg-muted rounded-lg">
-                    <p className="text-3xl font-bold">{formatCurrency(customer.total_purchases || 0)}</p>
-                    <p className="text-sm text-muted-foreground">Lifetime Value</p>
-                  </div>
-                  <div className="text-center p-4 bg-muted rounded-lg">
-                    <p className="text-3xl font-bold">{formatCurrency(customer.average_order_value || 0)}</p>
-                    <p className="text-sm text-muted-foreground">Avg. Order Value</p>
-                  </div>
-                  <div className="text-center p-4 bg-muted rounded-lg">
-                    <p className="text-3xl font-bold">
-                      {customer.last_interaction_at 
-                        ? format(new Date(customer.last_interaction_at), 'MMM d') 
-                        : '-'}
-                    </p>
-                    <p className="text-sm text-muted-foreground">Last Activity</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            {/* Purchase Summary — live aggregates (POS + non-draft invoices) */}
+            <div className="grid grid-cols-2 gap-4 lg:col-span-2 xl:grid-cols-4">
+              <StatCard
+                label="Total Orders"
+                value={liveTotalOrders}
+                icon="solar:cart-large-2-bold-duotone"
+                tone="bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400"
+              />
+              <StatCard
+                label="Lifetime Value"
+                value={formatCurrency(liveTotalPurchases)}
+                icon="solar:wallet-money-bold-duotone"
+                tone="bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400"
+              />
+              <StatCard
+                label="Avg. Order Value"
+                value={formatCurrency(liveAvgOrderValue)}
+                icon="solar:chart-2-bold-duotone"
+                tone="bg-violet-100 text-violet-600 dark:bg-violet-950/60 dark:text-violet-400"
+              />
+              <StatCard
+                label="Last Activity"
+                value={lastActivityAt ? format(new Date(lastActivityAt), 'MMM d, yyyy') : '—'}
+                icon="solar:clock-circle-bold-duotone"
+                tone="bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400"
+              />
+            </div>
 
-            {/* Favorite Products - using statsData */}
+            {/* Frequently Purchased Products */}
             {statsData?.favorite_products?.length > 0 && (
-              <Card className="lg:col-span-2">
+              <Card className="rounded-xl border-slate-200/80 dark:border-slate-800 lg:col-span-2">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Icon icon="solar:heart-bold" className="h-5 w-5" />
@@ -1582,24 +1793,26 @@ export function CustomerDetailsPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Product</TableHead>
-                        <TableHead className="text-right">Quantity Purchased</TableHead>
-                        <TableHead className="text-right">Total Spent</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {statsData.favorite_products.map((product: any) => (
-                        <TableRow key={product.id}>
-                          <TableCell className="font-medium">{product.name}</TableCell>
-                          <TableCell className="text-right">{product.total_qty}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(product.total_spent)}</TableCell>
+                  <div className="overflow-hidden rounded-xl border border-slate-200/80 dark:border-slate-800">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/40 hover:bg-muted/40">
+                          <TableHead>Product</TableHead>
+                          <TableHead className="text-right">Quantity Purchased</TableHead>
+                          <TableHead className="text-right">Total Spent</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {statsData.favorite_products.map((product: any) => (
+                          <TableRow key={product.id}>
+                            <TableCell className="font-medium">{product.name}</TableCell>
+                            <TableCell className="text-right tabular-nums">{product.total_qty}</TableCell>
+                            <TableCell className="text-right tabular-nums">{formatCurrency(product.total_spent)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </CardContent>
               </Card>
             )}
@@ -1764,7 +1977,7 @@ export function CustomerDetailsPage() {
                 <Label>Contact Category</Label>
                 <Select
                   value={contactForm.contact_category || ''}
-                  onValueChange={(value) => setContactForm({ ...contactForm, contact_category: value || null })}
+                  onValueChange={(value) => setContactForm({ ...contactForm, contact_category: value || undefined })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select category" />
@@ -1783,7 +1996,7 @@ export function CustomerDetailsPage() {
                 <Label>Contact Type</Label>
                 <Select
                   value={contactForm.contact_type || ''}
-                  onValueChange={(value) => setContactForm({ ...contactForm, contact_type: value || null })}
+                  onValueChange={(value) => setContactForm({ ...contactForm, contact_type: value || undefined })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select type" />
@@ -2441,8 +2654,8 @@ export function CustomerDetailsPage() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <p className="text-sm text-muted-foreground">
-              Generate a Statement of Account (SOA) PDF for <strong>{customer?.name}</strong>.
-              This will include all outstanding invoices as of the selected date.
+              Download the Statement of Account (SOA) for <strong>{customer?.name}</strong> as
+              PDF, Excel, or Word. Includes all outstanding invoices as of the selected date.
             </p>
             <div className="space-y-2">
               <Label htmlFor="as-of-date">As of Date</Label>
@@ -2454,42 +2667,42 @@ export function CustomerDetailsPage() {
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setStatementDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={async () => {
-                try {
-                  const response = await api.get(`/customers/${id}/statement`, {
-                    params: { as_of: statementAsOf },
-                    responseType: 'blob',
-                  })
-                  const blob = new Blob([response.data], { type: 'application/pdf' })
-                  const url = window.URL.createObjectURL(blob)
-                  const link = document.createElement('a')
-                  link.href = url
-                  const customerCode = customer?.code || 'UNKNOWN'
-                  const dateStr = statementAsOf.replace(/-/g, '')
-                  link.download = `SOA_${customerCode}_${dateStr}.pdf`
-                  document.body.appendChild(link)
-                  link.click()
-                  document.body.removeChild(link)
-                  window.URL.revokeObjectURL(url)
-                  setStatementDialogOpen(false)
-                  toast({ title: 'Statement of Account generated successfully' })
-                } catch (error) {
-                  toast({
-                    variant: 'destructive',
-                    title: 'Failed to generate statement',
-                    description: getApiErrorMessage(error),
-                  })
-                }
-              }}
+          <DialogFooter className="flex-wrap gap-2">
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:file-text-bold"
+              loading={statementBusy === 'pdf'}
+              disabled={statementBusy !== null}
+              onClick={() => downloadStatement('pdf')}
             >
-              <Icon icon="solar:download-bold" className="h-4 w-4 mr-2" />
-              Download PDF
-            </Button>
+              PDF
+            </HeaderActionButton>
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:document-add-bold"
+              loading={statementBusy === 'xlsx'}
+              disabled={statementBusy !== null}
+              onClick={() => downloadStatement('xlsx')}
+            >
+              Excel
+            </HeaderActionButton>
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:document-text-bold"
+              loading={statementBusy === 'docx'}
+              disabled={statementBusy !== null}
+              onClick={() => downloadStatement('docx')}
+            >
+              Word
+            </HeaderActionButton>
+            <HeaderActionButton
+              variant="outline"
+              className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              disabled={statementBusy !== null}
+              onClick={() => setStatementDialogOpen(false)}
+            >
+              Cancel
+            </HeaderActionButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>

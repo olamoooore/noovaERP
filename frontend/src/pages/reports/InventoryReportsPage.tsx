@@ -416,7 +416,7 @@ export function InventoryReportsPage() {
 
       {/* Reports Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="w-fit max-w-full">
           <TabsTrigger value="valuation">
             <Icon icon="solar:dollar-minimalistic-bold" className="mr-2 h-4 w-4" />
             Valuation

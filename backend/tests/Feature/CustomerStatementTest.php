@@ -131,6 +131,34 @@ class CustomerStatementTest extends TenantTestCase
         $this->assertEquals(400.0, (float) $paymentRows->first()['credit']);
     }
 
+    /**
+     * The canonical payload is exposed as JSON so the SPA can render Excel/Word
+     * exports client-side; the default format stays the PDF.
+     */
+    public function test_json_format_returns_the_canonical_payload_and_pdf_stays_default(): void
+    {
+        $invoice = $this->invoice();
+        $this->payment($invoice, 400);
+
+        $json = $this->actingAs($this->user)->getJson(
+            '/api/v1/accounting/customers/'.$this->customer->id.'/statement?as_of=2026-01-31&format=json'
+        );
+
+        $json->assertOk();
+        $this->assertNotEmpty($json->json('statement_id'));
+        $this->assertSame('SOA_'.$this->customer->code.'_20260131', $json->json('filename'));
+        $this->assertEquals(600.0, (float) $json->json('payload.closing_balance'));
+        $this->assertEquals(400.0, (float) $json->json('payload.total_credits'));
+        $this->assertNotEmpty($json->json('payload.transactions'));
+
+        $pdf = $this->actingAs($this->user)->get(
+            '/api/v1/accounting/customers/'.$this->customer->id.'/statement?as_of=2026-01-31'
+        );
+
+        $pdf->assertOk();
+        $this->assertStringContainsString('application/pdf', (string) $pdf->headers->get('Content-Type'));
+    }
+
     /** #193 — as-of statement and range statement ending on the same date must agree. */
     public function test_as_of_and_range_statements_report_the_same_closing_balance(): void
     {

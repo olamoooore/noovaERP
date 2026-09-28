@@ -524,7 +524,7 @@ const EventsWorkspacePage: React.FC = () => {
         </section>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 bg-white border border-stone-200 rounded-2xl p-1 h-auto">
+          <TabsList className="h-10 w-fit max-w-full border border-stone-200 bg-white p-1">
             <TabsTrigger value="manage" className="rounded-xl py-3">Manage Events</TabsTrigger>
             <TabsTrigger value="upcoming" className="rounded-xl py-3">Upcoming Events</TabsTrigger>
             <TabsTrigger value="bookings" className="rounded-xl py-3">Bookings</TabsTrigger>

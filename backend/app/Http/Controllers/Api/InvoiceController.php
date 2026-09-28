@@ -1619,6 +1619,10 @@ class InvoiceController extends Controller
 
         $invoice->update(['status' => 'cancelled']);
 
+        // Cancelling removes the invoice from receivables and purchase totals.
+        $invoice->customer?->updateOutstanding();
+        $invoice->customer?->updatePurchaseStats();
+
         // A cancelled invoice must no longer be acceptable via its portal links.
         $this->evidenceService->revokeAcceptanceLinks($invoice);
 
@@ -1691,6 +1695,10 @@ class InvoiceController extends Controller
                     'sent_at' => null,
                     'delivery_status' => Invoice::DELIVERY_NOT_SENT,
                 ]);
+
+                // Drafts are excluded from receivables and purchase totals.
+                $invoice->customer?->updateOutstanding();
+                $invoice->customer?->updatePurchaseStats();
 
                 // The withdrawn invoice must not remain acceptable through its
                 // previously issued portal links.

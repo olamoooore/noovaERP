@@ -989,8 +989,47 @@ class DeliveryOrderService
             );
         }
 
+        // An invoice that has been issued (or moved past draft) owns the
+        // delivered quantities, so the order cannot be re-opened underneath it.
+        // A draft / cancelled / voided invoice does NOT — the link is stale and
+        // previously blocked resets forever on a cancelled DO (422), so those
+        // links are detached here instead.
+        $harmlessInvoiceStates = ['draft', 'cancelled', 'voided', 'reversed', 'superseded'];
+        $invoiceIsHarmless = fn ($invoice): bool => ! $invoice // orphaned pointer — nothing to protect
+            || in_array($invoice->status, ['draft', 'cancelled'], true)
+            || in_array((string) $invoice->lifecycle_status, $harmlessInvoiceStates, true);
+
+        $linkedInvoices = collect();
         if ($deliveryOrder->invoice_id) {
-            throw new \Exception('Cannot reset a delivery order that is linked to an invoice. Reset the invoice first.');
+            $linkedInvoices->push(\App\Models\Invoice::find($deliveryOrder->invoice_id));
+        }
+        if (\Illuminate\Support\Facades\Schema::hasTable('invoice_delivery_orders')) {
+            $pivotInvoiceIds = \Illuminate\Support\Facades\DB::table('invoice_delivery_orders')
+                ->where('delivery_order_id', $deliveryOrder->id)
+                ->pluck('invoice_id');
+            if ($pivotInvoiceIds->isNotEmpty()) {
+                $linkedInvoices = $linkedInvoices
+                    ->merge(\App\Models\Invoice::whereIn('id', $pivotInvoiceIds)->get())
+                    ->filter();
+            }
+        }
+
+        $blockingInvoice = $linkedInvoices->first(fn ($invoice) => ! $invoiceIsHarmless($invoice));
+        if ($blockingInvoice) {
+            throw new \Exception(
+                'Cannot reset a delivery order that is linked to an issued invoice ('.$blockingInvoice->invoice_number.'). Cancel or reset that invoice first.'
+            );
+        }
+
+        if ($linkedInvoices->isNotEmpty()) {
+            // Detach every non-issued link so the order can be edited and billed again.
+            $deliveryOrder->update(['invoice_id' => null]);
+            if (\Illuminate\Support\Facades\Schema::hasTable('invoice_delivery_orders')) {
+                \Illuminate\Support\Facades\DB::table('invoice_delivery_orders')
+                    ->where('delivery_order_id', $deliveryOrder->id)
+                    ->whereIn('invoice_id', $linkedInvoices->pluck('id')->all())
+                    ->delete();
+            }
         }
 
         if ($deliveryOrder->isDone()) {

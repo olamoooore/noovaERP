@@ -217,7 +217,7 @@ export function ExpenseAnalyticsPage() {
 
       {/* Analytics Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="w-fit max-w-full">
           <TabsTrigger value="by-category">
             <Icon icon="solar:folder-bold" className="mr-2 h-4 w-4" />
             By Category

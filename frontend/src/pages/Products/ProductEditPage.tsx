@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -30,7 +31,7 @@ import { Check, ChevronsUpDown } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { useSettingsStore } from '@/store/settingsStore'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, resolveImageUrl } from '@/lib/utils'
 import { AnimatedDropzone } from '@/components/react-bits/AnimatedDropzone'
 import { RichTextEditor } from '@/components/ui/RichTextEditor'
 
@@ -127,13 +128,17 @@ type TrackingMethod = 'none' | 'quantity' | 'batch' | 'serial'
  * Resolve a product image path to a displayable URL.
  * Handles: full URLs (http/https), storage URLs (/storage/...), and raw storage paths (products/...).
  */
-function resolveImageUrl(path: string | null | undefined): string {
-  if (!path) return ''
-  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:') || path.startsWith('blob:')) return path
-  if (path.startsWith('/storage/')) return path
-  // Raw storage path like "products/5913_abc.png" — prepend /storage/
-  return `/storage/${path.replace(/^\//, '')}`
+interface SectionTab {
+  key: 'product' | 'details'
+  label: string
+  icon: string
+  description: string
 }
+
+const SECTION_TABS: SectionTab[] = [
+  { key: 'product', label: 'Product', icon: 'solar:box-bold-duotone', description: 'Basics, description, pricing and variants.' },
+  { key: 'details', label: 'Inventory & Details', icon: 'solar:layers-minimalistic-bold-duotone', description: 'Stock, suppliers, tax, attributes, features and custom fields.' },
+]
 
 export function ProductEditPage() {
   const navigate = useNavigate()
@@ -201,6 +206,23 @@ export function ProductEditPage() {
 
   // Suppliers state
   const [productSuppliers, setProductSuppliers] = useState<ProductSupplierData[]>([])
+  const [activeSection, setActiveSection] = useState<'product' | 'details'>('product')
+
+  /**
+   * The app scrolls inside <main> (MainLayout), not the window. Sections swap
+   * in place now, so reset that container on every switch — otherwise the
+   * previous section's scroll offset survives and shows blank canvas at the
+   * bottom of a shorter section.
+   */
+  const resetScroll = () => {
+    const scroll = () => {
+      const main = document.querySelector('main')
+      if (main) main.scrollTo({ top: 0, behavior: 'auto' })
+      else window.scrollTo({ top: 0, behavior: 'auto' })
+    }
+    scroll()
+    requestAnimationFrame(scroll)
+  }
 
   const [singleAttributes, setSingleAttributes] = useState<{ attributeId: number | string; values: string[] }[]>([])
   const [singleAttrPopoverOpen, setSingleAttrPopoverOpen] = useState<Record<number, boolean>>({})
@@ -453,7 +475,7 @@ export function ProductEditPage() {
     if (!file) return
     try {
       const res = await uploadMutation.mutateAsync({ file, folder: 'products' })
-      setFormData((prev) => ({ ...prev, image: res.url }))
+      setFormData((prev) => ({ ...prev, image: resolveImageUrl(res.url) }))
       toast({ title: 'Main image uploaded' })
     } catch {
       toast({ variant: 'destructive', title: 'Failed to upload image' })
@@ -467,7 +489,7 @@ export function ProductEditPage() {
     for (const file of files) {
       try {
         const res = await uploadMutation.mutateAsync({ file, folder: 'products/gallery' })
-        nextUrls.push(res.url)
+        nextUrls.push(resolveImageUrl(res.url))
       } catch {
         toast({ variant: 'destructive', title: 'Failed to upload a gallery image' })
         break
@@ -685,6 +707,8 @@ export function ProductEditPage() {
     )
   }
 
+  const activeSectionTab = SECTION_TABS.find((tab) => tab.key === activeSection) ?? SECTION_TABS[0]
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -696,17 +720,50 @@ export function ProductEditPage() {
           </div>
           <h1 className="text-3xl font-bold mt-1">Edit Product</h1>
         </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" asChild>
-            <Link to={`/products/${productId}`}>
-              <Icon icon="solar:alt-arrow-left-bold" className="mr-2 h-4 w-4" />
-              Back
-            </Link>
-          </Button>
-          <Button type="submit" form="product-form" disabled={updateMutation.isPending}>
-            <Icon icon="solar:check-circle-bold" className="mr-2 h-4 w-4" />
-            Save
-          </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <HeaderActionButton variant="outline" icon="solar:alt-arrow-left-bold-duotone" asChild>
+            <Link to={`/products/${productId}`}>Back</Link>
+          </HeaderActionButton>
+          <HeaderActionButton
+            type="submit"
+            form="product-form"
+            icon="solar:check-circle-bold-duotone"
+            loading={updateMutation.isPending}
+            disabled={updateMutation.isPending}
+          >
+            Save Changes
+          </HeaderActionButton>
+        </div>
+      </div>
+
+      {/* Section switcher — matches the app's TabsList styling and uses the
+          page canvas colour (not bg-background) so it reads as part of the
+          page while content scrolls beneath it. No translucent layers. */}
+      {/* The sticky bar cannot rise above its containing block, so when pinned
+          there is a 24px strip above it (= <main> p-6 padding) where content
+          shows through. This pseudo-element paints that strip in the canvas
+          colour so the spacing above the tabs matches the padding below. */}
+      <div className="sticky top-0 z-40 bg-[#f6f8fc] pb-3 before:absolute before:inset-x-0 before:-top-6 before:h-6 before:bg-[#f6f8fc] before:content-['']">
+        <div className="inline-flex flex-wrap items-center gap-1 rounded-full bg-muted p-1 text-muted-foreground shadow-sm">
+            {SECTION_TABS.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => {
+                  setActiveSection(tab.key)
+                  resetScroll()
+                }}
+                className={cn(
+                  'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition-all',
+                  activeSection === tab.key
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'hover:text-foreground',
+                )}
+              >
+                <Icon icon={tab.icon} className="h-3.5 w-3.5 shrink-0" />
+                {tab.label}
+              </button>
+            ))}
         </div>
       </div>
 
@@ -714,10 +771,17 @@ export function ProductEditPage() {
         <div className="space-y-6 lg:col-span-2">
           <Card>
             <CardHeader>
-              <CardTitle>Basic info</CardTitle>
+              {/* Follows the active tab so the card title matches the section
+                  currently on screen. */}
+              <CardTitle className="flex items-center gap-2">
+                <Icon icon={activeSectionTab.icon} className="h-4 w-4 text-muted-foreground" />
+                {activeSectionTab.label}
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">{activeSectionTab.description}</p>
             </CardHeader>
             <CardContent>
               <form id="product-form" onSubmit={handleSubmit} className="space-y-5">
+                <div className={cn('space-y-5', activeSection !== 'product' && 'hidden')}>
                 <div className="space-y-2">
                   <Label htmlFor="name">Product Name</Label>
                   <Input
@@ -1196,10 +1260,13 @@ export function ProductEditPage() {
                   </div>
                 )}
 
-                <Separator />
+                </div>
 
-                <Tabs defaultValue="inventory" className="w-full">
-                  <TabsList className="grid w-full grid-cols-6">
+                <Tabs
+                  defaultValue="inventory"
+                  className={cn('w-full', activeSection !== 'details' && 'hidden')}
+                >
+                  <TabsList className="w-fit max-w-full">
                     <TabsTrigger value="inventory">Inventory</TabsTrigger>
                     <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
                     <TabsTrigger value="tax">Tax</TabsTrigger>
@@ -1663,7 +1730,16 @@ export function ProductEditPage() {
 
                   <TabsContent value="attributes" className="pt-4">
                     <div className="rounded-lg border p-3 space-y-3">
-                      <div className="text-sm text-muted-foreground">Select attributes and values for this product.</div>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-xs text-muted-foreground">Select attributes and values for this product.</div>
+                        <HeaderActionButton
+                          variant="outline"
+                          icon="solar:add-circle-bold-duotone"
+                          onClick={() => setSingleAttributes((prev) => [...prev, { attributeId: '', values: [] }])}
+                        >
+                          Add Attribute
+                        </HeaderActionButton>
+                      </div>
 
                       {singleAttributes.length ? (
                         <div className="space-y-4">
@@ -1682,9 +1758,9 @@ export function ProductEditPage() {
                             return (
                               <div
                                 key={index}
-                                className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start border p-3 rounded-md bg-background"
+                                className="flex flex-wrap items-end gap-3 rounded-md border bg-background p-3"
                               >
-                                <div className="space-y-2">
+                                <div className="min-w-[14rem] flex-[1.2] space-y-2">
                                   <Label>Attribute</Label>
                                   <div className="flex gap-2">
                                     <Popover
@@ -1802,7 +1878,7 @@ export function ProductEditPage() {
                                   ) : null}
                                 </div>
 
-                                <div className="space-y-2">
+                                <div className="min-w-[14rem] flex-1 space-y-2">
                                   <Label>Values</Label>
 
                                   {isExisting && selectedAttr?.values?.length ? (
@@ -1880,13 +1956,16 @@ export function ProductEditPage() {
                                   type="button"
                                   variant="ghost"
                                   size="icon"
+                                  className="mb-1 h-7 w-7 shrink-0 text-destructive hover:text-destructive"
+                                  title="Remove attribute"
+                                  aria-label="Remove attribute"
                                   onClick={() => {
                                     const next = [...singleAttributes]
                                     next.splice(index, 1)
                                     setSingleAttributes(next)
                                   }}
                                 >
-                                  <Icon icon="solar:trash-bin-trash-bold" className="text-red-500" />
+                                  <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-3.5 w-3.5" />
                                 </Button>
                               </div>
                             )
@@ -1896,16 +1975,6 @@ export function ProductEditPage() {
                         <div className="text-sm text-muted-foreground">No attributes selected yet.</div>
                       )}
 
-                      <div className="flex gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => setSingleAttributes((prev) => [...prev, { attributeId: '', values: [] }])}
-                        >
-                          <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
-                          Add Attribute
-                        </Button>
-                      </div>
                     </div>
                   </TabsContent>
 
@@ -2083,8 +2152,14 @@ export function ProductEditPage() {
               />
 
               {formData.image ? (
-                <div className="rounded-md border p-2">
-                  <img src={resolveImageUrl(formData.image)} alt="Main" className="h-40 w-full object-cover rounded" />
+                <div className="space-y-2 rounded-md border p-2">
+                  <div className="overflow-hidden rounded-md bg-muted/40">
+                    <img
+                      src={resolveImageUrl(formData.image)}
+                      alt="Main"
+                      className="aspect-square w-full object-contain"
+                    />
+                  </div>
                   <Button
                     type="button"
                     variant="ghost"
@@ -2118,7 +2193,7 @@ export function ProductEditPage() {
                       onClick={() => setFormData((p) => ({ ...p, gallery: p.gallery.filter((g) => g !== url) }))}
                       title="Remove"
                     >
-                      <img src={resolveImageUrl(url)} alt="Gallery" className="h-20 w-full object-cover rounded" />
+                      <img src={resolveImageUrl(url)} alt="Gallery" className="aspect-square w-full rounded object-contain" />
                     </button>
                   ))}
                 </div>

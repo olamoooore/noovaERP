@@ -8,7 +8,6 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 class PaymentTransaction extends Model
 {
@@ -68,42 +67,32 @@ class PaymentTransaction extends Model
             : static::webhookTenantLookupBaseTable();
     }
 
+    /**
+     * Write/refresh the durable CENTRAL tenant lookup row that lets
+     * `ResolveTenantFromWebhook` map a gateway transaction id back to its
+     * tenant (platform defect P-01; Appendix C §C3 PAY-R7).
+     *
+     * DEFECT HISTORY (P-01, fixed): the previous guard called
+     * Schema::hasTable('payment_webhook_tenant_lookups') UNQUALIFIED — under
+     * a tenant search_path Postgres resolves that against the tenant schema,
+     * so the table (which only exists in `public`) was reported missing and
+     * the write silently skipped. Its two guards were mutually exclusive:
+     * one required tenant context, the other could only pass WITHOUT it.
+     * Result: the lookup stayed empty, every gateway webhook 404'd at tenant
+     * resolution, and money only landed via the browser-confirm path.
+     *
+     * The write now goes to the schema-qualified table name directly and is
+     * failure-logged rather than silently skipped.
+     */
     public function syncWebhookTenantLookup(): void
     {
+        // The lookup exists to serve gateway webhooks for TENANT-owned
+        // transactions; without a tenant context there is nothing to record.
         if (! function_exists('tenant') || ! tenant()) {
             return;
         }
 
-        if (! Schema::hasTable(static::webhookTenantLookupBaseTable())) {
-            return;
-        }
-
-        $gatewayName = $this->relationLoaded('gateway')
-            ? $this->gateway?->gateway_name
-            : $this->gateway()->value('gateway_name');
-
-        if (! $gatewayName || ! $this->transaction_id) {
-            return;
-        }
-
-        $timestamp = now();
-
-        DB::table(static::webhookTenantLookupTable())->upsert(
-            [[
-                'gateway_name' => $gatewayName,
-                'transaction_id' => $this->transaction_id,
-                'tenant_id' => (string) tenant()->getTenantKey(),
-                'created_at' => $timestamp,
-                'updated_at' => $timestamp,
-            ]],
-            ['gateway_name', 'transaction_id'],
-            ['tenant_id', 'updated_at']
-        );
-    }
-
-    public function deleteWebhookTenantLookup(): void
-    {
-        if (! Schema::hasTable(static::webhookTenantLookupBaseTable()) || ! $this->transaction_id) {
+        if (! $this->transaction_id) {
             return;
         }
 
@@ -115,10 +104,54 @@ class PaymentTransaction extends Model
             return;
         }
 
-        DB::table(static::webhookTenantLookupTable())
-            ->where('gateway_name', $gatewayName)
-            ->where('transaction_id', $this->transaction_id)
-            ->delete();
+        $timestamp = now();
+
+        try {
+            DB::table(static::webhookTenantLookupTable())->upsert(
+                [[
+                    'gateway_name' => $gatewayName,
+                    'transaction_id' => $this->transaction_id,
+                    'tenant_id' => (string) tenant()->getTenantKey(),
+                    'created_at' => $timestamp,
+                    'updated_at' => $timestamp,
+                ]],
+                ['gateway_name', 'transaction_id'],
+                ['tenant_id', 'updated_at']
+            );
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('PaymentGateway: webhook tenant lookup write failed', [
+                'transaction_id' => $this->transaction_id,
+                'gateway' => $gatewayName,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    public function deleteWebhookTenantLookup(): void
+    {
+        if (! $this->transaction_id) {
+            return;
+        }
+
+        $gatewayName = $this->relationLoaded('gateway')
+            ? $this->gateway?->gateway_name
+            : $this->gateway()->value('gateway_name');
+
+        if (! $gatewayName) {
+            return;
+        }
+
+        try {
+            DB::table(static::webhookTenantLookupTable())
+                ->where('gateway_name', $gatewayName)
+                ->where('transaction_id', $this->transaction_id)
+                ->delete();
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('PaymentGateway: webhook tenant lookup delete failed', [
+                'transaction_id' => $this->transaction_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
