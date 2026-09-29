@@ -4,6 +4,7 @@ namespace App\Accounting\Services;
 
 use App\Models\AccountMapping;
 use App\Models\ChartOfAccount;
+use App\Models\CompanySettings;
 
 /**
  * Resolves GL accounts by mapping key instead of hardcoded codes.
@@ -71,6 +72,19 @@ class AccountMappingService
 
             if ($mapping) {
                 return $this->cache[$cacheKey] = $mapping->account;
+            }
+        }
+
+        // The tenant-selected bank COA is managed in Accounting Settings >
+        // Default Accounts. It takes precedence over the legacy seeded
+        // `bank` mapping and its historical 1020 fallback.
+        if ($key === 'bank') {
+            $configuredBankId = CompanySettings::query()->value('default_bank_account_id');
+            if ($configuredBankId) {
+                $configuredBank = ChartOfAccount::query()->find($configuredBankId);
+                if ($configuredBank) {
+                    return $this->cache[$cacheKey] = $configuredBank;
+                }
             }
         }
 

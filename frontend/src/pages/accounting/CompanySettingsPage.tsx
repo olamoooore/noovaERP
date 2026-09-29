@@ -129,6 +129,7 @@ export default function CompanySettingsPage() {
   const [accountsForm, setAccountsForm] = useState<Record<string, string>>({
     accounts_receivable: 'none',
     accounts_payable: 'none',
+    bank_account: 'none',
     sales_revenue: 'none',
     sales_tax: 'none',
     purchase_expense: 'none',
@@ -209,6 +210,7 @@ export default function CompanySettingsPage() {
       setAccountsForm({
         accounts_receivable: defaultAccounts.accounts_receivable?.toString() || 'none',
         accounts_payable: defaultAccounts.accounts_payable?.toString() || 'none',
+        bank_account: defaultAccounts.bank_account?.toString() || 'none',
         sales_revenue: defaultAccounts.sales_revenue?.toString() || 'none',
         sales_tax: defaultAccounts.sales_tax?.toString() || 'none',
         purchase_expense: defaultAccounts.purchase_expense?.toString() || 'none',
@@ -356,6 +358,7 @@ export default function CompanySettingsPage() {
     const data = {
       accounts_receivable: parseAccount(accountsForm.accounts_receivable),
       accounts_payable: parseAccount(accountsForm.accounts_payable),
+      bank_account: parseAccount(accountsForm.bank_account),
       sales_revenue: parseAccount(accountsForm.sales_revenue),
       sales_tax: parseAccount(accountsForm.sales_tax),
       purchase_expense: parseAccount(accountsForm.purchase_expense),
@@ -787,6 +790,25 @@ export default function CompanySettingsPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="bank_account">Bank Account</Label>
+                  <Select value={accountsForm.bank_account} onValueChange={(v) => setAccountsForm(prev => ({ ...prev, bank_account: v }))}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select account" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {getAccountsByType('asset').map((acc: any) => (
+                        <SelectItem key={acc.id} value={acc.id.toString()}>
+                          {acc.code} - {acc.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Used for bank transfers and other payments without a specific bank account.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="sales_revenue">Sales Revenue</Label>

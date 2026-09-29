@@ -326,6 +326,7 @@ class CompanySettingsController extends Controller
             $accounts = [
                 'accounts_receivable' => $settings->default_receivable_account_id ?? null,
                 'accounts_payable' => $settings->default_payable_account_id ?? null,
+                'bank_account' => $settings->default_bank_account_id ?? null,
                 'sales_revenue' => $settings->default_revenue_account_id ?? null,
                 'shipping_revenue' => $settings->shipping_revenue_account_id ?? null,
                 'sales_tax' => $settings->default_tax_account_id ?? null,
@@ -338,9 +339,10 @@ class CompanySettingsController extends Controller
             ];
 
             // Defensive: null out extended fields if the DB columns don't exist yet
-            $extendedColumns = ['shipping_revenue', 'purchase_tax', 'inventory', 'cost_of_goods_sold', 'retained_earnings', 'bank_charges'];
+            $extendedColumns = ['bank_account', 'shipping_revenue', 'purchase_tax', 'inventory', 'cost_of_goods_sold', 'retained_earnings', 'bank_charges'];
             foreach ($extendedColumns as $key) {
                 $dbColumn = match ($key) {
+                    'bank_account' => 'default_bank_account_id',
                     'shipping_revenue' => 'shipping_revenue_account_id',
                     'purchase_tax' => 'default_purchase_tax_account_id',
                     'inventory' => 'default_inventory_account_id',
@@ -377,6 +379,7 @@ class CompanySettingsController extends Controller
         $validator = Validator::make($input, [
             'accounts_receivable' => 'nullable|integer|exists:chart_of_accounts,id',
             'accounts_payable' => 'nullable|integer|exists:chart_of_accounts,id',
+            'bank_account' => 'nullable|integer|exists:chart_of_accounts,id',
             'sales_revenue' => 'nullable|integer|exists:chart_of_accounts,id',
             'shipping_revenue' => 'nullable|integer|exists:chart_of_accounts,id',
             'sales_tax' => 'nullable|integer|exists:chart_of_accounts,id',
@@ -407,6 +410,7 @@ class CompanySettingsController extends Controller
             // Defensive: only include extended default-account columns if they exist in DB.
             // Some tenants may not have run the migration that added these columns.
             $extendedColumns = [
+                'default_bank_account_id' => $input['bank_account'] ?? null,
                 'shipping_revenue_account_id' => $input['shipping_revenue'] ?? null,
                 'default_purchase_tax_account_id' => $input['purchase_tax'] ?? null,
                 'default_inventory_account_id' => $input['inventory'] ?? null,
@@ -444,6 +448,7 @@ class CompanySettingsController extends Controller
                 'data' => [
                     'accounts_receivable' => $fresh->default_receivable_account_id ?? null,
                     'accounts_payable' => $fresh->default_payable_account_id ?? null,
+                    'bank_account' => $fresh->default_bank_account_id ?? null,
                     'sales_revenue' => $fresh->default_revenue_account_id ?? null,
                     'shipping_revenue' => $fresh->shipping_revenue_account_id ?? null,
                     'sales_tax' => $fresh->default_tax_account_id ?? null,
@@ -489,6 +494,7 @@ class CompanySettingsController extends Controller
             'timezone' => 'UTC',
             'default_receivable_account_id' => null,
             'default_payable_account_id' => null,
+            'default_bank_account_id' => null,
             'default_revenue_account_id' => null,
             'shipping_revenue_account_id' => null,
             'default_expense_account_id' => null,

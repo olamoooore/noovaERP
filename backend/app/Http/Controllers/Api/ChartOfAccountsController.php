@@ -496,6 +496,7 @@ class ChartOfAccountsController extends Controller
         ['company_settings', 'default_tax_account_id', 'company default accounts'],
         ['company_settings', 'default_receivable_account_id', 'company default accounts'],
         ['company_settings', 'default_payable_account_id', 'company default accounts'],
+        ['company_settings', 'default_bank_account_id', 'company default accounts'],
         ['company_settings', 'default_revenue_account_id', 'company default accounts'],
         ['company_settings', 'default_expense_account_id', 'company default accounts'],
         ['company_settings', 'default_purchase_tax_account_id', 'company default accounts'],
