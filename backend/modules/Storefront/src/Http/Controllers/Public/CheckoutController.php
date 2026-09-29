@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Storefront\Exceptions\CheckoutException;
 use Modules\Storefront\Models\StorefrontOrder;
+use Modules\Storefront\Models\StorefrontSettings;
 use Modules\Storefront\Services\AccountService;
 use Modules\Storefront\Services\CartService;
 use Modules\Storefront\Services\CheckoutService;
@@ -48,7 +49,17 @@ final class CheckoutController extends Controller
             'billing_address.city' => ['required_with:billing_address', 'string', 'max:120'],
             'billing_address.postal_code' => ['required_with:billing_address', 'string', 'max:20'],
             'billing_address.country_code' => ['required_with:billing_address', 'string', 'size:2', 'regex:/^[A-Za-z]{2}$/'],
+            'accepted_terms' => ['sometimes', 'boolean'],
         ]);
+
+        // Tenant policy: when checkout terms are configured, acceptance is
+        // mandatory SERVER-side (the checkbox in the island is UX only).
+        if (StorefrontSettings::current()->checkout_terms_url !== null && ! ($validated['accepted_terms'] ?? false)) {
+            return response()->json([
+                'message' => 'You must accept the store terms to complete checkout.',
+                'code' => 'terms_not_accepted',
+            ], 422);
+        }
 
         $key = $request->header('Idempotency-Key') ?: ($validated['idempotency_key'] ?? null);
         if (! is_string($key) || strlen($key) < 8 || strlen($key) > 120) {
@@ -97,6 +108,7 @@ final class CheckoutController extends Controller
 
         $payload = [
             'data' => [
+                'id' => $order->id,
                 'order_number' => $order->order_number,
                 'status' => $order->status,
                 'payment_status' => $order->payment_status,
@@ -136,6 +148,7 @@ final class CheckoutController extends Controller
         $addr = $order->shipping_address ?? [];
 
         return [
+            'id' => $order->id,
             'order_number' => $order->order_number,
             'status' => $order->status,
             'payment_status' => $order->payment_status,

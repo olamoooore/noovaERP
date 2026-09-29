@@ -26,6 +26,7 @@ final class DefaultFunctions
         // Tier B cart/account shells (FR-CO-01, FR-ID-01, FR-DASH-01).
         CartFunctions::register($registry);
         AccountFunctions::register($registry);
+        CheckoutFunctions::register($registry);
     }
 
     // ─── Catalog (Tier A) ───────────────────────────────────────────────

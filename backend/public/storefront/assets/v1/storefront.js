@@ -576,6 +576,215 @@
     });
   }
 
+  /* ---------- checkout / confirmation / pay-now islands ---------- */
+
+  function genIdemKey() {
+    return 'ck-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  }
+
+  function fieldRow(parent, labelText, name, type, value, attrs) {
+    var lab = el('label', 'sf-field');
+    lab.appendChild(el('span', null, labelText));
+    var inp = el('input');
+    inp.name = name; inp.type = type || 'text';
+    if (value) inp.value = value;
+    (attrs || []).forEach(function (pair) { inp.setAttribute(pair[0], pair[1]); });
+    lab.appendChild(inp);
+    parent.appendChild(lab);
+    return inp;
+  }
+
+  function renderRetryBlock(container, orderId, token) {
+    req('/payment-methods').then(function (res) {
+      var methods = res.ok ? (res.data.data || []) : [];
+      if (!methods.length) {
+        container.appendChild(el('p', 'sf-pay__none', 'No online payment methods are configured for this store yet. The store owner will contact you if payment is handled another way.'));
+        return;
+      }
+      var chosen = null;
+      methods.forEach(function (m, i) {
+        var lab = el('label', 'sf-pay__method');
+        var radio = el('input');
+        radio.type = 'radio'; radio.name = 'sf_pay_gateway'; radio.value = m.name;
+        if (i === 0) radio.checked = true;
+        radio.addEventListener('change', function () { chosen = m.name; });
+        lab.appendChild(radio);
+        lab.appendChild(el('span', null, m.display_name + (m.is_test_mode ? ' (test)' : '')));
+        container.appendChild(lab);
+        if (i === 0) chosen = m.name;
+      });
+
+      var btn = el('button', 'sf-auth__submit', 'Pay now'); btn.type = 'button';
+      var msg = el('p', 'sf-auth__error'); msg.setAttribute('role', 'alert');
+      btn.addEventListener('click', function () {
+        btn.disabled = true;
+        req('/orders/' + orderId + '/pay', {
+          method: 'POST',
+          body: {
+            token: token || undefined,
+            gateway: chosen,
+            success_url: window.location.origin + window.location.pathname + (token ? '?sfconf=' + encodeURIComponent(token) : ''),
+          },
+        }).then(function (r) {
+          if (!r.ok) { msg.textContent = (r.data && r.data.message) || 'Payment could not be started.'; btn.disabled = false; return; }
+          var d = r.data.data || {};
+          if (d.payment_url) { window.location.href = d.payment_url; return; }
+          if (d.client_secret) { msg.textContent = 'Card checkout is being set up for this store — you will receive the payment form shortly.'; btn.disabled = false; return; }
+          window.location.reload();
+        }).catch(function () { msg.textContent = 'Network error — please try again.'; btn.disabled = false; });
+      });
+      container.appendChild(btn);
+      container.appendChild(msg);
+    });
+  }
+
+  function mountCheckout(island) {
+    var body = island.querySelector('.sf-checkout__body');
+    if (!body) return;
+    if (island.dataset.sfMounted) return;
+    island.dataset.sfMounted = '1';
+
+    var termsUrl = island.dataset.sfTermsUrl || null;
+    var state = { idem: genIdemKey(), token: null, orderId: null };
+
+    function render(cart, methods) {
+      body.textContent = '';
+      var items = (cart && cart.items) || [];
+      if (!items.length) {
+        body.appendChild(el('p', 'sf-checkout__empty', 'Your cart is empty.'));
+        return;
+      }
+
+      var summary = el('div', 'sf-checkout__summary');
+      items.forEach(function (i) {
+        summary.appendChild(el('p', 'sf-checkout__line', i.quantity + ' × ' + i.name + ' — ' + i.line_total));
+      });
+      var t = cart.totals || {};
+      summary.appendChild(el('p', 'sf-checkout__total', 'Total: ' + t.total + ' ' + (cart.currency || '')));
+      body.appendChild(summary);
+
+      var form = el('form', 'sf-checkout__form');
+      var name = fieldRow(form, 'Full name', 'name', 'text', '', [['required', '']]);
+      var email = fieldRow(form, 'Email', 'email', 'email', '', [['required', ''], ['autocomplete', 'email']]);
+      var phone = fieldRow(form, 'Phone', 'phone', 'tel');
+      var a1 = fieldRow(form, 'Address', 'address1', 'text', '', [['required', ''], ['autocomplete', 'address-line1']]);
+      var a2 = fieldRow(form, 'Address 2', 'address2', 'text', null, [['autocomplete', 'address-line2']]);
+      var city = fieldRow(form, 'City', 'city', 'text', '', [['required', ''], ['autocomplete', 'address-level2']]);
+      var stateF = fieldRow(form, 'State', 'state', 'text');
+      var postal = fieldRow(form, 'Postal code', 'postal_code', 'text', '', [['required', '']]);
+      var country = fieldRow(form, 'Country (2-letter code)', 'country_code', 'text', '', [['required', ''], ['maxlength', '2']]);
+
+      var err = el('p', 'sf-auth__error'); err.setAttribute('role', 'alert');
+      var submit = el('button', 'sf-auth__submit', 'Place order'); submit.type = 'submit';
+
+      var termsBox = null;
+      if (termsUrl) {
+        termsBox = el('label', 'sf-checkout__terms');
+        var cb = el('input'); cb.type = 'checkbox'; cb.name = 'accepted_terms'; cb.value = '1';
+        termsBox.appendChild(cb);
+        var txt = el('span', null, ' I accept the ');
+        var link = el('a', null, 'store terms'); link.href = termsUrl; link.target = '_blank'; link.rel = 'noopener';
+        termsBox.appendChild(txt); termsBox.appendChild(link);
+        form.appendChild(termsBox);
+      }
+
+      form.appendChild(err); form.appendChild(submit);
+      body.appendChild(form);
+
+      submit.addEventListener('click', function () {
+        submit.disabled = true; err.textContent = '';
+        var shipping = {
+          name: name.value.trim(), phone: phone.value.trim() || null,
+          address1: a1.value.trim(), address2: a2.value.trim() || null,
+          city: city.value.trim(), state: stateF.value.trim() || null,
+          postal_code: postal.value.trim(), country_code: country.value.trim().toUpperCase(),
+        };
+        var payload = {
+          email: email.value.trim(), phone: phone.value.trim() || null,
+          idempotency_key: state.idem,
+          shipping_address: shipping,
+        };
+        if (termsBox) payload.accepted_terms = termsBox.querySelector('input').checked;
+
+        req('/checkout', { method: 'POST', body: payload }).then(function (r) {
+          if (!r.ok) {
+            err.textContent = (r.data && r.data.message) || 'Checkout failed.';
+            submit.disabled = false;
+            return;
+          }
+          var d = r.data.data;
+          state.orderId = d.id;
+          if (d.confirmation_token) state.token = d.confirmation_token;
+
+          body.textContent = '';
+          body.appendChild(el('h3', 'sf-checkout__placed', 'Order ' + d.order_number + ' placed.'));
+          if (d.totals && d.totals.total !== '0.00' && state.token) {
+            body.appendChild(el('p', null, 'Complete your payment:'));
+            renderRetryBlock(body, d.id, state.token);
+          } else {
+            body.appendChild(el('p', null, 'Your order is confirmed. Keep this page’s URL — it shows your order status.'));
+          }
+        }).catch(function () {
+          err.textContent = 'Network error — please try again.';
+          submit.disabled = false;
+        });
+      });
+
+      // Prefill from the account when a session exists (silent otherwise).
+      req('/account').then(function (res) {
+        if (res.ok) {
+          var a = res.data.data;
+          if (!name.value) name.value = ((a.first_name || '') + ' ' + (a.last_name || '')).trim();
+          if (!email.value) email.value = a.email || '';
+          if (!phone.value) phone.value = a.phone || '';
+        }
+      });
+    }
+
+    load();
+    function load() {
+      Promise.all([req('/cart'), req('/payment-methods')]).then(function (rs) {
+        render(rs[0].ok ? rs[0].data.data : null, rs[1].ok ? rs[1].data.data : []);
+      });
+    }
+  }
+
+  function renderConfirmationBody(body, d) {
+    body.textContent = '';
+    body.appendChild(el('h3', null, 'Thank you — order ' + d.order_number));
+    body.appendChild(el('p', 'sf-conf__status', 'Status: ' + d.status + ' · Payment: ' + d.payment_status));
+    (d.items || []).forEach(function (i) {
+      body.appendChild(el('p', 'sf-conf__line', i.quantity + ' × ' + i.name + ' — ' + i.line_total));
+    });
+    if (d.totals) body.appendChild(el('p', 'sf-conf__total', 'Total ' + d.totals.total + ' ' + (d.currency || '')));
+    (d.tracking_numbers || []).forEach(function (t) { body.appendChild(el('p', null, 'Tracking: ' + t)); });
+  }
+
+  function mountConfirmation(island, withRetry) {
+    var body = island.querySelector(withRetry ? '.sf-pay-now__body' : '.sf-order-confirmation__body');
+    if (!body) return;
+    var token = new URLSearchParams(window.location.search).get('sfconf');
+    if (!token) {
+      body.textContent = '';
+      body.appendChild(el('p', 'sf-conf__missing', 'Open this page from the link we emailed you, or the confirmation URL on your order page.'));
+      return;
+    }
+    req('/orders/confirm/' + encodeURIComponent(token)).then(function (res) {
+      body.textContent = '';
+      if (!res.ok) { body.appendChild(el('p', 'sf-conf__missing', 'This confirmation link is not valid.')); return; }
+      var d = res.data.data;
+      renderConfirmationBody(body, d);
+      if (withRetry || (d.payment_status !== 'paid' && d.payment_status !== 'refunded')) {
+        var retryBox = el('div', 'sf-conf__retry');
+        if (d.payment_status !== 'paid' && d.payment_status !== 'refunded') {
+          retryBox.appendChild(el('p', null, 'Payment is still due:'));
+          renderRetryBlock(retryBox, d.id, token);
+          body.appendChild(retryBox);
+        }
+      }
+    });
+  }
+
   /* ---------- announcer (aria-live) ---------- */
 
   function ensureAnnouncer() {
@@ -609,6 +818,9 @@
     document.querySelectorAll('[data-sf-island="profile"]').forEach(mountProfile);
     document.querySelectorAll('[data-sf-island="security"]').forEach(mountSecurity);
     document.querySelectorAll('[data-sf-island="verify_email"]').forEach(mountVerify);
+    document.querySelectorAll('[data-sf-island="checkout"]').forEach(mountCheckout);
+    document.querySelectorAll('[data-sf-island="order_confirmation"]').forEach(function (i) { mountConfirmation(i, false); });
+    document.querySelectorAll('[data-sf-island="pay_now"]').forEach(function (i) { mountConfirmation(i, true); });
   }
 
   if (document.readyState === 'loading') {
