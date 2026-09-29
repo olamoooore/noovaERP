@@ -77,6 +77,25 @@ final class DocumentTemplateService implements DocumentTemplateServiceContract
         return $template->fresh();
     }
 
+    public function deleteUnused(string $id): void
+    {
+        DB::transaction(function () use ($id) {
+            $template = DocumentTemplate::query()->lockForUpdate()->find($id) ?? $this->notFound($id);
+
+            if ($template->is_system_default) {
+                throw new \RuntimeException('The system default template cannot be deleted.');
+            }
+
+            if ($template->assignments()->where('is_active', true)->exists()) {
+                throw new \RuntimeException('This template is currently in use. Choose another active template before deleting it.');
+            }
+
+            // DocumentTemplate uses soft deletes so historical generated
+            // documents and audit references remain intact.
+            $template->delete();
+        });
+    }
+
     public function duplicate(string $id, ?string $newName = null): DocumentTemplate
     {
         $source = $this->find($id) ?? $this->notFound($id);

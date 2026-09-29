@@ -50,6 +50,9 @@ export const templateBuilderApi = {
     api.put<{ data: DocumentTemplate }>(`${BASE}/templates/${id}`, payload).then((r) => r.data.data),
 
   archive: (id: string) =>
+    api.post<{ data: DocumentTemplate }>(`${BASE}/templates/${id}/archive`).then((r) => r.data),
+
+  delete: (id: string) =>
     api.delete<{ message: string }>(`${BASE}/templates/${id}`).then((r) => r.data),
 
   duplicate: (id: string, name?: string) =>

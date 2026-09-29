@@ -10,8 +10,19 @@ import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { toast } from '@/hooks/use-toast'
-import { Plus, Pencil, Copy, Star, Archive, FileText, Download, CheckCircle2 } from 'lucide-react'
+import { Plus, Pencil, Copy, Star, Archive, FileText, Download, CheckCircle2, Trash2 } from 'lucide-react'
+import type { DocumentTemplate } from '@/types/template-builder'
 
 export default function TemplateListPage({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate()
@@ -20,6 +31,7 @@ export default function TemplateListPage({ embedded = false }: { embedded?: bool
   const [newOpen, setNewOpen] = useState(false)
   const [blankName, setBlankName] = useState('')
   const [blankType, setBlankType] = useState<DocumentType>('invoice')
+  const [deleteTarget, setDeleteTarget] = useState<DocumentTemplate | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['tb-templates', filter],
@@ -89,6 +101,20 @@ export default function TemplateListPage({ embedded = false }: { embedded?: bool
     mutationFn: (id: string) => templateBuilderApi.archive(id),
     onSuccess: () => { invalidate(); toast({ title: 'Archived' }) },
     onError: () => toast({ title: 'Archive failed', variant: 'destructive' }),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => templateBuilderApi.delete(id),
+    onSuccess: () => {
+      invalidate()
+      setDeleteTarget(null)
+      toast({ title: 'Template deleted' })
+    },
+    onError: (error: any) => toast({
+      title: 'Could not delete template',
+      description: error?.response?.data?.message || 'This template may still be in use.',
+      variant: 'destructive',
+    }),
   })
 
   const templates = data?.data ?? []
@@ -171,6 +197,17 @@ export default function TemplateListPage({ embedded = false }: { embedded?: bool
                   <Button size="sm" variant="ghost" onClick={() => archiveMutation.mutate(t.id)} title="Archive">
                     <Archive className="h-4 w-4" />
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => setDeleteTarget(t)}
+                    title={isActive || t.is_system_default ? 'Templates in use cannot be deleted' : 'Delete template'}
+                    aria-label={`Delete ${t.name}`}
+                    disabled={isActive || t.is_system_default || deleteMutation.isPending}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
               </Card>
             )
@@ -191,6 +228,32 @@ export default function TemplateListPage({ embedded = false }: { embedded?: bool
         onCreateStarter={(docType) => createFromStarter.mutate(docType)}
         creating={createBlank.isPending || createFromStarter.isPending}
       />
+
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete template?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget
+                ? `“${deleteTarget.name}” will be removed from Template Builder. This action cannot be undone.`
+                : 'This template will be removed from Template Builder.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={!deleteTarget || deleteMutation.isPending}
+              onClick={(event) => {
+                event.preventDefault()
+                if (deleteTarget) deleteMutation.mutate(deleteTarget.id)
+              }}
+            >
+              {deleteMutation.isPending ? 'Deleting…' : 'Delete template'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
