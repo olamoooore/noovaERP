@@ -85,7 +85,8 @@ Route::middleware([
 
             // Account identity (FR-ID-*). Brute-force-specific throttles,
             // each in its OWN bucket (see prefix note above).
-            Route::prefix('auth')->group(function () {                Route::post('/register', [\Modules\Storefront\Http\Controllers\Public\AuthController::class, 'register'])
+            Route::prefix('auth')->group(function () {
+                Route::post('/register', [\Modules\Storefront\Http\Controllers\Public\AuthController::class, 'register'])
                     ->middleware('throttle:10,1,sf-register');
                 Route::post('/login', [\Modules\Storefront\Http\Controllers\Public\AuthController::class, 'login'])
                     ->middleware('throttle:10,1,sf-login');
@@ -280,6 +281,9 @@ Route::middleware([
         Route::get('/', [\App\Http\Controllers\Api\TenantUserController::class, 'index']);
         Route::post('/', [\App\Http\Controllers\Api\TenantUserController::class, 'invite'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.write');
         Route::put('/{id}/role', [\App\Http\Controllers\Api\TenantUserController::class, 'updateRole'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.write');
+        // Owner/Admin-only credential management (enforced in-controller too).
+        Route::post('/{id}/password-link', [\App\Http\Controllers\Api\TenantUserController::class, 'sendPasswordLink'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.write');
+        Route::post('/{id}/password', [\App\Http\Controllers\Api\TenantUserController::class, 'setPassword'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.write');
         Route::delete('/{id}', [\App\Http\Controllers\Api\TenantUserController::class, 'destroy'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.delete');
     });
 

@@ -41,6 +41,7 @@ use Modules\Storefront\Models\StorefrontSettings;
 final class CheckoutService
 {
     public const RESERVATION_TTL_MINUTES = 30;
+
     public const CONFIRMATION_TOKEN_BYTES = 16;
 
     public function __construct(
@@ -152,7 +153,7 @@ final class CheckoutService
         $customer = Customer::query()->whereRaw('lower(email) = ?', [$email])->first();
 
         if ($customer === null) {
-            $name = trim(($account?->first_name ?? '') . ' ' . ($account?->last_name ?? ''));
+            $name = trim(($account?->first_name ?? '').' '.($account?->last_name ?? ''));
             $customer = $this->customers->create([
                 'name' => $name !== '' ? $name : ($contact['email'] ?? $email),
                 'email' => $email,

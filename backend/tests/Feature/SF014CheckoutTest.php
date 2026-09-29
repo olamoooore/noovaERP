@@ -40,6 +40,11 @@ class SF014CheckoutTest extends TenantTestCase
         parent::setUp();
 
         $this->withCredentials();
+        // Outbox dispatches must not run inline: the sync queue would execute
+        // ProcessOutboxBatch inside the request/registration flow (it expects
+        // a queue-worker process and mutates tenancy state there).
+        \Illuminate\Support\Facades\Queue::fake();
+
         DB::statement('SET search_path TO public');
 
         CatalogItemType::firstOrCreate(['key' => 'module'], ['name' => 'Module', 'sort_order' => 0]);
@@ -132,7 +137,7 @@ class SF014CheckoutTest extends TenantTestCase
         $product = $this->makeProduct(['price' => 4, 'track_inventory' => true, 'stock_quantity' => 8]);
         StockLevel::create(['product_id' => $product->id, 'warehouse_id' => $this->warehouseId, 'quantity' => 8, 'reserved_quantity' => 0]);
 
-        [$guestToken, ] = $this->cartWith($product->id, 3);
+        [$guestToken] = $this->cartWith($product->id, 3);
         $res = $this->checkout($guestToken, 'idem-'.Str::random(24));
         $res->assertStatus(201);
 
@@ -176,7 +181,7 @@ class SF014CheckoutTest extends TenantTestCase
     {
         StorefrontSettings::current()->update(['guest_checkout' => false]);
         $product = $this->makeProduct(['price' => 3]);
-        [$guestToken, ] = $this->cartWith($product->id, 1);
+        [$guestToken] = $this->cartWith($product->id, 1);
         $this->checkout($guestToken, 'idem-'.Str::random(24))
             ->assertStatus(422)->assertJsonPath('code', 'guest_checkout_disabled');
         StorefrontSettings::current()->update(['guest_checkout' => true]);
@@ -202,7 +207,7 @@ class SF014CheckoutTest extends TenantTestCase
     public function test_confirmation_token_lookup_and_wrong_token(): void
     {
         $product = $this->makeProduct(['price' => 6]);
-        [$guestToken, ] = $this->cartWith($product->id, 1);
+        [$guestToken] = $this->cartWith($product->id, 1);
         $res = $this->checkout($guestToken, 'idem-'.Str::random(24));
         $token = $res->json('data.confirmation_token');
 
@@ -213,13 +218,20 @@ class SF014CheckoutTest extends TenantTestCase
 
         $this->getJson('/api/v1/storefront/orders/confirm/'.bin2hex(random_bytes(16)))->assertStatus(404);
         // garbage / hostile shapes rejected before hitting the DB layer
-        $this->getJson('/api/v1/storefront/orders/confirm/' . htmlspecialchars('../../etc/passwd'))->assertStatus(404);
+        $this->getJson('/api/v1/storefront/orders/confirm/'.htmlspecialchars('../../etc/passwd'))->assertStatus(404);
     }
 
     public function test_account_checkout_links_identity_and_requires_csrf(): void
     {
         $svc = app(AccountService::class);
-        ['account' => $account] = $svc->register('buyer-'.Str::random(6).'@example.test', 'Passw0rd!');
+        ['account' => $account, 'verification_token' => $vtoken] = $svc->register('buyer-'.Str::random(6).'@example.test', 'Passw0rd!');
+
+        // Pending accounts cannot sign in (consistent with per-request session
+        // status re-check, FR-ID-02/08).
+        $this->postJson('/api/v1/storefront/auth/login', ['email' => $account->email, 'password' => 'Passw0rd!'])
+            ->assertStatus(403)->assertJsonPath('code', 'email_verification_required');
+
+        $svc->verifyEmail($account->email, $vtoken);
         $auth = $svc->login($account->email, 'Passw0rd!');
 
         $product = $this->makeProduct(['price' => 9]);
@@ -233,10 +245,9 @@ class SF014CheckoutTest extends TenantTestCase
         ];
 
         // session present without CSRF echo -> 419
-        $noCsrf = $this->withUnencryptedCookie(AccountService::SESSION_COOKIE, $auth['session_token'])
-            ->postJson('/api/v1/storefront/checkout', $body);
-        fwrite(STDERR, "\nCSRFTEST status=".$noCsrf->status()." body=".substr($noCsrf->getContent(), 0, 300).PHP_EOL);
-        $noCsrf->assertStatus(419);
+        $this->withUnencryptedCookie(AccountService::SESSION_COOKIE, $auth['session_token'])
+            ->postJson('/api/v1/storefront/checkout', $body)
+            ->assertStatus(419);
 
         // proper session + CSRF pair
         $res = $this->withUnencryptedCookies([

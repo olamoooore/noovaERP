@@ -182,6 +182,13 @@ final class AccountService
             throw AccountAuthException::make('account_suspended', 'This account has been suspended.', 403);
         }
 
+        // Consistency with resolveSession (which re-checks status every
+        // request): a pending account cannot hold a live session, so it
+        // cannot sign in either until the email is verified (FR-ID-02).
+        if ($account->status === 'pending') {
+            throw AccountAuthException::make('email_verification_required', 'Verify your email before signing in.', 403);
+        }
+
         $account->update(['failed_login_count' => 0, 'locked_until' => null, 'last_login_at' => now()]);
 
         // FR-ID-07: link prior guest orders placed with this email.
