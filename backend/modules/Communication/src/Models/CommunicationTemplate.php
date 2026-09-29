@@ -59,7 +59,16 @@ class CommunicationTemplate extends Model
     {
         static::addGlobalScope('tenant', function (Builder $query) {
             if (function_exists('tenancy') && tenancy()->initialized) {
-                $query->where('tenant_id', tenant('id'));
+                // Tenant isolation for tenant-scoped rows PLUS visibility of
+                // SYSTEM defaults (tenant_id NULL). Previously this was a
+                // plain where('tenant_id', X), which AND-ed with
+                // TemplateRenderer::findTemplate()'s orWhereNull fallback and
+                // made every system template invisible under tenancy — i.e.
+                // exactly in the queued/webhook contexts that render them.
+                $tenantId = tenant('id');
+                $query->where(function (Builder $q) use ($tenantId) {
+                    $q->where('tenant_id', $tenantId)->orWhereNull('tenant_id');
+                });
             }
         });
     }
@@ -122,7 +131,19 @@ class CommunicationTemplate extends Model
         return preg_replace_callback('/\{\{\s*([\w.]+)\s*\}\}/', function ($matches) use ($variables) {
             $key = $matches[1];
 
-            return data_get($variables, $key, $matches[0]);
+            // The TemplateRenderer FLATTENS nested variables into literal
+            // dotted keys ('order.order_number'), but data_get() SPLITS on
+            // dots — so a flattened map never resolved and every dotted
+            // placeholder rendered raw (platform-wide latent bug found by
+            // SF019). Check the literal key first, then the nested path,
+            // and only then keep the placeholder visible.
+            if (array_key_exists($key, $variables)) {
+                return (string) $variables[$key];
+            }
+
+            $nested = data_get($variables, $key, null);
+
+            return $nested === null ? $matches[0] : (string) $nested;
         }, $template);
     }
 

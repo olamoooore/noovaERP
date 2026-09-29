@@ -107,11 +107,14 @@ final class AccountService
 
         $this->sendEmail(
             to: $account->email,
-            subject: 'Verify your account',
-            body: 'Welcome! Please verify your account: '.$verificationToken,
+            subject: 'Confirm your email',
+            body: 'Welcome! Confirm your email with code '.$verificationToken.' or use the link in the email.',
             subtype: 'storefront.customer.email_verification',
-            templateKey: 'auth.welcome',
-            variables: ['user' => ['name' => $account->first_name ?: $account->email], 'verify' => ['url' => $verificationToken]],
+            templateKey: 'storefront.customer.email_verification',
+            variables: $this->accountVars($account) + ['verify' => [
+                'url' => \Modules\Storefront\Support\TenantUrl::verify($verificationToken, $account->email),
+                'token' => $verificationToken,
+            ]],
         );
 
         return ['account' => $account, 'verification_token' => $verificationToken];
@@ -139,8 +142,8 @@ final class AccountService
             subject: 'Welcome — your account is verified',
             body: 'Your account is now active. You can sign in any time.',
             subtype: 'storefront.customer.registered',
-            templateKey: 'auth.welcome',
-            variables: ['user' => ['name' => $account->first_name ?: $account->email]],
+            templateKey: 'storefront.customer.registered',
+            variables: $this->accountVars($account),
         );
 
         return $account;
@@ -298,13 +301,13 @@ final class AccountService
         $this->sendEmail(
             to: $account->email,
             subject: 'Reset your password',
-            body: 'Use this link within '.self::RESET_TTL_MINUTES.' minutes to reset your password: '.$token,
+            body: 'Reset code (valid '.self::RESET_TTL_MINUTES.' minutes, one use): '.$token,
             subtype: 'storefront.customer.password_reset',
-            templateKey: 'auth.password_reset',
-            variables: [
-                'user' => ['name' => $account->first_name ?: $account->email],
-                'reset' => ['url' => $token, 'expires_in' => self::RESET_TTL_MINUTES],
-            ],
+            templateKey: 'storefront.customer.password_reset',
+            variables: $this->accountVars($account) + ['reset' => [
+                'url' => \Modules\Storefront\Support\TenantUrl::reset($token, $account->email),
+                'expires_in' => (string) self::RESET_TTL_MINUTES,
+            ]],
         );
 
         return $token;
@@ -373,6 +376,25 @@ final class AccountService
         }
 
         $row->update(['consumed_at' => now()]);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function accountVars(StorefrontAccount $account): array
+    {
+        $companyName = (string) config('app.name');
+        try {
+            if (function_exists('tenant') && tenant()) {
+                $companyName = (string) (tenant()->name ?: $companyName);
+            }
+        } catch (\Throwable) {
+        }
+
+        return [
+            'company' => ['name' => $companyName],
+            'customer' => ['name' => $account->first_name ?: $account->email],
+        ];
     }
 
     private function sendEmail(

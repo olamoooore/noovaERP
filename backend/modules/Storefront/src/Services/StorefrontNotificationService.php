@@ -37,7 +37,14 @@ final class StorefrontNotificationService
             $body .= ' Track your order any time: ?sfconf='.$confirmToken;
         }
 
-        $this->send($order, 'storefront.order.placed', "Order {$order->order_number} confirmed", $body);
+        $this->send(
+            $order,
+            'storefront.order.placed',
+            "Order {$order->order_number} confirmed",
+            $body,
+            'storefront.order.placed',
+            $this->orderVars($order, $confirmToken)
+        );
     }
 
     public function orderPaid(StorefrontOrder $order): void
@@ -50,7 +57,9 @@ final class StorefrontNotificationService
             $order,
             'storefront.order.paid',
             "Payment received for order {$order->order_number}",
-            "We received your payment for order {$order->order_number} ({$order->total} {$order->currency}). We'll email you when it ships."
+            "We received your payment for order {$order->order_number} ({$order->total} {$order->currency}). We'll email you when it ships.",
+            'storefront.order.paid',
+            $this->orderVars($order)
         );
     }
 
@@ -73,7 +82,38 @@ final class StorefrontNotificationService
         }
     }
 
-    private function send(StorefrontOrder $order, string $subtype, string $subject, string $body): void
+    /**
+     * @return array<string,mixed>
+     */
+    private function orderVars(StorefrontOrder $order, ?string $confirmToken = null): array
+    {
+        return [
+            'company' => ['name' => $this->companyName()],
+            'order' => [
+                'order_number' => $order->order_number,
+                'total' => (string) $order->total,
+                'currency' => (string) $order->currency,
+                'status' => $order->status,
+                'confirmation_url' => $confirmToken !== null
+                    ? \Modules\Storefront\Support\TenantUrl::confirmation($confirmToken)
+                    : \Modules\Storefront\Support\TenantUrl::base(),
+            ],
+        ];
+    }
+
+    private function companyName(): string
+    {
+        try {
+            if (function_exists('tenant') && tenant()) {
+                return (string) (tenant()->name ?: config('app.name'));
+            }
+        } catch (\Throwable) {
+        }
+
+        return (string) config('app.name');
+    }
+
+    private function send(StorefrontOrder $order, string $subtype, string $subject, string $body, ?string $templateKey = null, array $vars = []): void
     {
         if (empty($order->email)) {
             return;
@@ -86,6 +126,8 @@ final class StorefrontNotificationService
                 recipientEmails: [(string) $order->email],
                 channels: ['email'],
                 subtype: $subtype,
+                templateKey: $templateKey,
+                templateVariables: $vars,
                 model: 'storefront_order',
                 recordId: (int) $order->id,
                 tenantId: (function_exists('tenant') && tenant()) ? (string) tenant('id') : null,

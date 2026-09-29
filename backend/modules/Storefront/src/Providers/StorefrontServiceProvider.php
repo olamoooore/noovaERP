@@ -79,6 +79,7 @@ class StorefrontServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 \Modules\Storefront\Console\Commands\ExpireStorefrontCarts::class,
+                \Modules\Storefront\Console\Commands\SeedStorefrontTemplates::class,
             ]);
         }
     }

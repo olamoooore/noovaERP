@@ -29,6 +29,10 @@ final class AccountFunctions
         $registry->register(self::shell('storefront.security', 'Security & Sessions', 'security', 'Account', 'solar:shield-lock-bold-duotone', []));
 
         $registry->register(self::shell('storefront.verify_email', 'Email Verification', 'verify_email', 'Account', 'solar:letter-bold-duotone', []));
+
+        $registry->register(self::shell('storefront.forgot_password', 'Forgot Password', 'forgot_password', 'Account', 'solar:key-bold-duotone', []));
+
+        $registry->register(self::shell('storefront.reset_password', 'Reset Password', 'reset_password', 'Account', 'solar:key-password-bold-duotone', []));
     }
 
     /**
