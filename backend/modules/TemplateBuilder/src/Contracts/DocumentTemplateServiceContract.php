@@ -19,6 +19,8 @@ interface DocumentTemplateServiceContract
 
     public function archive(string $id): DocumentTemplate;
 
+    public function deleteUnused(string $id): void;
+
     public function duplicate(string $id, ?string $newName = null): DocumentTemplate;
 
     public function publish(string $id, ?string $changeNote = null): DocumentTemplate;

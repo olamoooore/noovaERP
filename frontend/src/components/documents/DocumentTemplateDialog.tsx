@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
@@ -50,10 +50,12 @@ export function DocumentTemplateDialog({
   title,
 }: DocumentTemplateDialogProps) {
   const { toast } = useToast()
+  const [choosingAnother, setChoosingAnother] = useState(false)
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [busy, setBusy] = useState<'download' | null>(null)
+  const autoDownloadAttempted = useRef(false)
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['document-template-options', documentType],
     queryFn: async () => {
       const [list, defaults] = await Promise.all([
@@ -74,26 +76,35 @@ export function DocumentTemplateDialog({
 
   const templates = useMemo(() => data?.templates ?? [], [data])
   const defaultTemplateId = data?.defaultTemplateId ?? null
+  const defaultTemplate = useMemo(() => {
+    return templates.find((template) => template.id === defaultTemplateId)
+      ?? templates.find((template) => template.is_system_default)
+      ?? templates[0]
+      ?? null
+  }, [templates, defaultTemplateId])
+  const alternativeTemplates = useMemo(
+    () => templates.filter((template) => template.id !== defaultTemplate?.id),
+    [templates, defaultTemplate],
+  )
 
   useEffect(() => {
     if (!open) {
+      autoDownloadAttempted.current = false
+      setChoosingAnother(false)
       setSelectedTemplateId('')
       setBusy(null)
       return
     }
-    if (selectedTemplateId || templates.length === 0) return
-    const resolved = defaultTemplateId && templates.some((template) => template.id === defaultTemplateId)
-      ? defaultTemplateId
-      : templates[0].id
-    setSelectedTemplateId(String(resolved))
-  }, [open, templates, defaultTemplateId, selectedTemplateId])
+    if (!choosingAnother || selectedTemplateId || alternativeTemplates.length === 0) return
+    setSelectedTemplateId(String(alternativeTemplates[0].id))
+  }, [open, choosingAnother, alternativeTemplates, selectedTemplateId])
 
-  const run = async () => {
-    if (!selectedTemplateId || busy) return
+  const run = useCallback(async (templateId: string, closeOnError = false) => {
+    if (!templateId || busy) return
     setBusy('download')
     try {
       const response = await api.get(pdfPath, {
-        params: { template: selectedTemplateId },
+        params: { template: templateId },
         responseType: 'blob',
       })
       const blob = new Blob([response.data], { type: 'application/pdf' })
@@ -113,43 +124,59 @@ export function DocumentTemplateDialog({
         title: 'Download failed',
         description: message || 'Could not generate the PDF. Please try again.',
       })
+      if (closeOnError) onOpenChange(false)
     } finally {
       setBusy(null)
     }
-  }
+  }, [busy, filename, onOpenChange, pdfPath, toast])
+
+  useEffect(() => {
+    if (!open || !data || templates.length !== 1 || autoDownloadAttempted.current) return
+
+    autoDownloadAttempted.current = true
+    void run(String(templates[0].id), true)
+  }, [open, data, templates, run])
+
+  const dialogOpen = open && (isError || (data !== undefined && templates.length !== 1))
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={dialogOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Download {title} PDF</DialogTitle>
           <DialogDescription>
-            Choose the template to use, then download the generated PDF.
+            {choosingAnother
+              ? 'Select another template before downloading.'
+              : 'Download with the default template or choose another template.'}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-2">
-          <Label>{title} template</Label>
-          <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId} disabled={isLoading}>
-            <SelectTrigger>
-              <SelectValue placeholder={isLoading ? 'Loading templates…' : 'Select a template'} />
-            </SelectTrigger>
-            <SelectContent>
-              {templates.map((template) => (
-                <SelectItem key={template.id} value={template.id}>
-                  <span className="flex items-center gap-2">
-                    <Icon icon="solar:document-text-bold-duotone" className="h-4 w-4 text-muted-foreground" />
+        {choosingAnother ? (
+          <div className="space-y-2">
+            <Label>{title} template</Label>
+            <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId} disabled={isLoading}>
+              <SelectTrigger>
+                <SelectValue placeholder={isLoading ? 'Loading templates…' : 'Select a template'} />
+              </SelectTrigger>
+              <SelectContent>
+                {alternativeTemplates.map((template) => (
+                  <SelectItem key={template.id} value={template.id}>
                     {template.name}
-                    {template.is_system_default ? ' (Default)' : ''}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            The PDF is generated with the selected template — no browser print dialog.
-          </p>
-        </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : (
+          <div className="rounded-lg border bg-muted/30 px-4 py-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Default template
+            </p>
+            <p className="mt-1 text-sm font-medium">
+              {isLoading ? 'Loading…' : defaultTemplate?.name ?? 'No default template available'}
+            </p>
+          </div>
+        )}
 
         {!isLoading && templates.length === 0 && (
           <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed px-4 py-8 text-center">
@@ -161,12 +188,40 @@ export function DocumentTemplateDialog({
         )}
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy !== null}>
-            Cancel
-          </Button>
-          <Button onClick={() => run()} disabled={!selectedTemplateId || busy !== null || isLoading}>
+          {choosingAnother ? (
+            <Button
+              variant="outline"
+              onClick={() => {
+                setChoosingAnother(false)
+                setSelectedTemplateId('')
+              }}
+              disabled={busy !== null}
+            >
+              Back
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              onClick={() => setChoosingAnother(true)}
+              disabled={busy !== null || isLoading || alternativeTemplates.length === 0}
+            >
+              Choose another template
+            </Button>
+          )}
+          <Button
+            onClick={() => run(choosingAnother ? selectedTemplateId : String(defaultTemplate?.id ?? ''))}
+            disabled={
+              busy !== null
+              || isLoading
+              || (choosingAnother ? !selectedTemplateId : !defaultTemplate)
+            }
+          >
             <Icon icon={busy === 'download' ? 'eos-icons:loading' : 'solar:download-bold-duotone'} className="mr-2 h-4 w-4" />
-            {busy === 'download' ? 'Preparing…' : 'Download PDF'}
+            {busy === 'download'
+              ? 'Preparing…'
+              : choosingAnother
+                ? 'Download PDF'
+                : 'Download default'}
           </Button>
         </DialogFooter>
       </DialogContent>

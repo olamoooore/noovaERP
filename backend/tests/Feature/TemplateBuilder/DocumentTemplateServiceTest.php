@@ -158,6 +158,53 @@ class DocumentTemplateServiceTest extends TenantTestCase
         $this->assertSame('Copy', $copy->name);
     }
 
+    public function test_delete_unused_template_soft_deletes_it(): void
+    {
+        $template = $this->service->create([
+            'document_type' => 'invoice',
+            'name' => 'Unused',
+            'mode' => DocumentTemplate::MODE_BLOCK,
+            'layout_config' => ['blocks' => []],
+        ]);
+
+        $this->service->deleteUnused($template->id);
+
+        $this->assertNull($this->service->find($template->id));
+        $this->assertNotNull(DocumentTemplate::withTrashed()->find($template->id)?->deleted_at);
+    }
+
+    public function test_delete_unused_template_rejects_active_assignment(): void
+    {
+        $template = $this->service->create([
+            'document_type' => 'invoice',
+            'name' => 'In Use',
+            'mode' => DocumentTemplate::MODE_BLOCK,
+            'layout_config' => ['blocks' => []],
+        ]);
+        $this->service->setDefault($template->id);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('currently in use');
+
+        $this->service->deleteUnused($template->id);
+    }
+
+    public function test_delete_unused_template_rejects_system_default(): void
+    {
+        $template = $this->service->create([
+            'document_type' => 'invoice',
+            'name' => 'System Default',
+            'mode' => DocumentTemplate::MODE_BLOCK,
+            'layout_config' => ['blocks' => []],
+            'is_system_default' => true,
+        ]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('system default');
+
+        $this->service->deleteUnused($template->id);
+    }
+
     public function test_validate_definition_rejects_block_template_without_blocks(): void
     {
         $result = $this->service->validateDefinition([

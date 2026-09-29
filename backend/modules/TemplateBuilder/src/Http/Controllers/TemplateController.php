@@ -62,9 +62,13 @@ class TemplateController extends Controller
 
     public function destroy(string $id): JsonResponse
     {
-        $this->service->archive($id);
+        try {
+            $this->service->deleteUnused($id);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
 
-        return response()->json(['message' => 'Template archived']);
+        return response()->json(['message' => 'Template deleted']);
     }
 
     public function duplicate(Request $request, string $id): JsonResponse
