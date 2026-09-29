@@ -24,6 +24,7 @@ class CompanySettings extends Model
         'timezone',
         'default_receivable_account_id',
         'default_payable_account_id',
+        'default_bank_account_id',
         'default_revenue_account_id',
         'shipping_revenue_account_id',
         'default_expense_account_id',
@@ -65,6 +66,11 @@ class CompanySettings extends Model
     public function defaultPayableAccount(): BelongsTo
     {
         return $this->belongsTo(ChartOfAccount::class, 'default_payable_account_id');
+    }
+
+    public function defaultBankAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartOfAccount::class, 'default_bank_account_id');
     }
 
     /**
