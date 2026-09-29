@@ -10,6 +10,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ChartOfAccount;
 use App\Models\Journal;
 use App\Models\JournalEntry;
+use App\Models\JournalEntryLink;
 use App\Services\EntityAccessService;
 use App\Services\FiscalPeriodValidator;
 use App\Services\LockDateValidationService;
@@ -67,7 +68,7 @@ class JournalEntriesController extends Controller
      */
     public function index(Request $request)
     {
-        $query = JournalEntry::with(['lines.account', 'journal', 'createdBy', 'postedBy']);
+        $query = JournalEntry::with(['lines.account', 'journal', 'createdBy', 'postedBy', 'reversedEntry:id,entry_number']);
 
         // Issue #163 (adjacent fix): filter by the user's accessible legal
         // entities. Fail-open when the user has no entity grants, matching
@@ -91,7 +92,11 @@ class JournalEntriesController extends Controller
         // cancellations, not new posted entries. Reports already exclude the
         // reversed pairs via is_active_version, so this is list presentation.
         if ($request->input('status') === 'posted' && ! $request->boolean('is_reversal')) {
-            $query->where('is_reversal', false);
+            // Reversed originals keep status='posted' (the status enum has no
+            // 'reversed'); their lifecycle_status is the authoritative flag,
+            // so they must not be listed as still-posted entries.
+            $query->where('is_reversal', false)
+                ->where('lifecycle_status', '!=', 'reversed');
         }
 
         // Filter by reversal
@@ -143,6 +148,8 @@ class JournalEntriesController extends Controller
         $entries = $query->orderBy('entry_date', 'desc')
             ->orderBy('id', 'desc')
             ->paginate($request->input('per_page', 50));
+
+        $this->attachReferenceLinks($entries->getCollection());
 
         return response()->json($entries);
     }
@@ -227,6 +234,10 @@ class JournalEntriesController extends Controller
         }
 
         $entry = $query->findOrFail($id);
+
+        // Same traceability payload as the list so the detail dialog's
+        // Reference is clickable too.
+        $this->attachReferenceLinks(collect([$entry]));
 
         return response()->json($entry);
     }
@@ -830,4 +841,88 @@ class JournalEntriesController extends Controller
 
         return response()->json($result);
     }
+
+    /**
+     * Traceability: attach a front-end link for each entry's reference, so the
+     * list (and detail) can navigate to the payment/invoice/bill the entry was
+     * posted from — or, for reversal rows, to the entry they reverse.
+     */
+    private function attachReferenceLinks(\Illuminate\Support\Collection $entries): void
+    {
+        if ($entries->isEmpty()) {
+            return;
+        }
+
+        $links = JournalEntryLink::query()
+            ->whereIn('journal_entry_id', $entries->pluck('id')->all())
+            ->where('relation_type', 'post')
+            ->get()
+            ->keyBy('journal_entry_id');
+
+        foreach ($entries as $entry) {
+            $entry->setAttribute('reference_link', $this->referenceLinkFor($entry, $links->get($entry->id)));
+        }
+    }
+
+    /**
+     * @return array{type: string, id: int|null, label: string|null, url: string}|null
+     */
+    private function referenceLinkFor(JournalEntry $entry, ?JournalEntryLink $link): ?array
+    {
+        // Reversal rows: link to the entry they cancel (their reference carries
+        // "Reversal: JE-…").
+        if ($entry->is_reversal) {
+            $originalId = $entry->reversed_entry_id;
+
+            if ($originalId) {
+                return [
+                    'type' => 'journal_entry',
+                    'id' => (int) $originalId,
+                    'label' => $entry->reversedEntry?->entry_number,
+                    'url' => '/accounting/core/journal-entries?entry_id='.$originalId,
+                ];
+            }
+
+            return null;
+        }
+
+        $ref = trim((string) $entry->reference);
+
+        // Preferred: the posting link records the source document id.
+        if ($link && $link->source_document_type && $link->source_document_id) {
+            $type = strtolower(class_basename($link->source_document_type));
+            $id = (int) $link->source_document_id;
+
+            $url = match ($type) {
+                'invoice' => "/accounting/customers/bills/{$id}",
+                'bill' => "/accounting/vendors/bills/{$id}",
+                'quotation' => "/quotations/{$id}",
+                'deliveryorder' => "/delivery-orders/{$id}",
+                'payment' => $ref !== ''
+                    ? '/accounting/customers/payments?search='.urlencode($ref)
+                    : null,
+                default => null,
+            };
+
+            if ($url !== null) {
+                return ['type' => $type, 'id' => $id, 'label' => $ref !== '' ? $ref : null, 'url' => $url];
+            }
+        }
+
+        // Fallback: resolve from the reference convention alone.
+        if ($ref !== '' && preg_match('/^PAY\//i', $ref)) {
+            return [
+                'type' => 'payment',
+                'id' => null,
+                'label' => $ref,
+                'url' => '/accounting/customers/payments?search='.urlencode($ref),
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Single entry (detail dialog): same traceability payload as the list.
+     */
 }

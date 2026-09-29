@@ -61,6 +61,12 @@ class AuthController extends Controller
 
         $token = $user->createToken('auth-token')->plainTextToken;
 
+        // Reflect the sign-in in the team list's "Last access" column.
+        \DB::table('public.user_company_access')
+            ->where('user_id', $user->id)
+            ->where('tenant_id', $tenant->id)
+            ->update(['last_accessed_at' => now()]);
+
         // Role/permission reads must run against the TENANT schema — this
         // endpoint forced search_path to public, where Spatie holds a stale
         // role matrix (e.g. Sales appearing to have reports.view), which made

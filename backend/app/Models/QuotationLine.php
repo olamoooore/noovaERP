@@ -68,23 +68,17 @@ class QuotationLine extends Model
             $this->tax_amount = 0;
             $this->discount_amount = 0;
             $this->line_total = 0;
+
             return;
         }
-        $gross = (float) $this->quantity * (float) $this->unit_price;
-        $discount = (float) ($this->discount_amount ?? 0);
-
-        if (!empty($this->tax_inclusive)) {
-            $divisor = 1 + ((float) $this->tax_rate / 100);
-            $netBeforeDiscount = $divisor > 0 ? $gross / $divisor : $gross;
-            $taxBeforeDiscount = $gross - $netBeforeDiscount;
-            $discountRatio = $gross > 0 ? $discount / $gross : 0;
-            $this->tax_amount = round($taxBeforeDiscount * (1 - $discountRatio), 2);
-            $netAfterDiscount = $netBeforeDiscount * (1 - $discountRatio);
-            $this->line_total = round($netAfterDiscount + $this->tax_amount, 2);
-        } else {
-            $netAfterDiscount = $gross - $discount;
-            $this->tax_amount = round($netAfterDiscount * ((float) $this->tax_rate / 100), 2);
-            $this->line_total = round($netAfterDiscount + $this->tax_amount, 2);
-        }
+        // MRD R3.1: single tax arithmetic via TaxEngineService::calculate().
+        $calc = \App\Services\TaxEngineService::calculate(
+            (float) ($this->quantity * $this->unit_price),
+            (float) $this->tax_rate,
+            ! empty($this->tax_inclusive),
+            (float) ($this->discount_amount ?? 0),
+        );
+        $this->tax_amount = $calc['tax'];
+        $this->line_total = $calc['gross'];
     }
 }

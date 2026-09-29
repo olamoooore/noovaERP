@@ -404,8 +404,11 @@ class ReversalCorrectionEngine
             'entry_number' => JournalEntry::generateReversalEntryNumber($request->reversalDate),
             'entry_date' => $request->reversalDate,
             'type' => $original->type,
-            'reference' => $original->reference,
-            'description' => $descriptionPrefix.': '.($request->reason ?? $original->description),
+            // Mirror the customer-payment reversal convention: the reversal
+            // references the document it cancels ("Reversal: PAY/..." there,
+            // "Reversal: JE-..." here) and says so in its description.
+            'reference' => 'Reversal: '.$original->entry_number,
+            'description' => $descriptionPrefix.' of '.$original->entry_number.': '.($request->reason ?? $original->description),
             'status' => 'posted',
             'posted_at' => now(),
             'posted_by' => $request->actorUserId,

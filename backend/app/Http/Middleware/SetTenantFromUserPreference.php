@@ -239,6 +239,28 @@ class SetTenantFromUserPreference
             }
         }
 
+        // Team list "Last access": record the member's activity for the resolved
+        // tenant, throttled to one write per 10 minutes per membership so a
+        // busy SPA does not hammer user_company_access on every API call.
+        if ($resolvedTenant && $user) {
+            try {
+                DB::table('public.user_company_access')
+                    ->where('user_id', $user->id)
+                    ->where('tenant_id', $resolvedTenant->id)
+                    ->where(function ($query) {
+                        $query->whereNull('last_accessed_at')
+                            ->orWhere('last_accessed_at', '<', now()->subMinutes(10));
+                    })
+                    ->update(['last_accessed_at' => now()]);
+            } catch (\Throwable $e) {
+                Log::debug('SetTenantFromUserPreference: last_accessed_at touch failed', [
+                    'user_id' => $user->id,
+                    'tenant_id' => $resolvedTenant->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         $response = $next($request);
 
         if ($resolvedTenant) {

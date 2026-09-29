@@ -116,20 +116,14 @@ class SalesOrderLine extends Model
             $this->discount_amount = $this->discount_amount ?? 0;
         }
 
-        $discount = $this->discount_amount;
-        $netTotal = $baseTotal - $discount;
-
-        if ($this->tax_inclusive) {
-            $divisor = 1 + ($this->tax_rate / 100);
-            $netBeforeDiscount = $divisor > 0 ? $baseTotal / $divisor : $baseTotal;
-            $taxBeforeDiscount = $baseTotal - $netBeforeDiscount;
-            $discountRatio = $baseTotal > 0 ? $this->discount_amount / $baseTotal : 0;
-            $this->tax_amount = round($taxBeforeDiscount * (1 - $discountRatio), 2);
-            $netAfterDiscount = $netBeforeDiscount * (1 - $discountRatio);
-            $this->line_total = round($netAfterDiscount + $this->tax_amount, 2);
-        } else {
-            $this->tax_amount = round($netTotal * ($this->tax_rate / 100), 2);
-            $this->line_total = round($netTotal + $this->tax_amount, 2);
-        }
+        // MRD R3.1: single tax arithmetic via TaxEngineService::calculate().
+        $calc = \App\Services\TaxEngineService::calculate(
+            (float) $baseTotal,
+            (float) $this->tax_rate,
+            (bool) $this->tax_inclusive,
+            (float) ($this->discount_amount ?? 0),
+        );
+        $this->tax_amount = $calc['tax'];
+        $this->line_total = $calc['gross'];
     }
 }

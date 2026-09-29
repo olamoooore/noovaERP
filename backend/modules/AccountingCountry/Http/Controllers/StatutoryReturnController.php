@@ -2,10 +2,10 @@
 
 namespace Modules\AccountingCountry\Http\Controllers;
 
+use App\Models\StatutoryReturnFiling;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use App\Models\StatutoryReturnFiling;
 use Modules\AccountingCountry\Malaysia\Services\Sst02ReturnService;
 use Modules\AccountingCountry\Singapore\Services\GstF5ReturnService;
 use Modules\AccountingCountry\Singapore\Services\GstF7ReturnService;
@@ -37,6 +37,19 @@ class StatutoryReturnController extends Controller
                 ['country' => 'SG', 'form' => 'GST F7', 'authority' => 'IRAS', 'period_format' => 'YYYY-MM or YYYY-Qn'],
             ],
             'planned' => [],
+        ]);
+    }
+
+    /**
+     * Periods with live tax activity (newest first) — powers the return
+     * picker so accountants see which filing periods actually contain data.
+     */
+    public function periods(Request $request): JsonResponse
+    {
+        $entityId = $request->filled('entity_id') ? (int) $request->query('entity_id') : null;
+
+        return response()->json([
+            'data' => app(\Modules\AccountingCountry\Services\TaxReturnAggregator::class)->availablePeriods($entityId),
         ]);
     }
 
@@ -94,9 +107,17 @@ class StatutoryReturnController extends Controller
 
     /**
      * Issue #265: snapshot the current GST F5 as FILED — the F7 baseline.
+     * Generalized for the filing tracker (MRD TAX-REQ-08): MY SST-02 can be
+     * baselined the same way; both write the same statutory_return_filings row.
      */
-    public function file(Request $request, string $period): JsonResponse
+    public function file(Request $request, string $country, string $period): JsonResponse
     {
+        $country = strtoupper($country);
+
+        if (! in_array($country, ['SG', 'MY'], true)) {
+            return response()->json(['message' => 'Filing baselines are supported for SG (GST F5) and MY (SST-02) only.'], 422);
+        }
+
         if (! preg_match('/^\d{4}-(\d{2}|Q[1-4])$/', $period)) {
             return response()->json(['message' => 'The reporting period must be YYYY-MM or YYYY-Qn.'], 422);
         }
@@ -104,24 +125,32 @@ class StatutoryReturnController extends Controller
         $validated = $request->validate(['entity_id' => 'nullable|integer|exists:legal_entities,id']);
         $legalEntityId = isset($validated['entity_id']) ? (int) $validated['entity_id'] : null;
 
-        $return = app(GstF5ReturnService::class)->generate($period, $legalEntityId);
+        $return = $country === 'SG'
+            ? app(GstF5ReturnService::class)->generate($period, $legalEntityId)
+            : app(\Modules\AccountingCountry\Malaysia\Services\Sst02ReturnService::class)->generate($period, $legalEntityId);
+
+        $boxes = $return['boxes'] ?? [
+            'sales_tax_due' => $return['sales_tax']['tax_due'] ?? 0,
+            'service_tax_due' => $return['service_tax']['tax_due'] ?? 0,
+            'total_tax_payable' => $return['total_tax_payable'] ?? 0,
+        ];
 
         $filing = StatutoryReturnFiling::updateOrCreate(
             [
-                'country' => 'SG',
-                'form' => 'GST F5',
+                'country' => $country,
+                'form' => $return['form'],
                 'period' => $period,
                 'entity_key' => StatutoryReturnFiling::entityKey($legalEntityId),
             ],
             [
                 'tenant_id' => tenant()->id ?? null,
-                'boxes' => $return['boxes'],
+                'boxes' => $boxes,
                 'filed_by' => $request->user()?->id,
                 'filed_at' => now(),
             ]
         );
 
-        return response()->json(['message' => 'GST F5 filed', 'data' => $filing], 201);
+        return response()->json(['message' => $return['form'].' filed', 'data' => $filing], 201);
     }
 
     /**
@@ -144,5 +173,4 @@ class StatutoryReturnController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
     }
-
 }

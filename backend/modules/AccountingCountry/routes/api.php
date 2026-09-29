@@ -4,6 +4,7 @@ use App\Http\Middleware\RequirePermission;
 use Illuminate\Support\Facades\Route;
 use Modules\AccountingCountry\Http\Controllers\EInvoicingCapabilityController;
 use Modules\AccountingCountry\Http\Controllers\StatutoryReturnController;
+use Modules\AccountingCountry\Http\Controllers\TaxReportController;
 
 /*
 | Issue #93 — statutory tax-return generation (SG GST F5, MY SST-02).
@@ -13,9 +14,11 @@ Route::prefix('accounting/statutory-returns')
     ->middleware(RequirePermission::using('reports.view'))
     ->group(function () {
         Route::get('/', [StatutoryReturnController::class, 'index']);
+        Route::get('/periods', [StatutoryReturnController::class, 'periods']);
         Route::get('/{country}/{period}', [StatutoryReturnController::class, 'show']);
-        // Issue #265: file a return (F7 baseline) and disclose F7 errors.
-        Route::post('/SG/{period}/file', [StatutoryReturnController::class, 'file'])
+        // Issue #265 + MRD TAX-REQ-08: file a return baseline (F7 / filing tracker)
+        // and disclose F7 errors.
+        Route::post('/{country}/{period}/file', [StatutoryReturnController::class, 'file'])
             ->middleware(RequirePermission::using('reports.manage'));
         Route::get('/SG/{period}/f7', [StatutoryReturnController::class, 'f7']);
     });
@@ -23,3 +26,15 @@ Route::prefix('accounting/statutory-returns')
 // Issue #99: honest e-invoicing capability reporting.
 Route::get('/accounting/e-invoicing/capabilities', [EInvoicingCapabilityController::class, 'index'])
     ->middleware(RequirePermission::using('reports.view'));
+
+/*
+| MRD TAX-REQ-08 — tax reporting: journal, trail-to-GL reconciliation,
+| filing tracker. Read-only; the underlying generators stay above.
+*/
+Route::prefix('accounting/tax-report')
+    ->middleware(RequirePermission::using('reports.view'))
+    ->group(function () {
+        Route::get('/journal', [TaxReportController::class, 'journal']);
+        Route::get('/reconciliation', [TaxReportController::class, 'reconciliation']);
+        Route::get('/filings', [TaxReportController::class, 'filings']);
+    });

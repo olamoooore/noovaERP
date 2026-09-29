@@ -25,6 +25,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Analytics',     path: '/analytics',       icon: 'solar:chart-square-bold-duotone' },
   { label: 'Admin Users',   path: '/users',           icon: 'solar:users-group-rounded-bold-duotone' },
   { label: 'Audit Log',     path: '/audit',           icon: 'solar:shield-check-bold-duotone' },
+  { label: 'Tax Provenance', path: '/tax-provenance',  icon: 'solar:shield-check-bold-duotone' },
   { label: 'Observability', path: '/observability',   icon: 'solar:graph-bold-duotone' },
 ]
 

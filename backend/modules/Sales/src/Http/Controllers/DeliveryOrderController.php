@@ -475,7 +475,8 @@ class DeliveryOrderController extends Controller
                     invoiceDate: now()->toDateString(),
                     dueDate: now()->addDays(30)->toDateString(),
                     notes: "Delivery Order #{$deliveryOrder->delivery_order_number}",
-                    customerReference: $deliveryOrder->po_number,
+                    customerReference: $deliveryOrder->customer_reference ?: $deliveryOrder->po_number,
+                    internalReference: $deliveryOrder->internal_reference,
                     originContext: [
                         'delivery_order_id' => $deliveryOrder->id,
                         'delivery_order_number' => $deliveryOrder->delivery_order_number,

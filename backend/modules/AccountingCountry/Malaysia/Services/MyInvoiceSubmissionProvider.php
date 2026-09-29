@@ -562,7 +562,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             }
 
             $lineTaxRate = (float) ($line['sst_rate'] ?? $line['tax_rate'] ?? 0);
-            $lineTaxAmount += round(($lineAmount * $lineTaxRate) / 100, 2);
+            $lineTaxAmount += \App\Services\TaxEngineService::calculate((float) $lineAmount, (float) $lineTaxRate, false)['tax'];
         }
 
         if (abs($documentTaxAmount - $lineTaxAmount) > 0.01) {
@@ -1034,7 +1034,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             $lineAmount = (float) ($line['line_amount'] ?? ($line['unit_price'] ?? 0));
             $unitPrice = (float) ($line['unit_price'] ?? 0);
             $taxRate = (float) ($line['sst_rate'] ?? $line['tax_rate'] ?? 0);
-            $taxAmount = (float) ($line['sst_amount'] ?? round(($lineAmount * $taxRate) / 100, 2));
+            $taxAmount = (float) ($line['sst_amount'] ?? \App\Services\TaxEngineService::calculate((float) $lineAmount, (float) $taxRate, false)['tax']);
             $classificationCode = (string) ($line['classification_code'] ?? '001');
             $taxTypeCode = (string) ($line['tax_type_code'] ?? '01');
             $discountAmount = (float) ($line['discount_amount'] ?? 0);

@@ -433,7 +433,8 @@ class VendorBillsController extends Controller
                     $taxRate = $lineData['tax_rate'] ?? 0;
 
                     $lineTotal = $quantity * $unitPrice;
-                    $taxAmount = $lineTotal * ($taxRate / 100);
+                    // MRD R3.1: engine-owned arithmetic (this path also missed rounding).
+                    $taxAmount = \App\Services\TaxEngineService::calculate((float) $lineTotal, (float) $taxRate, false)['tax'];
 
                     BillLine::create([
                         'bill_id' => $bill->id,

@@ -5,7 +5,9 @@ import { Icon } from '@iconify/react'
 import api from '@/lib/api'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { StatCard } from '@/components/ui/stat-card'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Badge } from '@/components/ui/badge'
 import {
   Table,
@@ -288,192 +290,210 @@ export function POSOrdersPage() {
   }
 
   return (
-    <div className="flex h-full flex-col gap-4 p-4">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Orders</h1>
-          <p className="text-muted-foreground">View and manage all orders (POS & Web)</p>
+          <h1 className="text-2xl font-bold tracking-tight">Orders</h1>
+          <p className="mt-1 text-sm text-muted-foreground">View and manage all orders (POS &amp; Web)</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative w-64">
-            <Icon icon="solar:magnifer-bold" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search order number, customer..."
-              className="h-8 rounded-full pl-8 pr-3 text-xs"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <Select value={sourceFilter} onValueChange={setSourceFilter}>
-            <SelectTrigger className="h-8 w-32 rounded-full text-xs">
-              <SelectValue placeholder="Source" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Sources</SelectItem>
-              <SelectItem value="pos">POS</SelectItem>
-              <SelectItem value="web">Web</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="h-8 w-36 rounded-full text-xs">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="paid">Paid</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="confirmed">Confirmed</SelectItem>
-              <SelectItem value="processing">Processing</SelectItem>
-              <SelectItem value="shipped">Shipped</SelectItem>
-              <SelectItem value="delivered">Delivered</SelectItem>
-              <SelectItem value="cancelled">Cancelled</SelectItem>
-            </SelectContent>
-          </Select>
-          <Input
-            type="date"
-            className="h-8 w-40 rounded-full px-3 text-xs"
-            value={dateFilter}
-            onChange={(e) => setDateFilter(e.target.value)}
-          />
-          {(search || statusFilter !== 'all' || sourceFilter !== 'all' || dateFilter) && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 rounded-full px-3 text-xs"
-              onClick={() => {
-                setSearch('')
-                setStatusFilter('all')
-                setSourceFilter('all')
-                setDateFilter('')
-              }}
-            >
-              <Icon icon="solar:refresh-bold" className="mr-1.5 h-3.5 w-3.5" />
-              Reset
-            </Button>
-          )}
-          <Link to="/pos/terminal">
-            <Button>
-              <Icon icon="solar:cash-out-bold" className="h-4 w-4 mr-2" />
-              New Sale
-            </Button>
-          </Link>
-        </div>
+        <HeaderActionButton icon="solar:cart-large-2-bold-duotone" asChild>
+          <Link to="/pos/terminal">New Sale</Link>
+        </HeaderActionButton>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold">{stats.total_orders}</div>
-            <div className="text-sm text-muted-foreground">Total Orders</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-purple-500">{stats.pos_orders}</div>
-            <div className="text-sm text-muted-foreground">POS Orders</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-blue-500">{stats.web_orders}</div>
-            <div className="text-sm text-muted-foreground">Web Orders</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-green-500">{formatCurrency(stats.total_revenue)}</div>
-            <div className="text-sm text-muted-foreground">Total Revenue</div>
-          </CardContent>
-        </Card>
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full sm:w-72">
+          <Icon icon="solar:magnifer-bold-duotone" className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search order number, customer..."
+            className="h-8 rounded-full pl-9 pr-3 text-xs"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <Select value={sourceFilter} onValueChange={setSourceFilter}>
+          <SelectTrigger className="h-8 w-36 rounded-full text-xs">
+            <SelectValue placeholder="Source" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Sources</SelectItem>
+            <SelectItem value="pos">POS</SelectItem>
+            <SelectItem value="web">Web</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="h-8 w-40 rounded-full text-xs">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="paid">Paid</SelectItem>
+            <SelectItem value="pending">Pending</SelectItem>
+            <SelectItem value="confirmed">Confirmed</SelectItem>
+            <SelectItem value="processing">Processing</SelectItem>
+            <SelectItem value="shipped">Shipped</SelectItem>
+            <SelectItem value="delivered">Delivered</SelectItem>
+            <SelectItem value="cancelled">Cancelled</SelectItem>
+          </SelectContent>
+        </Select>
+        <Input
+          type="date"
+          className="h-8 w-40 rounded-full px-3 text-xs"
+          value={dateFilter}
+          onChange={(e) => setDateFilter(e.target.value)}
+        />
+        {(search || statusFilter !== 'all' || sourceFilter !== 'all' || dateFilter) && (
+          <HeaderActionButton
+            variant="outline"
+            icon="solar:refresh-bold-duotone"
+            onClick={() => {
+              setSearch('')
+              setStatusFilter('all')
+              setSourceFilter('all')
+              setDateFilter('')
+            }}
+          >
+            Reset
+          </HeaderActionButton>
+        )}
+      </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Total Orders"
+          value={stats.total_orders}
+          hint="POS + Web"
+          icon="solar:cart-large-2-bold-duotone"
+        />
+        <StatCard
+          label="POS Orders"
+          value={stats.pos_orders}
+          hint="In-store sales"
+          icon="solar:shop-bold-duotone"
+          tone="bg-violet-100 text-violet-600 dark:bg-violet-950/60 dark:text-violet-400"
+        />
+        <StatCard
+          label="Web Orders"
+          value={stats.web_orders}
+          hint="Online storefront"
+          icon="solar:globus-bold-duotone"
+          tone="bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400"
+        />
+        <StatCard
+          label="Total Revenue"
+          value={formatCurrency(Number(stats.total_revenue || 0))}
+          hint="Across filtered orders"
+          icon="solar:wallet-money-bold-duotone"
+          tone="bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400"
+        />
       </div>
 
       {/* Orders Table */}
-      <Card className="flex-1">
+      <Card className="overflow-hidden rounded-xl">
+        <CardHeader className="border-b">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle className="text-base">All orders</CardTitle>
+            <Badge variant="outline" className="border-transparent bg-muted font-normal text-muted-foreground">
+              {pagination.total ?? orders.length} orders
+            </Badge>
+          </div>
+        </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="flex items-center justify-center h-64">
-              <Icon icon="solar:refresh-bold" className="h-8 w-8 animate-spin text-muted-foreground" />
+            <div className="flex h-64 items-center justify-center">
+              <Icon icon="eos-icons:loading" className="h-8 w-8 animate-spin text-primary" />
             </div>
           ) : orders.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-              <Icon icon="solar:document-text-bold" className="h-16 w-16 mb-4 opacity-50" />
-              <p>No orders found</p>
+            <div className="flex h-64 flex-col items-center justify-center text-muted-foreground">
+              <Icon icon="solar:cart-large-2-bold-duotone" className="mb-3 h-12 w-12 opacity-30" />
+              <p className="text-sm font-medium">No orders found</p>
+              <p className="text-xs">Adjust the filters or start a new sale.</p>
             </div>
           ) : (
             <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <SortableHead label="Order #" sortKey="order_number" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
-                    <SortableHead label="Source" sortKey="source" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
-                    <SortableHead label="Date" sortKey="created_at" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
-                    <SortableHead label="Customer" sortKey="customer.name" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
-                    <SortableHead label="Items" sortKey="items_count" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
-                    <SortableHead label="Total" sortKey="total" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
-                    <SortableHead label="Status" sortKey="status" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
-                    <SortableHead label="Payment" sortKey="payment_status" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sortedOrders.map((order: SalesOrder) => (
-                    <TableRow key={`${order.source}-${order.id}`}>
-                      <TableCell className="font-medium">{order.order_number}</TableCell>
-                      <TableCell>{getSourceBadge(order.source)}</TableCell>
-                      <TableCell>{formatDate(order.created_at)}</TableCell>
-                      <TableCell>
-                        {order.customer ? (
-                          <div>
-                            <div className="font-medium">{order.customer.name}</div>
-                            <div className="text-xs text-muted-foreground">{order.customer.email}</div>
-                          </div>
-                        ) : order.cashier ? (
-                          <span className="text-muted-foreground">via {order.cashier}</span>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{order.items_count}</Badge>
-                      </TableCell>
-                      <TableCell className="font-bold">{formatCurrency(Number(order.total))}</TableCell>
-                      <TableCell>{getStatusBadge(order.status)}</TableCell>
-                      <TableCell>
-                        {order.payment_status === 'paid' ? (
-                          <Badge className="bg-green-500">Paid</Badge>
-                        ) : (
-                          <Badge variant="outline">{order.payment_status}</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleViewOrder(order)}
-                          disabled={loadingOrderDetail}
-                        >
-                          <Icon icon="solar:eye-bold-duotone" className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <SortableHead label="Order #" sortKey="order_number" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                      <SortableHead label="Source" sortKey="source" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                      <SortableHead label="Date" sortKey="created_at" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                      <SortableHead label="Customer" sortKey="customer.name" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                      <SortableHead label="Items" sortKey="items_count" activeKey={sortKey} direction={sortDir} onSort={toggleSort} align="right" />
+                      <SortableHead label="Total" sortKey="total" activeKey={sortKey} direction={sortDir} onSort={toggleSort} align="right" />
+                      <SortableHead label="Status" sortKey="status" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                      <SortableHead label="Payment" sortKey="payment_status" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {sortedOrders.map((order: SalesOrder) => (
+                      <TableRow key={`${order.source}-${order.id}`} className="hover:bg-muted/50">
+                        <TableCell className="font-medium">{order.order_number}</TableCell>
+                        <TableCell>{getSourceBadge(order.source)}</TableCell>
+                        <TableCell className="whitespace-nowrap text-sm text-muted-foreground">{formatDate(order.created_at)}</TableCell>
+                        <TableCell>
+                          {order.customer ? (
+                            <div className="min-w-0">
+                              <div className="truncate font-medium">{order.customer.name}</div>
+                              <div className="truncate text-xs text-muted-foreground">{order.customer.email}</div>
+                            </div>
+                          ) : order.cashier ? (
+                            <span className="text-muted-foreground">via {order.cashier}</span>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Badge variant="secondary" className="tabular-nums">{order.items_count}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-semibold tabular-nums">
+                          {formatCurrency(Number(order.total))}
+                        </TableCell>
+                        <TableCell>{getStatusBadge(order.status)}</TableCell>
+                        <TableCell>
+                          {order.payment_status === 'paid' ? (
+                            <Badge className="bg-green-500">Paid</Badge>
+                          ) : (
+                            <Badge variant="outline" className="capitalize">{order.payment_status?.replace(/_/g, ' ') || 'Pending'}</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 w-7 p-0"
+                            onClick={() => handleViewOrder(order)}
+                            disabled={loadingOrderDetail}
+                            title="View order"
+                            aria-label={`View order ${order.order_number}`}
+                          >
+                            <Icon icon="solar:eye-bold-duotone" className="h-3.5 w-3.5" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
 
               {/* Pagination */}
-              <Pagination
-                page={page}
-                totalPages={pagination.last_page}
-                onPageChange={setPage}
-                from={pagination.from}
-                to={pagination.to}
-                total={pagination.total}
-                label="orders"
-                pageSize={pageSize}
-                onPageSizeChange={(size) => { setPageSize(size); setPage(1) }}
-              />
+              <div className="px-4 pb-4">
+                <Pagination
+                  page={page}
+                  totalPages={pagination.last_page}
+                  onPageChange={setPage}
+                  from={pagination.from}
+                  to={pagination.to}
+                  total={pagination.total}
+                  label="orders"
+                  pageSize={pageSize}
+                  onPageSizeChange={(size) => { setPageSize(size); setPage(1) }}
+                />
+              </div>
             </>
           )}
         </CardContent>

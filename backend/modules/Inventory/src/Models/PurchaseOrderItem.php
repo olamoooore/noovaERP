@@ -54,13 +54,18 @@ class PurchaseOrderItem extends Model
             $this->tax_amount = 0;
             $this->discount_percent = 0;
             $this->line_total = 0;
+
             return;
         }
-        $subtotal = $this->quantity_ordered * $this->unit_cost;
-        $discount = $subtotal * ($this->discount_percent / 100);
-        $afterDiscount = $subtotal - $discount;
-        $this->tax_amount = $afterDiscount * ($this->tax_rate / 100);
-        $this->line_total = $afterDiscount + $this->tax_amount;
+        // MRD R3.1: engine-owned arithmetic.
+        $calc = \App\Services\TaxEngineService::calculate(
+            (float) ($this->quantity_ordered * $this->unit_cost),
+            (float) $this->tax_rate,
+            false,
+            round((float) ($this->quantity_ordered * $this->unit_cost) * ((float) $this->discount_percent / 100), 2),
+        );
+        $this->tax_amount = $calc['tax'];
+        $this->line_total = $calc['gross'];
     }
 
     public function getRemainingQuantityAttribute(): int

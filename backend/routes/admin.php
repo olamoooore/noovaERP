@@ -15,6 +15,7 @@ use App\SuperAdmin\Http\Controllers\AdminPlanChangeController;
 use App\SuperAdmin\Http\Controllers\AdminPlanController;
 use App\SuperAdmin\Http\Controllers\AdminPricingController;
 use App\SuperAdmin\Http\Controllers\AdminSubscriptionController;
+use App\SuperAdmin\Http\Controllers\AdminTaxProvenanceController;
 use App\SuperAdmin\Http\Controllers\AdminTenantApiKeyController;
 use App\SuperAdmin\Http\Controllers\AdminTenantConfigurationController;
 use App\SuperAdmin\Http\Controllers\AdminTenantController;
@@ -57,6 +58,9 @@ Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
     });
 
     Route::get('/dashboard', [AdminDashboardController::class, 'summary']);
+
+    // Tax data-provenance honesty report (read-only, all admin roles).
+    Route::get('/tax-provenance', [AdminTaxProvenanceController::class, 'index']);
 
     // --- Plan Catalog ---
     Route::prefix('plans')->group(function () {

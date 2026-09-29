@@ -354,6 +354,11 @@ class DeliveryOrderService
             'created_by' => $actorId,
             'requires_approval' => $this->resolveRequiresApproval($data),
             'approval_status' => $this->resolveRequiresApproval($data) ? 'pending' : 'not_required',
+            // References ride along from the source order so the document
+            // family stays traceable from any single reference.
+            'po_number' => $data['po_number'] ?? $order->po_number,
+            'customer_reference' => $data['customer_reference'] ?? $order->customer_reference,
+            'internal_reference' => $data['internal_reference'] ?? $order->internal_reference,
         ]);
 
         $lines = $data['lines'] ?? [];
@@ -685,6 +690,18 @@ class DeliveryOrderService
                 'created_by' => $actorId,
                 'requires_approval' => $this->resolveRequiresApproval($data),
                 'approval_status' => $this->resolveRequiresApproval($data) ? 'pending' : 'not_required',
+                // Inherit references from whichever source document triggered
+                // this standalone DO (quotation or invoice) when the caller
+                // did not pass them explicitly.
+                'po_number' => $data['po_number']
+                    ?? ($invoiceId ? \App\Models\Invoice::whereKey($invoiceId)->value('po_number') : null)
+                    ?? ($quotationId ? \App\Models\Quotation::whereKey($quotationId)->value('customer_reference') : null),
+                'customer_reference' => $data['customer_reference']
+                    ?? ($invoiceId ? \App\Models\Invoice::whereKey($invoiceId)->value('customer_reference') : null)
+                    ?? ($quotationId ? \App\Models\Quotation::whereKey($quotationId)->value('customer_reference') : null),
+                'internal_reference' => $data['internal_reference']
+                    ?? ($invoiceId ? \App\Models\Invoice::whereKey($invoiceId)->value('internal_reference') : null)
+                    ?? ($quotationId ? \App\Models\Quotation::whereKey($quotationId)->value('internal_reference') : null),
             ]);
 
             foreach ($lines as $lineData) {

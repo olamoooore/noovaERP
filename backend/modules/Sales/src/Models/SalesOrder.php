@@ -29,6 +29,8 @@ class SalesOrder extends Model
         'discount_amount',
         'total',
         'customer_reference',
+        'internal_reference',
+        'po_number',
         'notes',
         'internal_notes',
         'currency_code',

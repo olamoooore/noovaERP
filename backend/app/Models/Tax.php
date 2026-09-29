@@ -12,11 +12,17 @@ class Tax extends Model
     protected $fillable = [
         'name',
         'code',
+        'jurisdiction',
+        'regime',
+        'scope',
+        'treatment',
         'type',
         'rate',
         'is_active',
         'is_default',
         'is_inclusive',
+        'effective_from',
+        'effective_to',
     ];
 
     protected $casts = [
@@ -24,5 +30,7 @@ class Tax extends Model
         'is_active' => 'bool',
         'is_default' => 'bool',
         'is_inclusive' => 'bool',
+        'effective_from' => 'date',
+        'effective_to' => 'date',
     ];
 }

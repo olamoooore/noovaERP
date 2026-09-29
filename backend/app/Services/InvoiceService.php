@@ -168,6 +168,23 @@ class InvoiceService
             );
             $primaryTaxCode = $taxDetermination['tax_lines'][0]['tax_code'] ?? null;
 
+            // MRD R3.3: named variance between the booked document tax and the
+            // determination. The GL stays booked-first (balance-safe), but the
+            // divergence is loudly recorded for the accountant to resolve —
+            // it is exactly the class of drift the tax report reconciliation
+            // is built to surface.
+            $determinationTaxTotal = round((float) $taxDetermination['tax_amount'], 2);
+            $bookedTaxTotal = round((float) $invoice->tax_amount, 2);
+
+            if (abs($determinationTaxTotal - $bookedTaxTotal) > 0.02) {
+                \Illuminate\Support\Facades\Log::warning('TAX_VARIANCE: booked invoice tax differs from determination', [
+                    'invoice_id' => $invoice->id,
+                    'booked_tax' => $bookedTaxTotal,
+                    'determination_tax' => $determinationTaxTotal,
+                    'variance' => round($bookedTaxTotal - $determinationTaxTotal, 2),
+                ]);
+            }
+
             // ── Build business-value lines (ACC-RM-001: profile-resolved) ──
             // Operational domains may not submit unrestricted DR/CR lines
             // (ADR-005 §12). Invoice submits account-role + amount business
@@ -199,14 +216,25 @@ class InvoiceService
                 );
             }
 
-            // Sales Tax Payable → profile direction: credit; keeps tax-code evidence
-            if ((float) $invoice->tax_amount > 0) {
-                $lines[] = new DomainPostingLine(
-                    accountRole: 'sales_tax_payable',
-                    amount: (float) $invoice->tax_amount,
-                    description: "Tax - Invoice {$invoice->invoice_number}",
-                    taxCode: $primaryTaxCode,
-                );
+            // Sales Tax Payable → profile direction: credit; keeps tax-code evidence.
+            // MRD TAX-REQ-07: one credit line per determined tax_code (multi-rate
+            // documents get one tax_transaction_details row per code with the
+            // correct taxable base), while the invoice's booked tax total is
+            // preserved exactly so the journal stays balanced.
+            $bookedTax = round((float) $invoice->tax_amount, 2);
+            if ($bookedTax > 0) {
+                foreach (TaxDeterminationService::allocateBookedTax($taxDetermination['tax_lines'] ?? [], $bookedTax) as $allocation) {
+                    if ($allocation['amount'] <= 0) {
+                        continue;
+                    }
+                    $lines[] = new DomainPostingLine(
+                        accountRole: 'sales_tax_payable',
+                        amount: $allocation['amount'],
+                        description: "Tax - Invoice {$invoice->invoice_number}".($allocation['tax_code'] ? " [{$allocation['tax_code']}]" : ''),
+                        taxCode: $allocation['tax_code'] ?? $primaryTaxCode,
+                        taxId: $allocation['tax_id'],
+                    );
+                }
             }
 
             // ── COGS lines for inventory items ───────────────

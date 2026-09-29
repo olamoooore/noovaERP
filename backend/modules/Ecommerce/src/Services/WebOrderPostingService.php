@@ -273,16 +273,44 @@ class WebOrderPostingService
                 );
             }
 
-            // CR Tax
-            if ($taxAmount > 0) {
-                $lines[] = new PostingRequestLine(
-                    accountMappingKey: 'sales_tax_payable',
-                    accountId: null,
-                    debit: 0,
-                    credit: $taxAmount,
-                    description: 'Web sales tax',
-                    reference: $order->order_number,
+            // CR Tax — MRD TAX-REQ-07 (D3): canonical persisted determination
+            // + one credit line per tax_code so web sales land on the
+            // statutory returns via tax_transaction_details. Booked tax total
+            // preserved exactly (balance-safe allocation).
+            $taxDetermination = null;
+            $bookedTaxTotal = round($taxAmount, 2);
+
+            if ($bookedTaxTotal > 0) {
+                $taxDetermination = app(\App\Services\TaxDeterminationService::class)->determineForLineSet(
+                    documentType: 'web_order',
+                    documentId: (int) $order->id,
+                    date: ($order->paid_at ?? now())->toDateString(),
+                    lines: $order->items->map(fn ($item) => [
+                        'source_line_id' => $item->id,
+                        'product' => $item->product,
+                        'base' => round((float) $item->line_total - (float) $item->tax_amount, 2),
+                        'rate' => (float) $item->tax_rate,
+                        'tax' => (float) $item->tax_amount,
+                    ])->values()->all(),
+                    direction: 'output',
+                    customerId: $order->customer_id,
                 );
+
+                foreach (\App\Services\TaxDeterminationService::allocateBookedTax($taxDetermination['tax_lines'] ?? [], $bookedTaxTotal) as $allocation) {
+                    if ($allocation['amount'] <= 0) {
+                        continue;
+                    }
+                    $lines[] = new PostingRequestLine(
+                        accountMappingKey: 'sales_tax_payable',
+                        accountId: null,
+                        debit: 0,
+                        credit: $allocation['amount'],
+                        description: 'Web sales tax'.($allocation['tax_code'] ? " [{$allocation['tax_code']}]" : ''),
+                        reference: $order->order_number,
+                        taxCode: $allocation['tax_code'],
+                        taxId: $allocation['tax_id'],
+                    );
+                }
             }
 
             // DR Discounts (contra-revenue)
@@ -351,6 +379,7 @@ class WebOrderPostingService
                 userId: TenantUserHelper::resolveTenantUserId(),
                 legalEntityId: request()->attributes->get('legal_entity_id'),
                 entityBookId: request()->attributes->get('entity_book_id'),
+                taxDeterminationResult: $taxDetermination,
             ));
 
             if (! $result->success) {

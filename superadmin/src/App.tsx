@@ -28,6 +28,7 @@ import TenantConfigurationPage from '@/pages/tenants/TenantConfigurationPage'
 import PricingCalculatorPage from '@/pages/pricing/PricingCalculatorPage'
 import PendingPlanChangesPage from '@/pages/plan-changes/PendingPlanChangesPage'
 import CatalogAnalyticsPage from '@/pages/analytics/CatalogAnalyticsPage'
+import TaxProvenancePage from '@/pages/compliance/TaxProvenancePage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -78,6 +79,7 @@ export default function App() {
 
                 {/* Phase 4 — Audit Log & Observability */}
                 <Route path="audit"         element={<AuditLogPage />} />
+                <Route path="tax-provenance" element={<TaxProvenancePage />} />
                 <Route path="observability" element={<ObservabilityPage />} />
 
                 {/* Phase 5 — Admin Users, Collections, Operations, Analytics */}

@@ -29,6 +29,8 @@ class HR42TaxGatePostingPathTest extends TenantTestCase
     private ChartOfAccount $revenue;
     private ChartOfAccount $gst;
 
+    private int $taxRuleId;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -62,6 +64,11 @@ class HR42TaxGatePostingPathTest extends TenantTestCase
         $this->gst = ChartOfAccount::factory()->create([
             'code' => 'HR42-GST-'.Str::upper(Str::random(4)), 'type' => 'liability', 'is_active' => true,
         ]);
+        // tax_id is a real FK now that GL lines persist tax identity.
+        \App\Models\Tax::query()->firstOrCreate(['code' => 'HR42-STD'], [
+            'name' => 'HR42 standard rule', 'type' => 'gst', 'rate' => 9, 'is_active' => true,
+        ]);
+        $this->taxRuleId = (int) \App\Models\Tax::query()->where('code', 'HR42-STD')->value('id');
     }
 
     private function postingRequest(?array $taxDeterminationResult): PostingRequest
@@ -93,7 +100,7 @@ class HR42TaxGatePostingPathTest extends TenantTestCase
                     credit: 9.00,
                     description: 'GST',
                     taxCode: 'GST-STD',
-                    taxId: 1,
+                    taxId: $this->taxRuleId,
                 ),
             ],
             userId: $this->user->id,

@@ -42,3 +42,24 @@ Route::middleware([\App\Http\Middleware\RequirePermission::using('accounting.ope
     Route::post('/opening-balances/{id}/authorise', [OpeningBalanceController::class, 'authorise']);
     Route::post('/opening-balances/{id}/post', [OpeningBalanceController::class, 'post']);
 });
+
+/*
+|--------------------------------------------------------------------------
+| Tax Engine (ACC-009) — read/preview/advisory endpoints
+|--------------------------------------------------------------------------
+|
+| The engine itself is platform-owned (App\Services\TaxEngineService /
+| TaxDeterminationService); the API surface belongs to the accounting core,
+| not the jurisdiction pack module (MRD TAX-REQ-10). URL unchanged from the
+| interim AccountingCountry registration: /api/v1/accounting/tax-engine/*.
+|
+*/
+
+Route::prefix('accounting/tax-engine')
+    ->middleware([\App\Http\Middleware\RequirePermission::using('reports.view')])
+    ->group(function () {
+        Route::get('/rules', [\App\Http\Controllers\Api\TaxEngineController::class, 'rules']);
+        Route::get('/advisory', [\App\Http\Controllers\Api\TaxEngineController::class, 'advisory']);
+        Route::get('/ai-advisory', [\App\Http\Controllers\Api\TaxEngineController::class, 'aiAdvisory'])
+            ->middleware('entitlement:ai');
+    });

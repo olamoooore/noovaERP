@@ -64,7 +64,8 @@ class AccountingOriginBillService
                 $unitPrice = (float) $line->unitPrice;
                 $taxRate = (float) $line->taxRate;
                 $lineTotal = $quantity * $unitPrice;
-                $taxAmount = $lineTotal * ($taxRate / 100);
+                // MRD R3.1: engine-owned arithmetic (this path also missed rounding).
+                $taxAmount = \App\Services\TaxEngineService::calculate((float) $lineTotal, $taxRate, false)['tax'];
 
                 BillLine::create([
                     'bill_id' => $bill->id,
@@ -92,9 +93,10 @@ class AccountingOriginBillService
             $bill->balance = $bill->total - $bill->paid_amount;
             $bill->save();
 
-            // Auto-post if requested
+            // Auto-post if requested — return the postBill result so callers
+            // see the authoritative posted state, not the pre-update instance.
             if ($data->autoPost) {
-                $this->postBill($bill);
+                return $this->postBill($bill);
             }
 
             return $bill->load(['vendor', 'lines.account']);
@@ -129,14 +131,43 @@ class AccountingOriginBillService
             }
         }
 
-        // Tax payable (DR) if any
-        if ((float) $bill->tax_amount > 0) {
+        // Tax (DR) — MRD TAX-REQ-07: same canonical determination + per-code
+        // input_tax identity as VendorBillService::postBill. The old
+        // 'purchase_tax_receivable' key existed in no mapping table, so tax
+        // bills either died at account resolution or (if a tenant hand-mapped
+        // it) booked with no tax audit trail.
+        $taxDetermination = null;
+        $bookedTaxTotal = round((float) $bill->tax_amount, 2);
+
+        if ($bookedTaxTotal > 0) {
+            $taxDetermination = app(TaxDeterminationService::class)->determineForLineSet(
+                documentType: 'bill',
+                documentId: (int) $bill->id,
+                date: $bill->bill_date->toDateString(),
+                lines: $bill->lines->map(fn ($line) => [
+                    'source_line_id' => $line->id,
+                    'product' => $line->product_id ? \App\Models\Product::query()->find($line->product_id) : null,
+                    'base' => max((float) $line->line_total, 0.0),
+                    'rate' => (float) $line->tax_rate,
+                    'tax' => (float) $line->tax_amount,
+                ])->values()->all(),
+                direction: 'input',
+                vendorId: $bill->vendor_id,
+            );
+        }
+
+        foreach (TaxDeterminationService::allocateBookedTax($taxDetermination['tax_lines'] ?? [], $bookedTaxTotal) as $allocation) {
+            if ($allocation['amount'] <= 0) {
+                continue;
+            }
             $postingLines[] = new PostingRequestLine(
-                accountMappingKey: 'purchase_tax_receivable',
+                accountMappingKey: 'input_tax',
                 accountId: null,
-                debit: (float) $bill->tax_amount,
+                debit: $allocation['amount'],
                 credit: 0,
-                description: "Tax - Bill {$bill->bill_number}",
+                description: "Tax - Bill {$bill->bill_number}".($allocation['tax_code'] ? " [{$allocation['tax_code']}]" : ''),
+                taxCode: $allocation['tax_code'],
+                taxId: $allocation['tax_id'],
             );
         }
 
@@ -157,6 +188,7 @@ class AccountingOriginBillService
             lines: $postingLines,
             reference: $bill->bill_number,
             userId: TenantUserHelper::requireTenantUserId($bill->created_by),
+            taxDeterminationResult: $taxDetermination,
         ));
 
         if (! $result->success) {

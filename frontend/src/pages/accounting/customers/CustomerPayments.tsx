@@ -1014,7 +1014,15 @@ const ViewPaymentDialog: React.FC<{
             <div>
               <p className="text-xs text-muted-foreground">Ledger Entry</p>
               {detail.journal_entry_id ? (
-                <p className="font-medium font-mono text-sm">JE #{detail.journal_entry_id}</p>
+                <p className="font-medium font-mono text-sm">
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/accounting/core/journal-entries?entry_id=${detail.journal_entry_id}`)}
+                    className="font-medium text-primary underline-offset-2 hover:underline"
+                  >
+                    {(detail as any).journal_entry?.entry_number ?? `JE #${detail.journal_entry_id}`}
+                  </button>
+                </p>
               ) : (
                 <span className="text-sm text-muted-foreground">Not posted</span>
               )}

@@ -17,14 +17,14 @@ use Illuminate\Support\Facades\DB;
 class TaxReturnAggregator
 {
     private const SALES_DOCUMENTS = [
-        'invoice', 'sales_invoice', 'credit_note', 'pos_order', 'web_order',
+        'invoice', 'sales_invoice', 'credit_note', 'pos_order', 'web_order', 'storefront_order',
     ];
 
     private const PURCHASE_DOCUMENTS = [
-        'bill', 'purchase_invoice', 'vendor_credit_note', 'goods_receipt', 'expense',
+        'bill', 'purchase_invoice', 'vendor_credit_note', 'vendor_debit_note', 'goods_receipt', 'expense',
     ];
 
-    private const NEGATIVE_DOCUMENTS = ['credit_note', 'vendor_credit_note'];
+    private const NEGATIVE_DOCUMENTS = ['credit_note', 'vendor_credit_note', 'vendor_debit_note'];
 
     /**
      * @param  string|array<int, string>  $period  One reporting period (YYYY-MM)
@@ -84,6 +84,7 @@ class TaxReturnAggregator
             $sign = in_array((string) $row->source_document_type, self::NEGATIVE_DOCUMENTS, true) ? -1 : 1;
 
             $result[$direction][] = [
+                'reporting_period' => $row->reporting_period,
                 'source_document_type' => $row->source_document_type,
                 'source_document_id' => $row->source_document_id,
                 'tax_code' => $row->tax_code,
@@ -102,7 +103,7 @@ class TaxReturnAggregator
     /**
      * Resolve a period string into the YYYY-MM months it covers.
      *
-     * @return array<int, string>|null  null when the period is malformed.
+     * @return array<int, string>|null null when the period is malformed.
      */
     public static function periodMonths(string $period): ?array
     {
@@ -121,6 +122,69 @@ class TaxReturnAggregator
         }
 
         return null;
+    }
+
+    /**
+     * Periods that actually contain live tax activity, newest first. Returns
+     * reporting periods from tax_transaction_details joined to the same live
+     * journal-entry filter used by aggregate(), with signed output/input tax
+     * totals per period so the UI can show filing-relevant data instead of
+     * empty calendars.
+     *
+     * @return array<int, array{period: string, rows: int, output_tax: float, input_tax: float}>
+     */
+    public function availablePeriods(?int $legalEntityId = null): array
+    {
+        $rows = DB::table('tax_transaction_details as ttd')
+            ->join('journal_entries as je', 'je.id', '=', 'ttd.journal_entry_id')
+            ->where('je.status', 'posted')
+            ->where(function ($query) {
+                $query->whereNull('je.lifecycle_status')
+                    ->orWhereNotIn('je.lifecycle_status', ['reversed', 'voided', 'superseded']);
+            })
+            ->whereNotExists(function ($query) {
+                $query->select(DB::raw(1))
+                    ->from('journal_entries as rev')
+                    ->whereColumn('rev.reversed_entry_id', 'ttd.journal_entry_id')
+                    ->where('rev.status', 'posted');
+            })
+            ->when(
+                $legalEntityId !== null,
+                fn ($query) => $query->where('je.legal_entity_id', $legalEntityId)
+            )
+            ->groupBy('ttd.reporting_period', 'ttd.source_document_type')
+            ->get([
+                'ttd.reporting_period as period',
+                'ttd.source_document_type',
+                DB::raw('count(*) as rows'),
+                DB::raw('sum(ttd.tax_amount) as tax_total'),
+            ]);
+
+        $periods = [];
+
+        foreach ($rows as $row) {
+            $period = (string) $row->period;
+            $periods[$period] ??= ['period' => $period, 'rows' => 0, 'output_tax' => 0.0, 'input_tax' => 0.0];
+
+            $direction = $this->direction((string) $row->source_document_type);
+            if ($direction === null) {
+                $periods[$period]['rows'] += (int) $row->rows;
+
+                continue;
+            }
+
+            $sign = in_array((string) $row->source_document_type, self::NEGATIVE_DOCUMENTS, true) ? -1 : 1;
+
+            $periods[$period]['rows'] += (int) $row->rows;
+            $periods[$period][$direction.'_tax'] = round(
+                $periods[$period][$direction.'_tax'] + $sign * (float) $row->tax_total,
+                2,
+            );
+        }
+
+        usort($periods, fn ($a, $b) => strcmp($b['period'], $a['period']));
+
+        return array_values($periods);
     }
 
     private function direction(string $documentType): ?string

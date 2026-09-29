@@ -153,7 +153,8 @@ class BillService
                 $unitPrice = (float) $lineData['unit_price'];
                 $taxRate = (float) ($lineData['tax_rate'] ?? 0);
                 $lineTotal = $quantity * $unitPrice;
-                $taxAmount = round($lineTotal * ($taxRate / 100), 2);
+                // MRD R3.1: engine-owned arithmetic.
+                $taxAmount = \App\Services\TaxEngineService::calculate((float) $lineTotal, $taxRate, false)['tax'];
 
                 BillLine::create([
                     'bill_id' => $bill->id,
@@ -180,9 +181,12 @@ class BillService
                 $adjustedTax = 0;
                 foreach ($bill->lines as $line) {
                     $lineGross = (float) $line->quantity * (float) $line->unit_price;
-                    $lineDiscount = $lineGross * $discountRatio;
-                    $netAfterDiscount = $lineGross - $lineDiscount;
-                    $adjustedTax += round($netAfterDiscount * ((float) $line->tax_rate / 100), 2);
+                    $adjustedTax += \App\Services\TaxEngineService::calculate(
+                        (float) $lineGross,
+                        (float) $line->tax_rate,
+                        false,
+                        round($lineGross * $discountRatio, 2),
+                    )['tax'];
                 }
                 $bill->tax_amount = round($adjustedTax, 2);
             } else {

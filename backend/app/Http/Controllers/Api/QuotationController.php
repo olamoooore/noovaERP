@@ -514,6 +514,10 @@ class QuotationController extends Controller
                 'customer_id' => $quotation->customer_id,
                 'channel' => 'admin',
                 'notes' => "Quotation #{$quotation->quotation_number}",
+                // Carry the customer's references onto the order so the whole
+                // chain (SO → DO → invoice) stays traceable from any of them.
+                'customer_reference' => $quotation->customer_reference,
+                'internal_reference' => $quotation->internal_reference,
                 'lines' => $salesLines,
                 'warehouse_id' => $warehouseId,
             ]);
@@ -672,6 +676,8 @@ class QuotationController extends Controller
                 // Link the invoice back to the quotation
                 $invoice->update([
                     'quotation_id' => $quotation->id,
+                    'customer_reference' => $invoice->customer_reference ?: $quotation->customer_reference,
+                    'internal_reference' => $invoice->internal_reference ?: $quotation->internal_reference,
                     'case_number' => $quotation->case_number,
                     'date_of_case' => $quotation->date_of_case,
                     'case_location' => $quotation->case_location,
@@ -788,6 +794,8 @@ class QuotationController extends Controller
                 'warehouse_id' => $warehouseId,
                 'delivery_date' => now()->toDateString(),
                 'po_number' => $quotation->customer_reference,
+                'customer_reference' => $quotation->customer_reference,
+                'internal_reference' => $quotation->internal_reference,
                 'attention_to' => $quotation->attention_to,
                 'payment_terms' => $quotation->credit_terms,
                 'source' => 'quotation',

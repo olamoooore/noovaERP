@@ -10,6 +10,7 @@ export interface SettingsTaxConfig {
   default_tax_id: number | null
   default_tax_rate?: number | null
   default_tax_name?: string | null
+  jurisdiction?: string | null
 }
 
 export interface Settings {
@@ -50,6 +51,7 @@ const fetchSettings = async (): Promise<Settings> => {
       default_tax_id: data.tax?.default_tax_id ?? null,
       default_tax_rate: data.tax?.default_tax_rate ?? null,
       default_tax_name: data.tax?.default_tax_name ?? null,
+      jurisdiction: data.tax?.jurisdiction ?? null,
     },
   }
 }
@@ -76,6 +78,7 @@ const updateSettings = async (updates: Partial<Settings>): Promise<Settings> => 
       default_tax_id: data.tax?.default_tax_id ?? updates.tax?.default_tax_id ?? null,
       default_tax_rate: data.tax?.default_tax_rate ?? updates.tax?.default_tax_rate ?? null,
       default_tax_name: data.tax?.default_tax_name ?? updates.tax?.default_tax_name ?? null,
+      jurisdiction: data.tax?.jurisdiction ?? updates.tax?.jurisdiction ?? null,
     },
   }
 }

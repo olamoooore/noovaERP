@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -49,6 +49,34 @@ interface TaxRate {
   description?: string;
 }
 
+interface TaxFormState {
+  name: string;
+  code: string;
+  rate: string;
+  type: string;
+  tax_account_id: string;
+  is_compound: boolean;
+  description: string;
+}
+
+const EMPTY_FORM: TaxFormState = {
+  name: '',
+  code: '',
+  rate: '',
+  type: 'sales',
+  tax_account_id: '',
+  is_compound: false,
+  description: '',
+};
+
+const TYPE_META: Record<string, { label: string; className: string }> = {
+  sales: { label: 'Sales Tax', className: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300' },
+  purchase: { label: 'Purchase Tax', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300' },
+  vat: { label: 'VAT', className: 'bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300' },
+  gst: { label: 'GST', className: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300' },
+  withholding: { label: 'Withholding Tax', className: 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300' },
+};
+
 export default function TaxConfigurationPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -56,6 +84,7 @@ export default function TaxConfigurationPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTax, setEditingTax] = useState<TaxRate | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [form, setForm] = useState<TaxFormState>(EMPTY_FORM);
 
   // Fetch tax rates
   const { data: taxRates = [], isLoading } = useQuery({
@@ -88,8 +117,8 @@ export default function TaxConfigurationPage() {
       setIsDialogOpen(false);
       setEditingTax(null);
       toast({
-        title: 'Success',
-        description: 'Tax rate created successfully',
+        title: 'Tax rate created',
+        description: 'The tax rate is now available on documents.',
       });
     },
     onError: () => {
@@ -112,8 +141,8 @@ export default function TaxConfigurationPage() {
       setIsDialogOpen(false);
       setEditingTax(null);
       toast({
-        title: 'Success',
-        description: 'Tax rate updated successfully',
+        title: 'Tax rate updated',
+        description: 'The changes apply to future documents.',
       });
     },
     onError: () => {
@@ -134,8 +163,7 @@ export default function TaxConfigurationPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tax-rates'] });
       toast({
-        title: 'Success',
-        description: 'Tax rate deleted successfully',
+        title: 'Tax rate deleted',
       });
     },
     onError: () => {
@@ -147,18 +175,51 @@ export default function TaxConfigurationPage() {
     },
   });
 
+  // Hydrate the controlled form whenever the dialog opens for create/edit.
+  useEffect(() => {
+    if (!isDialogOpen) return;
+    setForm(editingTax ? {
+      name: editingTax.name ?? '',
+      code: editingTax.code ?? '',
+      rate: String(editingTax.rate ?? ''),
+      type: editingTax.type || 'sales',
+      tax_account_id: editingTax.tax_account_id ? String(editingTax.tax_account_id) : '',
+      is_compound: Boolean(editingTax.is_compound),
+      description: editingTax.description ?? '',
+    } : EMPTY_FORM);
+  }, [isDialogOpen, editingTax]);
+
+  const isSaving = createMutation.isPending || updateMutation.isPending;
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    
+
+    // Guard the payloads the old FormData flow could send as NaN / always-false
+    // (an empty account produced `parseInt('')`, and the Radix Switch never
+    // carried a form value so compound was silently stored as false).
+    if (!form.tax_account_id) {
+      toast({
+        title: 'Tax account required',
+        description: 'Select the liability account where tax amounts are recorded.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const rate = parseFloat(form.rate);
+    if (Number.isNaN(rate)) {
+      toast({ title: 'Rate required', description: 'Enter a valid tax rate percentage.', variant: 'destructive' });
+      return;
+    }
+
     const data = {
-      name: formData.get('name') as string,
-      code: formData.get('code') as string,
-      rate: parseFloat(formData.get('rate') as string),
-      type: formData.get('type') as string,
-      tax_account_id: parseInt(formData.get('tax_account_id') as string),
-      is_compound: formData.get('is_compound') === 'on',
-      description: formData.get('description') as string,
+      name: form.name,
+      code: form.code,
+      rate,
+      type: form.type,
+      tax_account_id: parseInt(form.tax_account_id, 10),
+      is_compound: form.is_compound,
+      description: form.description,
     };
 
     if (editingTax) {
@@ -184,181 +245,202 @@ export default function TaxConfigurationPage() {
     tax.code.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const getTypeLabel = (type: string) => {
-    switch (type) {
-      case 'sales':
-        return 'Sales Tax';
-      case 'purchase':
-        return 'Purchase Tax';
-      case 'vat':
-        return 'VAT';
-      case 'gst':
-        return 'GST';
-      case 'withholding':
-        return 'Withholding Tax';
-      default:
-        return type;
-    }
-  };
-
-  const getTypeBadgeColor = (type: string) => {
-    switch (type) {
-      case 'sales':
-        return 'bg-blue-100 text-blue-800';
-      case 'purchase':
-        return 'bg-green-100 text-green-800';
-      case 'vat':
-        return 'bg-purple-100 text-purple-800';
-      case 'gst':
-        return 'bg-orange-100 text-orange-800';
-      case 'withholding':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="p-6">
-        <div className="text-center py-12">
-          <Icon icon="svg-spinners:ring-resize" className="w-8 h-8 mx-auto" />
-          <p className="text-muted-foreground mt-2">Loading tax rates...</p>
-        </div>
-      </div>
-    );
-  }
+  const getTypeMeta = (type: string) =>
+    TYPE_META[type] ?? { label: type, className: 'bg-muted text-muted-foreground' };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Tax Configuration</h1>
-          <p className="text-muted-foreground mt-1">
-            Configure tax rates and accounts
-          </p>
-        </div>
-        <HeaderActionButton icon="solar:arrow-left-linear" onClick={() => navigate('/accounting')}>
+      <div>
+        <HeaderActionButton
+          variant="outline"
+          icon="solar:alt-arrow-left-bold-duotone"
+          onClick={() => navigate('/accounting')}
+          className="mb-3"
+        >
           Back to Accounting
         </HeaderActionButton>
-      </div>
-
-      {/* Info Card */}
-      <Card className="p-4 bg-blue-50 border-blue-200">
-        <div className="flex items-start gap-3">
-          <Icon icon="solar:info-circle-bold" className="w-5 h-5 text-blue-600 mt-0.5" />
-          <div className="flex-1">
-            <h3 className="font-semibold text-blue-900">Tax Configuration</h3>
-            <p className="text-sm text-blue-800 mt-1">
-              Configure tax rates for sales, purchases, VAT, GST, and withholding taxes. 
-              Each tax rate must be linked to a liability account where tax amounts will be recorded.
-            </p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Tax Configuration</h1>
+            <p className="mt-1 text-muted-foreground">Configure tax rates and accounts</p>
           </div>
-        </div>
-      </Card>
-
-      {/* Actions Bar */}
-      <Card className="p-4">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex-1 max-w-md">
-            <Input
-              placeholder="Search tax rates..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full"
-            />
-          </div>
-          <Button
+          <HeaderActionButton
+            icon="solar:add-circle-bold-duotone"
             onClick={() => {
               setEditingTax(null);
               setIsDialogOpen(true);
             }}
           >
-            <Icon icon="solar:add-circle-linear" className="w-4 h-4 mr-2" />
             Add Tax Rate
-          </Button>
+          </HeaderActionButton>
         </div>
-      </Card>
+      </div>
 
-      {/* Tax Rates Table */}
-      <Card>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Code</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Rate</TableHead>
-              <TableHead>Tax Account</TableHead>
-              <TableHead>Compound</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredTaxRates.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                  No tax rates found
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredTaxRates.map((tax) => (
-                <TableRow key={tax.id}>
-                  <TableCell className="font-medium">{tax.name}</TableCell>
-                  <TableCell>{tax.code}</TableCell>
-                  <TableCell>
-                    <Badge className={getTypeBadgeColor(tax.type)}>
-                      {getTypeLabel(tax.type)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="font-semibold">{tax.rate}%</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {tax.tax_account_name || `Account #${tax.tax_account_id}`}
-                  </TableCell>
-                  <TableCell>
-                    {tax.is_compound ? (
-                      <Badge variant="secondary">Yes</Badge>
-                    ) : (
-                      <span className="text-muted-foreground text-sm">No</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={tax.is_active ? 'default' : 'secondary'}>
-                      {tax.is_active ? 'Active' : 'Inactive'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEdit(tax)}
-                      >
-                        <Icon icon="solar:pen-linear" className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(tax.id)}
-                      >
-                        <Icon icon="solar:trash-bin-linear" className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+      {/* Explainer */}
+      <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50/70 p-4 dark:border-blue-900 dark:bg-blue-950/40">
+        <Icon icon="solar:info-circle-bold-duotone" className="mt-0.5 h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" />
+        <p className="text-sm text-blue-900 dark:text-blue-200">
+          Configure tax rates for sales, purchases, VAT, GST, and withholding taxes. Each tax rate
+          must be linked to a liability account where tax amounts will be recorded.
+        </p>
+      </div>
+
+      {/* Tax rates */}
+      <Card className="overflow-hidden rounded-xl">
+        <CardHeader className="border-b">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                <Icon icon="solar:tag-price-bold-duotone" className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <CardTitle className="text-base">Tax Rates</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {filteredTaxRates.length} of {taxRates.length} rates
+                </p>
+              </div>
+            </div>
+            <div className="relative w-full sm:w-72">
+              <Icon
+                icon="solar:magnifer-bold-duotone"
+                className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                placeholder="Search tax rates..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-8 rounded-full pl-9 pr-3 text-xs"
+              />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <Icon icon="eos-icons:loading" className="h-7 w-7 animate-spin text-primary" />
+            </div>
+          ) : filteredTaxRates.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-16 text-center text-muted-foreground">
+              <Icon icon="solar:tag-price-bold-duotone" className="h-10 w-10 opacity-30" />
+              <p className="text-sm font-medium">
+                {searchQuery ? 'No tax rates match your search' : 'No tax rates configured yet'}
+              </p>
+              <p className="text-xs">
+                {searchQuery ? 'Try a different name or code.' : 'Add your first tax rate to start charging tax on documents.'}
+              </p>
+              {!searchQuery && (
+                <HeaderActionButton
+                  variant="outline"
+                  icon="solar:add-circle-bold-duotone"
+                  className="mt-2"
+                  onClick={() => {
+                    setEditingTax(null);
+                    setIsDialogOpen(true);
+                  }}
+                >
+                  Add Tax Rate
+                </HeaderActionButton>
+              )}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead>Name</TableHead>
+                    <TableHead>Code</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead className="text-right">Rate</TableHead>
+                    <TableHead>Tax Account</TableHead>
+                    <TableHead>Compound</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredTaxRates.map((tax) => {
+                    const typeMeta = getTypeMeta(tax.type);
+                    return (
+                      <TableRow key={tax.id} className="hover:bg-muted/50">
+                        <TableCell>
+                          <div className="font-medium">{tax.name}</div>
+                          {tax.description && (
+                            <div className="max-w-[280px] truncate text-xs text-muted-foreground" title={tax.description}>
+                              {tax.description}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{tax.code}</TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className={`whitespace-nowrap ${typeMeta.className}`}>
+                            {typeMeta.label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-semibold tabular-nums">{tax.rate}%</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {tax.tax_account_name || `Account #${tax.tax_account_id}`}
+                        </TableCell>
+                        <TableCell>
+                          {tax.is_compound ? (
+                            <Badge variant="secondary">Yes</Badge>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">No</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="secondary"
+                            className={tax.is_active
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                              : 'bg-muted text-muted-foreground'}
+                          >
+                            {tax.is_active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 w-7 p-0"
+                              onClick={() => handleEdit(tax)}
+                              title="Edit tax rate"
+                              aria-label={`Edit ${tax.name}`}
+                            >
+                              <Icon icon="solar:pen-bold-duotone" className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 w-7 p-0 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                              onClick={() => handleDelete(tax.id)}
+                              title="Delete tax rate"
+                              aria-label={`Delete ${tax.name}`}
+                            >
+                              <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
       </Card>
 
       {/* Create/Edit Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl">
+      <Dialog open={isDialogOpen} onOpenChange={(open) => {
+        setIsDialogOpen(open);
+        if (!open) setEditingTax(null);
+      }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto max-w-2xl">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Icon icon="solar:tag-price-bold-duotone" className="h-5 w-5 text-primary" />
               {editingTax ? 'Edit Tax Rate' : 'Add Tax Rate'}
             </DialogTitle>
             <DialogDescription>
@@ -369,35 +451,41 @@ export default function TaxConfigurationPage() {
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="name">Name *</Label>
+                <Label htmlFor="tax-name">
+                  Name <span className="text-destructive">*</span>
+                </Label>
                 <Input
-                  id="name"
-                  name="name"
-                  defaultValue={editingTax?.name}
+                  id="tax-name"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
                   placeholder="Sales Tax 10%"
                   required
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="code">Code *</Label>
+                <Label htmlFor="tax-code">
+                  Code <span className="text-destructive">*</span>
+                </Label>
                 <Input
-                  id="code"
-                  name="code"
-                  defaultValue={editingTax?.code}
+                  id="tax-code"
+                  value={form.code}
+                  onChange={(e) => setForm({ ...form, code: e.target.value })}
                   placeholder="ST10"
                   required
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="type">Type *</Label>
-                <Select name="type" defaultValue={editingTax?.type || 'sales'}>
-                  <SelectTrigger>
+                <Label htmlFor="tax-type">
+                  Type <span className="text-destructive">*</span>
+                </Label>
+                <Select value={form.type} onValueChange={(value) => setForm({ ...form, type: value })}>
+                  <SelectTrigger id="tax-type">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -411,28 +499,32 @@ export default function TaxConfigurationPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="rate">Rate (%) *</Label>
+                <Label htmlFor="tax-rate">
+                  Rate (%) <span className="text-destructive">*</span>
+                </Label>
                 <Input
-                  id="rate"
-                  name="rate"
+                  id="tax-rate"
                   type="number"
                   step="0.01"
-                  defaultValue={editingTax?.rate}
-                  placeholder="10.00"
                   min="0"
                   max="100"
+                  value={form.rate}
+                  onChange={(e) => setForm({ ...form, rate: e.target.value })}
+                  placeholder="10.00"
                   required
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="tax_account_id">Tax Account *</Label>
-              <Select 
-                name="tax_account_id" 
-                defaultValue={editingTax?.tax_account_id?.toString()}
+              <Label htmlFor="tax-account">
+                Tax Account <span className="text-destructive">*</span>
+              </Label>
+              <Select
+                value={form.tax_account_id}
+                onValueChange={(value) => setForm({ ...form, tax_account_id: value })}
               >
-                <SelectTrigger>
+                <SelectTrigger id="tax-account">
                   <SelectValue placeholder="Select tax liability account" />
                 </SelectTrigger>
                 <SelectContent>
@@ -443,36 +535,37 @@ export default function TaxConfigurationPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Select the liability account where tax amounts will be recorded
               </p>
             </div>
 
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center justify-between gap-3 rounded-xl border bg-muted/30 px-3 py-2.5">
+              <div>
+                <Label htmlFor="is_compound" className="cursor-pointer">Compound Tax</Label>
+                <p className="text-xs text-muted-foreground">Calculated on top of other taxes.</p>
+              </div>
               <Switch
                 id="is_compound"
-                name="is_compound"
-                defaultChecked={editingTax?.is_compound}
+                checked={form.is_compound}
+                onCheckedChange={(checked) => setForm({ ...form, is_compound: checked })}
               />
-              <Label htmlFor="is_compound" className="cursor-pointer">
-                Compound Tax (calculated on top of other taxes)
-              </Label>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="tax-description">Description</Label>
               <Textarea
-                id="description"
-                name="description"
-                defaultValue={editingTax?.description}
+                id="tax-description"
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
                 placeholder="Optional description or notes..."
                 rows={3}
               />
             </div>
 
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-              <h4 className="font-semibold text-amber-900 mb-2">Tax Types</h4>
-              <ul className="space-y-1 text-sm text-amber-800">
+            <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-900 dark:bg-amber-950/40">
+              <h4 className="mb-2 text-sm font-semibold text-amber-900 dark:text-amber-200">Tax Types</h4>
+              <ul className="space-y-1 text-xs text-amber-800 dark:text-amber-300">
                 <li><strong>Sales Tax:</strong> Tax collected on sales to customers</li>
                 <li><strong>Purchase Tax:</strong> Tax paid on purchases from vendors</li>
                 <li><strong>VAT:</strong> Value Added Tax (input and output)</li>
@@ -482,32 +575,25 @@ export default function TaxConfigurationPage() {
             </div>
 
             <DialogFooter>
-              <Button
+              <HeaderActionButton
                 type="button"
                 variant="outline"
+                icon="solar:close-circle-bold-duotone"
                 onClick={() => {
                   setIsDialogOpen(false);
                   setEditingTax(null);
                 }}
               >
                 Cancel
-              </Button>
-              <Button
+              </HeaderActionButton>
+              <HeaderActionButton
                 type="submit"
-                disabled={createMutation.isPending || updateMutation.isPending}
+                icon="solar:diskette-bold-duotone"
+                loading={isSaving}
+                disabled={isSaving}
               >
-                {createMutation.isPending || updateMutation.isPending ? (
-                  <>
-                    <Icon icon="svg-spinners:ring-resize" className="w-4 h-4 mr-2" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Icon icon="solar:diskette-linear" className="w-4 h-4 mr-2" />
-                    {editingTax ? 'Update' : 'Create'}
-                  </>
-                )}
-              </Button>
+                {editingTax ? 'Update Tax Rate' : 'Create Tax Rate'}
+              </HeaderActionButton>
             </DialogFooter>
           </form>
         </DialogContent>

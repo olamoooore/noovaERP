@@ -111,8 +111,9 @@ class VendorCreditNote extends Model
     public function calculateTotals(): void
     {
         $this->subtotal = $this->lines->sum('line_total');
+        // MRD R3.1: single tax arithmetic via TaxEngineService::calculate().
         $this->tax_amount = $this->lines->sum(function ($line) {
-            return ($line->line_total * $line->tax_rate) / 100;
+            return \App\Services\TaxEngineService::calculate((float) $line->line_total, (float) $line->tax_rate, false)['tax'];
         });
         $this->total_amount = $this->subtotal + $this->tax_amount;
         $this->save();

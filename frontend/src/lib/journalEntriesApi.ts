@@ -54,6 +54,11 @@ export interface JournalEntry {
   };
   created_at: string;
   updated_at: string;
+  /** Reversal state — 'reversed' marks a reversed original or a reversal row. */
+  lifecycle_status?: string | null;
+  /** Traceability: where this entry's reference points (payment/invoice/bill or the reversed entry). */
+  reference_link?: { type: string; id: number | null; label: string | null; url: string } | null;
+  reversedEntry?: { id: number; entry_number: string } | null;
 }
 
 export interface JournalEntryFilters {

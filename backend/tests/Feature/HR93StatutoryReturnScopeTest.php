@@ -157,12 +157,18 @@ class HR93StatutoryReturnScopeTest extends TenantTestCase
         }
     }
 
-    public function test_f7_is_reported_as_planned_not_silently_absent(): void
+    public function test_f7_is_reported_as_supported_not_planned_since_265(): void
     {
         $response = $this->actingAs($this->user)->getJson('/api/v1/accounting/statutory-returns');
 
         $response->assertOk();
-        $planned = collect($response->json('planned'))->pluck('form')->all();
-        $this->assertContains('GST F7', $planned, 'F7 must be explicitly reported as planned.');
+
+        // Issue #265 implemented the F7 disclosure generator; it must now be
+        // reported as supported. Nothing may sit silently absent.
+        $supported = collect($response->json('data'))->pluck('form')->all();
+        $this->assertContains('GST F7', $supported, 'F7 must be reported as a supported generator post-#265.');
+        $this->assertContains('GST F5', $supported);
+        $this->assertContains('SST-02', $supported);
+        $this->assertSame([], $response->json('planned'), 'No tax generator may remain silently absent/planned.');
     }
 }

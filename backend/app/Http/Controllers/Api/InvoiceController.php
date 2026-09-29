@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Sales\Services\DeliveryOrderService;
 use Modules\Sales\Services\SalesOrderService;
@@ -685,6 +686,8 @@ class InvoiceController extends Controller
                 'warehouse_id' => $warehouseId,
                 'delivery_date' => now()->toDateString(),
                 'po_number' => $invoice->customer_reference,
+                'customer_reference' => $invoice->customer_reference,
+                'internal_reference' => $invoice->internal_reference,
                 'attention_to' => $invoice->attention_to,
                 'payment_terms' => $invoice->payment_terms_snapshot,
                 'source' => 'invoice',
@@ -786,6 +789,15 @@ class InvoiceController extends Controller
 
         $validated = $request->validate([
             'customer_id' => 'exists:customers,id',
+            // Renumbering a draft is allowed but must never create a duplicate
+            // document number — the unique rule also counts soft-deleted rows
+            // (same semantics as the import path's withTrashed() lookup).
+            'invoice_number' => [
+                'sometimes',
+                'string',
+                'max:100',
+                Rule::unique('invoices', 'invoice_number')->ignore($invoice->id),
+            ],
             'invoice_date' => 'date',
             'due_date' => 'date',
             'case_number' => 'nullable|string|max:100',
@@ -837,6 +849,8 @@ class InvoiceController extends Controller
             'lines.*.unit_price' => 'required_if:lines.*.line_type,product|nullable|numeric|min:0',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
+        ], [
+            'invoice_number.unique' => 'This invoice number is already used by another invoice (including deleted ones). Choose a different number.',
         ]);
 
         foreach (['doctor', 'requestor', 'billing', 'shipping'] as $contactType) {
@@ -925,16 +939,42 @@ class InvoiceController extends Controller
             }
         }
 
+        // Renumbering is a record-worthy event: keep the from → to pair on the
+        // invoice timeline AND mirror it into the chatter History feed.
+        $oldNumber = (string) ($beforeHeader['invoice_number'] ?? '');
+        $newNumber = (string) $invoice->fresh()->invoice_number;
+        $numberChanged = $oldNumber !== '' && $newNumber !== '' && $oldNumber !== $newNumber;
+
         $linesReplaced = array_key_exists('lines', (array) ($request->all()));
         if ($changedFields !== [] || $linesReplaced) {
+            $metadata = [
+                'invoice_number' => $invoice->invoice_number,
+                'fields' => $changedFields === []
+                    ? 'line items'
+                    : implode(', ', $changedFields).($linesReplaced ? ', line items' : ''),
+            ];
+
+            if ($numberChanged) {
+                $metadata['invoice_number_from'] = $oldNumber;
+                $metadata['invoice_number_to'] = $newNumber;
+            }
+
             $this->activityService->log(
                 $invoice->fresh(),
                 InvoiceActivityLog::EVENT_UPDATED,
+                $metadata,
+            );
+        }
+
+        if ($numberChanged) {
+            $this->logChatter(
+                Invoice::class,
+                (int) $invoice->id,
+                'number_changed',
+                "Invoice number changed from {$oldNumber} to {$newNumber}",
                 [
-                    'invoice_number' => $invoice->invoice_number,
-                    'fields' => $changedFields === []
-                        ? 'line items'
-                        : implode(', ', $changedFields).($linesReplaced ? ', line items' : ''),
+                    'invoice_number_from' => $oldNumber,
+                    'invoice_number_to' => $newNumber,
                 ],
             );
         }

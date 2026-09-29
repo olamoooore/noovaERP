@@ -298,6 +298,7 @@ Route::middleware([
         Route::post('/', [\App\Http\Controllers\Api\TenantUserController::class, 'invite'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.write');
         Route::put('/{id}/role', [\App\Http\Controllers\Api\TenantUserController::class, 'updateRole'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.write');
         // Owner/Admin-only credential management (enforced in-controller too).
+        Route::get('/{id}/activity', [\App\Http\Controllers\Api\TenantUserController::class, 'activity'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.write');
         Route::post('/{id}/password-link', [\App\Http\Controllers\Api\TenantUserController::class, 'sendPasswordLink'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.write');
         Route::post('/{id}/password', [\App\Http\Controllers\Api\TenantUserController::class, 'setPassword'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.write');
         Route::delete('/{id}', [\App\Http\Controllers\Api\TenantUserController::class, 'destroy'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.delete');
@@ -407,6 +408,10 @@ Route::middleware([
 
     // Global search omnibox — documents, master data and tags.
     Route::get('/search', [\App\Http\Controllers\Api\TagController::class, 'search']);
+    // Document tracing: resolve any reference to its whole document family.
+    Route::get('/reference-trace', [\App\Http\Controllers\Api\ReferenceTraceController::class, 'trace']);
+    // Document tracing: resolve any reference to its whole document family.
+    Route::get('/reference-trace', [\App\Http\Controllers\Api\ReferenceTraceController::class, 'trace']);
 
     // ─── ADR-005 Reversals (§15.3) ──────────────────────────────────────────
     // Issue #90 (BLOCKER, RBAC-1): reversal routes must require

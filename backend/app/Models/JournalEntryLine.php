@@ -32,6 +32,10 @@ class JournalEntryLine extends Model
         'department_id',
         'project_id',
         'location_id',
+        // Tax identity (2026_04_27_180000) — previously absent, so every
+        // create() silently dropped the tax code/id off persisted GL lines.
+        'tax_code',
+        'tax_id',
     ];
 
     protected $casts = [

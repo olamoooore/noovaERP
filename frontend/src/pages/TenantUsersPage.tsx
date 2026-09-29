@@ -34,6 +34,15 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { useAuthStore } from '@/store/authStore'
 import { RolesPermissionsDialog } from '@/components/team/RolesPermissionsDialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { cn, formatDate } from '@/lib/utils'
 
 interface TenantUser {
@@ -44,6 +53,7 @@ interface TenantUser {
   role_display: string | null
   is_default: boolean
   last_accessed_at: string | null
+  added_at: string | null
 }
 
 const ROLES = [
@@ -121,9 +131,57 @@ async function removeTenantUser(userId: number): Promise<void> {
   await api.delete(`/tenant-users/${userId}`)
 }
 
-async function inviteTenantUser(email: string, role: string, name?: string): Promise<{ email_sent?: boolean }> {
-  const res = await api.post('/tenant-users', { email, role, name })
+async function inviteTenantUser(payload: {
+  email: string
+  role: string
+  name?: string
+  password?: string
+}): Promise<{ email_sent?: boolean | null; password_set?: boolean }> {
+  const res = await api.post('/tenant-users', payload)
   return res.data ?? {}
+}
+
+async function sendPasswordLink(userId: number): Promise<{ email_sent?: boolean }> {
+  const res = await api.post(`/tenant-users/${userId}/password-link`)
+  return res.data ?? {}
+}
+
+interface MemberActivityEntry {
+  source: string
+  action: string | null
+  description: string
+  at: string
+}
+
+async function getMemberActivity(userId: number): Promise<MemberActivityEntry[]> {
+  const res = await api.get(`/tenant-users/${userId}/activity`)
+  return res.data?.data?.entries ?? []
+}
+
+const ACTIVITY_SOURCE_META: Record<string, { icon: string; tone: string }> = {
+  accounting: { icon: 'solar:calculator-minimalistic-bold-duotone', tone: 'bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:text-blue-300' },
+  invoice: { icon: 'solar:document-text-bold-duotone', tone: 'bg-violet-100 text-violet-600 dark:bg-violet-950/60 dark:text-violet-300' },
+  product: { icon: 'solar:box-bold-duotone', tone: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-300' },
+  chatter: { icon: 'solar:chat-round-dots-bold-duotone', tone: 'bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-300' },
+  notification: { icon: 'solar:bell-bold-duotone', tone: 'bg-slate-100 text-slate-600 dark:bg-slate-800/70 dark:text-slate-300' },
+  system: { icon: 'solar:server-square-cloud-bold-duotone', tone: 'bg-slate-100 text-slate-600 dark:bg-slate-800/70 dark:text-slate-300' },
+}
+
+const FALLBACK_ACTIVITY_META = { icon: 'solar:history-bold-duotone', tone: 'bg-muted text-muted-foreground' }
+
+function relativeTime(value: string | null): string {
+  if (!value) return 'Never'
+  const then = new Date(value).getTime()
+  if (Number.isNaN(then)) return 'Never'
+  const diffMs = Date.now() - then
+  const minutes = Math.floor(diffMs / 60000)
+  if (minutes < 1) return 'Just now'
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d ago`
+  return formatDate(value)
 }
 
 export default function TenantUsersPage() {
@@ -135,6 +193,15 @@ export default function TenantUsersPage() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState('viewer')
   const [inviteName, setInviteName] = useState('')
+  const [inviteMode, setInviteMode] = useState<'link' | 'password'>('link')
+  const [invitePassword, setInvitePassword] = useState('')
+  const [showInvitePassword, setShowInvitePassword] = useState(false)
+  const [linkSendingId, setLinkSendingId] = useState<number | null>(null)
+  const [removeTarget, setRemoveTarget] = useState<TenantUser | null>(null)
+  const [activityTarget, setActivityTarget] = useState<TenantUser | null>(null)
+  const [passwordTarget, setPasswordTarget] = useState<TenantUser | null>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [showNewPassword, setShowNewPassword] = useState(false)
   const [rolesOpen, setRolesOpen] = useState(false)
 
   const canManageRoles = currentRole === 'Owner' || currentRole === 'Admin'
@@ -164,6 +231,7 @@ export default function TenantUsersPage() {
     mutationFn: (id: number) => removeTenantUser(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tenant-users'] })
+      setRemoveTarget(null)
       toast({ title: 'User removed from tenant' })
     },
     onError: (err: any) => {
@@ -176,13 +244,23 @@ export default function TenantUsersPage() {
   })
 
   const inviteMutation = useMutation({
-    mutationFn: () => inviteTenantUser(inviteEmail, inviteRole, inviteName || undefined),
+    mutationFn: () => inviteTenantUser({
+      email: inviteEmail,
+      role: inviteRole,
+      name: inviteName || undefined,
+      password: inviteMode === 'password' ? invitePassword : undefined,
+    }),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['tenant-users'] })
-      if (data?.email_sent === false) {
+      if (data?.password_set) {
+        toast({
+          title: 'Member created',
+          description: 'They can sign in with the password you set. Share it securely.',
+        })
+      } else if (data?.email_sent === false) {
         toast({
           title: 'Member added — email not delivered',
-          description: 'The invitation email could not be sent. Ask them to use "Forgot password" on the sign-in page.',
+          description: 'The set-password email could not be sent. Use "Send password reset link" to retry.',
         })
       } else {
         toast({ title: 'Invitation sent', description: 'They will receive an email with a link to set their password.' })
@@ -190,6 +268,8 @@ export default function TenantUsersPage() {
       setInviteEmail('')
       setInviteName('')
       setInviteRole('viewer')
+      setInviteMode('link')
+      setInvitePassword('')
       setInviteOpen(false)
     },
     onError: (err: any) => {
@@ -199,6 +279,52 @@ export default function TenantUsersPage() {
         description: err?.response?.data?.message || 'Unknown error',
       })
     },
+  })
+
+  const activityQuery = useQuery({
+    queryKey: ['tenant-user-activity', activityTarget?.id],
+    queryFn: () => getMemberActivity(activityTarget!.id),
+    enabled: Boolean(activityTarget),
+  })
+
+  const setPasswordMutation = useMutation({
+    mutationFn: ({ id, password }: { id: number; password: string }) =>
+      api.post(`/tenant-users/${id}/password`, { password }),
+    onSuccess: () => {
+      toast({ title: 'Password updated', description: 'Their previous sessions were signed out.' })
+      setPasswordTarget(null)
+      setNewPassword('')
+    },
+    onError: (err: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to set password',
+        description: err?.response?.data?.message || 'Unknown error',
+      })
+    },
+  })
+
+  const sendLinkMutation = useMutation({
+    mutationFn: (id: number) => sendPasswordLink(id),
+    onSuccess: (data) => {
+      if (data?.email_sent === false) {
+        toast({
+          variant: 'destructive',
+          title: 'Email not delivered',
+          description: 'The reset link could not be emailed. Check the mail configuration and try again.',
+        })
+      } else {
+        toast({ title: 'Reset link sent', description: 'They will receive an email with a link to set a new password.' })
+      }
+    },
+    onError: (err: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to send reset link',
+        description: err?.response?.data?.message || 'Unknown error',
+      })
+    },
+    onSettled: () => setLinkSendingId(null),
   })
 
   const users = useMemo(() => data ?? [], [data])
@@ -371,26 +497,75 @@ export default function TenantUsersPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <Icon icon="solar:clock-circle-bold-duotone" className="h-3.5 w-3.5" />
-                          {user.last_accessed_at ? formatDate(user.last_accessed_at) : 'Never'}
-                        </span>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="flex items-center gap-1.5 text-xs" title={user.last_accessed_at ? formatDate(user.last_accessed_at) : undefined}>
+                            {user.last_accessed_at ? (
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                            ) : (
+                              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
+                            )}
+                            <span className={cn(user.last_accessed_at ? 'text-foreground' : 'text-muted-foreground')}>
+                              {relativeTime(user.last_accessed_at)}
+                            </span>
+                          </span>
+                          {user.added_at && (
+                            <span className="text-[11px] text-muted-foreground">Added {formatDate(user.added_at)}</span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        {canRemoveUsers && !user.is_default && (
+                        {canManageRoles ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="outline" size="sm" className="h-7 rounded-full px-3 text-xs">
+                                Manage
+                                <Icon icon="solar:alt-arrow-down-bold" className="ml-1.5 h-3 w-3" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-56">
+                              <DropdownMenuLabel>{user.name}</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => setActivityTarget(user)}>
+                                <Icon icon="solar:history-bold-duotone" className="mr-2 h-4 w-4" />
+                                View activity
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                disabled={linkSendingId === user.id}
+                                onClick={() => {
+                                  setLinkSendingId(user.id)
+                                  sendLinkMutation.mutate(user.id)
+                                }}
+                              >
+                                <Icon icon="solar:letter-unread-bold-duotone" className="mr-2 h-4 w-4" />
+                                Send password reset link
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => { setPasswordTarget(user); setNewPassword(''); setShowNewPassword(false) }}>
+                                <Icon icon="solar:key-minimalistic-square-bold-duotone" className="mr-2 h-4 w-4" />
+                                Set password
+                              </DropdownMenuItem>
+                              {canRemoveUsers && !user.is_default && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                                    onClick={() => setRemoveTarget(user)}
+                                  >
+                                    <Icon icon="solar:user-block-bold-duotone" className="mr-2 h-4 w-4" />
+                                    Remove from workspace
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : (
                           <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-destructive hover:text-destructive"
-                            title="Remove from tenant"
-                            onClick={() => {
-                              if (confirm(`Remove ${user.name} from this workspace?`)) {
-                                removeMutation.mutate(user.id)
-                              }
-                            }}
-                            disabled={removeMutation.isPending}
+                            variant="outline"
+                            size="sm"
+                            className="h-7 rounded-full px-3 text-xs"
+                            onClick={() => setActivityTarget(user)}
                           >
-                            <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-4 w-4" />
+                            <Icon icon="solar:history-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
+                            Activity
                           </Button>
                         )}
                       </TableCell>
@@ -408,7 +583,7 @@ export default function TenantUsersPage() {
 
       {/* Invite dialog */}
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Invite Team Member</DialogTitle>
             <DialogDescription>
@@ -417,29 +592,32 @@ export default function TenantUsersPage() {
           </DialogHeader>
 
           <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="invite-email">Email</Label>
-              <Input
-                id="invite-email"
-                type="email"
-                placeholder="colleague@company.com"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-              />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="invite-email">Email <span className="text-destructive">*</span></Label>
+                <Input
+                  id="invite-email"
+                  type="email"
+                  placeholder="colleague@company.com"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="invite-name">Name (optional)</Label>
+                <Input
+                  id="invite-name"
+                  placeholder="John Doe"
+                  value={inviteName}
+                  onChange={(e) => setInviteName(e.target.value)}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="invite-name">Name (optional)</Label>
-              <Input
-                id="invite-name"
-                placeholder="John Doe"
-                value={inviteName}
-                onChange={(e) => setInviteName(e.target.value)}
-              />
-            </div>
+
             <div className="space-y-2">
               <Label htmlFor="invite-role">Role</Label>
               <Select value={inviteRole} onValueChange={setInviteRole}>
-                <SelectTrigger id="invite-role">
+                <SelectTrigger id="invite-role" className="h-9">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -451,26 +629,269 @@ export default function TenantUsersPage() {
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="space-y-2">
+              <Label>Password delivery</Label>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setInviteMode('link')}
+                  className={cn(
+                    'flex items-start gap-3 rounded-xl border p-3 text-left transition-colors',
+                    inviteMode === 'link'
+                      ? 'border-primary/40 bg-primary/5'
+                      : 'border-slate-200/80 hover:bg-muted/40 dark:border-slate-800',
+                  )}
+                >
+                  <Icon
+                    icon={inviteMode === 'link' ? 'solar:check-circle-bold' : 'solar:circle-bold'}
+                    className={cn('mt-0.5 h-4 w-4 shrink-0', inviteMode === 'link' ? 'text-primary' : 'opacity-50')}
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">Email a set-password link</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      They choose their own password. Recommended.
+                    </span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInviteMode('password')}
+                  className={cn(
+                    'flex items-start gap-3 rounded-xl border p-3 text-left transition-colors',
+                    inviteMode === 'password'
+                      ? 'border-primary/40 bg-primary/5'
+                      : 'border-slate-200/80 hover:bg-muted/40 dark:border-slate-800',
+                  )}
+                >
+                  <Icon
+                    icon={inviteMode === 'password' ? 'solar:check-circle-bold' : 'solar:circle-bold'}
+                    className={cn('mt-0.5 h-4 w-4 shrink-0', inviteMode === 'password' ? 'text-primary' : 'opacity-50')}
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">Set a password now</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      Share it with them securely out-of-band.
+                    </span>
+                  </span>
+                </button>
+              </div>
+
+              {inviteMode === 'password' && (
+                <div className="space-y-2 pt-1">
+                  <Label htmlFor="invite-password">Password <span className="text-destructive">*</span></Label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Input
+                        id="invite-password"
+                        type={showInvitePassword ? 'text' : 'password'}
+                        value={invitePassword}
+                        onChange={(e) => setInvitePassword(e.target.value)}
+                        placeholder="At least 8 characters"
+                        className="pr-9"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowInvitePassword((v) => !v)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        aria-label={showInvitePassword ? 'Hide password' : 'Show password'}
+                      >
+                        <Icon icon={showInvitePassword ? 'solar:eye-closed-bold' : 'solar:eye-bold'} className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <HeaderActionButton
+                      type="button"
+                      variant="outline"
+                      icon="solar:refresh-bold"
+                      onClick={() => {
+                        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%'
+                        let generated = ''
+                        for (let i = 0; i < 12; i++) generated += chars[Math.floor(Math.random() * chars.length)]
+                        setInvitePassword(generated)
+                        setShowInvitePassword(true)
+                      }}
+                    >
+                      Generate
+                    </HeaderActionButton>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setInviteOpen(false)}>
+            <HeaderActionButton variant="outline" onClick={() => setInviteOpen(false)} disabled={inviteMutation.isPending}>
               Cancel
-            </Button>
-            <Button
+            </HeaderActionButton>
+            <HeaderActionButton
+              icon="solar:user-plus-bold-duotone"
+              loading={inviteMutation.isPending}
+              disabled={
+                !inviteEmail
+                || inviteMutation.isPending
+                || (inviteMode === 'password' && invitePassword.length < 8)
+              }
               onClick={() => inviteMutation.mutate()}
-              disabled={!inviteEmail || inviteMutation.isPending}
             >
-              {inviteMutation.isPending ? (
-                <Icon icon="eos-icons:loading" className="mr-2 h-4 w-4" />
-              ) : (
-                <Icon icon="solar:user-plus-bold-duotone" className="mr-2 h-4 w-4" />
-              )}
               Invite Member
-            </Button>
+            </HeaderActionButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Member activity log */}
+      <Dialog open={Boolean(activityTarget)} onOpenChange={(open) => !open && setActivityTarget(null)}>
+        <DialogContent className="max-w-xl">
+          {activityTarget && (
+            <>
+              <DialogHeader>
+                <div className="flex items-center gap-3">
+                  <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-semibold', styleFor(activityTarget.role).avatar)}>
+                    {initials(activityTarget.name, activityTarget.email)}
+                  </div>
+                  <div className="min-w-0">
+                    <DialogTitle className="truncate">{activityTarget.name}</DialogTitle>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{activityTarget.email}</p>
+                  </div>
+                </div>
+              </DialogHeader>
+
+              <div className="flex flex-wrap items-center gap-2 py-1">
+                <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium', styleFor(activityTarget.role).chip)}>
+                  <Icon icon={styleFor(activityTarget.role).icon} className="h-3 w-3" />
+                  {activityTarget.role_display || activityTarget.role}
+                </span>
+                <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                  Last access: {relativeTime(activityTarget.last_accessed_at)}
+                </span>
+                {activityTarget.added_at && (
+                  <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                    Added {formatDate(activityTarget.added_at)}
+                  </span>
+                )}
+              </div>
+
+              <div className="max-h-96 space-y-2 overflow-y-auto py-2">
+                {activityQuery.isLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="h-7 w-7 animate-spin rounded-full border-b-2 border-primary" />
+                  </div>
+                ) : (activityQuery.data ?? []).length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-300 py-12 text-center text-muted-foreground dark:border-slate-700">
+                    <Icon icon="solar:history-bold-duotone" className="mx-auto mb-2 h-10 w-10 opacity-40" />
+                    <p className="text-sm">No recorded activity yet</p>
+                    <p className="mt-0.5 text-xs">Actions in accounting, documents, products and notifications will appear here.</p>
+                  </div>
+                ) : (
+                  (activityQuery.data ?? []).map((entry, index) => {
+                    const meta = ACTIVITY_SOURCE_META[entry.source] ?? FALLBACK_ACTIVITY_META
+                    return (
+                      <div key={index} className="flex items-start gap-3 rounded-xl border border-slate-200/80 p-3 dark:border-slate-800">
+                        <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', meta.tone)}>
+                          <Icon icon={meta.icon} className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm">{entry.description}</p>
+                          <p className="mt-0.5 text-[11px] text-muted-foreground">
+                            {formatDate(entry.at)} · {relativeTime(entry.at)}
+                          </p>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+
+              <DialogFooter>
+                <HeaderActionButton variant="outline" onClick={() => setActivityTarget(null)}>
+                  Close
+                </HeaderActionButton>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Set password */}
+      <Dialog open={Boolean(passwordTarget)} onOpenChange={(open) => !open && setPasswordTarget(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Set a new password</DialogTitle>
+            <DialogDescription>
+              {passwordTarget
+                ? `Set a new password for ${passwordTarget.name} (${passwordTarget.email}). Their existing sessions will be signed out.`
+                : undefined}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 py-2">
+            <Label htmlFor="member-password">Password <span className="text-destructive">*</span></Label>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Input
+                  id="member-password"
+                  type={showNewPassword ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="At least 8 characters"
+                  className="pr-9"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label={showNewPassword ? 'Hide password' : 'Show password'}
+                >
+                  <Icon icon={showNewPassword ? 'solar:eye-closed-bold' : 'solar:eye-bold'} className="h-4 w-4" />
+                </button>
+              </div>
+              <HeaderActionButton
+                type="button"
+                variant="outline"
+                icon="solar:refresh-bold"
+                onClick={() => {
+                  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%'
+                  let generated = ''
+                  for (let i = 0; i < 12; i++) generated += chars[Math.floor(Math.random() * chars.length)]
+                  setNewPassword(generated)
+                  setShowNewPassword(true)
+                }}
+              >
+                Generate
+              </HeaderActionButton>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <HeaderActionButton variant="outline" onClick={() => setPasswordTarget(null)} disabled={setPasswordMutation.isPending}>
+              Cancel
+            </HeaderActionButton>
+            <HeaderActionButton
+              icon="solar:key-minimalistic-square-bold-duotone"
+              loading={setPasswordMutation.isPending}
+              disabled={newPassword.length < 8 || setPasswordMutation.isPending}
+              onClick={() => passwordTarget && setPasswordMutation.mutate({ id: passwordTarget.id, password: newPassword })}
+            >
+              Set password
+            </HeaderActionButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Remove member confirmation */}
+      <ConfirmDialog
+        open={Boolean(removeTarget)}
+        onOpenChange={(open) => !open && setRemoveTarget(null)}
+        title="Remove this member?"
+        description={
+          removeTarget
+            ? `${removeTarget.name} (${removeTarget.email}) will lose access to this workspace. Their account and other workspace memberships are not affected.`
+            : undefined
+        }
+        confirmLabel="Remove"
+        isPending={removeMutation.isPending}
+        onConfirm={() => removeTarget && removeMutation.mutate(removeTarget.id)}
+      />
     </div>
   )
 }

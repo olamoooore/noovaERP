@@ -148,9 +148,14 @@ class AccountingDocumentPolicyService
     {
         $total = 0;
         foreach ($lines as $line) {
-            $lineSubtotal = $line->quantity * $line->unitPrice;
-            $lineTax = $lineSubtotal * ($line->taxRate / 100);
-            $total += $lineSubtotal + $lineTax - $line->discountAmount;
+            // MRD R3.1: engine-owned arithmetic (discount handled in-engine).
+            $calc = \App\Services\TaxEngineService::calculate(
+                (float) ($line->quantity * $line->unitPrice),
+                (float) $line->taxRate,
+                false,
+                (float) $line->discountAmount,
+            );
+            $total += $calc['gross'];
         }
 
         return $total;

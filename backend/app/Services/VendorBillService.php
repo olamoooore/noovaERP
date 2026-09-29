@@ -14,6 +14,7 @@ class VendorBillService
 {
     public function __construct(
         private readonly PostingEngineInterface $postingEngine,
+        private readonly TaxDeterminationService $taxDeterminationService,
     ) {}
 
     /**
@@ -52,13 +53,16 @@ class VendorBillService
         }
 
         return DB::transaction(function () use ($bill) {
+            $bill->loadMissing('vendor.addresses', 'lines.product');
+            $taxDetermination = $this->taxDeterminationService->determineForBill($bill);
             $expenseLines = [];
-            $taxLines = [];
             $lineTotalSum = 0.0;
+            $bookedTaxTotal = 0.0;
 
             foreach ($bill->lines as $billLine) {
                 $lineTotal = (float) $billLine->line_total;
                 $lineTotalSum += $lineTotal;
+                $bookedTaxTotal += (float) $billLine->tax_amount;
 
                 $expenseLines[] = new PostingRequestLine(
                     accountMappingKey: 'general_expense',
@@ -67,17 +71,26 @@ class VendorBillService
                     credit: 0,
                     description: $billLine->description ?? "Bill {$bill->bill_number}",
                 );
+            }
 
-                // DR input tax per line
-                if ((float) $billLine->tax_amount > 0) {
-                    $taxLines[] = new PostingRequestLine(
-                        accountMappingKey: 'input_tax',
-                        accountId: null,
-                        debit: (float) $billLine->tax_amount,
-                        credit: 0,
-                        description: "Tax - Bill {$bill->bill_number}",
-                    );
+            // MRD TAX-REQ-07 (D4/#42 follow-up): one DR input-tax GL line per
+            // determined tax_code so every tax-bearing line writes a
+            // tax_transaction_details row, while the booked bill tax total is
+            // preserved exactly (balance-safe allocation).
+            $taxLines = [];
+            foreach (TaxDeterminationService::allocateBookedTax($taxDetermination['tax_lines'] ?? [], round($bookedTaxTotal, 2)) as $allocation) {
+                if ($allocation['amount'] <= 0) {
+                    continue;
                 }
+                $taxLines[] = new PostingRequestLine(
+                    accountMappingKey: 'input_tax',
+                    accountId: null,
+                    debit: $allocation['amount'],
+                    credit: 0,
+                    description: "Tax - Bill {$bill->bill_number}".($allocation['tax_code'] ? " [{$allocation['tax_code']}]" : ''),
+                    taxCode: $allocation['tax_code'],
+                    taxId: $allocation['tax_id'],
+                );
             }
 
             $netBeforeTax = round($lineTotalSum - (float) ($bill->discount_amount ?? 0), 2);
@@ -131,6 +144,7 @@ class VendorBillService
                     'grni_relief' => $reliefApplied,
                     'goods_receipt_id' => $bill->goods_receipt_id,
                 ],
+                taxDeterminationResult: $taxDetermination,
             );
 
             $result = $this->postingEngine->post($request);

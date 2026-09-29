@@ -246,8 +246,10 @@ class TaxRatesController extends Controller
             return response()->json(['error' => 'Tax rate not found'], 404);
         }
 
-        $taxAmount = ($request->amount * $taxRate->rate) / 100;
-        $totalAmount = $request->amount + $taxAmount;
+        // MRD R3.1: engine-owned arithmetic.
+        $calc = \App\Services\TaxEngineService::calculate((float) $request->amount, (float) $taxRate->rate, false);
+        $taxAmount = $calc['tax'];
+        $totalAmount = $calc['gross'];
 
         return response()->json([
             'base_amount' => $request->amount,

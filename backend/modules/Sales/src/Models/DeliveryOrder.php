@@ -45,6 +45,8 @@ class DeliveryOrder extends Model
         'source',
         'external_reference',
         'po_number',
+        'customer_reference',
+        'internal_reference',
         'salesperson',
         'attention_to',
         'invoice_id',

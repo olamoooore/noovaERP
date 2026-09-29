@@ -418,6 +418,7 @@ class SettingsController extends Controller
             'enabled' => true,
             'pricing_mode' => 'exclusive', // exclusive | inclusive
             'default_tax_id' => null,
+            'jurisdiction' => null, // ISO-3166 alpha-2 home jurisdiction (MRD TAX-REQ-02)
             'default_tax_rate' => null,
             'default_tax_name' => null,
         ]);
@@ -464,6 +465,7 @@ class SettingsController extends Controller
             'tax.enabled' => 'nullable|boolean',
             'tax.pricing_mode' => 'nullable|in:exclusive,inclusive',
             'tax.default_tax_id' => 'nullable|integer',
+            'tax.jurisdiction' => ['nullable', 'string', 'size:2', 'regex:/^[A-Za-z]{2}$/'],
 
             'mail' => 'nullable|array',
             'mail.driver' => 'nullable|in:smtp,resend,log,array,sendmail',
@@ -487,11 +489,18 @@ class SettingsController extends Controller
         }
 
         if (array_key_exists('tax', $validated)) {
+            $taxInput = $validated['tax'] ?? [];
+            if (array_key_exists('jurisdiction', $taxInput)) {
+                $taxInput['jurisdiction'] = $taxInput['jurisdiction'] === null
+                    ? null
+                    : strtoupper($taxInput['jurisdiction']);
+            }
             Setting::setValue('tax', array_merge([
                 'enabled' => true,
                 'pricing_mode' => 'exclusive',
                 'default_tax_id' => null,
-            ], $validated['tax'] ?? []));
+                'jurisdiction' => null,
+            ], $taxInput));
         }
 
         if (array_key_exists('mail', $validated)) {

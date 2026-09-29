@@ -451,6 +451,36 @@ export const baseNavItems: NavItem[] = [
       
     ],
       },
+                  {
+    title: 'Tax',
+    href: '',
+    icon: 'solar:calculator-bold-duotone',
+    children: [
+      {
+        title: 'Tax Engine',
+        href: '/accounting/tax-engine',
+        icon: 'solar:shield-check-bold-duotone',
+        keywords: ['tax engine', 'gst', 'sst', 'vat', 'tax rules', 'tax rate', 'lhdn', 'iras'],
+      },
+      {
+        title: 'Tax Returns',
+        href: '/accounting/tax-returns',
+        icon: 'solar:document-text-bold-duotone',
+        keywords: ['gst f5', 'f7', 'sst-02', 'statutory return', 'file tax'],
+      },
+      {
+        title: 'Tax Settings (legacy)',
+        href: '/accounting/configuration/taxes',
+        icon: 'solar:settings-bold-duotone',
+      },
+      {
+        title: 'Tax Report',
+        href: '/accounting/tax-report',
+        icon: 'solar:chart-square-bold-duotone',
+        keywords: ['tax journal', 'reconciliation', 'filing tracker', 'gl variance'],
+      },
+    ],
+      },
                  {
     title: 'Closing',
     href: '',
@@ -462,11 +492,6 @@ export const baseNavItems: NavItem[] = [
         href: '/accounting/core/reconciliation',
         icon: 'solar:document-text-bold-duotone',
       },
-      // {
-      //   title: 'Tax Returns',
-      //   href: '/accounting/core/tax-returns',
-      //   icon: 'solar:document-text-bold-duotone',
-      // },
       {
         title: 'Lock Dates',
         href: '/accounting/core/lock-dates',

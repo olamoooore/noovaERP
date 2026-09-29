@@ -49,6 +49,20 @@ export function useGlobalSearch(query: string, tagSlugs: string[], enabled: bool
   })
 }
 
+export function useReferenceTrace(query: string, enabled: boolean, limit = 25) {
+  return useQuery({
+    queryKey: ['reference-trace', query, limit],
+    queryFn: async () => {
+      const res = await api.get('/reference-trace', {
+        params: { q: query, limit },
+      })
+      return res.data as { query: string; groups: SearchGroup[]; total: number }
+    },
+    enabled,
+    staleTime: 15_000,
+  })
+}
+
 export function useTags(enabled = true) {
   return useQuery({
     queryKey: ['tags'],
@@ -83,6 +97,12 @@ export function GlobalSearch() {
   const { data: tags } = useTags(open)
   const active = open && (query.trim().length > 0 || tagSlugs.length > 0)
   const { data, isFetching } = useGlobalSearch(query, tagSlugs, active, 6)
+  // Reference tracing: any PO / Customer Ref. / Internal Ref. pulls up the
+  // whole linked document family (quote → SO → DO → invoice).
+  const { data: traceData } = useReferenceTrace(
+    query.trim(),
+    active && tagSlugs.length === 0 && query.trim().length >= 3,
+  )
   const { hasPermission } = useAuthStore()
 
   const pageHits = useMemo<SearchHit[]>(() => {
@@ -119,10 +139,23 @@ export function GlobalSearch() {
     [pageHits],
   )
 
-  const groups = useMemo(
+  const searchGroups = useMemo(
     () => (pagesGroup ? [pagesGroup, ...(data?.groups ?? [])] : (data?.groups ?? [])),
     [pagesGroup, data],
   )
+
+  const groups = useMemo(() => {
+    if (!traceData?.groups?.length) {
+      return searchGroups
+    }
+
+    const shown = new Set(searchGroups.flatMap((group) => group.items.map((item) => item.url)))
+    const traceGroups = traceData.groups
+      .map((group) => ({ ...group, items: group.items.filter((item) => !shown.has(item.url)) }))
+      .filter((group) => group.items.length > 0)
+
+    return [...searchGroups, ...traceGroups]
+  }, [searchGroups, traceData])
 
   // Close on outside click
   useEffect(() => {

@@ -4,10 +4,11 @@ namespace App\Services;
 
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\PostingRequest;
-use App\Accounting\DTOs\ReversalRequest;
 use App\Accounting\DTOs\PostingRequestLine;
+use App\Accounting\DTOs\ReversalRequest;
 use App\Models\CustomerCreditNote;
 use App\Models\Invoice;
+use App\Models\TaxDeterminationResult;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
@@ -43,7 +44,8 @@ class CustomerCreditNoteService
             foreach ($lines as $lineData) {
                 $lineTotal = (float) $lineData['quantity'] * (float) $lineData['unit_price'];
                 $subtotal += $lineTotal;
-                $taxAmount += $lineTotal * ((float) ($lineData['tax_rate'] ?? 0) / 100);
+                // MRD R3.1: engine-owned arithmetic.
+                $taxAmount += \App\Services\TaxEngineService::calculate($lineTotal, (float) ($lineData['tax_rate'] ?? 0), false)['tax'];
             }
             $data['subtotal'] = round($subtotal, 2);
             $data['tax_amount'] = round($taxAmount, 2);
@@ -115,6 +117,55 @@ class CustomerCreditNoteService
         try {
             $lines = [];
 
+            // MRD TAX-REQ-07 (D4): the credit note must reverse the ORIGINAL
+            // invoice's tax identity, not just the amount. Resolve the tax
+            // identity per line from the persisted invoice determination
+            // (keyed by invoice_line_id) and build a canonical, persisted
+            // credit-note determination so the reversal lands in
+            // tax_transaction_details and nets on the statutory return
+            // (TaxReturnAggregator signs credit_note rows negative).
+            $determinationService = app(TaxDeterminationService::class);
+            $creditNote->loadMissing('lines.product');
+            $originalLines = $determinationService->latestDeterminationLines('invoice', (int) $creditNote->invoice_id);
+            $originalResult = TaxDeterminationResult::where('source_record_type', 'invoice')
+                ->where('source_record_id', (int) $creditNote->invoice_id)
+                ->current()
+                ->orderByDesc('result_version')
+                ->first();
+
+            $cnLines = [];
+            foreach ($creditNote->lines as $line) {
+                $base = round((float) $line->quantity * (float) $line->unit_price, 2);
+                $rate = (float) ($line->tax_rate ?? 0);
+                $origin = $line->invoice_line_id !== null ? ($originalLines[$line->invoice_line_id] ?? null) : null;
+
+                $cnLines[] = [
+                    'source_line_id' => $line->id,
+                    'product' => $line->product,
+                    'base' => $base,
+                    'rate' => $origin && (float) $origin['tax_rate'] > 0 ? (float) $origin['tax_rate'] : $rate,
+                    'tax' => \App\Services\TaxEngineService::calculate($base, $rate, false)['tax'],
+                    'tax_code_override' => $origin['tax_code'] ?? null,
+                    'treatment_override' => $origin['treatment'] ?? null,
+                    'tax_id_override' => $origin['tax_id'] ?? null,
+                ];
+            }
+
+            $taxDetermination = null;
+            $bookedTaxTotal = round((float) $creditNote->tax_amount, 2);
+
+            if ($bookedTaxTotal > 0 && $cnLines !== []) {
+                $taxDetermination = $determinationService->determineForLineSet(
+                    documentType: 'credit_note',
+                    documentId: (int) $creditNote->id,
+                    date: $creditNote->credit_note_date->toDateString(),
+                    lines: $cnLines,
+                    direction: 'output',
+                    jurisdiction: $originalResult?->jurisdiction,
+                    customerId: $creditNote->customer_id,
+                );
+            }
+
             // DR Sales Revenue (subtotal)
             $lines[] = new PostingRequestLine(
                 accountMappingKey: 'sales_revenue',
@@ -124,14 +175,19 @@ class CustomerCreditNoteService
                 description: "Credit Note {$creditNote->credit_note_number}",
             );
 
-            // DR Sales Tax Payable
-            if ((float) $creditNote->tax_amount > 0) {
+            // DR Sales Tax Payable — one line per reversed tax_code
+            foreach (TaxDeterminationService::allocateBookedTax($taxDetermination['tax_lines'] ?? [], $bookedTaxTotal) as $allocation) {
+                if ($allocation['amount'] <= 0) {
+                    continue;
+                }
                 $lines[] = new PostingRequestLine(
                     accountMappingKey: 'sales_tax_payable',
                     accountId: null,
-                    debit: (float) $creditNote->tax_amount,
+                    debit: $allocation['amount'],
                     credit: 0,
-                    description: "Tax - Credit Note {$creditNote->credit_note_number}",
+                    description: "Tax - Credit Note {$creditNote->credit_note_number}".($allocation['tax_code'] ? " [{$allocation['tax_code']}]" : ''),
+                    taxCode: $allocation['tax_code'],
+                    taxId: $allocation['tax_id'],
                 );
             }
 
@@ -152,6 +208,7 @@ class CustomerCreditNoteService
                 lines: $lines,
                 reference: $creditNote->credit_note_number,
                 userId: TenantUserHelper::requireTenantUserId($creditNote->created_by),
+                taxDeterminationResult: $taxDetermination,
             ));
 
             if (! $result->success) {

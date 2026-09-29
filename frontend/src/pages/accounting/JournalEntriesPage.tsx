@@ -527,58 +527,100 @@ export default function JournalEntriesPage() {
   const totals = calculateTotals();
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Journal Entries</h1>
-          <p className="text-muted-foreground mt-1">
-            Create and manage manual journal entries
-          </p>
-        </div>
-        <HeaderActionButton icon="solar:arrow-left-linear" onClick={() => navigate('/accounting')}>
+      <div>
+        <HeaderActionButton
+          variant="outline"
+          icon="solar:alt-arrow-left-bold-duotone"
+          onClick={() => navigate('/accounting')}
+          className="mb-3"
+        >
           Back to Accounting
         </HeaderActionButton>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Journal Entries</h1>
+            <p className="mt-1 text-muted-foreground">
+              Create and manage manual journal entries
+            </p>
+          </div>
+          {canWrite && (
+            <div className="flex flex-wrap items-center gap-2">
+              <HeaderActionButton
+                variant="outline"
+                icon="solar:import-bold-duotone"
+                onClick={() => navigate('/accounting/core/journal-entries/import')}
+              >
+                Import CSV
+              </HeaderActionButton>
+              <HeaderActionButton
+                variant="outline"
+                icon="solar:notebook-bold-duotone"
+                onClick={() => navigate('/accounting/core/journals')}
+              >
+                Manage Journals
+              </HeaderActionButton>
+              <HeaderActionButton
+                icon="solar:add-circle-bold-duotone"
+                onClick={() => { resetForm(); setFormOpen(true); }}
+              >
+                New Entry
+              </HeaderActionButton>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(v: any) => { setActiveTab(v); setPage(1); }}>
-        <div className="flex items-center justify-between">
-          <TabsList>
-            <TabsTrigger value="all">All Entries</TabsTrigger>
-            <TabsTrigger value="draft">Draft</TabsTrigger>
-            <TabsTrigger value="posted">Posted</TabsTrigger>
-            <TabsTrigger value="reversed">Reversed</TabsTrigger>
-          </TabsList>
-          <div className="flex flex-wrap justify-end gap-2">
-            <SalesDocumentExportMenu endpoint="/accounting/journal-entries/export" filenamePrefix="journal_entries" columns={JOURNAL_EXPORT_COLUMNS} filters={journalFilters} selectedIds={selectedIds} />
-            <Input
-              placeholder="Search entry no., reference, description..."
-              value={searchTerm}
-              onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
-              className="h-8 rounded-full px-3 text-xs w-72"
-            />
-            <Input type="date" aria-label="From date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }} className="h-8 rounded-full px-3 text-xs w-40" />
-            <Input type="date" aria-label="To date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} className="h-8 rounded-full px-3 text-xs w-40" />
-            {canWrite && (
-              <HeaderActionButton icon="solar:import-bold-duotone" variant="outline" onClick={() => navigate('/accounting/core/journal-entries/import')}>
-                Import CSV
-              </HeaderActionButton>
-            )}
-            {canWrite && (
-              <HeaderActionButton icon="solar:notebook-bold-duotone" variant="outline" onClick={() => navigate('/accounting/core/journals')}>
-                Manage Journals
-              </HeaderActionButton>
-            )}
-            {canWrite && (
-              <HeaderActionButton icon="solar:add-circle-linear" onClick={() => { resetForm(); setFormOpen(true); }}>
-                New Entry
-              </HeaderActionButton>
-            )}
-          </div>
-        </div>
+        <TabsList>
+          <TabsTrigger value="all">All Entries</TabsTrigger>
+          <TabsTrigger value="draft">Draft</TabsTrigger>
+          <TabsTrigger value="posted">Posted</TabsTrigger>
+          <TabsTrigger value="reversed">Reversed</TabsTrigger>
+        </TabsList>
 
-        <TabsContent value={activeTab} className="space-y-4">
+        <TabsContent value={activeTab} className="mt-4 space-y-4">
+          {/* Filters */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-full sm:w-72">
+              <Icon
+                icon="solar:magnifer-bold-duotone"
+                className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                placeholder="Search entry no., reference, description..."
+                value={searchTerm}
+                onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
+                className="h-8 rounded-full pl-9 pr-3 text-xs"
+              />
+            </div>
+            <Input
+              type="date"
+              aria-label="From date"
+              value={dateFrom}
+              onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+              className="h-8 w-40 rounded-full px-3 text-xs"
+            />
+            <Input
+              type="date"
+              aria-label="To date"
+              value={dateTo}
+              onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+              className="h-8 w-40 rounded-full px-3 text-xs"
+            />
+            <div className="ml-auto">
+              <SalesDocumentExportMenu
+                endpoint="/accounting/journal-entries/export"
+                filenamePrefix="journal_entries"
+                columns={JOURNAL_EXPORT_COLUMNS}
+                filters={journalFilters}
+                selectedIds={selectedIds}
+              />
+            </div>
+          </div>
+
           <Card className="p-6">
             {isLoading ? (
               <div className="text-center py-12">
@@ -653,15 +695,32 @@ export default function JournalEntriesPage() {
                       <TableCell className="text-sm"><div className="truncate" title={entry.journal?.name || undefined}>{entry.journal?.name || '-'}</div></TableCell>
                       <TableCell><div className="max-w-[16rem] truncate" title={entry.description || undefined}>{entry.description}</div></TableCell>
                       <TableCell className="text-sm text-muted-foreground"><div className="max-w-[10rem] truncate" title={entry.remark || undefined}>{entry.remark || '-'}</div></TableCell>
-                      <TableCell className="text-sm text-muted-foreground"><div className="max-w-[9rem] truncate" title={entry.reference || undefined}>{entry.reference || '-'}</div></TableCell>
+                      <TableCell className="text-sm">
+                        {entry.reference_link ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              navigate(entry.reference_link!.url);
+                            }}
+                            className="block max-w-[9rem] truncate text-left font-medium text-primary underline-offset-2 hover:underline"
+                            title={`Open ${entry.reference_link.label ?? entry.reference}`}
+                          >
+                            {entry.reference || entry.reference_link.label || 'Open'}
+                          </button>
+                        ) : (
+                          <div className="max-w-[9rem] truncate text-muted-foreground" title={entry.reference || undefined}>{entry.reference || '-'}</div>
+                        )}
+                      </TableCell>
                       <TableCell className="whitespace-nowrap text-right font-medium tabular-nums">
                         {formatCurrency(entryBalance(entry))}
                       </TableCell>
                       <TableCell>
-                        {entry.is_reversal ? (
+                        {entry.is_reversal || entry.lifecycle_status === 'reversed' ? (
                           <Badge
                             variant="outline"
                             className="gap-1 whitespace-nowrap border-transparent bg-rose-100 px-1.5 py-0 text-[10px] font-medium leading-4 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
+                            title={entry.is_reversal ? `Reverses ${entry.reference?.replace(/^Reversal:\s*/, '') ?? 'the original entry'}` : 'This entry has been reversed'}
                           >
                             <Icon icon="solar:undo-left-round-bold" className="h-3 w-3" />
                             Reversed
@@ -693,7 +752,7 @@ export default function JournalEntriesPage() {
                               )}
                             </>
                           )}
-                          {entry.status === 'posted' && !entry.is_reversal && canReverse && (
+                          {entry.status === 'posted' && !entry.is_reversal && entry.lifecycle_status !== 'reversed' && canReverse && (
                             <Button size="icon" variant="ghost" className="h-7 w-7" title="Reverse" aria-label="Reverse entry" onClick={() => handleReverse(entry.id)}>
                               <Icon icon="solar:refresh-linear" className="h-4 w-4" />
                             </Button>
@@ -895,19 +954,17 @@ export default function JournalEntriesPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setFormOpen(false); resetForm(); }}>
+            <HeaderActionButton variant="outline" onClick={() => { setFormOpen(false); resetForm(); }}>
               Cancel
-            </Button>
-            <Button onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending || !totals.isBalanced}>
-              {createMutation.isPending || updateMutation.isPending ? (
-                <>
-                  <Icon icon="svg-spinners:ring-resize" className="w-4 h-4 mr-2" />
-                  {editingEntryId ? 'Saving...' : 'Creating...'}
-                </>
-              ) : (
-                editingEntryId ? 'Save Changes' : 'Create Entry'
-              )}
-            </Button>
+            </HeaderActionButton>
+            <HeaderActionButton
+              icon="solar:diskette-bold"
+              loading={createMutation.isPending || updateMutation.isPending}
+              onClick={handleSubmit}
+              disabled={createMutation.isPending || updateMutation.isPending || !totals.isBalanced}
+            >
+              {editingEntryId ? 'Save Changes' : 'Create Entry'}
+            </HeaderActionButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -929,9 +986,19 @@ export default function JournalEntriesPage() {
                 <div>
                   <Label className="text-muted-foreground">Status</Label>
                   <p>
-                    <Badge variant={selectedEntry.status === 'posted' ? 'default' : 'secondary'}>
-                      {selectedEntry.status}
-                    </Badge>
+                    {selectedEntry.is_reversal || selectedEntry.lifecycle_status === 'reversed' ? (
+                      <Badge
+                        variant="outline"
+                        className="gap-1 whitespace-nowrap border-transparent bg-rose-100 px-2 py-0.5 text-[11px] font-medium text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
+                      >
+                        <Icon icon="solar:undo-left-round-bold" className="h-3 w-3" />
+                        Reversed
+                      </Badge>
+                    ) : (
+                      <Badge variant={selectedEntry.status === 'posted' ? 'default' : 'secondary'}>
+                        {selectedEntry.status}
+                      </Badge>
+                    )}
                   </p>
                 </div>
                 <div>
@@ -940,7 +1007,19 @@ export default function JournalEntriesPage() {
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Reference</Label>
-                  <p>{selectedEntry.reference || '-'}</p>
+                  <p>
+                    {selectedEntry.reference_link ? (
+                      <button
+                        type="button"
+                        onClick={() => navigate(selectedEntry.reference_link!.url)}
+                        className="font-medium text-primary underline-offset-2 hover:underline"
+                      >
+                        {selectedEntry.reference || selectedEntry.reference_link.label || 'Open'}
+                      </button>
+                    ) : (
+                      selectedEntry.reference || '-'
+                    )}
+                  </p>
                 </div>
               </div>
               <div>
@@ -991,16 +1070,18 @@ export default function JournalEntriesPage() {
               </HeaderActionButton>
             )}
             {selectedEntry?.status === 'draft' && canPost && (
-              <Button
-                onClick={() => postMutation.mutate(selectedEntry.id)}
+              <HeaderActionButton
+                icon="solar:check-circle-bold"
+                loading={postMutation.isPending}
                 disabled={postMutation.isPending}
+                onClick={() => postMutation.mutate(selectedEntry.id)}
               >
-                {postMutation.isPending ? 'Posting...' : 'Post'}
-              </Button>
+                Post
+              </HeaderActionButton>
             )}
-            <Button variant="outline" onClick={() => setViewOpen(false)}>
+            <HeaderActionButton variant="outline" onClick={() => setViewOpen(false)}>
               Close
-            </Button>
+            </HeaderActionButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1113,23 +1194,18 @@ export default function JournalEntriesPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setReverseOpen(false); setReverseEntryId(null); setReverseType('full'); }}>
+            <HeaderActionButton variant="outline" onClick={() => { setReverseOpen(false); setReverseEntryId(null); setReverseType('full'); }}>
               Cancel
-            </Button>
-            <Button
+            </HeaderActionButton>
+            <HeaderActionButton
               variant="destructive"
+              icon="solar:undo-left-round-bold"
+              loading={reverseMutation.isPending || partialReverseMutation.isPending}
               onClick={handleConfirmReverse}
               disabled={reverseMutation.isPending || partialReverseMutation.isPending || !reverseForm.reason.trim()}
             >
-              {(reverseMutation.isPending || partialReverseMutation.isPending) ? (
-                <>
-                  <Icon icon="svg-spinners:ring-resize" className="w-4 h-4 mr-2" />
-                  Reversing...
-                </>
-              ) : (
-                reverseType === 'partial' ? 'Confirm Partial Reversal' : 'Confirm Full Reversal'
-              )}
-            </Button>
+              {reverseType === 'partial' ? 'Confirm Partial Reversal' : 'Confirm Full Reversal'}
+            </HeaderActionButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>

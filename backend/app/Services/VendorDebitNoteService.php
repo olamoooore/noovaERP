@@ -32,7 +32,8 @@ class VendorDebitNoteService
             foreach ($lines as $lineData) {
                 $lineTotal = (float) $lineData['quantity'] * (float) $lineData['unit_price'];
                 $subtotal += $lineTotal;
-                $taxAmount += $lineTotal * ((float) ($lineData['tax_rate'] ?? 0) / 100);
+                // MRD R3.1: engine-owned arithmetic.
+                $taxAmount += \App\Services\TaxEngineService::calculate($lineTotal, (float) ($lineData['tax_rate'] ?? 0), false)['tax'];
             }
             $data['subtotal'] = round($subtotal, 2);
             $data['tax_amount'] = round($taxAmount, 2);
@@ -91,6 +92,52 @@ class VendorDebitNoteService
         try {
             $lines = [];
 
+            // MRD TAX-REQ-07 (D4 family): reverse the ORIGINAL bill's input-tax
+            // identity per line via the persisted bill determination, and write
+            // a canonical versioned determination so the debit note lands in
+            // tax_transaction_details and nets on the statutory return.
+            $determinationService = app(TaxDeterminationService::class);
+            $debitNote->loadMissing('lines.product');
+            $originalLines = $determinationService->latestDeterminationLines('bill', (int) $debitNote->bill_id);
+            $originalResult = \App\Models\TaxDeterminationResult::where('source_record_type', 'bill')
+                ->where('source_record_id', (int) $debitNote->bill_id)
+                ->current()
+                ->orderByDesc('result_version')
+                ->first();
+
+            $dnLines = [];
+            foreach ($debitNote->lines as $line) {
+                $base = round((float) $line->quantity * (float) $line->unit_price, 2);
+                $rate = (float) ($line->tax_rate ?? 0);
+                $origin = $line->bill_line_id !== null ? ($originalLines[$line->bill_line_id] ?? null) : null;
+
+                $dnLines[] = [
+                    'source_line_id' => $line->id,
+                    'product' => $line->product,
+                    'base' => $base,
+                    'rate' => $origin && (float) $origin['tax_rate'] > 0 ? (float) $origin['tax_rate'] : $rate,
+                    'tax' => \App\Services\TaxEngineService::calculate($base, $rate, false)['tax'],
+                    'tax_code_override' => $origin['tax_code'] ?? null,
+                    'treatment_override' => $origin['treatment'] ?? null,
+                    'tax_id_override' => $origin['tax_id'] ?? null,
+                ];
+            }
+
+            $taxDetermination = null;
+            $bookedTaxTotal = round((float) $debitNote->tax_amount, 2);
+
+            if ($bookedTaxTotal > 0 && $dnLines !== []) {
+                $taxDetermination = $determinationService->determineForLineSet(
+                    documentType: 'vendor_debit_note',
+                    documentId: (int) $debitNote->id,
+                    date: $debitNote->debit_note_date->toDateString(),
+                    lines: $dnLines,
+                    direction: 'input',
+                    jurisdiction: $originalResult?->jurisdiction,
+                    vendorId: $debitNote->vendor_id,
+                );
+            }
+
             $lines[] = new PostingRequestLine(
                 accountMappingKey: 'accounts_payable',
                 accountId: null,
@@ -99,13 +146,18 @@ class VendorDebitNoteService
                 description: "Debit Note {$debitNote->debit_note_number}",
             );
 
-            if ((float) $debitNote->tax_amount > 0) {
+            foreach (TaxDeterminationService::allocateBookedTax($taxDetermination['tax_lines'] ?? [], $bookedTaxTotal) as $allocation) {
+                if ($allocation['amount'] <= 0) {
+                    continue;
+                }
                 $lines[] = new PostingRequestLine(
                     accountMappingKey: 'input_tax',
                     accountId: null,
                     debit: 0,
-                    credit: (float) $debitNote->tax_amount,
-                    description: "Tax reversal - Debit Note {$debitNote->debit_note_number}",
+                    credit: $allocation['amount'],
+                    description: "Tax reversal - Debit Note {$debitNote->debit_note_number}".($allocation['tax_code'] ? " [{$allocation['tax_code']}]" : ''),
+                    taxCode: $allocation['tax_code'],
+                    taxId: $allocation['tax_id'],
                 );
             }
 
@@ -125,6 +177,7 @@ class VendorDebitNoteService
                 lines: $lines,
                 reference: $debitNote->debit_note_number,
                 userId: TenantUserHelper::resolveTenantUserId(),
+                taxDeterminationResult: $taxDetermination,
             ));
 
             if (! $result->success) {

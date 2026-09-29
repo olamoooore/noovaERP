@@ -110,8 +110,10 @@ final class StorefrontPostingService
                         accountId: null,
                         debit: 0,
                         credit: $allocation['amount'],
-                        description: 'Sales tax payable',
+                        description: 'Sales tax payable'.($allocation['tax_code'] ? " [{$allocation['tax_code']}]" : ''),
                         reference: $order->order_number,
+                        taxCode: $allocation['tax_code'],
+                        taxId: $allocation['tax_id'],
                     );
                 }
             }

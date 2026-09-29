@@ -23,9 +23,6 @@ class PosPostingService
 
     public function postPaidOrder(PosOrder $order, float $totalPaid, string $paymentMethod): JournalEntry
     {
-        // TASK TAX-001: Resolve tax information for tax audit trail
-        $taxResolutionService = app(\App\Services\TaxResolutionService::class);
-
         $lines = [];
 
         // DR Cash
@@ -50,34 +47,48 @@ class PosPostingService
             );
         }
 
-        // CR Sales Tax - TASK TAX-001: Pass tax_code for audit trail
-        if ((float) $order->tax_amount > 0) {
-            // Resolve tax code from first item (simplified - assumes single tax rate per order)
-            $taxCode = 'SALES-TAX';
-            $taxId = null;
+        // CR Sales Tax — MRD TAX-REQ-07 (D2): build a canonical, persisted
+        // TaxDeterminationResult from the booked item tax and pass it into the
+        // posting so the TaxGate passes, tax_transaction_details are written,
+        // and POS output tax lands on the statutory return. One credit line
+        // per determined tax_code; the booked order tax total is preserved
+        // exactly (balance-safe allocation).
+        $taxDetermination = null;
+        $bookedTaxTotal = round((float) $order->tax_amount, 2);
 
-            if ($order->items->isNotEmpty()) {
-                $firstItem = $order->items->first();
-                if ($firstItem->product) {
-                    $taxInfo = $taxResolutionService->resolveTaxForProduct(
-                        $firstItem->product,
-                        $firstItem->variant
-                    );
-                    $taxCode = $taxInfo['tax_code'];
-                    $taxId = $taxInfo['tax_id'];
-                }
-            }
+        if ($bookedTaxTotal > 0) {
+            $determinationService = app(\App\Services\TaxDeterminationService::class);
 
-            $lines[] = new PostingRequestLine(
-                accountMappingKey: 'sales_tax_payable',
-                accountId: null,
-                debit: 0,
-                credit: (float) $order->tax_amount,
-                description: 'POS sales tax',
-                reference: $order->order_number,
-                taxCode: $taxCode,
-                taxId: $taxId,
+            $taxDetermination = $determinationService->determineForLineSet(
+                documentType: 'pos_order',
+                documentId: (int) $order->id,
+                date: ($order->paid_at ?? now())->toDateString(),
+                lines: $order->items->map(fn ($item) => [
+                    'source_line_id' => $item->id,
+                    'product' => $item->variant?->product ?? $item->product,
+                    'base' => round((float) $item->line_total - (float) $item->tax_amount, 2),
+                    'rate' => (float) $item->tax_rate,
+                    'tax' => (float) $item->tax_amount,
+                ])->values()->all(),
+                direction: 'output',
+                customerId: $order->customer_id,
             );
+
+            foreach (\App\Services\TaxDeterminationService::allocateBookedTax($taxDetermination['tax_lines'] ?? [], $bookedTaxTotal) as $allocation) {
+                if ($allocation['amount'] <= 0) {
+                    continue;
+                }
+                $lines[] = new PostingRequestLine(
+                    accountMappingKey: 'sales_tax_payable',
+                    accountId: null,
+                    debit: 0,
+                    credit: $allocation['amount'],
+                    description: 'POS sales tax'.($allocation['tax_code'] ? " [{$allocation['tax_code']}]" : ''),
+                    reference: $order->order_number,
+                    taxCode: $allocation['tax_code'],
+                    taxId: $allocation['tax_id'],
+                );
+            }
         }
 
         // COGS / Inventory
@@ -146,6 +157,7 @@ class PosPostingService
             userId: TenantUserHelper::resolveTenantUserId(),
             legalEntityId: request()->attributes->get('legal_entity_id'),
             entityBookId: request()->attributes->get('entity_book_id'),
+            taxDeterminationResult: $taxDetermination,
             // #37: the PermissionGate fails-closed on an unresolvable
             // required_permission for material postings. POS declares its own
             // coarse action permission here (module-level RBAC); the actor

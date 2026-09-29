@@ -21,12 +21,23 @@ class Issue42TaxDeterminationTest extends TenantTestCase
 {
     protected string $tenantUuid;
 
+    private int $taxRuleId;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->tenantUuid = Str::uuid()->toString();
         $this->bindTenantContext($this->tenantUuid);
+
+        // journal_entry_lines.tax_id is an FK — the tests below reference a real rule.
+        \App\Models\Tax::query()->firstOrCreate(['code' => 'TAXDET-RULE'], [
+            'name' => 'Tax determination rule',
+            'type' => 'gst',
+            'rate' => 9,
+            'is_active' => true,
+        ]);
+        $this->taxRuleId = \App\Models\Tax::query()->where('code', 'TAXDET-RULE')->value('id');
 
         // Seed permissions required for posting (accounting.write gate).
         // Note: This intentionally uses the minimal seeder so the test isn't
@@ -75,7 +86,7 @@ class Issue42TaxDeterminationTest extends TenantTestCase
                     credit: 90.00,
                     description: 'GST 9% input tax (offset)',
                     taxCode: $taxCode,
-                    taxId: 1,
+                    taxId: $this->taxRuleId,
                 ),
             ],
             userId: $user->id,
@@ -94,6 +105,7 @@ class Issue42TaxDeterminationTest extends TenantTestCase
             'result_status' => 'DETERMINED',
             'tax_rate' => 0.09,
             'taxable_base' => 1000.00,
+            'tax_amount' => 90.00,
             'treatment' => 'standard_rated',
             'tax_lines' => [
                 ['tax_code' => 'SG-GST-9', 'taxable_base' => 1000.00, 'tax_rate' => 0.09, 'treatment' => 'standard_rated'],
@@ -126,6 +138,7 @@ class Issue42TaxDeterminationTest extends TenantTestCase
             'result_status' => 'DETERMINED',
             'tax_rate' => 0.0,
             'taxable_base' => 500.00,
+            'tax_amount' => 0.0,
             'treatment' => 'zero_rated',
             'tax_lines' => [
                 ['tax_code' => 'MY-SST-0', 'taxable_base' => 500.00, 'tax_rate' => 0.0, 'treatment' => 'zero_rated'],

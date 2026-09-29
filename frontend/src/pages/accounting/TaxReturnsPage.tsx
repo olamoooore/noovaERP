@@ -1,0 +1,677 @@
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { Icon } from '@iconify/react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { StatCard } from '@/components/ui/stat-card';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/hooks/use-toast';
+import { fiscalYearOptions } from '@/lib/fiscalYear';
+import { formatCurrency } from '@/lib/utils';
+import api from '@/lib/api';
+
+interface PeriodActivity {
+  period: string;
+  rows: number;
+  output_tax: number;
+  input_tax: number;
+}
+
+interface SupportedReturn {
+  country: string;
+  form: string;
+  authority: string;
+  period_format: string;
+}
+
+interface IndexResponse {
+  data: SupportedReturn[];
+  planned: { form: string }[];
+}
+
+interface ReturnResponse {
+  data: {
+    form: string;
+    jurisdiction: string;
+    authority: string;
+    period: string;
+    currency: string;
+    boxes?: Record<string, number>;
+    total_supplies?: number;
+    sales_tax?: { taxable_value: number; by_rate: { rate: string; taxable_value: number; tax_amount: number }[]; tax_due: number };
+    service_tax?: { taxable_value: number; by_rate: { rate: string; taxable_value: number; tax_amount: number }[]; tax_due: number };
+    total_tax_payable?: number;
+    reporting_period?: { period: string; months: string[]; legal_entity_id: number | null };
+  };
+}
+
+interface F7Response {
+  data: {
+    form: string;
+    period: string;
+    baseline: { filed_at: string | null; boxes: Record<string, number> };
+    corrected: { boxes: Record<string, number> };
+    error_amounts: Record<string, number>;
+    classification: Record<string, string>;
+    net_gst_error: number;
+  };
+}
+
+const BOX_LABELS: Record<string, string> = {
+  box_1_standard_rated_supplies: 'Box 1 — Standard-rated supplies (value)',
+  box_2_zero_rated_supplies: 'Box 2 — Zero-rated supplies (value)',
+  box_3_exempt_supplies: 'Box 3 — Exempt supplies (value)',
+  box_4_total_supplies: 'Box 4 — Total supplies',
+  box_5_taxable_purchases: 'Box 5 — Taxable purchases',
+  box_6_output_tax_due: 'Box 6 — Output tax due',
+  box_7_input_tax_and_refunds: 'Box 7 — Input tax & refunds claimable',
+  box_8_net_gst_payable: 'Box 8 — Net GST payable / (refundable)',
+};
+
+const CLASSIFICATION_KEYS: Record<string, string> = {
+  box_1_standard_rated_supplies: 'standard_rated_supplies',
+  box_5_taxable_purchases: 'taxable_purchases',
+  box_6_output_tax_due: 'output_tax',
+  box_7_input_tax_and_refunds: 'input_tax',
+};
+
+const money = (value: number) =>
+  value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** "Box 1 — Standard-rated supplies (value)" → { number: '1', label: 'Standard-rated supplies (value)' } */
+const splitBoxLabel = (key: string) => {
+  const label = BOX_LABELS[key] ?? key;
+  const match = label.match(/^Box (\d+) — (.*)$/);
+  return match ? { number: match[1], label: match[2] } : { number: null, label };
+};
+
+export default function TaxReturnsPage() {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  const [country, setCountry] = useState('SG');
+  const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+  const [period, setPeriod] = useState(currentMonth);
+  const [periodMode, setPeriodMode] = useState<'month' | 'quarter'>('month');
+  const [quarterYear, setQuarterYear] = useState(String(new Date().getFullYear()));
+  const [quarter, setQuarter] = useState(`Q${Math.floor(new Date().getMonth() / 3) + 1}`);
+  const [entityId, setEntityId] = useState('');
+  const [showF7, setShowF7] = useState(false);
+
+  const { data: fiscalSettings } = useQuery({
+    queryKey: ['fiscal-year'],
+    queryFn: async () => (await api.get('/accounting/settings/fiscal-year')).data.data,
+  });
+
+  const fyOptions = useMemo(
+    () => fiscalYearOptions(fiscalSettings?.fiscal_year_start_month ?? 1, fiscalSettings?.fiscal_year_start_day ?? 1, 8),
+    [fiscalSettings],
+  );
+
+  const fiscalLabelForPeriod = (yyyymm: string) => {
+    const first = `${yyyymm}-01`;
+    const fy = fyOptions.find((option) => option.start <= first && first <= option.end);
+    return fy?.label ?? '—';
+  };
+
+  const { data: activity } = useQuery<{ data: PeriodActivity[] }>({
+    queryKey: ['statutory-activity-periods', entityId],
+    queryFn: async () =>
+      (await api.get('/accounting/statutory-returns/periods', { params: entityId.trim() ? { entity_id: entityId.trim() } : {} })).data,
+  });
+
+  // Default the picker to the most recent period that actually has tax data.
+  const [autoPicked, setAutoPicked] = useState(false);
+  useEffect(() => {
+    if (autoPicked || !activity?.data) return;
+    const withOutput = activity.data.find((row) => Math.abs(Number(row.output_tax)) > 0) ?? activity.data[0];
+    if (withOutput && withOutput.period !== period) setPeriod(withOutput.period);
+    setAutoPicked(true);
+  }, [activity, autoPicked, period]);
+
+  const periodsWithData = new Set((activity?.data ?? []).map((row) => row.period));
+  const selectedHasData = periodsWithData.has(period) || periodMode === 'quarter';
+
+  const { data: supported } = useQuery<IndexResponse>({
+    queryKey: ['statutory-returns-index'],
+    queryFn: async () => (await api.get('/accounting/statutory-returns')).data,
+  });
+
+  const queryParams = entityId.trim() ? { entity_id: entityId.trim() } : {};
+  const effectivePeriod = periodMode === 'quarter' ? `${quarterYear}-${quarter}` : period;
+
+  const {
+    data: returnData,
+    isFetching: returnFetching,
+    error: returnError,
+    refetch: refetchReturn,
+  } = useQuery<ReturnResponse>({
+    queryKey: ['statutory-return', country, effectivePeriod, entityId],
+    queryFn: async () => (await api.get(`/accounting/statutory-returns/${country}/${effectivePeriod}`, { params: queryParams })).data,
+  });
+
+  const { data: f7Data, error: f7Error } = useQuery<F7Response>({
+    queryKey: ['statutory-f7', effectivePeriod, entityId],
+    queryFn: async () => (await api.get(`/accounting/statutory-returns/SG/${effectivePeriod}/f7`, { params: queryParams })).data,
+    enabled: showF7 && country === 'SG',
+  });
+
+  const fileF5 = useMutation({
+    mutationFn: async () =>
+      (await api.post(`/accounting/statutory-returns/SG/${effectivePeriod}/file`, null, { params: queryParams })).data,
+    onSuccess: () => {
+      toast({ title: 'GST F5 filed', description: 'Current figures saved as the F7 disclosure baseline.' });
+    },
+    onError: () => {
+      toast({ title: 'Could not file F5', description: 'Requires reports.manage permission.', variant: 'destructive' });
+    },
+  });
+
+  const error = (returnError as { response?: { data?: { message?: string } } } | null)?.response?.data?.message;
+
+  const boxes = returnData?.data?.boxes ?? {};
+  const outputTax = Number(boxes.box_6_output_tax_due ?? 0);
+  const inputTax = Number(boxes.box_7_input_tax_and_refunds ?? 0);
+  const netGst = Number(boxes.box_8_net_gst_payable ?? 0);
+  const totalSupplies = Number(boxes.box_4_total_supplies ?? returnData?.data?.total_supplies ?? 0);
+  const currency = returnData?.data?.currency ?? 'SGD';
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <HeaderActionButton
+          variant="outline"
+          icon="solar:alt-arrow-left-bold-duotone"
+          onClick={() => navigate('/accounting')}
+          className="mb-3"
+        >
+          Back to Accounting
+        </HeaderActionButton>
+        <h1 className="text-3xl font-bold tracking-tight">Tax Returns</h1>
+        <p className="mt-1 text-muted-foreground">Statutory returns generated from posted, gated tax transactions</p>
+      </div>
+
+      {/* Explainer */}
+      <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50/70 p-4 dark:border-blue-900 dark:bg-blue-950/40">
+        <Icon icon="solar:info-circle-bold-duotone" className="mt-0.5 h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" />
+        <p className="text-sm text-blue-900 dark:text-blue-200">
+          Every figure below aggregates <code className="rounded bg-blue-100/70 px-1 py-0.5 font-mono text-[11px] dark:bg-blue-950">tax_transaction_details</code> written by the
+          posting engine for live (posted, non-reversed) journal entries, scoped per legal entity. Credit
+          and debit notes net against their originals. Review against current{' '}
+          {country === 'SG' ? 'IRAS' : 'LHDN/RMCD'} guidance before filing — generation is not submission.
+        </p>
+      </div>
+
+      {/* Return parameters */}
+      <Card className="overflow-hidden rounded-xl">
+        <CardHeader className="border-b">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+              <Icon icon="solar:filter-bold-duotone" className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <CardTitle className="text-base">Return parameters</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">Choose jurisdiction, filing period and legal entity scope.</p>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-end gap-5 p-4">
+          <div className="space-y-2">
+            <Label>Jurisdiction</Label>
+            <Select value={country} onValueChange={(value) => { setCountry(value); setShowF7(false); }}>
+              <SelectTrigger className="h-8 w-56 rounded-full text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {Array.from(new Set((supported?.data ?? []).map((f) => f.country))).map((code) => {
+                  const form = (supported?.data ?? []).find((f) => f.country === code);
+                  return (
+                    <SelectItem key={code} value={code}>
+                      {code} — {form?.form} ({form?.authority})
+                    </SelectItem>
+                  );
+                })}
+                {country === 'MY' && <SelectItem value="MY">MY — SST-02 (RMCD)</SelectItem>}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Period basis</Label>
+            <Select value={periodMode} onValueChange={(value) => setPeriodMode(value as 'month' | 'quarter')}>
+              <SelectTrigger className="h-8 w-32 rounded-full text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="month">Month</SelectItem>
+                <SelectItem value="quarter">Quarter</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {periodMode === 'month' ? (
+            <div className="space-y-2">
+              <Label htmlFor="return-period">Filing month</Label>
+              <Input
+                id="return-period"
+                list="filing-periods"
+                value={period}
+                onChange={(e) => setPeriod(e.target.value)}
+                className="h-8 w-40 rounded-full px-3 text-xs"
+                placeholder="YYYY-MM"
+              />
+              <datalist id="filing-periods">
+                {(activity?.data ?? []).map((row) => (
+                  <option key={row.period} value={row.period}>
+                    {fiscalLabelForPeriod(row.period)} · out {money(Number(row.output_tax))} / in {money(Number(row.input_tax))}
+                  </option>
+                ))}
+              </datalist>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label>Quarter (calendar — as filed)</Label>
+              <div className="flex gap-2">
+                <Input value={quarterYear} onChange={(e) => setQuarterYear(e.target.value)} className="h-8 w-24 rounded-full px-3 text-xs" inputMode="numeric" />
+                <Select value={quarter} onValueChange={setQuarter}>
+                  <SelectTrigger className="h-8 w-20 rounded-full text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {['Q1', 'Q2', 'Q3', 'Q4'].map((q) => (<SelectItem key={q} value={q}>{q}</SelectItem>))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+
+          <HeaderActionButton
+            variant="outline"
+            icon="solar:alt-arrow-left-bold-duotone"
+            onClick={() => {
+              setPeriodMode('month');
+              const next = (activity?.data ?? []).find((row) => row.period < period)?.period;
+              if (next) setPeriod(next);
+            }}
+          >
+            Prior period
+          </HeaderActionButton>
+
+          <div className="space-y-2">
+            <Label htmlFor="return-entity">Legal entity (optional)</Label>
+            <Input
+              id="return-entity"
+              value={entityId}
+              onChange={(e) => setEntityId(e.target.value)}
+              className="h-8 w-32 rounded-full px-3 text-xs"
+              placeholder="all entities"
+              inputMode="numeric"
+            />
+          </div>
+
+          <HeaderActionButton
+            icon="solar:calculator-minimalistic-bold-duotone"
+            loading={returnFetching}
+            onClick={() => refetchReturn()}
+            disabled={returnFetching}
+          >
+            Generate return
+          </HeaderActionButton>
+
+          {country === 'SG' && (
+            <>
+              <HeaderActionButton
+                variant="outline"
+                icon="solar:document-text-bold-duotone"
+                onClick={() => setShowF7((v) => !v)}
+              >
+                {showF7 ? 'Hide F7' : 'F7 error disclosure'}
+              </HeaderActionButton>
+              <HeaderActionButton
+                variant="outline"
+                icon="solar:shield-check-bold-duotone"
+                loading={fileF5.isPending}
+                onClick={() => fileF5.mutate()}
+                disabled={fileF5.isPending}
+              >
+                File F5 baseline
+              </HeaderActionButton>
+            </>
+          )}
+
+          {(supported?.planned?.length ?? 0) > 0 && (
+            <p className="w-full text-xs text-muted-foreground">
+              Planned (not yet available): {supported?.planned?.map((p) => p.form).join(', ')}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {error && (
+        <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+          <Icon icon="solar:danger-circle-bold-duotone" className="mt-0.5 h-5 w-5 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {returnData?.data && !selectedHasData && periodMode === 'month' && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+          <Icon icon="solar:info-circle-bold-duotone" className="mt-0.5 h-5 w-5 shrink-0" />
+          <span>
+            No posted tax transactions exist for {period} — the boxes below are legitimately nil.
+            Statutory periods follow the regulator's calendar (IRAS quarters / RMCD months), not the
+            company fiscal year; the fiscal-year dropdown lists only show you which filing periods
+            actually contain data.
+          </span>
+        </div>
+      )}
+
+      {/* GST F5 (SG) */}
+      {returnData?.data && country === 'SG' && (
+        <>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard
+              label="Total supplies"
+              value={formatCurrency(totalSupplies, currency)}
+              hint="Box 4"
+              icon="solar:cart-large-2-bold-duotone"
+            />
+            <StatCard
+              label="Output tax due"
+              value={formatCurrency(outputTax, currency)}
+              hint="Box 6"
+              icon="solar:graph-up-bold-duotone"
+              tone="bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400"
+            />
+            <StatCard
+              label="Input tax & refunds"
+              value={formatCurrency(inputTax, currency)}
+              hint="Box 7"
+              icon="solar:graph-down-bold-duotone"
+              tone="bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400"
+            />
+            <StatCard
+              label="Net GST payable"
+              value={formatCurrency(netGst, currency)}
+              hint={netGst >= 0 ? 'Box 8 · payable to IRAS' : 'Box 8 · refundable'}
+              icon="solar:wallet-money-bold-duotone"
+              tone={netGst >= 0
+                ? 'bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400'
+                : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400'}
+            />
+          </div>
+
+          <Card className="overflow-hidden rounded-xl">
+            <CardHeader className="border-b">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-600 dark:bg-violet-950/60 dark:text-violet-400">
+                    <Icon icon="solar:document-text-bold-duotone" className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base">{returnData.data.form} — {returnData.data.period}</CardTitle>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Months: {returnData.data.reporting_period?.months.join(', ')}
+                      {returnData.data.reporting_period?.legal_entity_id ? ` · Entity #${returnData.data.reporting_period.legal_entity_id}` : ' · All entities'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="border-transparent bg-muted font-normal text-muted-foreground">
+                    {returnData.data.currency}
+                  </Badge>
+                  <Badge variant="outline">{returnData.data.authority}</Badge>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-4">
+              <div className="overflow-hidden rounded-xl border border-slate-200/80 dark:border-slate-800">
+                <Table>
+                  <TableBody>
+                    {Object.entries(boxes).map(([key, value]) => {
+                      const box = splitBoxLabel(key);
+                      const isNet = key === 'box_8_net_gst_payable';
+                      return (
+                        <TableRow key={key} className={isNet ? 'bg-muted/50 font-semibold' : undefined}>
+                          <TableCell className="w-14">
+                            {box.number && (
+                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[11px] font-semibold tabular-nums text-muted-foreground">
+                                {box.number}
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell>{box.label}</TableCell>
+                          <TableCell className={`text-right tabular-nums ${isNet ? '' : 'font-mono'}`}>
+                            {money(Number(value))}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Box 8 = output tax (6) − input tax (7). Positive = payable to IRAS.
+              </p>
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {/* SST-02 (MY) */}
+      {returnData?.data && country === 'MY' && (
+        <Card className="overflow-hidden rounded-xl">
+          <CardHeader className="border-b">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-600 dark:bg-violet-950/60 dark:text-violet-400">
+                  <Icon icon="solar:document-text-bold-duotone" className="h-5 w-5" />
+                </div>
+                <CardTitle className="text-base">{returnData.data.form} — {returnData.data.period}</CardTitle>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="border-transparent bg-muted font-normal text-muted-foreground">
+                  {returnData.data.currency}
+                </Badge>
+                <Badge variant="outline">{returnData.data.authority}</Badge>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4 p-4">
+            {([['Sales tax', returnData.data.sales_tax], ['Service tax', returnData.data.service_tax]] as const).map(([label, section]) => (
+              <div key={label} className="overflow-hidden rounded-xl border border-slate-200/80 dark:border-slate-800">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/50 px-4 py-2.5">
+                  <span className="text-sm font-semibold">{label}</span>
+                  <span className="text-xs text-muted-foreground">
+                    Taxable value: <strong className="font-semibold tabular-nums text-foreground">{money(section?.taxable_value ?? 0)}</strong>
+                    {' · '}Due: <strong className="font-semibold tabular-nums text-foreground">{money(section?.tax_due ?? 0)}</strong>
+                  </span>
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Rate</TableHead>
+                      <TableHead className="text-right">Taxable value</TableHead>
+                      <TableHead className="text-right">Tax amount</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(section?.by_rate ?? []).map((row) => (
+                      <TableRow key={row.rate}>
+                        <TableCell className="font-mono text-xs">{row.rate}%</TableCell>
+                        <TableCell className="text-right tabular-nums">{money(row.taxable_value)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{money(row.tax_amount)}</TableCell>
+                      </TableRow>
+                    ))}
+                    {(section?.by_rate ?? []).length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={3} className="py-6 text-center text-sm text-muted-foreground">
+                          No {label.toLowerCase()} transactions in this period
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            ))}
+            <div className="flex items-center justify-between border-t pt-3">
+              <span className="text-sm font-medium">Total SST payable</span>
+              <span className="text-lg font-bold tabular-nums">{money(returnData.data.total_tax_payable ?? 0)}</span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              MY SST is single-stage — no input-tax credit. Sales tax (goods) and service tax are
+              reported separately on the SST-02 via MySST.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Filing periods */}
+      {(activity?.data ?? []).length > 0 && (
+        <Card className="overflow-hidden rounded-xl">
+          <CardHeader className="border-b">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/10">
+                <Icon icon="solar:history-bold-duotone" className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <CardTitle className="text-base">Filing periods with tax activity</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">Click a period to load its return.</p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-4">
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              {(activity?.data ?? []).slice(0, 12).map((row) => {
+                const selected = row.period === period && periodMode === 'month';
+                return (
+                  <button
+                    key={row.period}
+                    type="button"
+                    className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-colors ${
+                      selected
+                        ? 'border-primary/40 bg-primary/5'
+                        : 'hover:bg-muted/50'
+                    }`}
+                    onClick={() => { setPeriodMode('month'); setPeriod(row.period); }}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="font-mono text-sm font-medium tabular-nums">{row.period}</span>
+                      <Badge variant="outline" className="font-normal">{fiscalLabelForPeriod(row.period)}</Badge>
+                    </span>
+                    <span className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <span className="text-amber-600 dark:text-amber-400 tabular-nums">out {money(Number(row.output_tax))}</span>
+                      <span className="text-blue-600 dark:text-blue-400 tabular-nums">in {money(Number(row.input_tax))}</span>
+                      <span className="tabular-nums">{row.rows} row(s)</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* F7 */}
+      {showF7 && country === 'SG' && (
+        <Card className="overflow-hidden rounded-xl">
+          <CardHeader className="border-b">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400">
+                <Icon icon="solar:document-text-bold-duotone" className="h-5 w-5" />
+              </div>
+              <div>
+                <CardTitle className="text-base">GST F7 — Disclosure of errors ({period})</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">Current figures compared against the last filed baselined return.</p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4 p-4">
+            {f7Error ? (
+              <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                <Icon icon="solar:info-circle-bold-duotone" className="mt-0.5 h-5 w-5 shrink-0" />
+                <span>
+                  {(f7Error as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+                    'File an F5 baseline first — F7 compares the current figures against the last filed return.'}
+                </span>
+              </div>
+            ) : f7Data?.data ? (
+              <>
+                <div className="overflow-hidden rounded-xl border border-slate-200/80 dark:border-slate-800">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead>Box</TableHead>
+                        <TableHead className="text-right">Filed baseline</TableHead>
+                        <TableHead className="text-right">Corrected</TableHead>
+                        <TableHead className="text-right">Error</TableHead>
+                        <TableHead>Materiality</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {Object.entries(f7Data.data.error_amounts ?? {}).map(([box, delta]) => {
+                        const meta = splitBoxLabel(box);
+                        return (
+                          <TableRow key={box}>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                {meta.number && (
+                                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[11px] font-semibold tabular-nums text-muted-foreground">
+                                    {meta.number}
+                                  </span>
+                                )}
+                                <span>{meta.label}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right font-mono">{money(Number(f7Data.data!.baseline.boxes?.[box] ?? 0))}</TableCell>
+                            <TableCell className="text-right font-mono">{money(Number(f7Data.data!.corrected.boxes?.[box] ?? 0))}</TableCell>
+                            <TableCell className={`text-right font-mono ${
+                              Number(delta) > 0 ? 'text-rose-600 dark:text-rose-400'
+                                : Number(delta) < 0 ? 'text-emerald-600 dark:text-emerald-400' : ''
+                            }`}>
+                              {money(Number(delta))}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="font-normal">
+                                {(CLASSIFICATION_KEYS[box] && f7Data.data.classification?.[CLASSIFICATION_KEYS[box]]) ?? '—'}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+                <div className="flex items-center justify-between border-t pt-3">
+                  <span className="text-sm font-medium">Net GST error (positive = additional tax payable)</span>
+                  <span className="text-lg font-bold tabular-nums">{money(f7Data.data.net_gst_error ?? 0)}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Baseline filed at: {f7Data.data.baseline.filed_at ?? '—'}. Disclose via myTax Portal GST
+                  Error Management; adjust in the current F5 where the error is below disclosure thresholds.
+                </p>
+              </>
+            ) : (
+              <div className="flex items-center justify-center py-10">
+                <Icon icon="eos-icons:loading" className="h-7 w-7 animate-spin text-primary" />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}

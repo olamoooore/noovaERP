@@ -184,7 +184,11 @@ class GlobalSearchService
             ->where(function ($q) use ($like) {
                 $q->where('invoice_number', 'ilike', $like)
                     ->orWhere('customer_reference', 'ilike', $like)
+                    ->orWhere('internal_reference', 'ilike', $like)
                     ->orWhere('po_number', 'ilike', $like)
+                    ->orWhere('pr_no', 'ilike', $like)
+                    ->orWhere('contract_no', 'ilike', $like)
+                    ->orWhere('case_number', 'ilike', $like)
                     ->orWhereHas('customer', fn ($c) => $c->where('name', 'ilike', $like));
             })
             ->orderByDesc('id')
@@ -208,6 +212,7 @@ class GlobalSearchService
             ->where(function ($q) use ($like) {
                 $q->where('quotation_number', 'ilike', $like)
                     ->orWhere('customer_reference', 'ilike', $like)
+                    ->orWhere('internal_reference', 'ilike', $like)
                     ->orWhereHas('customer', fn ($c) => $c->where('name', 'ilike', $like));
             })
             ->orderByDesc('id')
@@ -233,6 +238,8 @@ class GlobalSearchService
             ->where(function ($q) use ($like) {
                 $q->where('sales_order_number', 'ilike', $like)
                     ->orWhere('customer_reference', 'ilike', $like)
+                    ->orWhere('internal_reference', 'ilike', $like)
+                    ->orWhere('po_number', 'ilike', $like)
                     ->orWhereHas('customer', fn ($c) => $c->where('name', 'ilike', $like));
             })
             ->orderByDesc('id')
@@ -259,6 +266,8 @@ class GlobalSearchService
                 $q->where('delivery_order_number', 'ilike', $like)
                     ->orWhere('tracking_number', 'ilike', $like)
                     ->orWhere('po_number', 'ilike', $like)
+                    ->orWhere('customer_reference', 'ilike', $like)
+                    ->orWhere('internal_reference', 'ilike', $like)
                     ->orWhere('external_reference', 'ilike', $like)
                     ->orWhereHas('customer', fn ($c) => $c->where('name', 'ilike', $like));
             })

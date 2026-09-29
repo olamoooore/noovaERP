@@ -113,29 +113,18 @@ class InvoiceLine extends Model
             $this->tax_amount = 0;
             $this->discount_amount = 0;
             $this->line_total = 0;
+
             return;
         }
-        $gross = $this->quantity * $this->unit_price;
-        $discount = $this->discount_amount ?? 0;
-
-        if ($this->tax_inclusive) {
-            // Tax is included in the gross amount: extract net and tax
-            $divisor = 1 + ($this->tax_rate / 100);
-            $netBeforeDiscount = $divisor > 0 ? $gross / $divisor : $gross;
-            $taxBeforeDiscount = $gross - $netBeforeDiscount;
-
-            // Apply discount proportionally to net and tax
-            $discountRatio = $gross > 0 ? $discount / $gross : 0;
-            $this->tax_amount = round($taxBeforeDiscount * (1 - $discountRatio), 2);
-            $netAfterDiscount = $netBeforeDiscount * (1 - $discountRatio);
-            $this->line_total = round($netAfterDiscount + $this->tax_amount, 2);
-        } else {
-            // Tax is exclusive: add tax on top of net-after-discount.
-            // Apply discount to net first, then compute tax on the reduced
-            // amount so the tax base is post-discount.
-            $netAfterDiscount = $gross - $discount;
-            $this->tax_amount = round($netAfterDiscount * ($this->tax_rate / 100), 2);
-            $this->line_total = round($netAfterDiscount + $this->tax_amount, 2);
-        }
+        // MRD R3.1: single tax arithmetic — all inclusive/exclusive and
+        // line-discount handling lives in TaxEngineService::calculate().
+        $calc = \App\Services\TaxEngineService::calculate(
+            (float) ($this->quantity * $this->unit_price),
+            (float) $this->tax_rate,
+            (bool) $this->tax_inclusive,
+            (float) ($this->discount_amount ?? 0),
+        );
+        $this->tax_amount = $calc['tax'];
+        $this->line_total = $calc['gross'];
     }
 }

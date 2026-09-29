@@ -788,7 +788,8 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
         }
 
         if ($taxAmount <= 0 && $taxRate > 0) {
-            $taxAmount = round(($lineSubtotal * $taxRate) / 100, 2);
+            // MRD R3.1: single tax arithmetic via TaxEngineService::calculate().
+        $taxAmount = \App\Services\TaxEngineService::calculate((float) $lineSubtotal, (float) $taxRate, false)['tax'];
         }
 
         return [
@@ -827,7 +828,7 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
             }
 
             $computedSubtotal += $lineSubtotal;
-            $computedTax += (float) ($line->tax_amount ?? round(($lineSubtotal * (float) ($line->tax_rate ?? 0)) / 100, 2));
+            $computedTax += (float) ($line->tax_amount ?? \App\Services\TaxEngineService::calculate((float) $lineSubtotal, (float) ($line->tax_rate ?? 0), false)['tax']);
         }
 
         $subtotal = $computedSubtotal > 0 ? $computedSubtotal : (float) ($invoice->subtotal ?? 0);
