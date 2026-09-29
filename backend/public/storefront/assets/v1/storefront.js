@@ -42,7 +42,13 @@
     );
     var csrf = cookieValue('sf_csrf');
     if (csrf) opts.headers['X-CSRF-Token'] = csrf;
-    if (opts.body && typeof opts.body !== 'string') opts.body = JSON.stringify(opts.body);
+    if (opts.body && typeof opts.body !== 'string') {
+      if (typeof FormData !== 'undefined' && opts.body instanceof FormData) {
+        delete opts.headers['Content-Type'];
+      } else {
+        opts.body = JSON.stringify(opts.body);
+      }
+    }
     return fetch(API + path, opts).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (data) {
         return { ok: res.ok, status: res.status, data: data };
@@ -512,9 +518,10 @@
   function mountVerify(island) {
     var body = dashBody(island);
     if (!body) return;
+    var params = new URLSearchParams(window.location.search);
     var form = el('form', 'sf-verify__form');
-    var em = field('Email', 'email', 'email', '', true);
-    var tk = field('Code from your email', 'token', 'text', '', true);
+    var em = field('Email', 'email', 'email', params.get('sfemail') || '', true);
+    var tk = field('Code from your email', 'token', 'text', params.get('sfverify') || '', true);
     var msg = el('p', 'sf-auth__error'); msg.setAttribute('role', 'alert');
     var sub = el('button', 'sf-auth__submit', 'Verify'); sub.type = 'submit';
     [em.label, tk.label, msg, sub].forEach(function (n) { form.appendChild(n); });
@@ -576,6 +583,49 @@
     });
   }
 
+  function mountForgot(island) {
+    var body = dashBody(island);
+    if (!body) return;
+    var form = el('form', 'sf-auth__form');
+    var em = field('Email', 'email', 'email', (function () { try { return new URLSearchParams(window.location.search).get('sfemail') || ''; } catch (e) { return ''; } })(), true);
+    var msg = el('p', 'sf-auth__error'); msg.setAttribute('role', 'alert');
+    var sub = el('button', 'sf-auth__submit', 'Email me a reset link'); sub.type = 'submit';
+    [em.label, msg, sub].forEach(function (n) { form.appendChild(n); });
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var data = {}; new FormData(form).forEach(function (v, k) { data[k] = v; });
+      req('/auth/forgot-password', { method: 'POST', body: data }).then(function () {
+        msg.textContent = 'If an account exists for that email, a reset link is on its way.';
+      });
+    });
+    body.appendChild(form);
+  }
+
+  function mountReset(island) {
+    var body = dashBody(island);
+    if (!body) return;
+    if (island.dataset.sfMounted) return; island.dataset.sfMounted = '1';
+    var params = new URLSearchParams(window.location.search);
+    var form = el('form', 'sf-auth__form');
+    var em = field('Email', 'email', 'email', params.get('sfemail') || '', true);
+    var tk = field('Reset code', 'token', 'text', params.get('sfreset') || '', true);
+    var p1 = field('New password', 'password', 'password', '', true);
+    var p2 = field('Confirm new password', 'password_confirmation', 'password', '', true);
+    p1.input.minLength = 8; p2.input.minLength = 8;
+    var msg = el('p', 'sf-auth__error'); msg.setAttribute('role', 'alert');
+    var sub = el('button', 'sf-auth__submit', 'Set new password'); sub.type = 'submit';
+    [em.label, tk.label, p1.label, p2.label, msg, sub].forEach(function (n) { form.appendChild(n); });
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var data = {}; new FormData(form).forEach(function (v, k) { data[k] = v; });
+      req('/auth/reset-password', { method: 'POST', body: data }).then(function (r) {
+        if (r.ok) { msg.textContent = 'Password updated — you are signed in.'; announce({ type: 'success', text: 'Password updated' }); refreshCartIslands(); }
+        else { msg.textContent = (r.data && r.data.message) || 'Reset failed — the code may have expired.'; }
+      });
+    });
+    body.appendChild(form);
+  }
+
   /* ---------- checkout / confirmation / pay-now islands ---------- */
 
   function genIdemKey() {
@@ -601,40 +651,84 @@
         container.appendChild(el('p', 'sf-pay__none', 'No online payment methods are configured for this store yet. The store owner will contact you if payment is handled another way.'));
         return;
       }
-      var chosen = null;
+      var chosen = methods[0];
+      var actionBox = el('div', 'sf-pay__action');
+
+      function renderAction() {
+        actionBox.textContent = '';
+        if (chosen && chosen.type === 'offline') {
+          if (chosen.instructions) {
+            var ins = el('div', 'sf-pay__instructions');
+            ins.textContent = chosen.instructions;
+            actionBox.appendChild(ins);
+          }
+          var file = el('input'); file.type = 'file';
+          file.accept = '.jpg,.jpeg,.png,.pdf';
+          var refInput = null;
+          if (chosen.key === 'bank_transfer') {
+            refInput = el('input'); refInput.type = 'text';
+            refInput.placeholder = 'Transfer reference number (optional)';
+            actionBox.appendChild(refInput);
+          }
+          actionBox.appendChild(file);
+          var proofMsg = el('p', 'sf-auth__error'); proofMsg.setAttribute('role', 'alert');
+          var upBtn = el('button', 'sf-auth__submit', 'Submit payment proof'); upBtn.type = 'button';
+          upBtn.addEventListener('click', function () {
+            if (!file.files || !file.files.length) { proofMsg.textContent = 'Choose a receipt image or PDF first.'; return; }
+            upBtn.disabled = true;
+            var fd = new FormData();
+            if (token) fd.append('token', token);
+            fd.append('method', chosen.name);
+            if (refInput && refInput.value) fd.append('reference', refInput.value);
+            fd.append('proof', file.files[0]);
+            req('/orders/' + orderId + '/proof-of-payment', { method: 'POST', body: fd }).then(function (r) {
+              if (!r.ok) { proofMsg.textContent = (r.data && r.data.message) || 'The proof could not be submitted.'; upBtn.disabled = false; return; }
+              proofMsg.className = 'sf-auth__success';
+              proofMsg.textContent = (r.data && r.data.data && r.data.data.message) || 'Proof received.';
+              upBtn.disabled = true;
+            }).catch(function () { proofMsg.textContent = 'Network error — please try again.'; upBtn.disabled = false; });
+          });
+          actionBox.appendChild(upBtn);
+          actionBox.appendChild(proofMsg);
+          container.appendChild(actionBox);
+          return;
+        }
+        var btn = el('button', 'sf-auth__submit', 'Pay now'); btn.type = 'button';
+        var msg = el('p', 'sf-auth__error'); msg.setAttribute('role', 'alert');
+        btn.addEventListener('click', function () {
+          btn.disabled = true;
+          req('/orders/' + orderId + '/pay', {
+            method: 'POST',
+            body: {
+              token: token || undefined,
+              gateway: chosen.name,
+              success_url: window.location.origin + window.location.pathname + (token ? '?sfconf=' + encodeURIComponent(token) : ''),
+            },
+          }).then(function (r) {
+            if (!r.ok) { msg.textContent = (r.data && r.data.message) || 'Payment could not be started.'; btn.disabled = false; return; }
+            var d = r.data.data || {};
+            if (d.payment_url) { window.location.href = d.payment_url; return; }
+            if (d.client_secret) { msg.textContent = 'Card checkout is being set up for this store — you will receive the payment form shortly.'; btn.disabled = false; return; }
+            window.location.reload();
+          }).catch(function () { msg.textContent = 'Network error — please try again.'; btn.disabled = false; });
+        });
+        actionBox.appendChild(btn);
+        actionBox.appendChild(msg);
+        container.appendChild(actionBox);
+      }
+
       methods.forEach(function (m, i) {
         var lab = el('label', 'sf-pay__method');
         var radio = el('input');
         radio.type = 'radio'; radio.name = 'sf_pay_gateway'; radio.value = m.name;
         if (i === 0) radio.checked = true;
-        radio.addEventListener('change', function () { chosen = m.name; });
+        radio.addEventListener('change', function () { chosen = m; renderAction(); });
         lab.appendChild(radio);
-        lab.appendChild(el('span', null, m.display_name + (m.is_test_mode ? ' (test)' : '')));
+        lab.appendChild(el('span', null, m.display_name + (m.is_test_mode ? ' (test)' : '') + (m.type === 'offline' ? ' — pay manually' : '')));
         container.appendChild(lab);
-        if (i === 0) chosen = m.name;
       });
 
-      var btn = el('button', 'sf-auth__submit', 'Pay now'); btn.type = 'button';
-      var msg = el('p', 'sf-auth__error'); msg.setAttribute('role', 'alert');
-      btn.addEventListener('click', function () {
-        btn.disabled = true;
-        req('/orders/' + orderId + '/pay', {
-          method: 'POST',
-          body: {
-            token: token || undefined,
-            gateway: chosen,
-            success_url: window.location.origin + window.location.pathname + (token ? '?sfconf=' + encodeURIComponent(token) : ''),
-          },
-        }).then(function (r) {
-          if (!r.ok) { msg.textContent = (r.data && r.data.message) || 'Payment could not be started.'; btn.disabled = false; return; }
-          var d = r.data.data || {};
-          if (d.payment_url) { window.location.href = d.payment_url; return; }
-          if (d.client_secret) { msg.textContent = 'Card checkout is being set up for this store — you will receive the payment form shortly.'; btn.disabled = false; return; }
-          window.location.reload();
-        }).catch(function () { msg.textContent = 'Network error — please try again.'; btn.disabled = false; });
-      });
-      container.appendChild(btn);
-      container.appendChild(msg);
+      renderAction();
     });
   }
 
@@ -818,6 +912,8 @@
     document.querySelectorAll('[data-sf-island="profile"]').forEach(mountProfile);
     document.querySelectorAll('[data-sf-island="security"]').forEach(mountSecurity);
     document.querySelectorAll('[data-sf-island="verify_email"]').forEach(mountVerify);
+    document.querySelectorAll('[data-sf-island="forgot_password"]').forEach(mountForgot);
+    document.querySelectorAll('[data-sf-island="reset_password"]').forEach(mountReset);
     document.querySelectorAll('[data-sf-island="checkout"]').forEach(mountCheckout);
     document.querySelectorAll('[data-sf-island="order_confirmation"]').forEach(function (i) { mountConfirmation(i, false); });
     document.querySelectorAll('[data-sf-island="pay_now"]').forEach(function (i) { mountConfirmation(i, true); });

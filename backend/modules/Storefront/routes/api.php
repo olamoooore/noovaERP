@@ -3,6 +3,7 @@
 use App\Http\Middleware\RequirePermission;
 use Illuminate\Support\Facades\Route;
 use Modules\Storefront\Http\Controllers\Admin\OrderController;
+use Modules\Storefront\Http\Controllers\Admin\OfflinePaymentController;
 use Modules\Storefront\Http\Controllers\Admin\SettingsController;
 use Modules\Storefront\Http\Controllers\Editor\BlockController;
 use Modules\Storefront\Http\Controllers\Editor\PreviewController;
@@ -49,6 +50,17 @@ Route::middleware(['auth:sanctum', 'entitlement:storefront'])
         // endpoint, which delegates here via the refund-handler seam.
         Route::post('/orders/{order}/refund', [OrderController::class, 'refund'])
             ->whereNumber('order')
+            ->middleware(RequirePermission::using('storefront.write'));
+
+        // Offline settlement review (PAY-R13 flow 5): approve drives the SAME
+        // canonical completion chain as a gateway webhook; reject returns the
+        // order to pending. Proof files are private (bank evidence).
+        Route::post('/orders/{order}/offline-payment', [OfflinePaymentController::class, 'review'])
+            ->whereNumber('order')
+            ->middleware(RequirePermission::using('storefront.write'));
+
+        Route::get('/orders/{order}/proofs/{proof}/file', [OfflinePaymentController::class, 'file'])
+            ->whereNumber('order')->whereNumber('proof')
             ->middleware(RequirePermission::using('storefront.write'));
     });
 

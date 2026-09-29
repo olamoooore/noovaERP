@@ -93,6 +93,11 @@ Route::middleware([
             Route::post('/orders/{order}/confirm-payment', [\Modules\Storefront\Http\Controllers\Public\PayController::class, 'confirm'])
                 ->whereNumber('order')
                 ->middleware('throttle:15,1,sf-pay');
+            // Offline settlement proof upload (PAY-R13): multipart, same
+            // ownership guards as /pay, own throttle bucket.
+            Route::post('/orders/{order}/proof-of-payment', [\Modules\Storefront\Http\Controllers\Public\PayController::class, 'proof'])
+                ->whereNumber('order')
+                ->middleware('throttle:10,1,sf-proof');
 
             // Account identity (FR-ID-*). Brute-force-specific throttles,
             // each in its OWN bucket (see prefix note above).

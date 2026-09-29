@@ -210,6 +210,17 @@ final class StorefrontPaymentService
      */
     public function availableMethods(): array
     {
-        return $this->payments->getAvailableGateways();
+        // PAY-R3: gateway (launch set) + tenant-enabled offline methods,
+        // both server-decided — the browser cannot invent a method.
+        return array_merge(
+            $this->payments->getAvailableGateways(),
+            app(StorefrontOfflinePaymentService::class)->offeredOfflineMethods(),
+        );
+    }
+
+    /** Container accessor for the shortcode registry (static render closures). */
+    public static function methodsSnapshot(): array
+    {
+        return app(self::class)->availableMethods();
     }
 }

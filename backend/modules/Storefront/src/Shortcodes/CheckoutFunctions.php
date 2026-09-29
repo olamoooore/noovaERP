@@ -18,6 +18,7 @@ final class CheckoutFunctions
         $registry->register(self::checkout());
         $registry->register(self::orderConfirmation());
         $registry->register(self::payNow());
+        $registry->register(self::paymentMethods());
     }
 
     private static function checkout(): Definition
@@ -71,5 +72,43 @@ final class CheckoutFunctions
             ->example('[storefront.pay_now]')
             ->attributes([])
             ->render(static fn (): string => view('storefront::shortcodes.pay-now')->render());
+    }
+
+    /**
+     * Server-decided payment method list (PAY-R3 / E3.3 `storefront.payment_
+     * methods`): launch gateways + enabled offline methods with their
+     * merchant instructions. Public content — nothing personal rendered; the
+     * authoritative availability check runs again on every API call anyway.
+     */
+    private static function paymentMethods(): Definition
+    {
+        return Definition::make('storefront.payment_methods')
+            ->label('Payment Methods')
+            ->icon('solar:banknote-2-bold-duotone')
+            ->category('Checkout')
+            ->tier(Tier::CACHEABLE)
+            ->cache(0)
+            ->version('1')
+            ->help('Lists the payment methods currently available for this store, including offline instructions (bank transfer details, pay-at-collection).')
+            ->example('[storefront.payment_methods]')
+            ->attributes([])
+            ->render(static function (): string {
+                $methods = \Modules\Storefront\Services\StorefrontPaymentService::methodsSnapshot();
+
+                $items = '';
+                foreach ($methods as $m) {
+                    $label = htmlspecialchars((string) $m['display_name'], ENT_QUOTES);
+                    $extra = '';
+                    if (($m['type'] ?? 'gateway') === 'offline' && ! empty($m['instructions'])) {
+                        $extra = '<p class="sf-method__instructions">'.nl2br(htmlspecialchars((string) $m['instructions'], ENT_QUOTES)).'</p>';
+                    }
+                    $items .= '<li class="sf-method sf-method--'.htmlspecialchars((string) ($m['type'] ?? 'gateway'), ENT_QUOTES).'">'
+                        .'<span class="sf-method__name">'.$label.'</span>'.$extra.'</li>';
+                }
+
+                return $items === ''
+                    ? '<p class="sf-payment-methods__empty">No payment methods are configured yet.</p>'
+                    : '<ul class="sf-payment-methods">'.$items.'</ul>';
+            });
     }
 }

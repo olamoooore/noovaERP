@@ -124,6 +124,18 @@ final class OrderController extends Controller
                     'id', 'attempt_no', 'gateway', 'transaction_ref', 'status', 'error',
                 ])),
                 'refunds' => $this->refundsFor($model),
+                'payment_proofs' => $model->paymentProofs()->get()->map(fn ($p) => [
+                    'id' => $p->id,
+                    'method' => $p->method,
+                    'reference' => $p->reference,
+                    'file_name' => $p->file_name,
+                    'mime_type' => $p->mime_type,
+                    'size_bytes' => (int) $p->size_bytes,
+                    'status' => $p->status,
+                    'review_note' => $p->review_note,
+                    'file_url' => "/api/v1/admin/storefront/orders/{$model->id}/proofs/{$p->id}/file",
+                    'created_at' => optional($p->created_at)->toIso8601String(),
+                ]),
                 'allowed_transitions' => $this->machine->allowedOrderTransitions($model->status),
             ]),
         ]);

@@ -36,7 +36,21 @@ class SettingsController extends Controller
             'policy_privacy_url' => ['nullable', 'string', 'max:2048'],
             'notification_settings' => ['nullable', 'array'],
             'notification_settings.*' => ['boolean'],
+            'payment_settings' => ['nullable', 'array'],
+            'payment_settings.offline' => ['sometimes', 'array'],
+            'payment_settings.offline.*.enabled' => ['required', 'boolean'],
+            'payment_settings.offline.*.label' => ['nullable', 'string', 'max:80'],
+            'payment_settings.offline.*.instructions' => ['nullable', 'string', 'max:2000'],
         ]);
+
+        $offlineKeys = array_keys((array) ($validated['payment_settings']['offline'] ?? []));
+        $unknown = array_diff($offlineKeys, array_keys(\Modules\Storefront\Services\StorefrontOfflinePaymentService::METHOD_LABELS));
+        if ($unknown !== []) {
+            return response()->json([
+                'message' => 'Unknown offline payment method(s): '.implode(', ', $unknown),
+                'code' => 'payment_method_unknown',
+            ], 422);
+        }
 
         $settings = StorefrontSettings::current();
         $settings->update($validated);
@@ -59,6 +73,7 @@ class SettingsController extends Controller
             'policy_shipping_url' => $settings->policy_shipping_url,
             'policy_privacy_url' => $settings->policy_privacy_url,
             'notification_settings' => $settings->notification_settings,
+            'payment_settings' => $settings->payment_settings,
             'runtime_version' => $settings->runtime_version,
         ];
     }

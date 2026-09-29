@@ -91,6 +91,48 @@ final class PayController extends Controller
     }
 
     /**
+     * Offline proof-of-payment submission (PAY-R13). Same ownership rules as
+     * /pay (session or one-time confirmation token); the METHOD must be one
+     * the tenant has actually enabled — availability is server-decided.
+     */
+    public function proof(
+        Request $request,
+        int $order,
+        \Modules\Storefront\Services\StorefrontOfflinePaymentService $offline,
+    ): JsonResponse {
+        $validated = $request->validate([
+            'token' => ['nullable', 'string', 'min:32', 'max:64'],
+            'method' => ['required', 'string', 'max:40'],
+            'reference' => ['nullable', 'string', 'max:191'],
+            'proof' => ['required', 'file'],
+        ]);
+
+        $session = $this->sessionGuard($request);
+        if ($session === false) {
+            return $this->csrfFailure();
+        }
+        $account = $session['account'] ?? null;
+
+        try {
+            $model = $this->payments->resolvePayableOrder($order, $validated['token'] ?? null, $account);
+            $proof = $offline->submitProof(
+                $model,
+                (string) $validated['method'],
+                isset($validated['reference']) ? (string) $validated['reference'] : null,
+                $validated['proof'],
+            );
+        } catch (CheckoutException $e) {
+            return $this->fail($e);
+        }
+
+        return response()->json(['data' => [
+            'proof_id' => (int) $proof->id,
+            'status' => $proof->status,
+            'message' => 'Proof received — the shop confirms offline payments before the order proceeds.',
+        ]]);
+    }
+
+    /**
      * @return array|false false => CSRF mismatch for a session request
      */
     private function sessionGuard(Request $request): array|false

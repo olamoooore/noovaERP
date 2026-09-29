@@ -25,6 +25,7 @@ class StorefrontSettings extends Model
         'policy_shipping_url',
         'policy_privacy_url',
         'notification_settings',
+        'payment_settings',
         'runtime_version',
     ];
 
@@ -35,6 +36,7 @@ class StorefrontSettings extends Model
         'low_stock_threshold' => 'integer',
         'cart_ttl_days' => 'integer',
         'notification_settings' => 'array',
+        'payment_settings' => 'array',
     ];
 
     public static function current(): self

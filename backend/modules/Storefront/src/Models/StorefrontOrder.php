@@ -72,4 +72,9 @@ class StorefrontOrder extends Model
     {
         return $this->hasMany(StorefrontOrderPaymentAttempt::class, 'order_id');
     }
+
+    public function paymentProofs(): HasMany
+    {
+        return $this->hasMany(StorefrontPaymentProof::class, 'order_id');
+    }
 }
