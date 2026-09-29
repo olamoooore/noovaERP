@@ -452,6 +452,50 @@ class PaymentController extends Controller
             ], 422);
         }
 
+        // Storefront payments carry a cash-based combined sale entry (no AR
+        // leg) — the generic reversal below is the wrong ledger shape for
+        // them, so the refund is delegated to the Storefront module's seam
+        // and FAILS CLOSED when no handler is bound (same pattern as
+        // PaymentTransactionCompletionService for storefront completions).
+        if ((string) (($transaction->metadata['type'] ?? null)) === 'storefront_order') {
+            if (! app()->bound(\App\Contracts\StorefrontOrderRefundHandler::class)) {
+                return response()->json([
+                    'message' => 'Storefront refund handler is unavailable; the gateway refund was NOT executed.',
+                    'code' => 'storefront_refund_handler_unavailable',
+                ], 503);
+            }
+
+            try {
+                $out = app(\App\Contracts\StorefrontOrderRefundHandler::class)->refund(
+                    $transaction,
+                    (float) $validated['amount'],
+                    (string) $validated['reason'],
+                    viaGateway: true,
+                    actorUserId: TenantUserHelper::resolveTenantUserId(),
+                );
+            } catch (\InvalidArgumentException $e) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            } catch (\Modules\Storefront\Exceptions\CheckoutException $e) {
+                return response()->json(['message' => $e->getMessage(), 'code' => $e->errorCode], $e->status ?: 422);
+            } catch (\Exception $e) {
+                \Log::error('Storefront gateway refund failed', [
+                    'transaction_id' => $transaction->transaction_id,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return response()->json(['message' => 'Failed to process refund: '.$e->getMessage()], 500);
+            }
+
+            return response()->json([
+                'message' => 'Refund processed through the storefront refund handler',
+                'data' => [
+                    'transaction' => $out['result']['transaction'] ?? null,
+                    'journal_entry' => $out['journal_entry'],
+                    'refund_intent' => $out['intent'],
+                ],
+            ]);
+        }
+
         // Issue #110: durable write-ahead intent BEFORE the external gateway
         // call, so a gateway success followed by a ledger failure is
         // recoverable instead of silently leaving no GL trace.

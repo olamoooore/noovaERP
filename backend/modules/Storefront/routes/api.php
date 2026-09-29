@@ -42,6 +42,14 @@ Route::middleware(['auth:sanctum', 'entitlement:storefront'])
         Route::post('/orders/{order}/status', [OrderController::class, 'updateStatus'])
             ->whereNumber('order')
             ->middleware(RequirePermission::using('storefront.write'));
+
+        // Platform-initiated refund entry (FR-ORD-04 / PAY-R10, A-18 platform
+        // direction): records + reverses through the shared PaymentRefund
+        // Service; the gateway-issuing direction runs on the platform payments
+        // endpoint, which delegates here via the refund-handler seam.
+        Route::post('/orders/{order}/refund', [OrderController::class, 'refund'])
+            ->whereNumber('order')
+            ->middleware(RequirePermission::using('storefront.write'));
     });
 
 // WebsiteBuilder editor integration (Appendix E §E4.3). Paths live under

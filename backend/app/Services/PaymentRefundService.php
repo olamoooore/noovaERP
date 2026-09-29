@@ -42,6 +42,12 @@ class PaymentRefundService
      * @param  float  $amount  The refund amount
      * @param  string  $reason  Human-readable refund reason
      * @param  int|null  $actorUserId  User performing the refund (null = current auth)
+     * @param  \App\Models\JournalEntry|null  $prePostedReversal  Channel-shaped reversal entry
+     *                                                            already posted by the owning module (storefront refunds: the combined
+     *                                                            cash-based sale JE has no AR leg to credit, so the generic reversal
+     *                                                            below would corrupt the ledger — the storefront handler posts its own
+     *                                                            mirror entry and hands it in here). When set, step 1 is skipped and
+     *                                                            this entry is linked to the refund Payment.
      * @return array{transaction: PaymentTransaction, refundEntry: \App\Models\JournalEntry|null, refundPayment: Payment|null}
      *
      * @throws \InvalidArgumentException If refund amount exceeds available balance
@@ -52,8 +58,9 @@ class PaymentRefundService
         float $amount,
         string $reason,
         ?int $actorUserId = null,
+        ?\App\Models\JournalEntry $prePostedReversal = null,
     ): array {
-        return DB::transaction(function () use ($transaction, $amount, $reason, $actorUserId) {
+        return DB::transaction(function () use ($transaction, $amount, $reason, $actorUserId, $prePostedReversal) {
             // Lock the transaction for update to prevent race conditions
             $transaction = PaymentTransaction::whereKey($transaction->id)
                 ->lockForUpdate()
@@ -63,6 +70,19 @@ class PaymentRefundService
             if ($transaction->status !== 'completed') {
                 throw new \InvalidArgumentException(
                     "Only completed transactions can be refunded. Current status: {$transaction->status}"
+                );
+            }
+
+            // Storefront sales journalize through their own cash-based combined
+            // entry (no AR leg) — the generic reversals below would corrupt the
+            // ledger for them. Refuse anything that bypassed the storefront
+            // refund handler instead of silently mis-posting (fail closed, same
+            // pattern as the storefront completion seam).
+            if ((string) (($transaction->metadata['type'] ?? null)) === 'storefront_order'
+                && $prePostedReversal === null) {
+                throw new \RuntimeException(
+                    'Storefront refunds must be routed through the StorefrontOrderRefundHandler '.
+                    '(documentType storefront_refund), not the generic reversal path.'
                 );
             }
 
@@ -79,7 +99,9 @@ class PaymentRefundService
             $refundPayment = null;
 
             // Step 1: Post GL reversal entry if this is an invoice payment with journal entry
-            if ($invoice && $invoice->journal_entry_id) {
+            if ($prePostedReversal !== null) {
+                $journalEntry = $prePostedReversal;
+            } elseif ($invoice && $invoice->journal_entry_id) {
                 // Find the original payment to determine which journal entry to reverse
                 $originalPayment = Payment::where('reference', $transaction->transaction_id)->first();
 
@@ -251,8 +273,9 @@ class PaymentRefundService
         float $amount,
         string $reason,
         ?int $actorUserId = null,
+        ?string $idempotencyKey = null,
     ): RefundTransaction {
-        return DB::transaction(function () use ($transaction, $amount, $reason, $actorUserId) {
+        return DB::transaction(function () use ($transaction, $amount, $reason, $actorUserId, $idempotencyKey) {
             $transaction = PaymentTransaction::whereKey($transaction->id)->lockForUpdate()->firstOrFail();
 
             $availableForRefund = (float) $transaction->amount - (float) ($transaction->refunded_amount ?? 0);
@@ -262,7 +285,15 @@ class PaymentRefundService
                 );
             }
 
-            $key = sprintf('gw-refund:%d:%.2f:%.2f', $transaction->id, $amount, (float) ($transaction->refunded_amount ?? 0));
+            // Caller-supplied key (HTTP Idempotency-Key, Appendix E refund
+            // convention) wins; the derived key stays the default so existing
+            // gateway-flow callers are unchanged.
+            $key = $idempotencyKey !== null
+                // Scope a caller key to the transaction: re-using one HTTP
+                // Idempotency-Key across DIFFERENT payments must not collapse
+                // two distinct refunds.
+                ? sprintf('idem:%d:%s', $transaction->id, $idempotencyKey)
+                : sprintf('gw-refund:%d:%.2f:%.2f', $transaction->id, $amount, (float) ($transaction->refunded_amount ?? 0));
 
             $existing = RefundTransaction::where('idempotency_key', $key)->first();
             if ($existing) {

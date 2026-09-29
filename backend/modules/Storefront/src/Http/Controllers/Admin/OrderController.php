@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Modules\Storefront\Enums\ActorType;
 use Modules\Storefront\Enums\OrderStatus;
+use Modules\Storefront\Exceptions\CheckoutException;
 use Modules\Storefront\Exceptions\InvalidOrderTransitionException;
 use Modules\Storefront\Models\StorefrontOrder;
 use Modules\Storefront\Services\OrderStateMachine;
@@ -122,6 +123,7 @@ final class OrderController extends Controller
                 'payment_attempts' => $model->paymentAttempts->map(fn ($a) => $a->only([
                     'id', 'attempt_no', 'gateway', 'transaction_ref', 'status', 'error',
                 ])),
+                'refunds' => $this->refundsFor($model),
                 'allowed_transitions' => $this->machine->allowedOrderTransitions($model->status),
             ]),
         ]);
@@ -162,5 +164,103 @@ final class OrderController extends Controller
     private function staffActorId(): ?int
     {
         return Auth::id() !== null ? (int) Auth::id() : null;
+    }
+
+    /**
+     * Platform-initiated refund entry (FR-ORD-04, Appendix E §E4.4
+     * `/…/refund`). Deliberately records and reverses ONLY — the money is
+     * settled off-platform (gateway dashboard / bank), mirroring A-18's
+     * platform direction. The gateway-issuing direction lives on the platform
+     * payments endpoint (which delegates here for storefront transactions via
+     * the StorefrontOrderRefundHandler seam). All durable bookkeeping runs
+     * through the shared PaymentRefundService; state through the machine.
+     */
+    public function refund(Request $request, int $order, \Modules\Storefront\Services\StorefrontRefundService $refunds): JsonResponse
+    {
+        $validated = $request->validate([
+            'amount' => ['nullable', 'numeric', 'min:0.01'],
+            'reason' => ['required', 'string', 'max:500'],
+        ]);
+
+        $model = StorefrontOrder::query()->find($order);
+        if ($model === null) {
+            return response()->json(['message' => 'Order not found.', 'code' => 'not_found'], 404);
+        }
+
+        try {
+            // Machine-level refund eligibility answered FIRST (the order, not
+            // the payment, decides whether a refund applies at all).
+            if (! in_array((string) $model->payment_status, [\Modules\Storefront\Enums\PaymentStatus::PAID->value, \Modules\Storefront\Enums\PaymentStatus::PARTIALLY_REFUNDED->value], true)) {
+                throw new CheckoutException('not_refundable', 'Only settled payments can be refunded on this order.', 422);
+            }
+
+            $transaction = $refunds->settledTransactionFor($model);
+
+            $amount = array_key_exists('amount', $validated) && $validated['amount'] !== null
+                ? (float) $validated['amount']
+                : round((float) $transaction->amount - (float) ($transaction->refunded_amount ?? 0), 2);
+
+            $out = $refunds->refund(
+                $transaction,
+                $amount,
+                (string) $validated['reason'],
+                viaGateway: false,
+                actorUserId: $this->staffActorId(),
+                idempotencyKey: $request->header('Idempotency-Key') ?: null,
+            );
+
+            $fresh = StorefrontOrder::query()->findOrFail($model->id);
+        } catch (CheckoutException $e) {
+            return response()->json(['message' => $e->getMessage(), 'code' => $e->errorCode], $e->status);
+        } catch (InvalidOrderTransitionException $e) {
+            return response()->json(['message' => $e->getMessage(), 'code' => 'invalid_transition', 'allowed' => $e->allowedFrom], 409);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage(), 'code' => 'refund_exceeds_balance'], 422);
+        }
+
+        return response()->json([
+            'data' => [
+                'order_id' => $fresh->id,
+                'status' => $fresh->status,
+                'payment_status' => $fresh->payment_status,
+                'refund' => [
+                    'id' => $out['intent']->id,
+                    'refund_number' => $out['intent']->refund_number,
+                    'amount' => (string) $out['intent']->refund_amount,
+                    'status' => $out['intent']->status,
+                    'journal_entry_id' => $out['journal_entry']->id,
+                ],
+                'transaction_refunded_amount' => (string) ($out['result']['transaction']->refunded_amount ?? '0.00'),
+            ],
+        ]);
+    }
+
+    /** Refund history for the order detail console (FR-ADM-04 audit list). */
+    private function refundsFor(StorefrontOrder $order): array
+    {
+        $transactionIds = \Modules\PaymentGateway\Models\PaymentTransaction::query()
+            ->where('metadata->type', 'storefront_order')
+            ->where('metadata->order_id', (int) $order->id)
+            ->pluck('id');
+
+        if ($transactionIds->isEmpty()) {
+            return [];
+        }
+
+        return \App\Models\RefundTransaction::query()
+            ->where('source_type', \Modules\PaymentGateway\Models\PaymentTransaction::class)
+            ->whereIn('source_id', $transactionIds)
+            ->orderBy('id')
+            ->get(['id', 'refund_number', 'refund_amount', 'status', 'reason', 'requested_at', 'completed_at'])
+            ->map(fn ($r) => [
+                'id' => $r->id,
+                'refund_number' => $r->refund_number,
+                'amount' => (string) $r->refund_amount,
+                'status' => $r->status,
+                'reason' => $r->reason,
+                'requested_at' => optional($r->requested_at)->toIso8601String(),
+                'completed_at' => optional($r->completed_at)->toIso8601String(),
+            ])
+            ->all();
     }
 }

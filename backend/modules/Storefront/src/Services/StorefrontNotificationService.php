@@ -63,6 +63,29 @@ final class StorefrontNotificationService
         );
     }
 
+    public function orderRefunded(StorefrontOrder $order, float $amount, string $reason): void
+    {
+        if (! $this->enabled('order_refunded')) {
+            return;
+        }
+
+        $vars = $this->orderVars($order);
+        $vars['refund'] = [
+            'amount' => number_format($amount, 2, '.', ''),
+            'currency' => (string) $order->currency,
+            'reason' => $reason,
+        ];
+
+        $this->send(
+            $order,
+            'storefront.order.refunded',
+            "Refund issued for order {$order->order_number}",
+            "A refund of {$amount} {$order->currency} was issued for order {$order->order_number}. Reason: {$reason}.",
+            'storefront.order.refunded',
+            $vars
+        );
+    }
+
     /**
      * Merchant toggles live in storefront_settings.notification_settings
      * (FR-MSG-06). Missing keys default to ENABLED — transactional order

@@ -174,6 +174,91 @@ final class StorefrontPostingService
         });
     }
 
+    /**
+     * Refund reversal entry (FR-PAY-05 / A-18): the exact cash-side mirror of
+     * the combined sale posting — DR sales revenue and DR sales tax payable
+     * (pro-rata share of the booked totals), CR cash for the refunded amount.
+     * Stock is NOT restored here: refunds move money; physical returns are
+     * the P4 returns/credit-note layer (FR-ORD-06).
+     *
+     * Idempotency is per refund record: the journal link keys on
+     * (storefront_refund, refund row id), so replaying the SAME refund posts
+     * nothing a second time while distinct partial refunds each get their own
+     * single entry.
+     */
+    public function postRefundPayment(StorefrontOrder $order, int $refundId, float $amount): JournalEntry
+    {
+        $existing = JournalEntryLink::query()
+            ->where('source_document_type', 'storefront_refund')
+            ->where('source_document_id', $refundId)
+            ->where('relation_type', 'post')
+            ->first();
+
+        if ($existing) {
+            $entry = JournalEntry::query()->find($existing->journal_entry_id);
+            if ($entry !== null) {
+                return $entry;
+            }
+        }
+
+        $amount = round($amount, 2);
+        $total = round((float) $order->total, 2);
+        if ($amount <= 0 || $total <= 0 || $amount > $total + 0.01) {
+            throw new \RuntimeException("Refund amount {$amount} is not valid for order total {$total}.");
+        }
+
+        $taxShare = min(round((float) $order->tax_amount * ($amount / $total), 2), $amount);
+        $revenueShare = round($amount - $taxShare, 2);
+
+        $lines = [];
+        if ($revenueShare > 0) {
+            $lines[] = new PostingRequestLine(
+                accountMappingKey: 'sales_revenue',
+                accountId: null,
+                debit: $revenueShare,
+                credit: 0,
+                description: 'Storefront refund — revenue reduction',
+                reference: $order->order_number,
+            );
+        }
+        if ($taxShare > 0) {
+            $lines[] = new PostingRequestLine(
+                accountMappingKey: 'sales_tax_payable',
+                accountId: null,
+                debit: $taxShare,
+                credit: 0,
+                description: 'Storefront refund — booked tax reduction',
+                reference: $order->order_number,
+            );
+        }
+        $lines[] = new PostingRequestLine(
+            accountMappingKey: 'cash',
+            accountId: null,
+            debit: 0,
+            credit: $amount,
+            description: 'Storefront refund paid out',
+            reference: $order->order_number,
+        );
+
+        $result = $this->postingEngine->post(new PostingRequest(
+            documentType: 'storefront_refund',
+            documentId: $refundId,
+            postingDate: now()->toDateString(),
+            description: "Storefront refund for {$order->order_number} ({$amount} {$order->currency})",
+            lines: $lines,
+            reference: "REFUND-{$order->order_number}-{$refundId}",
+            userId: TenantUserHelper::resolveTenantUserId(),
+            legalEntityId: $order->legal_entity_id ?? request()?->attributes->get('legal_entity_id'),
+            entityBookId: request()?->attributes->get('entity_book_id'),
+        ));
+
+        if (! $result->success) {
+            throw new \RuntimeException("Storefront refund GL posting failed for {$order->order_number}: {$result->error}");
+        }
+
+        return $result->journalEntry ?? JournalEntry::query()->find($result->journalEntryId);
+    }
+
     private function hasTrackedItems(StorefrontOrder $order): bool
     {
         return $order->items()->whereHas('product', fn ($q) => $q->where('track_inventory', true)->where('type', 'product'))->exists();

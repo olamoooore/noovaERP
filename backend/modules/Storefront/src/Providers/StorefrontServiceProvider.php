@@ -61,6 +61,15 @@ class StorefrontServiceProvider extends ServiceProvider
             \Modules\Storefront\Services\StorefrontPaymentCompletionService::class,
         );
 
+        // Refund counterpart of the completion seam: platform refund entries
+        // (the gateway-refund endpoint) delegate storefront transactions here
+        // so the reversal lands in the cash-based storefront shape instead of
+        // the generic AR one — fail closed when unbound.
+        $this->app->singleton(
+            \App\Contracts\StorefrontOrderRefundHandler::class,
+            \Modules\Storefront\Services\StorefrontRefundService::class,
+        );
+
         // The ONE order state machine + writer service (FR-ORD-01). All
         // writers (checkout, webhook completion, admin, customer) resolve
         // OrderService from the container — no private transition maps.
@@ -104,6 +113,7 @@ class StorefrontServiceProvider extends ServiceProvider
                 'storefront.customer.password_reset',
                 'storefront.order.placed',
                 'storefront.order.paid',
+                'storefront.order.refunded',
             );
         }
     }

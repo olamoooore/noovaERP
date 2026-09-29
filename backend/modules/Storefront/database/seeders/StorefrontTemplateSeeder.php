@@ -56,6 +56,18 @@ class StorefrontTemplateSeeder extends Seeder
                 'variables' => ['company.name', 'order.order_number', 'order.total', 'order.currency', 'order.confirmation_url'],
             ],
             [
+                'key' => 'storefront.order.refunded',
+                'name' => 'Storefront — Order refunded',
+                'event' => 'storefront.order.refunded',
+                'subject' => 'Refund issued for order {{order.order_number}}',
+                'body' => '<h2 style="font-size:18px">Refund issued</h2>'
+                    .'<p>A refund of <strong>{{refund.amount}} {{order.currency}}</strong> was issued for order <strong>{{order.order_number}}</strong>.</p>'
+                    .'<p>Reason: {{refund.reason}}</p>'
+                    .'<p><a href="{{order.confirmation_url}}" style="color:#4c1d95">View your order</a></p>'
+                    .'<p>Bank processing can take a few days depending on your original payment method.</p>',
+                'variables' => ['company.name', 'order.order_number', 'order.currency', 'order.confirmation_url', 'refund.amount', 'refund.reason'],
+            ],
+            [
                 'key' => 'storefront.customer.email_verification',
                 'name' => 'Storefront — Email verification',
                 'event' => 'storefront.customer.email_verification',
