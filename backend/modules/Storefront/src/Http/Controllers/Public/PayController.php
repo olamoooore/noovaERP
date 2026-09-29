@@ -32,7 +32,10 @@ final class PayController extends Controller
     {
         $validated = $request->validate([
             'token' => ['nullable', 'string', 'min:32', 'max:64'],
-            'gateway' => ['nullable', 'string', 'in:stripe,hitpay,paypal'],
+            // Server-decided availability (FR-PAY-01 / D6 v0.3): any name is
+            // accepted here and resolved against ACTIVE launch gateways by
+            // the service; unknown/inactive => 422 gateway_unavailable.
+            'gateway' => ['nullable', 'string', 'max:40'],
             'success_url' => ['nullable', 'string', 'max:500'],
             'cancel_url' => ['nullable', 'string', 'max:500'],
         ]);

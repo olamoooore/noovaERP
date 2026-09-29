@@ -34,7 +34,9 @@ class PaymentService
             // Find the first active payment gateway (exclude offline gateways)
             $gateway = PaymentGateway::where('is_active', true)
                 ->whereIn('gateway_name', ['stripe', 'hitpay', 'paypal'])
-                ->orderByRaw("CASE WHEN gateway_name = 'stripe' THEN 0 ELSE 1 END") // Prefer Stripe
+                // MRD D6 v0.3: MY/SG market — HitPay (DuitNow/TNG/PayNow/…) is
+                // the preferred default; Stripe dormant code is avoided.
+                ->orderByRaw("CASE WHEN gateway_name = 'hitpay' THEN 0 ELSE 1 END")
                 ->first();
         }
 
@@ -151,8 +153,11 @@ class PaymentService
      */
     public function getAvailableGateways(): array
     {
+        // D6 v0.3: even if a legacy stripe row is active, it is not offered —
+        // the storefront launch set is HitPay (+PayPal). Stripe factory code
+        // is dormant platform plumbing, not a checkout choice.
         return PaymentGateway::where('is_active', true)
-            ->whereIn('gateway_name', ['stripe', 'hitpay', 'paypal'])
+            ->whereIn('gateway_name', ['hitpay', 'paypal'])
             ->get()
             ->map(fn ($gw) => [
                 'id' => $gw->id,
