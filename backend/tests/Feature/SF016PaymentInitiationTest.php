@@ -80,8 +80,22 @@ class SF016PaymentInitiationTest extends TenantTestCase
             'is_test_mode' => true,
         ]);
 
+        // Posting authority actor: the machine-posting resolves the first
+        // tenant user; give it OWNER membership (Spatie roles + central
+        // company access) so the GL gate evaluates a real grant.
         if (! User::query()->exists()) {
-            User::factory()->create();
+            $this->bindTenantContext($this->tenantId);
+            $u = User::factory()->create();
+            DB::table('public.users')->updateOrInsert(
+                ['email' => $u->email],
+                ['name' => $u->name, 'password' => $u->password, 'created_at' => now(), 'updated_at' => now()]
+            );
+            $centralId = DB::table('public.users')->where('email', $u->email)->value('id');
+            DB::table('user_company_access')->updateOrInsert(
+                ['user_id' => $centralId, 'tenant_id' => $this->tenantId],
+                ['role' => 'owner', 'is_default' => true, 'created_at' => now(), 'updated_at' => now()]
+            );
+            $u->assignRole('Owner');
         }
     }
 

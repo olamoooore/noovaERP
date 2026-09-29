@@ -742,6 +742,7 @@ class PostingEngine implements PostingEngineInterface
             'pos_order' => 'sales',
             'ocr_document' => 'purchases',
             'web_order' => 'sales',
+            'storefront_order' => 'sales',
             'fx_revaluation', 'depreciation', 'asset_disposal', 'bank_adjustment' => 'journal_entries',
             default => 'journal_entries',
         };
@@ -1075,6 +1076,9 @@ class PostingEngine implements PostingEngineInterface
             // by the actors who create these documents (module-level RBAC aligned).
             'pos_order', 'pos_refund_payment' => 'pos.create',
             'web_order' => 'sales.write',
+            // Storefront module sales posting — its own coarse permission
+            // (seeded matrix + RequirePermission parity, FR-MOD-03).
+            'storefront_order' => 'storefront.write',
             // Issue #176: DO completion recognises COGS — a sales fulfilment
             // action performed by the same actors who create web orders.
             'delivery_order' => 'sales.write',

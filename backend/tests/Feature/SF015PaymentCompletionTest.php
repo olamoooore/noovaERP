@@ -76,8 +76,24 @@ class SF015PaymentCompletionTest extends TenantTestCase
         StorefrontSettings::current();
         $this->warehouseId = (int) Warehouse::create(['name' => 'SF015 WH', 'code' => 'S15'.Str::upper(Str::random(3)), 'is_active' => true])->id;
 
+        $this->seed(\Database\Seeders\RolePermissionSeeder::class);
+
+        // Posting authority actor: the machine-posting resolves the first
+        // tenant user; give it OWNER membership (Spatie roles + central
+        // company access) so the GL gate evaluates a real grant.
         if (! User::query()->exists()) {
-            User::factory()->create();
+            $this->bindTenantContext($this->tenantId);
+            $u = User::factory()->create();
+            DB::table('public.users')->updateOrInsert(
+                ['email' => $u->email],
+                ['name' => $u->name, 'password' => $u->password, 'created_at' => now(), 'updated_at' => now()]
+            );
+            $centralId = DB::table('public.users')->where('email', $u->email)->value('id');
+            DB::table('user_company_access')->updateOrInsert(
+                ['user_id' => $centralId, 'tenant_id' => $this->tenantId],
+                ['role' => 'owner', 'is_default' => true, 'created_at' => now(), 'updated_at' => now()]
+            );
+            $u->assignRole('Owner');
         }
     }
 
@@ -106,13 +122,21 @@ class SF015PaymentCompletionTest extends TenantTestCase
         $this->assertSame(2, $hist->count());
         $this->assertTrue($hist->every(fn ($h) => $h->actor_type === 'gateway'));
 
-        // Stock issued exactly once; reservation settled through the platform
-        // lifecycle (fulfil releases the reserved counter).
+        // Stock issued exactly once; the checkout reservation is fulfilled.
+        // NOTE: the SalesOrder lifecycle legitimately RE-RESERVES for the
+        // SO document (platform behaviour, SalesOrderService L962), so the
+        // counter invariant is reserved == sum(ACTIVE reservations).
         $level->refresh();
-        $this->assertSame(0.0, (float) $level->reserved_quantity);
         $this->assertSame(7.0, (float) $level->quantity);
+        $sfRes = StockReservation::query()->where('source_document_type', 'storefront_order')->sole();
+        $this->assertSame('fulfilled', $sfRes->status);
+        $activeSum = (float) StockReservation::query()
+            ->where('product_id', $product->id)
+            ->whereIn('status', ['open', 'allocated'])
+            ->selectRaw('COALESCE(SUM(quantity - quantity_fulfilled),0) as agg')->value('agg');
+        $this->assertSame((float) $level->reserved_quantity, $activeSum);
         $this->assertSame(1, StockMovement::query()->where('reference_type', 'storefront_order')->where('reference_id', $order->id)->count());
-        $this->assertSame('fulfilled', StockReservation::query()->where('source_document_id', $order->id)->sole()->status);
+        $this->assertSame('fulfilled', StockReservation::query()->where('source_document_type', 'storefront_order')->where('source_document_id', $order->id)->sole()->status);
 
         $this->assertSame(1, $order->paymentAttempts()->count());
         $transaction->refresh();
@@ -127,6 +151,8 @@ class SF015PaymentCompletionTest extends TenantTestCase
         $this->assertSame(1, StockMovement::query()->where('reference_type', 'storefront_order')->where('reference_id', $order->id)->count());
         $level->refresh();
         $this->assertSame(7.0, (float) $level->quantity, 'replay must not double-deduct');
+        $this->assertSame(1, \App\Models\Payment::query()->where('reference', $transaction->transaction_id)->count(), 'replay must not double-settle');
+        $this->assertSame(1, \App\Models\JournalEntryLink::query()->where('source_document_type', 'storefront_order')->where('source_document_id', $order->id)->count(), 'replay must not double-post');
     }
 
     public function test_amount_mismatch_is_rejected_without_side_effects(): void

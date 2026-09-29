@@ -616,6 +616,60 @@ class SalesOrderService
         return $order;
     }
 
+    /**
+     * Canonical SalesOrder creation for paid Storefront module orders
+     * (FR-ORD-03). Idempotent via SalesChannelReference(channel=storefront);
+     * same shape as the web-order sibling — Storefront never builds parallel
+     * sales-order plumbing (SOP §4).
+     */
+    public function createFromStorefrontOrder(\Modules\Storefront\Models\StorefrontOrder $sfOrder): SalesOrder
+    {
+        $existing = SalesChannelReference::where('channel', 'storefront')
+            ->where('external_id', (string) $sfOrder->id)
+            ->first();
+
+        if ($existing) {
+            return $existing->salesOrder;
+        }
+
+        $lines = [];
+        foreach ($sfOrder->items as $item) {
+            $lines[] = [
+                'product_id' => $item->product_id,
+                'description' => $item->name,
+                'sku' => $item->sku,
+                'quantity' => (float) $item->quantity,
+                'unit_price' => (float) $item->unit_price,
+                'tax_rate' => (float) $item->tax_rate,
+                'tax_amount' => (float) $item->tax_amount,
+                'discount_amount' => (float) $item->discount_amount,
+                'income_account_id' => $item->income_account_id,
+                'source_line_type' => 'StorefrontOrderItem',
+                'source_line_id' => $item->id,
+            ];
+        }
+
+        return $this->createOrder([
+            'customer_id' => $sfOrder->customer_id,
+            'channel' => 'storefront',
+            'warehouse_id' => $sfOrder->fulfillment_warehouse_id,
+            'accounting_status' => $this->resolveSourceAccountingStatus('StorefrontOrder', $sfOrder->id),
+            'source_document_type' => 'StorefrontOrder',
+            'source_document_id' => $sfOrder->id,
+            'legal_entity_id' => $sfOrder->legal_entity_id,
+            'currency' => $sfOrder->currency,
+            'order_date' => ($sfOrder->placed_at ?? now())->toDateString(),
+            'notes' => "Storefront Order #{$sfOrder->order_number}",
+            'channel_reference' => [
+                'channel' => 'storefront',
+                'external_id' => (string) $sfOrder->id,
+                'external_number' => $sfOrder->order_number,
+                'raw_document_ids' => ['storefront_order_id' => $sfOrder->id],
+            ],
+            'lines' => $lines,
+        ]);
+    }
+
     public function createFromWebOrder(\Modules\Ecommerce\Models\WebOrder $webOrder, ?string $idempotencyKey = null): SalesOrder
     {
         $existing = SalesChannelReference::where('channel', 'ecommerce')

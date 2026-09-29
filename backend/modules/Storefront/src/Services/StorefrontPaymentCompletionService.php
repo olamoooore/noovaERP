@@ -30,11 +30,12 @@ use Modules\Storefront\Models\StorefrontOrderPaymentAttempt;
  *    StockReservationService::fulfil() releases the reserved counter
  *    (the platform reservation lifecycle, not parallel math);
  *  4. payment attempt recorded once per transaction reference;
- *  5. transaction stamped processed_at + customer.
- *
- * OUT OF SCOPE until the accounting conversion slice: invoice creation and
- * ledger posting (FR-ORD-03/PAY-R6 "invoice + JE" is the next step, tracked;
- * the order must not gain an invoice half-wired).
+ *  5. ledger conversion through canonical services — sales order
+ *    (channel=storefront) → invoice → StorefrontPostingService GL (via
+ *    PostingEngine) → recordChannelPayment — with per-step replay guards
+ *    (FR-ORD-03, PAY-R6);
+ *  6. transaction stamped processed_at + customer LAST, so any failure above
+ *    leaves the delivery retryable and retries converge forward.
  */
 final class StorefrontPaymentCompletionService implements StorefrontOrderPaymentCompletion
 {
@@ -111,7 +112,13 @@ final class StorefrontPaymentCompletionService implements StorefrontOrderPayment
                 $this->reservations->fulfil($reservation, $remaining);
             }
 
-            // 4) transaction bookkeeping (completion-service contract).
+            // 4) ledger conversion (FR-ORD-03): sales order → posted invoice
+            //    → payment, exclusively through canonical services. Runs
+            //    BEFORE the processed_at stamp so a failed conversion keeps
+            //    the transaction retryable and retries converge forward.
+            $this->convertAndInvoice($order, $transaction);
+
+            // 5) transaction bookkeeping (completion-service contract).
             $transaction->update([
                 'customer_id' => $transaction->customer_id ?? $order->customer_id,
                 'processed_at' => $transaction->processed_at ?? now(),
@@ -125,6 +132,102 @@ final class StorefrontPaymentCompletionService implements StorefrontOrderPayment
                 'payment_method' => $paymentMethod,
             ]);
         });
+    }
+
+    /**
+     * FR-ORD-03 ledger leg: convert → invoice → post → pay via the Sales and
+     * Accounting platform services (PostingEngine journalizes — no
+     * hand-built lines here). Replay guards at every step: channel reference
+     * → existing sales order; active SalesInvoiceLink → existing invoice;
+     * postInvoice is engine-idempotent; the Payment reference guard mirrors
+     * the platform completion service's own invoice branch.
+     */
+    private function convertAndInvoice(StorefrontOrder $order, PaymentTransaction $transaction): void
+    {
+        if ((float) $order->total <= 0) {
+            return; // zero-value orders carry no GL
+        }
+
+        $order->refresh();
+        if ($order->invoice_id !== null) {
+            return;
+        }
+
+        /** @var \Modules\Sales\Services\SalesOrderService $salesService */
+        $salesService = app(\Modules\Sales\Services\SalesOrderService::class);
+        /** @var \App\Services\InvoiceService $invoiceService */
+        $invoiceService = app(\App\Services\InvoiceService::class);
+
+        $salesOrder = $salesService->createFromStorefrontOrder($order);
+
+        if (! $salesOrder->isInvoiced()) {
+            if ($salesOrder->isDraft()) {
+                $salesOrder = $salesService->confirmOrder($salesOrder);
+            }
+            if ($salesOrder->isConfirmed()) {
+                $salesOrder = $salesService->allocateOrder($salesOrder);
+            }
+            if ($salesOrder->isAllocated()) {
+                $salesOrder = $salesService->fulfilOrder($salesOrder);
+            }
+
+            $invoice = $salesService->createInvoice($salesOrder, [
+                'subtotal' => (float) $order->subtotal,
+                'tax_amount' => (float) $order->tax_amount,
+                'discount_amount' => (float) $order->discount_amount,
+                'shipping_cost' => (float) $order->shipping_amount,
+                'total' => (float) $order->total,
+            ]);
+        } else {
+            $link = \Modules\Sales\Models\SalesInvoiceLink::query()
+                ->where('sales_order_id', $salesOrder->id)
+                ->where('link_state', 'active')
+                ->firstOrFail();
+            $invoice = \App\Models\Invoice::query()->findOrFail($link->invoice_id);
+        }
+
+        // GL: DR cash / CR revenue / CR tax payable / DR COGS / CR inventory
+        // (engine-idempotent via the 'post' journal link; stock already
+        // issued by this handler's idempotency-keyed movements — NOT again
+        // here).
+        $entry = app(\Modules\Storefront\Services\StorefrontPostingService::class)->postPaidOrder(
+            $order,
+            (float) $order->total,
+            $this->normalizePaymentMethod($transaction->payment_method ?? $transaction->gateway?->gateway_name),
+        );
+
+        if ($entry === null) {
+            throw new \RuntimeException('Storefront GL posting produced no journal entry for order '.$order->order_number.'.');
+        }
+
+        // Channel payment record (settled on creation — GL posted above;
+        // same convention as POS/web-order flows). Reference-guarded.
+        $alreadySettled = \App\Models\Payment::query()
+            ->where('reference', $transaction->transaction_id)
+            ->exists();
+
+        if (! $alreadySettled) {
+            $invoiceService->recordChannelPayment($invoice->fresh(), [
+                'payment_date' => now(),
+                'method' => $this->normalizePaymentMethod($transaction->payment_method ?? $transaction->gateway?->gateway_name),
+                'reference' => $transaction->transaction_id,
+                'amount' => (float) $order->total,
+                'notes' => 'Storefront order '.$order->order_number.' (gateway-paid)',
+                'received_by' => $invoice->created_by,
+            ]);
+        }
+
+        $order->update(['invoice_id' => $invoice->id, 'sales_order_id' => $salesOrder->id]);
+    }
+
+    private function normalizePaymentMethod(?string $method): string
+    {
+        return match ($method) {
+            'bank', 'bank_transfer' => 'bank_transfer',
+            'cash' => 'cash',
+            'check', 'cheque' => 'check',
+            default => 'card',
+        };
     }
 
     /**
