@@ -159,7 +159,10 @@ class PaymentRefundService
                     'reference' => "REFUND-{$transaction->transaction_id}",
                     'amount' => -$amount, // Negative amount indicates refund
                     'notes' => "Refund via {$transaction->gateway->gateway_name}: {$reason}",
-                    'received_by' => $actorUserId,
+                    // Gateway-initiated notices carry no human actor — attribute
+                    // like every other automated ledger writer (recordChannelPayment
+                    // convention) instead of violating NOT NULL on payments.
+                    'received_by' => $actorUserId ?? \Modules\OCRBookkeeping\Helpers\TenantUserHelper::resolveTenantUserId(),
                     'journal_entry_id' => $journalEntry?->id,
                     'payment_status' => 'refunded',
                     'refunded_at' => now(),

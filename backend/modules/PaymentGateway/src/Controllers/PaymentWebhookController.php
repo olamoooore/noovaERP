@@ -137,6 +137,12 @@ class PaymentWebhookController extends Controller
                 $this->handlePaymentSuccess($webhookData, $gateway);
             } elseif ($webhookData['status'] === 'failed') {
                 $this->handlePaymentFailed($webhookData, $gateway);
+            } elseif ($webhookData['status'] === 'refunded') {
+                // P-04b (A-18 gateway-initiated direction): refund events were
+                // historically DROPPED. Storefront transactions are now routed
+                // through the canonical refund handler; every other flow keeps
+                // its frozen legacy behavior (ignore + log) — SF005 boundary.
+                $this->handleGatewayRefundNotice($webhookData);
             }
 
             return response()->json(['status' => 'success']);
@@ -286,6 +292,72 @@ class PaymentWebhookController extends Controller
         Log::info('Payment marked as failed', [
             'transaction_id' => $webhookData['transaction_id'],
             'invoice_id' => $transaction->invoice_id,
+        ]);
+    }
+
+    /**
+     * P-04b — gateway-initiated refund notice (HitPay payment request moves
+     * to status refunded, e.g. the merchant refunded in the gateway
+     * dashboard). The money already moved at the gateway, so the platform
+     * records and reverses through the canonical handler (viaGateway=false).
+     * Non-storefront transactions keep the frozen legacy behavior (dropped
+     * event — SF005 boundary; changing it would silently mutate money state
+     * on flows this workstream does not own).
+     */
+    protected function handleGatewayRefundNotice(array $webhookData): void
+    {
+        $transaction = PaymentTransaction::where('transaction_id', $webhookData['transaction_id'])->first();
+
+        if (! $transaction) {
+            Log::warning('Gateway refund notice for an unknown transaction — ignored', [
+                'transaction_id' => $webhookData['transaction_id'],
+            ]);
+
+            return;
+        }
+
+        if ((string) (($transaction->metadata['type'] ?? null)) !== 'storefront_order') {
+            Log::info('Gateway refund notice ignored for non-storefront transaction (legacy-frozen behavior)', [
+                'transaction_id' => $transaction->transaction_id,
+            ]);
+
+            return;
+        }
+
+        $available = round((float) $transaction->amount - (float) ($transaction->refunded_amount ?? 0), 2);
+        if ($available <= 0.004) {
+            Log::info('Gateway refund notice already reflected on the platform side — no-op', [
+                'transaction_id' => $transaction->transaction_id,
+            ]);
+
+            return;
+        }
+
+        if (! app()->bound(\App\Contracts\StorefrontOrderRefundHandler::class)) {
+            // Fail CLOSED: the exception bubbles to the branch handler,
+            // answering 500 so HitPay retries the notice after the module
+            // (and therefore the reversal path) exists again.
+            throw new \RuntimeException('Storefront refund handler is unavailable; the gateway refund notice was NOT recorded.');
+        }
+
+        $noticeAmount = isset($webhookData['amount']) && $webhookData['amount'] !== ''
+            ? round((float) str_replace(',', '', (string) $webhookData['amount']), 2)
+            : null;
+        $amount = ($noticeAmount !== null && $noticeAmount > 0 && $noticeAmount <= $available)
+            ? $noticeAmount
+            : $available;
+
+        app(\App\Contracts\StorefrontOrderRefundHandler::class)->refund(
+            $transaction,
+            $amount,
+            'Gateway refund event',
+            viaGateway: false,
+            actorUserId: null,
+        );
+
+        Log::info('Gateway refund notice recorded against the storefront order', [
+            'transaction_id' => $transaction->transaction_id,
+            'amount' => $amount,
         ]);
     }
 

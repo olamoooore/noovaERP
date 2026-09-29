@@ -158,10 +158,15 @@ final class StorefrontRefundService implements StorefrontOrderRefundHandler
         $paid = (float) $transaction->amount;
         $fullyRefunded = $refundedSoFar + 0.005 >= $paid;
 
+        // Attribution is honest about origin: refunds recorded without a
+        // staff actor (gateway webhook notices) carry the GATEWAY actor;
+        // anything a person triggered records STAFF with their id.
+        $actor = $actorUserId === null ? ActorType::GATEWAY : ActorType::STAFF;
+
         $order = $this->orders->transitionPayment(
             $order,
             $fullyRefunded ? PaymentStatus::REFUNDED : PaymentStatus::PARTIALLY_REFUNDED,
-            ActorType::STAFF,
+            $actor,
             $actorUserId,
             "Refund {$amount} {$order->currency} ({$reason})",
         );
@@ -173,7 +178,7 @@ final class StorefrontRefundService implements StorefrontOrderRefundHandler
                 $order = $this->orders->transitionOrder(
                     $order,
                     OrderStatus::REFUNDED,
-                    ActorType::STAFF,
+                    $actor,
                     $actorUserId,
                     "Fully refunded ({$reason})",
                 );
