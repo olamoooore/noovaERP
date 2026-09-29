@@ -133,6 +133,11 @@ final class CheckoutService
             // Consume the placed cart; the next visit gets a fresh one.
             $cart->update(['status' => 'ordered']);
 
+            // Lifecycle mail pilot (FR-MSG-02/06) — engine-routed, failure-
+            // contained, and transactional: a rolled-back order never mails.
+            app(\Modules\Storefront\Services\StorefrontNotificationService::class)
+                ->orderPlaced($order, $plainToken);
+
             return ['order' => $order, 'confirmation_token' => $plainToken, 'replay' => false];
         });
     }

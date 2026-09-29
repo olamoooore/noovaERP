@@ -72,29 +72,30 @@ class SmsChannel implements ChannelInterface
 
     // ── Driver implementations (extend as needed) ──────────
 
+    /** NOTE: unimplemented drivers must FAIL CLOSED (platform defect P-05: stubs previously returned success:true, silently faking delivery and emptying the retry backlog). */
     protected function sendViaTwilio(string $phone, string $body): array
     {
         // TODO: Implement Twilio integration
         // $twilio = new \Twilio\Rest\Client($sid, $token);
         // $twilio->messages->create($phone, ['from' => $from, 'body' => $body]);
-        Log::info('Communication: SMS via Twilio (stub)', compact('phone'));
+        Log::error('Communication: Twilio driver not implemented — failing closed (P-05)');
 
-        return ['success' => true, 'external_id' => 'twilio_'.uniqid()];
+        return ['success' => false, 'error' => 'driver_not_implemented'];
     }
 
     protected function sendViaVonage(string $phone, string $body): array
     {
         // TODO: Implement Vonage integration
-        Log::info('Communication: SMS via Vonage (stub)', compact('phone'));
+        Log::error('Communication: Vonage driver not implemented — failing closed (P-05)');
 
-        return ['success' => true, 'external_id' => 'vonage_'.uniqid()];
+        return ['success' => false, 'error' => 'driver_not_implemented'];
     }
 
     protected function sendViaAfricasTalking(string $phone, string $body): array
     {
         // TODO: Implement Africa's Talking integration
-        Log::info('Communication: SMS via AfricasTalking (stub)', compact('phone'));
+        Log::error('Communication: AfricasTalking driver not implemented — failing closed (P-05)');
 
-        return ['success' => true, 'external_id' => 'at_'.uniqid()];
+        return ['success' => false, 'error' => 'driver_not_implemented'];
     }
 }

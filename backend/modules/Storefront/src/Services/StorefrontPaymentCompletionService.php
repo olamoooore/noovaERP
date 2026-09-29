@@ -118,7 +118,10 @@ final class StorefrontPaymentCompletionService implements StorefrontOrderPayment
             //    the transaction retryable and retries converge forward.
             $this->convertAndInvoice($order, $transaction);
 
-            // 5) transaction bookkeeping (completion-service contract).
+            // 5) lifecycle mail (engine-routed; P-05 fix makes it real).
+            app(\Modules\Storefront\Services\StorefrontNotificationService::class)->orderPaid($order);
+
+            // 6) transaction bookkeeping (completion-service contract).
             $transaction->update([
                 'customer_id' => $transaction->customer_id ?? $order->customer_id,
                 'processed_at' => $transaction->processed_at ?? now(),

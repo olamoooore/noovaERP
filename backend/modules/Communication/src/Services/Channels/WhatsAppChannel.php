@@ -67,20 +67,21 @@ class WhatsAppChannel implements ChannelInterface
         return $results;
     }
 
+    /** NOTE: unimplemented drivers must FAIL CLOSED (platform defect P-05: stubs previously returned success:true, silently faking delivery and emptying the retry backlog). */
     protected function sendViaMeta(string $phone, string $body, CommunicationMessage $message): array
     {
         // TODO: Implement Meta Cloud API integration
         // POST https://graph.facebook.com/v17.0/{phone_number_id}/messages
-        Log::info('Communication: WhatsApp via Meta (stub)', compact('phone'));
+        Log::error('Communication: Meta driver not implemented — failing closed (P-05)');
 
-        return ['success' => true, 'external_id' => 'wa_meta_'.uniqid()];
+        return ['success' => false, 'error' => 'driver_not_implemented'];
     }
 
     protected function sendViaTwilio(string $phone, string $body, CommunicationMessage $message): array
     {
         // TODO: Implement Twilio WhatsApp integration
-        Log::info('Communication: WhatsApp via Twilio (stub)', compact('phone'));
+        Log::error('Communication: Twilio driver not implemented — failing closed (P-05)');
 
-        return ['success' => true, 'external_id' => 'wa_twilio_'.uniqid()];
+        return ['success' => false, 'error' => 'driver_not_implemented'];
     }
 }

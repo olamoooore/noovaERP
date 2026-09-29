@@ -20,17 +20,29 @@ final class EventSubtypeRegistry
 {
     // ── Canonical business-event subtypes ─────────────────────────────
     public const SYSTEM_LOG = 'system.log';
+
     public const INTERNAL_NOTE = 'internal.note';
+
     public const RECORD_COMMENT = 'record.comment';
+
     public const INVOICE_SENT = 'invoice.sent';
+
     public const INVOICE_PAID = 'invoice.paid';
+
     public const INVOICE_OVERDUE = 'invoice.overdue';
+
     public const QUOTATION_SENT = 'quotation.sent';
+
     public const ORDER_CONFIRMED = 'order.confirmed';
+
     public const ORDER_CANCELLED = 'order.cancelled';
+
     public const PAYMENT_RECEIVED = 'payment.received';
+
     public const DELIVERY_COMPLETED = 'delivery.completed';
+
     public const STOCK_LOW = 'stock.low';
+
     public const USER_WELCOME = 'user.welcome';
 
     private const EXACT = [

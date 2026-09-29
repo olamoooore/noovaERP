@@ -64,19 +64,20 @@ class PushChannel implements ChannelInterface
         return $results;
     }
 
+    /** NOTE: unimplemented drivers must FAIL CLOSED (platform defect P-05: stubs previously returned success:true, silently faking delivery and emptying the retry backlog). */
     protected function sendViaFcm(string $token, CommunicationMessage $message): array
     {
         // TODO: Implement Firebase Cloud Messaging
-        Log::info('Communication: Push via FCM (stub)', ['token' => substr($token, 0, 20).'...']);
+        Log::error('Communication: FCM driver not implemented — failing closed (P-05)');
 
-        return ['success' => true, 'external_id' => 'fcm_'.uniqid()];
+        return ['success' => false, 'error' => 'driver_not_implemented'];
     }
 
     protected function sendViaOneSignal(string $token, CommunicationMessage $message): array
     {
         // TODO: Implement OneSignal
-        Log::info('Communication: Push via OneSignal (stub)', ['token' => substr($token, 0, 20).'...']);
+        Log::error('Communication: OneSignal driver not implemented — failing closed (P-05)');
 
-        return ['success' => true, 'external_id' => 'onesignal_'.uniqid()];
+        return ['success' => false, 'error' => 'driver_not_implemented'];
     }
 }

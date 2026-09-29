@@ -3,16 +3,16 @@
 namespace Modules\Communication\Services;
 
 use Illuminate\Support\Facades\DB;
-use Modules\Communication\Models\CommunicationAttachment;
-use Modules\Communication\Models\CommunicationReadState;
-use Modules\Communication\Support\EventSubtypeRegistry;
 use Illuminate\Support\Facades\Log;
 use Modules\Communication\Jobs\ProcessOutboxBatch;
+use Modules\Communication\Models\CommunicationAttachment;
 use Modules\Communication\Models\CommunicationChannelLog;
 use Modules\Communication\Models\CommunicationMessage;
 use Modules\Communication\Models\CommunicationOutbox;
 use Modules\Communication\Models\CommunicationPreference;
+use Modules\Communication\Models\CommunicationReadState;
 use Modules\Communication\Models\CommunicationSubscriber;
+use Modules\Communication\Support\EventSubtypeRegistry;
 
 /**
  * CommunicationEngine — The central communication bus for NoovaERP.
@@ -386,7 +386,6 @@ class CommunicationEngine
      *   - users with one of $staffRoles (Owner/Admin/Staff/Manager).
      */
 
-
     // ─── Issue #88: attachments ────────────────────────────────────────
 
     public function attachToMessage(
@@ -566,9 +565,75 @@ class CommunicationEngine
             ->get();
 
         $count = 0;
-        foreach ($retryable as $outbox) {
-            $this->deliverOutboxItem($outbox, $outbox->message);
-            $count++;
+
+        // Platform defect P-06 (closed for the retry path): deliveries must
+        // run inside the OWNING tenant's context — the email channel reads
+        // process-wide mail config, which the tenant bootstrap refreshes
+        // from that tenant's settings on initialization. Previously every
+        // scheduled retry ran central-only, so retried mail could go out on
+        // the wrong (or default) transport.
+        $byTenant = $retryable->groupBy(function ($outbox) {
+            return (string) ($outbox->tenant_id ?? $outbox->message?->tenant_id ?? '');
+        });
+
+        foreach ($byTenant as $tenantKey => $items) {
+            $tenantKey = (string) $tenantKey;
+
+            if ($tenantKey === '') {
+                // Central-tenant messages (rare, pre-backfill): deliver in
+                // the current context rather than dropping them.
+                foreach ($items as $outbox) {
+                    try {
+                        $this->deliverOutboxItem($outbox, $outbox->message);
+                        $count++;
+                    } catch (\Throwable $e) {
+                        Log::error('Communication: retry delivery failed', ['outbox_id' => $outbox->id, 'error' => $e->getMessage()]);
+                    }
+                }
+
+                continue;
+            }
+
+            $tenant = null;
+
+            // SAVEPOINT via nested transaction: a malformed (non-uuid)
+            // tenant id would otherwise abort Postgres' whole transaction
+            // (25P02) even though PHP catches the throw.
+            try {
+                $tenant = DB::transaction(fn () => \App\Models\Tenant::query()->find($tenantKey));
+            } catch (\Throwable) {
+                $tenant = null;
+            }
+
+            if ($tenant === null) {
+                // Never deliver under a WRONG/absent tenant context.
+                foreach ($items as $outbox) {
+                    $outbox->markAsFailed("Tenant {$tenantKey} not found for retry (P-06 guard)", true);
+                }
+
+                Log::warning('Communication: retry skipped — unknown tenant', [
+                    'tenant_id' => $tenantKey,
+                    'items' => $items->count(),
+                ]);
+
+                continue;
+            }
+
+            $tenancy = app(\Stancl\Tenancy\Tenancy::class);
+            $tenancy->initialize($tenant);
+
+            try {
+                foreach ($items as $outbox) {
+                    try {
+                        $this->deliverOutboxItem($outbox, $outbox->message);
+                        $count++;
+                    } catch (\Throwable $e) {
+                        Log::error('Communication: retry delivery failed', ['outbox_id' => $outbox->id, 'error' => $e->getMessage()]);
+                    }
+                }
+            } finally {
+                $tenancy->end();
+            }
         }
 
         return $count;

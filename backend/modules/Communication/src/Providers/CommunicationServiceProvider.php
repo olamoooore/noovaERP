@@ -52,6 +52,15 @@ class CommunicationServiceProvider extends ServiceProvider
         \Modules\Communication\Support\EventSubtypeRegistry::register(
             'record.inbound_email',
         );
+
+        // Platform defect P-05 (closed): the two platform producers dispatch
+        // these subtypes but never registered them, so the queued
+        // listener's assertValid threw and the delivery silently died in
+        // failed_jobs. Registering at boot is the documented extension path.
+        \Modules\Communication\Support\EventSubtypeRegistry::register(
+            'invoice.delivered',
+            'invoice.approval_submitted',
+        );
         // Do NOT also loadRoutesFrom here or routes will be registered twice
         // with different middleware stacks, bypassing tenant isolation.
 

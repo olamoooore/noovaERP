@@ -101,6 +101,8 @@ class StorefrontServiceProvider extends ServiceProvider
                 'storefront.customer.email_verification',
                 'storefront.customer.email_verified',
                 'storefront.customer.password_reset',
+                'storefront.order.placed',
+                'storefront.order.paid',
             );
         }
     }

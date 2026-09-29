@@ -44,7 +44,10 @@ class SendDigest implements ShouldQueue
             ->where('is_sent', false)
             ->where('scheduled_for', '<=', now())
             ->get()
-            ->groupBy(fn ($item) => ($item->user_id ?? 'c'.$item->customer_id));
+            // P-06: tenant is part of the group key — a recipient's digest
+            // must be composed and sent inside its owning tenant context
+            // (mail config + lookups), never from the worker's central one.
+            ->groupBy(fn ($item) => ($item->tenant_id ?? '-').'|'.($item->user_id ?? 'c'.$item->customer_id));
 
         $sentCount = 0;
 
@@ -56,31 +59,61 @@ class SendDigest implements ShouldQueue
                 continue;
             }
 
-            // Build digest body
-            $digestBody = $this->buildDigestHtml($messages);
             $firstItem = $items->first();
+            $tenantKey = (string) ($firstItem->tenant_id ?? '');
 
-            $recipientUserIds = $firstItem->user_id ? [$firstItem->user_id] : [];
-            $recipientCustomerIds = $firstItem->customer_id ? [$firstItem->customer_id] : [];
+            // Messages are central rows (already loaded); only DELIVERY needs
+            // the tenant context (mail config, subscriber lookups).
+            $send = function () use ($engine, $firstItem, $items, $messages, &$sentCount) {
+                // Build digest body
+                $digestBody = $this->buildDigestHtml($messages);
 
-            // Send the consolidated digest
-            $engine->sendDirect(
-                subject: ucfirst($this->digestType).' Activity Digest — '.now()->format('M j, Y'),
-                body: $digestBody,
-                recipientUserIds: $recipientUserIds,
-                recipientCustomerIds: $recipientCustomerIds,
-                channels: ['email', 'in_app'],
-                messageType: CommunicationMessage::TYPE_NOTIFICATION,
-                subtype: 'digest.'.$this->digestType,
-                tenantId: $firstItem->tenant_id,
-            );
+                $recipientUserIds = $firstItem->user_id ? [$firstItem->user_id] : [];
+                $recipientCustomerIds = $firstItem->customer_id ? [$firstItem->customer_id] : [];
 
-            // Mark as sent
-            DB::table('communication_digest_queue')
-                ->whereIn('id', $items->pluck('id'))
-                ->update(['is_sent' => true, 'sent_at' => now(), 'updated_at' => now()]);
+                // Send the consolidated digest
+                $engine->sendDirect(
+                    subject: ucfirst($this->digestType).' Activity Digest — '.now()->format('M j, Y'),
+                    body: $digestBody,
+                    recipientUserIds: $recipientUserIds,
+                    recipientCustomerIds: $recipientCustomerIds,
+                    channels: ['email', 'in_app'],
+                    messageType: CommunicationMessage::TYPE_NOTIFICATION,
+                    subtype: 'digest.'.$this->digestType,
+                    tenantId: $firstItem->tenant_id,
+                );
 
-            $sentCount++;
+                // Mark as sent
+                DB::table('communication_digest_queue')
+                    ->whereIn('id', $items->pluck('id'))
+                    ->update(['is_sent' => true, 'sent_at' => now(), 'updated_at' => now()]);
+
+                $sentCount++;
+            };
+
+            if ($tenantKey !== '' && $tenantKey !== '-') {
+                $tenant = null;
+                try {
+                    $tenant = DB::transaction(fn () => \App\Models\Tenant::query()->find($tenantKey));
+                } catch (\Throwable) {
+                    // malformed tenant id — fall through to the skip guard
+                }
+                if ($tenant === null) {
+                    \Illuminate\Support\Facades\Log::warning('SendDigest: unknown tenant, skipping (P-06 guard)', ['tenant_id' => $tenantKey]);
+
+                    continue;
+                }
+
+                $tenancy = app(\Stancl\Tenancy\Tenancy::class);
+                $tenancy->initialize($tenant);
+                try {
+                    $send();
+                } finally {
+                    $tenancy->end();
+                }
+            } else {
+                $send();
+            }
         }
 
         if ($sentCount > 0) {
