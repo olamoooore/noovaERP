@@ -48,6 +48,21 @@ class PaymentTransactionCompletionService
                 return $transaction->fresh();
             }
 
+            if (! $invoice && ($transaction->metadata['type'] ?? null) === 'storefront_order') {
+                // Fail CLOSED: storefront transactions must never fall through
+                // to the legacy web-order order_id resolver (different tables
+                // share id space). The handler is bound by the Storefront
+                // module; absent it, the delivery retries rather than
+                // touching the wrong order.
+                if (! app()->bound(\App\Contracts\StorefrontOrderPaymentCompletion::class)) {
+                    throw new \RuntimeException('Storefront payment completion handler is unavailable.');
+                }
+
+                app(\App\Contracts\StorefrontOrderPaymentCompletion::class)->complete($transaction, $paymentMethod);
+
+                return $transaction->fresh();
+            }
+
             if (! $invoice && (($transaction->metadata['type'] ?? null) === 'web_order' || ! empty($transaction->metadata['order_id']))) {
                 $webOrder = $this->resolveWebOrder($transaction);
 

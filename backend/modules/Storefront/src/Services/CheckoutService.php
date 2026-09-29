@@ -83,6 +83,17 @@ final class CheckoutService
             throw new CheckoutException('cart_empty', 'Your cart is empty.', 422);
         }
 
+        // Bundles need component decomposition for correct stock movement —
+        // the archived legacy implementation must not be copied. Blocked
+        // until a platform bundle service exists (P2.3, disclosed).
+        $bundled = Product::query()
+            ->whereIn('id', collect($quote['items'])->pluck('product_id')->unique()->all() ?: [0])
+            ->where('is_bundle', true)
+            ->exists();
+        if ($bundled) {
+            throw new CheckoutException('bundle_unsupported', 'Bundle products cannot be checked out yet.', 422);
+        }
+
         $email = mb_strtolower(trim($contact['email']));
         $customer = $this->resolveCustomer($account, $email, $contact, $quote);
         $legalEntityId = $this->orders->resolveLegalEntityId($customer);

@@ -53,6 +53,14 @@ class StorefrontServiceProvider extends ServiceProvider
 
         $this->app->singleton(StorefrontPageContentFilter::class);
 
+        // Canonical completion handler for storefront_order payments
+        // (App\Contracts\StorefrontOrderPaymentCompletion seam consumed by
+        // PaymentTransactionCompletionService).
+        $this->app->singleton(
+            \App\Contracts\StorefrontOrderPaymentCompletion::class,
+            \Modules\Storefront\Services\StorefrontPaymentCompletionService::class,
+        );
+
         // The ONE order state machine + writer service (FR-ORD-01). All
         // writers (checkout, webhook completion, admin, customer) resolve
         // OrderService from the container — no private transition maps.
