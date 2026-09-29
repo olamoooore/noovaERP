@@ -1,9 +1,15 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 
@@ -21,14 +27,6 @@ export function BonusSchemeCreatePage() {
   })
 
   const [products, setProducts] = useState<any[]>([])
-
-  const { data: productList } = useQuery({
-    queryKey: ['products-list'],
-    queryFn: async () => {
-      const res = await api.get('/products', { params: { per_page: 1000 } })
-      return res.data.data || []
-    },
-  })
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -57,6 +55,8 @@ export function BonusSchemeCreatePage() {
   const addProduct = () => {
     setProducts([...products, {
       qualifying_product_id: '',
+      qualifying_product_name: '',
+      foc_product_name: '',
       scheme_type: 'fixed_discount',
       discount_amount: '',
       discount_percentage: '',
@@ -78,222 +78,254 @@ export function BonusSchemeCreatePage() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="-ml-2 mb-3 text-muted-foreground hover:text-foreground"
-          onClick={() => navigate('/sales/bonus-schemes')}
-        >
-          <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
-          Back
-        </Button>
-        <h1 className="text-3xl font-bold">Create Bonus Scheme</h1>
+    <div className="max-w-4xl space-y-6">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate('/sales/bonus-schemes')}
+            className="-ml-2 mb-3 text-muted-foreground hover:text-foreground"
+          >
+            <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
+            Back
+          </Button>
+          <h1 className="text-3xl font-bold">Create Bonus Scheme</h1>
+          <p className="mt-1 text-muted-foreground">
+            Define which products qualify and how customers are rewarded.
+          </p>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2 pt-8">
+          <HeaderActionButton variant="outline" onClick={() => navigate('/sales/bonus-schemes')} disabled={createMutation.isPending}>
+            Cancel
+          </HeaderActionButton>
+          <HeaderActionButton
+            type="submit"
+            form="bonus-scheme-form"
+            icon="solar:gift-bold-duotone"
+            loading={createMutation.isPending}
+            disabled={createMutation.isPending}
+          >
+            Create Bonus Scheme
+          </HeaderActionButton>
+        </div>
       </div>
 
-      <form onSubmit={handleSubmit}>
-        <Card className="mb-6">
+      <form id="bonus-scheme-form" onSubmit={handleSubmit} className="space-y-6">
+        {/* Scheme information */}
+        <Card className="rounded-xl border-slate-200/80 dark:border-slate-800">
           <CardHeader>
-            <CardTitle>Scheme Information</CardTitle>
+            <CardTitle className="text-lg">Scheme Information</CardTitle>
           </CardHeader>
-          <CardContent className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <label className="text-sm font-medium">Name *</label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  required
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="text-sm font-medium">Description</label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full mt-1 flex min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Start Date *</label>
-                <input
+          <CardContent className="space-y-5">
+            <div className="space-y-2">
+              <Label>Name <span className="text-destructive">*</span></Label>
+              <Input
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="e.g. Q4 Loyalty Bonus"
+                className="h-9"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="What this scheme rewards and who it applies to"
+                rows={2}
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="space-y-2">
+                <Label>Start Date <span className="text-destructive">*</span></Label>
+                <Input
                   type="date"
                   value={formData.start_date}
                   onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                  className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  className="h-9"
                   required
                 />
               </div>
-              <div>
-                <label className="text-sm font-medium">End Date</label>
-                <input
+              <div className="space-y-2">
+                <Label>End Date</Label>
+                <Input
                   type="date"
                   value={formData.end_date}
                   onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                  className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  className="h-9"
                 />
               </div>
-              <div>
-                <label className="text-sm font-medium">Status</label>
-                <select
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select
                   value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                  className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  onValueChange={(value) => setFormData({ ...formData, status: value })}
                 >
-                  <option value="draft">Draft</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </CardContent>
         </Card>
 
         {/* Products */}
-        <Card className="mb-6">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Scheme Products</CardTitle>
-            <Button type="button" variant="outline" size="sm" onClick={addProduct}>
-              <Icon icon="solar:add-circle-bold-duotone" className="mr-2 h-4 w-4" />
+        <Card className="rounded-xl border-slate-200/80 dark:border-slate-800">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-lg">Scheme Products</CardTitle>
+            <HeaderActionButton type="button" variant="outline" icon="solar:add-circle-bold" onClick={addProduct}>
               Add Product
-            </Button>
+            </HeaderActionButton>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             {products.length === 0 ? (
-              <div className="py-8 text-center text-muted-foreground">
-                <p>No products added yet. Click "Add Product" to begin.</p>
+              <div className="rounded-xl border border-dashed border-slate-300 py-12 text-center dark:border-slate-700">
+                <Icon icon="solar:gift-bold-duotone" className="mx-auto mb-2 h-10 w-10 text-muted-foreground opacity-40" />
+                <p className="text-sm font-medium">No products added yet</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">Add a product to define what qualifies for the bonus.</p>
+                <div className="mt-4 flex justify-center">
+                  <HeaderActionButton type="button" icon="solar:add-circle-bold" onClick={addProduct}>
+                    Add Product
+                  </HeaderActionButton>
+                </div>
               </div>
             ) : (
-              <div className="space-y-4">
-                {products.map((product, index) => (
-                  <div key={index} className="grid grid-cols-1 md:grid-cols-4 gap-3 p-4 border rounded-lg">
-                    <div className="md:col-span-2">
-                      <label className="text-sm font-medium">Qualifying Product *</label>
-                      <select
+              products.map((product, index) => (
+                <div
+                  key={index}
+                  className="group relative rounded-xl border border-slate-200/80 p-4 dark:border-slate-800"
+                >
+                  <div className="absolute right-3 top-3">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => removeProduct(index)}
+                      title="Remove product"
+                      aria-label="Remove product"
+                    >
+                      <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2 md:col-span-1">
+                      <Label>Qualifying Product <span className="text-destructive">*</span></Label>
+                      <ProductSearchCombobox
                         value={product.qualifying_product_id}
-                        onChange={(e) => updateProduct(index, 'qualifying_product_id', e.target.value)}
-                        className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                        required
-                      >
-                        <option value="">Select Product</option>
-                        {productList?.map((p: any) => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                      </select>
+                        onValueChange={(value, selected) => {
+                          updateProduct(index, 'qualifying_product_id', value)
+                          updateProduct(index, 'qualifying_product_name', selected?.name ?? '')
+                        }}
+                        placeholder="Search name, SKU, barcode, lot or serial..."
+                      />
                     </div>
-                    <div>
-                      <label className="text-sm font-medium">Scheme Type *</label>
-                      <select
+                    <div className="space-y-2">
+                      <Label>Scheme Type <span className="text-destructive">*</span></Label>
+                      <Select
                         value={product.scheme_type}
-                        onChange={(e) => updateProduct(index, 'scheme_type', e.target.value)}
-                        className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                        required
+                        onValueChange={(value) => updateProduct(index, 'scheme_type', value)}
                       >
-                        <option value="fixed_discount">Fixed Discount</option>
-                        <option value="percentage_discount">Percentage Discount</option>
-                        <option value="buy_x_get_y">Buy X Get Y</option>
-                      </select>
-                    </div>
-                    <div className="flex items-end">
-                      <Button type="button" variant="ghost" size="sm" onClick={() => removeProduct(index)}>
-                        <Icon icon="solar:trash-bin-minimalistic-bold-duotone" className="h-4 w-4 text-red-500" />
-                      </Button>
+                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="fixed_discount">Fixed Discount</SelectItem>
+                          <SelectItem value="percentage_discount">Percentage Discount</SelectItem>
+                          <SelectItem value="buy_x_get_y">Buy X Get Y</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
 
                     {product.scheme_type === 'fixed_discount' && (
-                      <div>
-                        <label className="text-sm font-medium">Discount Amount</label>
-                        <input
+                      <div className="space-y-2">
+                        <Label>Discount Amount</Label>
+                        <Input
                           type="number"
-                          value={product.discount_amount}
-                          onChange={(e) => updateProduct(index, 'discount_amount', e.target.value)}
-                          className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
                           min="0"
                           step="0.01"
+                          className="h-9"
+                          value={product.discount_amount}
+                          onChange={(e) => updateProduct(index, 'discount_amount', e.target.value)}
                         />
                       </div>
                     )}
 
                     {product.scheme_type === 'percentage_discount' && (
-                      <div>
-                        <label className="text-sm font-medium">Discount %</label>
-                        <input
+                      <div className="space-y-2">
+                        <Label>Discount %</Label>
+                        <Input
                           type="number"
-                          value={product.discount_percentage}
-                          onChange={(e) => updateProduct(index, 'discount_percentage', e.target.value)}
-                          className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
                           min="0"
                           max="100"
+                          className="h-9"
+                          value={product.discount_percentage}
+                          onChange={(e) => updateProduct(index, 'discount_percentage', e.target.value)}
                         />
                       </div>
                     )}
 
                     {product.scheme_type === 'buy_x_get_y' && (
                       <>
-                        <div>
-                          <label className="text-sm font-medium">Min Purchase Qty</label>
-                          <input
+                        <div className="space-y-2">
+                          <Label>Min Purchase Qty</Label>
+                          <Input
                             type="number"
+                            min="0"
+                            className="h-9"
                             value={product.minimum_purchase_qty}
                             onChange={(e) => updateProduct(index, 'minimum_purchase_qty', e.target.value)}
-                            className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                            min="0"
                           />
                         </div>
-                        <div>
-                          <label className="text-sm font-medium">FOC Product</label>
-                          <select
+                        <div className="space-y-2">
+                          <Label>FOC Product</Label>
+                          <ProductSearchCombobox
                             value={product.foc_product_id}
-                            onChange={(e) => updateProduct(index, 'foc_product_id', e.target.value)}
-                            className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                          >
-                            <option value="">Select Product</option>
-                            {productList?.map((p: any) => (
-                              <option key={p.id} value={p.id}>{p.name}</option>
-                            ))}
-                          </select>
+                            onValueChange={(value, selected) => {
+                              updateProduct(index, 'foc_product_id', value)
+                              updateProduct(index, 'foc_product_name', selected?.name ?? '')
+                            }}
+                            placeholder="Search the free product..."
+                          />
                         </div>
-                        <div>
-                          <label className="text-sm font-medium">FOC Qty</label>
-                          <input
+                        <div className="space-y-2">
+                          <Label>FOC Qty</Label>
+                          <Input
                             type="number"
+                            min="0"
+                            className="h-9"
                             value={product.foc_qty}
                             onChange={(e) => updateProduct(index, 'foc_qty', e.target.value)}
-                            className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                            min="0"
                           />
                         </div>
                       </>
                     )}
 
-                    <div>
-                      <label className="text-sm font-medium">Priority</label>
-                      <input
+                    <div className="space-y-2">
+                      <Label>Priority</Label>
+                      <Input
                         type="number"
+                        min="0"
+                        className="h-9"
                         value={product.priority}
                         onChange={(e) => updateProduct(index, 'priority', Number(e.target.value))}
-                        className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                        min="0"
                       />
                     </div>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))
             )}
           </CardContent>
         </Card>
-
-        <div className="flex justify-end gap-3">
-          <Button type="button" variant="outline" onClick={() => navigate('/sales/bonus-schemes')}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={createMutation.isPending}>
-            {createMutation.isPending ? 'Creating...' : 'Create Bonus Scheme'}
-          </Button>
-        </div>
       </form>
     </div>
   )

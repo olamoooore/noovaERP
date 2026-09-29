@@ -30,7 +30,16 @@ class StockController extends Controller
 
         $reason = StockAdjustmentReason::findOrFail($reasonId);
 
-        $allowedTypes = $expectedType === 'both' ? ['both'] : [$expectedType, 'both'];
+        // Reasons store their direction as increase/decrease/both. The old
+        // check compared against the operation names ('in'/'out'), so every
+        // proper increase reason (Found Stock, Return to Stock) was rejected
+        // for Receive Stock and only 'both' reasons ever worked.
+        $allowedTypes = match ($expectedType) {
+            'in', 'increase' => ['increase', 'in', 'both'],
+            'out', 'decrease' => ['decrease', 'out', 'both'],
+            default => ['both'],
+        };
+
         if (! in_array($reason->type, $allowedTypes, true)) {
             throw ValidationException::withMessages([
                 'adjustment_reason_id' => ['Selected reason is not valid for this stock operation.'],

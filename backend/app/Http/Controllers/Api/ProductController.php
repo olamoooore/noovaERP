@@ -96,14 +96,25 @@ class ProductController extends Controller
         }
 
         if ($request->filled('search')) {
-            $search = (string) $request->input('search');
-            $query->where(function ($q) use ($search) {
-                // Use ILIKE for case-insensitive search in PostgreSQL
-                $q->whereRaw('LOWER(name) LIKE ?', ['%'.strtolower($search).'%'])
-                    ->orWhereRaw('LOWER(secondary_name) LIKE ?', ['%'.strtolower($search).'%'])
-                    ->orWhereRaw('LOWER(sku) LIKE ?', ['%'.strtolower($search).'%'])
-                    ->orWhereRaw('LOWER(barcode) LIKE ?', ['%'.strtolower($search).'%'])
-                    ->orWhereRaw('LOWER(manufacturer_part_number) LIKE ?', ['%'.strtolower($search).'%']);
+            $search = strtolower((string) $request->input('search'));
+            $like = '%'.$search.'%';
+            // Site-wide product search: name, SKU, barcode and manufacturer
+            // part, plus the tracked identifiers (lot, batch, serial) so an
+            // operator can find a product from any code printed on the item.
+            $query->where(function ($q) use ($like) {
+                $q->whereRaw('LOWER(name) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(secondary_name) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(sku) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(barcode) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(manufacturer_part_number) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(lot_number) LIKE ?', [$like])
+                    ->orWhereHas('batches', function ($batch) use ($like) {
+                        $batch->whereRaw('LOWER(batch_number) LIKE ?', [$like])
+                            ->orWhereRaw('LOWER(lot_number) LIKE ?', [$like]);
+                    })
+                    ->orWhereHas('serials', function ($serial) use ($like) {
+                        $serial->whereRaw('LOWER(serial_number) LIKE ?', [$like]);
+                    });
             });
         }
 

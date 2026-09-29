@@ -16,7 +16,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { cn } from '@/lib/utils'
+import { cn, resolveImageUrl } from '@/lib/utils'
 import api from '@/lib/api'
 
 interface Product {
@@ -28,7 +28,9 @@ interface Product {
   description?: string | null
   price?: number | string | null
   selling_price?: number | string | null
+  cost?: number | string | null
   manufacturer_part_number?: string | null
+  image?: string | null
 }
 
 interface ProductSearchComboboxProps {
@@ -48,7 +50,7 @@ export const getProductLineDescription = (product?: Product) =>
 export function ProductSearchCombobox({
   value,
   onValueChange,
-  placeholder = 'Search products...',
+  placeholder = 'Search name, SKU, barcode, lot or serial...',
   disabled = false,
   wrapText = false,
 }: ProductSearchComboboxProps) {
@@ -168,10 +170,10 @@ export function ProductSearchCombobox({
             </span>
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[400px] p-0" align="start">
+        <PopoverContent className="w-[420px] max-w-[calc(100vw-2rem)] p-0" align="start">
         <Command shouldFilter={false}>
           <CommandInput
-            placeholder="Type to search products..."
+            placeholder="Search name, SKU, barcode, lot or serial..."
             value={searchQuery}
             onValueChange={setSearchQuery}
           />
@@ -183,7 +185,7 @@ export function ProductSearchCombobox({
               </div>
             ) : searchResults && searchResults.length === 0 ? (
               <CommandEmpty>
-                {debouncedQuery ? 'No products found.' : 'Type to search products...'}
+                {debouncedQuery ? 'No products found.' : 'Search by name, SKU, barcode, lot or serial...'}
               </CommandEmpty>
             ) : (
               <CommandGroup heading="Products">
@@ -192,16 +194,30 @@ export function ProductSearchCombobox({
                     key={product.id}
                     value={String(product.id)}
                     onSelect={handleSelect}
-                    className="flex items-center justify-between py-3"
+                    className="flex items-center justify-between gap-3 py-3"
                   >
-                    <div className="flex flex-col">
-                      <span className="font-medium">{product.name}</span>
-                      <span className="text-xs text-muted-foreground">SKU: {product.sku}</span>
-                      {plainText(product.short_description) && (
-                        <span className="mt-1 max-w-[260px] whitespace-normal text-xs text-muted-foreground">
-                          {plainText(product.short_description)}
-                        </span>
-                      )}
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted">
+                        {product.image ? (
+                          <img
+                            src={resolveImageUrl(product.image)}
+                            alt={product.name}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <Icon icon="solar:gallery-bold-duotone" className="h-5 w-5 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <span className="line-clamp-2 font-medium leading-snug" title={product.name}>{product.name}</span>
+                        <span className="truncate text-xs text-muted-foreground" title={product.sku}>SKU: {product.sku}</span>
+                        {plainText(product.short_description) && (
+                          <span className="mt-1 max-w-[240px] whitespace-normal text-xs text-muted-foreground">
+                            {plainText(product.short_description)}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant="outline" className="text-xs">

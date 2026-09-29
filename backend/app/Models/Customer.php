@@ -255,11 +255,13 @@ class Customer extends Model
      */
     public function getDisplayNameAttribute(): string
     {
-        if ($this->type === 'company' && $this->company) {
-            return $this->company;
-        }
-
-        return $this->name.($this->company ? " ({$this->company})" : '');
+        // The customer's name is the name. A legal company name must never
+        // shadow it (the previous implementation returned `company` for
+        // company-type records, so "W Gynae Women's Clinic" displayed as
+        // "Singapore Women's and Children's Medical Group"), and it must not
+        // leak into the name as a "(company)" suffix either — `company` is
+        // shown in its own field in the customer details.
+        return $this->name ?: (string) $this->company;
     }
 
     /**

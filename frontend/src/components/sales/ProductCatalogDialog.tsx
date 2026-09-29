@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Input } from '@/components/ui/input'
 import { Pagination } from '@/components/ui/Pagination'
 
@@ -138,7 +139,7 @@ export function ProductCatalogDialog({ products = [], onAdd }: {
 
   return (
     <>
-      <Button type="button" variant="outline" onClick={() => setOpen(true)}><Icon icon="solar:widget-5-bold-duotone" className="mr-2 h-4 w-4" />Product Catalog</Button>
+      <HeaderActionButton type="button" variant="outline" icon="solar:widget-5-bold-duotone" onClick={() => setOpen(true)}>Product Catalog</HeaderActionButton>
       {open && createPortal(
         <div className="fixed inset-0 z-[100] flex h-dvh w-screen flex-col bg-background" role="dialog" aria-modal="true" aria-labelledby="product-catalog-title">
           <header className="flex flex-wrap items-center gap-4 border-b bg-background px-5 py-4 pr-14">

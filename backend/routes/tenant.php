@@ -73,10 +73,19 @@ Route::middleware([
                 ->whereNumber('item')
                 ->middleware('throttle:60,1,sf-cart');
 
+            // Checkout + confirmation (FR-CO-04..06/10, P2): idempotent order
+            // placement against the server-quoted cart; token-gated
+            // confirmation page data. Payment intent wiring lands with the
+            // gateway completion slice.
+            Route::post('/checkout', [\Modules\Storefront\Http\Controllers\Public\CheckoutController::class, 'store'])
+                ->middleware('throttle:10,1,sf-checkout');
+            Route::get('/orders/confirm/{token}', [\Modules\Storefront\Http\Controllers\Public\CheckoutController::class, 'confirm'])
+                ->where('token', '[a-f0-9]{32,64}')
+                ->middleware('throttle:20,1,sf-confirm');
+
             // Account identity (FR-ID-*). Brute-force-specific throttles,
             // each in its OWN bucket (see prefix note above).
-            Route::prefix('auth')->group(function () {
-                Route::post('/register', [\Modules\Storefront\Http\Controllers\Public\AuthController::class, 'register'])
+            Route::prefix('auth')->group(function () {                Route::post('/register', [\Modules\Storefront\Http\Controllers\Public\AuthController::class, 'register'])
                     ->middleware('throttle:10,1,sf-register');
                 Route::post('/login', [\Modules\Storefront\Http\Controllers\Public\AuthController::class, 'login'])
                     ->middleware('throttle:10,1,sf-login');

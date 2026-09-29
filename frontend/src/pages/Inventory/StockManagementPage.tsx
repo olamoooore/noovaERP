@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -32,6 +33,7 @@ import { SortableHead } from '@/components/ui/SortableHead'
 import { useSort } from '@/hooks/useSort'
 import { StatCard } from '@/components/ui/stat-card'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox'
 
 interface Product {
   id: number
@@ -127,6 +129,7 @@ export function StockManagementPage() {
   
   // Form state
   const [productId, setProductId] = useState('')
+  const [dialogSelectedProduct, setDialogSelectedProduct] = useState<any | null>(null)
   const [warehouseId, setWarehouseId] = useState('')
   const [quantity, setQuantity] = useState('')
   const [newQuantity, setNewQuantity] = useState('')
@@ -410,6 +413,7 @@ export function StockManagementPage() {
   const closeDialog = () => {
     setIsDialogOpen(false)
     setProductId('')
+    setDialogSelectedProduct(null)
     setWarehouseId('')
     setQuantity('')
     setNewQuantity('')
@@ -484,7 +488,7 @@ export function StockManagementPage() {
   const dialogProducts = Array.from(
     new Map([...products, ...lowStockItems, ...outOfStockItems].map((product) => [product.id, product])).values()
   )
-  const selectedProduct = dialogProducts.find(p => p.id === parseInt(productId))
+  const selectedProduct = dialogSelectedProduct ?? dialogProducts.find(p => p.id === parseInt(productId))
   const availableReasons = (reasons || []).filter((reason) => isReasonAllowedForOperation(reason, operationType))
   const lowStockCount = inventoryDashboard?.summary?.low_stock_count ?? lowStockItems.length
   const outOfStockCount = inventoryDashboard?.summary?.out_of_stock_count ?? outOfStockItems.length
@@ -1005,7 +1009,7 @@ export function StockManagementPage() {
 
       {/* Stock Operation Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[500px]">
+        <DialogContent className="max-h-[90vh] overflow-x-hidden overflow-y-auto sm:max-w-[540px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {operationType === 'in' && (
@@ -1040,31 +1044,27 @@ export function StockManagementPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="min-w-0 space-y-4 py-4">
             {/* Product Selection */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Product</label>
-              <Select value={productId} onValueChange={(value) => { setProductId(value); setBatchNumber(''); setLotNumber(''); setExpiryDate(''); setSerialNumbers(''); }}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a product" />
-                </SelectTrigger>
-                <SelectContent>
-                  {dialogProducts.map((product) => (
-                    <SelectItem key={product.id} value={String(product.id)}>
-                      <div className="flex items-center gap-2">
-                        <span>{product.name}</span>
-                        <span className="text-muted-foreground">({product.sku})</span>
-                        <Badge variant="outline" className="ml-2">{product.stock_quantity} in stock</Badge>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="min-w-0 space-y-2">
+              <Label>Product</Label>
+              <ProductSearchCombobox
+                value={productId}
+                onValueChange={(value, product) => {
+                  setProductId(value)
+                  setDialogSelectedProduct(product ?? null)
+                  setBatchNumber('')
+                  setLotNumber('')
+                  setExpiryDate('')
+                  setSerialNumbers('')
+                }}
+                placeholder="Search name, SKU, barcode, lot or serial..."
+              />
             </div>
 
             {/* Warehouse Selection */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Warehouse</label>
+              <Label>Warehouse</Label>
               <Select value={warehouseId} onValueChange={setWarehouseId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select a warehouse" />
@@ -1079,24 +1079,26 @@ export function StockManagementPage() {
               </Select>
             </div>
 
-            {/* Selected Product Info */}
+            {/* Selected Product Info — long names must never widen the dialog
+                (that made the modal slide horizontally). min-w-0 on every grid
+                child lets the inner truncation actually kick in. */}
             {selectedProduct && (
-              <div className="rounded-lg border bg-muted/50 p-3">
-                <div className="flex items-center gap-3">
-                  <div className="h-12 w-12 rounded-lg bg-background flex items-center justify-center overflow-hidden">
+              <div className="min-w-0 rounded-xl border bg-muted/50 p-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-background">
                     {selectedProduct.image ? (
                       <img src={selectedProduct.image} alt="" className="h-full w-full object-cover" />
                     ) : (
                       <Icon icon="solar:box-bold-duotone" className="h-6 w-6 text-muted-foreground" />
                     )}
                   </div>
-                  <div className="flex-1">
-                    <p className="font-medium">{selectedProduct.name}</p>
-                    <p className="text-sm text-muted-foreground">{selectedProduct.sku}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium" title={selectedProduct.name}>{selectedProduct.name}</p>
+                    <p className="truncate text-sm text-muted-foreground" title={selectedProduct.sku}>{selectedProduct.sku}</p>
                   </div>
-                  <div className="text-right">
+                  <div className="shrink-0 text-right">
                     <p className="text-sm text-muted-foreground">Current Stock</p>
-                    <p className="text-xl font-bold">{selectedProduct.stock_quantity}</p>
+                    <p className="text-xl font-bold tabular-nums">{formatQty(selectedProduct.stock_quantity)}</p>
                   </div>
                 </div>
               </div>
@@ -1105,7 +1107,7 @@ export function StockManagementPage() {
             {/* Quantity Input */}
             {operationType !== 'adjust' ? (
               <div className="space-y-2">
-                <label className="text-sm font-medium">Quantity</label>
+                <Label>Quantity</Label>
                 <Input
                   type="number"
                   min="1"
@@ -1117,7 +1119,7 @@ export function StockManagementPage() {
             ) : (
               <>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Counted Quantity</label>
+                  <Label>Counted Quantity</Label>
                   <Input
                     type="number"
                     min="0"
@@ -1130,18 +1132,18 @@ export function StockManagementPage() {
             )}
 
             {operationType === 'in' && selectedProduct?.tracking_method === 'batch' && (
-              <div className="rounded-lg border bg-muted/30 p-4 space-y-4">
+              <div className="rounded-xl border bg-muted/30 p-4 space-y-4">
                 <div>
                   <p className="font-medium">Batch/Lot details</p>
                   <p className="text-sm text-muted-foreground">Create a new batch or receive more quantity into an existing batch number.</p>
                 </div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Batch/Lot Number *</label>
+                    <Label>Batch/Lot Number *</Label>
                     <Input value={batchNumber} onChange={(event) => { setBatchNumber(event.target.value); if (!lotNumber) setLotNumber(event.target.value); }} placeholder="e.g., LOT-2026-001" />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Expiry Date</label>
+                    <Label>Expiry Date</Label>
                     <Input type="date" value={expiryDate} onChange={(event) => setExpiryDate(event.target.value)} />
                   </div>
                 </div>
@@ -1149,15 +1151,15 @@ export function StockManagementPage() {
             )}
 
             {operationType === 'in' && selectedProduct?.tracking_method === 'serial' && (
-              <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
-                <label className="text-sm font-medium">Serial Numbers *</label>
+              <div className="rounded-xl border bg-muted/30 p-4 space-y-2">
+                <Label>Serial Numbers *</Label>
                 <Textarea value={serialNumbers} onChange={(event) => setSerialNumbers(event.target.value)} placeholder="Enter one serial per line or separate with commas" rows={5} />
                 <p className="text-xs text-muted-foreground">Entered {serialNumbers.split(/[\n,]+/).map((value) => value.trim()).filter(Boolean).length} of {parseInt(quantity) || 0} required serial numbers.</p>
               </div>
             )}
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Business Reason</label>
+              <Label>Business Reason</Label>
               <Select value={reasonId} onValueChange={setReasonId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select why stock is changing" />
@@ -1175,7 +1177,7 @@ export function StockManagementPage() {
             {/* Reference (for Stock In/Out) */}
             {operationType !== 'adjust' && (
               <div className="space-y-2">
-                <label className="text-sm font-medium">Reference (Optional)</label>
+                <Label>Reference (Optional)</Label>
                 <Input
                   placeholder="e.g., PO-001, Invoice #123"
                   value={reference}
@@ -1186,7 +1188,7 @@ export function StockManagementPage() {
 
             {/* Notes */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Notes (Optional)</label>
+              <Label>Notes (Optional)</Label>
               <Textarea
                 placeholder="Add any additional notes..."
                 value={notes}

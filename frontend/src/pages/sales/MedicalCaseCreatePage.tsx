@@ -5,6 +5,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
@@ -61,14 +68,6 @@ export function MedicalCaseCreatePage() {
     enabled: !!formData.customer_id,
   })
 
-  const { data: products } = useQuery({
-    queryKey: ['products-list'],
-    queryFn: async () => {
-      const res = await api.get('/products', { params: { per_page: 1000 } })
-      return res.data.data || []
-    },
-  })
-
   const { data: salesOrders } = useQuery({
     queryKey: ['sales-orders-list', formData.customer_id],
     queryFn: async () => {
@@ -111,7 +110,7 @@ export function MedicalCaseCreatePage() {
   }
 
   const addItem = () => {
-    setItems([...items, { sales_order_item_id: '', product_id: '', allocated_qty: 1, unit_price: 0, is_foc: false, notes: '' }])
+    setItems([...items, { sales_order_item_id: '', product_id: '', product_name: '', allocated_qty: 1, unit_price: 0, is_foc: false, notes: '' }])
   }
 
   const removeItem = (index: number) => {
@@ -125,253 +124,306 @@ export function MedicalCaseCreatePage() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <div className="max-w-5xl space-y-6">
       <PageHeader
         title="Create Medical Case"
+        description="Link a case to its customer, supporting documents and allocated stock."
         backTo="/sales/medical-cases"
+        actions={
+          <>
+            <HeaderActionButton
+              variant="outline"
+              onClick={() => navigate('/sales/medical-cases')}
+              disabled={createMutation.isPending}
+            >
+              Cancel
+            </HeaderActionButton>
+            <HeaderActionButton
+              type="submit"
+              form="medical-case-form"
+              icon="solar:medical-kit-bold-duotone"
+              loading={createMutation.isPending}
+              disabled={createMutation.isPending}
+            >
+              Create Medical Case
+            </HeaderActionButton>
+          </>
+        }
       />
 
-      <form onSubmit={handleSubmit}>
-        <Card className="mb-6">
+      <form id="medical-case-form" onSubmit={handleSubmit} className="space-y-6">
+        {/* Case information */}
+        <Card className="rounded-xl border-slate-200/80 dark:border-slate-800">
           <CardHeader>
-            <CardTitle>Case Information</CardTitle>
+            <CardTitle className="text-lg">Case Information</CardTitle>
           </CardHeader>
-          <CardContent className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium">Customer *</label>
-                <div className="mt-1">
-                  <CustomerSearchCombobox
-                    value={formData.customer_id}
-                    onValueChange={(value) => setFormData({ ...formData, customer_id: value, invoice_id: '', delivery_address_id: '' })}
-                    placeholder="Search customer name or code..."
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium">Invoice</label>
-                <select
-                  value={formData.invoice_id}
-                  onChange={(e) => setFormData({ ...formData, invoice_id: e.target.value })}
-                  className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="">Select Invoice</option>
-                  {invoices?.map((inv: any) => (
-                    <option key={inv.id} value={inv.id}>{inv.invoice_number}</option>
+          <CardContent className="grid gap-5 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Customer <span className="text-destructive">*</span></Label>
+              <CustomerSearchCombobox
+                value={formData.customer_id}
+                onValueChange={(value) => setFormData({ ...formData, customer_id: value })}
+                placeholder="Search customer name or code..."
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Invoice</Label>
+              <Select
+                value={formData.invoice_id}
+                onValueChange={(value) => setFormData({ ...formData, invoice_id: value === 'none' ? '' : value })}
+                disabled={!formData.customer_id}
+              >
+                <SelectTrigger className="h-9"><SelectValue placeholder="Select invoice" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No invoice</SelectItem>
+                  {invoices?.map((invoice: any) => (
+                    <SelectItem key={invoice.id} value={String(invoice.id)}>
+                      {invoice.invoice_number}
+                    </SelectItem>
                   ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-medium">Case Date</label>
-                <input
-                  type="date"
-                  value={formData.case_date}
-                  onChange={(e) => setFormData({ ...formData, case_date: e.target.value })}
-                  className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Procedure Date</label>
-                <input
-                  type="date"
-                  value={formData.procedure_date}
-                  onChange={(e) => setFormData({ ...formData, procedure_date: e.target.value })}
-                  className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Location</label>
-                <input
-                  type="text"
-                  value={formData.location}
-                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                  className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  placeholder="OT, Ward, Clinic..."
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Patient Reference</label>
-                <input
-                  type="text"
-                  value={formData.patient_reference}
-                  onChange={(e) => setFormData({ ...formData, patient_reference: e.target.value })}
-                  className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Patient Name</label>
-                <input
-                  type="text"
-                  value={formData.patient_name_encrypted}
-                  onChange={(e) => setFormData({ ...formData, patient_name_encrypted: e.target.value })}
-                  className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Delivery Address</label>
-                <select
-                  value={formData.delivery_address_id}
-                  onChange={(e) => setFormData({ ...formData, delivery_address_id: e.target.value })}
-                  className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="">Select Address</option>
-                  {addresses?.map((a: any) => (
-                    <option key={a.id} value={a.id}>{a.site_name || a.address_line_1}</option>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Case Date</Label>
+              <Input
+                type="date"
+                className="h-9"
+                value={formData.case_date}
+                onChange={(e) => setFormData({ ...formData, case_date: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Procedure Date</Label>
+              <Input
+                type="date"
+                className="h-9"
+                value={formData.procedure_date}
+                onChange={(e) => setFormData({ ...formData, procedure_date: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Location</Label>
+              <Input
+                className="h-9"
+                placeholder="OT, Ward, Clinic..."
+                value={formData.location}
+                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Patient Reference</Label>
+              <Input
+                className="h-9"
+                value={formData.patient_reference}
+                onChange={(e) => setFormData({ ...formData, patient_reference: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Patient Name</Label>
+              <Input
+                className="h-9"
+                value={formData.patient_name_encrypted}
+                onChange={(e) => setFormData({ ...formData, patient_name_encrypted: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Delivery Address</Label>
+              <Select
+                value={formData.delivery_address_id}
+                onValueChange={(value) => setFormData({ ...formData, delivery_address_id: value === 'none' ? '' : value })}
+                disabled={!formData.customer_id}
+              >
+                <SelectTrigger className="h-9"><SelectValue placeholder="Select address" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No address</SelectItem>
+                  {addresses?.map((address: any) => (
+                    <SelectItem key={address.id} value={String(address.id)}>
+                      {[address.street, address.city, address.zip].filter(Boolean).join(', ') || address.type}
+                    </SelectItem>
                   ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-medium">Doctor</label>
-                <select
-                  value={formData.doctor_contact_id}
-                  onChange={(e) => setFormData({ ...formData, doctor_contact_id: e.target.value })}
-                  className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="">Select Doctor</option>
-                  {contacts?.map((c: any) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Doctor</Label>
+              <Select
+                value={formData.doctor_contact_id}
+                onValueChange={(value) => setFormData({ ...formData, doctor_contact_id: value === 'none' ? '' : value })}
+                disabled={!formData.customer_id}
+              >
+                <SelectTrigger className="h-9"><SelectValue placeholder="Select doctor" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No doctor</SelectItem>
+                  {contacts?.map((contact: any) => (
+                    <SelectItem key={contact.id} value={String(contact.id)}>{contact.name}</SelectItem>
                   ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-medium">Requestor</label>
-                <select
-                  value={formData.requestor_contact_id}
-                  onChange={(e) => setFormData({ ...formData, requestor_contact_id: e.target.value })}
-                  className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="">Select Requestor</option>
-                  {contacts?.map((c: any) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Requestor</Label>
+              <Select
+                value={formData.requestor_contact_id}
+                onValueChange={(value) => setFormData({ ...formData, requestor_contact_id: value === 'none' ? '' : value })}
+                disabled={!formData.customer_id}
+              >
+                <SelectTrigger className="h-9"><SelectValue placeholder="Select requestor" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No requestor</SelectItem>
+                  {contacts?.map((contact: any) => (
+                    <SelectItem key={contact.id} value={String(contact.id)}>{contact.name}</SelectItem>
                   ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-medium">Buyer</label>
-                <select
-                  value={formData.buyer_contact_id}
-                  onChange={(e) => setFormData({ ...formData, buyer_contact_id: e.target.value })}
-                  className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="">Select Buyer</option>
-                  {contacts?.map((c: any) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Buyer</Label>
+              <Select
+                value={formData.buyer_contact_id}
+                onValueChange={(value) => setFormData({ ...formData, buyer_contact_id: value === 'none' ? '' : value })}
+                disabled={!formData.customer_id}
+              >
+                <SelectTrigger className="h-9"><SelectValue placeholder="Select buyer" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No buyer</SelectItem>
+                  {contacts?.map((contact: any) => (
+                    <SelectItem key={contact.id} value={String(contact.id)}>{contact.name}</SelectItem>
                   ))}
-                </select>
-              </div>
-              <div className="md:col-span-2">
-                <label className="text-sm font-medium">Notes</label>
-                <textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  className="w-full mt-1 flex min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-                />
-              </div>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <Label>Notes</Label>
+              <Textarea
+                rows={2}
+                placeholder="Optional case notes"
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              />
             </div>
           </CardContent>
         </Card>
 
-        {/* Case Items */}
-        <Card className="mb-6">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Case Items</CardTitle>
-            <Button type="button" variant="outline" size="sm" onClick={addItem}>
-              <Icon icon="solar:add-circle-bold-duotone" className="mr-2 h-4 w-4" />
+        {/* Case items */}
+        <Card className="rounded-xl border-slate-200/80 dark:border-slate-800">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-lg">Case Items</CardTitle>
+            <HeaderActionButton type="button" variant="outline" icon="solar:add-circle-bold" onClick={addItem}>
               Add Item
-            </Button>
+            </HeaderActionButton>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             {items.length === 0 ? (
-              <div className="py-8 text-center text-muted-foreground">
-                <p>No items added yet. Click "Add Item" to begin.</p>
+              <div className="rounded-xl border border-dashed border-slate-300 py-12 text-center dark:border-slate-700">
+                <Icon icon="solar:medical-kit-bold-duotone" className="mx-auto mb-2 h-10 w-10 text-muted-foreground opacity-40" />
+                <p className="text-sm font-medium">No items added yet</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">Add the products allocated to this case.</p>
+                <div className="mt-4 flex justify-center">
+                  <HeaderActionButton type="button" icon="solar:add-circle-bold" onClick={addItem}>
+                    Add Item
+                  </HeaderActionButton>
+                </div>
               </div>
             ) : (
-              <div className="space-y-4">
-                {items.map((item, index) => (
-                  <div key={index} className="grid grid-cols-1 md:grid-cols-6 gap-3 p-4 border rounded-lg">
-                    <div className="md:col-span-2">
-                      <label className="text-sm font-medium">Product *</label>
-                      <select
+              items.map((item, index) => (
+                <div key={index} className="relative rounded-xl border border-slate-200/80 p-4 dark:border-slate-800">
+                  <div className="absolute right-3 top-3">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => removeItem(index)}
+                      title="Remove item"
+                      aria-label="Remove item"
+                    >
+                      <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-6">
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Product <span className="text-destructive">*</span></Label>
+                      <ProductSearchCombobox
                         value={item.product_id}
-                        onChange={(e) => updateItem(index, 'product_id', e.target.value)}
-                        className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                        required
-                      >
-                        <option value="">Select Product</option>
-                        {products?.map((p: any) => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                      </select>
+                        onValueChange={(value, product) => {
+                          updateItem(index, 'product_id', value)
+                          updateItem(index, 'product_name', product?.name ?? '')
+                        }}
+                        placeholder="Search name, SKU, barcode, lot or serial..."
+                      />
                     </div>
-                    <div>
-                      <label className="text-sm font-medium">SO Item *</label>
-                      <select
+
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>SO Item <span className="text-destructive">*</span></Label>
+                      <Select
                         value={item.sales_order_item_id}
-                        onChange={(e) => updateItem(index, 'sales_order_item_id', e.target.value)}
-                        className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                        required
+                        onValueChange={(value) => updateItem(index, 'sales_order_item_id', value)}
+                        disabled={!formData.customer_id}
                       >
-                        <option value="">Select SO Item</option>
-                        {salesOrders?.flatMap((so: any) =>
-                          (so.items || []).map((soi: any) => (
-                            <option key={soi.id} value={soi.id}>
-                              {so.sales_order_number} - {soi.product?.name || soi.description}
-                            </option>
-                          ))
-                        )}
-                      </select>
+                        <SelectTrigger className="h-9"><SelectValue placeholder="Select SO item" /></SelectTrigger>
+                        <SelectContent>
+                          {salesOrders?.flatMap((so: any) =>
+                            (so.items || []).map((soi: any) => (
+                              <SelectItem key={soi.id} value={String(soi.id)}>
+                                {so.sales_order_number} - {soi.product?.name || soi.description}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <div>
-                      <label className="text-sm font-medium">Qty *</label>
-                      <input
+
+                    <div className="space-y-2">
+                      <Label>Qty <span className="text-destructive">*</span></Label>
+                      <Input
                         type="number"
+                        min="0"
+                        className="h-9"
                         value={item.allocated_qty}
                         onChange={(e) => updateItem(index, 'allocated_qty', Number(e.target.value))}
-                        className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                        min="0"
-                        required
                       />
                     </div>
-                    <div>
-                      <label className="text-sm font-medium">Unit Price</label>
-                      <input
+
+                    <div className="space-y-2">
+                      <Label>Unit Price</Label>
+                      <Input
                         type="number"
-                        value={item.unit_price}
-                        onChange={(e) => updateItem(index, 'unit_price', Number(e.target.value))}
-                        className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
                         min="0"
                         step="0.01"
+                        className="h-9"
+                        value={item.unit_price}
+                        onChange={(e) => updateItem(index, 'unit_price', Number(e.target.value))}
                       />
                     </div>
-                    <div className="flex items-end gap-2">
-                      <label className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
+
+                    <div className="flex items-end gap-2 md:col-span-6">
+                      <label className="flex cursor-pointer items-center gap-2 text-sm">
+                        <Checkbox
                           checked={item.is_foc}
-                          onChange={(e) => updateItem(index, 'is_foc', e.target.checked)}
-                          className="rounded"
+                          onCheckedChange={(checked) => updateItem(index, 'is_foc', checked === true)}
                         />
                         FOC
                       </label>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => removeItem(index)}>
-                        <Icon icon="solar:trash-bin-minimalistic-bold-duotone" className="h-4 w-4 text-red-500" />
-                      </Button>
                     </div>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))
             )}
           </CardContent>
         </Card>
-
-        <div className="flex justify-end gap-3">
-          <Button type="button" variant="outline" onClick={() => navigate('/sales/medical-cases')}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={createMutation.isPending}>
-            {createMutation.isPending ? 'Creating...' : 'Create Medical Case'}
-          </Button>
-        </div>
       </form>
     </div>
   )

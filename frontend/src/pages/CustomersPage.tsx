@@ -435,7 +435,7 @@ export function CustomersPage() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="name">Name *</Label>
+                      <Label htmlFor="name">{formData.type === 'company' ? 'Contact / Trading Name *' : 'Name *'}</Label>
                       <Input
                         id="name"
                         value={formData.name}
@@ -448,7 +448,7 @@ export function CustomersPage() {
                   {formData.type === 'company' && (
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="company">Company Name</Label>
+                        <Label htmlFor="company">Registered Company Name</Label>
                         <Input
                           id="company"
                           value={formData.company}
@@ -1158,7 +1158,7 @@ export function CustomersPage() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="edit-name">Name *</Label>
+                      <Label htmlFor="edit-name">{formData.type === 'company' ? 'Contact / Trading Name *' : 'Name *'}</Label>
                       <Input
                         id="edit-name"
                         value={formData.name}
@@ -1171,7 +1171,7 @@ export function CustomersPage() {
                   {formData.type === 'company' && (
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="edit-company">Company Name</Label>
+                        <Label htmlFor="edit-company">Registered Company Name</Label>
                         <Input
                           id="edit-company"
                           value={formData.company}
