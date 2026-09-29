@@ -1,10 +1,12 @@
 <?php
 
+use App\Http\Middleware\RequirePermission;
 use Illuminate\Support\Facades\Route;
 use Modules\PaymentGateway\Controllers\OfflinePaymentMethodController;
 use Modules\PaymentGateway\Controllers\PaymentAnalyticsController;
 use Modules\PaymentGateway\Controllers\PaymentController;
 use Modules\PaymentGateway\Controllers\PaymentGatewayController;
+use Modules\PaymentGateway\Controllers\PaymentSettlementController;
 use Modules\PaymentGateway\Controllers\PosPaymentController;
 
 // Protected routes - require authentication
@@ -35,6 +37,15 @@ Route::middleware(['auth:sanctum', 'entitlement:payment_gateway'])->group(functi
 
     // Payment Analytics
     Route::get('/payment-analytics', [PaymentAnalyticsController::class, 'index']);
+
+    // Settlement reconciliation (FR-PAY-06 / P-04a): ledger-moving ingest,
+    // gated by the coarse accounting.write grant like other GL writers.
+    Route::prefix('payment-settlements')->group(function () {
+        Route::get('/', [PaymentSettlementController::class, 'index'])
+            ->middleware(RequirePermission::using('accounting.write'));
+        Route::post('/ingest', [PaymentSettlementController::class, 'ingest'])
+            ->middleware(RequirePermission::using('accounting.write'));
+    });
 
     // POS Payment Integration
     Route::prefix('pos-payments')->group(function () {

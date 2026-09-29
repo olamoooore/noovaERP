@@ -189,14 +189,18 @@ final class StorefrontPaymentCompletionService implements StorefrontOrderPayment
             $invoice = \App\Models\Invoice::query()->findOrFail($link->invoice_id);
         }
 
-        // GL: DR cash / CR revenue / CR tax payable / DR COGS / CR inventory
-        // (engine-idempotent via the 'post' journal link; stock already
-        // issued by this handler's idempotency-keyed movements — NOT again
-        // here).
+        // GL: receipt (cash for offline settlement, Gateway Receivable for
+        // gateway money that has not actually hit the bank — P-04a, FR-PAY-06;
+        // falls back to cash until the tenant assigns the clearing account,
+        // logged by the posting service) / CR revenue / CR tax payable /
+        // DR COGS / CR inventory (engine-idempotent via the 'post' journal
+        // link; stock already issued by this handler's idempotency-keyed
+        // movements — NOT again here).
         $entry = app(\Modules\Storefront\Services\StorefrontPostingService::class)->postPaidOrder(
             $order,
             (float) $order->total,
             $this->normalizePaymentMethod($transaction->payment_method ?? $transaction->gateway?->gateway_name),
+            $this->receiptMappingKeyFor($transaction),
         );
 
         if ($entry === null) {
@@ -221,6 +225,35 @@ final class StorefrontPaymentCompletionService implements StorefrontOrderPayment
         }
 
         $order->update(['invoice_id' => $invoice->id, 'sales_order_id' => $salesOrder->id]);
+    }
+
+    /**
+     * P-04a / FR-PAY-06: gateway money is a RECEIVABLE from the provider
+     * until the settlement feed reconciles it (SettlementReconciliation-
+     * Service); internal offline anchors are actual cash-in-hand and settle
+     * directly. Zero-config tenants keep the historic cash shape (documented
+     * migration fallback) until they assign Gateway Receivable.
+     */
+    private function receiptMappingKeyFor(PaymentTransaction $transaction): string
+    {
+        $isOffline = (string) ($transaction->gateway?->gateway_name ?? '') === 'offline'
+            || str_starts_with((string) $transaction->transaction_id, 'offline:');
+
+        if ($isOffline) {
+            return 'cash';
+        }
+
+        try {
+            app(\App\Accounting\Services\AccountRoleResolver::class)->resolve('gateway_receivable');
+
+            return 'gateway_receivable';
+        } catch (\Throwable) {
+            \Illuminate\Support\Facades\Log::info('Storefront gateway receipt posts to cash: Gateway Receivable account not configured (assign it under Accounting > Default Accounts for clearing-settled accounting, FR-PAY-06).', [
+                'transaction_id' => $transaction->transaction_id,
+            ]);
+
+            return 'cash';
+        }
     }
 
     private function normalizePaymentMethod(?string $method): string

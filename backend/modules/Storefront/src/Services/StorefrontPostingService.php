@@ -33,12 +33,16 @@ final class StorefrontPostingService
         private readonly PostingEngineInterface $postingEngine,
     ) {}
 
-    public function postPaidOrder(StorefrontOrder $order, float $totalPaid, string $paymentMethod): ?JournalEntry
+    public function postPaidOrder(StorefrontOrder $order, float $totalPaid, string $paymentMethod, string $receiptMappingKey = 'cash'): ?JournalEntry
     {
         if (! in_array($order->payment_status, ['paid', 'partially_refunded', 'refunded'], true) && $order->status !== 'paid') {
             Log::warning('StorefrontPostingService: refusing to post unpaid order', ['order_id' => $order->id]);
 
             return null;
+        }
+
+        if (! in_array($receiptMappingKey, ['cash', 'gateway_receivable'], true)) {
+            throw new \InvalidArgumentException("Unsupported storefront receipt account '{$receiptMappingKey}'.");
         }
 
         $existing = JournalEntryLink::query()
@@ -51,18 +55,20 @@ final class StorefrontPostingService
             return JournalEntry::query()->find($existing->journal_entry_id);
         }
 
-        return DB::transaction(function () use ($order, $totalPaid, $paymentMethod) {
+        return DB::transaction(function () use ($order, $totalPaid, $paymentMethod, $receiptMappingKey) {
             $subtotal = (float) $order->subtotal;
             $bookedTax = round((float) $order->tax_amount, 2);
             $discount = round((float) $order->discount_amount, 2);
 
             $lines = [
                 new PostingRequestLine(
-                    accountMappingKey: 'cash',
+                    accountMappingKey: $receiptMappingKey,
                     accountId: null,
                     debit: $totalPaid,
                     credit: 0,
-                    description: 'Storefront payment received',
+                    description: $receiptMappingKey === 'gateway_receivable'
+                        ? 'Storefront payment held by gateway'
+                        : 'Storefront payment received',
                     reference: $order->order_number,
                 ),
             ];
@@ -186,8 +192,12 @@ final class StorefrontPostingService
      * nothing a second time while distinct partial refunds each get their own
      * single entry.
      */
-    public function postRefundPayment(StorefrontOrder $order, int $refundId, float $amount): JournalEntry
+    public function postRefundPayment(StorefrontOrder $order, int $refundId, float $amount, string $payoutMappingKey = 'cash'): JournalEntry
     {
+        if (! in_array($payoutMappingKey, ['cash', 'gateway_receivable'], true)) {
+            throw new \InvalidArgumentException("Unsupported refund payout account '{$payoutMappingKey}'.");
+        }
+
         $existing = JournalEntryLink::query()
             ->where('source_document_type', 'storefront_refund')
             ->where('source_document_id', $refundId)
@@ -232,11 +242,13 @@ final class StorefrontPostingService
             );
         }
         $lines[] = new PostingRequestLine(
-            accountMappingKey: 'cash',
+            accountMappingKey: $payoutMappingKey,
             accountId: null,
             debit: 0,
             credit: $amount,
-            description: 'Storefront refund paid out',
+            description: $payoutMappingKey === 'gateway_receivable'
+                ? 'Storefront refund claimed against unsettled gateway balance'
+                : 'Storefront refund paid out',
             reference: $order->order_number,
         );
 

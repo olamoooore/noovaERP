@@ -108,7 +108,15 @@ final class StorefrontRefundService implements StorefrontOrderRefundHandler
         }
 
         // Storefront-shaped reversal (engine-idempotent per refund row).
-        $journalEntry = $this->posting->postRefundPayment($order, (int) $intent->id, $amount);
+        // Payout leg follows the money: refunds of UNSETTLED gateway
+        // transactions are claimed against the gateway balance (clearing),
+        // settled/offline money is genuinely cash out (FR-PAY-06 coherence).
+        $journalEntry = $this->posting->postRefundPayment(
+            $order,
+            (int) $intent->id,
+            $amount,
+            $this->refundPayoutKey($order, $transaction),
+        );
 
         // The generic ledger half needs the invoice link to update balances —
         // bookkeeping that is factually true for completed storefront payments.
@@ -141,6 +149,53 @@ final class StorefrontRefundService implements StorefrontOrderRefundHandler
             'order_id' => (int) $order->id,
             'result' => $result,
         ];
+    }
+
+    /**
+     * Where the refund money legally leaves from (FR-PAY-06 accuracy):
+     * a gateway payment captured to Gateway Receivable but NOT yet settled
+     * is refunded out of the gateway's pending payout (CR receivable) —
+     * crediting the till for money that never arrived would fake cash.
+     * Settled payments, offline anchors, and cash-captured sales pay out
+     * of cash.
+     */
+    private function refundPayoutKey(StorefrontOrder $order, PaymentTransaction $transaction): string
+    {
+        if ((string) ($transaction->gateway?->gateway_name ?? '') === 'offline'
+            || str_starts_with((string) $transaction->transaction_id, 'offline:')) {
+            return 'cash';
+        }
+
+        try {
+            $clearing = app(\App\Accounting\Services\AccountRoleResolver::class)->resolve('gateway_receivable');
+        } catch (\Throwable) {
+            return 'cash';
+        }
+
+        $link = \App\Models\JournalEntryLink::query()
+            ->where('source_document_type', 'storefront_order')
+            ->where('source_document_id', (int) $order->id)
+            ->where('relation_type', 'post')
+            ->first();
+
+        if ($link === null) {
+            return 'cash';
+        }
+
+        $capturedInClearing = \App\Models\JournalEntry::query()
+            ->whereKey($link->journal_entry_id)
+            ->whereHas('lines', fn ($q) => $q->where('account_id', $clearing->id)->where('debit', '>', 0))
+            ->exists();
+
+        if (! $capturedInClearing) {
+            return 'cash';
+        }
+
+        $settled = \Modules\PaymentGateway\Models\PaymentSettlement::query()
+            ->where('payment_transaction_id', (int) $transaction->id)
+            ->exists();
+
+        return $settled ? 'cash' : 'gateway_receivable';
     }
 
     /**

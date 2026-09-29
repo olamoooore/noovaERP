@@ -738,7 +738,7 @@ class PostingEngine implements PostingEngineInterface
         return match ($documentType) {
             'invoice', 'credit_note' => 'sales',
             'bill', 'vendor_credit_note' => 'purchases',
-            'payment', 'receipt', 'bill_payment' => 'payments',
+            'payment', 'receipt', 'bill_payment', 'payment_settlement' => 'payments',
             'pos_order' => 'sales',
             'ocr_document' => 'purchases',
             'web_order' => 'sales',
@@ -1058,7 +1058,7 @@ class PostingEngine implements PostingEngineInterface
         return match ($documentType) {
             'invoice', 'sales_invoice', 'credit_note' => 'accounting.write',
             'bill', 'purchase_invoice', 'debit_note' => 'accounting.write',
-            'payment', 'bill_payment', 'payment_refund' => 'accounting.write',
+            'payment', 'bill_payment', 'payment_refund', 'payment_settlement' => 'accounting.write',
             'journal_entry' => 'accounting.write',
             'adjustment' => 'accounting.write',
             // Issue #106: manual stock adjustments route here; the actor holds
