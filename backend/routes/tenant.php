@@ -83,6 +83,17 @@ Route::middleware([
                 ->where('token', '[a-f0-9]{32,64}')
                 ->middleware('throttle:20,1,sf-confirm');
 
+            // Payment initiation + reconciliation (FR-PAY-01/02/08). The
+            // gateway claim is re-verified server-side before completion.
+            Route::get('/payment-methods', [\Modules\Storefront\Http\Controllers\Public\PayController::class, 'methods'])
+                ->middleware('throttle:30,1,sf-pay');
+            Route::post('/orders/{order}/pay', [\Modules\Storefront\Http\Controllers\Public\PayController::class, 'pay'])
+                ->whereNumber('order')
+                ->middleware('throttle:10,1,sf-pay');
+            Route::post('/orders/{order}/confirm-payment', [\Modules\Storefront\Http\Controllers\Public\PayController::class, 'confirm'])
+                ->whereNumber('order')
+                ->middleware('throttle:15,1,sf-pay');
+
             // Account identity (FR-ID-*). Brute-force-specific throttles,
             // each in its OWN bucket (see prefix note above).
             Route::prefix('auth')->group(function () {
