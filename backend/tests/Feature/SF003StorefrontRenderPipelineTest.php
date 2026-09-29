@@ -280,27 +280,31 @@ class SF003StorefrontRenderPipelineTest extends TenantTestCase
         // list query + eager category (category filter adds exactly one
         // resolution query).
         $catalog = app(CatalogQuery::class);
+        $ctx = new \Modules\Storefront\Shortcodes\Context(
+            tenantId: $this->tenantId,
+            settings: \Modules\Storefront\Models\StorefrontSettings::current(),
+        );
 
         DB::flushQueryLog();
         DB::enableQueryLog();
-        $catalog->products($this->defaultProductAttrs([]));
+        $catalog->products($this->defaultProductAttrs([]), $ctx);
         $bare = count(DB::getQueryLog());
 
         DB::flushQueryLog();
-        $catalog->products($this->defaultProductAttrs(['category' => 'Mugs']));
+        $catalog->products($this->defaultProductAttrs(['category' => 'Mugs']), $ctx);
         $withCategory = count(DB::getQueryLog());
 
         DB::flushQueryLog();
         $product = Product::query()->where('show_on_website', true)->first(['id']);
         DB::flushQueryLog();
-        $catalog->product((int) $product->id, null);
+        $catalog->product((int) $product->id, null, $ctx);
         $single = count(DB::getQueryLog());
 
         DB::disableQueryLog();
 
         $this->assertLessThanOrEqual(2, $bare, 'Unfiltered products must stay ≤ 2 queries');
         $this->assertLessThanOrEqual(3, $withCategory, 'Category-filtered products must stay ≤ 3 queries');
-        $this->assertLessThanOrEqual(2, $single, 'Single product must stay ≤ 2 queries');
+        $this->assertLessThanOrEqual(3, $single, 'Single product must stay ≤ 3 queries (main + eager category + variant batch)');
     }
 
     // ─── Editor API (FR-BLD-01/03/06) ───────────────────────────────────

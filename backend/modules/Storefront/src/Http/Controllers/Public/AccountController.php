@@ -374,7 +374,9 @@ final class AccountController extends Controller
 
     private function saveAddress(StorefrontAccount $account, array $validated, ?StorefrontAddress $existing = null): StorefrontAddress
     {
-        $validated['country_code'] = strtoupper($validated['country_code']);
+        if (isset($validated['country_code'])) {
+            $validated['country_code'] = strtoupper($validated['country_code']);
+        }
 
         return \Illuminate\Support\Facades\DB::transaction(function () use ($account, $validated, $existing) {
             $model = $existing !== null

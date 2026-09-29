@@ -47,11 +47,12 @@ final class StorefrontCache
         string $functionKey,
         array $normalizedAttributes,
         string $definitionVersion,
+        string $querySalt = '',
     ): string {
         ksort($normalizedAttributes);
 
         return sprintf(
-            'storefront:frag:%s:v%d:pv%d:%s:%s:%s:%s:%s',
+            'storefront:frag:%s:v%d:pv%d:%s:%s:%s:%s:%s:%s',
             $context->tenantId,
             $this->currentVersion($context->tenantId),
             $context->pageVersionId ?? 0,
@@ -60,6 +61,7 @@ final class StorefrontCache
             $definitionVersion,
             $context->locale,
             $context->settings()->currency_code ?? 'base',
+            $querySalt,
         );
     }
 

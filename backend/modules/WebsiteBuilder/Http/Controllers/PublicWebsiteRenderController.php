@@ -90,6 +90,7 @@ class PublicWebsiteRenderController extends Controller
                     'page_id' => $page->id,
                     'page_version_id' => $page->currentVersion?->id,
                     'mode' => 'public',
+                    'query' => $request->query(),
                 ]);
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::error('Page content filter failed', [

@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\RequirePermission;
 use Illuminate\Support\Facades\Route;
+use Modules\Storefront\Http\Controllers\Admin\OrderController;
 use Modules\Storefront\Http\Controllers\Admin\SettingsController;
 use Modules\Storefront\Http\Controllers\Editor\BlockController;
 use Modules\Storefront\Http\Controllers\Editor\PreviewController;
@@ -28,6 +29,19 @@ Route::middleware(['auth:sanctum', 'entitlement:storefront'])
 
         Route::put('/settings', [SettingsController::class, 'update'])
             ->middleware(RequirePermission::using('storefront.settings'));
+
+        // Staff order console (FR-ADM-01). Status writes go through the
+        // shared OrderStateMachine — no side door (FR-ORD-01).
+        Route::get('/orders', [OrderController::class, 'index'])
+            ->middleware(RequirePermission::using('storefront.view'));
+
+        Route::get('/orders/{order}', [OrderController::class, 'show'])
+            ->whereNumber('order')
+            ->middleware(RequirePermission::using('storefront.view'));
+
+        Route::post('/orders/{order}/status', [OrderController::class, 'updateStatus'])
+            ->whereNumber('order')
+            ->middleware(RequirePermission::using('storefront.write'));
     });
 
 // WebsiteBuilder editor integration (Appendix E §E4.3). Paths live under

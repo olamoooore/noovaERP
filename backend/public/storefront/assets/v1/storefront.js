@@ -67,12 +67,19 @@
 
     var productId = parseInt(island.dataset.sfProductId, 10);
     if (!productId) return;
-    var variantId = island.dataset.sfVariantId ? parseInt(island.dataset.sfVariantId, 10) : null;
-    var qty = Math.max(1, parseInt(island.dataset.sfQuantity || '1', 10));
-    var redirect = island.dataset.sfRedirect;
 
     island.addEventListener('click', function () {
       if (island.disabled) return;
+
+      // Detail-page scoping: a variant radio and quantity control inside the
+      // same .sf-product purchase block override the block's static config.
+      var scope = island.closest('.sf-product__purchase') || island.closest('.sf-product') || island;
+      var chosen = scope.querySelector('input[name="sf_variant"]:checked') || scope.querySelector('select[name="sf_variant"]');
+      var variantId = chosen ? parseInt(chosen.value, 10) || null : (island.dataset.sfVariantId ? parseInt(island.dataset.sfVariantId, 10) : null);
+      var qtyInput = scope.querySelector('[name="sf_quantity"]');
+      var qty = qtyInput ? Math.min(999, Math.max(1, parseInt(qtyInput.value, 10) || 1)) : Math.max(1, parseInt(island.dataset.sfQuantity || '1', 10));
+      var redirect = island.dataset.sfRedirect;
+
       island.disabled = true;
       req('/cart/items', { method: 'POST', body: { product_id: productId, variant_id: variantId, quantity: qty } })
         .then(function (res) {
@@ -523,6 +530,52 @@
     body.appendChild(form);
   }
 
+  /* ---------- search island (progressive: the form works as plain GET) ---------- */
+
+  function mountSearch(island) {
+    var results = island.querySelector('[data-sf-search-results]');
+    var form = island.querySelector('form');
+    if (!results || !form) return;
+
+    function runSearch(term) {
+      var limit = parseInt(results.dataset.sfLimit || '8', 10);
+      results.textContent = '';
+      results.appendChild(el('p', 'sf-search__busy', 'Searching…'));
+      req('/catalog/products?search=' + encodeURIComponent(term) + '&limit=' + limit + '&in_stock_only=0')
+        .then(function (res) {
+          results.textContent = '';
+          if (!res.ok) { results.appendChild(el('p', 'sf-search__none', 'Search is unavailable right now.')); return; }
+          var items = res.data.data || [];
+          if (!items.length) {
+            results.appendChild(el('p', 'sf-search__none', 'No results for “' + term + '”.'));
+            return;
+          }
+          items.forEach(function (item) {
+            var row = el('p', 'sf-search__row', item.name + ' — ' + item.price);
+            row.appendChild(el('span', 'sf-availability--' + (item.availability || 'in'), ' ' + (item.availability_label || '')));
+            results.appendChild(row);
+          });
+        })
+        .catch(function () {
+          results.textContent = '';
+          results.appendChild(el('p', 'sf-search__none', 'Search is unavailable right now.'));
+        });
+    }
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var input = form.querySelector('[name="sfq"]');
+      var term = input ? input.value.trim() : '';
+      if (term === '') { results.textContent = ''; return; }
+      runSearch(term);
+      try {
+        var url = new URL(window.location.href);
+        url.searchParams.set('sfq', term);
+        window.history.replaceState(null, '', url.toString());
+      } catch (err) { /* history is a nicety, not a requirement */ }
+    });
+  }
+
   /* ---------- announcer (aria-live) ---------- */
 
   function ensureAnnouncer() {
@@ -545,6 +598,7 @@
     });
 
     document.querySelectorAll('[data-sf-island="add_to_cart"]').forEach(mountAddToCart);
+    document.querySelectorAll('[data-sf-island="search"]').forEach(mountSearch);
     document.querySelectorAll('[data-sf-island="cart_count"]').forEach(mountCount);
     document.querySelectorAll('[data-sf-island="cart"],[data-sf-island="cart_drawer"]').forEach(mountCart);
     document.querySelectorAll('[data-sf-island="login"],[data-sf-island="register"]').forEach(mountAuth);

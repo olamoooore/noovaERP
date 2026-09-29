@@ -32,6 +32,12 @@ final class Definition
 
     private string $example = '';
 
+    /** @var array<string,string> GET query key => attribute name (binds BEFORE caching) */
+    private array $queryBinds = [];
+
+    /** @var list<string> query keys whose presence must salt the cache key */
+    private array $keyedBy = [];
+
     private function __construct(public readonly string $key) {}
 
     public static function make(string $key): self
@@ -79,6 +85,51 @@ final class Definition
         $this->version = $version;
 
         return $this;
+    }
+
+    /**
+     * Bind a GET query parameter to an attribute (e.g. ?sfcat= -> category on
+     * a shared collection page). Applied BEFORE validation/coercion and the
+     * cache-key hash, so per-visitor query resolution can never serve another
+     * visitor's cached fragment (R-03).
+     */
+    public function fromQuery(string $queryKey, string $attribute): self
+    {
+        $this->queryBinds[$queryKey] = $attribute;
+
+        return $this;
+    }
+
+    /** Salt the fragment cache key with these query params (closures that
+     *  resolve ids themselves, e.g. ?product= which may be id OR slug). */
+    public function keyedBy(array $queryKeys): self
+    {
+        $this->keyedBy = array_values($queryKeys);
+
+        return $this;
+    }
+
+    /**
+     * @return array<string,string>
+     */
+    public function queryBinds(): array
+    {
+        return $this->queryBinds;
+    }
+
+    public function keySalt(Context $context): string
+    {
+        if ($this->keyedBy === []) {
+            return '';
+        }
+
+        $picked = [];
+        foreach ($this->keyedBy as $key) {
+            $value = $context->query[$key] ?? null;
+            $picked[$key] = is_scalar($value) ? (string) $value : null;
+        }
+
+        return sha1(json_encode($picked, JSON_UNESCAPED_UNICODE));
     }
 
     public function help(string $help): self

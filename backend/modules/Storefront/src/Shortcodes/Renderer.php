@@ -75,6 +75,22 @@ final class Renderer
 
         ['values' => $attributes, 'ignored' => $ignored] = $definition->validate($rawAttributes);
 
+        // Query-parameter bindings (e.g. ?sfcat= on a shared collection page)
+        // resolve INTO the attribute set BEFORE the cache key is computed —
+        // otherwise one visitor's query result would be served to another.
+        foreach ($definition->queryBinds() as $queryKey => $attributeName) {
+            $attribute = $definition->attributeDefinitions()[$attributeName] ?? null;
+            if ($attribute === null || ! array_key_exists($queryKey, $context->query)) {
+                continue;
+            }
+            $current = $attributes[$attributeName] ?? null;
+            $isEmpty = $current === null || $current === '' || $current === 0 || $current === [];
+            $raw = $context->query[$queryKey];
+            if ($isEmpty && is_scalar($raw)) {
+                $attributes[$attributeName] = $attribute->coerce((string) $raw);
+            }
+        }
+
         if ($ignored !== []) {
             Log::info('Storefront: ignored unknown shortcode attributes', [
                 'function' => $functionKey,
@@ -84,7 +100,7 @@ final class Renderer
         }
 
         $cacheable = $definition->isCacheable() && ! $context->isPreview();
-        $key = $cacheable ? $this->cache->fragmentKey($context, $functionKey, $attributes, $definition->getVersion()) : null;
+        $key = $cacheable ? $this->cache->fragmentKey($context, $functionKey, $attributes, $definition->getVersion(), $definition->keySalt($context)) : null;
 
         if ($cacheable && $key !== null) {
             $hit = $this->cache->get($key);

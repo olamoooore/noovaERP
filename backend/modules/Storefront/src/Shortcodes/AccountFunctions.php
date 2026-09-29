@@ -12,7 +12,7 @@ final class AccountFunctions
 {
     public static function register(StorefrontShortcodeRegistry $registry): void
     {
-        $registry->register(self::shell('storefront.account_orders', 'Order List', 'orders', 'Account', 'solar:receipt-bold-duotone', [
+        $registry->register(self::shell('storefront.account_orders', 'Order List', 'account_orders', 'Account', 'solar:receipt-bold-duotone', [
             Attribute::int('limit', 10, 1, 50, 'Orders per page.'),
         ], ['limit' => '10']));
 

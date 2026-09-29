@@ -206,6 +206,11 @@ const MyTicketsPage = lazy(() => import('@/pages/EventManagement/MyTicketsPage')
 const FeedbackSystem = lazy(() => import('@/pages/EventManagement/FeedbackSystem'))
 const EventPortalPage = lazy(() => import('@/pages/EventPortal').then(m => ({ default: m.EventPortalPage })))
 
+// Storefront Module Pages (tenant admin: orders console + settings)
+const StorefrontOrdersPage = lazy(() => import('@/pages/Storefront').then(m => ({ default: m.StorefrontOrdersPage })))
+const StorefrontOrderDetailPage = lazy(() => import('@/pages/Storefront').then(m => ({ default: m.StorefrontOrderDetailPage })))
+const StorefrontSettingsPage = lazy(() => import('@/pages/Storefront').then(m => ({ default: m.StorefrontSettingsPage })))
+
 // Loyalty Module Pages
 const LoyaltyDashboardPage = lazy(() => import('@/pages/Loyalty').then(m => ({ default: m.LoyaltyDashboardPage })))
 const LoyaltyCustomersPage = lazy(() => import('@/pages/Loyalty').then(m => ({ default: m.LoyaltyCustomersPage })))
@@ -580,6 +585,11 @@ function App() {
                 <Route path="/loyalty/rewards" element={<LoyaltyRewardsPage />} />
                 <Route path="/loyalty/redemptions" element={<LoyaltyRedemptionsPage />} />
                 <Route path="/loyalty/settings" element={<LoyaltySettingsPage />} />
+
+                {/* Storefront Module Routes (tenant admin console) */}
+                <Route path="/storefront/orders" element={<StorefrontOrdersPage />} />
+                <Route path="/storefront/orders/:id" element={<StorefrontOrderDetailPage />} />
+                <Route path="/storefront/settings" element={<StorefrontSettingsPage />} />
                 
                 {/* AI Module Routes */}
                 <Route path="/ai/chat" element={<AIChatPage />} />

@@ -22,6 +22,10 @@ final class Context
         public readonly string $websiteSlug = '',
         public readonly string $locale = 'en',
         public readonly ?StorefrontSettings $settings = null,
+        /** The visitor's GET query params (e.g. ?product=, ?sfcat=, ?sfq=) —
+         *  data for registry-bounded lookups only, never an attribute source
+         *  that widens scope (§B3.5 rule 1: tenant still never comes from here). */
+        public readonly array $query = [],
     ) {}
 
     public function isPreview(): bool

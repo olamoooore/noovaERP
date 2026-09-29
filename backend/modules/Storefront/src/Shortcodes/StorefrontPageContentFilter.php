@@ -48,6 +48,7 @@ final class StorefrontPageContentFilter implements PageContentFilter
             pageVersionId: isset($context['page_version_id']) ? (int) $context['page_version_id'] : null,
             websiteSlug: (string) ($context['website_slug'] ?? ''),
             locale: (string) ($context['locale'] ?? app()->getLocale()),
+            query: (array) ($context['query'] ?? []),
         )));
     }
 

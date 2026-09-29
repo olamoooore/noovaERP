@@ -317,6 +317,72 @@ class SF002ShortcodeEngineTest extends TestCase
         $this->assertStringNotContainsString('<script>', $out);
     }
 
+    /**
+     * R-03 regression (found by SF013): attributes resolved from GET query
+     * params (?sfcat= on a shared collection page) MUST enter the fragment
+     * cache key BEFORE it is computed — two visitors must never swap cached
+     * renders of the same page version.
+     */
+    public function test_query_bound_attributes_cannot_cross_visitors_in_cache(): void
+    {
+        $registry = $this->registryWith();
+        $seen = [];
+        $registry->register(Definition::make('storefront.qbound')
+            ->tier(Tier::CACHEABLE)->cache(300)
+            ->attributes([Attribute::slug('category', null)])
+            ->fromQuery('sfcat', 'category')
+            ->render(function (Context $c, array $a) use (&$seen): string {
+                $seen[] = (string) ($a['category'] ?? '');
+
+                return 'v:'.($a['category'] ?? '?');
+            }));
+
+        $renderer = $this->renderer($registry);
+        $tenant = (string) Str::uuid();
+        $settings = new StorefrontSettings(['currency_code' => 'USD']);
+
+        // SAME page version, SAME static attributes — only the query differs.
+        $mugs = new Context(tenantId: $tenant, pageVersionId: 4242, settings: $settings, query: ['sfcat' => 'Mugs']);
+        $tees = new Context(tenantId: $tenant, pageVersionId: 4242, settings: $settings, query: ['sfcat' => 'Tees']);
+
+        $this->assertStringContainsString('v:mugs', $renderer->render('[storefront.qbound]', $mugs));
+        $this->assertStringContainsString('v:tees', $renderer->render('[storefront.qbound]', $tees));
+        $this->assertSame(['mugs', 'tees'], $seen, 'each query value rendered exactly once — no cache crossover');
+
+        // Repeat of the first is served from cache (seen count unchanged).
+        $this->assertStringContainsString('v:mugs', $renderer->render('[storefront.qbound]', $mugs));
+        $this->assertCount(2, $seen);
+    }
+
+    public function test_keyedby_query_params_salt_the_fragment_key(): void
+    {
+        $registry = $this->registryWith();
+        $renders = 0;
+        $registry->register(Definition::make('storefront.salted')
+            ->tier(Tier::CACHEABLE)->cache(300)
+            ->attributes([Attribute::int('id', 0, 0, 1000000)])
+            ->keyedBy(['product'])
+            ->render(function (Context $c) use (&$renders): string {
+                $renders++;
+
+                return 'r'.$renders;
+            }));
+
+        $renderer = $this->renderer($registry);
+        $tenant = (string) Str::uuid();
+        $settings = new StorefrontSettings(['currency_code' => 'USD']);
+
+        $p1 = new Context(tenantId: $tenant, pageVersionId: 777, settings: $settings, query: ['product' => '1']);
+        $p2 = new Context(tenantId: $tenant, pageVersionId: 777, settings: $settings, query: ['product' => '2']);
+
+        $renderer->render('[storefront.salted]', $p1);
+        $renderer->render('[storefront.salted]', $p2);
+        $this->assertSame(2, $renders, 'keyedBy params separate fragment keys');
+
+        $renderer->render('[storefront.salted]', $p1);
+        $this->assertSame(2, $renders, 'same product param hits cache');
+    }
+
     public function test_strip_tokens_removes_all_storefront_output(): void
     {
         $renderer = $this->renderer($this->registryWith());

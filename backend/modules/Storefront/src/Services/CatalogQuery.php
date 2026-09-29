@@ -4,24 +4,29 @@ namespace Modules\Storefront\Services;
 
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Models\ProductVariant;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Storefront\Models\StorefrontSettings;
+use Modules\Storefront\Shortcodes\Context;
 use Modules\Storefront\Support\RichtextSanitizer;
 
 /**
- * Tenant-scoped catalog query for Tier A storefront functions (FR-SF-01/02/07).
+ * Tenant-scoped catalog query for storefront functions (FR-SF-01..04/07/08/09).
  *
  * Guarantees (verified by tests):
  *  - Channel visibility only: show_on_website + is_active + status active
- *    (mirrors WebsiteProductController::applyWebsiteVisibilityFilter).
+ *    (STRICT — no legacy-style include_all_products bypass exists here);
  *  - Public projection ONLY: cost, supplier, vendor_price, wholesale_price,
  *    msrp, min/max_price, income_account_id and other internal columns never
- *    leave this service (FR-SF-07).
- *  - Bounded query budget: ≤ 2 queries per call (product list + one
- *    eager-loaded relation), enforced by selecting an explicit column set.
- *  - No cross-tenant surface: it always reads the current tenant schema via
- *    the tenant-scoped Product model; tenant is NOT a parameter.
+ *    leave this service (FR-SF-07);
+ *  - Availability expressed via TENANT POLICY LABELS (in stock / low stock /
+ *    backorder / out of stock) — raw internal counts never rendered (FR-SF-09);
+ *  - Bounded query budgets: grid ≤ 2 (list+eager category), single ≤ 3
+ *    (+variant batch), categories ≤ 2 (one withCount + one list);
+ *  - No cross-tenant surface: always reads the current tenant schema; the
+ *    tenant is never a parameter.
  */
 final class CatalogQuery
 {
@@ -34,15 +39,17 @@ final class CatalogQuery
         'track_inventory', 'stock_quantity', 'category_id', 'type',
     ];
 
+    private const VARIANT_COLUMNS = ['id', 'product_id', 'name', 'sku', 'price', 'stock_quantity', 'track_inventory'];
+
     /**
      * @param  array<string,mixed>  $a  coerced attributes from the Definition
      * @return array{items: array<int,array<string,mixed>>, total: int}
      */
-    public function products(array $a): array
+    public function products(array $a, Context $ctx): array
     {
+        $settings = $ctx->settings();
         $base = $this->visibleQuery();
 
-        // Explicit ids (validated ints, tenant-scoped by the base query).
         if (! empty($a['ids'])) {
             $base->whereIn('id', $a['ids']);
         }
@@ -51,12 +58,9 @@ final class CatalogQuery
             $base->where('category_id', $this->resolveCategoryId($a['category']));
         }
 
-        // Collection/tag: platform taggables pivot, tag slug matched within
-        // the tenant schema (same subquery keeps the list budget intact).
         if (! empty($a['collection'])) {
             $slug = $a['collection'];
             $base->whereExists(function ($q) use ($slug) {
-                $productColumn = DB::raw('taggables.taggable_id');
                 $q->select(DB::raw(1))
                     ->from('taggables')
                     ->join('tags', 'tags.id', '=', 'taggables.tag_id')
@@ -75,7 +79,6 @@ final class CatalogQuery
             });
         }
 
-        // Unknown categories resolve to id 0 => empty result (never an error).
         if (! empty($a['in_stock_only'])) {
             $base->where(function (Builder $q) {
                 $q->where('track_inventory', false)
@@ -97,19 +100,22 @@ final class CatalogQuery
             ->skip(($page - 1) * $limit)
             ->limit($limit)
             ->get()
-            ->map(fn (Product $p) => $this->present($p))
+            ->map(fn (Product $p) => $this->present($p, $settings))
             ->all();
 
         return ['items' => $items, 'total' => count($items)];
     }
 
     /**
-     * Single product by id/slug with optional related set (Tier A).
+     * Single product by id/slug (or the bounded ?product= query param on
+     * merchant-built product pages), with its purchaseable variants when
+     * requested (FR-SF-08).
      *
      * @return array<string,mixed>|null
      */
-    public function product(?int $id, ?string $slug): ?array
+    public function product(?int $id, ?string $slug, Context $ctx, bool $withVariants = false): ?array
     {
+        $settings = $ctx->settings();
         $q = $this->visibleQuery();
 
         if ($id !== null) {
@@ -122,15 +128,68 @@ final class CatalogQuery
 
         $product = $q->with('category:id,name')->first();
 
-        return $product ? $this->present($product) : null;
+        if ($product === null) {
+            return null;
+        }
+
+        $variants = [];
+        if ($withVariants) {
+            $variants = ProductVariant::query()
+                ->select(self::VARIANT_COLUMNS)
+                ->where('product_id', $product->id)
+                ->where('is_active', true)
+                ->orderBy('id')
+                ->get()
+                ->map(fn (ProductVariant $v) => [
+                    'id' => $v->id,
+                    'name' => $v->name,
+                    'sku' => $v->sku,
+                    'price' => (float) $v->price,
+                    'availability' => $this->availabilityLabel($product, $v, $settings)['key'],
+                ])
+                ->all();
+        }
+
+        return $this->present($product, $settings, $variants);
     }
 
     /**
-     * Related products in the same category, excluding the anchor (Tier A).
+     * Category navigation with per-category visible-product counts.
      *
      * @return array<int,array<string,mixed>>
      */
-    public function related(int $anchorId, int $limit): array
+    public function categories(Context $ctx, ?string $parent = null): array
+    {
+        $query = ProductCategory::query()
+            ->where('is_active', true)
+            ->withCount(['products as product_count' => fn (Builder $q) => $this->applyVisibleScope($q)]);
+
+        if (! empty($parent)) {
+            $parentId = $this->resolveCategoryId($parent);
+            if ($parentId === 0) {
+                return [];
+            }
+            $query->where('parent_id', $parentId);
+        } else {
+            // Default view: top-level categories only.
+            $query->whereNull('parent_id');
+        }
+
+        return $query->orderBy('name')->get()
+            ->map(fn (ProductCategory $c) => [
+                'id' => $c->id,
+                'name' => $c->name,
+                'product_count' => (int) $c->product_count,
+            ])
+            ->all();
+    }
+
+    /**
+     * Related products in the same category, excluding the anchor.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function related(int $anchorId, int $limit, Context $ctx): array
     {
         $anchor = $this->visibleQuery()->where('id', $anchorId)->first(['id', 'category_id']);
 
@@ -143,17 +202,29 @@ final class CatalogQuery
             ->where('id', '!=', $anchorId)
             ->limit($limit)
             ->get()
-            ->map(fn (Product $p) => $this->present($p))
+            ->map(fn (Product $p) => $this->present($p, $ctx->settings()))
             ->all();
     }
 
+    // ─── Internals ──────────────────────────────────────────────────────
+
     private function visibleQuery(): Builder
     {
-        return Product::query()
-            ->select(self::PUBLIC_COLUMNS)
+        return $this->applyVisibleScope(Product::query()->select(self::PUBLIC_COLUMNS));
+    }
+
+    /**
+     * THE visibility scope — reused by products and the categories counter so
+     * the two can never drift.
+     */
+    private function applyVisibleScope(Builder $q): Builder
+    {
+        return $q
             ->where('show_on_website', true)
             ->where('is_active', true)
-            ->where('status', 'active');
+            ->where(function (Builder $w) {
+                $w->whereNull('status')->orWhere('status', Product::STATUS_ACTIVE);
+            });
     }
 
     private function applySort(Builder $q, string $sort): void
@@ -181,20 +252,49 @@ final class CatalogQuery
     }
 
     /**
+     * Tenant-policy availability labels (FR-SF-09) — counts never leak.
+     *
+     * @return array{key:string,label:string}
+     */
+    private function availabilityLabel(Product $p, ?ProductVariant $variant, StorefrontSettings $settings): array
+    {
+        $track = $variant?->track_inventory ?? $p->track_inventory;
+
+        if (! $track) {
+            return ['key' => 'available', 'label' => 'Available'];
+        }
+
+        $qty = (int) ($variant?->stock_quantity ?? $p->stock_quantity);
+
+        if ($qty <= 0) {
+            return $settings->allow_backorder
+                ? ['key' => 'backorder', 'label' => 'Available on backorder']
+                : ['key' => 'out', 'label' => 'Out of stock'];
+        }
+
+        if ((int) $settings->low_stock_threshold > 0 && $qty <= (int) $settings->low_stock_threshold) {
+            return ['key' => 'low', 'label' => 'Low stock'];
+        }
+
+        return ['key' => 'in', 'label' => 'In stock'];
+    }
+
+    /**
      * Project a Product to the public payload. Internal columns are absent by
      * construction (they were never selected).
      *
+     * @param  array<int,array<string,mixed>>  $variants
      * @return array<string,mixed>
      */
-    private function present(Product $p): array
+    private function present(Product $p, StorefrontSettings $settings, array $variants = []): array
     {
-        $inStock = ! $p->track_inventory || (int) $p->stock_quantity > 0;
+        $availability = $this->availabilityLabel($p, null, $settings);
 
         return [
             'id' => $p->id,
             'name' => $p->name,
             'secondary_name' => $p->secondary_name,
-            'slug' => $p->slug ?: ($p->name ? Str::slug($p->name).'-'.$p->id : (string) $p->id),
+            'slug' => $p->slug ?: (Str::slug((string) $p->name).'-'.$p->id),
             'sku' => $p->sku,
             'price' => (float) $p->price,
             'image' => $this->imageUrl($p->image),
@@ -204,11 +304,14 @@ final class CatalogQuery
             'category' => $p->relationLoaded('category') && $p->category
                 ? ['id' => $p->category->id, 'name' => $p->category->name]
                 : null,
-            'in_stock' => $inStock,
+            'in_stock' => ! $p->track_inventory || (int) $p->stock_quantity > 0 || $settings->allow_backorder,
+            'availability' => $availability['key'],
+            'availability_label' => $availability['label'],
             'is_new_arrival' => (bool) $p->is_new_arrival,
             'is_preorder' => (bool) $p->is_preorder,
             'unit' => $p->unit,
             'type' => $p->type,
+            'variants' => $variants,
         ];
     }
 

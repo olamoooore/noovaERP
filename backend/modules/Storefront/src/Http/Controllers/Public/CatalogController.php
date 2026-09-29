@@ -32,7 +32,10 @@ final class CatalogController extends Controller
         // Same coercion pipeline as the renderer (typed, bounded, hostile-safe).
         ['values' => $attrs] = $definition->validate($raw);
 
-        $result = $this->catalog->products($attrs);
+        $result = $this->catalog->products($attrs, new \Modules\Storefront\Shortcodes\Context(
+            tenantId: (string) (function_exists('tenant') && tenant() ? tenant('id') : ''),
+            locale: (string) app()->getLocale(),
+        ));
 
         return response()->json([
             'data' => $result['items'],
@@ -40,6 +43,7 @@ final class CatalogController extends Controller
                 'count' => $result['total'],
                 'page' => (int) $attrs['page'],
                 'limit' => (int) $attrs['limit'],
+                'currency' => \Modules\Storefront\Models\StorefrontSettings::current()->currency_code,
             ],
         ]);
     }

@@ -602,6 +602,26 @@ export const baseNavItems: NavItem[] = [
       },
     ],
   },
+  // Storefront (generic commerce, MRD ecommerce-Enterprice). Merchant-facing
+  // admin only — the SHOP itself is published pages in the Website Builder.
+  {
+    title: 'Storefront',
+    href: '/storefront/orders',
+    icon: 'solar:bag-4-bold-duotone',
+    featureKey: 'storefront',
+    children: [
+      {
+        title: 'Orders',
+        href: '/storefront/orders',
+        icon: 'solar:receipt-bold-duotone',
+      },
+      {
+        title: 'Settings',
+        href: '/storefront/settings',
+        icon: 'solar:settings-bold-duotone',
+      },
+    ],
+  },
   {
     title: 'Loyalty',
     href: '/loyalty',
@@ -801,6 +821,7 @@ export function deriveNavPermission(item: NavItem): string | undefined {
     sales: 'sales.view',
     accounting: 'accounting.view',
     loyalty: 'loyalty.view',
+    storefront: 'storefront.view',
     'event-management': 'event_management.view',
     'website-builder': 'settings.view',
     // 'ecommerce' intentionally REMOVED (FR-ARC-02): legacy commerce nav is

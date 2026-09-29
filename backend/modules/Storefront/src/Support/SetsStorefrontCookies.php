@@ -3,9 +3,9 @@
 namespace Modules\Storefront\Support;
 
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 use Modules\Storefront\Services\AccountService;
 use Symfony\Component\HttpFoundation\Cookie;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Shared cookie plumbing for storefront auth responses (D3): httpOnly
