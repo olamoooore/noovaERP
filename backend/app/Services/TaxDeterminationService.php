@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\CustomerAddress;
 use App\Models\Invoice;
 use App\Models\TaxDeterminationResult;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
@@ -162,6 +163,7 @@ class TaxDeterminationService
             ];
         }
 
+        $taxLines = $this->scaleRowsToBooked($taxLines, round((float) $invoice->tax_amount, 2));
         $aggregated = $this->aggregateTaxLines($taxLines);
         [$id, $version] = $this->persistResult('invoice', (int) $invoice->id, $jurisdiction, $regime, $taxLines, $transactionDate);
 
@@ -212,6 +214,7 @@ class TaxDeterminationService
             ];
         }
 
+        $taxLines = $this->scaleRowsToBooked($taxLines, round((float) $bill->tax_amount, 2));
         $aggregated = $this->aggregateTaxLines($taxLines);
         [$id, $version] = $this->persistResult('bill', (int) $bill->id, $jurisdiction, $regime, $taxLines, $date);
 
@@ -368,7 +371,9 @@ class TaxDeterminationService
      */
     public function latestDeterminationLines(string $sourceType, int $sourceId): array
     {
-        $result = TaxDeterminationResult::where('source_record_type', $sourceType)
+        // G-02: central-schema table — tenant-scoped or nothing.
+        $result = TaxDeterminationResult::where('tenant_id', tenant('id'))
+            ->where('source_record_type', $sourceType)
             ->where('source_record_id', $sourceId)
             ->current()
             ->orderByDesc('result_version')
@@ -435,9 +440,60 @@ class TaxDeterminationService
     }
 
     /**
-     * Persist one versioned determination row per source document.
+     * G-36 (R02): when a document's BOOKED tax total differs from the sum of
+     * per-line tax (header discount proration), scale every row so
+     * taxable_base x rate == tax_amount stays consistent on the trail. The
+     * last row absorbs rounding drift so the scaled sum equals the booked
+     * document tax exactly.
      *
-     * @return array{0: string, 1: int} correlation id + result version
+     * @param  array<int, array<string, mixed>>  $taxLines
+     * @return array<int, array<string, mixed>>
+     */
+    private function scaleRowsToBooked(array $taxLines, float $bookedDocTax): array
+    {
+        $lineSum = round(array_sum(array_map(fn ($l) => (float) $l['tax_amount'], $taxLines)), 2);
+
+        // G-36: scaling only applies when the document carries its OWN booked
+        // tax total (InvoiceController/BillService totals). A doc with an
+        // un-maintained total (0) alongside booked line tax is an authoring
+        // bug surfaced by TAX_VARIANCE — never scale evidence to zero for it.
+        if ($lineSum <= 0 || $bookedDocTax <= 0 || abs($bookedDocTax - $lineSum) <= 0.005) {
+            return $taxLines;
+        }
+
+        $factor = $bookedDocTax / $lineSum;
+        $last = count($taxLines) - 1;
+        $running = 0.0;
+
+        foreach ($taxLines as $i => &$row) {
+            if ($i === $last) {
+                $newTax = round($bookedDocTax - $running, 2);
+            } else {
+                $newTax = round((float) $row['tax_amount'] * $factor, 2);
+            }
+
+            $running = round($running + $newTax, 2);
+            $rate = (float) $row['tax_rate'];
+
+            $row['tax_amount'] = $newTax;
+            $row['taxable_base'] = $rate > 0
+                ? round($newTax / ($rate / 100), 2)
+                : round((float) $row['taxable_base'] * $factor, 2);
+        }
+        unset($row);
+
+        return $taxLines;
+    }
+
+    /**
+     * Persist one versioned determination row per source document, returning
+     * [correlation id, result version].
+     *
+     * G-02: tax_determination_results lives in the central schema, so every
+     * lookup is tenant-scoped. G-04: the read-lock-bump-write sequence runs in
+     * one transaction; a unique key guards (tenant, type, id, version).
+     * G-05: identical inputs (input_hash) return the existing version —
+     * idempotent re-posting never burns snapshots.
      */
     private function persistResult(
         string $transactionType,
@@ -447,46 +503,53 @@ class TaxDeterminationService
         array $taxLines,
         string $transactionDate,
     ): array {
-        $determinationId = (string) Str::uuid();
-        $resultVersion = 1;
+        $inputHash = hash('sha256', json_encode([$jurisdiction, $regime, $transactionDate, $taxLines]));
 
-        $existing = TaxDeterminationResult::where('source_record_type', $transactionType)
-            ->where('source_record_id', $sourceId)
-            ->current()
-            ->orderByDesc('result_version')
-            ->first();
+        return DB::transaction(function () use ($transactionType, $sourceId, $jurisdiction, $taxLines, $transactionDate, $inputHash) {
+            $determinationId = (string) Str::uuid();
+            $resultVersion = 1;
 
-        if ($existing) {
-            $determinationId = $existing->correlation_id ?: $determinationId;
-            $resultVersion = (int) $existing->result_version + 1;
-        }
+            $existing = TaxDeterminationResult::where('tenant_id', tenant('id'))
+                ->where('source_record_type', $transactionType)
+                ->where('source_record_id', $sourceId)
+                ->current()
+                ->orderByDesc('result_version')
+                ->lockForUpdate()
+                ->first();
 
-        TaxDeterminationResult::create([
-            'tenant_id' => tenant('id'),
-            'entity_id' => null,
-            'result_version' => $resultVersion,
-            'jurisdiction' => $jurisdiction,
-            'transaction_type' => $transactionType,
-            'transaction_date' => $transactionDate,
-            'tax_rule_refs' => collect($taxLines)->pluck('tax_code')->unique()->values()->all(),
-            'tax_lines' => $taxLines,
-            'rounding_method' => 'half_up',
-            'calculation_basis' => 'per_line',
-            'result_status' => 'DETERMINED',
-            'determined_at' => now(),
-            'source_record_type' => $transactionType,
-            'source_record_id' => $sourceId,
-            'correlation_id' => $determinationId,
-        ]);
+            if ($existing) {
+                $determinationId = $existing->correlation_id ?: $determinationId;
 
-        return [$determinationId, $resultVersion];
+                if (hash_equals((string) ($existing->input_hash ?? ''), $inputHash)) {
+                    return [$determinationId, (int) $existing->result_version];
+                }
+
+                $resultVersion = (int) $existing->result_version + 1;
+            }
+
+            TaxDeterminationResult::create([
+                'tenant_id' => tenant('id'),
+                'entity_id' => null,
+                'result_version' => $resultVersion,
+                'jurisdiction' => $jurisdiction,
+                'transaction_type' => $transactionType,
+                'transaction_date' => $transactionDate,
+                'tax_rule_refs' => collect($taxLines)->pluck('tax_code')->unique()->values()->all(),
+                'tax_lines' => $taxLines,
+                'input_hash' => $inputHash,
+                'rounding_method' => 'half_up',
+                'calculation_basis' => 'per_line',
+                'result_status' => 'DETERMINED',
+                'determined_at' => now(),
+                'source_record_type' => $transactionType,
+                'source_record_id' => $sourceId,
+                'correlation_id' => $determinationId,
+            ]);
+
+            return [$determinationId, $resultVersion];
+        });
     }
 
-    /**
-     * Assemble the PostingEngine-facing result. 'tax_lines' are aggregated per
-     * code (PostingEngine::resolveLineDetermination matches GL tax lines by
-     * tax_code); totals come from the per-line rows.
-     */
     private function buildResult(
         string $id,
         int $version,

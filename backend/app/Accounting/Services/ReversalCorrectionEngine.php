@@ -450,6 +450,10 @@ class ReversalCorrectionEngine
                 'credit' => $line->debit,
                 'description' => 'FULL REVERSAL: '.$line->description,
                 'reference' => $line->reference,
+                // MRD gap review G-34: reversal lines carry the SAME tax
+                // identity as the line they reverse — audit visibility first.
+                'tax_code' => $line->tax_code,
+                'tax_id' => $line->tax_id,
                 'currency_code' => $line->currency_code,
                 'original_amount' => $line->original_amount !== null ? -$line->original_amount : null,
                 'exchange_rate' => $line->exchange_rate,
@@ -458,6 +462,11 @@ class ReversalCorrectionEngine
                 'location_id' => $line->location_id,
             ]);
         }
+
+        // G-33: the canonical correction mechanism is a SIGNED trail row on
+        // the reversal — never the removal of the original document from the
+        // return. Full reversal mirrors every trail row at 100%.
+        $this->writeReversalTrailRows($original, $reversalEntry, null);
 
         return $reversalEntry;
     }
@@ -482,6 +491,8 @@ class ReversalCorrectionEngine
                 'debit' => $isDebit ? 0 : $amount,
                 'credit' => $isDebit ? $amount : 0,
                 'description' => 'PARTIAL REVERSAL: '.$originalLine->description,
+                'tax_code' => $originalLine->tax_code,
+                'tax_id' => $originalLine->tax_id,
                 'reference' => $originalLine->reference,
                 'currency_code' => $originalLine->currency_code,
                 'original_amount' => $isDebit ? -$amount : $amount,
@@ -492,7 +503,91 @@ class ReversalCorrectionEngine
             ]);
         }
 
+        // G-33: partial reversal writes proportionally signed trail rows
+        // (reversed amount / original trail amount per tax code), so the
+        // return falls by exactly the reversed tax instead of losing the
+        // whole document.
+        $this->writeReversalTrailRows($original, $reversalEntry, $lineAmounts);
+
         return $reversalEntry;
+    }
+
+    /**
+     * Write signed (negative) tax_transaction_details rows for a reversal.
+     * This is the single canonical correction trail: reversing a document
+     * reduces the return by exactly what was reversed — full reversals mirror
+     * every trail row at 100%; partials match the reversed line's tax code,
+     * falling back to an amount-proportional reduction when the trail is not
+     * line-coded. Credit notes keep their own document-signed rows.
+     *
+     * @param  array<int, array{line_id:int, amount:float}>|null  $lineAmounts  null = full reversal
+     */
+    private function writeReversalTrailRows(JournalEntry $original, JournalEntry $reversal, ?array $lineAmounts): void
+    {
+        $originalRows = DB::table('tax_transaction_details')
+            ->where('journal_entry_id', $original->id)
+            ->get();
+
+        if ($originalRows->isEmpty()) {
+            return;
+        }
+
+        $period = date('Y-m', strtotime((string) ($reversal->entry_date ?? now()->toDateString())));
+
+        $amountByLine = [];
+        foreach ($lineAmounts ?? [] as $la) {
+            $amountByLine[(int) $la['line_id']] = (float) $la['amount'];
+        }
+
+        $codedOrigLines = $original->lines()->whereNotNull('tax_code')->get()->keyBy('tax_code');
+
+        $reversedAmount = array_sum($amountByLine);
+        $entryTotal = 0.0;
+        foreach ($original->lines as $l) {
+            $entryTotal += max((float) $l->debit, (float) $l->credit);
+        }
+
+        foreach ($originalRows as $origRow) {
+            $code = (string) $origRow->tax_code;
+            $ratio = 0.0;
+
+            if ($lineAmounts === null) {
+                $ratio = 1.0;
+            } else {
+                $src = $codedOrigLines->get($code);
+                $srcAmount = $src ? max((float) $src->debit, (float) $src->credit) : 0.0;
+
+                if ($src && $srcAmount > 0 && isset($amountByLine[$src->id])) {
+                    $ratio = round($amountByLine[$src->id] / $srcAmount, 6);
+                } elseif ($reversedAmount > 0 && $entryTotal > 0) {
+                    $ratio = round($reversedAmount / $entryTotal, 6);
+                }
+            }
+
+            if ($ratio <= 0) {
+                continue;
+            }
+
+            DB::table('tax_transaction_details')->insert([
+                'journal_entry_id' => $reversal->id,
+                'source_document_type' => $origRow->source_document_type,
+                'source_document_id' => $origRow->source_document_id,
+                'tax_code' => $code,
+                'tax_rule_id' => $origRow->tax_rule_id,
+                'taxable_amount' => round(-(float) $origRow->taxable_amount * $ratio, 2),
+                'tax_amount' => round(-(float) $origRow->tax_amount * $ratio, 2),
+                'jurisdiction' => $origRow->jurisdiction,
+                'direction' => $origRow->direction,
+                'reporting_period' => $period,
+                'tax_determination_id' => $origRow->tax_determination_id,
+                'tax_rate' => $origRow->tax_rate,
+                'tax_treatment' => $origRow->tax_treatment,
+                'tax_regime' => $origRow->tax_regime,
+                'result_version' => $origRow->result_version,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
     }
 
     private function createFullComponentLineage(

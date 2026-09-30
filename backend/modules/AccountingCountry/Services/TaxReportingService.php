@@ -257,7 +257,9 @@ class TaxReportingService
      */
     public function filings(): array
     {
+        // G-35: only current (non-superseded) filings track open/closed state.
         $filings = DB::table('statutory_return_filings')
+            ->whereNull('superseded_at')
             ->orderByDesc('filed_at')
             ->get(['id', 'country', 'form', 'period', 'entity_key', 'filed_at', 'filed_by']);
 

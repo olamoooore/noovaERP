@@ -28,14 +28,27 @@ use Tests\TenantTestCase;
  */
 class TaxEnginePhase1SingleArithmeticTest extends TenantTestCase
 {
+    private User $user;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $tenant = Tenant::withoutEvents(fn () => Tenant::factory()->create(['id' => (string) Str::uuid()]));
         $this->bindTenantContext($tenant->id);
+        $this->seed(\Database\Seeders\RolePermissionSeeder::class);
 
-        $user = User::factory()->create();
+        $this->user = User::factory()->create(['email' => Str::lower(Str::random(3)).'-'.uniqid().'@taxfix.test']);
+        $user = $this->user;
+        $user->assignRole('Admin');
+        \Illuminate\Support\Facades\DB::table('user_company_access')->insert([
+            'user_id' => $user->id,
+            'tenant_id' => $tenant->id,
+            'role' => 'admin',
+            'is_default' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         Auth::login($user);
     }
 
@@ -134,7 +147,7 @@ class TaxEnginePhase1SingleArithmeticTest extends TenantTestCase
         $before = now()->subMonth()->toDateString();
         $after = now()->addMonth()->toDateString();
 
-        $response = $this->actingAs(User::firstOrFail())
+        $response = $this->actingAs($this->user)
             ->putJson('/api/v1/taxes/'.$rule->id, [
                 'rate' => 9,
                 'effective_from' => now()->toDateString(),
@@ -177,7 +190,7 @@ class TaxEnginePhase1SingleArithmeticTest extends TenantTestCase
             'effective_from' => now()->subMonth()->toDateString(),
         ]);
 
-        $response = $this->actingAs(User::firstOrFail())
+        $response = $this->actingAs($this->user)
             ->putJson('/api/v1/taxes/'.$rule->id, ['name' => 'Renamed Only']);
 
         $response->assertOk()->assertJsonMissingPath('versioned');

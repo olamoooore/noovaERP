@@ -40,7 +40,7 @@ class TaxEnginePhase2LocalizationTest extends TenantTestCase
         $this->bindTenantContext($tenant->id);
         $this->seed(\Database\Seeders\RolePermissionSeeder::class);
 
-        $this->user = User::factory()->create();
+        $this->user = User::factory()->create(['email' => Str::lower(Str::random(3)).'-'.uniqid().'@taxfix.test']);
         Auth::login($this->user);
         $this->user->assignRole('Admin');
         DB::table('user_company_access')->insert([

@@ -45,24 +45,16 @@ class TaxReturnAggregator
             $periods
         ));
 
-        // Hostile re-review (#93): a reversed journal entry must leave the
-        // return. The reversal engine posts a separate reversal entry with
-        // reversed_entry_id = original and marks it is_active_version=false,
-        // while the original keeps its tax rows — so tax rows are only counted
-        // when their journal entry is live: posted, not voided/superseded, and
-        // not the target of a posted reversal.
+        // MRD gap review G-33/G-34: reversals are corrections, not erasures.
+        // The reversal engine writes SIGNED trail rows (its own reporting
+        // period), so originals always count; only voided/superseded documents
+        // (which have no offsetting trail) leave the return.
         $rows = DB::table('tax_transaction_details as ttd')
             ->join('journal_entries as je', 'je.id', '=', 'ttd.journal_entry_id')
             ->where('je.status', 'posted')
             ->where(function ($query) {
                 $query->whereNull('je.lifecycle_status')
-                    ->orWhereNotIn('je.lifecycle_status', ['reversed', 'voided', 'superseded']);
-            })
-            ->whereNotExists(function ($query) {
-                $query->select(DB::raw(1))
-                    ->from('journal_entries as rev')
-                    ->whereColumn('rev.reversed_entry_id', 'ttd.journal_entry_id')
-                    ->where('rev.status', 'posted');
+                    ->orWhereNotIn('je.lifecycle_status', ['voided', 'superseded']);
             })
             ->whereIn('ttd.reporting_period', $periods)
             ->when(
@@ -85,9 +77,15 @@ class TaxReturnAggregator
 
             // MRD R4.3: an explicit row direction (reverse-charge pairs) wins
             // over the document-type default.
-            $direction = $row->direction
-                ? (in_array($row->direction, ['output', 'input'], true) ? $row->direction : null)
-                : $this->direction((string) $row->source_document_type);
+            $explicit = strtolower((string) ($row->direction ?? ''));
+
+            // G-32: zero-rated/exempt supply rows (direction 'supply') are
+            // output-side supplies with no tax amount.
+            $direction = $explicit === 'supply'
+                ? 'output'
+                : ($explicit !== ''
+                    ? (in_array($explicit, ['output', 'input'], true) ? $explicit : null)
+                    : $this->direction((string) $row->source_document_type));
 
             if ($direction === null) {
                 continue;

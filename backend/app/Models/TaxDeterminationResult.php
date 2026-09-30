@@ -21,6 +21,7 @@ class TaxDeterminationResult extends Model
         'transaction_date',
         'tax_rule_refs',
         'tax_lines',
+        'input_hash',
         'rounding_method',
         'calculation_basis',
         'result_status',

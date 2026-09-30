@@ -18,14 +18,18 @@ class StatutoryReturnFiling extends Model
         'form',
         'period',
         'entity_key',
+        'filing_version',
         'boxes',
         'filed_by',
         'filed_at',
+        'superseded_at',
     ];
 
     protected $casts = [
         'boxes' => 'array',
+        'filing_version' => 'integer',
         'filed_at' => 'datetime',
+        'superseded_at' => 'datetime',
     ];
 
     public static function entityKey(?int $legalEntityId): int

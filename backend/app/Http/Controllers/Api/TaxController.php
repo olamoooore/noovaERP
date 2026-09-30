@@ -87,8 +87,16 @@ class TaxController extends Controller
         $identityChanged = false;
 
         foreach ($identityFields as $field) {
-            if (array_key_exists($field, $validated)
-                && (string) $validated[$field] !== (string) $tax->{$field}) {
+            if (! array_key_exists($field, $validated)) {
+                continue;
+            }
+
+            // G-03 (R07a): compare semantically — '9' vs '9.00' (decimal cast)
+            // and case/whitespace differences must not spawn a phantom version.
+            $incoming = $field === 'rate' ? (float) $validated[$field] : mb_strtolower(trim((string) $validated[$field]));
+            $current = $field === 'rate' ? (float) $tax->{$field} : mb_strtolower(trim((string) $tax->{$field}));
+
+            if ($incoming !== $current) {
                 $identityChanged = true;
                 break;
             }
@@ -108,9 +116,14 @@ class TaxController extends Controller
             return response()->json($tax->fresh());
         }
 
-        $newFrom = ! empty($validated['effective_from'])
+        $requestedFrom = ! empty($validated['effective_from'])
             ? \Carbon\Carbon::parse($validated['effective_from'])->toDateString()
             : $today;
+
+        // G-03 (R07b): a client-supplied backdate must never rewrite history —
+        // a new version starts no earlier than the old window start and today.
+        $floor = max($today, $tax->effective_from ? $tax->effective_from->toDateString() : $today);
+        $newFrom = $requestedFrom < $floor ? $floor : $requestedFrom;
 
         if ($tax->effective_from !== null && $tax->effective_from->toDateString() > $newFrom) {
             // Not yet effective in the future either — safe to edit in place.

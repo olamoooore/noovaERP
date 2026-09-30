@@ -28,7 +28,7 @@ class TaxDeterminationServiceTest extends TenantTestCase
         $this->bindTenantContext($this->tenantUuid);
 
         // Create and authenticate a user so Product audit logging works
-        $user = User::factory()->create();
+        $user = User::factory()->create(['email' => Str::lower(Str::random(3)).'-'.uniqid().'@taxfix.test']);
         Auth::login($user);
     }
 
@@ -179,7 +179,12 @@ class TaxDeterminationServiceTest extends TenantTestCase
         $this->assertSame('exempt', $result['treatment']);
     }
 
-    public function test_version_bumps_on_subsequent_determination_for_same_invoice(): void
+    /**
+     * MRD gap review G-05 (repro R04) is the authoritative contract now:
+     * IDENTICAL inputs are idempotent (same version); a changed input bumps
+     * the version — and both versions share one correlation chain.
+     */
+    public function test_identical_inputs_are_idempotent_and_changed_inputs_bump_version(): void
     {
         $invoice = $this->makeInvoiceWithLine();
         $service = app(TaxDeterminationService::class);
@@ -187,11 +192,22 @@ class TaxDeterminationServiceTest extends TenantTestCase
         $first = $service->determineForInvoice($invoice);
         $this->assertSame(1, $first['result_version']);
 
-        $second = $service->determineForInvoice($invoice);
-        $this->assertSame(2, $second['result_version']);
+        $same = $service->determineForInvoice($invoice);
+        $this->assertSame(1, $same['result_version'], 'G-05: identical recomputation must not burn a new version');
+        $this->assertSame($first['id'], $same['id']);
+        $this->assertSame(1, TaxDeterminationResult::where('source_record_id', $invoice->id)
+            ->where('source_record_type', 'invoice')->where('tenant_id', tenant('id'))->count(),
+            'The idempotent call wrote no extra row');
 
-        // Same correlation_id across versions
-        $this->assertSame($first['id'], $second['id']);
+        $invoice->lines()->update(['tax_amount' => 12.00, 'line_total' => 112.00]);
+        $invoice->update(['tax_amount' => 12.00, 'total' => 112.00]);
+
+        $changed = $service->determineForInvoice($invoice->fresh(['lines.product', 'customer']));
+        $this->assertSame(2, $changed['result_version'], 'Changed inputs must produce version 2');
+        $this->assertSame($first['id'], $changed['id'], 'Versions share the correlation id');
+        $this->assertSame(2, TaxDeterminationResult::where('source_record_id', $invoice->id)
+            ->where('source_record_type', 'invoice')->where('tenant_id', tenant('id'))->count(),
+            'Exactly two versions persisted');
     }
 
     public function test_persisted_determination_has_correct_tax_lines(): void

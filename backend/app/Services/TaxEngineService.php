@@ -42,6 +42,12 @@ class TaxEngineService
             return $this->none($jurisdiction, 'Tax is disabled in tenant settings.');
         }
 
+        // G-22: an explicit 'none' tax mode is a full opt-out of every tier —
+        // tenant defaults and localized rules must not silently tax it.
+        if ($product && $product->tax_mode === 'none') {
+            return $this->none($jurisdiction, 'This product is configured as tax-exempt (tax_mode=none).');
+        }
+
         if ($product && $product->tax_mode === 'custom' && $product->tax_rate !== null) {
             $rate = (float) $product->tax_rate;
 
@@ -63,7 +69,9 @@ class TaxEngineService
             ? Tax::query()->whereKey($product->tax_id)->where('is_active', true)->first()
             : null;
 
-        if ($explicitTax && $this->isValidOn($explicitTax, $date)) {
+        // G-23: a directly linked rule still honors its scope — an
+        // output-only rule must not surface on purchase-side resolution.
+        if ($explicitTax && $this->isValidOn($explicitTax, $date) && $this->scopeMatches($explicitTax, $direction)) {
             return $this->fromTax($explicitTax, $jurisdiction, $direction, 'product');
         }
 
@@ -97,6 +105,12 @@ class TaxEngineService
             })
             ->orderByDesc('is_default')
             ->orderByDesc('effective_from')
+            // G-24: never resolve ambiguity by insertion order. A charging
+            // (standard-rated) rule beats zero/exempt declarations, then higher
+            // rate, then newest id — deterministic without guessing.
+            ->orderByRaw("case when coalesce(treatment,'standard_rated') = 'standard_rated' then 0 else 1 end")
+            ->orderByDesc('rate')
+            ->orderByDesc('id')
             ->first();
 
         if ($tax) {
@@ -137,8 +151,10 @@ class TaxEngineService
      */
     public static function calculate(float $amount, float $rate, bool $inclusive, float $discount = 0.0): array
     {
-        $amount = round(max($amount, 0.0), 2);
-        $discount = round(min(max($discount, 0.0), $amount), 2);
+        // G-25: negative inputs (correction/credit-style bases) must keep their
+        // sign — clamping to zero silently dropped real tax.
+        $amount = round($amount, 2);
+        $discount = round(min(max($discount, 0.0), max($amount, 0.0)), 2);
         $grossOrNet = round($amount - $discount, 2);
 
         if ($rate <= 0) {
@@ -148,7 +164,11 @@ class TaxEngineService
         if ($inclusive) {
             $net = round($grossOrNet / (1 + ($rate / 100)), 2);
 
-            return ['net' => $net, 'tax' => round($grossOrNet - $net, 2), 'gross' => $grossOrNet];
+            $tax = (float) $grossOrNet >= 0
+                ? round($grossOrNet - $net, 2) // G-25b
+                : -round(abs((float) $grossOrNet) - abs((float) $net), 2);
+
+            return ['net' => $net, 'tax' => $tax, 'gross' => $grossOrNet];
         }
 
         $tax = round($grossOrNet * ($rate / 100), 2);

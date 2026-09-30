@@ -135,22 +135,46 @@ class StatutoryReturnController extends Controller
             'total_tax_payable' => $return['total_tax_payable'] ?? 0,
         ];
 
-        $filing = StatutoryReturnFiling::updateOrCreate(
-            [
+        // G-35: filings are immutable evidence. Re-filing APPENDS a new
+        // version and supersedes the previous current row; the original
+        // snapshot (F7 baseline) survives untouched.
+        $filing = \DB::transaction(function () use ($country, $return, $period, $legalEntityId, $boxes, $request) {
+            $entityKey = StatutoryReturnFiling::entityKey($legalEntityId);
+
+            $current = StatutoryReturnFiling::query()
+                ->where('country', $country)
+                ->where('form', $return['form'])
+                ->where('period', $period)
+                ->where('entity_key', $entityKey)
+                ->whereNull('superseded_at')
+                ->lockForUpdate()
+                ->orderByDesc('filing_version')
+                ->first();
+
+            if ($current && $current->boxes === $boxes) {
+                return $current;
+            }
+
+            $version = $current ? (int) $current->filing_version + 1 : 1;
+
+            if ($current) {
+                $current->update(['superseded_at' => now()]);
+            }
+
+            return StatutoryReturnFiling::create([
+                'tenant_id' => tenant()->id ?? null,
                 'country' => $country,
                 'form' => $return['form'],
                 'period' => $period,
-                'entity_key' => StatutoryReturnFiling::entityKey($legalEntityId),
-            ],
-            [
-                'tenant_id' => tenant()->id ?? null,
+                'entity_key' => $entityKey,
+                'filing_version' => $version,
                 'boxes' => $boxes,
                 'filed_by' => $request->user()?->id,
                 'filed_at' => now(),
-            ]
-        );
+            ]);
+        });
 
-        return response()->json(['message' => $return['form'].' filed', 'data' => $filing], 201);
+        return response()->json(['message' => $return['form'].' filed (version '.$filing->filing_version.')', 'data' => $filing], 201);
     }
 
     /**

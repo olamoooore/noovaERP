@@ -29,6 +29,7 @@ use App\Http\Controllers\Api\CustomerCreditNotesController;
 use App\Http\Controllers\Api\CustomersController;
 use App\Http\Controllers\Api\CustomerStatementController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\DocumentCurrencyController;
 use App\Http\Controllers\Api\EntityManagementController;
 use App\Http\Controllers\Api\ExchangeRatesController;
 use App\Http\Controllers\Api\FeatureController;
@@ -44,6 +45,8 @@ use App\Http\Controllers\Api\OnboardingSessionsController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PaymentImportController;
 use App\Http\Controllers\Api\PaymentTermsController;
+use App\Http\Controllers\Api\PriceListController;
+use App\Http\Controllers\Api\PricingController;
 use App\Http\Controllers\Api\ProductAttributeController;
 use App\Http\Controllers\Api\ProductCategoryController;
 use App\Http\Controllers\Api\ProductController;
@@ -120,11 +123,16 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
     Route::put('/settings/sales', [CompanySettingsController::class, 'updateSalesSettings'])
         ->middleware(RequirePermission::using('settings.write'));
 
-    // Taxes
-    Route::get('/taxes', [TaxController::class, 'index']);
-    Route::post('/taxes', [TaxController::class, 'store']);
-    Route::put('/taxes/{tax}', [TaxController::class, 'update']);
-    Route::delete('/taxes/{tax}', [TaxController::class, 'destroy']);
+    // Taxes — MRD gap review G-01: every rule mutation is explicit-authorized
+    // (family seeded by #273's predecessors: tax.view read / tax.manage write).
+    Route::get('/taxes', [TaxController::class, 'index'])
+        ->middleware(RequirePermission::using('tax.view'));
+    Route::post('/taxes', [TaxController::class, 'store'])
+        ->middleware(RequirePermission::using('tax.manage'));
+    Route::put('/taxes/{tax}', [TaxController::class, 'update'])
+        ->middleware(RequirePermission::using('tax.manage'));
+    Route::delete('/taxes/{tax}', [TaxController::class, 'destroy'])
+        ->middleware(RequirePermission::using('tax.manage'));
 
     // Features
     Route::get('/features', [FeatureController::class, 'index']);
@@ -433,6 +441,41 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::post('/quotations/{id}/create-delivery-order', [QuotationController::class, 'createDeliveryOrder'])->middleware(RequirePermission::using('quotations.write'));
     });
 
+    // ── Price Lists & Multi-Currency Document Pricing ──────────────────────
+    // MRD pricelist-multicurrency-mrd FR-11. Permission literals are seeded
+    // in RolePermissionSeeder::PERMISSION_MATRIX (pricelists.view/manage/cost,
+    // currencies.manage, documents.currency.change) — enforced here per route.
+    Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class])->group(function () {
+        Route::get('/price-lists', [PriceListController::class, 'index'])
+            ->middleware(RequirePermission::using('pricelists.view'));
+        Route::get('/price-lists/{id}', [PriceListController::class, 'show'])
+            ->middleware(RequirePermission::using('pricelists.view'));
+        Route::post('/price-lists', [PriceListController::class, 'store'])
+            ->middleware(RequirePermission::using('pricelists.manage'));
+        Route::put('/price-lists/{id}', [PriceListController::class, 'update'])
+            ->middleware(RequirePermission::using('pricelists.manage'));
+        Route::delete('/price-lists/{id}', [PriceListController::class, 'destroy'])
+            ->middleware(RequirePermission::using('pricelists.manage'));
+        Route::post('/price-lists/{id}/clone', [PriceListController::class, 'clone'])
+            ->middleware(RequirePermission::using('pricelists.manage'));
+        Route::post('/price-lists/{id}/deactivate', [PriceListController::class, 'deactivate'])
+            ->middleware(RequirePermission::using('pricelists.manage'));
+        Route::put('/price-lists/{id}/items', [PriceListController::class, 'replaceItems'])
+            ->middleware(RequirePermission::using('pricelists.manage'));
+        Route::put('/price-lists/{id}/applications', [PriceListController::class, 'replaceApplications'])
+            ->middleware(RequirePermission::using('pricelists.manage'));
+
+        // Deterministic, side-effect-free price resolution (FR-4.1/4.5/4.6).
+        Route::post('/pricing/resolve', [PricingController::class, 'resolve'])
+            ->middleware(RequirePermission::using('pricelists.view'));
+        Route::post('/pricing/resolve-batch', [PricingController::class, 'resolveBatch'])
+            ->middleware(RequirePermission::using('pricelists.view'));
+
+        // Guarded currency change + re-price of a draft document (FR-5.2).
+        Route::post('/documents/{type}/{id}/currency', [DocumentCurrencyController::class, 'update'])
+            ->middleware(RequirePermission::using('documents.currency.change'));
+    });
+
     // Accounting
     Route::prefix('accounting')->middleware([ResolveEntityContext::class, EnsureEntityAccess::class, EnsureAccountingWriteAccess::class])->group(function () {
         // Dashboard
@@ -716,11 +759,15 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::get('/currencies/active', [CurrenciesController::class, 'active']);
         Route::get('/currencies/{code}', [CurrenciesController::class, 'show']);
         Route::post('/currencies', [CurrenciesController::class, 'store'])
-            ->middleware(RequirePermission::using('settings.write'));
+            ->middleware(RequirePermission::using('currencies.manage'));
         Route::put('/currencies/{code}', [CurrenciesController::class, 'update'])
-            ->middleware(RequirePermission::using('settings.write'));
+            ->middleware(RequirePermission::using('currencies.manage'));
+        // FR-1.1: bulk enable/disable of SELLABLE currencies (documents +
+        // price lists may only use enabled, sellable, active currencies).
+        Route::put('/currencies-sellable', [CurrenciesController::class, 'updateSellable'])
+            ->middleware(RequirePermission::using('currencies.manage'));
         Route::delete('/currencies/{code}', [CurrenciesController::class, 'destroy'])
-            ->middleware(RequirePermission::using('settings.write'));
+            ->middleware(RequirePermission::using('currencies.manage'));
 
         // Exchange Rates
         Route::get('/exchange-rates', [ExchangeRatesController::class, 'index']);
@@ -729,9 +776,12 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::post('/exchange-rates/convert', [ExchangeRatesController::class, 'convert']);
         Route::post('/exchange-rates/sync', [ExchangeRatesController::class, 'sync']);
         Route::get('/exchange-rates/{id}', [ExchangeRatesController::class, 'show']);
-        Route::post('/exchange-rates', [ExchangeRatesController::class, 'store']);
-        Route::put('/exchange-rates/{id}', [ExchangeRatesController::class, 'update']);
-        Route::delete('/exchange-rates/{id}', [ExchangeRatesController::class, 'destroy']);
+        Route::post('/exchange-rates', [ExchangeRatesController::class, 'store'])
+            ->middleware(RequirePermission::using('currencies.manage'));
+        Route::put('/exchange-rates/{id}', [ExchangeRatesController::class, 'update'])
+            ->middleware(RequirePermission::using('currencies.manage'));
+        Route::delete('/exchange-rates/{id}', [ExchangeRatesController::class, 'destroy'])
+            ->middleware(RequirePermission::using('currencies.manage'));
 
         // Analytic Accounts
         Route::get('/analytic-accounts', [AnalyticAccountsController::class, 'index']);
