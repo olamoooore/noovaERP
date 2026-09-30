@@ -1287,13 +1287,23 @@ class InvoiceController extends Controller
         $validated = $request->validate([
             'amount' => 'nullable|numeric|min:0.01|max:'.$invoice->balance,
             'expires_in_days' => 'nullable|integer|min:1|max:90',
+            // P-04c: merchant-real success/cancel URLs (absolute http(s));
+            // omitted => the platform's own confirmation landing endpoints.
+            'success_url' => 'nullable|url',
+            'cancel_url' => 'nullable|url',
         ]);
 
         $amount = $validated['amount'] ?? $invoice->balance;
         $expiresDays = $validated['expires_in_days'] ?? 14;
 
         try {
-            $paymentLink = $this->invoiceService->createPaymentLink($invoice, $amount, now()->addDays($expiresDays));
+            $paymentLink = $this->invoiceService->createPaymentLink(
+                $invoice,
+                $amount,
+                now()->addDays($expiresDays),
+                $validated['success_url'] ?? null,
+                $validated['cancel_url'] ?? null,
+            );
 
             $this->activityService->log(
                 $invoice,

@@ -120,30 +120,14 @@ class HitPayGateway implements PaymentGatewayInterface
                 $separator = str_contains($redirectUrl, '?') ? '&' : '?';
                 $secureRedirectUrl = $redirectUrl.$separator.'ref='.urlencode($result['id']);
 
-                // Store transaction in database
-                if (isset($data['metadata']['invoice_id'])) {
-                    \Modules\PaymentGateway\Models\PaymentTransaction::create([
-                        'payment_gateway_id' => $this->gateway->id,
-                        'invoice_id' => $data['metadata']['invoice_id'],
-                        'transaction_id' => $result['id'],
-                        'amount' => $result['amount'],
-                        'currency' => $result['currency'],
-                        'status' => 'pending',
-                        'payment_method' => 'hitpay',
-                        'metadata' => json_encode([
-                            'payment_url' => $result['url'],
-                            'reference_number' => $referenceNumber,
-                            'customer_email' => $data['email'] ?? null,
-                            'description' => $data['description'] ?? null,
-                            'custom_metadata' => $data['metadata'] ?? [],
-                        ]),
-                    ]);
-
-                    \Log::info('HitPay transaction stored in database', [
-                        'transaction_id' => $result['id'],
-                        'invoice_id' => $data['metadata']['invoice_id'],
-                    ]);
-                }
+                // P-04d: this gateway used to write a SECOND, metadata-
+                // double-encoded PaymentTransaction row for invoice payments
+                // on top of PaymentService::createIntent's own insert —
+                // colliding on the unique transaction_id. The service layer
+                // is the single durable writer of transactions; this gateway
+                // only talks to HitPay (the read-only duplicate-request
+                // dedupe above is kept: it prevents a second hosted payment
+                // request while one is pending).
 
                 return [
                     'success' => true,

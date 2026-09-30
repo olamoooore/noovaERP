@@ -75,16 +75,34 @@ class PaymentService
             }
         }
 
-        // Create payment transaction record
-        $transaction = PaymentTransaction::create([
+        // Single durable writer for intents (P-04d). firstOrCreate on the
+        // unique transaction_id makes a deduped replay (gateway returned an
+        // EXISTING pending request) reuse the original row instead of
+        // crashing on the unique index. invoice_id is linked when the intent
+        // belongs to an invoice so webhook completion resolves settlement.
+        $invoiceId = null;
+        $metaType = (string) (($data['metadata']['type'] ?? null));
+        if ($metaType === 'invoice' && isset($data['metadata']['invoice_id'])) {
+            $invoiceId = (int) $data['metadata']['invoice_id'];
+        }
+
+        $attributes = [
             'payment_gateway_id' => $gateway->id,
             'customer_id' => $customerId,
             'transaction_id' => $result['transaction_id'],
-            'amount' => $data['amount'],
-            'currency' => $data['currency'] ?? 'USD',
-            'status' => 'pending',
-            'metadata' => $data['metadata'] ?? [],
-        ]);
+            'invoice_id' => $invoiceId,
+            'payment_method' => $gateway->gateway_name,
+        ];
+
+        $transaction = PaymentTransaction::firstOrCreate(
+            ['transaction_id' => $result['transaction_id']],
+            $attributes + [
+                'amount' => $data['amount'],
+                'currency' => $data['currency'] ?? 'USD',
+                'status' => 'pending',
+                'metadata' => $data['metadata'] ?? [],
+            ]
+        );
 
         return [
             'client_secret' => $result['client_secret'] ?? null,
