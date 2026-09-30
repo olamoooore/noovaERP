@@ -50,6 +50,7 @@ final class CheckoutService
         private readonly InventoryService $inventory,
         private readonly StockReservationService $reservations,
         private readonly CanonicalCustomerService $customers,
+        private readonly StorefrontPromotionService $promotions,
     ) {}
 
     /**
@@ -65,13 +66,20 @@ final class CheckoutService
         ?array $billing,
         ?StorefrontAccount $account,
         string $idempotencyKey,
+        ?string $couponCode = null,
     ): array {
         $settings = StorefrontSettings::current();
 
         // ── Idempotent replay (A-12): exact key returns the original order ──
         $existing = StorefrontOrder::query()->where('idempotency_key', $idempotencyKey)->first();
         if ($existing !== null) {
-            return ['order' => $existing, 'confirmation_token' => null, 'replay' => true];
+            return [
+                'order' => $existing,
+                'confirmation_token' => null,
+                'replay' => true,
+                'applied_promotions' => $this->appliedPromotions($existing),
+                'free_shipping' => $this->hasFreeShipping($existing),
+            ];
         }
 
         if ($account === null && ! $settings->guest_checkout) {
@@ -94,12 +102,29 @@ final class CheckoutService
             throw new CheckoutException('bundle_unsupported', 'Bundle products cannot be checked out yet.', 422);
         }
 
+        // FR-CO-09: the code is the ONLY coupon input; every number is
+        // recomputed server-side against the canonical quote (pro-rata across
+        // lines so per-line tax and the JE determination stay consistent).
+        $promotionState = null;
+        $discountAmount = '0.00';
+        if (is_string($couponCode) && trim($couponCode) !== '') {
+            $evaluation = $this->promotions->evaluate($couponCode, $quote, $account?->id);
+            $adjusted = $this->promotions->applyToQuote($quote, $evaluation);
+            $quote = array_merge($quote, [
+                'items' => $adjusted['items'],
+                'totals' => $adjusted['totals'],
+                'tax_breakdown' => $adjusted['tax_breakdown'],
+            ]);
+            $discountAmount = $adjusted['discount'];
+            $promotionState = ['promotion' => $evaluation['promotion'], 'free_shipping' => $evaluation['free_shipping']];
+        }
+
         $email = mb_strtolower(trim($contact['email']));
         $customer = $this->resolveCustomer($account, $email, $contact, $quote);
         $legalEntityId = $this->orders->resolveLegalEntityId($customer);
         $currency = $quote['currency'] ?? $settings->currency_code;
 
-        return DB::transaction(function () use ($cart, $quote, $contact, $shipping, $billing, $account, $customer, $legalEntityId, $idempotencyKey, $currency, $settings) {
+        return DB::transaction(function () use ($cart, $quote, $contact, $shipping, $billing, $account, $customer, $legalEntityId, $idempotencyKey, $currency, $settings, $promotionState, $discountAmount) {
             $plainToken = bin2hex(random_bytes(self::CONFIRMATION_TOKEN_BYTES));
 
             $order = StorefrontOrder::create([
@@ -112,7 +137,7 @@ final class CheckoutService
                 'status' => \Modules\Storefront\Enums\OrderStatus::PENDING->value,
                 'payment_status' => PaymentStatus::PENDING_PAYMENT->value,
                 'subtotal' => $quote['totals']['subtotal'],
-                'discount_amount' => 0,
+                'discount_amount' => $discountAmount,
                 'shipping_amount' => 0, // rate shopping lands with the shipping step (P2.2)
                 'tax_amount' => $quote['totals']['tax'],
                 'total' => $quote['totals']['total'],
@@ -128,6 +153,18 @@ final class CheckoutService
             ]);
 
             $lines = $this->createItems($order, $quote);
+
+            // Single-use per order is DB-enforced (UNIQUE order_id on the
+            // redemption) and usage counters derive from these rows.
+            if ($promotionState !== null) {
+                \Modules\Storefront\Models\StorefrontPromotionRedemption::create([
+                    'promotion_id' => $promotionState['promotion']->id,
+                    'order_id' => (int) $order->id,
+                    'account_id' => $account?->id,
+                    'amount' => $discountAmount,
+                ]);
+            }
+
             $this->reserveStock($order, $lines, $settings);
 
             // Consume the placed cart; the next visit gets a fresh one.
@@ -138,8 +175,37 @@ final class CheckoutService
             app(\Modules\Storefront\Services\StorefrontNotificationService::class)
                 ->orderPlaced($order, $plainToken);
 
-            return ['order' => $order, 'confirmation_token' => $plainToken, 'replay' => false];
+            return [
+                'order' => $order,
+                'confirmation_token' => $plainToken,
+                'replay' => false,
+                'applied_promotions' => $this->appliedPromotions($order),
+                'free_shipping' => $promotionState !== null && $promotionState['free_shipping'],
+            ];
         });
+    }
+
+    /** @return array<int,array<string,string>> */
+    private function appliedPromotions(StorefrontOrder $order): array
+    {
+        return \Modules\Storefront\Models\StorefrontPromotionRedemption::query()
+            ->where('order_id', (int) $order->id)
+            ->with('promotion:id,code,type,value')
+            ->get()
+            ->map(fn ($r) => [
+                'code' => (string) $r->promotion?->code,
+                'type' => (string) $r->promotion?->type,
+                'amount' => (string) $r->amount,
+            ])
+            ->all();
+    }
+
+    private function hasFreeShipping(StorefrontOrder $order): bool
+    {
+        return \Modules\Storefront\Models\StorefrontPromotionRedemption::query()
+            ->where('order_id', (int) $order->id)
+            ->whereHas('promotion', fn ($q) => $q->where('type', 'free_shipping'))
+            ->exists();
     }
 
     /**
@@ -211,7 +277,7 @@ final class CheckoutService
                 'quantity' => $item['quantity'],
                 'tax_rate' => $item['tax_rate'],
                 'tax_amount' => $item['tax_amount'],
-                'discount_amount' => 0,
+                'discount_amount' => $item['discount_amount'] ?? '0.00',
                 'line_total' => $item['line_total'],
                 'income_account_id' => $product?->income_account_id,
             ]);

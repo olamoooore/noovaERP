@@ -2,8 +2,9 @@
 
 use App\Http\Middleware\RequirePermission;
 use Illuminate\Support\Facades\Route;
-use Modules\Storefront\Http\Controllers\Admin\OrderController;
 use Modules\Storefront\Http\Controllers\Admin\OfflinePaymentController;
+use Modules\Storefront\Http\Controllers\Admin\OrderController;
+use Modules\Storefront\Http\Controllers\Admin\PromotionController;
 use Modules\Storefront\Http\Controllers\Admin\SettingsController;
 use Modules\Storefront\Http\Controllers\Editor\BlockController;
 use Modules\Storefront\Http\Controllers\Editor\PreviewController;
@@ -62,6 +63,22 @@ Route::middleware(['auth:sanctum', 'entitlement:storefront'])
         Route::get('/orders/{order}/proofs/{proof}/file', [OfflinePaymentController::class, 'file'])
             ->whereNumber('order')->whereNumber('proof')
             ->middleware(RequirePermission::using('storefront.write'));
+
+        // Promotions (FR-CO-09/FR-ADM-01): definitions are merchant data;
+        // the discount math lives only in StorefrontPromotionService.
+        Route::get('/promotions', [PromotionController::class, 'index'])
+            ->middleware(RequirePermission::using('storefront.view'));
+
+        Route::post('/promotions', [PromotionController::class, 'store'])
+            ->middleware(RequirePermission::using('storefront.write'));
+
+        Route::put('/promotions/{promotion}', [PromotionController::class, 'update'])
+            ->whereNumber('promotion')
+            ->middleware(RequirePermission::using('storefront.write'));
+
+        Route::get('/promotions/{promotion}/redemptions', [PromotionController::class, 'redemptions'])
+            ->whereNumber('promotion')
+            ->middleware(RequirePermission::using('storefront.view'));
     });
 
 // WebsiteBuilder editor integration (Appendix E §E4.3). Paths live under

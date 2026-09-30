@@ -769,6 +769,7 @@
       var country = fieldRow(form, 'Country (2-letter code)', 'country_code', 'text', '', [['required', ''], ['maxlength', '2']]);
 
       var err = el('p', 'sf-auth__error'); err.setAttribute('role', 'alert');
+      var coupon = fieldRow(form, 'Promo code (optional)', 'coupon_code', 'text', '');
       var submit = el('button', 'sf-auth__submit', 'Place order'); submit.type = 'submit';
 
       var termsBox = null;
@@ -799,6 +800,7 @@
           shipping_address: shipping,
         };
         if (termsBox) payload.accepted_terms = termsBox.querySelector('input').checked;
+        if (coupon.value.trim()) payload.coupon_code = coupon.value.trim().toUpperCase();
 
         req('/checkout', { method: 'POST', body: payload }).then(function (r) {
           if (!r.ok) {

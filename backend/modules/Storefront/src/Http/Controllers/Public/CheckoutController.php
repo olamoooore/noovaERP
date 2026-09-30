@@ -50,6 +50,7 @@ final class CheckoutController extends Controller
             'billing_address.postal_code' => ['required_with:billing_address', 'string', 'max:20'],
             'billing_address.country_code' => ['required_with:billing_address', 'string', 'size:2', 'regex:/^[A-Za-z]{2}$/'],
             'accepted_terms' => ['sometimes', 'boolean'],
+            'coupon_code' => ['nullable', 'string', 'max:80'],
         ]);
 
         // Tenant policy: when checkout terms are configured, acceptance is
@@ -95,6 +96,7 @@ final class CheckoutController extends Controller
                 billing: $validated['billing_address'] ?? null,
                 account: $account,
                 idempotencyKey: $key,
+                couponCode: $validated['coupon_code'] ?? null,
             );
         } catch (CheckoutException $e) {
             return response()->json([
@@ -114,9 +116,12 @@ final class CheckoutController extends Controller
                 'payment_status' => $order->payment_status,
                 'totals' => [
                     'subtotal' => (string) $order->subtotal,
+                    'discount' => (string) $order->discount_amount,
                     'tax' => (string) $order->tax_amount,
                     'total' => (string) $order->total,
                 ],
+                'applied_promotions' => $result['applied_promotions'],
+                'free_shipping' => $result['free_shipping'],
                 'currency' => $order->currency,
                 'replay' => $result['replay'],
             ],
