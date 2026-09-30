@@ -44,6 +44,8 @@ class InvoiceFunctions
             return [
                 'success' => true,
                 'found' => true,
+                'id' => $invoice->id,
+                'url' => '/invoices/'.$invoice->id,
                 'invoice_number' => $invoice->invoice_number,
                 'total' => $invoice->total ?? 0,
                 'paid_amount' => $invoice->paid_amount ?? 0,

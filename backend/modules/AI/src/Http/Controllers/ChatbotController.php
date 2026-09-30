@@ -9,6 +9,7 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Modules\AI\Models\AIConversation;
+use Modules\AI\Models\AIMessage;
 use Modules\AI\Services\ChatbotService;
 
 /**
@@ -217,10 +218,12 @@ class ChatbotController extends Controller
                 'success' => true,
                 'conversation' => [
                     'id' => $conversation->id,
-                    'customer' => [
+                    // Guest/storefront conversations have no customer row —
+                    // staff can still open them from the dashboard list.
+                    'customer' => $conversation->customer ? [
                         'id' => $conversation->customer->id,
                         'name' => $conversation->customer->name,
-                    ],
+                    ] : null,
                     'channel' => $conversation->channel,
                     'status' => $conversation->status,
                     'language' => $conversation->language,
@@ -258,6 +261,31 @@ class ChatbotController extends Controller
     }
 
     /**
+     * Tenant-wide chatbot metrics for the dashboard.
+     *
+     * The frontend previously derived these from the first 10 rows of a
+     * per-customer list (keyed on the staff user id as customer_id), so
+     * every card was wrong; this is the authoritative count.
+     */
+    public function stats(): JsonResponse
+    {
+        $today = now()->startOfDay();
+
+        return response()->json([
+            'success' => true,
+            'stats' => [
+                'total_conversations' => AIConversation::count(),
+                'active_conversations' => AIConversation::where('status', 'active')->count(),
+                'messages_today' => AIMessage::query()
+                    ->whereIn('role', ['user', 'assistant'])
+                    ->whereNotNull('content')
+                    ->where('created_at', '>=', $today)
+                    ->count(),
+            ],
+        ]);
+    }
+
+    /**
      * Get customer's conversations
      */
     public function getConversations(Request $request): JsonResponse
@@ -276,18 +304,24 @@ class ChatbotController extends Controller
         }
 
         try {
-            $customerId = $this->resolveCustomerId($request);
-            if ($customerId === null) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'Unable to resolve customer context for this user.',
-                ], 422);
+            // customer_id is optional: without it we list every
+            // conversation in the tenant (the staff dashboard view).
+            $customerId = null;
+            if ($request->filled('customer_id')) {
+                $customerId = $this->resolveCustomerId($request);
+                if ($customerId === null) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Unable to resolve customer context for this user.',
+                    ], 422);
+                }
             }
 
             $status = $request->input('status');
             $limit = $request->input('limit', 10);
 
-            $query = AIConversation::where('customer_id', $customerId)
+            $query = AIConversation::query()
+                ->when($customerId !== null, fn ($q) => $q->where('customer_id', $customerId))
                 ->with(['messages' => function ($q) {
                     $q->whereNotNull('content')
                         ->orderBy('created_at', 'desc')
@@ -309,7 +343,7 @@ class ChatbotController extends Controller
                         'language' => $conv->language,
                         'started_at' => $conv->started_at,
                         'last_message' => $conv->messages->first()?->content,
-                        'message_count' => $conv->messages()->count(),
+                        'message_count' => $conv->messages()->whereNotNull('content')->count(),
                     ];
                 });
 

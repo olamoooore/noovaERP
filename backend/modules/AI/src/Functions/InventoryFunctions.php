@@ -129,14 +129,24 @@ class InventoryFunctions
             $limit = max(1, min(50, $limit));
 
             if ($warehouseId) {
-                $items = StockLevel::query()
+                $base = StockLevel::query()
                     ->with([
                         'product:id,name,sku,track_inventory',
                         'warehouse:id,name,code',
                     ])
                     ->where('warehouse_id', $warehouseId)
-                    ->where('min_quantity', '>', 0)
-                    ->whereColumn('quantity', '<=', 'min_quantity')
+                    ->where('quantity', '>', 0)
+                    ->where(function ($query) {
+                        $query->whereRaw('quantity <= NULLIF(min_quantity, 0)')
+                            ->orWhere(function ($fallback) {
+                                $fallback->whereRaw('(min_quantity IS NULL OR min_quantity = 0)')
+                                    ->where('quantity', '<=', 10);
+                            });
+                    });
+
+                $total = (clone $base)->count();
+
+                $items = (clone $base)
                     ->orderBy('quantity')
                     ->take($limit)
                     ->get()
@@ -158,37 +168,52 @@ class InventoryFunctions
                 return [
                     'success' => true,
                     'warehouse_id' => (int) $warehouseId,
+                    'total_count' => $total,
                     'found' => count($items),
                     'items' => $items,
+                    'note' => 'total_count is the complete number of low-stock entries; items is a sample.',
                 ];
             }
 
-            $items = Product::query()
-                ->where('is_active', true)
-                ->where('track_inventory', true)
-                ->where('min_stock_threshold', '>', 0)
-                ->whereColumn('stock_quantity', '<=', 'min_stock_threshold')
-                ->orderBy('stock_quantity')
-                ->select('id', 'name', 'sku', 'stock_quantity', 'min_stock_threshold', 'reorder_level')
+            // Same source of truth as the inventory dashboard: low stock
+            // comes from stock_levels (per-warehouse min_quantity, falling
+            // back to a threshold of 10 when no minimum is configured).
+            $base = StockLevel::query()
+                ->with(['product:id,name,sku,track_inventory,is_active', 'warehouse:id,name,code'])
+                ->where('quantity', '>', 0)
+                ->where(function ($query) {
+                    $query->whereRaw('quantity <= NULLIF(min_quantity, 0)')
+                        ->orWhere(function ($fallback) {
+                            $fallback->whereRaw('(min_quantity IS NULL OR min_quantity = 0)')
+                                ->where('quantity', '<=', 10);
+                        });
+                })
+                ->whereHas('product', fn ($q) => $q->where('is_active', true)->where('track_inventory', true));
+
+            $total = (clone $base)->distinct()->count('product_id');
+
+            $items = (clone $base)
+                ->orderBy('quantity')
                 ->take($limit)
                 ->get()
-                ->map(function (Product $product) {
+                ->map(function (StockLevel $level) {
                     return [
-                        'product_id' => $product->id,
-                        'product_name' => $product->name,
-                        'sku' => $product->sku,
-                        'stock_quantity' => (int) $product->stock_quantity,
-                        'min_stock_threshold' => (int) $product->min_stock_threshold,
-                        'reorder_level' => (int) $product->reorder_level,
+                        'product_id' => $level->product_id,
+                        'product_name' => $level->product?->name,
+                        'sku' => $level->product?->sku,
+                        'warehouse_name' => $level->warehouse?->name,
+                        'quantity' => (int) $level->quantity,
+                        'min_quantity' => (int) $level->min_quantity,
                     ];
                 })
                 ->toArray();
 
             return [
                 'success' => true,
+                'total_count' => $total,
                 'found' => count($items),
                 'items' => $items,
-                'note' => 'Low stock uses product.min_stock_threshold (> 0).',
+                'note' => 'total_count is the complete number of low-stock products; items is a sample. Always report total_count when the user asks how many.',
             ];
         } catch (\Exception $e) {
             Log::error('InventoryFunctions::listLowStock failed', [
@@ -211,13 +236,17 @@ class InventoryFunctions
             $limit = max(1, min(50, $limit));
 
             if ($warehouseId) {
-                $items = StockLevel::query()
+                $base = StockLevel::query()
                     ->with([
                         'product:id,name,sku,track_inventory',
                         'warehouse:id,name,code',
                     ])
                     ->where('warehouse_id', $warehouseId)
-                    ->where('quantity', '<=', 0)
+                    ->where('quantity', '<=', 0);
+
+                $total = (clone $base)->count();
+
+                $items = (clone $base)
                     ->orderBy('product_id')
                     ->take($limit)
                     ->get()
@@ -238,17 +267,26 @@ class InventoryFunctions
                 return [
                     'success' => true,
                     'warehouse_id' => (int) $warehouseId,
+                    'total_count' => $total,
                     'found' => count($items),
                     'items' => $items,
+                    'note' => 'total_count is the complete number of out-of-stock entries; items is a sample.',
                 ];
             }
 
-            $items = Product::query()
+            // Same source of truth as the inventory dashboard: a product is
+            // out of stock when it tracks inventory and has NO stock level
+            // with a positive quantity (product.stock_quantity is legacy).
+            $base = Product::query()
                 ->where('is_active', true)
                 ->where('track_inventory', true)
-                ->where('stock_quantity', '<=', 0)
+                ->whereDoesntHave('stockLevels', fn ($q) => $q->where('quantity', '>', 0));
+
+            $total = (clone $base)->count();
+
+            $items = (clone $base)
                 ->orderBy('name')
-                ->select('id', 'name', 'sku', 'stock_quantity')
+                ->select('id', 'name', 'sku')
                 ->take($limit)
                 ->get()
                 ->map(function (Product $product) {
@@ -256,15 +294,17 @@ class InventoryFunctions
                         'product_id' => $product->id,
                         'product_name' => $product->name,
                         'sku' => $product->sku,
-                        'stock_quantity' => (int) $product->stock_quantity,
+                        'stock_quantity' => 0,
                     ];
                 })
                 ->toArray();
 
             return [
                 'success' => true,
+                'total_count' => $total,
                 'found' => count($items),
                 'items' => $items,
+                'note' => 'total_count is the complete number of out-of-stock products; items is a sample (up to the requested limit). Always report total_count when the user asks how many.',
             ];
         } catch (\Exception $e) {
             Log::error('InventoryFunctions::listOutOfStock failed', [

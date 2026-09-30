@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
+import pricingApi from '@/lib/pricingApi'
 import { Icon } from '@iconify/react'
 import { useNavigate } from 'react-router-dom'
 import { formatCurrency, formatDate } from '@/lib/utils'
@@ -78,6 +79,9 @@ export function QuotesPage() {
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  // MRD FR-8.1: currency filter + currency sort.
+  const [currencyFilter, setCurrencyFilter] = useState('all')
+  const [sortBy, setSortBy] = useState<'date' | 'currency'>('date')
   const [tagFilter, setTagFilter] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
@@ -88,10 +92,12 @@ export function QuotesPage() {
   queryParams.set('page', String(page))
   if (searchQuery.trim()) queryParams.set('search', searchQuery.trim())
   if (statusFilter !== 'all') queryParams.set('status', statusFilter)
+  if (currencyFilter !== 'all') queryParams.set('currency_code', currencyFilter)
+  if (sortBy === 'currency') queryParams.set('sort_by', 'currency')
   if (tagFilter) queryParams.set('tag', tagFilter)
 
   const { data: quotesResponse, isLoading } = useQuery({
-    queryKey: ['quotations', searchQuery, statusFilter, tagFilter, page, pageSize],
+    queryKey: ['quotations', searchQuery, statusFilter, currencyFilter, sortBy, tagFilter, page, pageSize],
     queryFn: async () => {
       const response = await api.get(`/quotations?${queryParams.toString()}`)
       return response.data
@@ -103,9 +109,16 @@ export function QuotesPage() {
   const lastPage = quotesResponse?.last_page || 1
   const totalRecords = quotesResponse?.total || 0
 
+  const { data: filterCurrencies } = useQuery({
+    queryKey: ['currencies', 'sellable'],
+    queryFn: () => pricingApi.sellableCurrencies(),
+  })
+  const filterCurrencyRows: any[] = (filterCurrencies as any)?.data ?? filterCurrencies ?? []
+
   const selectionFilters = {
     ...(searchQuery.trim() ? { search: searchQuery.trim() } : {}),
     ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
+    ...(currencyFilter !== 'all' ? { currency_code: currencyFilter } : {}),
     ...(tagFilter ? { tag: tagFilter } : {}),
   }
   const {
@@ -279,7 +292,7 @@ export function QuotesPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 sm:flex-nowrap sm:overflow-x-auto">
             <div className="relative w-full sm:w-64">
               <Icon
                 icon="solar:magnifer-bold-duotone"
@@ -294,7 +307,7 @@ export function QuotesPage() {
             </div>
 
             <Select value={statusFilter} onValueChange={handleStatusChange}>
-              <SelectTrigger className="h-8 w-36 rounded-full text-xs">
+              <SelectTrigger className="h-8 w-28 rounded-full px-2.5 text-xs">
                 <SelectValue placeholder="All Status" />
               </SelectTrigger>
               <SelectContent>
@@ -306,8 +319,31 @@ export function QuotesPage() {
               </SelectContent>
             </Select>
 
+            <Select value={currencyFilter} onValueChange={(v) => { setCurrencyFilter(v); setPage(1) }}>
+              <SelectTrigger className="h-8 w-28 rounded-full px-2.5 text-xs">
+                <SelectValue placeholder="All Currencies" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Currencies</SelectItem>
+                {filterCurrencyRows.map((currency: any) => (
+                  <SelectItem key={currency.code} value={currency.code}>{currency.code}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={sortBy} onValueChange={(v) => { setSortBy(v as 'date' | 'currency'); setPage(1) }}>
+              <SelectTrigger className="h-8 w-28 rounded-full px-2.5 text-xs">
+                <SelectValue placeholder="Sort" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="date">Newest</SelectItem>
+                <SelectItem value="currency">Currency</SelectItem>
+              </SelectContent>
+            </Select>
+
             <TagFilterSelect
-              className="h-8 w-36 rounded-full text-xs"
+              className="h-8 w-24 rounded-full text-xs"
+              placeholder="Tags"
               value={tagFilter}
               onChange={(value) => { setTagFilter(value); setPage(1) }}
             />

@@ -1,4 +1,5 @@
 import { Outlet } from 'react-router-dom'
+import { FloatingChatButton } from '@/components/AI/FloatingChatButton'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
 
@@ -15,6 +16,9 @@ export function MainLayout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Global AI assistant — visible on every page while the AI module is enabled. */}
+      <FloatingChatButton />
     </div>
   )
 }

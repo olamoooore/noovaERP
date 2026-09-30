@@ -17,6 +17,13 @@ class DomainPostingLine
         public readonly string $accountRole,
         public readonly float $amount,
         public readonly ?string $currencyCode = null,
+        // MRD pricelist-multicurrency FR-5.7/§12: the line's ORIGINAL
+        // (document-currency) amount and the document snapshot rate. The
+        // GL debit/credit stays BASE; these columns carry the foreign side
+        // for dual display and revaluation — assembled from the document
+        // snapshot, never recomputed.
+        public readonly ?float $originalAmount = null,
+        public readonly ?float $exchangeRate = null,
         public readonly ?string $description = null,
         public readonly array $dimensions = [],
         public readonly ?string $taxResultReference = null,

@@ -16,7 +16,7 @@ use Tests\TenantTestCase;
  *  - flip is_active=false → true and true → false;
  *  - persist across read;
  *  - retain the original code/name/symbol/decimal_places;
- *  - require settings.write permission for mutations.
+ *  - require currencies.manage permission for mutations (MRD FR-10.2).
  */
 class HR73CurrencyActiveToggleTest extends TenantTestCase
 {
@@ -92,7 +92,7 @@ class HR73CurrencyActiveToggleTest extends TenantTestCase
         $this->assertSame(2, $cur->decimal_places);
     }
 
-    public function test_routes_registered_with_settings_write_guard(): void
+    public function test_routes_registered_with_currencies_manage_guard(): void
     {
         $routes = collect(\Illuminate\Support\Facades\Route::getRoutes())
             ->map(fn ($r) => [
@@ -102,17 +102,19 @@ class HR73CurrencyActiveToggleTest extends TenantTestCase
             ])
             ->filter(fn ($r) => str_starts_with($r['uri'], 'api/v1/accounting/currencies'));
 
-        // Find the PUT /currencies/{code} route and assert middleware contains settings.write
+        // MRD pricelist-multicurrency FR-10.2: currency activation +
+        // sellability moved from the generic settings.write gate to the
+        // dedicated currencies.manage permission (Owner/Admin/Accountant).
         $put = $routes->first(fn ($r) => in_array('PUT', $r['methods'])
             && str_contains($r['uri'], 'currencies/{code}')
         );
         $this->assertNotNull($put, 'PUT /currencies/{code} route must be registered');
-        // The middleware is registered as the string form 'App\Http\Middleware\RequirePermission:settings.write'.
-        $hasSettingsWrite = collect($put['middleware'])->contains(function ($mw) {
+        // The middleware is registered as the string form 'App\Http\Middleware\RequirePermission:currencies.manage'.
+        $hasManage = collect($put['middleware'])->contains(function ($mw) {
             $str = is_object($mw) ? serialize($mw) : (string) $mw;
 
-            return str_contains($str, 'settings.write');
+            return str_contains($str, 'currencies.manage');
         });
-        $this->assertTrue($hasSettingsWrite, 'PUT /currencies/{code} must require settings.write permission');
+        $this->assertTrue($hasManage, 'PUT /currencies/{code} must require currencies.manage permission');
     }
 }

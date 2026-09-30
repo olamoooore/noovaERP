@@ -1,4 +1,5 @@
 import { GeneralSettings } from './Settings/GeneralSettings'
+import { DomainsSettings } from './Settings/DomainsSettings'
 import { PaymentGatewaySettings } from './Settings/PaymentGatewaySettings'
 import { FulfillmentSettings } from './Settings/FulfillmentSettings'
 import { MailSettings } from './Settings/MailSettings'
@@ -129,6 +130,7 @@ export function SettingsPage() {
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const tenantId = useAuthStore((state) => state.tenantId)
+  const hasPermission = useAuthStore((state) => state.hasPermission)
   const isAcmeTenant =
     tenantId === '00000000-0000-0000-0000-000000000001' ||
     tenantId === '00000000-0000-0000-0000-000000000002'
@@ -140,6 +142,9 @@ export function SettingsPage() {
     'team',
     'modules',
   ])
+  if (hasPermission('settings.view')) {
+    availableTabs.add('domains')
+  }
   if (!isAcmeTenant) {
     availableTabs.add('inventory')
     availableTabs.add('payment-gateways')
@@ -321,6 +326,7 @@ export function SettingsPage() {
           {!isAcmeTenant && <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>}
           <TabsTrigger value="team">Team</TabsTrigger>
           <TabsTrigger value="modules">Modules</TabsTrigger>
+          {hasPermission('settings.view') && <TabsTrigger value="domains">Domains</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="general">
@@ -349,6 +355,10 @@ export function SettingsPage() {
 
         <TabsContent value="modules">
           <ModulesPage />
+        </TabsContent>
+
+        <TabsContent value="domains">
+          <DomainsSettings />
         </TabsContent>
 
         <TabsContent value="tax">

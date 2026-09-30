@@ -1,15 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
-import {
-  Users,
-  ShoppingCart,
-  DollarSign,
-  TrendingUp,
-  Percent,
-  Package,
-  Layers,
-} from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -25,7 +17,7 @@ import { TagFilterSelect } from '@/components/tags/TagFilterSelect';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
 import { ReportExportToolbar } from '@/components/reports/ReportExportToolbar';
 import { ReportTable, Column } from '@/components/reports/ReportTable';
-import { KPICard } from '@/components/dashboards/KPICard';
+import { StatCard } from '@/components/ui/stat-card';
 import { BarChart } from '@/components/charts/BarChart';
 import { LineChart } from '@/components/charts/LineChart';
 import { PieChart } from '@/components/charts/PieChart';
@@ -247,7 +239,16 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
   // Columns — numeric columns are tabular so figures line up vertically.
   // ---------------------------------------------------------------------------
   const productColumns: Column[] = [
-    { key: 'name', label: 'Product', sortable: true, filterable: true },
+    {
+      key: 'name',
+      label: 'Product',
+      sortable: true,
+      filterable: true,
+      format: (value: any, row: any) =>
+        row?.id
+          ? <Link to={`/products/${row.id}`} className="font-medium hover:underline">{value}</Link>
+          : value,
+    },
     { key: 'sku', label: 'SKU', sortable: true, filterable: true },
     {
       key: 'total_quantity',
@@ -300,7 +301,16 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
   ];
 
   const customerColumns: Column[] = [
-    { key: 'name', label: 'Customer', sortable: true, filterable: true },
+    {
+      key: 'name',
+      label: 'Customer',
+      sortable: true,
+      filterable: true,
+      format: (value: any, row: any) =>
+        row?.id
+          ? <Link to={`/customers/${row.id}`} className="font-medium hover:underline">{value}</Link>
+          : value,
+    },
     {
       key: 'total_orders',
       label: 'Orders',
@@ -335,7 +345,16 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
   ];
 
   const categoryColumns: Column[] = [
-    { key: 'category_name', label: 'Category', sortable: true, filterable: true },
+    {
+      key: 'category_name',
+      label: 'Category',
+      sortable: true,
+      filterable: true,
+      format: (value: any, row: any) =>
+        row?.category_id
+          ? <Link to={`/products?category=${row.category_id}`} className="font-medium hover:underline">{value}</Link>
+          : value,
+    },
     {
       key: 'product_count',
       label: 'Products',
@@ -595,25 +614,29 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
           {!isProductLoading && !productError && products.length > 0 && (
             <>
               <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                <KPICard
-                  title="Products Sold"
+                <StatCard
+                  label="Products Sold"
                   value={formatNumber(products.length)}
-                  icon={Package}
+                  icon="solar:box-bold-duotone"
+                  tone="bg-primary/10 text-primary"
                 />
-                <KPICard
-                  title="Total Revenue"
+                <StatCard
+                  label="Total Revenue"
                   value={formatCurrency(sumBy(products, (p) => p.total_revenue))}
-                  icon={DollarSign}
+                  icon="solar:wallet-money-bold-duotone"
+                  tone="bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400"
                 />
-                <KPICard
-                  title="Total Profit"
+                <StatCard
+                  label="Total Profit"
                   value={formatCurrency(sumBy(products, (p) => p.total_profit))}
-                  icon={TrendingUp}
+                  icon="solar:graph-up-bold-duotone"
+                  tone="bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400"
                 />
-                <KPICard
-                  title="Avg Margin"
+                <StatCard
+                  label="Avg Margin"
                   value={`${avgBy(products, (p) => p.profit_margin).toFixed(2)}%`}
-                  icon={Percent}
+                  icon="solar:tag-price-bold-duotone"
+                  tone="bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400"
                 />
               </div>
 
@@ -716,26 +739,34 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
           {!isCustomerLoading && !customerError && customers.length > 0 && (
             <>
               <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                <KPICard title="Customers" value={formatNumber(customers.length)} icon={Users} />
-                <KPICard
-                  title="Total Revenue"
+                <StatCard
+                  label="Customers"
+                  value={formatNumber(customers.length)}
+                  icon="solar:users-group-rounded-bold-duotone"
+                  tone="bg-violet-100 text-violet-600 dark:bg-violet-950/60 dark:text-violet-400"
+                />
+                <StatCard
+                  label="Total Revenue"
                   value={formatCurrency(sumBy(customers, (c) => c.total_revenue))}
-                  icon={DollarSign}
+                  icon="solar:wallet-money-bold-duotone"
+                  tone="bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400"
                 />
-                <KPICard
-                  title="Total Orders"
+                <StatCard
+                  label="Total Orders"
                   value={formatNumber(sumBy(customers, (c) => c.total_orders))}
-                  icon={ShoppingCart}
+                  icon="solar:cart-large-2-bold-duotone"
+                  tone="bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400"
                 />
-                <KPICard
-                  title="Avg Order Value"
+                <StatCard
+                  label="Avg Order Value"
                   value={formatCurrency(
                     aov(
                       sumBy(customers, (c) => c.total_revenue),
                       sumBy(customers, (c) => c.total_orders),
                     ),
                   )}
-                  icon={TrendingUp}
+                  icon="solar:graph-up-bold-duotone"
+                  tone="bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400"
                 />
               </div>
 
@@ -811,25 +842,28 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
           {!isTrendsLoading && !trendsError && trends.length > 0 && (
             <>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <KPICard
-                  title="Total Revenue"
+                <StatCard
+                  label="Total Revenue"
                   value={formatCurrency(sumBy(trends, (t) => t.total_revenue))}
-                  icon={DollarSign}
+                  icon="solar:wallet-money-bold-duotone"
+                  tone="bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400"
                 />
-                <KPICard
-                  title="Total Orders"
+                <StatCard
+                  label="Total Orders"
                   value={formatNumber(sumBy(trends, (t) => t.invoice_count))}
-                  icon={ShoppingCart}
+                  icon="solar:cart-large-2-bold-duotone"
+                  tone="bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400"
                 />
-                <KPICard
-                  title="Avg Order Value"
+                <StatCard
+                  label="Avg Order Value"
                   value={formatCurrency(
                     aov(
                       sumBy(trends, (t) => t.total_revenue),
                       sumBy(trends, (t) => t.invoice_count),
                     ),
                   )}
-                  icon={TrendingUp}
+                  icon="solar:graph-up-bold-duotone"
+                  tone="bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400"
                 />
               </div>
 
@@ -926,21 +960,29 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
           {!isCategoryLoading && !categoryError && categories.length > 0 && (
             <>
               <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                <KPICard title="Categories" value={formatNumber(categories.length)} icon={Layers} />
-                <KPICard
-                  title="Total Revenue"
+                <StatCard
+                  label="Categories"
+                  value={formatNumber(categories.length)}
+                  icon="solar:layers-minimalistic-bold-duotone"
+                  tone="bg-indigo-100 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400"
+                />
+                <StatCard
+                  label="Total Revenue"
                   value={formatCurrency(sumBy(categories, (c) => c.total_revenue))}
-                  icon={DollarSign}
+                  icon="solar:wallet-money-bold-duotone"
+                  tone="bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400"
                 />
-                <KPICard
-                  title="Total Profit"
+                <StatCard
+                  label="Total Profit"
                   value={formatCurrency(sumBy(categories, (c) => c.total_profit))}
-                  icon={TrendingUp}
+                  icon="solar:graph-up-bold-duotone"
+                  tone="bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400"
                 />
-                <KPICard
-                  title="Avg Margin"
+                <StatCard
+                  label="Avg Margin"
                   value={`${avgBy(categories, (c) => c.profit_margin).toFixed(2)}%`}
-                  icon={Percent}
+                  icon="solar:tag-price-bold-duotone"
+                  tone="bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400"
                 />
               </div>
 

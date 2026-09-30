@@ -162,11 +162,22 @@ class Customer extends Model
     }
 
     /**
-     * Price list
+     * Default price list (MRD FR-2.4). After migration
+     * 2026_10_01_000006 this FK points at the general `price_lists` table;
+     * legacyPriceList() keeps the deprecated bridge readable during the
+     * deprecation window (FR-12.1/12.3).
      */
     public function priceList(): BelongsTo
     {
-        return $this->belongsTo(CustomerPriceList::class, 'price_list_id');
+        return $this->belongsTo(PriceList::class, 'price_list_id');
+    }
+
+    /**
+     * @deprecated Use priceList() — kept only for the migration window.
+     */
+    public function legacyPriceList(): BelongsTo
+    {
+        return $this->belongsTo(CustomerPriceList::class, 'legacy_price_list_id');
     }
 
     /**
@@ -334,34 +345,62 @@ class Customer extends Model
      */
 
     /**
-     * Get customer's special price for a product
+     * Get the customer's special price for a product in the price LIST
+     * currency (MRD FR-4.1: PricingService is the only price authority —
+     * this model method now delegates to it instead of forking the legacy
+     * two-field logic). Returns null when the customer has no list.
      */
-    public function getProductPrice(Product $product): ?float
+    public function getProductPrice(Product $product, float $quantity = 1, ?string $date = null): ?float
     {
-        if (! $this->price_list_id) {
+        $list = $this->priceList;
+
+        if (! $list || ! $list->appliesOnDate($date)) {
             return null;
         }
 
-        $priceListItem = CustomerPriceListItem::where('price_list_id', $this->price_list_id)
-            ->where('product_id', $product->id)
-            ->first();
+        return app(\App\Services\PricingService::class)->resolvePrice([
+            'product' => $product,
+            'quantity' => $quantity,
+            'date' => $date,
+            'customer_id' => $this->id,
+            'document_currency' => $list->currency_code,
+            'price_list_id' => $list->id,
+            'include_cost' => true,
+        ])['unit_price'];
+    }
 
-        if ($priceListItem) {
-            return $priceListItem->price;
+    /**
+     * Currency of this customer's default price list, when set (FR-5.2 —
+     * the default document currency source).
+     */
+    public function defaultPricelistCurrency(): ?string
+    {
+        return $this->priceList?->currency_code;
+    }
+
+    /**
+     * Transition-window bridge (MRD FR-2.4 / FR-12.3): accepts either a new
+     * `price_lists.id` or a legacy `customer_price_lists.id` and returns the
+     * new-model id. Legacy ids map through the migration bridge; unmappable
+     * ids return null (never a dangling FK).
+     */
+    public static function normalizePriceListId(mixed $id): ?int
+    {
+        if ($id === null || $id === '' || ! is_numeric($id)) {
+            return null;
         }
 
-        // Apply general price list discount
-        $priceList = $this->priceList;
-        if ($priceList && $priceList->discount_value > 0) {
-            $basePrice = $product->price;
-            if ($priceList->discount_type === 'percentage') {
-                return $basePrice * (1 - $priceList->discount_value / 100);
-            }
+        $id = (int) $id;
 
-            return max(0, $basePrice - $priceList->discount_value);
+        if (PriceList::query()->whereKey($id)->exists()) {
+            return $id;
         }
 
-        return null;
+        $mapped = PriceList::query()
+            ->where('legacy_price_list_id', $id)
+            ->value('id');
+
+        return $mapped ? (int) $mapped : null;
     }
 
     /**

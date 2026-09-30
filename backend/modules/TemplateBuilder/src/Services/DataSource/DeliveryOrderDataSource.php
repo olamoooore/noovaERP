@@ -27,7 +27,11 @@ final class DeliveryOrderDataSource implements DataSourceContract
     {
         $do = $this->do ?? throw new \RuntimeException('Delivery order not loaded.');
         $company = CompanyDataSource::forCurrentTenant();
-        $currencyCode = $company['currency_code'] ?? 'MYR';
+        // MRD FR-8.5: document currency primary; base equivalent secondary.
+        $companyCurrency = $company['currency_code'] ?? 'MYR';
+        $currencyCode = $do->currency_code ?: $companyCurrency;
+        $baseCurrencyCode = $do->base_currency_code ?: $companyCurrency;
+        $exchangeRate = $do->exchange_rate !== null ? (float) $do->exchange_rate : 1.0;
 
         $lines = [];
         foreach ($do->lines as $i => $line) {
@@ -93,7 +97,8 @@ final class DeliveryOrderDataSource implements DataSourceContract
             'lines' => $lines,
             'meta' => [
                 'currency_code' => $currencyCode,
-                'currency_symbol' => InvoiceDataSource::currencySymbol($currencyCode),
+                'base_currency_code' => $baseCurrencyCode,
+                'exchange_rate' => $exchangeRate,
                 'number_format' => '1,234.56',
                 'locale' => 'en',
             ],

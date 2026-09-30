@@ -53,6 +53,8 @@ class LoyaltyFunctions
             return [
                 'success' => true,
                 'enrolled' => true,
+                'customer_id' => $customerId,
+                'url' => '/loyalty/customers/'.$customerId,
                 'customer_name' => $customer->name ?? null,
                 'points_balance' => $loyalty->current_points,
                 'lifetime_points' => $loyalty->lifetime_points,

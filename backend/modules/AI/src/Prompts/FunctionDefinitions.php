@@ -92,7 +92,7 @@ class FunctionDefinitions
     {
         return [
             'name' => 'list_low_stock_items',
-            'description' => 'List items that are low on stock. Optionally filter by a specific warehouse. Use when user asks "what is low stock" or "which items need reorder".',
+            'description' => 'List items that are low on stock. Optionally filter by a specific warehouse. Use when user asks "what is low stock" or "which items need reorder". The response has total_count (the complete number of low-stock products) and items (a sample of up to limit) — when the user asks "how many", answer with total_count, never the sample size.',
             'parameters' => [
                 'type' => 'object',
                 'properties' => [
@@ -114,7 +114,7 @@ class FunctionDefinitions
     {
         return [
             'name' => 'list_out_of_stock_items',
-            'description' => 'List items that are out of stock. Optionally filter by a specific warehouse.',
+            'description' => 'List items that are out of stock. Optionally filter by a specific warehouse. The response has total_count (the complete number of out-of-stock products) and items (a sample of up to limit) — when the user asks "how many", answer with total_count, never the sample size.',
             'parameters' => [
                 'type' => 'object',
                 'properties' => [
@@ -851,5 +851,25 @@ class FunctionDefinitions
                 'required' => ['customer_id'],
             ],
         ];
+    }
+
+    /**
+     * Shopper-safe subset exposed to public storefront conversations.
+     * Guests must never reach customer, invoice, accounting, inventory or
+     * loyalty functions (they carry tenant-internal data).
+     */
+    public static function shopperSafe(): array
+    {
+        $allowed = [
+            'search_products',
+            'get_product_details',
+            'check_product_availability',
+            'list_product_categories',
+        ];
+
+        return array_values(array_filter(
+            self::getAll(),
+            fn (array $function) => in_array($function['name'] ?? '', $allowed, true)
+        ));
     }
 }

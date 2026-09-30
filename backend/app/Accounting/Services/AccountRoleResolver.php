@@ -33,6 +33,11 @@ class AccountRoleResolver
         'input_tax' => 'TAX_INPUT',
         'unrealized_fx_gain_loss' => 'FX_GAIN',
         'realized_fx_gain_loss' => 'FX_LOSS',
+        // MRD pricelist-multicurrency FR-7.2: directional realized FX keys
+        // resolve to the FX gain/loss role pair (falls through to the legacy
+        // mapper when the tenant has not assigned the roles).
+        'realized_fx_gain' => 'FX_GAIN',
+        'realized_fx_loss' => 'FX_LOSS',
         'retained_earnings' => 'RETAINED_EARNINGS',
         'general_expense' => 'SUSPENSE',
         'sales_revenue' => null, // no direct role — use AccountMappingService

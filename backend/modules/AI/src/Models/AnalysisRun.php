@@ -2,9 +2,9 @@
 
 namespace Modules\AI\Models;
 
+use App\Models\FiscalPeriod;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use App\Models\FiscalPeriod;
 
 /**
  * B2-IMPL-01A — AnalysisRun identity.

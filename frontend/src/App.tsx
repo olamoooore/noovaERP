@@ -59,6 +59,7 @@ const ReceiptBuilderPage = lazy(() => import('@/pages/Settings/ReceiptBuilderPag
 const CountryPluginSettings = lazy(() => import('@/pages/Settings/CountryPluginSettings').then(m => ({ default: m.CountryPluginSettings })))
 const TemplateEditorPage = lazy(() => import('@/pages/TemplateBuilder/TemplateEditorPage'))
 const SalesSettingsPage = lazy(() => import('@/pages/sales/SalesSettingsPage').then(m => ({ default: m.SalesSettingsPage })))
+const PriceListsPage = lazy(() => import('@/pages/sales/PriceListsPage'))
 const IoTDevicesPage = lazy(() => import('@/pages/IoT/IoTDevicesPage').then(m => ({ default: m.IoTDevicesPage })))
 const IoTHubPage = lazy(() => import('@/pages/IoTHub').then(m => ({ default: m.IoTHubPage })))
 const ManualsLibraryPage = lazy(() => import('@/pages/Manuals/ManualsLibraryPage').then(m => ({ default: m.ManualsLibraryPage })))
@@ -406,6 +407,7 @@ function App() {
                 <Route path="/sales/customer-bonus-schemes" element={<CustomerBonusSchemesPage />} />
                 <Route path="/sales/customer-bonus-schemes/create" element={<CustomerBonusSchemeCreatePage />} />
                 <Route path="/sales/settings" element={<SalesSettingsPage />} />
+                <Route path="/sales/price-lists" element={<PriceListsPage />} />
 
                 {/* Quotation Routes (new) */}
                 <Route path="/quotations" element={<QuotesPage />} />

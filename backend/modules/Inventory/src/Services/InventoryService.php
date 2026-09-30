@@ -238,6 +238,20 @@ class InventoryService
                 throw $e;
             }
 
+            // Reporting snapshots (valuation, movement, reorder, aging) are
+            // memoized for an hour; stock just changed, so they are stale.
+            // Purge through the table directly — the Inventory module must not
+            // depend on the reporting module's classes.
+            try {
+                if (\Illuminate\Support\Facades\Schema::hasTable('report_cache')) {
+                    \Illuminate\Support\Facades\DB::table('report_cache')
+                        ->whereIn('report_type', ['valuation', 'movement', 'reorder', 'aging', 'turnover'])
+                        ->delete();
+                }
+            } catch (\Throwable $e) {
+                Log::debug('InventoryService: report cache purge skipped', ['error' => $e->getMessage()]);
+            }
+
             return $movement;
         });
     }

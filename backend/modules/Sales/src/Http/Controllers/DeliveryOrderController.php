@@ -124,6 +124,15 @@ class DeliveryOrderController extends Controller
             ->orderByRaw('delivery_date DESC NULLS LAST')
             ->orderBy('id', 'desc');
 
+        // MRD pricelist-multicurrency FR-8: filter/sort by document currency.
+        if ($request->filled('currency_code')) {
+            $query->where('currency_code', strtoupper((string) $request->currency_code));
+        }
+
+        if ($request->input('sort_by') === 'currency') {
+            $query->reorder()->orderBy('currency_code')->orderByRaw('created_at DESC NULLS LAST')->orderBy('id', 'desc');
+        }
+
         if ($request->filled('status')) {
             $query->whereIn('status', explode(',', $request->status));
         }
@@ -188,6 +197,9 @@ class DeliveryOrderController extends Controller
             $validated = $request->validate([
                 'customer_id' => 'required|exists:customers,id',
                 'warehouse_id' => 'required|exists:warehouses,id',
+                // MRD pricelist-multicurrency FR-5.6/FR-6.1: explicit document
+                // currency on standalone DOs + per-line pricing intent.
+                'currency_code' => 'nullable|string|size:3',
                 'delivery_date' => 'nullable|date',
                 'expected_date' => 'nullable|date',
                 'payment_terms' => 'nullable|string|max:255',
@@ -215,6 +227,8 @@ class DeliveryOrderController extends Controller
                 'lines.*.quantity' => 'nullable|numeric|min:0',
                 'lines.*.unit' => 'nullable|string|max:20',
                 'lines.*.unit_price' => 'nullable|numeric|min:0',
+                'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
+                'lines.*.override_reason' => 'nullable|string|max:500',
                 'lines.*.lot_number' => 'nullable|string|max:100',
                 'lines.*.serial_number' => 'nullable|string|max:100',
                 'lines.*.product_batch_id' => 'nullable|integer|exists:product_batches,id',

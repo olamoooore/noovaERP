@@ -84,35 +84,43 @@ class IssueP21InvitePrivilegeEscalationTest extends TenantTestCase
 
         $newEmail = 'new-invite-'.uniqid().'@example.test';
 
-        // Per routes/tenant.php:143, the real endpoint is POST
-        // /api/v1/tenant-users (no /invite suffix).
-        $response = $this->actingAs($inviter, 'sanctum')
+        // Contract change (2026-09-30): tenant-side user creation is
+        // platform-only. A tenant admin now gets 403 here and no user row
+        // may be created.
+        $this->actingAs($inviter, 'sanctum')
             ->postJson('/api/v1/tenant-users', [
                 'name' => 'Brand New User',
                 'email' => $newEmail,
                 'role' => 'viewer',     // tenant role (user_company_access.role)
-            ]);
+            ])
+            ->assertForbidden();
 
-        // The endpoint may 201 (created) or 422 if validation rejects
-        // for unrelated reasons. Verify there is no exception and the
-        // direct invariant: no `platform_super_admin` row was inserted.
-        $status = $response->getStatusCode();
-        $this->assertContains($status, [200, 201, 422], 'Unexpected status: '.$status);
+        $this->assertDatabaseMissing('public.users', ['email' => $newEmail]);
 
-        // Direct check on the public.users row.
+        // The original invariant still holds through the only remaining
+        // creation path (platform superadmin): a brand-new email never
+        // receives a privileged `users.role`.
+        $superadmin = User::factory()->create();
+        $superadmin->assignAdminRole('platform_super_admin', null, 'P21 invariant check');
+
+        $this->actingAs($superadmin, 'sanctum')
+            ->postJson('/api/v1/tenant-users', [
+                'name' => 'Brand New User',
+                'email' => $newEmail,
+                'role' => 'viewer',
+                'password' => 'TempPass@1234',
+            ])
+            ->assertCreated();
+
         $userRow = DB::table('public.users')->where('email', $newEmail)->first();
+        $this->assertNotNull($userRow, 'superadmin invite must create the user');
 
-        if ($userRow !== null) {
-            $this->assertNotContains(
-                $userRow->role ?? '',
-                User::PRIVILEGED_ROLES,
-                'public.users.role must NOT be a privileged value after tenant-admin invite(); got: '.
-                var_export($userRow->role, true)
-            );
-        }
-        // Whether or not the invite() path inserted a row (some
-        // validation paths skip insert), the assertion above is the
-        // invariant. A missing row is also acceptable here.
+        $this->assertNotContains(
+            $userRow->role ?? '',
+            User::PRIVILEGED_ROLES,
+            'public.users.role must NOT be a privileged value after invite(); got: '.
+            var_export($userRow->role, true)
+        );
     }
 
     /**

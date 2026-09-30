@@ -59,6 +59,18 @@ Route::middleware([
         ->group(function () {
             Route::get('/catalog/products', [\Modules\Storefront\Http\Controllers\Public\CatalogController::class, 'products'])
                 ->middleware('throttle:120,1,sf-catalog');
+
+            // Website AI assistant (guest chat for the shop/website).
+            // Config is always readable (the widget hides itself when the
+            // assistant is disabled); send/poll are throttled in their own
+            // buckets and bound to a client visitor_id for guest isolation.
+            Route::get('/assistant', [\Modules\AI\Http\Controllers\StorefrontAssistantController::class, 'config'])
+                ->middleware('throttle:60,1,sf-assistant');
+            Route::post('/chat', [\Modules\AI\Http\Controllers\StorefrontAssistantController::class, 'send'])
+                ->middleware('throttle:20,1,sf-chat');
+            Route::get('/chat/{conversationId}/poll', [\Modules\AI\Http\Controllers\StorefrontAssistantController::class, 'poll'])
+                ->whereNumber('conversationId')
+                ->middleware('throttle:120,1,sf-chat-poll');
             Route::get('/cart', [\Modules\Storefront\Http\Controllers\Public\CartController::class, 'show'])
                 ->middleware('throttle:120,1,sf-cart');
             Route::post('/cart/items', [\Modules\Storefront\Http\Controllers\Public\CartController::class, 'storeItem'])
@@ -300,12 +312,35 @@ Route::middleware([
     Route::prefix('tenant-users')->group(function () {
         Route::get('/', [\App\Http\Controllers\Api\TenantUserController::class, 'index']);
         Route::post('/', [\App\Http\Controllers\Api\TenantUserController::class, 'invite'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.write');
+        // User-creation requests — creating users is platform-only; owners/
+        // admins request new accounts here and the SuperAdmin console reviews.
+        Route::get('/requests', [\App\Http\Controllers\Api\UserRequestController::class, 'index'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.write');
+        Route::post('/requests', [\App\Http\Controllers\Api\UserRequestController::class, 'store'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.write');
         Route::put('/{id}/role', [\App\Http\Controllers\Api\TenantUserController::class, 'updateRole'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.write');
         // Owner/Admin-only credential management (enforced in-controller too).
         Route::get('/{id}/activity', [\App\Http\Controllers\Api\TenantUserController::class, 'activity'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.write');
         Route::post('/{id}/password-link', [\App\Http\Controllers\Api\TenantUserController::class, 'sendPasswordLink'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.write');
         Route::post('/{id}/password', [\App\Http\Controllers\Api\TenantUserController::class, 'setPassword'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.write');
         Route::delete('/{id}', [\App\Http\Controllers\Api\TenantUserController::class, 'destroy'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.delete');
+    });
+
+    // Tenant domain onboarding (FR-PLAT-03 / A-26): central-schema rows
+    // scoped to the caller's tenant; workspace-level configuration, so
+    // settings.view / settings.write from the PERMISSION_MATRIX.
+    Route::prefix('tenant-domains')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\TenantDomainController::class, 'index'])
+            ->middleware(\App\Http\Middleware\RequirePermission::class.':settings.view');
+        Route::post('/', [\App\Http\Controllers\Api\TenantDomainController::class, 'store'])
+            ->middleware(\App\Http\Middleware\RequirePermission::class.':settings.write');
+        Route::delete('/{domainId}', [\App\Http\Controllers\Api\TenantDomainController::class, 'destroy'])
+            ->whereNumber('domainId')
+            ->middleware(\App\Http\Middleware\RequirePermission::class.':settings.write');
+        Route::post('/{domainId}/verify', [\App\Http\Controllers\Api\TenantDomainController::class, 'verify'])
+            ->whereNumber('domainId')
+            ->middleware(\App\Http\Middleware\RequirePermission::class.':settings.write');
+        Route::post('/{domainId}/check', [\App\Http\Controllers\Api\TenantDomainController::class, 'check'])
+            ->whereNumber('domainId')
+            ->middleware(\App\Http\Middleware\RequirePermission::class.':settings.write');
     });
 
     // Tenant roles & permissions (matrix editable by Owner/Admin — enforced

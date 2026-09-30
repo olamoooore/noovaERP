@@ -69,7 +69,10 @@ class AccountingFunctions
                 'success' => true,
                 'found' => true,
                 'count' => $invoices->count(),
-                'invoices' => $invoices->toArray(),
+                'invoices' => collect($invoices)->map(fn ($invoice) => array_merge(
+                    (array) $invoice,
+                    ['url' => '/invoices/'.$invoice->id],
+                ))->values()->all(),
             ];
 
         } catch (\Exception $e) {
@@ -204,7 +207,10 @@ class AccountingFunctions
                 'success' => true,
                 'found' => true,
                 'count' => $invoices->count(),
-                'invoices' => $invoices->toArray(),
+                'invoices' => collect($invoices)->map(fn ($invoice) => array_merge(
+                    (array) $invoice,
+                    ['url' => '/invoices/'.$invoice->id],
+                ))->values()->all(),
             ];
 
         } catch (\Exception $e) {

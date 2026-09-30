@@ -27,8 +27,10 @@ class StockMovementService extends BaseReportService
         // Get product info if specific product requested
         $product = $productId ? $this->getProductInfo($productId) : null;
 
-        // Get opening balance
-        $openingBalance = $productId ? $this->getOpeningBalance($productId, $startDate) : 0;
+        // Portfolio opening balance: the net of everything before the period.
+        // (Previously this was 0 whenever no single product was filtered, so
+        // Closing never reconciled with Opening + Net Change.)
+        $openingBalance = $this->getOpeningBalance($productId, $startDate);
 
         // Get movements with pagination
         $movements = $this->getMovements($productId, $startDate, $endDate, $page, $perPage);
@@ -43,6 +45,15 @@ class StockMovementService extends BaseReportService
                 'sku' => $movement->sku,
                 'type' => $movement->type,
                 'quantity' => $movement->quantity,
+                // Signed effect of the movement. Stored `quantity` is always
+                // positive (direction lives in `type`; adjustments carry a
+                // balance delta), so reports must not read its sign.
+                'effective_quantity' => $this->effectiveDelta(
+                    $movement->type,
+                    (float) $movement->quantity,
+                    isset($movement->balance_after) ? (float) $movement->balance_after : null,
+                    isset($movement->old_quantity) ? (float) $movement->old_quantity : null,
+                ),
                 'reference' => $movement->reference,
                 'reference_type' => $movement->reference_type,
                 'reference_id' => $movement->reference_id,
@@ -52,8 +63,9 @@ class StockMovementService extends BaseReportService
             ];
         })->toArray();
 
-        // Calculate summary
-        $summary = $this->calculateSummary($movements->items(), $openingBalance);
+        // Summary is computed over the WHOLE filtered range, not just the
+        // current page — paginating changed the totals before.
+        $summary = $this->calculateSummary($filter, $openingBalance);
 
         return new ReportData(
             title: 'Stock Movement Report',
@@ -94,20 +106,27 @@ class StockMovementService extends BaseReportService
     /**
      * Get opening balance (balance before start date)
      */
-    protected function getOpeningBalance(int $productId, ?Carbon $startDate): int
+    protected function getOpeningBalance(?int $productId, ?Carbon $startDate): float
     {
         if (! $startDate) {
-            return 0;
+            return 0.0;
         }
 
-        $lastMovement = DB::table('stock_movements')
-            ->where('product_id', $productId)
-            ->where('created_at', '<', $startDate)
-            ->orderBy('created_at', 'desc')
-            ->orderBy('id', 'desc')
-            ->first();
+        $query = DB::table('stock_movements as sm')->where('created_at', '<', $startDate);
 
-        return $lastMovement ? $lastMovement->balance_after : 0;
+        if ($productId) {
+            $query->where('product_id', $productId);
+
+            // Single product: the running balance is authoritative.
+            $lastMovement = (clone $query)->orderBy('id', 'desc')->first();
+
+            return (float) ($lastMovement->balance_after ?? 0);
+        }
+
+        // Portfolio: sum of every prior signed movement reconstructs the
+        // total stock the period starts from.
+        return (float) $query->selectRaw('COALESCE(SUM('.$this->effectiveDeltaSql().'), 0) as opening')
+            ->value('opening');
     }
 
     /**
@@ -159,30 +178,40 @@ class StockMovementService extends BaseReportService
     /**
      * Calculate summary statistics
      */
-    protected function calculateSummary(array $movements, int $openingBalance): array
+    protected function calculateSummary(ReportFilter $filter, float $openingBalance): array
     {
-        $totalIn = 0;
-        $totalOut = 0;
+        $query = DB::table('stock_movements as sm');
 
-        foreach ($movements as $movement) {
-            if ($movement->quantity > 0) {
-                $totalIn += $movement->quantity;
-            } else {
-                $totalOut += abs($movement->quantity);
-            }
+        if ($filter->productId) {
+            $query->where('sm.product_id', $filter->productId);
+        }
+        if ($filter->startDate) {
+            $query->where('sm.created_at', '>=', $filter->startDate);
+        }
+        if ($filter->endDate) {
+            $query->where('sm.created_at', '<=', $filter->endDate);
         }
 
-        $closingBalance = count($movements) > 0
-            ? $movements[0]->balance_after
-            : $openingBalance;
+        $deltaSql = $this->effectiveDeltaSql();
+
+        $row = $query->selectRaw("
+            COALESCE(SUM(CASE WHEN ($deltaSql) > 0 THEN ($deltaSql) ELSE 0 END), 0) as total_in,
+            COALESCE(SUM(CASE WHEN ($deltaSql) < 0 THEN ABS($deltaSql) ELSE 0 END), 0) as total_out,
+            COALESCE(SUM($deltaSql), 0) as net_change,
+            COUNT(*) as movement_count
+        ")->first();
+
+        $totalIn = (float) ($row->total_in ?? 0);
+        $totalOut = (float) ($row->total_out ?? 0);
+        $netChange = (float) ($row->net_change ?? 0);
 
         return [
-            'opening_balance' => $openingBalance,
-            'total_in' => $totalIn,
-            'total_out' => $totalOut,
-            'net_change' => $totalIn - $totalOut,
-            'closing_balance' => $closingBalance,
-            'movement_count' => count($movements),
+            'opening_balance' => round($openingBalance, 4),
+            'total_in' => round($totalIn, 4),
+            'total_out' => round($totalOut, 4),
+            'net_change' => round($netChange, 4),
+            'closing_balance' => round($openingBalance + $netChange, 4),
+            'movement_count' => (int) ($row->movement_count ?? 0),
         ];
     }
 
@@ -208,12 +237,14 @@ class StockMovementService extends BaseReportService
             $query->where('sm.created_at', '<=', $endDate);
         }
 
+        $deltaSql = $this->effectiveDeltaSql();
+
         $summary = $query->select([
             'sm.type',
             DB::raw('COUNT(*) as movement_count'),
-            DB::raw('SUM(CASE WHEN sm.quantity > 0 THEN sm.quantity ELSE 0 END) as total_in'),
-            DB::raw('SUM(CASE WHEN sm.quantity < 0 THEN ABS(sm.quantity) ELSE 0 END) as total_out'),
-            DB::raw('SUM(sm.quantity) as net_change'),
+            DB::raw("SUM(CASE WHEN ($deltaSql) > 0 THEN ($deltaSql) ELSE 0 END) as total_in"),
+            DB::raw("SUM(CASE WHEN ($deltaSql) < 0 THEN ABS($deltaSql) ELSE 0 END) as total_out"),
+            DB::raw("SUM($deltaSql) as net_change"),
         ])
             ->groupBy('sm.type')
             ->orderBy('movement_count', 'desc')
@@ -265,5 +296,35 @@ class StockMovementService extends BaseReportService
                 'end_date' => $endDate->format('Y-m-d'),
             ],
         ];
+    }
+
+    /**
+     * SQL expression for a movement's signed stock effect.
+     *
+     * `stock_movements.quantity` is always stored positive: direction is
+     * encoded in `type`, and an adjustment carries the new balance so its
+     * effect is balance_after - old_quantity. Reading the sign of `quantity`
+     * (the previous report logic) counted every removal as an addition.
+     */
+    protected function effectiveDeltaSql(string $alias = 'sm'): string
+    {
+        return "CASE "
+            ."WHEN {$alias}.type IN ('out', 'sale', 'transfer_out') THEN -ABS({$alias}.quantity) "
+            ."WHEN {$alias}.type IN ('in', 'purchase', 'return', 'transfer_in') THEN ABS({$alias}.quantity) "
+            ."WHEN {$alias}.type = 'adjustment' THEN (COALESCE({$alias}.balance_after, 0) - COALESCE({$alias}.old_quantity, 0)) "
+            ."ELSE {$alias}.quantity END";
+    }
+
+    /**
+     * PHP-side counterpart of effectiveDeltaSql for a single movement row.
+     */
+    protected function effectiveDelta(string $type, float $quantity, ?float $balanceAfter, ?float $oldQuantity): float
+    {
+        return match ($type) {
+            'out', 'sale', 'transfer_out' => -abs($quantity),
+            'in', 'purchase', 'return', 'transfer_in' => abs($quantity),
+            'adjustment' => ($balanceAfter ?? 0.0) - ($oldQuantity ?? 0.0),
+            default => $quantity,
+        };
     }
 }

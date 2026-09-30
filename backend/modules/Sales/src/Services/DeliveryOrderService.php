@@ -338,6 +338,11 @@ class DeliveryOrderService
             'warehouse_id' => $warehouseId,
             'status' => 'draft',
             'source' => 'sales_order',
+            // MRD pricelist-multicurrency FR-5.6: DOs inherit the SO/quote
+            // currency + rate snapshot; delivery never re-prices.
+            'currency_code' => $order->currency_code,
+            'exchange_rate' => $order->exchange_rate,
+            'base_currency_code' => $order->base_currency_code,
             'delivery_date' => $data['delivery_date'] ?? now()->toDateString(),
             'expected_date' => $data['expected_date'] ?? null,
             'payment_terms' => $data['payment_terms'] ?? null,
@@ -411,6 +416,10 @@ class DeliveryOrderService
                 'quantity_delivered' => $lineType === 'product' ? $quantityDelivered : 0,
                 'unit' => $lineData['unit'] ?? $soLine->unit,
                 'unit_price' => $lineType === 'product' ? (float) ($lineData['unit_price'] ?? $soLine->unit_price ?? 0) : null,
+                'base_unit_price' => $lineType === 'product'
+                    ? (float) ($lineData['base_unit_price'] ?? ($soLine->base_unit_price ?? $soLine->unit_price) ?? 0)
+                    : null,
+                'pricing_trace' => $lineType === 'product' ? ($lineData['pricing_trace'] ?? $soLine->pricing_trace ?? null) : null,
                 'line_total' => $lineType === 'product'
                     ? round((float) ($lineData['unit_price'] ?? $soLine->unit_price ?? 0) * $quantityDelivered, 2)
                     : null,
@@ -667,12 +676,39 @@ class DeliveryOrderService
         $deliveryOrder = DB::transaction(function () use ($data, $customerId, $warehouseId, $lines, $quotationId, $invoiceId) {
             $actorId = TenantUserHelper::requireTenantUserId($data['created_by'] ?? Auth::id());
 
+            // MRD FR-5.6: standalone DOs resolve currency from the source
+            // document when linked, else the customer's price list → base.
+            $pricing = app(\App\Services\PricingService::class);
+            $linkedCurrency = null;
+            $linkedRate = null;
+            $linkedBase = null;
+            if ($invoiceId && ($inv = \App\Models\Invoice::find($invoiceId))) {
+                $linkedCurrency = $inv->currency_code;
+                $linkedRate = $inv->exchange_rate;
+                $linkedBase = $inv->base_currency_code;
+            } elseif ($quotationId && ($quo = \App\Models\Quotation::find($quotationId))) {
+                $linkedCurrency = $quo->currency_code;
+                $linkedRate = $quo->exchange_rate;
+                $linkedBase = $quo->base_currency_code;
+            }
+
+            $pricingContext = $pricing->documentContext([
+                'customer_id' => $customerId,
+                'date' => $data['delivery_date'] ?? now()->toDateString(),
+                'currency_code' => $data['currency_code'] ?? $linkedCurrency,
+                'exchange_rate' => $linkedRate,
+                'base_currency_code' => $linkedBase,
+            ]);
+
             $deliveryOrder = DeliveryOrder::create([
                 'sales_order_id' => null,
                 'customer_id' => $customerId,
                 'warehouse_id' => $warehouseId,
                 'status' => 'draft',
                 'source' => $data['source'] ?? 'standalone',
+                'currency_code' => $pricingContext['document_currency'],
+                'exchange_rate' => $pricingContext['exchange_rate'],
+                'base_currency_code' => $pricingContext['base_currency'],
                 'external_reference' => $data['external_reference'] ?? null,
                 'delivery_date' => $data['delivery_date'] ?? now()->toDateString(),
                 'expected_date' => $data['expected_date'] ?? null,
@@ -743,7 +779,16 @@ class DeliveryOrderService
                 $lineProduct = $productId ? \App\Models\Product::find($productId) : null;
                 $serialNumbers = $this->resolveSerialNumbers($lineProduct, $lineData, $quantityDelivered);
 
-                DeliveryOrderLine::create([
+                // Engine pricing when the caller omits the price (FR-4.1);
+                // a supplied price stays verbatim for existing callers.
+                $mode = $lineData['price_mode'] ?? (((float) ($lineData['unit_price'] ?? 0) > 0) ? 'legacy' : ($lineProduct ? 'auto' : 'legacy'));
+                $priced = $lineType === 'product'
+                    ? $pricing->priceLineArray($lineProduct, $lineData, $pricingContext, $mode)
+                    : [];
+
+                $unitPrice = $priced['unit_price'] ?? $lineData['unit_price'] ?? null;
+
+                DeliveryOrderLine::create(array_merge([
                     'line_type' => $lineType,
                     'sequence' => $lineData['sequence'] ?? 0,
                     'delivery_order_id' => $deliveryOrder->id,
@@ -756,8 +801,8 @@ class DeliveryOrderService
                     'quantity_ordered' => $quantityDelivered,
                     'quantity_delivered' => $quantityDelivered,
                     'unit' => $lineData['unit'] ?? 'pcs',
-                    'unit_price' => $lineData['unit_price'] ?? null,
-                    'line_total' => isset($lineData['unit_price']) ? ($lineData['unit_price'] * $quantityDelivered) : null,
+                    'unit_price' => $unitPrice,
+                    'line_total' => $unitPrice !== null ? round($unitPrice * $quantityDelivered, 2) : null,
                     'lot_number' => $lineData['lot_number'] ?? null,
                     'serial_number' => $lineData['serial_number'] ?? null,
                     'product_batch_id' => $lineData['product_batch_id'] ?? null,
@@ -765,7 +810,10 @@ class DeliveryOrderService
                     'batch_number' => $lineData['batch_number'] ?? null,
                     'expiry_date' => $lineData['expiry_date'] ?? null,
                     'serial_numbers' => $serialNumbers,
-                ]);
+                ], array_filter([
+                    'base_unit_price' => $priced['base_unit_price'] ?? null,
+                    'pricing_trace' => $priced['pricing_trace'] ?? null,
+                ], fn ($v) => $v !== null)));
             }
 
             // Calculate total from line items

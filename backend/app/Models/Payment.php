@@ -10,8 +10,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Payment extends Model
 {
-    use HasFactory, SoftDeletes;
     use \App\Models\Concerns\GuardsJournalEntryLinks;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'payment_number',
@@ -31,6 +31,8 @@ class Payment extends Model
         'tenant_id',
         'payment_status',
         'currency',
+        'exchange_rate',
+        'base_currency_code',
         'original_payment_id',
         'refund_payment_id',
         'correction_group_id',
@@ -45,6 +47,7 @@ class Payment extends Model
     protected $casts = [
         'payment_date' => 'date',
         'amount' => 'decimal:2',
+        'exchange_rate' => 'decimal:6',
         'unapplied_at' => 'datetime',
         'refunded_at' => 'datetime',
     ];

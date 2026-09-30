@@ -27,7 +27,13 @@ class InvoiceDataSource implements DataSourceContract
     {
         $invoice = $this->invoice ?? throw new \RuntimeException('Invoice not loaded.');
         $company = CompanyDataSource::forCurrentTenant();
-        $currencyCode = $company['currency_code'] ?? 'MYR';
+        // MRD pricelist-multicurrency FR-8.5: the DOCUMENT currency drives
+        // the printed figures when the invoice carries a snapshot; the base
+        // currency equivalent is exposed as a secondary token.
+        $companyCurrency = $company['currency_code'] ?? 'MYR';
+        $currencyCode = $invoice->currency_code ?: $companyCurrency;
+        $baseCurrencyCode = $invoice->base_currency_code ?: $companyCurrency;
+        $exchangeRate = $invoice->exchange_rate !== null ? (float) $invoice->exchange_rate : 1.0;
 
         $lines = [];
         $salesperson = $invoice->customer?->salesperson?->name ?? '';
@@ -36,7 +42,9 @@ class InvoiceDataSource implements DataSourceContract
         $productIndex = 0;
         foreach ($invoice->lines as $i => $line) {
             $isProduct = ($line->line_type ?? 'product') === 'product';
-            if ($isProduct) $productIndex++;
+            if ($isProduct) {
+                $productIndex++;
+            }
             $lines[] = [
                 'line_type' => $line->line_type ?? 'product',
                 'index' => $isProduct ? $productIndex : null,
@@ -85,7 +93,7 @@ class InvoiceDataSource implements DataSourceContract
                 'company_code' => $invoice->company_code ?? '',
                 'billing_address' => $this->formatAddress($invoice->billing_address_snapshot),
                 'shipping_address' => $this->formatAddress($invoice->shipping_address_snapshot),
-                'notes' => $this->visibleNotes($invoice->notes),
+                'notes' => $invoice->notes ?? '',
                 'terms' => $invoice->terms ?? '',
                 'attention_to' => $invoice->attention_to ?? '',
                 'shipping_method' => $invoice->shipping_method ?? '',
@@ -116,9 +124,17 @@ class InvoiceDataSource implements DataSourceContract
                 'total' => (float) $invoice->total,
                 'paid' => (float) ($invoice->paid_amount ?? 0),
                 'balance' => (float) $invoice->balance,
+                // Dual display (FR-5.4/FR-8.5): base-currency equivalents at
+                // the document's immutable snapshot rate.
+                'base_total' => round((float) $invoice->total * $exchangeRate, 2),
+                'base_subtotal' => round((float) $invoice->subtotal * $exchangeRate, 2),
+                'base_tax' => round((float) $invoice->tax_amount * $exchangeRate, 2),
+                'exchange_rate' => $exchangeRate,
             ],
             'meta' => [
                 'currency_code' => $currencyCode,
+                'base_currency_code' => $baseCurrencyCode,
+                'exchange_rate' => $exchangeRate,
                 'currency_symbol' => self::currencySymbol($currencyCode),
                 'number_format' => '1,234.56',
                 'locale' => 'en',
@@ -257,21 +273,6 @@ class InvoiceDataSource implements DataSourceContract
             'CNY' => '¥',
             'JPY' => '¥',
         ][strtoupper($code)] ?? ($code.' ');
-    }
-
-    private function visibleNotes(?string $notes): string
-    {
-        if (! $notes) {
-            return '';
-        }
-
-        $lines = preg_split('/\R/', $notes) ?: [];
-        $visible = array_filter(
-            $lines,
-            fn (string $line): bool => ! preg_match('/^\s*Sales Order\s*#\s*\S+\s*$/i', $line)
-        );
-
-        return trim(implode("\n", $visible));
     }
 
     private function formatAddress(mixed $address): string

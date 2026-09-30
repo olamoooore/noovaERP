@@ -31,6 +31,7 @@ class ExchangeRateService
                 'rate' => 1.0,
                 'effective_date' => $asOfDate ?? now()->format('Y-m-d'),
                 'source' => 'same_currency',
+                'rate_id' => null,
             ];
         }
 
@@ -50,9 +51,10 @@ class ExchangeRateService
                 return [
                     'from_currency' => $fromCurrency,
                     'to_currency' => $toCurrency,
-                    'rate' => (float) $leg1['rate'] * (float) $leg2['rate'],
+                    'rate' => round((float) $leg1['rate'] * (float) $leg2['rate'], 6),
                     'effective_date' => min($leg1['effective_date'], $leg2['effective_date']),
                     'source' => 'cross_via_'.$base,
+                    'rate_id' => null,
                 ];
             }
         }
@@ -63,7 +65,13 @@ class ExchangeRateService
     /**
      * Resolve a pair from a stored direct rate, falling back to the inverse.
      *
-     * @return array{from_currency:string,to_currency:string,rate:float,effective_date:string,source:string}|null
+     * FR-1.6: when only `A→B` exists, `B→A = 1/rate` with 6-decimal
+     * precision. FR-1.4: the model-level ordering gives a manual row on the
+     * same date precedence over an API row. `rate_id` is surfaced for the
+     * pricing trace (auditor persona §6 — "trace the FX rate used back to
+     * its id/date/source").
+     *
+     * @return array{from_currency:string,to_currency:string,rate:float,effective_date:string,source:string,rate_id:int|null}|null
      */
     protected function resolveDirectOrInverse(string $fromCurrency, string $toCurrency, $asOfDate = null): ?array
     {
@@ -75,6 +83,7 @@ class ExchangeRateService
                 'rate' => (float) $rate->rate,
                 'effective_date' => $rate->effective_date->format('Y-m-d'),
                 'source' => $rate->source ?? 'manual',
+                'rate_id' => $rate->id,
             ];
         }
 
@@ -83,9 +92,10 @@ class ExchangeRateService
             return [
                 'from_currency' => $fromCurrency,
                 'to_currency' => $toCurrency,
-                'rate' => 1 / (float) $inverseRate->rate,
+                'rate' => round(1 / (float) $inverseRate->rate, 6),
                 'effective_date' => $inverseRate->effective_date->format('Y-m-d'),
                 'source' => 'inverse_'.($inverseRate->source ?? 'manual'),
+                'rate_id' => $inverseRate->id,
             ];
         }
 
@@ -208,6 +218,12 @@ class ExchangeRateService
      *
      * Configured provider: exchangerate-api.com (EXCHANGE_RATE_API_KEY).
      * Fallback providers (keyless): open.er-api.com, frankfurter.app.
+     *
+     * MRD pricelist-multicurrency FR-1.4: the sync owns the `api` namespace
+     * only. It matches/updates the existing (base→target, date, source='api')
+     * row and creates a new one otherwise — it NEVER rewrites a manual row
+     * for the same pair+date. Both rows may coexist; the read side
+     * (ExchangeRate::getLatestRate) resolves manual-first deterministically.
      */
     public function syncRatesFromAPI(string $baseCurrency, array $targetCurrencies): array
     {
@@ -218,7 +234,7 @@ class ExchangeRateService
             $effectiveDate = now()->format('Y-m-d');
 
             foreach ($targetCurrencies as $targetCurrency) {
-                if (! isset($rates[$targetCurrency])) {
+                if (! isset($rates[$targetCurrency]) || ! is_numeric($rates[$targetCurrency]) || (float) $rates[$targetCurrency] <= 0) {
                     $results[$targetCurrency] = [
                         'success' => false,
                         'message' => 'Rate not available from API',
@@ -232,10 +248,10 @@ class ExchangeRateService
                         'from_currency' => $baseCurrency,
                         'to_currency' => $targetCurrency,
                         'effective_date' => $effectiveDate,
+                        'source' => 'api',
                     ],
                     [
                         'rate' => $rates[$targetCurrency],
-                        'source' => 'api',
                     ]
                 );
 
@@ -243,6 +259,7 @@ class ExchangeRateService
                     'success' => true,
                     'rate' => $rates[$targetCurrency],
                     'effective_date' => $effectiveDate,
+                    'exchange_rate_id' => $rate->id,
                 ];
             }
 
@@ -264,6 +281,8 @@ class ExchangeRateService
             ->where('effective_date', '<=', $date)
             ->orderBy('to_currency')
             ->orderBy('effective_date', 'desc')
+            ->orderByRaw("(CASE WHEN source = 'manual' THEN 0 ELSE 1 END) ASC")
+            ->orderBy('id', 'desc')
             ->get()
             ->unique('to_currency')
             ->pluck('rate', 'to_currency')

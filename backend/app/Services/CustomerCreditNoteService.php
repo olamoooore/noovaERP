@@ -36,7 +36,28 @@ class CustomerCreditNoteService
 
             $data['credit_note_date'] = $data['credit_note_date'] ?? now();
             $data['status'] = 'draft';
+
+            // MRD pricelist-multicurrency FR-5.9: a credit note inherits the
+            // INVOICE currency and rate snapshot — never its own defaults.
+            $sourceInvoice = ! empty($data['invoice_id']) ? Invoice::find($data['invoice_id']) : null;
+
+            if ($sourceInvoice) {
+                $data['currency_code'] = $data['currency_code'] ?? $sourceInvoice->currency_code;
+                $data['exchange_rate'] = $data['exchange_rate'] ?? $sourceInvoice->exchange_rate;
+                $data['base_currency_code'] = $data['base_currency_code'] ?? $sourceInvoice->base_currency_code;
+            }
+
             $data['currency_code'] = $data['currency_code'] ?? 'USD';
+            if ($sourceInvoice && empty($data['base_currency_code'])) {
+                $data['base_currency_code'] = $sourceInvoice->base_currency_code;
+            }
+            if (empty($data['base_currency_code'])) {
+                $data['base_currency_code'] = $sourceInvoice?->base_currency_code
+                    ?: \App\Services\DocumentCurrencyResolver::baseFor(null, $data['customer_id'] ?? null);
+            }
+            if (($data['exchange_rate'] ?? null) === null) {
+                $data['exchange_rate'] = 1.000000;
+            }
 
             // Calculate totals from lines BEFORE inserting (columns are NOT NULL)
             $subtotal = 0;
@@ -60,14 +81,24 @@ class CustomerCreditNoteService
 
             $creditNote = CustomerCreditNote::create($data);
 
-            // Add lines
+            // Add lines — provenance carries over from the source invoice
+            // line when the payload does not supply it (FR-5.9).
+            $sourceLines = $sourceInvoice ? $sourceInvoice->lines()->get()->keyBy('id') : collect();
+
             foreach ($lines as $lineData) {
+                $origin = ($lineData['invoice_line_id'] ?? null) ? $sourceLines->get($lineData['invoice_line_id']) : null;
+
                 $creditNote->lines()->create([
                     'invoice_line_id' => $lineData['invoice_line_id'] ?? null,
                     'product_id' => $lineData['product_id'] ?? null,
                     'description' => $lineData['description'],
                     'quantity' => $lineData['quantity'],
                     'unit_price' => $lineData['unit_price'],
+                    'base_unit_price' => $lineData['base_unit_price']
+                        ?? ($origin?->base_unit_price != null
+                            ? (float) $origin->base_unit_price
+                            : round((float) $lineData['unit_price'] * (float) ($data['exchange_rate'] ?: 1), 4)),
+                    'pricing_trace' => $lineData['pricing_trace'] ?? $origin?->pricing_trace,
                     'tax_rate' => $lineData['tax_rate'] ?? 0,
                     'account_id' => $lineData['account_id'] ?? null,
                 ]);
@@ -166,38 +197,91 @@ class CustomerCreditNoteService
                 );
             }
 
+            // MRD pricelist-multicurrency FR-5.9/FR-7.5: the credit note
+            // reverses at the INVOICE's snapshot rate — its own column was
+            // inherited at creation; convert doc amounts to base there and
+            // carry the original side on the GL lines.
+            $cnDocCurrency = strtoupper((string) ($creditNote->currency_code ?: 'USD'));
+            $cnBaseCurrency = strtoupper((string) ($creditNote->base_currency_code
+                ?: $invoice?->base_currency_code
+                ?: \App\Services\DocumentCurrencyResolver::baseFor(null, $creditNote->customer_id)));
+            $cnForeign = $cnDocCurrency !== $cnBaseCurrency;
+            $cnRate = $cnForeign
+                ? (float) ($creditNote->exchange_rate
+                    ?? $invoice?->exchange_rate
+                    ?? \App\Services\DocumentCurrencyResolver::snapshot(
+                        $cnDocCurrency,
+                        $creditNote->customer_id,
+                        null,
+                        $creditNote->credit_note_date->toDateString()
+                    )['exchange_rate'])
+                : 1.0;
+
+            if ($cnForeign && ($creditNote->exchange_rate === null || $creditNote->base_currency_code === null)) {
+                $creditNote->update([
+                    'exchange_rate' => $cnRate,
+                    'base_currency_code' => $cnBaseCurrency,
+                ]);
+            }
+
+            $cnToBase = static fn (float $docAmount): float => $cnForeign
+                ? round($docAmount * $cnRate, 2)
+                : round($docAmount, 2);
+
+            $cnTaxBaseTotal = 0.0;
+
             // DR Sales Revenue (subtotal)
+            $lines = [];
+
+            // DR Sales Tax Payable — one line per reversed tax_code (built
+            // first so the revenue leg can absorb the rounding residual,
+            // same §9.4 rule as invoice posting).
+            if ($bookedTaxTotal > 0) {
+                foreach (TaxDeterminationService::allocateBookedTax($taxDetermination['tax_lines'] ?? [], $bookedTaxTotal) as $allocation) {
+                    if ($allocation['amount'] <= 0) {
+                        continue;
+                    }
+                    $taxBase = $cnToBase((float) $allocation['amount']);
+                    $cnTaxBaseTotal += $taxBase;
+                    $lines[] = new PostingRequestLine(
+                        accountMappingKey: 'sales_tax_payable',
+                        accountId: null,
+                        debit: $taxBase,
+                        credit: 0,
+                        description: "Tax - Credit Note {$creditNote->credit_note_number}".($allocation['tax_code'] ? " [{$allocation['tax_code']}]" : ''),
+                        taxCode: $allocation['tax_code'],
+                        taxId: $allocation['tax_id'],
+                        currencyCode: $cnForeign ? $cnBaseCurrency : null,
+                        originalAmount: $cnForeign ? round((float) $allocation['amount'], 2) : null,
+                        exchangeRate: $cnForeign ? $cnRate : null,
+                    );
+                }
+            }
+
+            $cnArBase = $cnToBase((float) $creditNote->total_amount);
+            $cnRevenueBase = round($cnArBase - $cnTaxBaseTotal, 2);
+
             $lines[] = new PostingRequestLine(
                 accountMappingKey: 'sales_revenue',
                 accountId: null,
-                debit: (float) $creditNote->subtotal,
+                debit: $cnRevenueBase,
                 credit: 0,
                 description: "Credit Note {$creditNote->credit_note_number}",
+                currencyCode: $cnForeign ? $cnBaseCurrency : null,
+                originalAmount: $cnForeign ? round((float) $creditNote->subtotal, 2) : null,
+                exchangeRate: $cnForeign ? $cnRate : null,
             );
-
-            // DR Sales Tax Payable — one line per reversed tax_code
-            foreach (TaxDeterminationService::allocateBookedTax($taxDetermination['tax_lines'] ?? [], $bookedTaxTotal) as $allocation) {
-                if ($allocation['amount'] <= 0) {
-                    continue;
-                }
-                $lines[] = new PostingRequestLine(
-                    accountMappingKey: 'sales_tax_payable',
-                    accountId: null,
-                    debit: $allocation['amount'],
-                    credit: 0,
-                    description: "Tax - Credit Note {$creditNote->credit_note_number}".($allocation['tax_code'] ? " [{$allocation['tax_code']}]" : ''),
-                    taxCode: $allocation['tax_code'],
-                    taxId: $allocation['tax_id'],
-                );
-            }
 
             // CR Accounts Receivable (total)
             $lines[] = new PostingRequestLine(
                 accountMappingKey: 'accounts_receivable',
                 accountId: null,
                 debit: 0,
-                credit: (float) $creditNote->total_amount,
-                description: "Credit Note {$creditNote->credit_note_number}",
+                credit: $cnArBase,
+                description: "Credit Note {$creditNote->credit_note_number}".($cnForeign ? " ({$creditNote->total_amount} {$cnDocCurrency} @ {$cnRate})" : ''),
+                currencyCode: $cnForeign ? $cnBaseCurrency : null,
+                originalAmount: $cnForeign ? round((float) $creditNote->total_amount, 2) : null,
+                exchangeRate: $cnForeign ? $cnRate : null,
             );
 
             $result = $this->postingEngine->post(new PostingRequest(
@@ -205,6 +289,8 @@ class CustomerCreditNoteService
                 documentId: $creditNote->id,
                 postingDate: $creditNote->credit_note_date->toDateString(),
                 description: "Credit Note #{$creditNote->credit_note_number} - {$creditNote->customer->name}",
+                currencyCode: $cnForeign ? $cnDocCurrency : null,
+                exchangeRate: $cnForeign ? $cnRate : null,
                 lines: $lines,
                 reference: $creditNote->credit_note_number,
                 userId: TenantUserHelper::requireTenantUserId($creditNote->created_by),

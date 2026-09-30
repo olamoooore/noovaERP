@@ -49,25 +49,36 @@ class ReorderService extends BaseReportService
         $categoriesExists = DB::select("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'categories')")[0]->exists;
         $stockLevelsExists = DB::getSchemaBuilder()->hasTable('stock_levels');
 
+        // Threshold resolution matches the Stock Management low-stock rule:
+        // product reorder_level when set, else the stock-level min_quantity,
+        // else the platform default of 10. The previous version required
+        // `reorder_level IS NOT NULL` and compared against it only, so
+        // tenants that never set a reorder level got an empty report while
+        // Stock Management correctly showed low/out-of-stock items.
+        $defaultThreshold = 10;
+
         $query = DB::table('products as p')
             ->where('p.is_active', true)
             ->where('p.track_inventory', true)
-            ->where('p.deleted_at', null)
-            ->whereNotNull('p.reorder_level');
+            ->where('p.deleted_at', null);
 
         if ($stockLevelsExists) {
             $query->leftJoin(
-                DB::raw('(SELECT product_id, SUM(quantity) as total_quantity FROM stock_levels GROUP BY product_id) as sl'),
+                DB::raw('(SELECT product_id, SUM(quantity) as total_quantity, MAX(min_quantity) as max_min_quantity FROM stock_levels GROUP BY product_id) as sl'),
                 'sl.product_id',
                 '=',
                 'p.id'
             );
             $currentStockSelect = DB::raw('COALESCE(sl.total_quantity, 0) as current_stock');
-            $query->whereRaw('COALESCE(sl.total_quantity, 0) <= p.reorder_level');
+            $thresholdSelect = DB::raw('COALESCE(NULLIF(p.reorder_level, 0), NULLIF(sl.max_min_quantity, 0), '.$defaultThreshold.') as effective_threshold');
+            // Include zero-stock products: an out-of-stock item is the most
+            // urgent reorder case, not an "all good" one.
+            $query->whereRaw('COALESCE(sl.total_quantity, 0) <= COALESCE(NULLIF(p.reorder_level, 0), NULLIF(sl.max_min_quantity, 0), '.$defaultThreshold.')');
             $query->orderByRaw('COALESCE(sl.total_quantity, 0) asc');
         } else {
             $currentStockSelect = 'p.stock_quantity as current_stock';
-            $query->whereRaw('p.stock_quantity <= p.reorder_level');
+            $thresholdSelect = DB::raw('COALESCE(NULLIF(p.reorder_level, 0), '.$defaultThreshold.') as effective_threshold');
+            $query->whereRaw('p.stock_quantity <= COALESCE(NULLIF(p.reorder_level, 0), '.$defaultThreshold.')');
             $query->orderBy('p.stock_quantity', 'asc');
         }
 
@@ -89,6 +100,7 @@ class ReorderService extends BaseReportService
             'p.sku',
             'p.name',
             $currentStockSelect,
+            $thresholdSelect,
             'p.reorder_level',
             'p.cost as unit_cost',
             'p.price as unit_price',
@@ -99,18 +111,26 @@ class ReorderService extends BaseReportService
 
         // Calculate suggested order quantities and additional metrics
         return $products->map(function ($product) {
-            // Calculate how much below reorder level
-            $shortage = max(0, $product->reorder_level - $product->current_stock);
+            // Resolved threshold: product reorder level, else the stock-level
+            // minimum, else the platform default. (`??` would keep a stored 0,
+            // so the <= 0 guard runs after.)
+            $threshold = (float) ($product->effective_threshold ?? $product->reorder_level ?? 10);
+            if ($threshold <= 0) {
+                $threshold = 10;
+            }
 
-            // Suggested order quantity (reorder level + 50% buffer)
-            $suggestedQuantity = $product->reorder_level + ceil($product->reorder_level * 0.5);
+            // Calculate how much below the threshold
+            $shortage = max(0, $threshold - $product->current_stock);
+
+            // Suggested order quantity (threshold + 50% buffer)
+            $suggestedQuantity = $threshold + ceil($threshold * 0.5);
 
             // Calculate order value
             $suggestedOrderValue = $suggestedQuantity * $product->unit_cost;
 
             // Determine if critical (out of stock or very low)
             $isCritical = $product->current_stock <= 0 ||
-                         $product->current_stock < ($product->reorder_level * 0.3);
+                         $product->current_stock < ($threshold * 0.3);
 
             // Calculate days until stockout (simple estimation)
             // This would ideally use historical sales data
@@ -119,6 +139,7 @@ class ReorderService extends BaseReportService
             // Get last purchase information
             $lastPurchase = $this->getLastPurchaseInfo($product->id);
 
+            $product->effective_threshold = $threshold;
             $product->shortage = $shortage;
             $product->suggested_order_quantity = $suggestedQuantity;
             $product->suggested_order_value = round($suggestedOrderValue, 2);

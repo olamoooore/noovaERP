@@ -115,7 +115,7 @@ class Issue44PaymentMethodMappingTest extends TenantTestCase
         $customer = Customer::factory()->create();
 
         return Payment::create([
-            'payment_number' => 'PAY-' . strtoupper($method) . '-' . uniqid(),
+            'payment_number' => 'PAY-'.strtoupper($method).'-'.uniqid(),
             'customer_id' => $customer->id,
             'amount' => 100.00,
             'currency' => 'USD',
@@ -185,33 +185,35 @@ class Issue44PaymentMethodMappingTest extends TenantTestCase
     }
 
     /**
-     * AC3: A method the policy mapping does not cover is rejected with a
-     * canonical reason rather than silently posted to cash. 'other' is
-     * permitted by the payments.method CHECK constraint (so it can be
-     * persisted) but has no defined clearing account in the #44 policy, so
-     * the service must reject it explicitly instead of defaulting to cash.
+     * AC3 (updated to the canonical behaviour set on 2026-09-25, commit
+     * b67304f0): 'other' is permitted by the payments.method CHECK constraint
+     * AND deliberately postable — unclassified/imported receipts would
+     * otherwise be permanently stuck in `recorded` with no GL entry. The
+     * canonical target is the DEFAULT BANK account (never cash, never a
+     * silent no-op). A truly unknown method still throws in the service
+     * guard (defence-in-depth; not persistable due to the CHECK constraint).
      */
-    public function test_unsupported_payment_method_is_rejected(): void
+    public function test_other_payment_method_posts_to_the_default_bank_account(): void
     {
-        $payment = $this->makePayment('other'); // DB-allowed, but not in policy mapping
+        $coaId = $this->seedClearingRoleMapping('BANK_MAIN', 'BANKACC-'.uniqid());
 
-        $service = app(PaymentPostingService::class);
+        $payment = $this->makePayment('other');
 
-        $threw = false;
-        try {
-            $service->post($payment);
-        } catch (\RuntimeException $e) {
-            $threw = true;
-            $this->assertStringContainsString('Unsupported payment method', $e->getMessage());
-            $this->assertStringContainsString('other', $e->getMessage());
-        }
+        $posted = app(PaymentPostingService::class)->post($payment);
 
-        $this->assertTrue($threw, 'Unsupported payment method must throw, not silently default to cash');
+        $this->assertSame('applied', $posted->payment_status, 'other must post, not sit stuck in recorded');
+        $this->assertNotNull($posted->journal_entry_id);
 
-        // Payment status must remain 'recorded' (canonical pre-posting) — no silent partial post
-        $payment->refresh();
-        $this->assertSame('recorded', $payment->payment_status);
-        $this->assertNull($payment->journal_entry_id);
+        $this->assertSame(
+            $coaId,
+            $this->drAccountId($posted->fresh()),
+            "'other' receipts must land on the default BANK account"
+        );
+
+        // Balanced entry: DR bank 100.00 / CR AR 100.00
+        $lines = DB::table('journal_entry_lines')->where('journal_entry_id', $posted->journal_entry_id)->get();
+        $this->assertSame(100.00, round((float) $lines->sum('debit'), 2));
+        $this->assertSame(100.00, round((float) $lines->sum('credit'), 2));
     }
 
     /**

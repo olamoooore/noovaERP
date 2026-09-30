@@ -19,10 +19,12 @@ use App\SuperAdmin\Http\Controllers\AdminTaxProvenanceController;
 use App\SuperAdmin\Http\Controllers\AdminTenantApiKeyController;
 use App\SuperAdmin\Http\Controllers\AdminTenantConfigurationController;
 use App\SuperAdmin\Http\Controllers\AdminTenantController;
+use App\SuperAdmin\Http\Controllers\AdminTenantDomainController;
 use App\SuperAdmin\Http\Controllers\AdminTenantNoteController;
 use App\SuperAdmin\Http\Controllers\AdminTenantOperationController;
 use App\SuperAdmin\Http\Controllers\AdminTenantTimelineController;
 use App\SuperAdmin\Http\Controllers\AdminUserController;
+use App\SuperAdmin\Http\Controllers\AdminUserRequestController;
 use App\SuperAdmin\Http\Controllers\ImpersonationController;
 use App\SuperAdmin\Http\Middleware\DenyReadonlyRole;
 use App\SuperAdmin\Http\Middleware\EnsureAdminRole;
@@ -105,8 +107,19 @@ Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
             Route::delete('/{tenantId}/notes/{note}', [AdminTenantNoteController::class, 'destroy']);
             Route::post('/{tenantId}/health/ping', [AdminTenantController::class, 'pingHealth']);
             Route::post('/{tenantId}/subscription', [AdminSubscriptionController::class, 'create']);
+
+            // FR-PLAT-03 domain onboarding — read is open above, writes are
+            // readonly-gated like every other tenant mutation.
+            Route::post('/{tenantId}/domains', [AdminTenantDomainController::class, 'store']);
+            Route::delete('/{tenantId}/domains/{domainId}', [AdminTenantDomainController::class, 'destroy'])
+                ->whereNumber('domainId');
+            Route::post('/{tenantId}/domains/{domainId}/verify', [AdminTenantDomainController::class, 'verify'])
+                ->whereNumber('domainId');
+            Route::post('/{tenantId}/domains/{domainId}/check', [AdminTenantDomainController::class, 'check'])
+                ->whereNumber('domainId');
         });
 
+        Route::get('/{tenantId}/domains', [AdminTenantDomainController::class, 'index']);
         Route::get('/{tenantId}/subscription', [AdminSubscriptionController::class, 'forTenant']);
     });
 
@@ -149,6 +162,13 @@ Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
         Route::put('/{user}/role', [AdminUserController::class, 'updateRole'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.write');
         Route::delete('/{user}', [AdminUserController::class, 'deactivate'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.delete');
         Route::post('/{user}/reactivate', [AdminUserController::class, 'reactivate'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.write');
+    });
+
+    // --- Tenant user-creation requests (tenant owners file, platform reviews) ---
+    Route::prefix('user-requests')->middleware('throttle:30,1')->group(function () {
+        Route::get('/', [AdminUserRequestController::class, 'index']);
+        Route::post('/{id}/approve', [AdminUserRequestController::class, 'approve'])->whereNumber('id');
+        Route::post('/{id}/decline', [AdminUserRequestController::class, 'decline'])->whereNumber('id');
     });
 
     // --- Phase 5: Collections — tracked at invoice level (throttled, gate-enforced per method) ---

@@ -6,6 +6,8 @@ import { CreateTicketModal } from './CreateTicketModal'
 import { Icon } from '@iconify/react'
 import { Input } from '@/components/ui/input'
 import { ModuleBadge } from './ModuleBadge'
+import { MessageBody } from './MessageBody'
+import { RobotIcon } from './RobotIcon'
 import { QuickOptions } from './QuickOptions'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import api from '@/lib/api'
@@ -19,6 +21,8 @@ interface Message {
   quick_options?: QuickOption[]
   common_questions?: QuickOption[]
   show_buttons?: boolean
+  /** Message that intentionally re-shows the module menu (e.g. back to general). */
+  isModuleMenu?: boolean
 }
 
 interface QuickOption {
@@ -34,11 +38,15 @@ interface ChatWidgetProps {
   channel?: string
   className?: string
   initialModule?: string
-  onConversationEnd?: () => void
+  autoOpen?: boolean
+  /** Notifies the host when the active conversation changes (created, loaded, cleared). */
+  onConversationChange?: (conversationId: number | null) => void
 }
 
-export function ChatWidget({ customerId, conversationId: initialConversationId = null, channel = 'web', className = '', initialModule, onConversationEnd }: ChatWidgetProps) {
-  const [isOpen, setIsOpen] = useState(true) // Auto-open for new chats
+export function ChatWidget({ customerId, conversationId: initialConversationId = null, channel = 'web', className = '', initialModule, autoOpen = false, onConversationChange }: ChatWidgetProps) {
+  // Closed by default — opens via the floating bot button, when an explicit
+  // action requests it (New Chat), or when a conversation is loaded.
+  const [isOpen, setIsOpen] = useState<boolean>(!!initialConversationId || autoOpen)
   const [messages, setMessages] = useState<Message[]>([])
   const [inputMessage, setInputMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -53,43 +61,43 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
   const getFallbackQuickOptions = (): QuickOption[] => [
     {
       id: 'orders',
-      icon: '📦',
+      icon: 'solar:delivery-bold-duotone',
       label: 'Orders & Shipping',
       description: 'Track orders and check status',
     },
     {
       id: 'loyalty',
-      icon: '🎁',
+      icon: 'solar:gift-bold-duotone',
       label: 'Loyalty & Rewards',
       description: 'Check points and redeem rewards',
     },
     {
       id: 'products',
-      icon: '🛍️',
+      icon: 'solar:bag-4-bold-duotone',
       label: 'Products & Catalog',
       description: 'Search products and check availability',
     },
     {
       id: 'inventory',
-      icon: '📦',
+      icon: 'solar:layers-minimalistic-bold-duotone',
       label: 'Inventory',
       description: 'Check stock levels and low stock items',
     },
     {
       id: 'invoices',
-      icon: '💰',
+      icon: 'solar:document-text-bold-duotone',
       label: 'Invoices & Payments',
       description: 'View invoices and payment status',
     },
     {
       id: 'account',
-      icon: '👤',
+      icon: 'solar:user-circle-bold-duotone',
       label: 'My Account',
       description: 'View account details and settings',
     },
     {
       id: 'accounting_insights',
-      icon: '🔍',
+      icon: 'solar:chart-square-bold-duotone',
       label: 'Accounting Insights',
       description: 'AI-powered accounting analysis',
     },
@@ -165,6 +173,11 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
     scrollToBottom()
   }, [messages])
 
+  // Opening a specific conversation always reveals the chat window.
+  useEffect(() => {
+    if (initialConversationId) setIsOpen(true)
+  }, [initialConversationId])
+
   // Load conversation history if conversationId is provided, or show greeting for new chat
   useEffect(() => {
     const loadConversationHistory = async () => {
@@ -191,13 +204,9 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
                 created_at: msg.created_at,
               }))
               
-              // Add quick_options to the last assistant message if available
-              if (response.data.quick_options && loadedMessages.length > 0) {
-                const lastMessage = loadedMessages[loadedMessages.length - 1]
-                if (lastMessage.role === 'assistant') {
-                  lastMessage.quick_options = response.data.quick_options
-                }
-              }
+              // Loaded conversations do not re-show the module menu — it is a
+              // new-chat affordance only, otherwise a stale menu renders under
+              // an unrelated historical reply.
               
               console.log('Loaded messages:', loadedMessages)
               setMessages(loadedMessages)
@@ -209,11 +218,20 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
         } catch (error: any) {
           console.error('Failed to load conversation history:', error)
           console.error('Error response:', error.response)
-          toast({
-            title: 'Error',
-            description: 'Failed to load conversation history',
-            variant: 'destructive',
-          })
+
+          if (error.response?.status === 404) {
+            // Conversation was deleted elsewhere — start fresh instead of
+            // erroring. The host will forget the stored conversation id.
+            setConversationId(null)
+            onConversationChange?.(null)
+            showInitialGreeting()
+          } else {
+            toast({
+              title: 'Error',
+              description: 'Failed to load conversation history',
+              variant: 'destructive',
+            })
+          }
         } finally {
           setIsLoading(false)
         }
@@ -228,6 +246,9 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
     }
 
     loadConversationHistory()
+    // handleModuleSelect/showInitialGreeting are recreated every render;
+    // adding them would re-seed the greeting on each state change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialConversationId, initialModule, toast])
 
   const showInitialGreeting = () => {
@@ -235,42 +256,11 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
     const greetingMessage: Message = {
       id: Date.now() + Math.random(),
       role: 'assistant',
-      content: '👋 Hi! How can I help you today?',
+      content: "👋 Hi! I'm the NoovaERP AI Assistant. How can I help you today?",
       created_at: new Date().toISOString(),
       quick_options: getQuickOptionsForUi(),
     }
     setMessages([greetingMessage])
-  }
-
-  const handleEndConversation = async () => {
-    if (!conversationId) return
-
-    try {
-      await api.post(`/ai/conversations/${conversationId}/close`)
-      
-      // Update status to closed
-      setConversationStatus('closed')
-      
-      toast({
-        title: 'Conversation Ended',
-        description: 'This conversation has been closed. Click "New Chat" to start a new one.',
-      })
-      
-      // Notify parent to refresh conversation list
-      if (onConversationEnd) {
-        onConversationEnd()
-      }
-      
-      // Close the widget
-      setIsOpen(false)
-    } catch (error: any) {
-      console.error('Failed to end conversation:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to end conversation',
-        variant: 'destructive',
-      })
-    }
   }
 
   const handleClose = () => {
@@ -294,6 +284,7 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
         
         if (createResponse.data.success) {
           setConversationId(createResponse.data.conversation_id)
+          onConversationChange?.(createResponse.data.conversation_id)
           
           // Now select the module
           console.log('Selecting module:', moduleId)
@@ -383,6 +374,7 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
         // Update conversation ID if needed
         if (!conversationId) {
           setConversationId(response.data.conversation_id)
+          onConversationChange?.(response.data.conversation_id)
         }
 
         // Add AI response
@@ -422,6 +414,7 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
         content: '👋 What would you like help with?',
         created_at: new Date().toISOString(),
         quick_options: getQuickOptionsForUi(),
+        isModuleMenu: true,
       }
       setMessages(prev => [...prev, optionsMessage])
     } finally {
@@ -434,7 +427,7 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
     const confirmationMessage: Message = {
       id: Date.now() + Math.random(),
       role: 'assistant',
-      content: `✅ Support ticket ${ticketNumber} has been created successfully. Our support team will contact you within 2 hours.`,
+      content: `Support ticket ${ticketNumber} has been created successfully. Our support team will contact you within 2 hours.`,
       created_at: new Date().toISOString(),
     }
     setMessages(prev => [...prev, confirmationMessage])
@@ -469,6 +462,7 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
         const convId = response.data.conversation_id
         if (!conversationId) {
           setConversationId(convId)
+          onConversationChange?.(convId)
         }
 
         // Check if response is being processed asynchronously
@@ -478,7 +472,7 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
           const thinkingMessage: Message = {
             id: thinkingId,
             role: 'assistant',
-            content: '🤔 Thinking...',
+            content: 'Thinking…',
             created_at: new Date().toISOString(),
           }
           setMessages(prev => [...prev, thinkingMessage])
@@ -570,26 +564,29 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
 
   if (!isOpen) {
     return (
-      <Button
+      <button
+        type="button"
         onClick={() => setIsOpen(true)}
-        className={`fixed bottom-4 right-4 sm:bottom-6 sm:right-6 h-12 w-12 sm:h-14 sm:w-14 rounded-full shadow-lg z-[99999] ${className}`}
-        size="icon"
+        className={`fixed bottom-4 right-4 z-[99999] flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg sm:bottom-6 sm:right-6 sm:h-14 sm:w-14 ${className}`}
+        aria-label="Open AI Assistant"
       >
-        <Icon icon="mdi:robot" className="h-6 w-6" />
-      </Button>
+        <RobotIcon className="h-6 w-6" />
+      </button>
     )
   }
 
   return (
     <Card className={`fixed bottom-0 left-0 right-0 h-[85vh] rounded-t-2xl sm:inset-auto sm:bottom-6 sm:right-6 sm:w-96 sm:h-[600px] sm:rounded-lg shadow-2xl flex flex-col z-[99999] ${className}`}>
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b bg-primary text-primary-foreground rounded-t-lg">
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <Icon icon="mdi:robot" className="h-5 w-5 flex-shrink-0" />
+      <div className="flex items-center justify-between p-4 border-b bg-primary text-primary-foreground rounded-t-2xl sm:rounded-t-lg">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-foreground/15">
+            <RobotIcon className="h-5 w-5" />
+          </span>
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold">AI Assistant</h3>
+            <h3 className="font-semibold leading-tight">NoovaERP AI Assistant</h3>
             <p className="text-xs opacity-90 truncate">
-              {conversationId ? `Conversation #${conversationId}` : 'New Chat'}
+              {conversationId ? `Conversation #${conversationId}` : 'New chat'}
             </p>
           </div>
           {activeModule && activeModule !== 'general' && (
@@ -599,28 +596,15 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
             />
           )}
         </div>
-        <div className="flex gap-1 flex-shrink-0">
-          {conversationId && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleEndConversation}
-              className="text-primary-foreground hover:bg-primary-foreground/20 text-xs"
-              title="End this conversation"
-            >
-              <Icon icon="mdi:stop-circle" className="h-4 w-4 mr-1" />
-              End
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleClose}
-            className="text-primary-foreground hover:bg-primary-foreground/20"
-          >
-            <Icon icon="mdi:close" className="h-5 w-5" />
-          </Button>
-        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={handleClose}
+          title="Close"
+          className="ml-2 h-9 w-9 shrink-0 rounded-full text-primary-foreground hover:bg-primary-foreground/20"
+        >
+          <Icon icon="mdi:close" className="h-5 w-5" />
+        </Button>
       </div>
 
       {/* Messages */}
@@ -634,8 +618,8 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
         
         {!isLoading && messages.length === 0 && (
           <div className="text-center text-muted-foreground py-8">
-            <Icon icon="mdi:robot-happy" className="h-12 w-12 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">Hi! How can I help you today?</p>
+            <RobotIcon className="mx-auto mb-2 h-12 w-12 opacity-50" />
+            <p className="text-sm">Hi! I'm the NoovaERP AI Assistant. How can I help you today?</p>
             
             {/* Quick Actions */}
             <div className="mt-4 space-y-2">
@@ -656,7 +640,11 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
           </div>
         )}
 
-        {messages.map((message) => (
+        {messages.map((message) => {
+          const firstAssistantId = messages.find((m) => m.role === 'assistant')?.id
+          const showModuleMenu = message.id === firstAssistantId || message.isModuleMenu
+
+          return (
           <div key={message.id}>
             <div
               className={`mb-4 flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -668,15 +656,20 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
                     : 'bg-muted'
                 }`}
               >
-                <p className="text-sm whitespace-pre-wrap break-words overflow-wrap-anywhere">{message.content}</p>
+                {message.role === 'assistant' ? (
+                  <MessageBody content={message.content} className="text-sm break-words overflow-wrap-anywhere" />
+                ) : (
+                  <p className="text-sm whitespace-pre-wrap break-words overflow-wrap-anywhere">{message.content}</p>
+                )}
                 <p className="text-xs opacity-70 mt-1">
                   {new Date(message.created_at).toLocaleTimeString()}
                 </p>
               </div>
             </div>
             
-            {/* Render quick options if present */}
-            {message.role === 'assistant' && message.quick_options && message.quick_options.length > 0 && (
+            {/* Render the module menu once (greeting / explicit menu message)
+                instead of repeating it after every assistant reply. */}
+            {message.role === 'assistant' && showModuleMenu && message.quick_options && message.quick_options.length > 0 && (
               <div className="mb-4">
                 <QuickOptions 
                   options={message.quick_options} 
@@ -695,7 +688,8 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
               </div>
             )}
           </div>
-        ))}
+          )
+        })}
 
         {isLoading && (
           <div className="flex justify-start mb-4">
@@ -727,21 +721,21 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
           <>
             {/* Create Ticket Button */}
             {conversationId && (
-              <div className="mb-2">
+              <div className="mb-3">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setShowTicketModal(true)}
-                  className="w-full"
+                  className="w-full rounded-full"
                   disabled={isLoading}
                 >
-                  <Icon icon="mdi:ticket" className="h-4 w-4 mr-2" />
-                  Need Human Support? Create Ticket
+                  <Icon icon="mdi:lifebuoy" className="h-4 w-4 mr-2" />
+                  Need human support? Create a ticket
                 </Button>
               </div>
             )}
             
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               <Input
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
@@ -751,20 +745,21 @@ export function ChatWidget({ customerId, conversationId: initialConversationId =
                     sendMessage()
                   }
                 }}
-                placeholder="Type your message..."
+                placeholder="Type your message…"
                 disabled={isLoading || conversationStatus === 'closed'}
-                className="flex-1"
+                className="flex-1 rounded-full bg-muted/40 px-4"
               />
               <Button
                 onClick={sendMessage}
                 disabled={!inputMessage.trim() || isLoading || conversationStatus === 'closed'}
                 size="icon"
+                className="h-10 w-10 shrink-0 rounded-full"
               >
                 <Icon icon="mdi:send" className="h-5 w-5" />
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Powered by AI • Press Enter to send
+            <p className="text-xs text-muted-foreground mt-2 text-center">
+              Powered by NoovaERP • Press Enter to send
             </p>
           </>
         )}

@@ -17,6 +17,8 @@ class CustomerCreditNoteLine extends Model
         'description',
         'quantity',
         'unit_price',
+        'base_unit_price',
+        'pricing_trace',
         'tax_rate',
         'line_total',
         'account_id',
@@ -25,6 +27,8 @@ class CustomerCreditNoteLine extends Model
     protected $casts = [
         'quantity' => 'decimal:2',
         'unit_price' => 'decimal:2',
+        'base_unit_price' => 'decimal:4',
+        'pricing_trace' => 'array',
         'tax_rate' => 'decimal:2',
         'line_total' => 'decimal:2',
     ];

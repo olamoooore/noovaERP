@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency, getApiErrorMessage } from '@/lib/utils';
-import api from '@/lib/api';
+import api from '@/lib/api'
+import pricingApi from '@/lib/pricingApi'
+import { useAuthStore } from '@/store/authStore';
 import { getProductLineDescription, ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
 import { SalesLineColumnMenu, SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility';
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
@@ -43,6 +45,9 @@ interface QuotationLine {
   unit_price: number | '';
   tax_rate: number | '';
   discount_amount: number | '';
+  // MRD pricelist-multicurrency FR-6.2/6.3: pricing intent per line.
+  price_mode?: 'auto' | 'manual' | 'carried';
+  override_reason?: string | null;
 }
 
 const emptyLine = (): QuotationLine => ({
@@ -64,9 +69,12 @@ export const QuotationCreatePage: React.FC = () => {
   const [draggedLineIndex, setDraggedLineIndex] = useState<number | null>(null)
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { toast } = useToast();
+  const { toast } = useToast()
+  const canViewPriceLists = useAuthStore((state) => state.hasPermission('pricelists.view'));
 
   const [customerId, setCustomerId] = useState('');
+  // Explicit price-list selection (FR-2.3 step 1); '' = auto.
+  const [priceListId, setPriceListId] = useState('');
   const [quotationDate, setQuotationDate] = useState(new Date().toISOString().split('T')[0]);
   const [validUntil, setValidUntil] = useState(
     new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
@@ -122,6 +130,58 @@ export const QuotationCreatePage: React.FC = () => {
     },
   });
 
+  /**
+   * FR-4.6/FR-6.2: resolve auto prices from the applicable price list via
+   * the shared engine; manual lines are never overwritten. The server
+   * re-resolves authoritatively on save (price_mode='auto').
+   */
+  const { data: activePriceLists } = useQuery({
+    queryKey: ['price-lists', 'active'],
+    queryFn: () => pricingApi.listPriceLists({ active_only: true, per_page: 200 }),
+    enabled: canViewPriceLists,
+  });
+  const priceListRows: any[] = (activePriceLists as any)?.data ?? activePriceLists ?? [];
+
+  const resolvePricingForLines = async (nextLines: QuotationLine[], listOverride?: string) => {
+    const productLines = nextLines
+      .map((line, index) => ({ line, index }))
+      .filter(({ line }) => (line.line_type ?? 'product') === 'product' && !!line.product_id);
+    if (productLines.length === 0) return;
+
+    try {
+      const result = await pricingApi.resolveBatch(
+        {
+          customer_id: customerId ? parseInt(customerId, 10) : null,
+          date: quotationDate || undefined,
+          price_list_id: ((listOverride !== undefined ? listOverride : priceListId) || '') !== ''
+            ? Number(listOverride !== undefined ? listOverride : priceListId)
+            : undefined,
+        },
+        productLines.map(({ line }) => ({
+          product_id: parseInt(line.product_id, 10),
+          quantity: Number(line.quantity) || 1,
+        })),
+      );
+      const updated = [...nextLines];
+      result.lines.forEach((quote: any, quoteIndex: number) => {
+        const target = productLines[quoteIndex]?.index;
+        if (target === undefined || quote?.error) return;
+        if (updated[target].price_mode === 'manual') return;
+        updated[target] = { ...updated[target], unit_price: quote.unit_price, price_mode: 'auto' };
+      });
+      setLines(updated);
+    } catch {
+      // Engine errors surface on save with actionable messages.
+    }
+  };
+
+  // Customer changes re-resolve the default prices/lists (FR-2.3).
+  useEffect(() => {
+    if (!customerId) return;
+    void resolvePricingForLines(lines);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerId]);
+
   const updateLine = (index: number, field: keyof QuotationLine, value: string | number) => {
     const updated = [...lines];
     updated[index] = { ...updated[index], [field]: value };
@@ -133,10 +193,21 @@ export const QuotationCreatePage: React.FC = () => {
       updated[index].unit_price = parseFloat(product.price || product.selling_price || '0');
       updated[index].model_number = product.manufacturer_part_number || '';
       updated[index].sku = product.sku || '';
+      updated[index].price_mode = 'auto';
+      setLines(updated);
+      void resolvePricingForLines(updated);
+      return;
     }
   }
 
+    if (field === 'unit_price') {
+      updated[index].price_mode = 'manual';
+    }
+
     setLines(updated);
+    if (field === 'quantity' && updated[index].price_mode === 'auto') {
+      void resolvePricingForLines(updated);
+    }
   };
 
   const addLine = () => setLines([...lines, emptyLine()]);
@@ -254,6 +325,8 @@ export const QuotationCreatePage: React.FC = () => {
       notes: notes || undefined,
       terms: terms || undefined,
       discount_amount: documentDiscountAmount || 0,
+      // FR-2.3 step 1: explicit list selection wins over applicability.
+      ...(priceListId ? { price_list_id: Number(priceListId) } : {}),
       discount_type: discountMode,
       discount_value: discountValue,
       ...(tags.length ? { tags } : {}),
@@ -268,6 +341,8 @@ export const QuotationCreatePage: React.FC = () => {
         product_notes: line.product_notes || null,
         quantity: line.quantity,
         unit_price: line.unit_price === '' ? 0 : line.unit_price,
+        price_mode: line.price_mode ?? undefined,
+        override_reason: line.override_reason ?? undefined,
         tax_rate: line.tax_rate === '' ? 0 : line.tax_rate,
         discount_amount: line.discount_amount === '' ? 0 : line.discount_amount,
       })),
@@ -311,6 +386,29 @@ export const QuotationCreatePage: React.FC = () => {
                   onChange={(event) => setQuotationDate(event.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Price List</label>
+                <select
+                  value={priceListId}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setPriceListId(next);
+                    // Pass the selection explicitly — state has not committed.
+                    void resolvePricingForLines(lines, next);
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                >
+                  <option value="">Auto — customer's applicable list</option>
+                  {priceListRows.map((list: any) => (
+                    <option key={list.id} value={String(list.id)}>
+                      {list.name} · {list.currency_code}
+                    </option>
+                  ))}
+                </select>
+                <Link to="/sales/price-lists" className="mt-1 inline-block text-xs text-muted-foreground underline hover:text-foreground">
+                  Manage price lists →
+                </Link>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Valid Until</label>
@@ -563,6 +661,7 @@ export const QuotationCreatePage: React.FC = () => {
                                 unit_price: productChanged
                                   ? (parseFloat((product as any).price || (product as any).selling_price || '0') || 0)
                                   : updated[index].unit_price,
+                                price_mode: productChanged ? ('auto' as const) : updated[index].price_mode,
                                 model_number: (product as any).manufacturer_part_number || (productChanged ? '' : updated[index].model_number),
                                 sku: (product as any).sku || (productChanged ? '' : updated[index].sku),
                               }

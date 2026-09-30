@@ -48,6 +48,11 @@ class AccountMappingService
         'sales_discount' => '4200',
         'unrealized_fx_gain_loss' => '7200',
         'realized_fx_gain_loss' => '7201',
+        // MRD pricelist-multicurrency FR-7.2/FR-12.4: realized FX is booked
+        // per direction. The gain leg reuses the historical 7201 account;
+        // losses get their own 7202 (shared-pair default per MRD §17 Q4).
+        'realized_fx_gain' => '7201',
+        'realized_fx_loss' => '7202',
     ];
 
     /**
@@ -173,6 +178,8 @@ class AccountMappingService
         'sales_discount' => 'revenue',
         'unrealized_fx_gain_loss' => 'expense',
         'realized_fx_gain_loss' => 'expense',
+        'realized_fx_gain' => 'expense',
+        'realized_fx_loss' => 'expense',
     ];
 
     /**

@@ -17,7 +17,6 @@ import { TagEditor } from '@/components/tags/TagEditor'
 import { DocumentLinkChip } from '@/components/documents/DocumentLinkChip'
 import { PageHeader } from '@/components/layout/PageHeader'
 import api from '@/lib/api'
-import { getVisibleInvoiceNotes } from '@/lib/invoicePresentation'
 import { useAuthStore } from '@/store/authStore'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DocumentTemplateDialog } from '@/components/documents/DocumentTemplateDialog'
@@ -511,8 +510,6 @@ export function InvoiceDetailPage() {
       </div>
     )
   }
-
-  const visibleNotes = getVisibleInvoiceNotes(invoice.notes)
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -1317,12 +1314,12 @@ export function InvoiceDetailPage() {
           )}
 
           {/* Notes & Terms */}
-          {(invoice.terms || (!isAcmeTenant && visibleNotes)) && (
+          {(invoice.terms || (!isAcmeTenant && invoice.notes)) && (
             <div className="grid grid-cols-2 gap-8">
-              {!isAcmeTenant && visibleNotes && (
+              {!isAcmeTenant && invoice.notes && (
                 <div>
                   <h3 className="text-sm font-semibold text-muted-foreground uppercase mb-2">Notes</h3>
-                  <p className="text-sm whitespace-pre-wrap">{visibleNotes}</p>
+                  <p className="text-sm whitespace-pre-wrap">{invoice.notes}</p>
                 </div>
               )}
               {invoice.terms && (

@@ -16,6 +16,8 @@ class AIKnowledgeBase extends Model
         'language',
         'is_active',
         'usage_count',
+        'priority',
+        'source',
     ];
 
     protected $casts = [

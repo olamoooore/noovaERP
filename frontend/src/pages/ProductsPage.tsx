@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
@@ -63,7 +63,9 @@ export function ProductsPage() {
   const [search, setSearch] = useState('')
   const [type, setType] = useState<TypeFilter>('all')
   const [status, setStatus] = useState<StatusFilter>('all')
-  const [categoryId, setCategoryId] = useState<string>('all')
+  // Deep links from analytics/reports: /products?category=<id>.
+  const [searchParams] = useSearchParams()
+  const [categoryId, setCategoryId] = useState<string>(() => searchParams.get('category') ?? 'all')
   const [tagFilter, setTagFilter] = useState('')
   const [sortBy, setSortBy] = useState<SortBy>('created_at')
   const [sortDir, setSortDir] = useState<SortDir>('desc')

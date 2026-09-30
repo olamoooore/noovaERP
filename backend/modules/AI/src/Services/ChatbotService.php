@@ -100,11 +100,24 @@ class ChatbotService
 
             // Handle simple greetings instantly (don't block server waiting for Llama)
             if ($this->isGreeting($userMessage)) {
-                $greeting = 'Hello! How can I assist you today? I can help with orders, invoices, loyalty points, and products.';
+                $greeting = 'Hello! I\'m the NoovaERP AI Assistant. How can I assist you today? I can help with orders, invoices, loyalty points, and products.';
                 $this->saveMessage($conversation, 'assistant', $greeting);
                 DB::commit();
 
                 return $greeting;
+            }
+
+            // Identity / provider questions ("what's your name?", "which
+            // model are you?") answered instantly and provider-agnostically.
+            // Previously these fell through to the LLM (the old aiPatterns
+            // handler was dead code with no caller), so the assistant could
+            // not reliably introduce itself.
+            if ($this->isIdentityQuestion($userMessage)) {
+                $answer = $this->identityAnswer($userMessage);
+                $this->saveMessage($conversation, 'assistant', $answer);
+                DB::commit();
+
+                return $answer;
             }
 
             // Dispatch to queue for async processing (prevents blocking the server)
@@ -132,6 +145,38 @@ class ChatbotService
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Questions about who the assistant is, or which AI powers it.
+     */
+    protected function isIdentityQuestion(string $message): bool
+    {
+        $message = mb_strtolower(trim($message));
+
+        return (bool) preg_match(
+            '/\b(your name|who are you|what are you|introduce yourself|which model|what model|which ai|what ai|are you (an? )?(ai|llama|gpt|ollama|cerebras))\b/i',
+            $message
+        );
+    }
+
+    /**
+     * Deterministic identity answer: branded by default, provider-aware
+     * when the user asks which model/AI is answering.
+     */
+    protected function identityAnswer(string $message): string
+    {
+        $askingProvider = (bool) preg_match('/model|llama|gpt|ollama|cerebras/i', mb_strtolower($message));
+
+        if ($askingProvider) {
+            $providerLabel = $this->ollama->provider() === 'cerebras'
+                ? 'running on Cerebras cloud'
+                : 'running locally on your system';
+
+            return "I'm the NoovaERP AI Assistant, powered by ".$this->ollama->model().", {$providerLabel}.";
+        }
+
+        return "I'm the NoovaERP AI Assistant — your NoovaERP copilot. I can help with orders, invoices, loyalty points, products, stock, accounting and more.";
     }
 
     /**
@@ -223,7 +268,11 @@ class ChatbotService
         $aiPatterns = ['model', 'ai', 'llama', 'gpt', 'who are you', 'what are you'];
         foreach ($aiPatterns as $pattern) {
             if (str_contains($message, $pattern)) {
-                return "I'm powered by ".config('ai.ollama.model', 'Llama').', running locally on your system. How can I help with your orders or loyalty points?';
+                $providerLabel = $this->ollama->provider() === 'cerebras'
+            ? 'running on Cerebras cloud'
+            : 'running locally on your system';
+
+                return "I'm powered by ".$this->ollama->model().', '.$providerLabel.'. How can I help with your orders or loyalty points?';
             }
         }
 
@@ -246,7 +295,7 @@ class ChatbotService
 
         // Greetings
         if (str_contains($message, 'hello') || str_contains($message, 'hi') || str_contains($message, 'hey')) {
-            return 'Hello! How can I assist you today? I can help with orders, invoices, loyalty points, and products.';
+            return 'Hello! I\'m the NoovaERP AI Assistant. How can I assist you today? I can help with orders, invoices, loyalty points, and products.';
         }
 
         if (str_contains($message, 'testing') || str_contains($message, 'test')) {

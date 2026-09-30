@@ -68,8 +68,25 @@ class Invoice extends Model
             }
             // Issue #98: AR/AP documents are base-currency denominated unless an
             // explicit currency is supplied; keep the reporting views truthful.
+            // MRD pricelist-multicurrency FR-5.1: the creation services stamp a
+            // full snapshot (currency + rate + base); this hook guarantees no
+            // row is ever created with the FX columns NULL.
             if (! $invoice->currency_code) {
                 $invoice->currency_code = \App\Services\DocumentCurrencyResolver::resolve();
+            }
+            if (! $invoice->base_currency_code) {
+                $invoice->base_currency_code = \App\Services\DocumentCurrencyResolver::baseFor(
+                    $invoice->sales_order_id
+                        ? \Modules\Sales\Models\SalesOrder::query()->whereKey($invoice->sales_order_id)->value('legal_entity_id')
+                        : null,
+                    $invoice->customer_id,
+                );
+            }
+            if ($invoice->exchange_rate === null
+                && $invoice->currency_code
+                && $invoice->base_currency_code
+                && strtoupper($invoice->currency_code) === strtoupper($invoice->base_currency_code)) {
+                $invoice->exchange_rate = 1.000000;
             }
         });
 
@@ -243,11 +260,14 @@ class Invoice extends Model
         'version_number',
         'is_active_version',
         'currency_code',
+        'exchange_rate',
+        'base_currency_code',
     ];
 
     protected $casts = [
         'patient_name_encrypted' => \App\Casts\EncryptedOrLegacyString::class,
         'invoice_date' => 'date',
+        'exchange_rate' => 'decimal:6',
         'due_date' => 'date',
         'date_of_case' => 'date',
         'delivery_date' => 'date',

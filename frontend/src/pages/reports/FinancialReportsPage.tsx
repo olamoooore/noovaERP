@@ -18,6 +18,7 @@ import { ReportViewer } from '@/components/reports/ReportViewer';
 import { ReportTable, Column } from '@/components/reports/ReportTable';
 import { ComparisonHierarchyTable, type ReportTreeNode } from '@/components/reports/ComparisonHierarchyTable';
 import { useReportAutoRefresh } from '@/hooks/useReportAutoRefresh';
+import { collectExpandableIds, ledgerCollapseKeys } from '@/lib/reportTree';
 import api from '@/lib/api';
 import reportApi from '@/lib/reportApi';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -59,14 +60,24 @@ const num = (v: unknown): number => (Number.isFinite(Number(v)) ? Number(v) : 0)
 
 type LedgerHierarchy = NonNullable<GeneralLedgerData['hierarchy']>;
 
-function GeneralLedgerHierarchy({ hierarchy }: { hierarchy: LedgerHierarchy }) {
+function GeneralLedgerHierarchy({
+  hierarchy,
+  collapsed: controlledCollapsed,
+  onCollapsedChange,
+}: {
+  hierarchy: LedgerHierarchy;
+  collapsed?: Set<string>;
+  onCollapsedChange?: (next: Set<string>) => void;
+}) {
   const navigate = useNavigate();
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const toggle = (key: string) => setCollapsed((previous) => {
-    const next = new Set(previous);
+  const [internalCollapsed, setInternalCollapsed] = useState<Set<string>>(new Set());
+  const collapsed = controlledCollapsed ?? internalCollapsed;
+  const setCollapsed = onCollapsedChange ?? setInternalCollapsed;
+  const toggle = (key: string) => {
+    const next = new Set(collapsed);
     if (next.has(key)) next.delete(key); else next.add(key);
-    return next;
-  });
+    setCollapsed(next);
+  };
   const naturalBalance = (type: string, debit: number, credit: number) => ['asset', 'expense'].includes(type) ? debit - credit : credit - debit;
   const row = (key: string, label: React.ReactNode, debit: number, credit: number, balance: number, depth: number, expandable: boolean, className = '') => (
     <tr key={key} className={`border-b ${className}`}>
@@ -327,6 +338,11 @@ function buildPlRoots(data: any, compare: any | null): ReportTreeNode[] {
 
 export function FinancialReportsPage() {
   const [activeTab, setActiveTab] = useState('profit-loss');
+  // Expand/Collapse state lives on the page so the controls can sit in the
+  // report toolbar row (next to Excel/PDF/Word and Refresh).
+  const [plCollapsed, setPlCollapsed] = useState<Set<string>>(new Set());
+  const [bsCollapsed, setBsCollapsed] = useState<Set<string>>(new Set());
+  const [glCollapsed, setGlCollapsed] = useState<Set<string>>(new Set());
   const plRef = useRef<HTMLDivElement>(null);
   const bsRef = useRef<HTMLDivElement>(null);
   const cfRef = useRef<HTMLDivElement>(null);
@@ -456,6 +472,17 @@ export function FinancialReportsPage() {
 
   const plComparing = compareMode !== 'none' && !!plCompareFilters && !!plCompareData;
   const bsComparing = compareMode !== 'none' && !!bsCompareAsOf && !!bsCompareData;
+
+  const plRoots = useMemo(
+    () => (profitLossData ? buildPlRoots(profitLossData, plComparing ? plCompareData : null) : []),
+    [profitLossData, plCompareData, plComparing],
+  );
+  const bsRoots = useMemo(
+    () => (balanceSheetData ? buildBsRoots(balanceSheetData, bsComparing ? bsCompareData : null) : []),
+    [balanceSheetData, bsCompareData, bsComparing],
+  );
+  const plExpandableIds = useMemo(() => collectExpandableIds(plRoots), [plRoots]);
+  const bsExpandableIds = useMemo(() => collectExpandableIds(bsRoots), [bsRoots]);
   const isCompareFetching = activeTab === 'profit-loss' ? isPlCmpFetching : isBsCmpFetching;
   // Only P&L and the Balance Sheet support a comparison window here.
   const comparisonSupported = activeTab === 'profit-loss' || activeTab === 'balance-sheet';
@@ -506,6 +533,11 @@ export function FinancialReportsPage() {
     enabled: activeTab === 'general-ledger',
     staleTime: 15 * 1000,
   });
+
+  const glCollapseKeyList = useMemo(
+    () => (generalLedgerData?.hierarchy ? ledgerCollapseKeys(generalLedgerData.hierarchy) : []),
+    [generalLedgerData],
+  );
 
   // Cash Flow Columns
   const cfColumns: Column[] = [
@@ -803,15 +835,35 @@ export function FinancialReportsPage() {
             onRefresh={refetchPL}
             exportTargetRef={plRef}
             exportFilename={`profit-and-loss-${filters.start_date || ''}-to-${filters.end_date || ''}`}
+            actions={plExpandableIds.length > 0 ? (
+              <>
+                <HeaderActionButton
+                  variant="outline"
+                  icon="solar:maximize-linear"
+                  onClick={() => setPlCollapsed(new Set())}
+                >
+                  Expand all
+                </HeaderActionButton>
+                <HeaderActionButton
+                  variant="outline"
+                  icon="solar:minimize-linear"
+                  onClick={() => setPlCollapsed(new Set(plExpandableIds))}
+                >
+                  Collapse all
+                </HeaderActionButton>
+              </>
+            ) : undefined}
           >
             {profitLossData && (
               <div ref={plRef} className="space-y-6">
                 <ComparisonHierarchyTable
-                  roots={buildPlRoots(profitLossData, plComparing ? plCompareData : null)}
+                  roots={plRoots}
                   compareEnabled={plComparing}
                   currentLabel={plCurrentLabel}
                   compareLabel={plCompareLabel}
                   formatMoney={formatCurrency}
+                  collapsed={plCollapsed}
+                  onCollapsedChange={setPlCollapsed}
                 />
               </div>
             )}
@@ -832,15 +884,35 @@ export function FinancialReportsPage() {
             onRefresh={refetchBS}
             exportTargetRef={bsRef}
             exportFilename={`balance-sheet-${filters.end_date || ''}`}
+            actions={bsExpandableIds.length > 0 ? (
+              <>
+                <HeaderActionButton
+                  variant="outline"
+                  icon="solar:maximize-linear"
+                  onClick={() => setBsCollapsed(new Set())}
+                >
+                  Expand all
+                </HeaderActionButton>
+                <HeaderActionButton
+                  variant="outline"
+                  icon="solar:minimize-linear"
+                  onClick={() => setBsCollapsed(new Set(bsExpandableIds))}
+                >
+                  Collapse all
+                </HeaderActionButton>
+              </>
+            ) : undefined}
           >
             {balanceSheetData && (
               <div ref={bsRef} className="space-y-6">
                 <ComparisonHierarchyTable
-                  roots={buildBsRoots(balanceSheetData, bsComparing ? bsCompareData : null)}
+                  roots={bsRoots}
                   compareEnabled={bsComparing}
                   currentLabel={bsCurrentLabel}
                   compareLabel={bsCompareLabel}
                   formatMoney={formatCurrency}
+                  collapsed={bsCollapsed}
+                  onCollapsedChange={setBsCollapsed}
                 />
               </div>
             )}
@@ -1022,6 +1094,24 @@ export function FinancialReportsPage() {
             onRefresh={refetchGL}
             exportTargetRef={glRef}
             exportFilename={`general-ledger-${filters.start_date || ''}-to-${filters.end_date || ''}`}
+            actions={glCollapseKeyList.length > 0 ? (
+              <>
+                <HeaderActionButton
+                  variant="outline"
+                  icon="solar:maximize-linear"
+                  onClick={() => setGlCollapsed(new Set())}
+                >
+                  Expand all
+                </HeaderActionButton>
+                <HeaderActionButton
+                  variant="outline"
+                  icon="solar:minimize-linear"
+                  onClick={() => setGlCollapsed(new Set(glCollapseKeyList))}
+                >
+                  Collapse all
+                </HeaderActionButton>
+              </>
+            ) : undefined}
           >
             {generalLedgerData && (
               <div ref={glRef} className="space-y-6">
@@ -1052,7 +1142,11 @@ export function FinancialReportsPage() {
                 {/* Account hierarchy for the all-accounts ledger; retain the transaction table for a single-account drill-down. */}
                 {generalLedgerData.hierarchy ? (
                   generalLedgerData.hierarchy.types.length > 0 ? (
-                    <GeneralLedgerHierarchy hierarchy={generalLedgerData.hierarchy} />
+                    <GeneralLedgerHierarchy
+                      hierarchy={generalLedgerData.hierarchy}
+                      collapsed={glCollapsed}
+                      onCollapsedChange={setGlCollapsed}
+                    />
                   ) : (
                     <Card className="p-8 text-center text-muted-foreground">No posted ledger transactions found for this period.</Card>
                   )

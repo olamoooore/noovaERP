@@ -26,6 +26,7 @@ class TenantRoleService
             ->where('tenant_id', $tenantId)
             ->value('role');
 
+
         if (! $rawRole) {
             return null;
         }

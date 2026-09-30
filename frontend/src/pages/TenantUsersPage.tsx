@@ -141,6 +141,31 @@ async function inviteTenantUser(payload: {
   return res.data ?? {}
 }
 
+export interface UserCreationRequestRow {
+  id: number
+  name: string | null
+  email: string
+  role: string
+  note: string | null
+  status: 'pending' | 'approved' | 'declined'
+  review_note: string | null
+  created_at: string
+}
+
+async function fetchUserRequests(): Promise<UserCreationRequestRow[]> {
+  const res = await api.get('/tenant-users/requests')
+  return res.data?.requests ?? []
+}
+
+async function requestTenantUser(payload: {
+  email: string
+  role: string
+  name?: string
+  note?: string
+}): Promise<void> {
+  await api.post('/tenant-users/requests', payload)
+}
+
 async function sendPasswordLink(userId: number): Promise<{ email_sent?: boolean }> {
   const res = await api.post(`/tenant-users/${userId}/password-link`)
   return res.data ?? {}
@@ -187,7 +212,10 @@ function relativeTime(value: string | null): string {
 export default function TenantUsersPage() {
   const qc = useQueryClient()
   const { toast } = useToast()
-  const { role: currentRole } = useAuthStore()
+  const { role: currentRole, user } = useAuthStore()
+  // User creation is platform-only; the invite UI is reserved for the
+  // NoovaERP platform team and everyone else files a request.
+  const isPlatformSuperAdmin = user?.role === 'platform_super_admin' || currentRole === 'platform_super_admin'
   const [updatingId, setUpdatingId] = useState<number | null>(null)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
@@ -203,6 +231,11 @@ export default function TenantUsersPage() {
   const [newPassword, setNewPassword] = useState('')
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [rolesOpen, setRolesOpen] = useState(false)
+  const [requestOpen, setRequestOpen] = useState(false)
+  const [requestName, setRequestName] = useState('')
+  const [requestEmail, setRequestEmail] = useState('')
+  const [requestRole, setRequestRole] = useState('viewer')
+  const [requestNote, setRequestNote] = useState('')
 
   const canManageRoles = currentRole === 'Owner' || currentRole === 'Admin'
   const canRemoveUsers = currentRole === 'Owner'
@@ -238,6 +271,40 @@ export default function TenantUsersPage() {
       toast({
         variant: 'destructive',
         title: 'Failed to remove user',
+        description: err?.response?.data?.message || 'Unknown error',
+      })
+    },
+  })
+
+  const requestsQuery = useQuery({
+    queryKey: ['user-creation-requests'],
+    queryFn: fetchUserRequests,
+    enabled: canManageRoles,
+  })
+
+  const requestMutation = useMutation({
+    mutationFn: () => requestTenantUser({
+      email: requestEmail,
+      role: requestRole,
+      name: requestName || undefined,
+      note: requestNote || undefined,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['user-creation-requests'] })
+      setRequestOpen(false)
+      setRequestName('')
+      setRequestEmail('')
+      setRequestRole('viewer')
+      setRequestNote('')
+      toast({
+        title: 'Request submitted',
+        description: 'The NoovaERP team will create the account and share the credentials.',
+      })
+    },
+    onError: (err: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Could not submit request',
         description: err?.response?.data?.message || 'Unknown error',
       })
     },
@@ -355,9 +422,15 @@ export default function TenantUsersPage() {
             <HeaderActionButton variant="outline" icon="solar:shield-keyhole-bold-duotone" onClick={() => setRolesOpen(true)}>
               Roles &amp; Permissions
             </HeaderActionButton>
-            <HeaderActionButton icon="solar:user-plus-bold-duotone" onClick={() => setInviteOpen(true)}>
-              Invite Team Member
-            </HeaderActionButton>
+            {isPlatformSuperAdmin ? (
+              <HeaderActionButton icon="solar:user-plus-bold-duotone" onClick={() => setInviteOpen(true)}>
+                Invite Team Member
+              </HeaderActionButton>
+            ) : (
+              <HeaderActionButton icon="solar:user-plus-bold-duotone" onClick={() => setRequestOpen(true)}>
+                Request New User
+              </HeaderActionButton>
+            )}
           </div>
         )}
       </div>
@@ -395,6 +468,50 @@ export default function TenantUsersPage() {
         })}
       </div>
 
+      {/* User-creation requests (platform team fulfils them) */}
+      {canManageRoles && (requestsQuery.data?.length ?? 0) > 0 && (
+        <Card className="overflow-hidden">
+          <div className="flex items-center gap-3 border-b bg-muted/20 px-6 py-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+              <Icon icon="solar:user-plus-bold-duotone" className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold leading-none">User Requests</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Accounts are created by the NoovaERP team — requests and their status appear here.
+              </p>
+            </div>
+          </div>
+          <CardContent className="p-0">
+            <div className="divide-y">
+              {(requestsQuery.data ?? []).map((row) => (
+                <div key={row.id} className="flex flex-wrap items-center gap-3 px-6 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{row.name || row.email}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {row.email} · {ROLES.find((r) => r.value === row.role)?.label ?? row.role}
+                      {row.note ? ` · ${row.note}` : ''}
+                    </p>
+                  </div>
+                  <span
+                    className={cn(
+                      'shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium capitalize',
+                      row.status === 'approved'
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400'
+                        : row.status === 'declined'
+                          ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400'
+                          : 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400',
+                    )}
+                  >
+                    {row.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Members */}
       <Card className="overflow-hidden">
         <div className="flex items-center justify-between border-b bg-muted/20 px-6 py-4">
@@ -420,7 +537,11 @@ export default function TenantUsersPage() {
             <div className="flex flex-col items-center gap-2 py-16 text-muted-foreground">
               <Icon icon="solar:users-group-rounded-bold-duotone" className="h-10 w-10 opacity-40" />
               <p className="text-sm font-medium">No team members yet</p>
-              <p className="text-xs">Invite a colleague to get started.</p>
+              <p className="text-xs">
+                {isPlatformSuperAdmin
+                  ? 'Invite a colleague to get started.'
+                  : 'Use "Request New User" and the NoovaERP team will create the account.'}
+              </p>
             </div>
           ) : (
             <Table>
@@ -582,6 +703,83 @@ export default function TenantUsersPage() {
       <RolesPermissionsDialog open={rolesOpen} onOpenChange={setRolesOpen} />
 
       {/* Invite dialog */}
+      <Dialog open={requestOpen} onOpenChange={setRequestOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Request New User</DialogTitle>
+            <DialogDescription>
+              User accounts are created by the NoovaERP platform team. Submit the details and they will
+              create the account and send the credentials.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="request-email">Email <span className="text-destructive">*</span></Label>
+                <Input
+                  id="request-email"
+                  type="email"
+                  placeholder="colleague@company.com"
+                  value={requestEmail}
+                  onChange={(e) => setRequestEmail(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="request-name">Name (optional)</Label>
+                <Input
+                  id="request-name"
+                  placeholder="John Doe"
+                  value={requestName}
+                  onChange={(e) => setRequestName(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="request-role">Role</Label>
+              <Select value={requestRole} onValueChange={setRequestRole}>
+                <SelectTrigger id="request-role" className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ROLES.map((r) => (
+                    <SelectItem key={r.value} value={r.value}>
+                      {r.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="request-note">Note (optional)</Label>
+              <textarea
+                id="request-note"
+                value={requestNote}
+                onChange={(e) => setRequestNote(e.target.value)}
+                rows={2}
+                maxLength={1000}
+                placeholder="Anything the NoovaERP team should know…"
+                className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRequestOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => requestMutation.mutate()}
+              disabled={requestMutation.isPending || !requestEmail.trim()}
+            >
+              Submit request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>

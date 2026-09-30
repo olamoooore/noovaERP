@@ -19,6 +19,7 @@ import BillingPage from '@/pages/billing/BillingPage'
 import AuditLogPage from '@/pages/audit/AuditLogPage'
 import ObservabilityPage from '@/pages/observability/ObservabilityPage'
 import AdminUsersPage from '@/pages/users/AdminUsersPage'
+import UserRequestsPage from '@/pages/users/UserRequestsPage'
 import CollectionsPage from '@/pages/collections/CollectionsPage'
 import OperationsPage from '@/pages/operations/OperationsPage'
 import RevenueDashboardPage from '@/pages/analytics/RevenueDashboardPage'
@@ -84,6 +85,7 @@ export default function App() {
 
                 {/* Phase 5 — Admin Users, Collections, Operations, Analytics */}
                 <Route path="users"       element={<AdminUsersPage />} />
+                <Route path="user-requests" element={<UserRequestsPage />} />
                 <Route path="collections" element={<CollectionsPage />} />
                 <Route path="operations"  element={<OperationsPage />} />
                 <Route path="analytics"   element={<RevenueDashboardPage />} />

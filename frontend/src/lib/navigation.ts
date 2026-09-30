@@ -232,6 +232,12 @@ export const baseNavItems: NavItem[] = [
         icon: 'solar:delivery-bold-duotone',
       },
       {
+        title: 'Price Lists',
+        href: '/sales/price-lists',
+        icon: 'solar:tag-price-bold-duotone',
+        requiredPermission: 'pricelists.view',
+      },
+      {
         title: 'Customers',
         href: '/customers',
         icon: 'solar:users-group-rounded-bold-duotone',
@@ -581,11 +587,6 @@ export const baseNavItems: NavItem[] = [
         href: '/accounting/reporting/balance-sheet',
         icon: 'solar:chart-bold-duotone',
         keywords: ['bs'],
-      },
-      {
-        title: 'Financial Statement',
-        href: '/accounting/reporting/financial-statement',
-        icon: 'solar:document-text-bold-duotone',
       },
       {
         title: 'Profit & Loss',

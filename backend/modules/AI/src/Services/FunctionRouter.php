@@ -29,8 +29,32 @@ class FunctionRouter
      * @param  int|null  $conversationId  Conversation ID (for context)
      * @return array Execution result
      */
-    public function execute(string $functionName, array $arguments, ?int $customerId = null, ?int $conversationId = null): array
+    /**
+     * @param  string[]  $allowedFunctions  When non-empty, only these
+     *                                      functions may execute (conversation-scoped allow-list — e.g. the
+     *                                      shopper-safe subset used by public storefront guests). The model's
+     *                                      declared tools and this list are the same set, so this is pure
+     *                                      defense-in-depth against hallucinated/forced tool calls.
+     */
+    public function execute(string $functionName, array $arguments, ?int $customerId = null, ?int $conversationId = null, array $allowedFunctions = [], ?string $channel = null): array
     {
+        // Channel hint for link generation (product URLs differ on the
+        // public storefront). Server-side only — never advertised to the LLM.
+        if ($channel === 'storefront') {
+            $arguments['__storefront'] = true;
+        }
+
+        if ($allowedFunctions !== [] && ! in_array($functionName, $allowedFunctions, true)) {
+            Log::warning('AI function not permitted for this conversation', [
+                'function' => $functionName,
+            ]);
+
+            return [
+                'success' => false,
+                'error' => 'Function not permitted for this conversation.',
+            ];
+        }
+
         Log::info('Executing AI function', [
             'function' => $functionName,
             'arguments' => $arguments,

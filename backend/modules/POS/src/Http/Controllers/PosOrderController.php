@@ -263,12 +263,13 @@ class PosOrderController extends Controller
                 $qty = (int) $line['quantity'];
                 $unitPrice = array_key_exists('unit_price', $line) && $line['unit_price'] !== null
                     ? (float) $line['unit_price']
-                    // Issue #132: resolve the effective price through the
-                    // product's volume/customer/variant/date price tiers.
-                    : $product->getPriceForQuantity(
-                        $qty,
+                    // Issue #132 tiers + MRD pricelist-multicurrency FR-4.1:
+                    // PricingService is the single price authority for every
+                    // product-line surface (price list → tiers → catalogue).
+                    : app(\App\Services\PricingService::class)->baseCurrencyPrice(
+                        $product,
+                        (float) $qty,
                         ! empty($validated['customer_id']) ? (int) $validated['customer_id'] : null,
-                        null,
                         $variant?->id,
                     );
 

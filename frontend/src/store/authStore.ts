@@ -9,6 +9,8 @@ interface User {
   avatar?: string | null
   avatar_url?: string | null
   roles?: any[]
+  /** Platform role (e.g. platform_super_admin) — null for tenant users. */
+  role?: string | null
 }
 
 interface AuthState {

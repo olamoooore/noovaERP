@@ -33,6 +33,8 @@ class InvoiceLine extends Model
         'expiry_date',
         'quantity',
         'unit_price',
+        'base_unit_price',
+        'pricing_trace',
         'tax_rate',
         'tax_inclusive',
         'tax_amount',
@@ -43,6 +45,8 @@ class InvoiceLine extends Model
     protected $casts = [
         'sequence' => 'integer',
         'unit_price' => 'decimal:2',
+        'base_unit_price' => 'decimal:4',
+        'pricing_trace' => 'array',
         'tax_rate' => 'decimal:2',
         'tax_inclusive' => 'boolean',
         'tax_amount' => 'decimal:2',

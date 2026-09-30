@@ -18,11 +18,14 @@ class AIServiceProvider extends ServiceProvider
         );
 
         // Register services
-        $this->app->singleton(\Modules\AI\Services\OllamaService::class);
+        $this->app->bind(\Modules\AI\Services\OllamaService::class);
         $this->app->singleton(\Modules\AI\Services\FunctionRouter::class);
         $this->app->singleton(\Modules\AI\Services\SubModuleManager::class);
         $this->app->singleton(\Modules\AI\Services\CommonQuestionsService::class);
         $this->app->singleton(\Modules\AI\Services\ChatbotService::class);
+        $this->app->singleton(\Modules\AI\Services\KnowledgeRetriever::class);
+        $this->app->singleton(\Modules\AI\Services\KnowledgeIngestionService::class);
+        $this->app->singleton(\Modules\AI\Services\AssistantContextService::class);
     }
 
     /**
@@ -30,6 +33,10 @@ class AIServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->commands([
+            \Modules\AI\Console\Commands\IngestKnowledge::class,
+        ]);
+
         // Routes are loaded via tenant.php through ModuleManager->tenantApiRouteFiles()
         // Do NOT load routes here to avoid duplicate/incorrect prefix issues
 

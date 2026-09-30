@@ -115,6 +115,15 @@ class QuotationController extends Controller
             $query->where('customer_id', $request->customer_id);
         }
 
+        // MRD pricelist-multicurrency FR-8: filter/sort by document currency.
+        if ($request->filled('currency_code')) {
+            $query->where('currency_code', strtoupper((string) $request->currency_code));
+        }
+
+        if ($request->input('sort_by') === 'currency') {
+            $query->reorder()->orderBy('currency_code')->orderBy('quotation_date', 'desc')->orderBy('id', 'desc');
+        }
+
         if ($request->filled('document_ids')) {
             $query->whereIn('id', $request->input('document_ids', []));
         }
@@ -198,15 +207,44 @@ class QuotationController extends Controller
             'lines.*.description' => 'required|string',
             'lines.*.product_notes' => 'nullable|string',
             'lines.*.quantity' => 'required_if:lines.*.line_type,product|nullable|integer|min:0',
-            'lines.*.unit_price' => 'required_if:lines.*.line_type,product|nullable|numeric|min:0',
+            // MRD pricelist-multicurrency FR-4/FR-6: unit_price is optional —
+            // omitted prices resolve through PricingService (the only price
+            // authority). price_mode carries the client's intent.
+            'lines.*.unit_price' => 'nullable|numeric|min:0',
+            'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
+            'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
+            // FR-5.2: header currency + explicit price list selection.
+            'currency_code' => 'nullable|string|size:3',
+            'price_list_id' => 'nullable|integer',
             'tags' => 'nullable|array',
             'tags.*' => 'string|max:100',
         ]);
 
+        // A supplied price without an explicit intent is legacy behaviour
+        // (kept verbatim); the wired UI always sends price_mode.
+        $linePriceMode = static function (array $lineData): string {
+            if (isset($lineData['price_mode'])) {
+                return (string) $lineData['price_mode'];
+            }
+
+            return ($lineData['unit_price'] ?? null) !== null && (float) ($lineData['unit_price'] ?? 0) > 0
+                ? 'legacy'
+                : 'auto';
+        };
+
         try {
-            $quotation = DB::transaction(function () use ($validated) {
+            $pricing = app(\App\Services\PricingService::class);
+
+            $pricingContext = $pricing->documentContext([
+                'customer_id' => $validated['customer_id'],
+                'date' => $validated['quotation_date'] ?? now()->toDateString(),
+                'currency_code' => $validated['currency_code'] ?? null,
+                'price_list_id' => $validated['price_list_id'] ?? null,
+            ]);
+
+            $quotation = DB::transaction(function () use ($validated, $pricing, $pricingContext, $linePriceMode) {
                 $data = array_filter([
                     'quotation_number' => isset($validated['quotation_number']) ? trim($validated['quotation_number']) : null,
                     'quotation_date' => $validated['quotation_date'] ?? now()->toDateString(),
@@ -242,6 +280,9 @@ class QuotationController extends Controller
                     'discount_amount' => $validated['discount_amount'] ?? null,
                     'discount_type' => $validated['discount_type'] ?? 'fixed',
                     'discount_value' => $validated['discount_value'] ?? ($validated['discount_amount'] ?? null),
+                    'currency_code' => $pricingContext['document_currency'],
+                    'exchange_rate' => $pricingContext['exchange_rate'],
+                    'base_currency_code' => $pricingContext['base_currency'],
                     'created_by' => Auth::id(),
                 ], fn ($v) => $v !== null);
 
@@ -252,7 +293,14 @@ class QuotationController extends Controller
                     if ($lineType === 'product' && empty($lineData['product_id'])) {
                         throw new \InvalidArgumentException('Product lines require a product.');
                     }
-                    $quotation->lines()->create([
+
+                    $lineProduct = $lineType === 'product' && ! empty($lineData['product_id'])
+                        ? \App\Models\Product::find($lineData['product_id'])
+                        : null;
+
+                    $priced = $pricing->priceLineArray($lineProduct, $lineData, $pricingContext, $linePriceMode($lineData));
+
+                    $quotation->lines()->create(array_merge([
                         'line_type' => $lineType,
                         'sequence' => $lineData['sequence'] ?? $lineIndex,
                         'product_id' => $lineData['product_id'] ?? null,
@@ -260,10 +308,10 @@ class QuotationController extends Controller
                         'description' => $lineData['description'],
                         'product_notes' => $lineData['product_notes'] ?? null,
                         'quantity' => $lineData['quantity'],
-                        'unit_price' => $lineData['unit_price'],
+                        'unit_price' => $lineData['unit_price'] ?? 0,
                         'tax_rate' => $lineData['tax_rate'] ?? 0,
                         'discount_amount' => $lineData['discount_amount'] ?? 0,
-                    ]);
+                    ], $priced));
                 }
 
                 $quotation->refresh();
@@ -293,6 +341,14 @@ class QuotationController extends Controller
                 'data' => $quotation,
             ], 201);
 
+        } catch (\App\Exceptions\PricingException|\InvalidArgumentException $e) {
+            // FR-1.1/FR-6.3: unknown/un-sellable currency, missing FX rate or
+            // an un-reasoned below-floor override is a validation failure,
+            // not a server error.
+            return response()->json([
+                'message' => 'Failed to create quotation',
+                'error' => $e->getMessage(),
+            ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to create quotation',
@@ -371,6 +427,8 @@ class QuotationController extends Controller
             'lines.*.product_notes' => 'nullable|string',
             'lines.*.quantity' => 'nullable|integer|min:0',
             'lines.*.unit_price' => 'nullable|numeric|min:0',
+            'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
+            'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
         ]);
@@ -394,20 +452,42 @@ class QuotationController extends Controller
         }
 
         if ($request->has('lines')) {
+            // Draft edits re-price through the engine using the quotation's
+            // OWN currency + rate snapshot (FR-1.7: the header snapshot is not
+            // re-derived; only missing/auto lines change price).
+            $pricing = app(\App\Services\PricingService::class);
+            $pricingContext = $pricing->documentContext([
+                'customer_id' => $quotation->customer_id,
+                'date' => $quotation->quotation_date?->toDateString(),
+                'currency_code' => $quotation->currency_code,
+                'exchange_rate' => $quotation->exchange_rate,
+                'base_currency_code' => $quotation->base_currency_code,
+            ]);
+
             $quotation->lines()->delete();
             foreach ($request->lines as $lineIndex => $lineData) {
-                $quotation->lines()->create([
-                    'line_type' => $lineData['line_type'] ?? 'product',
+                $lineData = (array) $lineData;
+                $lineType = $lineData['line_type'] ?? 'product';
+
+                $lineProduct = $lineType === 'product' && ! empty($lineData['product_id'])
+                    ? \App\Models\Product::find($lineData['product_id'])
+                    : null;
+
+                $mode = $lineData['price_mode'] ?? (((float) ($lineData['unit_price'] ?? 0) > 0) ? 'legacy' : 'auto');
+                $priced = $pricing->priceLineArray($lineProduct, $lineData, $pricingContext, $mode);
+
+                $quotation->lines()->create(array_merge([
+                    'line_type' => $lineType,
                     'sequence' => $lineData['sequence'] ?? $lineIndex,
                     'product_id' => $lineData['product_id'] ?? null,
                     'model_number' => $lineData['model_number'] ?? null,
-                    'description' => $lineData['description'],
+                    'description' => $lineData['description'] ?? '',
                     'product_notes' => $lineData['product_notes'] ?? null,
                     'quantity' => $lineData['quantity'] ?? 0,
                     'unit_price' => $lineData['unit_price'] ?? 0,
                     'tax_rate' => $lineData['tax_rate'] ?? 0,
                     'discount_amount' => $lineData['discount_amount'] ?? 0,
-                ]);
+                ], $priced));
             }
         }
 
@@ -485,16 +565,21 @@ class QuotationController extends Controller
     {
         return DB::transaction(function () use ($quotation) {
             // Build SalesOrder lines from quotation lines
-            $salesLines = $quotation->lines->map(fn ($line) => [
+            // FR-5.5: quotation → SO is a CONVERSION — currency, rate
+            // snapshot and line prices propagate unchanged; nothing re-prices.
+            $salesLines = $quotation->lines->map(fn ($line) => array_filter([
                 'line_type' => $line->line_type ?? 'product',
                 'sequence' => $line->sequence ?? 0,
                 'product_id' => $line->product_id,
                 'description' => $line->description,
                 'quantity' => $line->quantity,
                 'unit_price' => $line->unit_price,
+                'price_mode' => 'carried',
+                'base_unit_price' => $line->base_unit_price,
+                'pricing_trace' => $line->pricing_trace,
                 'tax_rate' => $line->tax_rate,
                 'discount_amount' => $line->discount_amount,
-            ])->toArray();
+            ], fn ($v) => $v !== null))->toArray();
 
             // Resolve warehouse if needed
             $warehouseId = null;
@@ -520,6 +605,10 @@ class QuotationController extends Controller
                 'internal_reference' => $quotation->internal_reference,
                 'lines' => $salesLines,
                 'warehouse_id' => $warehouseId,
+                // FR-5.5: document currency + FX snapshot propagate verbatim.
+                'currency_code' => $quotation->currency_code,
+                'exchange_rate' => $quotation->exchange_rate,
+                'base_currency_code' => $quotation->base_currency_code,
             ]);
 
             // Confirm the SalesOrder
@@ -1049,7 +1138,12 @@ class QuotationController extends Controller
                                 $line['description'] = $product->name;
                             }
                             if ($unitPrice == 0) {
-                                $line['unit_price'] = (float) $product->price;
+                                // MRD pricelist-multicurrency FR-4.1/FR-6.6:
+                                // imports resolve through the same engine as
+                                // the editors (price list → tiers → catalogue)
+                                // instead of the flat catalog price.
+                                $line['unit_price'] = $this->resolveImportLinePrice($product, (float) ($line['quantity'] ?? 1), $customer->id);
+                                $line['price_mode'] = 'carried';
                             }
                         }
                     }
@@ -1109,10 +1203,30 @@ class QuotationController extends Controller
                     $createData['quotation_number'] = $importedNumber;
                 }
 
+                // FR-5.1/5.2: stamp the import's currency snapshot exactly
+                // like the interactive create path.
+                $importPricing = app(\App\Services\PricingService::class);
+                $importContext = $importPricing->documentContext([
+                    'customer_id' => $customer->id,
+                    'date' => $quotationDate,
+                ]);
+
+                $createData['currency_code'] = $importContext['document_currency'];
+                $createData['exchange_rate'] = $importContext['exchange_rate'];
+                $createData['base_currency_code'] = $importContext['base_currency'];
+
                 $quotation = Quotation::create($createData);
 
                 foreach ($lines as $line) {
-                    $quotation->lines()->create($line);
+                    $lineProduct = ($line['line_type'] ?? 'product') === 'product' && ! empty($line['product_id'])
+                        ? \App\Models\Product::find($line['product_id'])
+                        : null;
+
+                    $priced = $lineProduct
+                        ? $importPricing->priceLineArray($lineProduct, $line, $importContext, 'carried')
+                        : [];
+
+                    $quotation->lines()->create(array_merge($line, array_filter($priced, fn ($v) => $v !== null)));
                 }
 
                 $quotation->refresh();

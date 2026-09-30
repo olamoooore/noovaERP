@@ -10,6 +10,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { collectExpandableIds } from '@/lib/reportTree';
 
 export interface ReportTreeNode {
   id: string;
@@ -30,7 +31,15 @@ interface ComparisonHierarchyTableProps {
   currentLabel: string;
   compareLabel?: string;
   formatMoney: (value: number) => string;
+  /**
+   * Controlled collapse state. When both are provided the table renders no
+   * header controls of its own — the caller renders Expand/Collapse in the
+   * report header row (next to Excel/PDF/Word).
+   */
+  collapsed?: Set<string>;
+  onCollapsedChange?: (next: Set<string>) => void;
 }
+
 
 function variance(current: number, compare?: number) {
   if (compare === undefined) return null;
@@ -71,31 +80,24 @@ export function ComparisonHierarchyTable({
   currentLabel,
   compareLabel,
   formatMoney,
+  collapsed: controlledCollapsed,
+  onCollapsedChange,
 }: ComparisonHierarchyTableProps) {
-  // Row ids that are COLLAPSED — everything starts expanded.
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Row ids that are COLLAPSED — everything starts expanded. Controlled by
+  // the parent when it renders the header controls (report toolbar row).
+  const [internalCollapsed, setInternalCollapsed] = useState<Set<string>>(new Set());
+  const isControlled = controlledCollapsed !== undefined && onCollapsedChange !== undefined;
+  const collapsed = isControlled ? controlledCollapsed : internalCollapsed;
+  const setCollapsed = isControlled ? onCollapsedChange : setInternalCollapsed;
 
-  const toggle = (id: string) =>
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const toggle = (id: string) => {
+    const next = new Set(collapsed);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setCollapsed(next);
+  };
 
-  const expandableIds = useMemo(() => {
-    const ids: string[] = [];
-    const walk = (nodes: ReportTreeNode[]) => {
-      for (const n of nodes) {
-        if (n.children?.length) {
-          ids.push(n.id);
-          walk(n.children);
-        }
-      }
-    };
-    walk(roots);
-    return ids;
-  }, [roots]);
+  const expandableIds = useMemo(() => collectExpandableIds(roots), [roots]);
 
   const allCollapsed = expandableIds.length > 0 && expandableIds.every((id) => collapsed.has(id));
 
@@ -156,7 +158,7 @@ export function ComparisonHierarchyTable({
 
   return (
     <div className="space-y-2">
-      {expandableIds.length > 0 && (
+      {!isControlled && expandableIds.length > 0 && (
         <div className="flex justify-end gap-2">
           <Button
             size="sm"

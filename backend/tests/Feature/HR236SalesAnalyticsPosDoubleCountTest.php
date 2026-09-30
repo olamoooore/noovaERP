@@ -150,8 +150,6 @@ class HR236SalesAnalyticsPosDoubleCountTest extends TenantTestCase
         return $user;
     }
 
-
-
     // ─────────────────────────────────────────────────────────────────────
     // Issue #236: channel='pos' sales orders are counted via pos_orders only
     // ─────────────────────────────────────────────────────────────────────
@@ -165,6 +163,9 @@ class HR236SalesAnalyticsPosDoubleCountTest extends TenantTestCase
     {
         // A POS sale synced into sales_orders — pos_orders would hold the same
         // revenue in production; here the row alone must contribute nothing.
+        // 2026-09-28 refactor (9647a5cd): analytics revenue is LINE-based
+        // ("Same line-item base as getSalesByCategory…", matching the other
+        // widgets) — so the line_total must move with the header total.
         $posSynced = $this->createOrderFor($this->customerA);
         DB::table('sales_orders')->where('id', $posSynced->id)->update([
             'channel' => 'pos',
@@ -172,6 +173,7 @@ class HR236SalesAnalyticsPosDoubleCountTest extends TenantTestCase
             'total' => 100,
             'order_date' => now()->toDateString(),
         ]);
+        DB::table('sales_order_lines')->where('sales_order_id', $posSynced->id)->update(['line_total' => 100]);
 
         $adminOrder = $this->createOrderFor($this->customerB);
         DB::table('sales_orders')->where('id', $adminOrder->id)->update([
@@ -180,6 +182,7 @@ class HR236SalesAnalyticsPosDoubleCountTest extends TenantTestCase
             'total' => 50,
             'order_date' => now()->toDateString(),
         ]);
+        DB::table('sales_order_lines')->where('sales_order_id', $adminOrder->id)->update(['line_total' => 50]);
 
         $filter = new \Modules\FinancialReporting\DTOs\ReportFilter(
             startDate: now()->startOfDay(),

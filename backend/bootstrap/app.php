@@ -103,6 +103,18 @@ return Application::configure(basePath: dirname(__DIR__))
                     default => 500,
                 };
 
+                // Pricing/FX guards (MRD pricelist-multicurrency) carry
+                // accountant-actionable messages — surface them as 422 with
+                // the real text even outside debug mode.
+                if ($e instanceof \App\Exceptions\PricingException) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $e->getMessage(),
+                        'exception' => class_basename($e),
+                        'errors' => ['pricing' => [$e->getMessage()]],
+                    ], 422);
+                }
+
                 $payload = [
                     'success' => false,
                     'message' => config('app.debug') ? $e->getMessage() : 'An error occurred',

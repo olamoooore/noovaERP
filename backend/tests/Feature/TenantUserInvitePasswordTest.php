@@ -40,6 +40,21 @@ class TenantUserInvitePasswordTest extends TenantTestCase
         ]);
     }
 
+    /**
+     * User creation is platform-only since 2026-09-30; invitations in tests
+     * go through a platform superadmin (the only role the endpoint accepts).
+     */
+    private function makePlatformAdmin(): User
+    {
+        $user = User::factory()->create();
+
+        if ($user->role !== 'platform_super_admin') {
+            $user->assignAdminRole('platform_super_admin', null, 'TenantUserInvitePasswordTest');
+        }
+
+        return $user;
+    }
+
     private function makeMember(string $accessRole, string $spatieRole): User
     {
         $user = User::factory()->create();
@@ -60,11 +75,11 @@ class TenantUserInvitePasswordTest extends TenantTestCase
     public function test_invite_with_a_password_sets_it_and_skips_the_email(): void
     {
         Mail::fake();
-        $admin = $this->makeMember('admin', 'Admin');
+        $superadmin = $this->makePlatformAdmin();
 
         $email = 'invitee-'.uniqid().'@example.test';
 
-        $this->actingAs($admin, 'sanctum')
+        $this->actingAs($superadmin, 'sanctum')
             ->postJson('/api/v1/tenant-users', [
                 'email' => $email,
                 'name' => 'Invited Person',
@@ -83,11 +98,11 @@ class TenantUserInvitePasswordTest extends TenantTestCase
     public function test_invite_without_a_password_emails_a_set_password_link(): void
     {
         Mail::fake();
-        $admin = $this->makeMember('admin', 'Admin');
+        $superadmin = $this->makePlatformAdmin();
 
         $email = 'invitee-'.uniqid().'@example.test';
 
-        $this->actingAs($admin, 'sanctum')
+        $this->actingAs($superadmin, 'sanctum')
             ->postJson('/api/v1/tenant-users', [
                 'email' => $email,
                 'role' => 'viewer',
@@ -96,6 +111,22 @@ class TenantUserInvitePasswordTest extends TenantTestCase
             ->assertJsonPath('email_sent', true);
 
         Mail::assertSent(PasswordLinkMail::class);
+    }
+
+    public function test_tenant_admin_cannot_invite_users_directly(): void
+    {
+        Mail::fake();
+        $admin = $this->makeMember('admin', 'Admin');
+
+        $response = $this->actingAs($admin, 'sanctum')
+            ->postJson('/api/v1/tenant-users', [
+                'email' => 'blocked-'.uniqid().'@example.test',
+                'role' => 'viewer',
+            ]);
+
+        $response->assertForbidden();
+        $this->assertStringContainsString('Request new user', (string) $response->json('message'));
+        Mail::assertNothingSent();
     }
 
     public function test_admin_can_email_a_reset_link_to_a_member(): void

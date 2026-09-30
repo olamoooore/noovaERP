@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
+import pricingApi from '@/lib/pricingApi'
 import { Icon } from '@iconify/react'
 import { useNavigate } from 'react-router-dom'
 import { formatDate } from '@/lib/utils'
@@ -66,17 +67,28 @@ export function DeliveryOrdersPage() {
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('all')
+  // MRD FR-8.1: currency filter + currency sort.
+  const [currencyFilter, setCurrencyFilter] = useState('all')
+  const [sortBy, setSortBy] = useState<'date' | 'currency'>('date')
   const [tagFilter, setTagFilter] = useState('')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(20)
   const [hiddenDoColumns, setHiddenDoColumns] = useState<number[]>([])
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
 
+  const { data: filterCurrencies } = useQuery({
+    queryKey: ['currencies', 'sellable'],
+    queryFn: () => pricingApi.sellableCurrencies(),
+  })
+  const filterCurrencyRows: any[] = (filterCurrencies as any)?.data ?? filterCurrencies ?? []
+
   const { data: response, isLoading } = useQuery({
-    queryKey: ['delivery-orders', page, perPage, typeFilter, tagFilter, searchQuery],
+    queryKey: ['delivery-orders', page, perPage, typeFilter, currencyFilter, sortBy, tagFilter, searchQuery],
     queryFn: async () => {
       const params: any = { page, per_page: perPage }
       if (typeFilter !== 'all') params.type = typeFilter
+      if (currencyFilter !== 'all') params.currency_code = currencyFilter
+      if (sortBy === 'currency') params.sort_by = 'currency'
       if (searchQuery.trim()) params.search = searchQuery.trim()
       if (tagFilter) params.tag = tagFilter
       const res = await api.get('/sales/delivery-orders', { params })
@@ -241,7 +253,7 @@ export function DeliveryOrdersPage() {
           <CardTitle>Delivery Orders</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="mb-4 flex flex-wrap items-center gap-2">
+          <div className="mb-4 flex flex-wrap items-center gap-1.5 sm:flex-nowrap sm:overflow-x-auto">
             <div className="relative w-full sm:w-64">
               <Icon
                 icon="solar:magnifer-bold-duotone"
@@ -256,7 +268,7 @@ export function DeliveryOrdersPage() {
             </div>
 
             <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v); setPage(1) }}>
-              <SelectTrigger className="h-8 w-40 rounded-full text-xs">
+              <SelectTrigger className="h-8 w-32 rounded-full px-2.5 text-xs">
                 <SelectValue placeholder="All Types" />
               </SelectTrigger>
               <SelectContent>
@@ -266,8 +278,31 @@ export function DeliveryOrdersPage() {
               </SelectContent>
             </Select>
 
+            <Select value={currencyFilter} onValueChange={(v) => { setCurrencyFilter(v); setPage(1) }}>
+              <SelectTrigger className="h-8 w-28 rounded-full px-2.5 text-xs">
+                <SelectValue placeholder="All Currencies" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Currencies</SelectItem>
+                {filterCurrencyRows.map((currency: any) => (
+                  <SelectItem key={currency.code} value={currency.code}>{currency.code}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={sortBy} onValueChange={(v) => { setSortBy(v as 'date' | 'currency'); setPage(1) }}>
+              <SelectTrigger className="h-8 w-28 rounded-full px-2.5 text-xs">
+                <SelectValue placeholder="Sort" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="date">Newest</SelectItem>
+                <SelectItem value="currency">Currency</SelectItem>
+              </SelectContent>
+            </Select>
+
             <TagFilterSelect
-              className="h-8 w-36 rounded-full text-xs"
+              className="h-8 w-24 rounded-full text-xs"
+              placeholder="Tags"
               value={tagFilter}
               onChange={(value) => { setTagFilter(value); setPage(1) }}
             />

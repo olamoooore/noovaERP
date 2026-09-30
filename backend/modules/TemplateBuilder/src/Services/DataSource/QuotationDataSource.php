@@ -34,7 +34,11 @@ final class QuotationDataSource implements DataSourceContract
     {
         $q = $this->quotation ?? throw new \RuntimeException('Quotation not loaded.');
         $company = CompanyDataSource::forCurrentTenant();
-        $currencyCode = $company['currency_code'] ?? 'MYR';
+        // MRD FR-8.5: document currency primary; base equivalent secondary.
+        $companyCurrency = $company['currency_code'] ?? 'MYR';
+        $currencyCode = $q->currency_code ?: $companyCurrency;
+        $baseCurrencyCode = $q->base_currency_code ?: $companyCurrency;
+        $exchangeRate = $q->exchange_rate !== null ? (float) $q->exchange_rate : 1.0;
 
         $lines = [];
         $salesperson = $q->customer?->salesperson?->name ?? $q->salesperson ?? '';
@@ -121,9 +125,13 @@ final class QuotationDataSource implements DataSourceContract
                 'total' => (float) $q->total,
                 'paid' => 0.00,
                 'balance' => (float) $q->total,
+                'base_total' => round((float) ($q->total ?? 0) * $exchangeRate, 2),
+                'exchange_rate' => $exchangeRate,
             ],
             'meta' => [
                 'currency_code' => $currencyCode,
+                'base_currency_code' => $baseCurrencyCode,
+                'exchange_rate' => $exchangeRate,
                 'currency_symbol' => InvoiceDataSource::currencySymbol($currencyCode),
                 'number_format' => '1,234.56',
                 'locale' => 'en',

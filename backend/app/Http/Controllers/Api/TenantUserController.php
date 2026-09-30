@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
+use App\Services\TenantMemberService;
 use App\Services\TenantRoleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,6 +19,7 @@ class TenantUserController extends Controller
 {
     public function __construct(
         private readonly TenantRoleService $roleService,
+        private readonly TenantMemberService $members,
     ) {}
 
     /**
@@ -195,11 +197,13 @@ class TenantUserController extends Controller
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
-        // Only Owner and Admin can invite users
-        $currentRole = $this->roleService->getRole(\App\Http\Middleware\RequirePermission::resolveCentralUserId($currentUser), $tenantId);
-        if (! $currentRole || ! in_array($currentRole->value, UserRole::superRoles(), true)) {
+        // Tenant-side user creation is restricted to the NoovaERP platform
+        // team. Owners/admins raise a "Request new user" instead (see
+        // UserRequestController); the platform approves it in the
+        // SuperAdmin console, which calls the same TenantMemberService.
+        if (! $currentUser->isSuperAdmin()) {
             return response()->json([
-                'message' => 'You do not have permission to invite users.',
+                'message' => 'Creating users is reserved for the NoovaERP platform team. Use "Request new user" and the team will create the account.',
             ], 403);
         }
 
@@ -207,145 +211,32 @@ class TenantUserController extends Controller
             'email' => ['required', 'email', 'max:255'],
             'role' => ['required', 'string', Rule::in(UserRole::values())],
             'name' => ['nullable', 'string', 'max:255'],
-            // Two delivery modes: a set-password link by email (default) or a
-            // password the admin sets here and shares out-of-band.
             'password' => ['nullable', 'string', 'min:8', 'max:255'],
         ]);
 
-        $email = strtolower($validated['email']);
-        $role = $validated['role'];
-        $name = $validated['name'] ?? explode('@', $email)[0];
-        $providedPassword = $validated['password'] ?? null;
+        $result = $this->members->createOrAttachUser(
+            $tenantId,
+            (string) $validated['email'],
+            (string) $validated['role'],
+            $validated['name'] ?? null,
+            $validated['password'] ?? null,
+        );
 
-        // Look up existing user in public schema
-        $existingUser = DB::table('public.users')->where('email', $email)->first();
-
-        if ($existingUser) {
-            // Check if user already has access to this tenant
-            $alreadyHasAccess = DB::table('public.user_company_access')
-                ->where('user_id', $existingUser->id)
-                ->where('tenant_id', $tenantId)
-                ->exists();
-
-            if ($alreadyHasAccess) {
-                return response()->json([
-                    'message' => 'User is already a member of this workspace.',
-                ], 422);
-            }
-
-            DB::table('public.user_company_access')->insert([
-                'user_id' => $existingUser->id,
-                'tenant_id' => $tenantId,
-                'role' => $role,
-                'is_default' => false,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            $passwordSet = false;
-            $emailSent = null;
-
-            if ($providedPassword !== null) {
-                DB::table('public.users')->where('id', $existingUser->id)->update([
-                    'password' => \Illuminate\Support\Facades\Hash::make($providedPassword),
-                    'updated_at' => now(),
-                ]);
-                $this->revokeUserTokens((int) $existingUser->id);
-                $passwordSet = true;
-            } else {
-                // Existing account, newly granted workspace access: send a
-                // set-password link so they are not left guessing credentials.
-                $emailSent = $this->sendSetPasswordLink($existingUser->email, $existingUser->name, 'invite', $tenantId);
-            }
-
+        if (! ($result['success'] ?? false)) {
             return response()->json([
-                'message' => $passwordSet
-                    ? 'User added to workspace with the password you set.'
-                    : ($emailSent
-                        ? 'User added to workspace, and a set-password link was emailed.'
-                        : 'User added to the workspace, but the set-password email could not be sent. Use "Send password reset link" to retry.'),
-                'password_set' => $passwordSet,
-                'email_sent' => $emailSent,
-                'data' => [
-                    'id' => $existingUser->id,
-                    'name' => $existingUser->name,
-                    'email' => $existingUser->email,
-                    'role' => $role,
-                ],
-            ], 201);
+                'message' => $result['message'] ?? 'Unable to create the user.',
+            ], 422);
         }
-
-        // Create new central user
-        // Pillar 2 Part 1 §3.4 / Pillar 1 P0-0: previously this row wrote
-        // `'role' => 'platform_super_admin'` — combined with the column
-        // schema default of `'platform_super_admin'`, any
-        // tenant-admin could invite an not-previously-registered email
-        // and the resulting user would silently receive a global SuperAdmin
-        // bypass via RequirePermission's `$user->role === 'platform_super_admin'`
-        // check. Per the report, the fix is to never grant privileged
-        // roles via this flow; the role column is omitted entirely so
-        // it falls through to NULL (per migration 2026_08_26_000001)
-        // and `User::isSuperAdmin()` evaluates to false.
-        $tempPassword = $providedPassword ?? \Illuminate\Support\Str::random(16);
-        $newUserId = DB::table('public.users')->insertGetId([
-            'name' => $name,
-            'email' => $email,
-            'email_verified_at' => null,
-            'password' => \Illuminate\Support\Facades\Hash::make($tempPassword),
-            // 'role' intentionally NOT set — DO NOT add `'role' => 'platform_super_admin'`
-            // (or any other privileged value) here. Use
-            // `User::assignAdminRole()` from `AdminUserService` if a
-            // privileged role is genuinely required.
-            //
-            // 'is_active' intentionally NOT set — the central public.users
-            // table (per 2025_12_15_160000_create_central_users_table.php)
-            // does not have an is_active column. (The tenant-schema users
-            // table does, but the central one doesn't.) Setting it here
-            // would cause a QueryException.
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        DB::table('public.user_company_access')->insert([
-            'user_id' => $newUserId,
-            'tenant_id' => $tenantId,
-            'role' => $role,
-            'is_default' => true,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        // Deliver credentials: either the admin-set password (shared
-        // out-of-band) or a set-password link the new member uses to sign in.
-        // A mail outage must not roll back the membership, so failures are
-        // reported via `email_sent` instead of a 500.
-        if ($providedPassword !== null) {
-            return response()->json([
-                'message' => 'Member created with the password you set.',
-                'password_set' => true,
-                'email_sent' => null,
-                'data' => [
-                    'id' => $newUserId,
-                    'name' => $name,
-                    'email' => $email,
-                    'role' => $role,
-                ],
-            ], 201);
-        }
-
-        $emailSent = $this->sendSetPasswordLink($email, $name, 'invite', $tenantId);
 
         return response()->json([
-            'message' => $emailSent
-                ? 'Invitation sent. User created and added to workspace.'
-                : 'User added to the workspace, but the invitation email could not be sent. Use "Send password reset link" to retry.',
-            'password_set' => false,
-            'email_sent' => $emailSent,
+            'message' => $result['message'],
+            'password_set' => $result['password_set'] ?? false,
+            'email_sent' => $result['email_sent'] ?? null,
             'data' => [
-                'id' => $newUserId,
-                'name' => $name,
-                'email' => $email,
-                'role' => $role,
+                'id' => $result['user_id'],
+                'name' => $result['name'],
+                'email' => $result['email'],
+                'role' => $result['role'],
             ],
         ], 201);
     }
@@ -535,7 +426,7 @@ class TenantUserController extends Controller
             return response()->json(['message' => 'User not found.'], 404);
         }
 
-        $emailSent = $this->sendSetPasswordLink($user->email, $user->name, 'reset', $this->resolveTenantId($request));
+        $emailSent = $this->members->sendSetPasswordLink($user->email, $user->name, 'reset', $this->resolveTenantId($request));
 
         return response()->json([
             'message' => $emailSent
@@ -572,7 +463,7 @@ class TenantUserController extends Controller
             'updated_at' => now(),
         ]);
 
-        $this->revokeUserTokens($id);
+        $this->members->revokeUserTokens($id);
 
         return response()->json(['message' => 'Password updated. The member will need to sign in again.']);
     }
@@ -605,47 +496,6 @@ class TenantUserController extends Controller
         }
 
         return null;
-    }
-
-    /**
-     * Issue + email a set-password link. Never throws — a mail failure is a
-     * reported state, not a failed membership change.
-     */
-    private function sendSetPasswordLink(string $email, ?string $name, string $variant, ?string $tenantId): bool
-    {
-        try {
-            $linkService = app(\App\Services\PasswordLinkService::class);
-            $token = $linkService->issue($email);
-            $linkService->send($email, $name, $token, $variant, tenant('name'));
-
-            return true;
-        } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('Tenant member password link failed to send', [
-                'email' => $email,
-                'tenant_id' => $tenantId,
-                'variant' => $variant,
-                'error' => $e->getMessage(),
-            ]);
-
-            return false;
-        }
-    }
-
-    /**
-     * Drop the member's Sanctum tokens so a password change ends old sessions.
-     */
-    private function revokeUserTokens(int $userId): void
-    {
-        try {
-            DB::table('public.personal_access_tokens')
-                ->where('tokenable_id', $userId)
-                ->delete();
-        } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::debug('Token revoke after password change failed', [
-                'user_id' => $userId,
-                'error' => $e->getMessage(),
-            ]);
-        }
     }
 
     private function resolveTenantId(Request $request): ?string

@@ -38,6 +38,8 @@ interface LineItem {
   quantity: number
   unit: string
   unit_price: number | null
+  // MRD pricelist-multicurrency FR-6.2/6.3: server-side list resolution.
+  price_mode?: 'auto' | 'manual' | 'carried'
   lot_number: string
   serial_number?: string
   product_batch_id?: number | null
@@ -198,7 +200,7 @@ export function DeliveryOrderEditPage() {
   }
   const addNote = () => setLines((prev) => [...prev, { line_type: 'note', product_id: null, product_name: '', model_number: '', description: '', product_notes: '', patient_name: '', quantity: 0, unit: '', unit_price: null, lot_number: '', expiry_date: '' }])
   const addSection = () => setLines((prev) => [...prev, { line_type: 'section', product_id: null, product_name: '', model_number: '', description: '', product_notes: '', patient_name: '', quantity: 0, unit: '', unit_price: null, lot_number: '', expiry_date: '' }])
-  const addCatalogProducts = (selected: Array<{ product: any; quantity: number }>) => setLines((prev) => [...prev, ...selected.map(({ product, quantity }) => ({ line_type: 'product' as const, product_id: product.id, product_name: product.name || '', model_number: '', description: product.name || '', product_notes: '', patient_name: '', quantity, unit: product.unit || 'pcs', unit_price: Number(product.price || 0), lot_number: '', expiry_date: '' }))])
+  const addCatalogProducts = (selected: Array<{ product: any; quantity: number }>) => setLines((prev) => [...prev, ...selected.map(({ product, quantity }) => ({ line_type: 'product' as const, product_id: product.id, product_name: product.name || '', model_number: '', description: product.name || '', product_notes: '', patient_name: '', quantity, unit: product.unit || 'pcs', unit_price: Number(product.price || 0), price_mode: 'auto' as const, lot_number: '', expiry_date: '' }))])
 
   const removeLine = (index: number) => {
     setLines((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev))
@@ -265,6 +267,7 @@ export function DeliveryOrderEditPage() {
         quantity_delivered: l.quantity,
         unit: l.unit,
         unit_price: l.unit_price || undefined,
+        price_mode: l.price_mode || undefined,
         lot_number: l.lot_number || undefined,
         serial_number: l.serial_number || undefined,
         product_batch_id: l.product_batch_id || undefined,
@@ -495,6 +498,7 @@ export function DeliveryOrderEditPage() {
                           updateLine(idx, 'model_number', (product as any).manufacturer_part_number || (productChanged ? '' : line.model_number))
                           if (productChanged || !line.unit_price) {
                             updateLine(idx, 'unit_price', parseFloat((product as any).price || (product as any).selling_price || '0') || null)
+                          updateLine(idx, 'price_mode', 'auto' as any)
                           }
                           if (productChanged || !line.unit || line.unit === 'pcs') {
                             updateLine(idx, 'unit', (product as any).unit || line.unit)

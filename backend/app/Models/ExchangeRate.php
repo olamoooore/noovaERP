@@ -43,7 +43,14 @@ class ExchangeRate extends Model
     }
 
     /**
-     * Get the latest rate for a currency pair
+     * Get the latest rate for a currency pair.
+     *
+     * MRD pricelist-multicurrency FR-1.3/FR-1.4: selection is "latest
+     * effective_date ≤ asOfDate", with a deterministic tie-break — manual
+     * rows win over api/auto rows for the same date, then newest id. Without
+     * this ordering two rows for the same pair+date returned whichever row
+     * Postgres happened to yield first, silently letting an overnight API
+     * sync hide a hand-verified rate.
      */
     public static function getLatestRate(string $fromCurrency, string $toCurrency, $asOfDate = null)
     {
@@ -54,7 +61,35 @@ class ExchangeRate extends Model
             $query->where('effective_date', '<=', $asOfDate);
         }
 
-        return $query->orderBy('effective_date', 'desc')->first();
+        return static::applyManualPriority($query)
+            ->first();
+    }
+
+    /**
+     * Earliest rate AFTER the cutoff restricted to manual rows — the only
+     * future-dated fallback the MRD allows (FR-9.2: future rates may be used
+     * solely when explicitly entered, never an API row).
+     */
+    public static function getEarliestManualRateAfter(string $fromCurrency, string $toCurrency, $asOfDate): ?self
+    {
+        return static::where('from_currency', $fromCurrency)
+            ->where('to_currency', $toCurrency)
+            ->where('source', 'manual')
+            ->where('effective_date', '>', $asOfDate)
+            ->orderBy('effective_date', 'asc')
+            ->orderBy('id', 'desc')
+            ->first();
+    }
+
+    /**
+     * Shared ordering: newest date → manual first → newest id (FR-1.4).
+     */
+    public static function applyManualPriority($query)
+    {
+        return $query
+            ->orderBy('effective_date', 'desc')
+            ->orderByRaw("(CASE WHEN source = 'manual' THEN 0 ELSE 1 END) ASC")
+            ->orderBy('id', 'desc');
     }
 
     /**
@@ -80,8 +115,9 @@ class ExchangeRate extends Model
      */
     public function scopeForDate($query, $date)
     {
-        return $query->where('effective_date', '<=', $date)
-            ->orderBy('effective_date', 'desc');
+        return static::applyManualPriority(
+            $query->where('effective_date', '<=', $date)
+        );
     }
 
     /**

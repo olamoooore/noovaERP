@@ -227,6 +227,23 @@ class InitializeTenantForPublicAccess
             || str_starts_with($path, 'api/v1/website-public/events');
     }
 
+    /**
+     * FR-PLAT-03 servability gate: platform subdomains (system-controlled
+     * zone, dns_status verified at insert) always serve; custom domains
+     * only serve once their TXT ownership proof succeeded.
+     */
+    private function domainServable(object $domain): bool
+    {
+        // Null-coalescing keeps pre-migration databases behaving exactly as
+        // before (platform semantics) instead of failing closed everywhere;
+        // once the onboarding columns exist the real values decide.
+        if (($domain->type ?? 'platform') === 'platform') {
+            return true;
+        }
+
+        return ($domain->dns_status ?? 'verified') === 'verified';
+    }
+
     private function resolveTenantFromHost(?string $host): ?\App\Models\Tenant
     {
         if (! $host) {
@@ -236,7 +253,7 @@ class InitializeTenantForPublicAccess
         try {
             $domain = DB::table('public.domains')->where('domain', $host)->first();
 
-            if ($domain) {
+            if ($domain && $this->domainServable($domain)) {
                 $tenant = \App\Models\Tenant::find($domain->tenant_id);
                 if ($tenant) {
                     Log::info('InitializeTenantForPublicAccess: Tenant from domain', [
@@ -246,6 +263,17 @@ class InitializeTenantForPublicAccess
 
                     return $tenant;
                 }
+            } elseif ($domain) {
+                // FR-PLAT-03: a custom domain row exists but is not yet
+                // DNS-verified — fail closed (do NOT resolve, do NOT fall
+                // through to another tenant), otherwise an unverified claim
+                // could hijack a host the tenant does not control.
+                Log::warning('InitializeTenantForPublicAccess: unverified custom domain rejected', [
+                    'domain' => $host,
+                    'dns_status' => $domain->dns_status,
+                ]);
+
+                return null;
             }
 
             // Try subdomain resolution: demo.localhost -> look for tenant with exact ID match

@@ -1,15 +1,24 @@
 import { useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ReportViewer } from '@/components/reports/ReportViewer';
 import { CompactReportFilters } from '@/components/reports/CompactReportFilters';
+import { StatCard } from '@/components/ui/stat-card';
 import { ReportTable, Column } from '@/components/reports/ReportTable';
 import { useReportAutoRefresh } from '@/hooks/useReportAutoRefresh';
 import reportApi from '@/lib/reportApi';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { ReportFilters as ReportFiltersType } from '@/types/reports';
+
+/** Quantities read as 50, 1,320, 0.5 — not 50.0000. */
+const formatQty = (value: unknown): string => {
+  const num = Number(value ?? 0)
+  if (!Number.isFinite(num)) return '0'
+  return num.toLocaleString(undefined, { maximumFractionDigits: 4 })
+}
 
 export function InventoryReportsPage() {
   const [activeTab, setActiveTab] = useState('valuation');
@@ -99,6 +108,10 @@ export function InventoryReportsPage() {
       label: 'Product',
       sortable: true,
       filterable: true,
+      format: (value: any, row: any) =>
+        row?.product_id
+          ? <Link to={`/products/${row.product_id}`} className="font-medium hover:underline">{value}</Link>
+          : value,
     },
     {
       key: 'sku',
@@ -153,6 +166,10 @@ export function InventoryReportsPage() {
       label: 'Product',
       sortable: true,
       filterable: true,
+      format: (value: any, row: any) =>
+        row?.product_id
+          ? <Link to={`/products/${row.product_id}`} className="font-medium hover:underline">{value}</Link>
+          : value,
     },
     {
       key: 'sku',
@@ -167,10 +184,10 @@ export function InventoryReportsPage() {
       filterable: true,
       format: (value) => (
         <span
-          className={`px-2 py-1 rounded text-xs font-medium ${
+          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
             value === 'IN' || value === 'PURCHASE' || value === 'ADJUSTMENT_IN'
-              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-              : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+              : 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
           }`}
         >
           {value}
@@ -182,11 +199,16 @@ export function InventoryReportsPage() {
       label: 'Quantity',
       sortable: true,
       align: 'right',
-      format: (value) => (
-        <span className={value > 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
-          {value > 0 ? '+' : ''}{value}
-        </span>
-      ),
+      format: (value, row) => {
+        // Store quantities are always positive; direction lives in the
+        // movement's signed effect (type / adjustment delta).
+        const delta = Number(row.effective_quantity ?? value ?? 0)
+        return (
+          <span className={delta >= 0 ? 'text-green-600 font-medium tabular-nums' : 'text-red-600 font-medium tabular-nums'}>
+            {delta > 0 ? '+' : ''}{formatQty(delta)}
+          </span>
+        )
+      },
     },
     {
       key: 'running_balance',
@@ -194,7 +216,7 @@ export function InventoryReportsPage() {
       sortable: true,
       align: 'right',
       format: (value) => (
-        <span className="font-semibold">{value}</span>
+        <span className="font-semibold tabular-nums">{formatQty(value)}</span>
       ),
     },
     {
@@ -218,6 +240,10 @@ export function InventoryReportsPage() {
       label: 'Product',
       sortable: true,
       filterable: true,
+      format: (value: any, row: any) =>
+        row?.product_id
+          ? <Link to={`/products/${row.product_id}`} className="font-medium hover:underline">{value}</Link>
+          : value,
     },
     {
       key: 'sku',
@@ -230,23 +256,31 @@ export function InventoryReportsPage() {
       label: 'Current Stock',
       sortable: true,
       align: 'right',
-      format: (value, row) => (
-        <span
-          className={
-            value <= row.reorder_level
-              ? 'text-red-600 font-semibold'
-              : 'text-gray-900 dark:text-gray-100'
-          }
-        >
-          {value}
-        </span>
-      ),
+      format: (value, row) => {
+        const threshold = Number(row.effective_threshold ?? row.reorder_level ?? 10)
+        return (
+          <span
+            className={
+              Number(value) <= threshold
+                ? 'text-red-600 font-semibold tabular-nums'
+                : 'text-gray-900 dark:text-gray-100 tabular-nums'
+            }
+          >
+            {formatQty(value)}
+          </span>
+        )
+      },
     },
     {
-      key: 'reorder_level',
+      key: 'effective_threshold',
       label: 'Reorder Level',
       sortable: true,
       align: 'right',
+      format: (value, row) => (
+        <span className="tabular-nums" title={row.reorder_level == null ? 'Platform default / stock-level minimum' : undefined}>
+          {formatQty(value ?? row.reorder_level ?? 10)}
+        </span>
+      ),
     },
     {
       key: 'suggested_quantity',
@@ -254,7 +288,7 @@ export function InventoryReportsPage() {
       sortable: true,
       align: 'right',
       format: (value) => (
-        <span className="font-semibold text-blue-600">{value}</span>
+        <span className="font-semibold text-blue-600 tabular-nums">{formatQty(value)}</span>
       ),
     },
     {
@@ -279,6 +313,10 @@ export function InventoryReportsPage() {
       label: 'Product',
       sortable: true,
       filterable: true,
+      format: (value: any, row: any) =>
+        row?.product_id
+          ? <Link to={`/products/${row.product_id}`} className="font-medium hover:underline">{value}</Link>
+          : value,
     },
     {
       key: 'sku',
@@ -301,13 +339,13 @@ export function InventoryReportsPage() {
         <span
           className={
             value > 90
-              ? 'text-red-600 font-semibold'
+              ? 'text-rose-600 font-semibold dark:text-rose-400'
               : value > 60
-                ? 'text-orange-600 font-semibold'
-                : 'text-gray-900 dark:text-gray-100'
+                ? 'text-orange-600 font-semibold dark:text-orange-400'
+                : 'text-foreground'
           }
         >
-          {value}
+          {Math.round(Number(value))}
         </span>
       ),
     },
@@ -353,6 +391,10 @@ export function InventoryReportsPage() {
       label: 'Product',
       sortable: true,
       filterable: true,
+      format: (value: any, row: any) =>
+        row?.product_id
+          ? <Link to={`/products/${row.product_id}`} className="font-medium hover:underline">{value}</Link>
+          : value,
     },
     {
       key: 'category',
@@ -365,14 +407,14 @@ export function InventoryReportsPage() {
       label: 'Turnover Ratio',
       sortable: true,
       align: 'right',
-      format: (value) => value.toFixed(2),
+      format: (value) => <span className="tabular-nums">{Number(value).toFixed(2)}</span>,
     },
     {
       key: 'days_in_inventory',
       label: 'Days in Inventory',
       sortable: true,
       align: 'right',
-      format: (value) => Math.round(value),
+      format: (value) => <span className="tabular-nums">{Math.round(Number(value))}</span>,
     },
     {
       key: 'classification',
@@ -381,13 +423,14 @@ export function InventoryReportsPage() {
       filterable: true,
       format: (value) => {
         const colors: Record<string, string> = {
-          fast: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-          medium: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-          slow: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+          fast: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300',
+          medium: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300',
+          slow: 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300',
+          no_movement: 'bg-muted text-muted-foreground',
         };
         return (
-          <span className={`px-2 py-1 rounded text-xs font-medium ${colors[value] || ''}`}>
-            {value.toUpperCase()}
+          <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium ${colors[value] || 'bg-muted text-muted-foreground'}`}>
+            {String(value).replace(/_/g, ' ').toUpperCase()}
           </span>
         );
       },
@@ -562,53 +605,43 @@ const valuationTotal = Number(valuationData?.total_value ?? 0);
               <div className="space-y-6">
                 {/* Summary Cards */}
                 {movementData?.summary && (
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                    <Card className="p-4">
-                      <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                        Opening Balance
-                      </div>
-                      <div className="text-2xl font-bold">
-                        {movementData.summary.opening_balance ?? 0}
-                      </div>
-                    </Card>
-                    <Card className="p-4 bg-green-50 dark:bg-green-900/20">
-                      <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                        Total In
-                      </div>
-                      <div className="text-2xl font-bold text-green-600">
-                        +{movementData.summary.total_in ?? 0}
-                      </div>
-                    </Card>
-                    <Card className="p-4 bg-red-50 dark:bg-red-900/20">
-                      <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                        Total Out
-                      </div>
-                      <div className="text-2xl font-bold text-red-600">
-                        -{movementData.summary.total_out ?? 0}
-                      </div>
-                    </Card>
-                    <Card className="p-4 bg-blue-50 dark:bg-blue-900/20">
-                      <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                        Net Change
-                      </div>
-                      <div className={`text-2xl font-bold ${
-                        (movementData.summary.net_change ?? 0) >= 0 
-                          ? 'text-green-600' 
-                          : 'text-red-600'
-                      }`}>
-                        {(movementData.summary.net_change ?? 0) >= 0 ? '+' : ''}
-                        {movementData.summary.net_change ?? 0}
-                      </div>
-                    </Card>
-                    <Card className="p-4">
-                      <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                        Closing Balance
-                      </div>
-                      <div className="text-2xl font-bold">
-                        {movementData.summary.closing_balance ?? 0}
-                      </div>
-                    </Card>
-                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                  <StatCard
+                    label="Opening Balance"
+                    value={formatQty(movementData.summary.opening_balance ?? 0)}
+                    hint="Start of period"
+                    icon="solar:archive-minimalistic-bold-duotone"
+                  />
+                  <StatCard
+                    label="Total In"
+                    value={`+${formatQty(movementData.summary.total_in ?? 0)}`}
+                    hint="Stock received"
+                    icon="solar:download-minimalistic-bold-duotone"
+                    tone="bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400"
+                  />
+                  <StatCard
+                    label="Total Out"
+                    value={`-${formatQty(movementData.summary.total_out ?? 0)}`}
+                    hint="Stock issued"
+                    icon="solar:upload-minimalistic-bold-duotone"
+                    tone="bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400"
+                  />
+                  <StatCard
+                    label="Net Change"
+                    value={`${(movementData.summary.net_change ?? 0) >= 0 ? '+' : ''}${formatQty(movementData.summary.net_change ?? 0)}`}
+                    hint={(movementData.summary.net_change ?? 0) >= 0 ? 'Net increase' : 'Net decrease'}
+                    icon={(movementData.summary.net_change ?? 0) >= 0 ? 'solar:graph-up-bold-duotone' : 'solar:graph-down-bold-duotone'}
+                    tone={(movementData.summary.net_change ?? 0) >= 0
+                      ? 'bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400'
+                      : 'bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400'}
+                  />
+                  <StatCard
+                    label="Closing Balance"
+                    value={formatQty(movementData.summary.closing_balance ?? 0)}
+                    hint="End of period"
+                    icon="solar:clipboard-check-bold-duotone"
+                  />
+                </div>
                 )}
 
                 {/* Movement Table */}
@@ -652,25 +685,20 @@ const valuationTotal = Number(valuationData?.total_value ?? 0);
             {reorderData && (
               <div className="space-y-6">
                 {(reorderData?.items ?? []).length === 0 ? (
-                  <Card className="p-8 text-center">
-                    <Icon
-                      icon="solar:check-circle-bold"
-                      className="h-16 w-16 mx-auto mb-4 text-green-500"
-                    />
-                    <h3 className="text-lg font-semibold mb-2">All Stock Levels Good</h3>
-                    <p className="text-gray-600 dark:text-gray-400">
-                      No products are currently below their reorder level
+                  <div className="flex flex-col items-center gap-2 rounded-xl border bg-card px-6 py-16 text-center">
+                    <Icon icon="solar:check-circle-bold-duotone" className="h-12 w-12 text-emerald-500/70" />
+                    <h3 className="mt-2 text-base font-semibold">All stock levels good</h3>
+                    <p className="text-sm text-muted-foreground">
+                      No products are currently below their reorder level.
                     </p>
-                  </Card>
+                  </div>
                 ) : (
                   <>
-                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-                      <div className="flex items-center gap-2">
-                        <Icon icon="solar:danger-triangle-bold" className="h-5 w-5 text-yellow-600" />
-                        <span className="font-semibold text-yellow-800 dark:text-yellow-200">
-                          {(reorderData?.items ?? []).length} product(s) need reordering
-                        </span>
-                      </div>
+                    <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-900 dark:bg-amber-950/40">
+                      <Icon icon="solar:danger-triangle-bold-duotone" className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                      <span className="text-sm font-medium text-amber-900 dark:text-amber-200">
+                        {(reorderData?.items ?? []).length} product{(reorderData?.items ?? []).length === 1 ? '' : 's'} need reordering
+                      </span>
                     </div>
                     <ReportTable
                       columns={reorderColumns}
@@ -700,20 +728,49 @@ const valuationTotal = Number(valuationData?.total_value ?? 0);
             {agingData && (
               <div className="space-y-6">
                 {/* Age Bucket Summary */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  {Object.entries(agingData?.by_age_bucket ?? {}).map(([bucket, data]) => (
-                    <Card key={bucket} className="p-4">
-                      <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                        {bucket} days
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  {Object.entries(agingData?.by_age_bucket ?? {}).map(([bucket, data]) => {
+                    const tones: Record<string, { tile: string; badge: string; value: string }> = {
+                      '0-30': {
+                        tile: 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-900 dark:bg-emerald-950/30',
+                        badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300',
+                        value: 'text-emerald-700 dark:text-emerald-300',
+                      },
+                      '31-60': {
+                        tile: 'border-amber-200 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/30',
+                        badge: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300',
+                        value: 'text-amber-700 dark:text-amber-300',
+                      },
+                      '61-90': {
+                        tile: 'border-orange-200 bg-orange-50/50 dark:border-orange-900 dark:bg-orange-950/30',
+                        badge: 'bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300',
+                        value: 'text-orange-700 dark:text-orange-300',
+                      },
+                      '90+': {
+                        tile: 'border-rose-200 bg-rose-50/50 dark:border-rose-900 dark:bg-rose-950/30',
+                        badge: 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300',
+                        value: 'text-rose-700 dark:text-rose-300',
+                      },
+                    };
+                    const tone = tones[bucket] ?? {
+                      tile: 'border-slate-200 bg-card dark:border-slate-800',
+                      badge: 'bg-muted text-muted-foreground',
+                      value: 'text-foreground',
+                    };
+                    return (
+                      <div key={bucket} className={`rounded-xl border p-4 ${tone.tile}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm text-muted-foreground">{bucket} days</p>
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium tabular-nums ${tone.badge}`}>
+                            {formatQty((data as any).quantity)} units
+                          </span>
+                        </div>
+                        <p className={`mt-2 text-2xl font-bold tabular-nums ${tone.value}`}>
+                          {formatCurrency((data as any).value)}
+                        </p>
                       </div>
-                      <div className="text-2xl font-bold mb-1">
-                        {(data as any).quantity} units
-                      </div>
-                      <div className="text-sm font-medium text-blue-600">
-                        {formatCurrency((data as any).value)}
-                      </div>
-                    </Card>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* Aging Table */}
@@ -726,14 +783,20 @@ const valuationTotal = Number(valuationData?.total_value ?? 0);
                 />
 
                 {/* Total Carrying Cost */}
-                <Card className="p-6 bg-gray-50 dark:bg-gray-800">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xl font-bold">Total Carrying Cost:</span>
-                    <span className="text-2xl font-bold text-orange-600">
-                      {formatCurrency(agingData?.total_carrying_cost ?? 0)}
-                    </span>
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-5 py-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400">
+                      <Icon icon="solar:hourglass-bold-duotone" className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">Total carrying cost</p>
+                      <p className="text-xs text-muted-foreground">Cost of holding the aged stock above</p>
+                    </div>
                   </div>
-                </Card>
+                  <span className="text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400">
+                    {formatCurrency(agingData?.total_carrying_cost ?? 0)}
+                  </span>
+                </div>
               </div>
             )}
           </ReportViewer>
@@ -753,23 +816,21 @@ const valuationTotal = Number(valuationData?.total_value ?? 0);
             {turnoverData && (
               <div className="space-y-6">
                 {/* Summary Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Card className="p-6">
-                    <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                      Average Turnover Ratio
-                    </div>
-                    <div className="text-3xl font-bold text-blue-600">
-                      {(turnoverData?.average_turnover ?? 0).toFixed(2)}x
-                    </div>
-                  </Card>
-                  <Card className="p-6">
-                    <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                      Average Days in Inventory
-                    </div>
-                    <div className="text-3xl font-bold text-purple-600">
-                      {Math.round(turnoverData?.average_days ?? 0)} days
-                    </div>
-                  </Card>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <StatCard
+                    label="Average Turnover Ratio"
+                    value={`${(turnoverData?.average_turnover ?? 0).toFixed(2)}x`}
+                    hint="Higher is faster-moving stock"
+                    icon="solar:refresh-circle-bold-duotone"
+                    tone="bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400"
+                  />
+                  <StatCard
+                    label="Average Days in Inventory"
+                    value={`${Math.round(turnoverData?.average_days ?? 0)} days`}
+                    hint="Lower is faster-moving stock"
+                    icon="solar:calendar-minimalistic-bold-duotone"
+                    tone="bg-violet-100 text-violet-600 dark:bg-violet-950/60 dark:text-violet-400"
+                  />
                 </div>
 
                 {/* Turnover Table */}

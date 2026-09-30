@@ -5,9 +5,6 @@ namespace App\Services;
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\DomainPostingLine;
 use App\Accounting\DTOs\DomainPostingRequest;
-use App\Accounting\DTOs\PostingRequest;
-use App\Accounting\DTOs\PostingRequestLine;
-use App\Models\BankAccount;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\SettlementAuditLog;
@@ -80,6 +77,38 @@ class InvoiceService
                 );
             }
 
+            // FR-5.1: when no snapshot reached the creator (legacy callers,
+            // API-origin paths), stamp one now from the document's currency +
+            // date. A same-currency stamp is rate 1 — byte-identical to the
+            // pre-feature behaviour.
+            if (empty($data['currency_code'])) {
+                $data['currency_code'] = \App\Services\DocumentCurrencyResolver::defaultCurrencyFor(
+                    $data['customer_id'] ?? null,
+                    null
+                );
+            }
+            if (empty($data['base_currency_code'])) {
+                $data['base_currency_code'] = \App\Services\DocumentCurrencyResolver::baseFor(null, $data['customer_id'] ?? null);
+            }
+            if (($data['exchange_rate'] ?? null) === null) {
+                $data['exchange_rate'] = $data['currency_code'] === $data['base_currency_code']
+                    ? 1.000000
+                    : (function () use ($data) {
+                        try {
+                            return \App\Services\DocumentCurrencyResolver::snapshot(
+                                $data['currency_code'],
+                                $data['customer_id'] ?? null,
+                                null,
+                                isset($data['invoice_date']) ? \Illuminate\Support\Carbon::parse($data['invoice_date'])->toDateString() : now()->toDateString()
+                            )['exchange_rate'];
+                        } catch (\App\Exceptions\PricingException) {
+                            // Drafts may be created without a rate; posting
+                            // blocks separately (FR-1.5 / AC-3).
+                            return null;
+                        }
+                    })();
+            }
+
             $invoice = Invoice::create($data);
 
             foreach ($lines as $lineIndex => $lineData) {
@@ -99,6 +128,10 @@ class InvoiceService
                     'expiry_date' => $lineData['expiry_date'] ?? null,
                     'quantity' => $lineData['quantity'] ?? 0,
                     'unit_price' => $lineData['unit_price'] ?? 0,
+                    // MRD pricelist-multicurrency FR-5.3: provenance columns
+                    // propagate from the SO line through the creation token.
+                    'base_unit_price' => $lineData['base_unit_price'] ?? null,
+                    'pricing_trace' => $lineData['pricing_trace'] ?? null,
                     'tax_rate' => $lineData['tax_rate'] ?? 0,
                     'discount_amount' => $lineData['discount_amount'] ?? 0,
                 ]);
@@ -185,36 +218,66 @@ class InvoiceService
                 ]);
             }
 
+            // ── MRD pricelist-multicurrency FR-5.7/FR-7.1/AC-3 ───────────
+            // Posting converts the DOCUMENT amounts at the invoice's SNAPSHOT
+            // rate — never today's rate (FR-7.1). Missing snapshot → resolve
+            // at the invoice date and persist; still missing → BLOCK the
+            // posting with a distinct error so the invoice stays draft and no
+            // journal rows are written (AC-3).
+            $docCurrency = strtoupper((string) ($invoice->currency_code ?: \App\Services\DocumentCurrencyResolver::resolve()));
+            $baseCurrency = strtoupper((string) ($invoice->base_currency_code
+                ?: \App\Services\DocumentCurrencyResolver::baseFor(
+                    $invoice->salesOrder?->legal_entity_id,
+                    $invoice->customer_id
+                )));
+            $foreign = $docCurrency !== $baseCurrency;
+
+            $fxRate = $invoice->exchange_rate !== null ? (float) $invoice->exchange_rate : null;
+
+            if (! $foreign) {
+                $fxRate = 1.0;
+            } elseif ($fxRate === null || $fxRate <= 0) {
+                $snapshot = \App\Services\DocumentCurrencyResolver::snapshot(
+                    $docCurrency,
+                    $invoice->customer_id,
+                    $invoice->salesOrder?->legal_entity_id,
+                    $invoice->invoice_date->toDateString()
+                );
+                $fxRate = (float) $snapshot['exchange_rate'];
+                $baseCurrency = strtoupper((string) $snapshot['base_currency_code']);
+                $invoice->update([
+                    'exchange_rate' => $fxRate,
+                    'base_currency_code' => $baseCurrency,
+                ]);
+            }
+
+            // §9.3: base = round(document amount × snapshot rate, 2).
+            $toBase = static fn (float $docAmount): float => $foreign
+                ? round($docAmount * $fxRate, 2)
+                : round($docAmount, 2);
+
             // ── Build business-value lines (ACC-RM-001: profile-resolved) ──
             // Operational domains may not submit unrestricted DR/CR lines
             // (ADR-005 §12). Invoice submits account-role + amount business
-            // values; PostingPolicyMapper resolves directions from the
-            // versioned AR_INVOICE_POST posting profile.
+            // values in BASE currency; currency_code/original_amount/
+            // exchange_rate carry the foreign side for dual display (FR-5.7).
             $lines = [];
 
             // Accounts Receivable (total) → profile direction: debit
             $lines[] = new DomainPostingLine(
                 accountRole: 'accounts_receivable',
-                amount: (float) $invoice->total,
-                description: "Invoice {$invoice->invoice_number}",
+                amount: $toBase((float) $invoice->total),
+                currencyCode: $foreign ? $baseCurrency : null,
+                originalAmount: $foreign ? round((float) $invoice->total, 2) : null,
+                exchangeRate: $foreign ? $fxRate : null,
+                description: "Invoice {$invoice->invoice_number}".($foreign ? " ({$invoice->total} {$docCurrency} @ {$fxRate})" : ''),
             );
 
             // Sales Revenue (subtotal minus discount) → profile direction: credit
             $salesRevenue = (float) $invoice->subtotal - (float) $invoice->discount_amount;
-            $lines[] = new DomainPostingLine(
-                accountRole: 'sales_revenue',
-                amount: $salesRevenue,
-                description: "Sales - Invoice {$invoice->invoice_number}",
-            );
 
             // Shipping Revenue (if shipping cost > 0) → profile direction: credit
-            if ((float) $invoice->shipping_cost > 0) {
-                $lines[] = new DomainPostingLine(
-                    accountRole: 'shipping_revenue',
-                    amount: (float) $invoice->shipping_cost,
-                    description: "Shipping - Invoice {$invoice->invoice_number}",
-                );
-            }
+            $shippingBase = (float) $invoice->shipping_cost > 0 ? $toBase((float) $invoice->shipping_cost) : 0.0;
 
             // Sales Tax Payable → profile direction: credit; keeps tax-code evidence.
             // MRD TAX-REQ-07: one credit line per determined tax_code (multi-rate
@@ -222,19 +285,69 @@ class InvoiceService
             // correct taxable base), while the invoice's booked tax total is
             // preserved exactly so the journal stays balanced.
             $bookedTax = round((float) $invoice->tax_amount, 2);
+            $taxBaseTotal = 0.0;
+            $taxLines = [];
+
             if ($bookedTax > 0) {
                 foreach (TaxDeterminationService::allocateBookedTax($taxDetermination['tax_lines'] ?? [], $bookedTax) as $allocation) {
                     if ($allocation['amount'] <= 0) {
                         continue;
                     }
-                    $lines[] = new DomainPostingLine(
+                    $taxBase = $toBase((float) $allocation['amount']);
+                    $taxBaseTotal += $taxBase;
+                    $taxLines[] = new DomainPostingLine(
                         accountRole: 'sales_tax_payable',
-                        amount: $allocation['amount'],
+                        amount: $taxBase,
+                        currencyCode: $foreign ? $baseCurrency : null,
+                        originalAmount: $foreign ? round((float) $allocation['amount'], 2) : null,
+                        exchangeRate: $foreign ? $fxRate : null,
                         description: "Tax - Invoice {$invoice->invoice_number}".($allocation['tax_code'] ? " [{$allocation['tax_code']}]" : ''),
                         taxCode: $allocation['tax_code'] ?? $primaryTaxCode,
                         taxId: $allocation['tax_id'],
                     );
                 }
+            }
+
+            // §9.4 / FR-7.4: the sum of independently rounded legs can drift
+            // a cent from the AR base. The residual is absorbed at REVENUE so
+            // the entry balances exactly and no hidden gap survives to the
+            // ledger.
+            $arBase = $toBase((float) $invoice->total);
+            $revenueBase = round($arBase - $taxBaseTotal - $shippingBase, 2);
+
+            if ($foreign && abs($revenueBase - $toBase($salesRevenue)) > 0.02) {
+                \Illuminate\Support\Facades\Log::warning('FX posting: revenue absorbed rounding residual beyond 0.02', [
+                    'invoice_id' => $invoice->id,
+                    'expected_revenue_base' => $toBase($salesRevenue),
+                    'posted_revenue_base' => $revenueBase,
+                    'residual' => round($revenueBase - $toBase($salesRevenue), 2),
+                ]);
+            }
+
+            if ($salesRevenue > 0 || $revenueBase != 0) {
+                $lines[] = new DomainPostingLine(
+                    accountRole: 'sales_revenue',
+                    amount: $revenueBase,
+                    currencyCode: $foreign ? $baseCurrency : null,
+                    originalAmount: $foreign ? round($salesRevenue, 2) : null,
+                    exchangeRate: $foreign ? $fxRate : null,
+                    description: "Sales - Invoice {$invoice->invoice_number}",
+                );
+            }
+
+            if ((float) $invoice->shipping_cost > 0) {
+                $lines[] = new DomainPostingLine(
+                    accountRole: 'shipping_revenue',
+                    amount: $shippingBase,
+                    currencyCode: $foreign ? $baseCurrency : null,
+                    originalAmount: $foreign ? round((float) $invoice->shipping_cost, 2) : null,
+                    exchangeRate: $foreign ? $fxRate : null,
+                    description: "Shipping - Invoice {$invoice->invoice_number}",
+                );
+            }
+
+            foreach ($taxLines as $taxLine) {
+                $lines[] = $taxLine;
             }
 
             // ── COGS lines for inventory items ───────────────
@@ -271,17 +384,21 @@ class InvoiceService
                 }
 
                 if ($totalCogs > 0) {
-                    // Cost of Goods Sold → profile direction: debit
+                    // Cost of Goods Sold → profile direction: debit.
+                    // Valuation comes from stock layers, which are stored in
+                    // the BASE currency — never converted (FR-12 §12).
                     $lines[] = new DomainPostingLine(
                         accountRole: 'cogs',
-                        amount: $totalCogs,
+                        amount: round($totalCogs, 2),
+                        currencyCode: $foreign ? $baseCurrency : null,
                         description: "COGS - Invoice {$invoice->invoice_number}",
                     );
 
                     // Inventory → profile direction: credit
                     $lines[] = new DomainPostingLine(
                         accountRole: 'inventory',
-                        amount: $totalCogs,
+                        amount: round($totalCogs, 2),
+                        currencyCode: $foreign ? $baseCurrency : null,
                         description: "Inventory - Invoice {$invoice->invoice_number}",
                     );
                 }
@@ -302,6 +419,11 @@ class InvoiceService
                 postingProfileCode: 'AR_INVOICE_POST',
                 transactionDate: $invoice->invoice_date->toDateString(),
                 postingDate: $invoice->invoice_date->toDateString(),
+                // FR-5.7/§12: the header FX stamp on the journal entry comes
+                // from the document snapshot (PostingEngine writes the header
+                // columns when this is set).
+                currencyCode: $foreign ? $docCurrency : null,
+                exchangeRate: $foreign ? $fxRate : null,
                 lines: $lines,
                 userId: TenantUserHelper::requireTenantUserId($invoice->created_by),
                 taxDeterminationResult: $taxDetermination,
@@ -427,6 +549,38 @@ class InvoiceService
             // (which surfaces as SQLSTATE 25P02 from generatePaymentNumber()).
             $paymentData['payment_number'] = $paymentData['payment_number'] ?? Payment::generatePaymentNumber();
 
+            // MRD pricelist-multicurrency FR-7.3: payments inherit the
+            // document currency, and the settlement-date rate is snapshotted
+            // at recording time. A draft payment may exist without a rate
+            // (missing rate blocks POSTING, not recording — FR-1.5/AC-3).
+            $paymentData['currency'] = $paymentData['currency']
+                ?? $paymentData['currency_code']
+                ?? $invoice->currency_code
+                ?? \App\Services\DocumentCurrencyResolver::resolve();
+            $paymentData['base_currency_code'] = $paymentData['base_currency_code']
+                ?? $invoice->base_currency_code
+                ?? \App\Services\DocumentCurrencyResolver::baseFor($invoice->salesOrder?->legal_entity_id, $invoice->customer_id);
+
+            if (! array_key_exists('exchange_rate', $paymentData) || $paymentData['exchange_rate'] === null) {
+                $paymentCurrency = strtoupper((string) $paymentData['currency']);
+                $paymentBase = strtoupper((string) $paymentData['base_currency_code']);
+
+                if ($paymentCurrency === $paymentBase) {
+                    $paymentData['exchange_rate'] = 1.000000;
+                } else {
+                    try {
+                        $paymentData['exchange_rate'] = \App\Services\DocumentCurrencyResolver::snapshot(
+                            $paymentCurrency,
+                            $invoice->customer_id,
+                            $invoice->salesOrder?->legal_entity_id,
+                            \Illuminate\Support\Carbon::parse($paymentData['payment_date'])->toDateString()
+                        )['exchange_rate'];
+                    } catch (\App\Exceptions\PricingException) {
+                        $paymentData['exchange_rate'] = null;
+                    }
+                }
+            }
+
             $payment = new Payment($paymentData);
             $payment->save();
 
@@ -440,66 +594,9 @@ class InvoiceService
                 return $payment->fresh();
             }
 
-            // Post to accounting ledger via PostingEngine (replaces AccountingService::postPayment)
-            $lines = [];
-
-            // Resolve the cash/bank GL account based on payment method + bank account.
-            // bank_account_id (if provided) takes precedence and gives the exact GL account.
-            // Otherwise fall back to a mapping key derived from the payment method.
-            $bankAccountId = $paymentData['bank_account_id'] ?? null;
-            $bankGlAccountId = null;
-
-            if ($bankAccountId) {
-                $bankAccount = BankAccount::find($bankAccountId);
-                $bankGlAccountId = $bankAccount?->gl_account_id;
-            }
-
-            $cashMappingKey = match ($payment->method ?? 'cash') {
-                'bank_transfer' => 'bank',
-                default => 'cash',
-            };
-
-            // DR Cash/Bank
-            $lines[] = new PostingRequestLine(
-                accountMappingKey: $cashMappingKey,
-                accountId: $bankGlAccountId,   // explicit GL account wins when bank account is set
-                debit: (float) $payment->amount,
-                credit: 0,
-                description: "Payment {$payment->payment_number}",
-            );
-
-            // CR Accounts Receivable
-            $lines[] = new PostingRequestLine(
-                accountMappingKey: 'accounts_receivable',
-                accountId: null,
-                debit: 0,
-                credit: (float) $payment->amount,
-                description: "Payment received - {$payment->payment_number}",
-            );
-
-            $result = $this->postingEngine->post(new PostingRequest(
-                documentType: 'payment',
-                documentId: $payment->id,
-                postingDate: $payment->payment_date instanceof \DateTimeInterface
-                    ? $payment->payment_date->format('Y-m-d')
-                    : (string) $payment->payment_date,
-                description: "Payment #{$payment->payment_number} - {$invoice->customer->name}",
-                lines: $lines,
-                reference: $payment->payment_number,
-                userId: TenantUserHelper::requireTenantUserId($payment->received_by),
-            ));
-
-            if (! $result->success) {
-                throw new \Exception($result->error);
-            }
-
-            $payment->update([
-                'journal_entry_id' => $result->journalEntryId,
-                // Posting flips the canonical status to `applied`. Without this
-                // the payment stayed `recorded` while carrying a posted JE — the
-                // "Draft but locked" rows that could not be posted or deleted.
-                'payment_status' => 'applied',
-            ]);
+            // Post via the canonical PaymentPostingService — ONE realized-FX
+            // aware posting path for UI, channel and API flows (SOP §4).
+            app(\App\Services\PaymentPostingService::class)->post($payment, $payment->received_by);
 
             // Update invoice paid amount and balance — single canonical path
             $this->syncInvoicePaymentState($invoice, (float) $payment->amount, $payment);

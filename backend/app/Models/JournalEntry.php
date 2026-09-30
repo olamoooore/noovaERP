@@ -33,6 +33,12 @@ class JournalEntry extends Model
         'is_reversal',
         'legal_entity_id',
         'entity_book_id',
+        // Header FX columns (migration 2025_12_30_062429) — now written by
+        // PostingEngine::post() from the document snapshot (FR-5.7).
+        'original_currency_code',
+        'original_total_amount',
+        'exchange_rate',
+        'exchange_gain_loss',
         'origin_type',
         'origin_reference_type',
         'origin_reference_id',
@@ -56,6 +62,9 @@ class JournalEntry extends Model
         'entry_date' => 'date',
         'posted_at' => 'datetime',
         'is_reversal' => 'boolean',
+        'exchange_rate' => 'decimal:6',
+        'original_total_amount' => 'decimal:2',
+        'exchange_gain_loss' => 'decimal:2',
         'origin_context' => 'array',
         'voided_at' => 'datetime',
         'reversed_at' => 'datetime',

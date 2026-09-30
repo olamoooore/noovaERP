@@ -20,6 +20,11 @@ interface ReportViewerProps {
   /** When set, renders the working CSV/PDF/Print toolbar for this ref. */
   exportTargetRef?: React.RefObject<HTMLElement | null>;
   exportFilename?: string;
+  /**
+   * Extra controls rendered first in the action row — e.g. Expand all /
+   * Collapse all pills that must sit next to Excel/PDF/Word and Refresh.
+   */
+  actions?: React.ReactNode;
 }
 
 /**
@@ -50,6 +55,7 @@ export const ReportViewer: React.FC<ReportViewerProps> = ({
   error = null,
   children,
   onRefresh,
+  actions,
   onExport,
   onPrint,
   showActions = true,
@@ -76,6 +82,7 @@ export const ReportViewer: React.FC<ReportViewerProps> = ({
           {/* Action Buttons */}
           {showActions && (
             <div className="flex flex-wrap items-center gap-2 ml-4">
+              {actions}
               {exportTargetRef && (
                 <ReportExportToolbar
                   targetRef={exportTargetRef}

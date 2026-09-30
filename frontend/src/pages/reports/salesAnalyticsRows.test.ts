@@ -79,6 +79,25 @@ const PRODUCT_PAYLOAD = {
   ],
 };
 
+describe('traceability ids survive normalisation', () => {
+  it('carries category ids for filtered product links', () => {
+    const rows = normalizeCategories({ categories: [{ category_id: 12, category_name: 'Sutures' }] });
+    expect(rows[0].category_id).toBe(12);
+  });
+
+  it('carries product ids for detail links', () => {
+    const rows = normalizeProducts({ products: [{ id: 42, name: 'Widget', sku: 'W-1' }] });
+    expect(rows[0].id).toBe(42);
+    expect(normalizeProducts({ products: [{ product_id: 7, name: 'Legacy' }] })[0].id).toBe(7);
+  });
+
+  it('carries customer ids for detail links', () => {
+    const rows = normalizeCustomers({ customers: [{ id: 103, name: 'Asc Clinic' }] });
+    expect(rows[0].id).toBe(103);
+    expect(normalizeCustomers({ customers: [{ customer_id: 9, customer_name: 'Legacy' }] })[0].id).toBe(9);
+  });
+});
+
 describe('trends', () => {
   it('maps the API names (order_count / total_sales / average_order_value)', () => {
     const [row] = normalizeTrends(TRENDS_PAYLOAD);

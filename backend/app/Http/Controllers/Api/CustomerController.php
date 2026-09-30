@@ -175,7 +175,7 @@ class CustomerController extends Controller
             // Financial
             'credit_limit' => 'nullable|numeric|min:0',
             'payment_terms' => 'nullable|integer|min:0',
-            'price_list_id' => 'nullable|exists:customer_price_lists,id',
+            'price_list_id' => 'nullable|integer',
 
             // Personal
             'date_of_birth' => 'nullable|date',
@@ -230,6 +230,7 @@ class CustomerController extends Controller
 
         $validated = $this->normalizeCustomerIdentityFields($validated);
         $this->ensureUniqueCustomerIdentity($validated);
+        $validated['price_list_id'] = Customer::normalizePriceListId($validated['price_list_id'] ?? null);
 
         // Extract relations
         $categoryIds = $validated['category_ids'] ?? [];
@@ -365,7 +366,7 @@ class CustomerController extends Controller
             // Financial
             'credit_limit' => 'nullable|numeric|min:0',
             'payment_terms' => 'nullable|integer|min:0',
-            'price_list_id' => 'nullable|exists:customer_price_lists,id',
+            'price_list_id' => 'nullable|integer',
 
             // Personal
             'date_of_birth' => 'nullable|date',
@@ -390,6 +391,9 @@ class CustomerController extends Controller
 
         $validated = $this->normalizeCustomerIdentityFields($validated);
         $this->ensureUniqueCustomerIdentity($validated, $customer);
+        if (array_key_exists('price_list_id', $validated)) {
+            $validated['price_list_id'] = Customer::normalizePriceListId($validated['price_list_id']);
+        }
 
         // Extract category IDs
         $categoryIds = $validated['category_ids'] ?? null;

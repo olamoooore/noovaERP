@@ -258,9 +258,14 @@ class WebCheckoutController extends Controller
                 $taxInfo = $taxResolutionService->resolveTaxForProduct($product);
                 $taxRate = $taxInfo['rate'];
 
-                // Issue #244: price the line through the tier resolver (#132)
-                // like POS/SalesOrderService, not the flat catalog price.
-                $unitPrice = $product->getPriceForQuantity((int) $item['quantity'], $customerId ?? null);
+                // Issue #244: priced via the shared PricingService — now also
+                // honouring general price lists (MRD pricelist-multicurrency
+                // FR-4.1) on top of the #132 tier resolution.
+                $unitPrice = app(\App\Services\PricingService::class)->baseCurrencyPrice(
+                    $product,
+                    (float) $item['quantity'],
+                    $customerId ?? null,
+                );
                 $lineSubtotal = $unitPrice * $item['quantity'];
 
                 // Calculate tax using canonical service

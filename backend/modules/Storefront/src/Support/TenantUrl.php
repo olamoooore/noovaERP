@@ -19,15 +19,26 @@ final class TenantUrl
 
         if ($tenant !== null) {
             try {
-                $domain = DB::table('public.domains')
+                $row = DB::table('public.domains')
                     ->where('tenant_id', $tenant->getTenantKey())
+                    ->orderByDesc('is_primary')
                     ->orderBy('id')
-                    ->value('domain');
+                    ->first();
 
-                if (is_string($domain) && $domain !== '') {
-                    $scheme = str_contains($domain, 'localhost') || app()->environment('local') ? 'http' : 'https';
+                if ($row !== null && is_string($row->domain) && $row->domain !== '') {
+                    // FR-PLAT-03 SSL status feeds link generation: an active
+                    // certificate always links https; a FAILED probe links
+                    // http (honest — https would only bounce the customer);
+                    // 'unknown' keeps the historical best-effort guess.
+                    $scheme = match ($row->ssl_status ?? 'unknown') {
+                        'active' => 'https',
+                        'failed' => 'http',
+                        default => str_contains($row->domain, 'localhost') || app()->environment('local')
+                            ? 'http'
+                            : 'https',
+                    };
 
-                    return rtrim($scheme.'://'.$domain, '/');
+                    return rtrim($scheme.'://'.$row->domain, '/');
                 }
             } catch (\Throwable) {
                 // domain lookup failure must not block the email — fall through

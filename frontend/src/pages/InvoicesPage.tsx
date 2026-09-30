@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import api from '@/lib/api'
+import pricingApi from '@/lib/pricingApi'
 import { useAuthStore } from '@/store/authStore'
 import { useNavigate } from 'react-router-dom'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
@@ -33,6 +34,9 @@ export function InvoicesPage() {
   const [hiddenInvoiceColumns, setHiddenInvoiceColumns] = useState<number[]>([])
   const [bulkAction, setBulkAction] = useState<'post' | 'delete' | null>(null)
   const [statusFilter, setStatusFilter] = useState('all')
+  // MRD FR-8.1: document-currency filter + currency sort on the list.
+  const [currencyFilter, setCurrencyFilter] = useState('all')
+  const [sortBy, setSortBy] = useState<'date' | 'currency'>('date')
   const [customerFilter, setCustomerFilter] = useState('')
   const [tagFilter, setTagFilter] = useState('')
   const [dateFilter, setDateFilter] = useState<'all' | 'yearly' | 'monthly' | 'custom'>('all')
@@ -43,9 +47,17 @@ export function InvoicesPage() {
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(20)
 
+  const { data: filterCurrencies } = useQuery({
+    queryKey: ['currencies', 'sellable'],
+    queryFn: () => pricingApi.sellableCurrencies(),
+  })
+  const filterCurrencyRows: any[] = (filterCurrencies as any)?.data ?? filterCurrencies ?? []
+
   const activeFilterParams = () => {
     const params: Record<string, string> = {}
     if (statusFilter !== 'all') params.status = statusFilter
+    if (currencyFilter !== 'all') params.currency_code = currencyFilter
+    if (sortBy === 'currency') params.sort_by = 'currency'
     if (searchQuery.trim()) params.search = searchQuery.trim()
     if (customerFilter) params.customer_id = customerFilter
     if (tagFilter) params.tag = tagFilter
@@ -64,7 +76,7 @@ export function InvoicesPage() {
   }
 
   const { data: response, isLoading } = useQuery({
-    queryKey: ['invoices', page, perPage, statusFilter, searchQuery, customerFilter, tagFilter, dateFilter, selectedYear, selectedMonth, customStartDate, customEndDate],
+    queryKey: ['invoices', page, perPage, statusFilter, currencyFilter, sortBy, searchQuery, customerFilter, tagFilter, dateFilter, selectedYear, selectedMonth, customStartDate, customEndDate],
     queryFn: async () => {
       const params = { page, per_page: perPage, ...activeFilterParams() }
       const res = await api.get('/invoices', { params })
@@ -245,8 +257,8 @@ export function InvoicesPage() {
         <CardContent>
           {/* Compact single-row filter bar — filters left, column picker right */}
           <div className="mb-4 flex flex-wrap items-center gap-2">
-            <div className="flex flex-wrap items-center gap-2">
-            <div className="relative w-full sm:w-60">
+            <div className="flex flex-wrap items-center gap-1.5 sm:flex-nowrap sm:overflow-x-auto">
+            <div className="relative w-full sm:w-44">
               <Icon
                 icon="solar:magnifer-bold-duotone"
                 className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
@@ -256,7 +268,7 @@ export function InvoicesPage() {
                 placeholder="Search invoices…"
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value); setPage(1) }}
-                className="h-8 rounded-full pl-9 pr-3 text-xs"
+                className="h-8 rounded-full pl-8 pr-2 text-xs"
               />
             </div>
 
@@ -264,7 +276,7 @@ export function InvoicesPage() {
               value={statusFilter}
               onValueChange={(value) => { setStatusFilter(value); setPage(1) }}
             >
-              <SelectTrigger className="h-8 w-36 rounded-full px-3 text-xs">
+              <SelectTrigger className="h-8 w-28 rounded-full px-2.5 text-xs">
                 <SelectValue placeholder="All Status" />
               </SelectTrigger>
               <SelectContent>
@@ -279,7 +291,36 @@ export function InvoicesPage() {
               </SelectContent>
             </Select>
 
-            <div className="w-full sm:w-52">
+            {/* FR-8.1: currency dimension on the document list. */}
+            <Select
+              value={currencyFilter}
+              onValueChange={(value) => { setCurrencyFilter(value); setPage(1) }}
+            >
+              <SelectTrigger className="h-8 w-28 rounded-full px-2.5 text-xs">
+                <SelectValue placeholder="All Currencies" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Currencies</SelectItem>
+                {filterCurrencyRows.map((currency: any) => (
+                  <SelectItem key={currency.code} value={currency.code}>{currency.code}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={sortBy}
+              onValueChange={(value) => { setSortBy(value as 'date' | 'currency'); setPage(1) }}
+            >
+              <SelectTrigger className="h-8 w-28 rounded-full px-2.5 text-xs">
+                <SelectValue placeholder="Sort" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="date">Newest</SelectItem>
+                <SelectItem value="currency">Currency</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <div className="w-full sm:w-40">
               <CustomerSearchCombobox
                 compact
                 value={customerFilter}
@@ -289,7 +330,8 @@ export function InvoicesPage() {
             </div>
 
             <TagFilterSelect
-              className="h-8 w-36 rounded-full text-xs"
+              className="h-8 w-24 rounded-full text-xs"
+              placeholder="Tags"
               value={tagFilter}
               onChange={(value) => { setTagFilter(value); setPage(1) }}
             />
@@ -298,7 +340,7 @@ export function InvoicesPage() {
               value={dateFilter}
               onValueChange={(value) => { setDateFilter(value as typeof dateFilter); setPage(1) }}
             >
-              <SelectTrigger className="h-8 w-32 rounded-full text-xs">
+              <SelectTrigger className="h-8 w-28 rounded-full text-xs">
                 <SelectValue placeholder="All Dates" />
               </SelectTrigger>
               <SelectContent>

@@ -156,6 +156,8 @@ class PostingPolicyMapper
             'credit' => $mapping['direction'] === 'credit' ? $line->amount : 0,
             'description' => $line->description,
             'currency_code' => $line->currencyCode,
+            'original_amount' => $line->originalAmount,
+            'exchange_rate' => $line->exchangeRate,
             'dimensions' => array_merge($request->dimensions, $line->dimensions),
             'tax_reference' => $line->taxResultReference,
             'tax_code' => $line->taxCode,

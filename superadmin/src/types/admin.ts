@@ -173,6 +173,16 @@ export type TenantStatus = 'active' | 'suspended' | 'trial'
 export interface TenantDomain {
   id: number
   domain: string
+  type: 'platform' | 'custom'
+  is_primary: boolean
+  dns_status: 'pending' | 'verified' | 'failed'
+  ssl_status: 'unknown' | 'active' | 'failed'
+  verification_token: string | null
+  verification_record: { type: 'TXT'; host: string; value: string | null }
+  verified_at: string | null
+  cert_expires_at: string | null
+  last_checked_at: string | null
+  created_at: string
 }
 
 export interface Tenant {
@@ -200,6 +210,7 @@ export interface TenantDetail extends Tenant {
   recent_operations: TenantOperation[]
   latest_health: TenantHealthSnapshot | null
   notes: AdminNote[]
+  domains: TenantDomain[]
 }
 
 export interface TenantOperation {

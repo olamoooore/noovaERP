@@ -25,11 +25,13 @@ class Currency extends Model
         'symbol',
         'decimal_places',
         'is_active',
+        'is_sellable',
     ];
 
     protected $casts = [
         'decimal_places' => 'integer',
         'is_active' => 'boolean',
+        'is_sellable' => 'boolean',
     ];
 
     /**
@@ -65,13 +67,32 @@ class Currency extends Model
     }
 
     /**
+     * Scope to currencies documents and price lists may actually use
+     * (MRD FR-1.1: sellable AND active).
+     */
+    public function scopeSellable($query)
+    {
+        return $query->where('is_active', true)->where('is_sellable', true);
+    }
+
+    /**
+     * Minor-unit exponent used for post-conversion rounding (MRD §9.4 —
+     * cross-currency conversion rounds to the TARGET currency's minor units;
+     * v1 currencies are 2-decimal ISO defaults, JPY is 0).
+     */
+    public function minorUnits(): int
+    {
+        return max(0, min(4, (int) ($this->decimal_places ?? 2)));
+    }
+
+    /**
      * Get the latest exchange rate to another currency
      */
     public function getLatestRateTo(string $toCurrency)
     {
-        return ExchangeRate::where('from_currency', $this->code)
-            ->where('to_currency', $toCurrency)
-            ->orderBy('effective_date', 'desc')
-            ->first();
+        return ExchangeRate::applyManualPriority(
+            ExchangeRate::where('from_currency', $this->code)
+                ->where('to_currency', $toCurrency)
+        )->first();
     }
 }

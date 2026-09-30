@@ -44,7 +44,21 @@ class ProcessAIMessage implements ShouldQueue
             // Initialize tenancy context using the platform runtime helper
             // instead of raw SET search_path — ensures all bootstrappers
             // (cache, filesystem, events) also switch, not just the DB schema.
-            Tenancy::initialize($this->tenantId);
+            // Skip when tenancy is already initialized (the queue bootstrapper
+            // restores it from the job payload for tenant-aware dispatches).
+            // If the extracted dispatch-time schema is not a tenant schema
+            // (e.g. `public`), continue on the current search_path instead of
+            // failing the whole job.
+            if (! tenancy()->initialized) {
+                try {
+                    Tenancy::initialize($this->tenantId);
+                } catch (\Throwable $e) {
+                    Log::warning('ProcessAIMessage: tenancy initialization skipped', [
+                        'tenant_id' => $this->tenantId,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
 
             $conversation = AIConversation::findOrFail($this->conversationId);
             $pendingMessage = AIMessage::findOrFail($this->pendingMessageId);
@@ -58,6 +72,25 @@ class ProcessAIMessage implements ShouldQueue
                 if ($module) {
                     $basePrompt .= "\n\n".$module->getSystemPrompt();
                 }
+            }
+
+            // Retrieval-augmented context: tenant knowledge for every
+            // conversation, plus live catalog + shopper account data for
+            // storefront conversations.
+            try {
+                $userMessage = (string) ($conversation->messages()
+                    ->where('role', 'user')
+                    ->whereNotNull('content')
+                    ->latest('id')
+                    ->value('content') ?? '');
+
+                $basePrompt .= app(\Modules\AI\Services\AssistantContextService::class)
+                    ->build($conversation, $userMessage);
+            } catch (\Throwable $e) {
+                Log::warning('ProcessAIMessage: retrieval context build failed', [
+                    'conversation_id' => $this->conversationId,
+                    'error' => $e->getMessage(),
+                ]);
             }
 
             // Build message history
@@ -77,8 +110,10 @@ class ProcessAIMessage implements ShouldQueue
             }
 
             // Get functions using the same logic as ChatbotService
+            $isStorefront = $conversation->channel === 'storefront';
+
             if ($activeModule === 'general') {
-                $functions = FunctionDefinitions::getAll();
+                $functions = $isStorefront ? FunctionDefinitions::shopperSafe() : FunctionDefinitions::getAll();
             } else {
                 $module = $moduleManager->getModule($activeModule);
                 if ($module) {
@@ -90,6 +125,17 @@ class ProcessAIMessage implements ShouldQueue
                 } else {
                     $functions = FunctionDefinitions::getAll();
                 }
+            }
+
+            // Public storefront guests may only ever execute the
+            // shopper-safe subset — never customer, invoice, accounting
+            // or inventory functions.
+            if ($isStorefront) {
+                $safeNames = array_column(FunctionDefinitions::shopperSafe(), 'name');
+                $functions = array_values(array_filter(
+                    $functions,
+                    fn (array $f) => in_array($f['name'] ?? '', $safeNames, true)
+                ));
             }
 
             // Call Ollama
@@ -104,7 +150,14 @@ class ProcessAIMessage implements ShouldQueue
                 $arguments = json_decode($functionCall['function']['arguments'] ?? '{}', true) ?: [];
 
                 if ($functionName) {
-                    $result = $router->execute($functionName, $arguments, $conversation->customer_id, $this->conversationId);
+                    $result = $router->execute(
+                        $functionName,
+                        $arguments,
+                        $conversation->customer_id,
+                        $this->conversationId,
+                        array_column($functions, 'name'),
+                        $conversation->channel,
+                    );
 
                     // Tell AI about the function result
                     $messages[] = ['role' => 'assistant', 'content' => null, 'tool_calls' => [$functionCall]];
@@ -143,9 +196,13 @@ class ProcessAIMessage implements ShouldQueue
 
             // Update pending message with error fallback
             try {
-                // Ensure tenancy is active for the error update
-                if (! Tenancy::getTenant()) {
-                    Tenancy::initialize($this->tenantId);
+                if (! tenancy()->initialized) {
+                    try {
+                        Tenancy::initialize($this->tenantId);
+                    } catch (\Throwable) {
+                        // Keep the current search_path — the fallback message
+                        // still needs a chance to be written.
+                    }
                 }
 
                 $pendingMessage = AIMessage::find($this->pendingMessageId);

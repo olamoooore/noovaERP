@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
-import { Button } from '@/components/ui/button';
+
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -312,12 +312,28 @@ export default function ProfitLossPage() {
               })}
             </p>
           </div>
-          <ReportExportToolbar
-            targetRef={reportRef}
-            title="Profit & Loss Statement"
-            subtitle={`${new Date(startDate).toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })} – ${new Date(endDate).toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })}`}
-            filename={`profit-and-loss-${startDate}-to-${endDate}`}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:maximize-linear"
+              onClick={() => setCollapsedRows(new Set())}
+            >
+              Expand all
+            </HeaderActionButton>
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:minimize-linear"
+              onClick={() => setCollapsedRows(new Set(['revenue', 'cogs', 'operating-expenses', 'other-expenses']))}
+            >
+              Collapse all
+            </HeaderActionButton>
+            <ReportExportToolbar
+              targetRef={reportRef}
+              title="Profit & Loss Statement"
+              subtitle={`${new Date(startDate).toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })} – ${new Date(endDate).toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })}`}
+              filename={`profit-and-loss-${startDate}-to-${endDate}`}
+            />
+          </div>
         </CardHeader>
 
         <CardContent ref={reportRef} className="pt-6">
@@ -339,16 +355,6 @@ export default function ProfitLossPage() {
         ) : (
           <>
             <Table>
-              <caption className="caption-top pb-2">
-                <div className="flex justify-end gap-2" data-no-export>
-                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setCollapsedRows(new Set())}>
-                    <Icon icon="solar:maximize-linear" className="w-3.5 h-3.5 mr-1" /> Expand all
-                  </Button>
-                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setCollapsedRows(new Set(['revenue', 'cogs', 'operating-expenses', 'other-expenses']))}>
-                    <Icon icon="solar:minimize-linear" className="w-3.5 h-3.5 mr-1" /> Collapse all
-                  </Button>
-                </div>
-              </caption>
               <TableHeader>
                 <TableRow>
                   <TableHead>Account</TableHead>

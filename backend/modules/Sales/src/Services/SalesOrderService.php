@@ -126,9 +126,41 @@ class SalesOrderService
                     ->value('legal_entity_id');
             }
 
+            // ── MRD pricelist-multicurrency FR-4.1/FR-5.1 ─────────────────
+            // One pricing context per document: currency + FX snapshot from
+            // the caller (conversions pass it through), else default = the
+            // customer's price-list currency → entity base. price_list_id is
+            // transient (audited per line in pricing_trace).
+            $pricing = app(\App\Services\PricingService::class);
+            $priceListId = isset($data['price_list_id']) && $data['price_list_id'] !== null
+                ? (int) $data['price_list_id']
+                : null;
+            unset($data['price_list_id']);
+
+            $pricingContext = $pricing->documentContext([
+                'customer_id' => $data['customer_id'] ?? null,
+                'legal_entity_id' => $data['legal_entity_id'] ?? null,
+                'date' => $data['order_date'],
+                'currency_code' => $data['currency_code'] ?? null,
+                'exchange_rate' => $data['exchange_rate'] ?? null,
+                'base_currency_code' => $data['base_currency_code'] ?? null,
+                'price_list_id' => $priceListId,
+            ]);
+
+            $data['currency_code'] = $pricingContext['document_currency'];
+            $data['exchange_rate'] = $pricingContext['exchange_rate'];
+            $data['base_currency_code'] = $pricingContext['base_currency'];
+
             $order = SalesOrder::create($data);
 
             foreach ($lines as $lineIndex => $lineData) {
+                $lineProduct = ! empty($lineData['product_id'])
+                    ? \App\Models\Product::find($lineData['product_id'])
+                    : null;
+
+                $priceMode = $lineData['price_mode']
+                    ?? (((float) ($lineData['unit_price'] ?? 0) > 0) ? 'legacy' : 'auto');
+
                 // Issue #135: a line entered in a non-base UOM must be converted
                 // to base units before it can reach stock/COGS. The base-unit
                 // price is derived from the UOM rate; an explicit unit_price is
@@ -136,23 +168,6 @@ class SalesOrderService
                 if (! empty($lineData['uom_id']) && ! empty($lineData['product_id'])) {
                     $uom = $this->uomConverter->resolve((int) $lineData['product_id'], (int) $lineData['uom_id']);
                     $lineData['quantity'] = $this->uomConverter->toBase($uom, (float) ($lineData['quantity'] ?? 0));
-
-                    if (! isset($lineData['unit_price']) || (float) $lineData['unit_price'] <= 0) {
-                        $product = \App\Models\Product::find($lineData['product_id']);
-                        if ($product) {
-                            // Compose with #132 tier pricing: resolve the
-                            // per-base tier price first, then apply the UOM
-                            // multiplier.
-                            $tierBasePrice = $product->getPriceForQuantity(
-                                (int) ceil((float) $lineData['quantity']),
-                                ! empty($data['customer_id']) ? (int) $data['customer_id'] : null,
-                                null,
-                                ! empty($lineData['variant_id']) ? (int) $lineData['variant_id'] : null,
-                            );
-
-                            $lineData['unit_price'] = $this->uomConverter->baseUnitPrice($product, $uom, $tierBasePrice);
-                        }
-                    }
 
                     // Issue #247: the persisted quantity is now BASE units — label
                     // it with the product's base unit, not the entered UOM (1 Box
@@ -165,24 +180,25 @@ class SalesOrderService
                         ?: (\App\Models\Product::whereKey($lineData['product_id'])->value('unit') ?? 'pcs');
                 }
 
-                // Issue #132: when the caller does not supply a price, resolve it
-                // through the product's tier logic (volume/customer/variant/date)
-                // instead of leaving the line at zero or the flat catalog price.
-                if (! isset($lineData['unit_price']) || (float) $lineData['unit_price'] <= 0) {
-                    if (! empty($lineData['product_id'])) {
-                        $product = $product ?? \App\Models\Product::find($lineData['product_id']);
-                        if ($product) {
-                            $lineData['unit_price'] = $product->getPriceForQuantity(
-                                (int) ceil((float) ($lineData['quantity'] ?? 0)),
-                                ! empty($data['customer_id']) ? (int) $data['customer_id'] : null,
-                                null,
-                                ! empty($lineData['variant_id']) ? (int) $lineData['variant_id'] : null,
-                            );
-                        }
+                // MRD FR-4.1/FR-4.2: PricingService is the only price authority.
+                // 'legacy' mode keeps caller prices verbatim so every existing
+                // internal caller (POS/storefront/web conversions, work orders)
+                // is byte-compatible; 'auto' resolves list→tier→catalogue;
+                // 'manual' runs the override floor guard; 'carried' propagates.
+                $priced = $pricing->priceLineArray($lineProduct, $lineData, $pricingContext, $priceMode);
+
+                if (! empty($lineData['uom_id']) && $lineProduct && $priceMode === 'auto' && ($priced['unit_price'] ?? 0) > 0) {
+                    $uom = $uom ?? $this->uomConverter->resolve((int) $lineData['product_id'], (int) $lineData['uom_id']);
+                    $priced['unit_price'] = $this->uomConverter->baseUnitPrice($lineProduct, $uom, (float) $priced['unit_price']);
+                    if (isset($priced['base_unit_price'])) {
+                        $priced['base_unit_price'] = $this->uomConverter->baseUnitPrice($lineProduct, $uom, (float) $priced['base_unit_price']);
+                    }
+                    if (isset($priced['pricing_trace']) && is_array($priced['pricing_trace'])) {
+                        $priced['pricing_trace']['uom_multiplier_applied'] = true;
                     }
                 }
 
-                $line = $order->lines()->create([
+                $line = $order->lines()->create(array_merge([
                     'legal_entity_id' => $order->legal_entity_id,
                     'line_type' => $lineData['line_type'] ?? 'product',
                     'sequence' => $lineData['sequence'] ?? $lineIndex,
@@ -208,7 +224,12 @@ class SalesOrderService
                     'invoicing_policy' => $lineData['invoicing_policy'] ?? 'ordered_qty',
                     'source_line_type' => $lineData['source_line_type'] ?? null,
                     'source_line_id' => $lineData['source_line_id'] ?? null,
-                ]);
+                ], array_filter([
+                    'unit_price' => array_key_exists('unit_price', $priced) ? $priced['unit_price'] : null,
+                    'base_unit_price' => $priced['base_unit_price'] ?? null,
+                    'pricing_trace' => $priced['pricing_trace'] ?? null,
+                    'list_price' => $priced['list_price'] ?? null,
+                ], fn ($v) => $v !== null)));
                 $line->calculateLineTotal();
                 $line->save();
             }
@@ -382,12 +403,17 @@ class SalesOrderService
                 'customer_id' => $order->customer_id,
                 'invoice_date' => now()->toDateString(),
                 'due_date' => now()->addDays($order->customer->payment_terms ?? 30)->toDateString(),
+                'notes' => "Sales Order #{$order->sales_order_number}",
                 'sales_order_id' => $order->id,
                 // Carry the order's references into the invoice for end-to-end
                 // tracing (Customer Ref. / PO / Internal Ref.).
                 'customer_reference' => $order->customer_reference,
                 'internal_reference' => $order->internal_reference,
                 'po_number' => $order->po_number,
+                // MRD FR-5.5: currency + rate snapshot propagate unchanged.
+                'currency_code' => $order->currency_code,
+                'exchange_rate' => $order->exchange_rate,
+                'base_currency_code' => $order->base_currency_code,
             ];
 
             // ── Build invoice lines using per-line invoicing_policy ─────────
@@ -427,7 +453,7 @@ class SalesOrderService
 
                 $totalInvoiceableQty += $invoiceableQty;
 
-                [$invoiceQuantity, $invoiceUnitPrice, $description] = $this->normalizeInvoiceLineWithQty(
+                [$invoiceQuantity, $invoiceUnitPrice, $description, $invoiceBaseUnitPrice] = $this->normalizeInvoiceLineWithQty(
                     $line,
                     $invoiceableQty,
                 );
@@ -443,6 +469,9 @@ class SalesOrderService
                     'description' => $description,
                     'quantity' => $invoiceQuantity,
                     'unit_price' => $invoiceUnitPrice,
+                    // FR-5.3/5.5: provenance travels with the price.
+                    'base_unit_price' => $invoiceBaseUnitPrice,
+                    'pricing_trace' => $line->pricing_trace,
                     'tax_rate' => $line->tax_rate,
                     'discount_amount' => $line->discount_amount,
                 ];
@@ -591,6 +620,7 @@ class SalesOrderService
                 'sku' => $item->sku ?? null,
                 'quantity' => $item->quantity,
                 'unit_price' => $item->unit_price,
+                'price_mode' => 'carried',
                 'tax_rate' => $item->tax_rate ?? 0,
                 'tax_amount' => $item->tax_amount ?? 0,
                 'discount_amount' => 0,
@@ -602,6 +632,10 @@ class SalesOrderService
         $order = $this->createOrder([
             'customer_id' => $posOrder->customer_id,
             'channel' => 'pos',
+            // FR-5.5: conversions copy currency + prices and NEVER re-price.
+            // POS v1 settles in the entity base currency at rate 1.
+            'currency_code' => \App\Services\DocumentCurrencyResolver::baseFor(null, $posOrder->customer_id),
+            'exchange_rate' => 1.000000,
             'warehouse_id' => $posOrder->terminal?->warehouse_id,
             'created_by' => $posOrder->created_by,
             'accounting_status' => $this->resolveSourceAccountingStatus('PosOrder', $posOrder->id, $posOrder->journal_entry_id),
@@ -644,6 +678,7 @@ class SalesOrderService
                 'sku' => $item->sku,
                 'quantity' => (float) $item->quantity,
                 'unit_price' => (float) $item->unit_price,
+                'price_mode' => 'carried',
                 'tax_rate' => (float) $item->tax_rate,
                 'tax_amount' => (float) $item->tax_amount,
                 'discount_amount' => (float) $item->discount_amount,
@@ -656,6 +691,10 @@ class SalesOrderService
         return $this->createOrder([
             'customer_id' => $sfOrder->customer_id,
             'channel' => 'storefront',
+            // FR-5.5: carried conversion; storefront currency label travels
+            // with a rate-1 snapshot until POS/storefront FX lands (P2).
+            'currency_code' => $sfOrder->currency ?: \App\Services\DocumentCurrencyResolver::baseFor($sfOrder->legal_entity_id, $sfOrder->customer_id),
+            'exchange_rate' => 1.000000,
             'warehouse_id' => $sfOrder->fulfillment_warehouse_id,
             'accounting_status' => $this->resolveSourceAccountingStatus('StorefrontOrder', $sfOrder->id),
             'source_document_type' => 'StorefrontOrder',
@@ -692,6 +731,7 @@ class SalesOrderService
                 'sku' => $item->product_sku ?? null,
                 'quantity' => $item->quantity,
                 'unit_price' => $item->unit_price,
+                'price_mode' => 'carried',
                 'tax_rate' => $item->tax_rate ?? 0,
                 'tax_amount' => $item->tax_amount ?? 0,
                 'discount_amount' => 0,
@@ -703,6 +743,9 @@ class SalesOrderService
         $order = $this->createOrder([
             'customer_id' => $webOrder->customer_id,
             'channel' => 'ecommerce',
+            // FR-5.5: carried conversion at rate 1 (base-denominated today).
+            'currency_code' => \App\Services\DocumentCurrencyResolver::baseFor(null, $webOrder->customer_id),
+            'exchange_rate' => 1.000000,
             'warehouse_id' => $webOrder->fulfillment_warehouse_id ?: $webOrder->resolveInventoryWarehouseId(),
             'accounting_status' => $this->resolveSourceAccountingStatus('WebOrder', $webOrder->id),
             'source_document_type' => 'WebOrder',
@@ -881,24 +924,34 @@ class SalesOrderService
 
     /**
      * Normalize a single invoice line given the exact quantity to bill.
+     *
+     * @return array{0:int|float,1:float,2:string,3:float|null} [qty, unit_price, description, base_unit_price]
      */
     private function normalizeInvoiceLineWithQty(SalesOrderLine $line, float $quantity): array
     {
         if ($quantity <= 0) {
-            return [0, 0, $line->description];
+            return [0, 0, $line->description, null];
         }
+
+        $baseUnitPrice = $line->base_unit_price !== null ? (float) $line->base_unit_price : null;
 
         $roundedQuantity = round($quantity);
 
         if (abs($quantity - $roundedQuantity) < 0.0001 && $roundedQuantity >= 1) {
-            return [(int) $roundedQuantity, (float) $line->unit_price, $line->description];
+            return [(int) $roundedQuantity, (float) $line->unit_price, $line->description, $baseUnitPrice];
         }
 
         $quantityLabel = rtrim(rtrim(number_format($quantity, 4, '.', ''), '0'), '.');
         $unitPriceLabel = number_format((float) $line->unit_price, 2, '.', '');
         $description = "{$line->description} ({$quantityLabel} {$line->unit} @ {$unitPriceLabel})";
 
-        return [1, round($quantity * (float) $line->unit_price, 2), $description];
+        // Fractional fold: the qty is folded into a single unit, so the base
+        // equivalent must scale identically (dual amounts stay consistent).
+        $foldedBase = $baseUnitPrice !== null
+            ? round($quantity * $baseUnitPrice, 2)
+            : null;
+
+        return [1, round($quantity * (float) $line->unit_price, 2), $description, $foldedBase];
     }
 
     private function resolveSourceAccountingStatus(string $sourceDocumentType, int $sourceDocumentId, ?int $journalEntryId = null): string

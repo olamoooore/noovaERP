@@ -195,6 +195,10 @@ class TenantQueryService
             ->limit(20)
             ->get();
 
+        // FR-PLAT-03: full domain list (the MIN(d.domain) column above only
+        // ever surfaced one — multi-domain tenants collapsed to a string).
+        $domains = app(\App\Tenancy\DomainOnboardingService::class)->list($tenantId);
+
         return [
             'id' => $tenant->id,
             'name' => $tenant->name,
@@ -208,6 +212,7 @@ class TenantQueryService
             'domain' => $tenant->domain,
             'created_at' => $tenant->created_at,
             'modules_enabled' => $data['modules_enabled'] ?? [],
+            'domains' => $domains,
             'recent_operations' => $recentOperations,
             'latest_health' => $latestHealth,
             'notes' => $notes,

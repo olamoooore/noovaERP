@@ -627,9 +627,12 @@ class ProductController extends Controller
             'uom_id' => 'nullable|exists:product_uoms,id',
         ]);
 
-        $unitPrice = $product->getPriceForQuantity(
-            $validated['quantity'],
-            $validated['customer_id'] ?? null
+        // MRD pricelist-multicurrency FR-4.1: preview shares the engine with
+        // the docs (price list → tiers → catalogue).
+        $unitPrice = app(\App\Services\PricingService::class)->baseCurrencyPrice(
+            $product,
+            (float) $validated['quantity'],
+            isset($validated['customer_id']) ? (int) $validated['customer_id'] : null,
         );
 
         // Apply UOM pricing if specified. Use the canonical ProductUom::

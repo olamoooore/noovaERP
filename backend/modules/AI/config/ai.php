@@ -24,6 +24,32 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Cerebras Configuration (Cloud — BYOK: bring your own key)
+    |--------------------------------------------------------------------------
+    | The tenant can override the key/model under Settings → General → AI.
+    | CEREBRAS_API_KEY acts as the workspace default when a tenant has not
+    | supplied its own key.
+    */
+    'cerebras' => [
+        'base_url' => env('CEREBRAS_URL', 'https://api.cerebras.ai/v1'),
+        'model' => env('CEREBRAS_MODEL', 'qwen-3.8-27b'),
+        'api_key' => env('CEREBRAS_API_KEY'),
+        'temperature' => (float) env('CEREBRAS_TEMPERATURE', 0.2),
+        // Reasoning models (qwen-3.8-27b) spend tokens on hidden reasoning
+        // before the visible answer — keep a generous budget.
+        'max_tokens' => (int) env('CEREBRAS_MAX_TOKENS', 2048),
+        'timeout' => (int) env('CEREBRAS_TIMEOUT', 90),
+        'top_p' => (float) env('CEREBRAS_TOP_P', 0.9),
+    ],
+
+    /** Fallback model pickers when the live /v1/models list is unavailable. */
+    'known_models' => [
+        'ollama' => [],
+        'cerebras' => ['qwen-3.8-27b', 'gpt-oss-120b'],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Features
     |--------------------------------------------------------------------------
     */

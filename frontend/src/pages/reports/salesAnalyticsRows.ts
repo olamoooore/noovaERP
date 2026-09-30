@@ -9,6 +9,8 @@
  */
 
 export interface ProductRow {
+  /** Kept for traceability links (product detail page). */
+  id: number | null;
   name: string;
   sku: string;
   total_quantity: number;
@@ -19,6 +21,8 @@ export interface ProductRow {
 }
 
 export interface CustomerRow {
+  /** Kept for traceability links (customer detail page). */
+  id: number | null;
   name: string;
   total_orders: number;
   total_revenue: number;
@@ -34,6 +38,8 @@ export interface TrendRow {
 }
 
 export interface CategoryRow {
+  /** Kept for traceability links (products filtered by category). */
+  category_id: number | null;
   category_name: string;
   product_count: number;
   quantity_sold: number;
@@ -62,6 +68,7 @@ const asArray = (value: unknown): any[] => (Array.isArray(value) ? value : []);
 
 export const normalizeProducts = (payload: any): ProductRow[] =>
   asArray(payload?.products).map((p: any) => ({
+    id: num(pick(p, 'id', 'product_id')) || null,
     name: p.name ?? p.product_name ?? '-',
     sku: p.sku ?? '-',
     total_quantity: num(pick(p, 'total_quantity', 'quantity_sold')),
@@ -73,6 +80,7 @@ export const normalizeProducts = (payload: any): ProductRow[] =>
 
 export const normalizeCustomers = (payload: any): CustomerRow[] =>
   asArray(payload?.customers).map((c: any) => ({
+    id: num(pick(c, 'id', 'customer_id')) || null,
     name: c.name ?? c.customer_name ?? 'Walk-in Customer',
     total_orders: num(pick(c, 'total_orders', 'order_count')),
     total_revenue: num(pick(c, 'total_revenue', 'total_sales', 'revenue')),
@@ -90,6 +98,7 @@ export const normalizeTrends = (payload: any): TrendRow[] =>
 
 export const normalizeCategories = (payload: any): CategoryRow[] =>
   asArray(payload?.categories).map((c: any) => ({
+    category_id: num(pick(c, 'category_id', 'id')) || null,
     category_name: c.category_name ?? 'Uncategorized',
     product_count: num(pick(c, 'product_count')),
     quantity_sold: num(pick(c, 'quantity_sold', 'total_quantity')),

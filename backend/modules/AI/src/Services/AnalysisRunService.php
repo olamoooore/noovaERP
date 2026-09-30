@@ -46,7 +46,7 @@ class AnalysisRunService
             throw new \DomainException('PERIOD_NOT_OPEN: analysis admission requires an open period');
         }
 
-        return DB::transaction(function () use ($scope, $sourceState, $correlationId, $description, $period) {
+        return DB::transaction(function () use ($scope, $sourceState, $correlationId, $description) {
             // EVID-02A-006: governed current-run selection — supersede existing
             // current run for the same scope + analysis type.
             $existingCurrent = AnalysisRun::where('analysis_type', $scope->analysisType)

@@ -23,6 +23,21 @@ class Quotation extends Model
             if (! $quotation->quotation_date) {
                 $quotation->quotation_date = now()->toDateString();
             }
+            // MRD pricelist-multicurrency FR-5.1/5.2: currency + FX snapshot.
+            // The creation services stamp this deliberately (customer price
+            // list currency → entity base); the hook only guarantees the
+            // columns are never NULL for rows created outside them.
+            if (! $quotation->currency_code) {
+                $quotation->currency_code = \App\Services\DocumentCurrencyResolver::resolve();
+            }
+            if (! $quotation->base_currency_code) {
+                $quotation->base_currency_code = \App\Services\DocumentCurrencyResolver::baseFor(null, $quotation->customer_id);
+            }
+            if ($quotation->exchange_rate === null
+                && $quotation->currency_code
+                && strtoupper($quotation->currency_code) === strtoupper($quotation->base_currency_code)) {
+                $quotation->exchange_rate = 1.000000;
+            }
         });
     }
 
@@ -38,6 +53,9 @@ class Quotation extends Model
         'discount_type',
         'discount_value',
         'total',
+        'currency_code',
+        'exchange_rate',
+        'base_currency_code',
         'notes',
         'terms',
         'customer_reference',
@@ -89,6 +107,7 @@ class Quotation extends Model
         'discount_amount' => 'decimal:2',
         'discount_value' => 'decimal:4',
         'total' => 'decimal:2',
+        'exchange_rate' => 'decimal:6',
         'date_of_case' => 'date',
         'delivery_date' => 'date',
         'is_active_version' => 'boolean',
@@ -259,5 +278,4 @@ class Quotation extends Model
             ? null
             : \Illuminate\Support\Facades\Crypt::encryptString((string) $value);
     }
-
 }

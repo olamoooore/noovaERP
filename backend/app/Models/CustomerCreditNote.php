@@ -25,6 +25,8 @@ class CustomerCreditNote extends Model
         'tax_amount',
         'total_amount',
         'currency_code',
+        'exchange_rate',
+        'base_currency_code',
         'reason',
         'notes',
         'journal_entry_id',
@@ -44,6 +46,7 @@ class CustomerCreditNote extends Model
         'subtotal' => 'decimal:2',
         'tax_amount' => 'decimal:2',
         'total_amount' => 'decimal:2',
+        'exchange_rate' => 'decimal:6',
     ];
 
     protected $appends = [
@@ -61,6 +64,26 @@ class CustomerCreditNote extends Model
             }
             if (! $creditNote->created_by) {
                 $creditNote->created_by = TenantUserHelper::resolveTenantUserId();
+            }
+            // MRD FR-5.9: a credit note inherits the INVOICE currency and rate
+            // snapshot; never its own defaults. Post-creation code may still
+            // re-stamp from the source invoice — this hook is the safety net.
+            if (! $creditNote->currency_code || $creditNote->currency_code === 'USD') {
+                $invoiceCurrency = $creditNote->invoice_id
+                    ? \App\Models\Invoice::query()->whereKey($creditNote->invoice_id)->value('currency_code')
+                    : null;
+                if ($invoiceCurrency) {
+                    $creditNote->currency_code = $invoiceCurrency;
+                }
+            }
+            if ($creditNote->exchange_rate === null && $creditNote->invoice_id) {
+                $creditNote->exchange_rate = \App\Models\Invoice::query()->whereKey($creditNote->invoice_id)->value('exchange_rate') ?? 1.000000;
+            }
+            if (! $creditNote->base_currency_code) {
+                $creditNote->base_currency_code = \App\Services\DocumentCurrencyResolver::baseFor(null, $creditNote->customer_id);
+            }
+            if (! $creditNote->currency_code) {
+                $creditNote->currency_code = $creditNote->base_currency_code;
             }
         });
     }

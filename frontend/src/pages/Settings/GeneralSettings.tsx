@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
 import { useAuthStore } from '@/store/authStore'
 import api from '@/lib/api'
@@ -97,7 +100,8 @@ export function GeneralSettings() {
   const queryClient = useQueryClient()
   const { tenantId } = useAuthStore()
 
-  const [activeSection, setActiveSection] = useState('profile')
+  const [searchParams] = useSearchParams()
+  const [activeSection, setActiveSection] = useState<string>(() => searchParams.get('section') ?? 'profile')
   const [companyName, setCompanyName] = useState('')
   const [logoUrl, setLogoUrl] = useState('')
   const [website, setWebsite] = useState('')
@@ -500,6 +504,523 @@ export function GeneralSettings() {
     </Card>
   )
 
+  // ─── AI provider (BYOK) ──────────────────────────────────────────────────
+
+  const AiSection = () => {
+    const [expanded, setExpanded] = useState(false)
+    const [provider, setProvider] = useState<'ollama' | 'cerebras'>('ollama')
+    const [ollamaModel, setOllamaModel] = useState('')
+    const [cerebrasModel, setCerebrasModel] = useState('qwen-3.8-27b')
+    const [apiKey, setApiKey] = useState('')
+    const [assistantMode, setAssistantMode] = useState<'auto' | 'on' | 'off'>('auto')
+    const [assistantName, setAssistantName] = useState('')
+    const [assistantIcon, setAssistantIcon] = useState('')
+    const [assistantWelcome, setAssistantWelcome] = useState('')
+    const iconFileRef = useRef<HTMLInputElement | null>(null)
+
+    const PRESET_ASSISTANT_ICONS = ['🤖', '✨', '💬', '🛍️', '🎧', '🧑‍💼', '📦', '💎', '🧠', '🐾', '🌟', '🛒']
+
+    // Knowledge base (RAG) state
+    const [knowledgeFormOpen, setKnowledgeFormOpen] = useState(false)
+    const [knowledgeQuestion, setKnowledgeQuestion] = useState('')
+    const [knowledgeAnswer, setKnowledgeAnswer] = useState('')
+    const [knowledgeCategory, setKnowledgeCategory] = useState('faq')
+
+    const aiSettings = useQuery({
+      queryKey: ['ai-provider-settings'],
+      queryFn: async () => (await api.get('/ai/settings')).data.data,
+    })
+
+    useEffect(() => {
+      const data = aiSettings.data
+      if (!data) return
+      setProvider(data.provider === 'cerebras' ? 'cerebras' : 'ollama')
+      setOllamaModel(data.ollama?.model ?? '')
+      setCerebrasModel(data.cerebras?.model ?? 'qwen-3.8-27b')
+      const assistant = data.assistant
+      if (assistant) {
+        setAssistantMode(assistant.mode === 'manual' ? (assistant.enabled ? 'on' : 'off') : 'auto')
+        setAssistantName(assistant.name ?? '')
+        setAssistantIcon(assistant.icon ?? '')
+        setAssistantWelcome(assistant.welcome ?? '')
+      }
+    }, [aiSettings.data])
+
+    const saveAi = useMutation({
+      mutationFn: async () =>
+        (await api.put('/ai/settings', {
+          provider,
+          ollama_model: provider === 'ollama' ? ollamaModel || undefined : undefined,
+          cerebras_model: provider === 'cerebras' ? cerebrasModel || undefined : undefined,
+          cerebras_api_key: apiKey || undefined,
+          assistant_enabled: assistantMode === 'auto' ? null : assistantMode === 'on',
+          assistant_name: assistantName,
+          assistant_icon: assistantIcon,
+          assistant_welcome: assistantWelcome,
+        })).data,
+      onSuccess: () => {
+        setApiKey('')
+        queryClient.invalidateQueries({ queryKey: ['ai-provider-settings'] })
+        queryClient.invalidateQueries({ queryKey: ['ai-status'] })
+        toast({ title: 'AI settings saved' })
+      },
+      onError: (error: any) => toast({
+        title: 'Could not save AI settings',
+        description: error.response?.data?.message || 'Requires settings.write permission.',
+        variant: 'destructive',
+      }),
+    })
+
+    const uploadIcon = useMutation({
+      mutationFn: async (file: File) => {
+        const form = new FormData()
+        form.append('icon', file)
+        return (await api.post('/ai/settings/assistant-icon', form, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })).data
+      },
+      onSuccess: (data: any) => {
+        setAssistantIcon(data?.icon_url ?? '')
+        queryClient.invalidateQueries({ queryKey: ['ai-provider-settings'] })
+        toast({ title: 'Assistant icon uploaded' })
+      },
+      onError: (error: any) => toast({
+        title: 'Upload failed',
+        description: error.response?.data?.message || 'Use a PNG/JPG/GIF/WebP under 5 MB.',
+        variant: 'destructive',
+      }),
+    })
+
+    const knowledge = useQuery({
+      queryKey: ['ai-knowledge'],
+      queryFn: async () => (await api.get('/ai/knowledge', { params: { per_page: 100 } })).data,
+    })
+
+    const addKnowledge = useMutation({
+      mutationFn: async () => (await api.post('/ai/knowledge', {
+        category: knowledgeCategory,
+        question: knowledgeQuestion,
+        answer: knowledgeAnswer,
+      })).data,
+      onSuccess: () => {
+        setKnowledgeQuestion('')
+        setKnowledgeAnswer('')
+        queryClient.invalidateQueries({ queryKey: ['ai-knowledge'] })
+        toast({ title: 'Knowledge entry added' })
+      },
+      onError: (error: any) => toast({
+        title: 'Could not add entry',
+        description: error.response?.data?.message || 'Check the question and answer fields.',
+        variant: 'destructive',
+      }),
+    })
+
+    const deleteKnowledge = useMutation({
+      mutationFn: async (id: number) => (await api.delete(`/ai/knowledge/${id}`)).data,
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['ai-knowledge'] })
+        toast({ title: 'Knowledge entry deleted' })
+      },
+    })
+
+    const importKnowledge = useMutation({
+      mutationFn: async () => (await api.post('/ai/knowledge/import-defaults')).data,
+      onSuccess: (data: any) => {
+        queryClient.invalidateQueries({ queryKey: ['ai-knowledge'] })
+        toast({ title: `Imported ${data?.imported ?? 0} starter knowledge entries` })
+      },
+      onError: (error: any) => toast({
+        title: 'Import failed',
+        description: error.response?.data?.message || 'Requires settings.write permission.',
+        variant: 'destructive',
+      }),
+    })
+
+    const testAi = useMutation({
+      mutationFn: async () =>
+        (await api.post('/ai/settings/test', {
+          provider,
+          model: provider === 'cerebras' ? cerebrasModel : ollamaModel,
+          cerebras_api_key: apiKey || undefined,
+        })).data.data,
+      onSuccess: (data: any) => toast({
+        title: data?.ok ? 'Connection OK' : 'Connection failed',
+        description: data?.ok
+          ? `${data.provider} · ${data.model}${data.sample ? ` — “${String(data.sample).trim().slice(0, 40)}”` : ''}`
+          : (data?.error || 'The provider did not accept the request.'),
+        variant: data?.ok ? 'default' : 'destructive',
+      }),
+      onError: (error: any) => toast({
+        title: 'Connection test failed',
+        description: error.response?.data?.message || 'Could not reach the provider.',
+        variant: 'destructive',
+      }),
+    })
+
+    const health = aiSettings.data?.health
+    const cerebras = aiSettings.data?.cerebras
+    const assistant = aiSettings.data?.assistant
+
+    return (
+      <Card className="overflow-hidden">
+        <SettingsSectionHeader
+          icon="solar:cpu-bolt-bold-duotone"
+          title="AI Configuration"
+          description="Provider, model, website assistant identity and API key for chatbot, tax advisory and AI reviews (BYOK)."
+        />
+        <CardContent className="space-y-4 py-6">
+          {aiSettings.isLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Icon icon="eos-icons:loading" className="h-5 w-5 animate-spin text-primary" />
+              Loading AI settings…
+            </div>
+          ) : (
+            <>
+              {/* Minimised summary */}
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="font-normal">
+                  {aiSettings.data?.provider === 'cerebras' ? 'Cerebras (cloud)' : 'Ollama (local)'}
+                </Badge>
+                <Badge variant="outline" className="font-mono text-[11px] font-normal">
+                  {aiSettings.data?.provider === 'cerebras' ? cerebras?.model : aiSettings.data?.ollama?.model}
+                </Badge>
+                <span className={`inline-flex h-6 items-center gap-1.5 rounded-full px-2 text-[11px] font-medium ${health?.ok ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300' : 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${health?.ok ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                  {health?.ok ? 'Connected' : 'Unreachable'}
+                </span>
+                {cerebras?.has_custom_key ? (
+                  <Badge variant="secondary" className="bg-muted font-normal text-muted-foreground">Own key {cerebras.key_hint}</Badge>
+                ) : cerebras?.using_default_key ? (
+                  <Badge variant="secondary" className="font-normal">Workspace default key</Badge>
+                ) : (
+                  <Badge variant="secondary" className="font-normal">No Cerebras key</Badge>
+                )}
+                {assistant && (
+                  <Badge variant="outline" className="font-normal">
+                    <Icon icon="solar:chat-round-dots-bold-duotone" className="mr-1 h-3.5 w-3.5" />
+                    {assistant.enabled ? 'Assistant on' : 'Assistant off'}
+                    {assistant.name ? ` · ${assistant.name}` : ''}
+                  </Badge>
+                )}
+                <HeaderActionButton
+                  variant="outline"
+                  icon={expanded ? 'solar:minimize-square-bold-duotone' : 'solar:settings-bold-duotone'}
+                  onClick={() => setExpanded((v) => !v)}
+                  className="ml-auto"
+                >
+                  {expanded ? 'Minimise' : 'Configure'}
+                </HeaderActionButton>
+              </div>
+
+              {expanded && (
+                <div className="space-y-4 border-t pt-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Provider</Label>
+                      <Select value={provider} onValueChange={(value) => setProvider(value as 'ollama' | 'cerebras')}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ollama">Ollama — local inference</SelectItem>
+                          <SelectItem value="cerebras">Cerebras — cloud (fast, BYOK)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Used by the chatbot, tax advisory and all AI reviews.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Model</Label>
+                      {provider === 'cerebras' ? (
+                        <Select value={cerebrasModel} onValueChange={setCerebrasModel}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a Cerebras model" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(cerebras?.models ?? ['qwen-3.8-27b', 'gpt-oss-120b']).map((model: string) => (
+                              <SelectItem key={model} value={model}>{model}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Select value={ollamaModel} onValueChange={setOllamaModel}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a local model" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(aiSettings.data?.ollama?.models ?? []).length > 0 ? (
+                              (aiSettings.data?.ollama?.models ?? []).map((model: string) => (
+                                <SelectItem key={model} value={model}>{model}</SelectItem>
+                              ))
+                            ) : (
+                              <SelectItem value={ollamaModel || 'llama3.1:8b'}>{ollamaModel || 'llama3.1:8b'}</SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  </div>
+
+                  {provider === 'cerebras' && (
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Cerebras API key (optional — BYOK)</Label>
+                      <Input
+                        type="password"
+                        value={apiKey}
+                        onChange={(e) => setApiKey(e.target.value)}
+                        placeholder={cerebras?.has_custom_key ? 'Leave blank to keep your saved key' : 'csk-… leave blank to use the workspace default key'}
+                        autoComplete="off"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Bring your own key from cerebras.ai; leave blank to use the workspace default
+                        {cerebras?.using_default_key ? ' (currently active)' : ''}.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Website AI Assistant identity */}
+                  <div className="space-y-4 border-t pt-4">
+                    <div className="flex items-center gap-2">
+                      <Icon icon="solar:chat-round-dots-bold-duotone" className="h-4 w-4 text-primary" />
+                      <p className="text-sm font-medium">Website AI Assistant</p>
+                      <p className="text-xs text-muted-foreground">— shown as the chat bubble on your shop/website</p>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Availability</Label>
+                        <Select value={assistantMode} onValueChange={(value) => setAssistantMode(value as 'auto' | 'on' | 'off')}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="auto">Auto — while shop + AI are enabled</SelectItem>
+                            <SelectItem value="on">Always on</SelectItem>
+                            <SelectItem value="off">Off</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          {assistant?.mode === 'auto'
+                            ? `Auto currently resolves to ${assistant.enabled ? 'on' : 'off'}.`
+                            : 'Pinned manually — ignores module changes.'}
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Bot name</Label>
+                        <Input
+                          value={assistantName}
+                          onChange={(e) => setAssistantName(e.target.value)}
+                          placeholder="NoovaERP AI Assistant"
+                          maxLength={60}
+                        />
+                      </div>
+
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Bot icon / image</Label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border bg-muted">
+                          {/^https?:\/\//i.test(assistantIcon) ? (
+                            <img src={assistantIcon} alt="bot icon" className="h-full w-full object-cover" />
+                          ) : (
+                            <span className="text-lg leading-none">{assistantIcon || '🤖'}</span>
+                          )}
+                        </span>
+                        <Input
+                          value={assistantIcon}
+                          onChange={(e) => setAssistantIcon(e.target.value)}
+                          placeholder="🤖 or https://…/bot.png"
+                          maxLength={512}
+                          className="max-w-xs"
+                        />
+                        <HeaderActionButton
+                          variant="outline"
+                          icon="solar:upload-bold-duotone"
+                          loading={uploadIcon.isPending}
+                          disabled={uploadIcon.isPending}
+                          onClick={() => iconFileRef.current?.click()}
+                        >
+                          Upload image
+                        </HeaderActionButton>
+                        <input
+                          ref={iconFileRef}
+                          type="file"
+                          accept="image/png,image/jpeg,image/gif,image/webp"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) uploadIcon.mutate(file)
+                            e.target.value = ''
+                          }}
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {PRESET_ASSISTANT_ICONS.map((emoji) => (
+                          <button
+                            key={emoji}
+                            type="button"
+                            onClick={() => setAssistantIcon(emoji)}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg border text-base transition-colors hover:border-primary/50 ${
+                              assistantIcon === emoji ? 'border-primary bg-primary/10' : 'bg-card'
+                            }`}
+                            aria-label={`Use ${emoji} as assistant icon`}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Choose a preset icon, upload a PNG/JPG/GIF/WebP, or paste an emoji / image URL.
+                        Uploads save immediately.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Welcome message</Label>
+                      <textarea
+                        value={assistantWelcome}
+                        onChange={(e) => setAssistantWelcome(e.target.value)}
+                        placeholder="👋 Hi! How can I help you today?"
+                        rows={2}
+                        maxLength={300}
+                        className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      />
+                      <p className="text-xs text-muted-foreground">Shown when a shopper opens the assistant.</p>
+                    </div>
+                  </div>
+
+                  {/* Knowledge base (RAG) */}
+                  <div className="space-y-3 border-t pt-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Icon icon="solar:notebook-bookmark-bold-duotone" className="h-4 w-4 text-primary" />
+                      <p className="text-sm font-medium">Knowledge base</p>
+                      <p className="text-xs text-muted-foreground">— official answers the assistant quotes (shipping, returns, membership, FAQs)</p>
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        {knowledge.data?.meta?.total ?? 0} entries
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <HeaderActionButton
+                        variant="outline"
+                        icon="solar:download-minimalistic-bold-duotone"
+                        loading={importKnowledge.isPending}
+                        disabled={importKnowledge.isPending}
+                        onClick={() => importKnowledge.mutate()}
+                      >
+                        Import starter knowledge
+                      </HeaderActionButton>
+                      <HeaderActionButton
+                        variant="outline"
+                        icon="solar:add-circle-bold-duotone"
+                        onClick={() => setKnowledgeFormOpen((prev) => !prev)}
+                      >
+                        {knowledgeFormOpen ? 'Close form' : 'Add entry'}
+                      </HeaderActionButton>
+                    </div>
+
+                    {knowledgeFormOpen && (
+                      <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+                        <div className="grid gap-2 sm:grid-cols-[180px_1fr]">
+                          <Select value={knowledgeCategory} onValueChange={setKnowledgeCategory}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {['faq', 'shipping', 'orders', 'returns', 'payments', 'membership', 'products', 'support', 'policy', 'other'].map((category) => (
+                                <SelectItem key={category} value={category}>{category}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            value={knowledgeQuestion}
+                            onChange={(e) => setKnowledgeQuestion(e.target.value)}
+                            placeholder="Question — e.g. How much does delivery cost?"
+                            maxLength={500}
+                          />
+                        </div>
+                        <textarea
+                          value={knowledgeAnswer}
+                          onChange={(e) => setKnowledgeAnswer(e.target.value)}
+                          placeholder="Answer the assistant should give…"
+                          rows={2}
+                          maxLength={5000}
+                          className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        />
+                        <HeaderActionButton
+                          icon="solar:diskette-bold-duotone"
+                          loading={addKnowledge.isPending}
+                          disabled={addKnowledge.isPending || !knowledgeQuestion.trim() || !knowledgeAnswer.trim()}
+                          onClick={() => addKnowledge.mutate()}
+                        >
+                          Add knowledge entry
+                        </HeaderActionButton>
+                      </div>
+                    )}
+
+                    <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
+                      {knowledge.isLoading ? (
+                        <p className="text-xs text-muted-foreground">Loading knowledge…</p>
+                      ) : (knowledge.data?.documents?.length ?? 0) === 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          No entries yet — import the starter pack or add your own so the assistant can answer policy questions.
+                        </p>
+                      ) : (
+                        knowledge.data.documents.map((doc: any) => (
+                          <div key={doc.id} className="flex items-start gap-2 rounded-lg border bg-card px-3 py-2">
+                            <span className="mt-0.5 shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">
+                              {doc.category}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-foreground">{doc.question}</p>
+                              <p className="truncate text-xs text-muted-foreground">{doc.answer}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => deleteKnowledge.mutate(doc.id)}
+                              className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                              aria-label="Delete knowledge entry"
+                            >
+                              <Icon icon="solar:trash-bin-trash-linear" className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <HeaderActionButton
+                      icon="solar:diskette-bold-duotone"
+                      loading={saveAi.isPending}
+                      disabled={saveAi.isPending}
+                      onClick={() => saveAi.mutate()}
+                    >
+                      Save AI settings
+                    </HeaderActionButton>
+                    <HeaderActionButton
+                      variant="outline"
+                      icon="solar:plug-circle-bold-duotone"
+                      loading={testAi.isPending}
+                      disabled={testAi.isPending}
+                      onClick={() => testAi.mutate()}
+                    >
+                      Test connection
+                    </HeaderActionButton>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+    )
+  }
+
   const sections: SettingsSectionDef[] = [
     {
       key: 'profile',
@@ -528,6 +1049,13 @@ export function GeneralSettings() {
       description: 'GST / tax registration number',
       icon: 'solar:document-text-bold-duotone',
       component: TaxSection,
+    },
+    {
+      key: 'ai',
+      title: 'AI Configuration',
+      description: 'Provider, model, website assistant identity (BYOK)',
+      icon: 'solar:cpu-bolt-bold-duotone',
+      component: AiSection,
     },
   ]
 

@@ -1,21 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { todayDateOnly, addCalendarDays, diffCalendarDays, isValidProductQuantity } from '@/lib/dateOnly';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
 import { cn, formatCurrency, getApiErrorMessage } from '@/lib/utils';
-import api from '@/lib/api';
+import api from '@/lib/api'
+import pricingApi from '@/lib/pricingApi'
+import { useAuthStore } from '@/store/authStore';
 import { ContactSearchCombobox } from '@/components/ui/ContactSearchCombobox';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 import { getProductLineDescription, ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
@@ -53,6 +57,12 @@ interface InvoiceLine {
   unit_price: number | '';
   tax_rate: number | '';
   discount_amount: number | '';
+  // MRD pricelist-multicurrency FR-6.2/FR-6.3: pricing intent travels with
+  // the line — 'auto' lets the server resolve (and re-resolve) from the
+  // price list; 'manual' marks a hand-typed value (floor-guarded).
+  price_mode?: 'auto' | 'manual' | 'carried';
+  pricing_source?: string | null;
+  override_reason?: string | null;
 }
 
 interface CustomerAddress {
@@ -276,7 +286,8 @@ export const CreateInvoicePage: React.FC = () => {
   // background refetch can never overwrite in-progress edits (e.g. the
   // selected lot). Reset when a different invoice is hydrated.
   const linesTouchedRef = useRef(false);
-  const { toast } = useToast();
+  const { toast } = useToast()
+  const canViewPriceLists = useAuthStore((state) => state.hasPermission('pricelists.view'));
   const isQuoteMode = location.pathname.startsWith('/sales/quotes');
   const isEditMode = Boolean(id);
   const documentLabel = isQuoteMode ? 'Quotation' : 'Invoice';
@@ -323,6 +334,20 @@ export const CreateInvoicePage: React.FC = () => {
   const [discountMode, setDiscountMode] = useState<'fixed' | 'percentage'>('fixed');
   const [discountAmount, setDiscountAmount] = useState<number | ''>('');
   const [lines, setLines] = useState<InvoiceLine[]>([emptyLine()]);
+  // MRD pricelist-multicurrency FR-5.1/FR-6.1: document currency + resolved
+  // rate snapshot for display (server remains the price authority).
+  const [currencyCode, setCurrencyCode] = useState('');
+  // Explicit price-list selection (FR-2.3 step 1); '' = auto (customer's list).
+  const [priceListId, setPriceListId] = useState('');
+  const [pricingMeta, setPricingMeta] = useState<{
+    base_currency_code?: string;
+    exchange_rate?: number;
+    rate_date?: string | null;
+    price_list_name?: string | null;
+    price_list_currency?: string | null;
+  } | null>(null);
+  const [overrideDialogOpen, setOverrideDialogOpen] = useState(false);
+  const [overrideReason, setOverrideReason] = useState('');
   const [draggedLineIndex, setDraggedLineIndex] = useState<number | null>(null);
   const [documentSnapshot, setDocumentSnapshot] = useState<InvoiceDocumentSnapshot>(emptyDocumentSnapshot);
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
@@ -586,6 +611,14 @@ export const CreateInvoicePage: React.FC = () => {
     }
     setDefaultsApplied(true);
   }, [salesSettings, isEditMode, defaultsApplied]);
+
+  // Customer changes re-resolve the default document currency and prices
+  // (FR-2.3/FR-5.2). Existing hand-typed prices are kept (FR-6.3).
+  useEffect(() => {
+    if (!customerId || isEditMode) return;
+    void resolvePricingForLines(customerId, lines);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerId]);
   const saveMutation = useMutation({
     mutationFn: async (data: unknown) => {
       const response = isEditMode
@@ -607,13 +640,48 @@ export const CreateInvoicePage: React.FC = () => {
       }
     },
     onError: (error: any) => {
+      const message = getApiErrorMessage(error);
+      // FR-6.3: a below-floor manual override needs an audited reason — ask
+      // for it once, then retry with the reason attached to manual lines.
+      if (typeof message === 'string' && message.toLowerCase().includes('override_reason')) {
+        setOverrideReason('');
+        setOverrideDialogOpen(true);
+        return;
+      }
       toast({
         variant: 'destructive',
         title: `Failed to ${isEditMode ? 'update' : 'create'} ${documentLabel.toLowerCase()}`,
-        description: getApiErrorMessage(error),
+        description: message,
       });
     },
   });
+
+  const { data: sellableCurrencies = [] } = useQuery({
+    queryKey: ['currencies', 'sellable'],
+    queryFn: () => pricingApi.sellableCurrencies(),
+  });
+
+  const { data: activePriceLists } = useQuery({
+    queryKey: ['price-lists', 'active'],
+    queryFn: () => pricingApi.listPriceLists({ active_only: true, per_page: 200 }),
+    enabled: canViewPriceLists,
+  });
+  const priceListRows: any[] = (activePriceLists as any)?.data ?? activePriceLists ?? [];
+
+  const applyOverrideReasonAndRetry = () => {
+    const reason = overrideReason.trim();
+    if (!reason) {
+      toast({ variant: 'destructive', title: 'A reason is required for below-floor prices' });
+      return;
+    }
+    const nextLines = lines.map((line) =>
+      line.price_mode === 'manual' ? { ...line, override_reason: reason } : line,
+    );
+    setLines(nextLines);
+    setOverrideDialogOpen(false);
+    // Pass the reasoned lines explicitly — state updates are async.
+    handleSubmit({ preventDefault: () => {} } as React.FormEvent, nextLines);
+  };
 
   const createCustomerMutation = useMutation({
     mutationFn: async (payload: CustomerFormState) => {
@@ -664,6 +732,69 @@ export const CreateInvoicePage: React.FC = () => {
     },
   });
 
+  /**
+   * MRD pricelist-multicurrency FR-4.6/FR-6.2: ask the engine for the
+   * applicable price-list prices + the document's default currency. The
+   * server re-resolves authoritatively on save (price_mode='auto'); this
+   * keeps the on-screen value truthful before saving.
+   */
+  const resolvePricingForLines = async (
+    customerIdArg: string,
+    nextLines: InvoiceLine[],
+    currencyOverride?: string,
+    listOverride?: string,
+  ) => {
+    const productLines = nextLines
+      .map((line, index) => ({ line, index }))
+      .filter(({ line }) => (line.line_type ?? 'product') === 'product' && !!line.product_id);
+    if (productLines.length === 0) return;
+
+    try {
+      const result = await pricingApi.resolveBatch(
+        {
+          customer_id: customerIdArg ? parseInt(customerIdArg, 10) : null,
+          date: invoiceDate || undefined,
+          // The editor's selected currency wins; when empty the server
+          // resolves the customer's list currency (FR-5.2).
+          document_currency: (currencyOverride ?? currencyCode) || undefined,
+          price_list_id: (listOverride ?? priceListId) ? Number(listOverride ?? priceListId) : undefined,
+        },
+        productLines.map(({ line }) => ({
+          product_id: parseInt(line.product_id, 10),
+          quantity: line.quantity === '' ? 1 : Number(line.quantity) || 1,
+        })),
+      );
+
+      setCurrencyCode(result.currency_code);
+      setPricingMeta({
+        base_currency_code: result.base_currency_code,
+        exchange_rate: result.exchange_rate,
+        rate_date: result.rate_date,
+        price_list_name: result.price_list_name,
+        price_list_currency: result.price_list_currency,
+      });
+
+      const updated = [...nextLines];
+      result.lines.forEach((quote: any, quoteIndex: number) => {
+        const target = productLines[quoteIndex]?.index;
+        if (target === undefined || quote?.error) return;
+        // Auto-filled prices only override auto/empty lines — a hand-typed
+        // price must never be silently replaced (FR-6.3).
+        if (updated[target].price_mode === 'manual') return;
+        updated[target] = {
+          ...updated[target],
+          unit_price: quote.unit_price,
+          price_mode: 'auto',
+          pricing_source: quote.pricing_trace?.pricelist_code || quote.source || null,
+        };
+      });
+      setLines(updated);
+    } catch {
+      // Resolution failures (missing rate, etc.) are surfaced by the server
+      // on save with an actionable message; display stays usable meanwhile.
+    }
+  };
+
   const updateLine = (index: number, field: keyof InvoiceLine, value: string | number) => {
     const updated = [...lines];
     updated[index] = { ...updated[index], [field]: value };
@@ -675,10 +806,24 @@ export const CreateInvoicePage: React.FC = () => {
         updated[index].unit_price = parseFloat(product.price || product.selling_price || '0');
         updated[index].model_number = product.manufacturer_part_number || '';
         updated[index].sku = product.sku || '';
+        updated[index].price_mode = 'auto';
+        updated[index].pricing_source = null;
+        setLines(updated);
+        void resolvePricingForLines(customerId, updated);
+        return;
       }
     }
 
+    // A hand-typed price is an override (FR-6.2 manual chip / FR-6.3 floor).
+    if (field === 'unit_price') {
+      updated[index].price_mode = 'manual';
+    }
+
+    // Qty changes re-evaluate auto lines against quantity tiers (FR-6.2).
     setLines(updated);
+    if (field === 'quantity' && updated[index].price_mode === 'auto') {
+      void resolvePricingForLines(customerId, updated);
+    }
   };
 
   const updateDocumentSnapshot = (field: keyof InvoiceDocumentSnapshot, value: string) => {
@@ -817,8 +962,9 @@ export const CreateInvoicePage: React.FC = () => {
     createCustomerMutation.mutate(customerForm);
   };
 
-  const handleSubmit = (event: React.FormEvent) => {
+  const handleSubmit = (event: React.FormEvent, linesOverride?: InvoiceLine[]) => {
     event.preventDefault();
+    const submissionLines = linesOverride ?? lines;
 
     if (!customerId) {
       toast({ variant: 'destructive', title: 'Please select a customer' });
@@ -901,15 +1047,19 @@ export const CreateInvoicePage: React.FC = () => {
       terms: terms || undefined,
       payment_terms: paymentTerms,
       discount_amount: documentDiscountAmount || 0,
+      // FR-5.1/FR-5.2: explicit document currency; empty = resolve default.
+      ...(currencyCode ? { currency_code: currencyCode } : {}),
+      // FR-2.3 step 1: explicit list selection wins over applicability.
+      ...(priceListId ? { price_list_id: Number(priceListId) } : {}),
       requires_approval: requiresApproval,
       ...(!isEditMode && tags.length ? { tags } : {}),
       ...(customInvoiceNumber ? { invoice_number: customInvoiceNumber } : {}),
       ...documentSnapshot,
-      lines: lines
+      lines: submissionLines
         .filter((line) => line.description || line.product_id)
         .map((line) => ({
           line_type: line.line_type || 'product',
-          sequence: lines.indexOf(line),
+          sequence: submissionLines.indexOf(line),
           product_id: line.product_id ? parseInt(line.product_id, 10) : null,
           model_number: line.model_number || null,
           description: line.description || 'Item',
@@ -921,6 +1071,8 @@ export const CreateInvoicePage: React.FC = () => {
           expiry_date: line.expiry_date || null,
           quantity: line.quantity === '' ? 0 : Number(line.quantity),
           unit_price: line.unit_price === '' ? 0 : line.unit_price,
+          price_mode: line.price_mode ?? undefined,
+          override_reason: line.override_reason ?? undefined,
           tax_rate: line.tax_rate === '' ? 0 : line.tax_rate,
           discount_amount: line.discount_amount === '' ? 0 : line.discount_amount,
         })),
@@ -1059,6 +1211,68 @@ export const CreateInvoicePage: React.FC = () => {
                     }}
                     className="w-full min-w-0 px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
+                </div>
+                <div className="lg:col-span-2">
+                  <label className="block text-sm font-medium mb-1">Currency</label>
+                  <select
+                    value={currencyCode}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setCurrencyCode(next);
+                      // FR-5.2: changing currency re-prices auto lines
+                      // through the engine; manual lines keep their value.
+                      void resolvePricingForLines(customerId, lines, next || undefined);
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  >
+                    {currencyCode && !(sellableCurrencies as any[]).some((c: any) => c.code === currencyCode) && (
+                      <option value={currencyCode}>{currencyCode}</option>
+                    )}
+                    <option value="">Auto (customer's list currency)</option>
+                    {(sellableCurrencies as any[]).map((currency: any) => (
+                      <option key={currency.code} value={currency.code}>
+                        {currency.code}{currency.symbol ? ` ${currency.symbol}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {currencyCode && pricingMeta?.base_currency_code && pricingMeta.base_currency_code !== currencyCode && (
+                    <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                      1 {currencyCode} = {Number(pricingMeta.exchange_rate || 0).toFixed(4)} {pricingMeta.base_currency_code}
+                      {pricingMeta.price_list_name ? ` · ${pricingMeta.price_list_name}` : ''}
+                    </p>
+                  )}
+                  {currencyCode && pricingMeta?.base_currency_code === currencyCode && pricingMeta.price_list_name && (
+                    <p className="mt-1 text-xs text-muted-foreground">{pricingMeta.price_list_name}</p>
+                  )}
+                </div>
+                <div className="lg:col-span-3">
+                  <label className="block text-sm font-medium mb-1">Price List</label>
+                  <select
+                    value={priceListId}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setPriceListId(next);
+                      // An explicit list re-prices auto lines through the
+                      // engine; manual lines keep their values (FR-5.2).
+                      void resolvePricingForLines(customerId, lines, undefined, next);
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  >
+                    <option value="">Auto — customer's applicable list</option>
+                    {priceListRows.map((list: any) => (
+                      <option key={list.id} value={String(list.id)}>
+                        {list.name} · {list.currency_code}{list.code ? ` (${list.code})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {pricingMeta?.price_list_name
+                      ? `Lines priced from “${pricingMeta.price_list_name}” (${pricingMeta.price_list_currency ?? currencyCode}).`
+                      : 'No list applied — catalogue prices are used.'}{' '}
+                    <Link to="/sales/price-lists" className="underline hover:text-foreground">
+                      Manage price lists →
+                    </Link>
+                  </p>
                 </div>
                 {!isQuoteMode && (
                   <div className="lg:col-span-1">
@@ -1584,15 +1798,36 @@ export const CreateInvoicePage: React.FC = () => {
                         </td>
                         <td className={cn(LINE_CELL, 'w-[7rem] min-w-[6rem]')}>
                           <div className={LINE_CELL_BOX}>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              placeholder="0.00"
-                              value={line.unit_price === '' ? '' : line.unit_price}
-                              onChange={(event) => updateLine(index, 'unit_price', event.target.value === '' ? '' : parseFloat(event.target.value))}
-                              className={LINE_INPUT_NUMERIC}
-                            />
+                            <div className="flex w-full flex-col gap-0.5">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="0.00"
+                                value={line.unit_price === '' ? '' : line.unit_price}
+                                onChange={(event) => updateLine(index, 'unit_price', event.target.value === '' ? '' : parseFloat(event.target.value))}
+                                className={LINE_INPUT_NUMERIC}
+                              />
+                              {/* FR-6.2: pricing source chip — where this price came from. */}
+                              {line.price_mode === 'manual' && (
+                                <span className="self-start rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                                  Manual
+                                </span>
+                              )}
+                              {line.price_mode !== 'manual' && line.pricing_source && (
+                                <span
+                                  className="self-start max-w-full truncate rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300"
+                                  title="Priced from this price list"
+                                >
+                                  {line.pricing_source}
+                                </span>
+                              )}
+                              {currencyCode && pricingMeta?.base_currency_code && currencyCode !== pricingMeta.base_currency_code && line.unit_price !== '' && (
+                                <span className="self-start text-[10px] text-muted-foreground">
+                                  ≈ {formatCurrency(Number(line.unit_price) * Number(pricingMeta.exchange_rate || 1), pricingMeta.base_currency_code)}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </td>
                         {visibleLineColumns.tax_rate && <td className={cn(LINE_CELL, 'w-[5rem] min-w-[4rem]')}>
@@ -1685,8 +1920,22 @@ export const CreateInvoicePage: React.FC = () => {
                   )}
                   <div className="flex justify-between text-lg font-bold pt-2 border-t">
                     <span>Total:</span>
-                    <span className="text-primary">{formatCurrency(total)}</span>
+                    <span className="text-primary">
+                      {currencyCode ? formatCurrency(total, currencyCode) : formatCurrency(total)}
+                    </span>
                   </div>
+                  {currencyCode && pricingMeta?.base_currency_code && pricingMeta.base_currency_code !== currencyCode && (
+                    <div className="flex justify-between text-sm text-muted-foreground">
+                      <span>Base equivalent ({pricingMeta.base_currency_code}):</span>
+                      <span>{formatCurrency(total * Number(pricingMeta.exchange_rate || 1), pricingMeta.base_currency_code)}</span>
+                    </div>
+                  )}
+                  {pricingMeta?.price_list_name && (
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>Priced by:</span>
+                      <span>{pricingMeta.price_list_name} ({pricingMeta.price_list_currency ?? currencyCode})</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -1711,6 +1960,32 @@ export const CreateInvoicePage: React.FC = () => {
             </Button>
           </div>
         </form>
+
+        <Dialog open={overrideDialogOpen} onOpenChange={setOverrideDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Price override reason required</DialogTitle>
+              <DialogDescription>
+                One or more manual prices are below the allowed floor (below cost or more than the configured
+                discount). Provide a reason for the audit trail — it is stored with each overridden line.
+              </DialogDescription>
+            </DialogHeader>
+            <Textarea
+              rows={3}
+              placeholder="e.g. tender award price approved by management"
+              value={overrideReason}
+              onChange={(event) => setOverrideReason(event.target.value)}
+            />
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setOverrideDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="button" onClick={applyOverrideReasonAndRetry}>
+                Save with reason
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <Dialog open={customerDialogOpen} onOpenChange={setCustomerDialogOpen}>

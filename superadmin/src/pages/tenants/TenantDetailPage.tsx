@@ -3,10 +3,15 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import TenantOperationModal from '@/components/tenants/TenantOperationModal'
 import {
+  addTenantDomain,
+  checkTenantDomain,
   createTenantNote,
+  deleteTenantDomain,
   deleteTenantNote,
   getTenantDetail,
+  getTenantDomains,
   pingTenantHealth,
+  verifyTenantDomain,
 } from '@/lib/admin-api/tenants'
 import { getTenantSubscription } from '@/lib/admin-api/subscriptions'
 import { getTenantTimeline } from '@/lib/admin-api/audit'
@@ -15,10 +20,10 @@ import { ActivityFeed } from '@/components/audit/ActivityFeed'
 import { SeverityBadge } from '@/components/audit/SeverityBadge'
 import type {
   AdminNote, AuditSeverity, Subscription,
-  TenantDetail, TenantHealthSnapshot, TenantOperation, TenantTimelineEvent,
+  TenantDetail, TenantDomain, TenantHealthSnapshot, TenantOperation, TenantTimelineEvent,
 } from '@/types/admin'
 
-type Tab = 'overview' | 'operations' | 'health' | 'notes' | 'subscription' | 'activity' | 'timeline'
+type Tab = 'overview' | 'domains' | 'operations' | 'health' | 'notes' | 'subscription' | 'activity' | 'timeline'
 type ModalOp = 'suspend' | 'reinstate' | 'ping_health' | 'migrate_plan'
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
@@ -119,6 +124,197 @@ function OverviewTab({ tenant, onAction }: { tenant: TenantDetail; onAction: (op
           Ping Health
         </button>
       </div>
+    </div>
+  )
+}
+
+// ─── Tab: Domains ─────────────────────────────────────────────────────────────
+
+const DNS_STYLES: Record<string, string> = {
+  verified: 'bg-green-100 text-green-800',
+  pending:  'bg-yellow-100 text-yellow-800',
+  failed:   'bg-red-100 text-red-800',
+}
+
+const SSL_STYLES: Record<string, string> = {
+  active:  'bg-green-100 text-green-800',
+  unknown: 'bg-gray-100 text-gray-700',
+  failed:  'bg-red-100 text-red-800',
+}
+
+function DomainBadge({ status, styles }: { status: string; styles: Record<string, string> }) {
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${styles[status] ?? 'bg-gray-100 text-gray-600'}`}>
+      {status}
+    </span>
+  )
+}
+
+function DomainsTab({ tenantId, isReadonly }: { tenantId: string; isReadonly: boolean }) {
+  const queryClient = useQueryClient()
+  const [newDomain, setNewDomain] = useState('')
+  const [newType, setNewType] = useState<'platform' | 'custom'>('custom')
+  const [error, setError] = useState<string | null>(null)
+
+  const { data: domains = [], isLoading } = useQuery({
+    queryKey: ['admin', 'tenants', tenantId, 'domains'],
+    queryFn: () => getTenantDomains(tenantId),
+  })
+
+  function invalidate() {
+    queryClient.invalidateQueries({ queryKey: ['admin', 'tenants', tenantId] })
+    queryClient.invalidateQueries({ queryKey: ['admin', 'tenants', tenantId, 'domains'] })
+  }
+
+  const addMutation = useMutation({
+    mutationFn: () => addTenantDomain(tenantId, newDomain.trim(), newType),
+    onSuccess: () => { setNewDomain(''); setError(null); invalidate() },
+    onError: (err: unknown) => {
+      const ax = err as { response?: { data?: { message?: string } } }
+      setError(ax.response?.data?.message ?? 'Could not add the domain.')
+    },
+  })
+
+  const verifyMutation = useMutation({
+    mutationFn: (domainId: number) => verifyTenantDomain(tenantId, domainId),
+    onSuccess: invalidate,
+    onError: (err: unknown) => {
+      const ax = err as { response?: { data?: { message?: string } } }
+      setError(ax.response?.data?.message ?? 'Verification request failed.')
+    },
+  })
+
+  const checkMutation = useMutation({
+    mutationFn: (domainId: number) => checkTenantDomain(tenantId, domainId),
+    onSuccess: invalidate,
+    onError: (err: unknown) => {
+      const ax = err as { response?: { data?: { message?: string } } }
+      setError(ax.response?.data?.message ?? 'Status check failed.')
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (domainId: number) => deleteTenantDomain(tenantId, domainId),
+    onSuccess: invalidate,
+    onError: (err: unknown) => {
+      const ax = err as { response?: { data?: { message?: string } } }
+      setError(ax.response?.data?.message ?? 'Could not remove the domain.')
+    },
+  })
+
+  if (isLoading) return <p className="text-sm text-gray-400 py-6 text-center">Loading domains…</p>
+
+  return (
+    <div className="space-y-4">
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
+          {error}
+          <button onClick={() => setError(null)} className="ml-3 underline">Dismiss</button>
+        </div>
+      )}
+
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-700">Domains</h3>
+          <span className="text-xs text-gray-400">{domains.length} registered</span>
+        </div>
+        {domains.length === 0 ? (
+          <p className="text-sm text-gray-400 py-8 text-center">No domains registered for this tenant yet.</p>
+        ) : (
+          <table className="w-full text-sm text-left">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="px-4 py-2.5 font-medium text-gray-600">Domain</th>
+                <th className="px-4 py-2.5 font-medium text-gray-600">Type</th>
+                <th className="px-4 py-2.5 font-medium text-gray-600">DNS</th>
+                <th className="px-4 py-2.5 font-medium text-gray-600">SSL</th>
+                <th className="px-4 py-2.5 font-medium text-gray-600">Cert Expires</th>
+                <th className="px-4 py-2.5 font-medium text-gray-600">Last Checked</th>
+                <th className="px-4 py-2.5 font-medium text-gray-600 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {domains.map((d: TenantDomain) => (
+                <tr key={d.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-2.5">
+                    <span className="font-mono text-xs text-gray-800">{d.domain}</span>
+                    {d.is_primary && (
+                      <span className="ml-2 text-xs bg-brand-50 text-brand-700 px-1.5 py-0.5 rounded">primary</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5 capitalize text-gray-700">{d.type}</td>
+                  <td className="px-4 py-2.5"><DomainBadge status={d.dns_status} styles={DNS_STYLES} /></td>
+                  <td className="px-4 py-2.5"><DomainBadge status={d.ssl_status} styles={SSL_STYLES} /></td>
+                  <td className="px-4 py-2.5 text-gray-500">{formatDate(d.cert_expires_at)}</td>
+                  <td className="px-4 py-2.5 text-gray-500">{formatDate(d.last_checked_at)}</td>
+                  <td className="px-4 py-2.5 text-right space-x-2 whitespace-nowrap">
+                    {d.type === 'custom' && (
+                      <button
+                        onClick={() => verifyMutation.mutate(d.id)}
+                        disabled={verifyMutation.isPending || isReadonly}
+                        className="text-brand-600 hover:underline text-xs font-medium disabled:opacity-40">
+                        Verify
+                      </button>
+                    )}
+                    <button
+                      onClick={() => checkMutation.mutate(d.id)}
+                      disabled={checkMutation.isPending || isReadonly}
+                      className="text-gray-600 hover:underline text-xs font-medium disabled:opacity-40">
+                      Check
+                    </button>
+                    {d.type === 'custom' && (
+                      <button
+                        onClick={() => deleteMutation.mutate(d.id)}
+                        disabled={deleteMutation.isPending || isReadonly}
+                        className="text-red-500 hover:underline text-xs font-medium disabled:opacity-40">
+                        Remove
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {!isReadonly && (
+        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
+          <h3 className="text-sm font-semibold text-gray-700">Add a domain</h3>
+          <div className="flex items-end gap-3 flex-wrap">
+            <div className="flex-1 min-w-56">
+              <label className="block text-xs text-gray-500 mb-1">Domain</label>
+              <input
+                value={newDomain}
+                onChange={e => setNewDomain(e.target.value)}
+                placeholder="shop.example.com"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Type</label>
+              <select
+                value={newType}
+                onChange={e => setNewType(e.target.value as 'platform' | 'custom')}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                <option value="custom">Custom</option>
+                <option value="platform">Platform subdomain</option>
+              </select>
+            </div>
+            <button
+              onClick={() => addMutation.mutate()}
+              disabled={!newDomain.trim() || addMutation.isPending}
+              className="px-4 py-2 text-sm bg-brand-600 text-white rounded-lg font-medium hover:bg-brand-700 disabled:opacity-40">
+              {addMutation.isPending ? 'Adding…' : 'Add Domain'}
+            </button>
+          </div>
+          <p className="text-xs text-gray-400">
+            Custom domains start as <strong>pending</strong> and only start serving after the TXT
+            ownership proof (<code>_storefront-verify.&lt;domain&gt;</code>) verifies. Platform
+            subdomains must end in a platform zone (e.g. <code>.localhost</code>).
+          </p>
+        </div>
+      )}
     </div>
   )
 }
@@ -442,6 +638,7 @@ export default function TenantDetailPage() {
 
   const TABS: { key: Tab; label: string }[] = [
     { key: 'overview',     label: 'Overview' },
+    { key: 'domains',      label: 'Domains' },
     { key: 'operations',   label: 'Operations' },
     { key: 'health',       label: 'Health' },
     { key: 'notes',        label: 'Notes' },
@@ -495,6 +692,9 @@ export default function TenantDetailPage() {
       <div>
         {activeTab === 'overview' && (
           <OverviewTab tenant={tenant} onAction={op => !isReadonly && setModalOp(op)} />
+        )}
+        {activeTab === 'domains' && (
+          <DomainsTab tenantId={tenant.id} isReadonly={isReadonly} />
         )}
         {activeTab === 'operations' && (
           <OperationsTab operations={tenant.recent_operations} />

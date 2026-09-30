@@ -61,6 +61,9 @@ class DeliveryOrder extends Model
         'delivered_at',
         'notes',
         'total',
+        'currency_code',
+        'exchange_rate',
+        'base_currency_code',
         'created_by',
         'confirmed_by',
         'completed_by',
@@ -84,6 +87,7 @@ class DeliveryOrder extends Model
         'delivered_at' => 'datetime',
         'shipping_address_overridden' => 'boolean',
         'total' => 'decimal:2',
+        'exchange_rate' => 'decimal:6',
     ];
 
     protected static function boot()
@@ -93,6 +97,19 @@ class DeliveryOrder extends Model
         static::creating(function ($order) {
             if (empty($order->delivery_order_number)) {
                 $order->delivery_order_number = static::generateNumber();
+            }
+            // MRD pricelist-multicurrency FR-5.6: DOs inherit the SO/quote
+            // currency; this hook guarantees non-NULL for any other creator.
+            if (! $order->currency_code) {
+                $order->currency_code = \App\Services\DocumentCurrencyResolver::resolve();
+            }
+            if (! $order->base_currency_code) {
+                $order->base_currency_code = \App\Services\DocumentCurrencyResolver::baseFor(null, $order->customer_id);
+            }
+            if ($order->exchange_rate === null
+                && $order->currency_code
+                && strtoupper($order->currency_code) === strtoupper($order->base_currency_code)) {
+                $order->exchange_rate = 1.000000;
             }
         });
 

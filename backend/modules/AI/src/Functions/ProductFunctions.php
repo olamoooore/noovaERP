@@ -46,9 +46,10 @@ class ProductFunctions
                 ->select('id', 'name', 'sku', 'barcode', 'description', 'price', 'stock_quantity', 'category_id', 'track_inventory', 'unit')
                 ->take($limit)
                 ->get()
-                ->map(function ($product) {
+                ->map(function ($product) use ($args) {
                     return [
                         'id' => $product->id,
+                        'url' => (! empty($args['__storefront']) ? '/product/' : '/products/').$product->id,
                         'name' => $product->name,
                         'sku' => $product->sku,
                         'barcode' => $product->barcode,
@@ -125,6 +126,7 @@ class ProductFunctions
                 'success' => true,
                 'product' => [
                     'id' => $product->id,
+                    'url' => (! empty($args['__storefront']) ? '/product/' : '/products/').$product->id,
                     'name' => $product->name,
                     'secondary_name' => $product->secondary_name,
                     'sku' => $product->sku,
@@ -199,7 +201,9 @@ class ProductFunctions
                 return [
                     'success' => true,
                     'available' => true,
+                    'product_id' => $product->id,
                     'product_name' => $product->name,
+                    'url' => (! empty($args['__storefront']) ? '/product/' : '/products/').$product->id,
                     'message' => 'Product is available (inventory not tracked)',
                 ];
             }
@@ -209,7 +213,9 @@ class ProductFunctions
             return [
                 'success' => true,
                 'available' => $available,
+                'product_id' => $product->id,
                 'product_name' => $product->name,
+                'url' => (! empty($args['__storefront']) ? '/product/' : '/products/').$product->id,
                 'requested_quantity' => $quantity,
                 'stock_quantity' => $product->stock_quantity,
                 'message' => $available

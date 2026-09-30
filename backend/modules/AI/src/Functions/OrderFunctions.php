@@ -46,6 +46,8 @@ class OrderFunctions
             return [
                 'success' => true,
                 'found' => true,
+                'id' => $invoice->id,
+                'url' => '/invoices/'.$invoice->id,
                 'order_number' => $invoice->invoice_number,
                 'status' => $invoice->status ?? 'pending',
                 'total' => $invoice->total ?? 0,
@@ -107,6 +109,8 @@ class OrderFunctions
             $orderList = [];
             foreach ($invoices as $invoice) {
                 $orderList[] = [
+                    'id' => $invoice->id,
+                    'url' => '/invoices/'.$invoice->id,
                     'order_number' => $invoice->invoice_number,
                     'status' => $invoice->status ?? 'pending',
                     'total' => $invoice->total ?? 0,

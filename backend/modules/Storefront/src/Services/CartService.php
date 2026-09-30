@@ -207,6 +207,11 @@ final class CartService
         $grossTotal = 0.0;
         $breakdown = [];
 
+        // ONE engine instance per quote: its per-request price-list + FX
+        // memos (FR-13) then apply across every line instead of re-resolving
+        // per call (which also keeps the bounded-query invariant).
+        $pricing = app(\App\Services\PricingService::class);
+
         foreach ($lines as $line) {
             $product = $products->get($line->product_id);
 
@@ -217,12 +222,16 @@ final class CartService
             $variant = $line->variant_id !== null ? $variants->get($line->variant_id) : null;
             $quantity = (float) $line->quantity;
 
-            // Canonical pricing (tier/customer/variant-aware) — server side.
-            $unit = (float) $product->getPriceForQuantity(
-                (int) max(1, floor($quantity)),
+            // Canonical pricing (MRD pricelist-multicurrency FR-4.1): the
+            // shared PricingService resolves price-list rules first, then the
+            // Issue #132 tier engine (tier/customer/variant/date aware).
+            $unit = $pricing->baseCurrencyPrice(
+                $product,
+                max(1.0, $quantity),
                 $customerId,
-                now(),
                 $variant?->id,
+                now()->toDateString(),
+                $variant,
             );
 
             $taxInfo = $this->taxResolver->resolveTaxForProduct($product, $variant);

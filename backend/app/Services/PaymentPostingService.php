@@ -95,25 +95,112 @@ class PaymentPostingService
                 'other' => 'bank',
             };
 
+            // ── MRD pricelist-multicurrency FR-7.2/7.3 / AC-4 ────────────
+            // Realized FX: AR clears at the INVOICE snapshot rate, the bank
+            // receives at the PAYMENT-date rate, and the difference posts to
+            // the realized gain/loss accounts. Base-currency payments keep
+            // both rates at 1.0, so this collapses exactly to the historical
+            // "same amount on both legs" posting.
+            $invoice = $payment->invoice;
+
+            $docCurrency = strtoupper((string) ($payment->currency
+                ?? $invoice?->currency_code
+                ?? \App\Services\DocumentCurrencyResolver::resolve()));
+            $baseCurrency = strtoupper((string) ($payment->base_currency_code
+                ?? $invoice?->base_currency_code
+                ?? \App\Services\DocumentCurrencyResolver::baseFor(
+                    $invoice?->salesOrder?->legal_entity_id,
+                    $payment->customer_id
+                )));
+            $foreign = $docCurrency !== $baseCurrency;
+
+            $payRate = $payment->exchange_rate !== null ? (float) $payment->exchange_rate : null;
+
+            if ($payRate === null || $payRate <= 0) {
+                if (! $foreign) {
+                    $payRate = 1.0;
+                } else {
+                    $snapshot = \App\Services\DocumentCurrencyResolver::snapshot(
+                        $docCurrency,
+                        $payment->customer_id,
+                        $invoice?->salesOrder?->legal_entity_id,
+                        $payment->payment_date instanceof \DateTimeInterface
+                            ? $payment->payment_date->format('Y-m-d')
+                            : (string) $payment->payment_date
+                    );
+                    $payRate = (float) $snapshot['exchange_rate'];
+                    $baseCurrency = strtoupper((string) $snapshot['base_currency_code']);
+                }
+
+                // Persist the resolved settlement snapshot so a re-post is
+                // deterministic and the audit can see the rate used (FR-3.9).
+                $payment->update([
+                    'currency' => $docCurrency,
+                    'exchange_rate' => $payRate,
+                    'base_currency_code' => $baseCurrency,
+                ]);
+            }
+
+            // §9.5: fx = round(applied × (payment_rate − invoice_rate), 2).
+            // A STANDALONE payment (no invoice to clear) has no second rate —
+            // both legs carry the settlement rate, so the FX leg is zero by
+            // construction and the posting matches the historical shape.
+            if ($invoice) {
+                $invoiceRate = $invoice->exchange_rate !== null ? (float) $invoice->exchange_rate : 1.0;
+            } else {
+                $invoiceRate = $payRate;
+            }
+
+            $bankBase = round((float) $payment->amount * $payRate, 2);
+            $arBase = round((float) $payment->amount * $invoiceRate, 2);
+            $fx = round($bankBase - $arBase, 2);
+
             $lines = [
-                // DR Cash/Bank
+                // DR Cash/Bank (at settlement rate)
                 new PostingRequestLine(
                     accountMappingKey: $cashMappingKey,
                     accountId: $bankGlAccountId,
-                    debit: (float) $payment->amount,
+                    debit: $bankBase,
                     credit: 0,
-                    description: "Payment {$payment->payment_number}",
+                    description: "Payment {$payment->payment_number}".($foreign ? " ({$payment->amount} {$docCurrency} @ {$payRate})" : ''),
+                    currencyCode: $foreign ? $baseCurrency : null,
+                    originalAmount: $foreign ? (float) $payment->amount : null,
+                    exchangeRate: $foreign ? $payRate : null,
                 ),
-                // CR Accounts Receivable (for standalone payments this leaves
-                // a customer credit that nets against future invoices)
+                // CR Accounts Receivable (at the invoice snapshot rate) — for
+                // standalone payments this leaves a customer credit that
+                // nets against future invoices.
                 new PostingRequestLine(
                     accountMappingKey: 'accounts_receivable',
                     accountId: null,
                     debit: 0,
-                    credit: (float) $payment->amount,
+                    credit: $arBase,
                     description: 'Payment received - '.$payment->payment_number,
+                    currencyCode: $foreign ? $baseCurrency : null,
+                    originalAmount: $foreign ? (float) $payment->amount : null,
+                    exchangeRate: $foreign ? $invoiceRate : null,
                 ),
             ];
+
+            if ($fx > 0) {
+                // Received MORE in base than AR cleared → realized FX gain.
+                $lines[] = new PostingRequestLine(
+                    accountMappingKey: 'realized_fx_gain',
+                    accountId: null,
+                    debit: 0,
+                    credit: $fx,
+                    description: 'Realized FX gain - payment '.$payment->payment_number,
+                );
+            } elseif ($fx < 0) {
+                // Received LESS in base → realized FX loss.
+                $lines[] = new PostingRequestLine(
+                    accountMappingKey: 'realized_fx_loss',
+                    accountId: null,
+                    debit: round(-$fx, 2),
+                    credit: 0,
+                    description: 'Realized FX loss - payment '.$payment->payment_number,
+                );
+            }
 
             $result = $this->postingEngine->post(new PostingRequest(
                 documentType: 'payment',
@@ -125,6 +212,8 @@ class PaymentPostingService
                     .($payment->customer ? ' - '.$payment->customer->name : ''),
                 lines: $lines,
                 reference: $payment->payment_number,
+                currencyCode: $foreign ? $docCurrency : null,
+                exchangeRate: $foreign ? $payRate : null,
                 userId: TenantUserHelper::requireTenantUserId($resolvedUserId),
             ));
 
@@ -141,7 +230,22 @@ class PaymentPostingService
                 'payment_id' => $payment->id,
                 'payment_number' => $payment->payment_number,
                 'journal_entry_id' => $result->journalEntryId,
+                'currency' => $docCurrency,
+                'base_currency' => $baseCurrency,
             ]);
+
+            // Observability (FR-13): dedicated fx.posted event.
+            if ($foreign) {
+                Log::info('fx.posted', [
+                    'payment_id' => $payment->id,
+                    'invoice_id' => $invoice?->id,
+                    'currency' => $docCurrency,
+                    'base_currency' => $baseCurrency,
+                    'payment_rate' => $payRate,
+                    'invoice_rate' => $invoiceRate,
+                    'realized_fx' => $fx,
+                ]);
+            }
 
             return $payment->fresh(['customer', 'invoice', 'journalEntry']);
         });

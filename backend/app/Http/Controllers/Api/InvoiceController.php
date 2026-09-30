@@ -141,6 +141,15 @@ class InvoiceController extends Controller
             $query->where('customer_id', $request->customer_id);
         }
 
+        // MRD pricelist-multicurrency FR-8: filter/sort by document currency.
+        if ($request->filled('currency_code')) {
+            $query->where('currency_code', strtoupper((string) $request->currency_code));
+        }
+
+        if ($request->input('sort_by') === 'currency') {
+            $query->reorder()->orderBy('currency_code')->orderBy('invoice_date', 'desc')->orderBy('id', 'desc');
+        }
+
         if ($request->filled('document_ids')) {
             $query->whereIn('id', $request->input('document_ids', []));
         }
@@ -227,9 +236,15 @@ class InvoiceController extends Controller
             'lines.*.product_serial_id' => 'nullable|integer|exists:product_serials,id',
             'lines.*.expiry_date' => 'nullable|date',
             'lines.*.quantity' => 'nullable|integer|min:0',
-            'lines.*.unit_price' => 'required_if:lines.*.line_type,product|nullable|numeric|min:0',
+            'lines.*.unit_price' => 'nullable|numeric|min:0',
+            'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
+            'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
+            // MRD pricelist-multicurrency FR-5.1/5.2: document currency +
+            // optional explicit price list for this document.
+            'currency_code' => 'nullable|string|size:3',
+            'price_list_id' => 'nullable|integer',
             'tags' => 'nullable|array',
             'tags.*' => 'string|max:100',
         ]);
@@ -309,6 +324,15 @@ class InvoiceController extends Controller
                 'data' => $invoice->fresh(['approvalRequest', 'customer']),
             ], 201);
 
+        } catch (\App\Exceptions\PricingException $e) {
+            // MRD pricelist-multicurrency FR-1.1/FR-1.3/FR-6.3: unknown or
+            // unsellable currency, missing FX rate, or a below-floor override
+            // without a reason are validation failures, not server errors.
+            return response()->json([
+                'message' => 'Failed to create invoice',
+                'error' => $e->getMessage(),
+                'errors' => ['currency' => [$e->getMessage()]],
+            ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to create invoice',
@@ -410,6 +434,19 @@ class InvoiceController extends Controller
 
         // If updating an existing draft invoice, update header + lines directly
         if ($existingInvoice && $existingInvoice->status === 'draft') {
+            // Re-price through the engine against the document's OWN currency
+            // + rate snapshot (FR-1.7 immutability; auto lines only).
+            $pricing = app(\App\Services\PricingService::class);
+            $draftContext = $pricing->documentContext([
+                'customer_id' => $existingInvoice->customer_id,
+                'date' => $existingInvoice->invoice_date?->toDateString(),
+                'currency_code' => $data['currency_code'] ?? $existingInvoice->currency_code,
+                'exchange_rate' => ($data['currency_code'] ?? null) !== null && ($data['currency_code'] ?? null) !== $existingInvoice->currency_code
+                    ? null
+                    : $existingInvoice->exchange_rate,
+                'base_currency_code' => $existingInvoice->base_currency_code,
+                'price_list_id' => $data['price_list_id'] ?? null,
+            ]);
             $existingInvoice->update(array_filter([
                 'customer_id' => $data['customer_id'] ?? null,
                 'invoice_date' => $data['invoice_date'] ?? null,
@@ -436,12 +473,21 @@ class InvoiceController extends Controller
                 'terms' => $data['terms'] ?? null,
                 'discount_amount' => $data['discount_amount'] ?? null,
                 'po_number' => $data['po_number'] ?? null,
+                'currency_code' => $draftContext['document_currency'],
+                'exchange_rate' => $draftContext['exchange_rate'],
+                'base_currency_code' => $draftContext['base_currency'],
                 'updated_at' => now(),
             ], fn ($v) => $v !== null));
 
             // Recreate lines
             foreach ($data['lines'] as $line) {
-                $existingInvoice->lines()->create([
+                $lineProduct = ($line['line_type'] ?? 'product') === 'product' && ! empty($line['product_id'])
+                    ? \App\Models\Product::find($line['product_id'])
+                    : null;
+                $mode = $line['price_mode'] ?? (((float) ($line['unit_price'] ?? 0) > 0) ? 'legacy' : 'auto');
+                $priced = $pricing->priceLineArray($lineProduct, $line, $draftContext, $mode);
+
+                $existingInvoice->lines()->create(array_merge([
                     'line_type' => $line['line_type'] ?? 'product',
                     'sequence' => $line['sequence'] ?? 0,
                     'product_id' => $line['product_id'] ?? null,
@@ -454,10 +500,10 @@ class InvoiceController extends Controller
                     'product_serial_id' => $line['product_serial_id'] ?? null,
                     'expiry_date' => $line['expiry_date'] ?? null,
                     'quantity' => $line['quantity'],
-                    'unit_price' => $line['unit_price'],
+                    'unit_price' => $line['unit_price'] ?? 0,
                     'tax_rate' => $line['tax_rate'] ?? 0,
                     'discount_amount' => $line['discount_amount'] ?? 0,
-                ]);
+                ], array_filter($priced, fn ($v) => $v !== null)));
             }
 
             $existingInvoice->load('lines');
@@ -467,7 +513,7 @@ class InvoiceController extends Controller
         }
 
         // For new invoices, create via SalesOrder lifecycle
-        $salesLines = array_map(fn ($line) => [
+        $salesLines = array_map(fn ($line) => array_filter([
             'line_type' => $line['line_type'] ?? 'product',
             'sequence' => $line['sequence'] ?? 0,
             'product_id' => $line['product_id'] ?? null,
@@ -476,9 +522,13 @@ class InvoiceController extends Controller
             'product_notes' => $line['product_notes'] ?? null,
             'quantity' => $line['quantity'],
             'unit_price' => $line['unit_price'],
+            // MRD FR-4/FR-6: the editor's pricing intent travels with the
+            // line (auto/manual/carried + override reason for the floor audit).
+            'price_mode' => $line['price_mode'] ?? null,
+            'override_reason' => $line['override_reason'] ?? null,
             'tax_rate' => $line['tax_rate'] ?? 0,
             'discount_amount' => $line['discount_amount'] ?? 0,
-        ], $data['lines']);
+        ], fn ($v) => $v !== null), $data['lines']);
 
         // Resolve warehouse if any line references a stock-tracked product
         $warehouseId = null;
@@ -502,13 +552,17 @@ class InvoiceController extends Controller
             }
         }
 
-        $salesOrder = $this->salesOrderService->createOrder([
+        $salesOrder = $this->salesOrderService->createOrder(array_filter([
             'customer_id' => $data['customer_id'],
             'channel' => 'admin',
             'notes' => $data['notes'] ?? null,
             'lines' => $salesLines,
             'warehouse_id' => $warehouseId,
-        ]);
+            // FR-5.2: document currency (default = customer's price-list
+            // currency → entity base) and optional explicit list selection.
+            'currency_code' => $data['currency_code'] ?? null,
+            'price_list_id' => $data['price_list_id'] ?? null,
+        ], fn ($v) => $v !== null));
 
         // Fast-track admin orders through the full lifecycle immediately
         // Re-apply search_path after each DB::transaction() call which can reset connections
@@ -846,7 +900,9 @@ class InvoiceController extends Controller
             'lines.*.product_serial_id' => 'nullable|integer|exists:product_serials,id',
             'lines.*.expiry_date' => 'nullable|date',
             'lines.*.quantity' => 'nullable|integer|min:0',
-            'lines.*.unit_price' => 'required_if:lines.*.line_type,product|nullable|numeric|min:0',
+            'lines.*.unit_price' => 'nullable|numeric|min:0',
+            'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
+            'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
         ], [
@@ -869,7 +925,7 @@ class InvoiceController extends Controller
                 return $sum;
             }
 
-            return $sum + ($line['quantity'] * $line['unit_price']) - ($line['discount_amount'] ?? 0);
+            return $sum + ((int) ($line['quantity'] ?? 0) * (float) ($line['unit_price'] ?? 0)) - ($line['discount_amount'] ?? 0);
         }, 0)
         : $invoice->lines->reduce(function ($sum, $line) {
             return $sum + ($line->quantity * $line->unit_price) - ($line->discount_amount ?? 0);
@@ -893,9 +949,27 @@ class InvoiceController extends Controller
             $invoice->update($validated);
 
             if ($lines !== null) {
+                // Draft edit: price against the document's own currency +
+                // rate snapshot (FR-1.7 — the snapshot is never re-derived;
+                // only auto/new lines change price).
+                $pricing = app(\App\Services\PricingService::class);
+                $pricingContext = $pricing->documentContext([
+                    'customer_id' => $invoice->customer_id,
+                    'date' => $invoice->invoice_date?->toDateString(),
+                    'currency_code' => $invoice->currency_code,
+                    'exchange_rate' => $invoice->exchange_rate,
+                    'base_currency_code' => $invoice->base_currency_code,
+                ]);
+
                 $invoice->lines()->delete();
                 foreach ($lines as $line) {
-                    $invoice->lines()->create([
+                    $lineProduct = ($line['line_type'] ?? 'product') === 'product' && ! empty($line['product_id'])
+                        ? \App\Models\Product::find($line['product_id'])
+                        : null;
+                    $mode = $line['price_mode'] ?? (((float) ($line['unit_price'] ?? 0) > 0) ? 'legacy' : 'auto');
+                    $priced = $pricing->priceLineArray($lineProduct, $line, $pricingContext, $mode);
+
+                    $invoice->lines()->create(array_merge([
                         'line_type' => $line['line_type'] ?? 'product',
                         'sequence' => $line['sequence'] ?? 0,
                         'product_id' => $line['product_id'] ?? null,
@@ -908,10 +982,10 @@ class InvoiceController extends Controller
                         'product_serial_id' => $line['product_serial_id'] ?? null,
                         'expiry_date' => $line['expiry_date'] ?? null,
                         'quantity' => $line['quantity'],
-                        'unit_price' => $line['unit_price'],
+                        'unit_price' => $line['unit_price'] ?? 0,
                         'tax_rate' => $line['tax_rate'] ?? 0,
                         'discount_amount' => $line['discount_amount'] ?? 0,
-                    ]);
+                    ], array_filter($priced, fn ($v) => $v !== null)));
                 }
             }
 
@@ -2216,11 +2290,12 @@ class InvoiceController extends Controller
                                 $line['description'] = $product->name;
                             }
                             if (! $hasExplicitUnitPrice) {
-                                // Issue #132: honour the product's price tiers
-                                // (volume/customer/variant/date) when the import
-                                // row does not specify a unit price.
-                                $line['unit_price'] = $product->getPriceForQuantity(
-                                    (int) ceil((float) ($line['quantity'] ?? 1)),
+                                // Issue #132 tiers + MRD pricelist-multicurrency
+                                // FR-4.1/FR-6.6: imports price through the shared
+                                // engine (price list → tiers → catalogue).
+                                $line['unit_price'] = app(\App\Services\PricingService::class)->baseCurrencyPrice(
+                                    $product,
+                                    max(1.0, (float) ($line['quantity'] ?? 1)),
                                     $customer?->id,
                                 );
                             }

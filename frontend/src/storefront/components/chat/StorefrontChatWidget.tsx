@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   MessageCircle,
   X,
@@ -6,13 +6,17 @@ import {
   ChevronDown,
   Truck,
   ShoppingBag,
-  RefreshCcw,
-  Users,
   HelpCircle,
-  MapPin,
   ArrowLeft,
+  Gift,
+  ReceiptText,
+  User,
+  Boxes,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { MessageBody } from '@/components/AI/MessageBody';
+import { RobotIcon } from '@/components/AI/RobotIcon';
+import { storefrontApi } from '@/storefront/lib/api';
 
 /* ─── FAQ Knowledge Base ────────────────────────────────── */
 
@@ -271,6 +275,37 @@ function searchFAQ(query: string): { category: string; item: FAQItem; score: num
   return results.slice(0, 3);
 }
 
+/* ─── AI assistant (public storefront runtime) ──────────── */
+
+interface AssistantConfigData {
+  enabled: boolean;
+  mode: string;
+  name: string;
+  icon: string | null;
+  welcome: string;
+}
+
+interface QuickOption {
+  id: string;
+  icon?: string;
+  label: string;
+  description?: string;
+}
+
+const quickOptionIcons: Record<string, typeof Truck> = {
+  orders: Truck,
+  loyalty: Gift,
+  products: ShoppingBag,
+  inventory: Boxes,
+  invoices: ReceiptText,
+  account: User,
+};
+
+function QuickOptionIcon({ id }: { id: string }) {
+  const IconComp = quickOptionIcons[id] ?? HelpCircle;
+  return <IconComp className="h-3.5 w-3.5" />;
+}
+
 /* ─── Message Types ─────────────────────────────────────── */
 
 interface ChatMessage {
@@ -280,6 +315,7 @@ interface ChatMessage {
   timestamp: Date;
   categories?: FAQCategory[];
   faqItems?: { category: string; item: FAQItem }[];
+  quickOptions?: QuickOption[];
 }
 
 /* ─── Component ─────────────────────────────────────────── */
@@ -292,20 +328,71 @@ export function StorefrontChatWidget() {
   const [selectedCategory, setSelectedCategory] = useState<FAQCategory | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Initial greeting
+  // AI assistant runtime (enabled per tenant: shop + AI module)
+  const [assistant, setAssistant] = useState<AssistantConfigData | null>(null);
+  const [assistantLoaded, setAssistantLoaded] = useState(false);
+  const [visitorId, setVisitorId] = useState('');
+  const [conversationId, setConversationId] = useState<number | null>(null);
+  const [isTyping, setIsTyping] = useState(false);
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
+
+  const aiMode = assistant?.enabled === true;
+
+  // Load assistant identity + stable visitor id (guest isolation key)
   useEffect(() => {
-    if (isOpen && messages.length === 0) {
+    mountedRef.current = true;
+    let vid = sessionStorage.getItem('sf_ai_visitor');
+    if (!vid) {
+      vid = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      sessionStorage.setItem('sf_ai_visitor', vid);
+    }
+    setVisitorId(vid);
+
+    const storedConversation = sessionStorage.getItem('sf_ai_conversation');
+    if (storedConversation) {
+      setConversationId(Number(storedConversation));
+    }
+
+    storefrontApi
+      .get('/storefront/assistant')
+      .then(({ data }) => {
+        if (mountedRef.current && data?.assistant) {
+          setAssistant(data.assistant as AssistantConfigData);
+        }
+      })
+      .catch(() => {
+        // Public config unavailable → FAQ-only widget.
+      })
+      .finally(() => {
+        if (mountedRef.current) setAssistantLoaded(true);
+      });
+
+    return () => {
+      mountedRef.current = false;
+      if (pollTimer.current) clearTimeout(pollTimer.current);
+    };
+  }, []);
+
+  // Initial greeting (waits for the assistant config so merchants get
+  // their configured welcome message in AI mode)
+  useEffect(() => {
+    if (isOpen && messages.length === 0 && assistantLoaded) {
       setMessages([
         {
           id: 1,
           role: 'assistant',
-          content: "Hi there! 👋 I'm your shopping assistant. Ask me anything about shipping, orders, membership, returns, and more!\n\nYou can type a question or browse topics below.",
+          content: aiMode
+            ? assistant?.welcome || '👋 Hi! How can I help you today?'
+            : "Hi there! 👋 I'm your shopping assistant. Ask me anything about shipping, orders, membership, returns, and more!\n\nYou can type a question or browse topics below.",
           timestamp: new Date(),
           categories: faqCategories,
         },
       ]);
     }
-  }, [isOpen]);
+  }, [isOpen, assistantLoaded, messages.length, aiMode, assistant?.welcome]);
 
   // Auto scroll
   useEffect(() => {
@@ -319,22 +406,14 @@ export function StorefrontChatWidget() {
     ]);
   };
 
-  const handleSend = () => {
-    const q = input.trim();
-    if (!q) return;
-    setInput('');
-    addMessage('user', q);
-
-    // Search FAQ
+  const answerFromFaq = (q: string) => {
     const results = searchFAQ(q);
 
     if (results.length > 0) {
       if (results[0].score >= 8) {
-        // Strong match — return best answer
         const best = results[0];
         addMessage('assistant', best.item.answer);
 
-        // If there are more results, show them as follow-ups
         if (results.length > 1) {
           const extras = results.slice(1);
           addMessage('assistant', "You might also be interested in:", {
@@ -342,7 +421,6 @@ export function StorefrontChatWidget() {
           });
         }
       } else {
-        // Weaker matches — show options
         addMessage('assistant', "I found some related topics. Tap one to see the answer:", {
           faqItems: results.map(r => ({ category: r.category, item: r.item })),
         });
@@ -354,6 +432,75 @@ export function StorefrontChatWidget() {
         { categories: faqCategories },
       );
     }
+  };
+
+  const pollReply = async (targetConversationId: number): Promise<{ content: string; quickOptions?: QuickOption[] } | null> => {
+    for (let attempt = 0; attempt < 40; attempt++) {
+      await new Promise<void>(resolve => {
+        pollTimer.current = setTimeout(resolve, 1500) as unknown as ReturnType<typeof setTimeout>;
+      });
+      if (!mountedRef.current) return null;
+      try {
+        const { data } = await storefrontApi.get(`/storefront/chat/${targetConversationId}/poll`, {
+          params: { visitor_id: visitorId },
+        });
+        if (data.success && !data.processing && data.message) {
+          return { content: data.message as string, quickOptions: data.quick_options as QuickOption[] | undefined };
+        }
+      } catch {
+        // Transient poll failure — keep trying until the budget runs out.
+      }
+    }
+    return null;
+  };
+
+  const sendText = async (q: string) => {
+    if (!q) return;
+    addMessage('user', q);
+
+    if (aiMode) {
+      setIsTyping(true);
+      try {
+        const { data } = await storefrontApi.post('/storefront/chat', {
+          message: q,
+          visitor_id: visitorId,
+          conversation_id: conversationId,
+        });
+
+        const activeConversationId = (data.conversation_id as number) ?? conversationId;
+        if (activeConversationId && activeConversationId !== conversationId) {
+          setConversationId(activeConversationId);
+          sessionStorage.setItem('sf_ai_conversation', String(activeConversationId));
+        }
+
+        if (data.processing) {
+          const reply = activeConversationId ? await pollReply(activeConversationId) : null;
+          if (reply) {
+            addMessage('assistant', reply.content, { quickOptions: reply.quickOptions });
+          } else {
+            addMessage('assistant', "I'm taking a little longer than usual — please try again in a moment.");
+          }
+        } else if (data.message) {
+          addMessage('assistant', data.message as string);
+        }
+      } catch {
+        // Assistant unavailable → graceful FAQ fallback so the shopper
+        // always gets an answer surface.
+        answerFromFaq(q);
+      } finally {
+        if (mountedRef.current) setIsTyping(false);
+      }
+      return;
+    }
+
+    answerFromFaq(q);
+  };
+
+  const handleSend = () => {
+    const q = input.trim();
+    if (!q || isTyping) return;
+    setInput('');
+    void sendText(q);
   };
 
   const handleCategorySelect = (cat: FAQCategory) => {
@@ -379,10 +526,16 @@ export function StorefrontChatWidget() {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 z-[9999] flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-lg hover:scale-105 transition-transform"
-          aria-label="Open chat"
+          className="fixed bottom-6 right-6 z-[9999] flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-primary text-white shadow-lg hover:scale-105 transition-transform"
+          aria-label={aiMode ? `Open ${assistant?.name || 'AI assistant'}` : 'Open chat'}
         >
-          <MessageCircle className="h-6 w-6" />
+          {aiMode && assistant?.icon?.startsWith('http') ? (
+            <img src={assistant.icon} alt="" className="h-full w-full object-cover" />
+          ) : aiMode ? (
+            <RobotIcon className="h-7 w-7" />
+          ) : (
+            <MessageCircle className="h-6 w-6" />
+          )}
         </button>
       )}
 
@@ -392,10 +545,26 @@ export function StorefrontChatWidget() {
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-primary text-white">
             <div className="flex items-center gap-2">
-              <MessageCircle className="h-5 w-5" />
+              {aiMode && assistant?.icon ? (
+                assistant.icon.startsWith('http') ? (
+                  <img src={assistant.icon} alt="" className="h-7 w-7 rounded-full bg-white/20 object-cover" />
+                ) : (
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 text-base leading-none">
+                    {assistant.icon}
+                  </span>
+                )
+              ) : aiMode ? (
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20">
+                  <RobotIcon className="h-4 w-4" />
+                </span>
+              ) : (
+                <MessageCircle className="h-5 w-5" />
+              )}
               <div>
-                <p className="font-semibold text-sm leading-tight">Shopping Assistant</p>
-                <p className="text-[11px] opacity-80">FAQ &amp; Support</p>
+                <p className="font-semibold text-sm leading-tight">
+                  {aiMode ? assistant?.name || 'AI Assistant' : 'Shopping Assistant'}
+                </p>
+                <p className="text-[11px] opacity-80">{aiMode ? 'AI assistant · replies in seconds' : 'FAQ & Support'}</p>
               </div>
             </div>
             <button onClick={() => setIsOpen(false)} className="p-1 rounded hover:bg-white/20 transition-colors">
@@ -420,7 +589,11 @@ export function StorefrontChatWidget() {
                             : 'bg-gray-100 text-gray-800 rounded-bl-md',
                         )}
                       >
-                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                        {msg.role === 'assistant' ? (
+                          <MessageBody content={msg.content} />
+                        ) : (
+                          <p className="whitespace-pre-wrap">{msg.content}</p>
+                        )}
                       </div>
                     </div>
 
@@ -435,6 +608,23 @@ export function StorefrontChatWidget() {
                           >
                             <span className="text-primary font-medium shrink-0">→</span>
                             <span className="text-gray-700">{fi.item.question}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* AI quick options (tap to ask) */}
+                    {msg.quickOptions && msg.quickOptions.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5 ml-1">
+                        {msg.quickOptions.map(opt => (
+                          <button
+                            key={opt.id}
+                            onClick={() => void sendText(opt.label)}
+                            disabled={isTyping}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+                          >
+                            <QuickOptionIcon id={opt.id} />
+                            <span>{opt.label}</span>
                           </button>
                         ))}
                       </div>
@@ -457,6 +647,17 @@ export function StorefrontChatWidget() {
                     )}
                   </div>
                 ))}
+
+                {/* Typing indicator (AI reply in progress) */}
+                {isTyping && (
+                  <div className="flex justify-start">
+                    <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md bg-gray-100 px-4 py-3">
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400 [animation-delay:-0.2s]" />
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400 [animation-delay:-0.1s]" />
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400" />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Input */}
@@ -471,12 +672,12 @@ export function StorefrontChatWidget() {
                         handleSend();
                       }
                     }}
-                    placeholder="Ask about shipping, orders, membership..."
+                    placeholder={aiMode ? `Ask ${assistant?.name || 'the assistant'} about products, orders, shipping…` : 'Ask about shipping, orders, membership...'}
                     className="flex-1 rounded-full border border-border bg-gray-50 px-4 py-2.5 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
                   />
                   <button
                     onClick={handleSend}
-                    disabled={!input.trim()}
+                    disabled={!input.trim() || isTyping}
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-white disabled:opacity-40 hover:bg-primary/90 transition-colors"
                   >
                     <Send className="h-4 w-4" />

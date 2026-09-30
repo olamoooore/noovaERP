@@ -21,6 +21,33 @@ Route::middleware(['auth:sanctum', 'entitlement:ai'])->prefix('ai')->group(funct
     Route::get('/health', [AIStatusController::class, 'health']);
     Route::get('/info', [AIStatusController::class, 'info']);
 
+    // AI provider settings (Settings → General → AI): BYOK for Cerebras.
+    Route::get('/settings', [\Modules\AI\Http\Controllers\AISettingsController::class, 'show'])
+        ->middleware(\App\Http\Middleware\RequirePermission::class.':settings.view');
+    Route::put('/settings', [\Modules\AI\Http\Controllers\AISettingsController::class, 'update'])
+        ->middleware(\App\Http\Middleware\RequirePermission::class.':settings.write');
+    Route::post('/settings/test', [\Modules\AI\Http\Controllers\AISettingsController::class, 'test'])
+        ->middleware(\App\Http\Middleware\RequirePermission::class.':settings.write');
+    Route::post('/settings/assistant-icon', [\Modules\AI\Http\Controllers\AISettingsController::class, 'uploadAssistantIcon'])
+        ->middleware(\App\Http\Middleware\RequirePermission::class.':settings.write');
+
+    // Knowledge base (RAG) — feeds assistant answers for staff + shoppers.
+    Route::get('/knowledge', [\Modules\AI\Http\Controllers\KnowledgeController::class, 'index'])
+        ->middleware(\App\Http\Middleware\RequirePermission::class.':settings.view');
+    Route::post('/knowledge', [\Modules\AI\Http\Controllers\KnowledgeController::class, 'store'])
+        ->middleware(\App\Http\Middleware\RequirePermission::class.':settings.write');
+    Route::post('/knowledge/import-defaults', [\Modules\AI\Http\Controllers\KnowledgeController::class, 'importDefaults'])
+        ->middleware(\App\Http\Middleware\RequirePermission::class.':settings.write');
+    Route::put('/knowledge/{id}', [\Modules\AI\Http\Controllers\KnowledgeController::class, 'update'])
+        ->whereNumber('id')
+        ->middleware(\App\Http\Middleware\RequirePermission::class.':settings.write');
+    Route::delete('/knowledge/{id}', [\Modules\AI\Http\Controllers\KnowledgeController::class, 'destroy'])
+        ->whereNumber('id')
+        ->middleware(\App\Http\Middleware\RequirePermission::class.':settings.write');
+
+    // Dashboard metrics (tenant-wide conversation/message counts)
+    Route::get('/stats', [ChatbotController::class, 'stats']);
+
     // Module Management
     Route::get('/modules', [ModuleController::class, 'index']);
     Route::post('/conversations/{id}/select-module', [ModuleController::class, 'selectModule']);

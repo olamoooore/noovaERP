@@ -89,7 +89,13 @@ class TaxCountryPackService
     public function status(): array
     {
         $out = [];
-        $codes = array_flip(Tax::query()->pluck('code')->all());
+        // Taxes without a code (legacy rows) cannot match a pack rule, and a
+        // NULL entry makes array_flip() raise (turned into a 500 by Laravel's
+        // error handler). Only string/int codes participate.
+        $codes = array_flip(array_filter(
+            Tax::query()->whereNotNull('code')->pluck('code')->all(),
+            fn ($code) => is_string($code) || is_int($code),
+        ));
 
         foreach (config('tax_packs', []) as $jurisdiction => $pack) {
             $present = [];
