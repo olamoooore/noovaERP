@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\Storefront\Http\Controllers\Admin\OfflinePaymentController;
 use Modules\Storefront\Http\Controllers\Admin\OrderController;
 use Modules\Storefront\Http\Controllers\Admin\PromotionController;
+use Modules\Storefront\Http\Controllers\Admin\ReportController;
 use Modules\Storefront\Http\Controllers\Admin\SettingsController;
 use Modules\Storefront\Http\Controllers\Editor\BlockController;
 use Modules\Storefront\Http\Controllers\Editor\PreviewController;
@@ -79,6 +80,21 @@ Route::middleware(['auth:sanctum', 'entitlement:storefront'])
         Route::get('/promotions/{promotion}/redemptions', [PromotionController::class, 'redemptions'])
             ->whereNumber('promotion')
             ->middleware(RequirePermission::using('storefront.view'));
+
+        // Reporting + ops (FR-ADM-06): read-only, tenant-scoped; ?format=csv
+        // exports the same aggregation.
+        Route::prefix('reports')->group(function () {
+            Route::get('/sales', [ReportController::class, 'sales'])
+                ->middleware(RequirePermission::using('storefront.view'));
+            Route::get('/tax', [ReportController::class, 'tax'])
+                ->middleware(RequirePermission::using('storefront.view'));
+            Route::get('/reconciliation', [ReportController::class, 'reconciliation'])
+                ->middleware(RequirePermission::using('storefront.view'));
+            Route::get('/funnel', [ReportController::class, 'funnel'])
+                ->middleware(RequirePermission::using('storefront.view'));
+            Route::get('/overview', [ReportController::class, 'overview'])
+                ->middleware(RequirePermission::using('storefront.view'));
+        });
     });
 
 // WebsiteBuilder editor integration (Appendix E §E4.3). Paths live under

@@ -75,8 +75,10 @@ class PaymentAnalyticsController extends Controller
         $groupBy = match ($period) {
             '7days' => 'DATE(created_at)',
             '30days' => 'DATE(created_at)',
-            '90days' => 'YEARWEEK(created_at)',
-            '1year' => 'DATE_FORMAT(created_at, "%Y-%m")',
+            // P-04g: MySQL-only YEARWEEK()/DATE_FORMAT() crashed every 90d/1y
+            // trend on this PostgreSQL platform — ISO year-week and to_char().
+            '90days' => "to_char(created_at, 'IYYY-IW')",
+            '1year' => "to_char(created_at, 'YYYY-MM')",
             default => 'DATE(created_at)',
         };
 
