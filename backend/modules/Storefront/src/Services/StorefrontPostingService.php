@@ -273,6 +273,62 @@ final class StorefrontPostingService
         return $result->journalEntry ?? JournalEntry::query()->find($result->journalEntryId);
     }
 
+    /**
+     * Restock reversal (P4 returns): DR inventory / CR COGS at the sale's
+     * cost basis — the physical-goods counterpart of the money-only refund
+     * reversal, booked once per return (engine link per return row).
+     */
+    public function postReturnRestock(StorefrontOrder $order, int $returnId, float $cost): JournalEntry
+    {
+        $existing = JournalEntryLink::query()
+            ->where('source_document_type', 'storefront_return_restock')
+            ->where('source_document_id', $returnId)
+            ->where('relation_type', 'post')
+            ->first();
+
+        if ($existing) {
+            $entry = JournalEntry::query()->find($existing->journal_entry_id);
+            if ($entry !== null) {
+                return $entry;
+            }
+        }
+
+        $result = $this->postingEngine->post(new PostingRequest(
+            documentType: 'storefront_return_restock',
+            documentId: $returnId,
+            postingDate: now()->toDateString(),
+            description: "Storefront return #{$returnId} restock for {$order->order_number}",
+            lines: [
+                new PostingRequestLine(
+                    accountMappingKey: 'inventory',
+                    accountId: null,
+                    debit: $cost,
+                    credit: 0,
+                    description: 'Inventory returned to stock',
+                    reference: $order->order_number,
+                ),
+                new PostingRequestLine(
+                    accountMappingKey: 'cogs',
+                    accountId: null,
+                    debit: 0,
+                    credit: $cost,
+                    description: 'COGS reversal on return',
+                    reference: $order->order_number,
+                ),
+            ],
+            reference: "RETURN-{$order->order_number}-{$returnId}",
+            userId: TenantUserHelper::resolveTenantUserId(),
+            legalEntityId: $order->legal_entity_id ?? request()?->attributes->get('legal_entity_id'),
+            entityBookId: request()?->attributes->get('entity_book_id'),
+        ));
+
+        if (! $result->success) {
+            throw new \RuntimeException("Storefront return restock posting failed for {$order->order_number}: {$result->error}");
+        }
+
+        return $result->journalEntry ?? JournalEntry::query()->find($result->journalEntryId);
+    }
+
     private function hasTrackedItems(StorefrontOrder $order): bool
     {
         return $order->items()->whereHas('product', fn ($q) => $q->where('track_inventory', true)->where('type', 'product'))->exists();

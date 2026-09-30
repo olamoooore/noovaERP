@@ -98,6 +98,10 @@ Route::middleware([
             Route::post('/orders/{order}/proof-of-payment', [\Modules\Storefront\Http\Controllers\Public\PayController::class, 'proof'])
                 ->whereNumber('order')
                 ->middleware('throttle:10,1,sf-proof');
+            // Customer return request (FR-ORD-06), same ownership model.
+            Route::post('/orders/{order}/return', [\Modules\Storefront\Http\Controllers\Public\PayController::class, 'requestReturn'])
+                ->whereNumber('order')
+                ->middleware('throttle:10,1,sf-return');
 
             // Account identity (FR-ID-*). Brute-force-specific throttles,
             // each in its OWN bucket (see prefix note above).

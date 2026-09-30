@@ -255,6 +255,16 @@ class PostingEngine implements PostingEngineInterface
                     'created_by' => $userId,
                     'legal_entity_id' => $request->legalEntityId,
                     'entity_book_id' => $request->entityBookId,
+                    // MRD pricelist-multicurrency FR-5.7/§12: header FX stamp
+                    // from the DOCUMENT snapshot (columns existed since
+                    // 2025_12_30_062429 but had no writer). Only set when the
+                    // caller supplied a document currency, so base-currency
+                    // postings keep the historical NULL shape byte-identical.
+                    ...($request->currencyCode !== null ? [
+                        'original_currency_code' => $request->currencyCode,
+                        'original_total_amount' => $this->originalTotalForHeader($resolvedLines),
+                        'exchange_rate' => $request->exchangeRate,
+                    ] : []),
                 ]);
 
                 foreach ($resolvedLines as $line) {
@@ -449,6 +459,8 @@ class PostingEngine implements PostingEngineInterface
                 credit: (float) $line['credit'],
                 description: $line['description'] ?? "Posting profile {$request->postingProfileCode}",
                 currencyCode: $line['currency_code'] ?? $request->currencyCode,
+                originalAmount: $line['original_amount'] ?? null,
+                exchangeRate: $line['exchange_rate'] ?? null,
                 taxCode: $line['tax_code'] ?? null,
                 taxId: $line['tax_id'] ?? null,
             );
@@ -472,6 +484,32 @@ class PostingEngine implements PostingEngineInterface
 
         // ── 5. Delegate to canonical post() path ──────────────
         return $this->post($postingRequest);
+    }
+
+    /**
+     * Sum of the ORIGINAL (document-currency) amounts on the credit side of
+     * the entry — informational header column for dual display. Falls back to
+     * the debit side when the posting has no credits carrying originals.
+     *
+     * @param  array<int,array<string,mixed>>  $resolvedLines
+     */
+    private function originalTotalForHeader(array $resolvedLines): ?float
+    {
+        foreach (['credit', 'debit'] as $side) {
+            $sum = 0.0;
+
+            foreach ($resolvedLines as $line) {
+                if ((float) $line[$side] != 0 && ($line['original_amount'] ?? null) !== null) {
+                    $sum += (float) $line['original_amount'];
+                }
+            }
+
+            if ($sum != 0.0) {
+                return round($sum, 2);
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -743,7 +781,7 @@ class PostingEngine implements PostingEngineInterface
             'pos_order' => 'sales',
             'ocr_document' => 'purchases',
             'web_order' => 'sales',
-            'storefront_order', 'storefront_refund', 'event_booking' => 'sales',
+            'storefront_order', 'storefront_refund', 'storefront_return_restock', 'event_booking' => 'sales',
             'fx_revaluation', 'depreciation', 'asset_disposal', 'bank_adjustment' => 'journal_entries',
             default => 'journal_entries',
         };
@@ -965,11 +1003,15 @@ class PostingEngine implements PostingEngineInterface
         PostingRequest $request,
         array $resolvedLines
     ): void {
+        $codedCodes = [];
+
         foreach ($resolvedLines as $line) {
             // Only write tax details for lines with tax_code
             if (empty($line['tax_code'])) {
                 continue;
             }
+
+            $codedCodes[(string) $line['tax_code']] = true;
 
             // Calculate reporting period (YYYY-MM format)
             $reportingPeriod = date('Y-m', strtotime($request->postingDate));
@@ -1048,6 +1090,56 @@ class PostingEngine implements PostingEngineInterface
                 'reporting_period' => $reportingPeriod,
             ]);
         }
+
+        // MRD gap review G-32: zero-rated and exempt supplies produce no GL
+        // tax line (there is no tax amount), yet IRAS F5 boxes 2/3 and the
+        // SST zero-rated breakdown REQUIRE them on the trail. Write one supply
+        // row per determination code that (a) carries no GL counterpart and
+        // (b) is a declared zero-rated/exempt treatment. out_of_scope/NO-TAX
+        // rows stay out — they are not supplies.
+        $determinationForSupplies = $request->taxDeterminationResult
+            ?? ($request->metadata['tax_determination_result'] ?? null);
+
+        foreach (($determinationForSupplies['tax_lines'] ?? []) as $taxLine) {
+            $code = (string) ($taxLine['tax_code'] ?? '');
+            $treatment = strtolower((string) ($taxLine['treatment'] ?? ''));
+
+            if ($code === '' || isset($codedCodes[$code])) {
+                continue;
+            }
+
+            if (! in_array($treatment, ['zero_rated', 'exempt'], true)) {
+                continue;
+            }
+
+            if (abs((float) ($taxLine['tax_amount'] ?? 0)) > 0.005) {
+                // A nonzero-amount code without a GL line is an accounting bug,
+                // not a supply row; the per-line loop above owns it.
+                continue;
+            }
+
+            DB::table('tax_transaction_details')->insert([
+                'journal_entry_id' => $entry->id,
+                'source_document_type' => $request->documentType,
+                'source_document_id' => $request->documentId ?? 0,
+                'tax_code' => $code,
+                'tax_rule_id' => $taxLine['tax_id'] ?? null,
+                'taxable_amount' => round((float) ($taxLine['taxable_base'] ?? 0), 2),
+                'tax_amount' => 0,
+                'jurisdiction' => $determinationForSupplies['jurisdiction'] ?? null,
+                'direction' => 'supply',
+                'reporting_period' => date('Y-m', strtotime($request->postingDate)),
+                'tax_determination_id' => $determinationForSupplies['id'] ?? null,
+                'tax_rate' => $taxLine['tax_rate'] ?? null,
+                'tax_treatment' => $treatment,
+                'tax_regime' => $determinationForSupplies['tax_regime'] ?? null,
+                'result_version' => $determinationForSupplies['result_version'] ?? null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $codedCodes[$code] = true;
+        }
     }
 
     /**
@@ -1080,7 +1172,7 @@ class PostingEngine implements PostingEngineInterface
             'web_order', 'event_booking' => 'sales.write',
             // Storefront module sales posting — its own coarse permission
             // (seeded matrix + RequirePermission parity, FR-MOD-03).
-            'storefront_order', 'storefront_refund' => 'storefront.write',
+            'storefront_order', 'storefront_refund', 'storefront_return_restock' => 'storefront.write',
             // Issue #176: DO completion recognises COGS — a sales fulfilment
             // action performed by the same actors who create web orders.
             'delivery_order' => 'sales.write',

@@ -6,6 +6,7 @@ use Modules\Storefront\Http\Controllers\Admin\OfflinePaymentController;
 use Modules\Storefront\Http\Controllers\Admin\OrderController;
 use Modules\Storefront\Http\Controllers\Admin\PromotionController;
 use Modules\Storefront\Http\Controllers\Admin\ReportController;
+use Modules\Storefront\Http\Controllers\Admin\ReturnController;
 use Modules\Storefront\Http\Controllers\Admin\SettingsController;
 use Modules\Storefront\Http\Controllers\Editor\BlockController;
 use Modules\Storefront\Http\Controllers\Editor\PreviewController;
@@ -85,6 +86,24 @@ Route::middleware(['auth:sanctum', 'entitlement:storefront'])
         Route::get('/promotions/{promotion}/redemptions', [PromotionController::class, 'redemptions'])
             ->whereNumber('promotion')
             ->middleware(RequirePermission::using('storefront.view'));
+
+        // Return desk (FR-ORD-06): request -> approve|reject -> receive ->
+        // refund|close. Money leg = canonical refunds; stock leg = canonical
+        // inventory; both engine-journaled.
+        Route::prefix('returns')->group(function () {
+            Route::get('/', [ReturnController::class, 'index'])
+                ->middleware(RequirePermission::using('storefront.view'));
+            Route::post('/{return}/approve', [ReturnController::class, 'approve'])
+                ->whereNumber('return')->middleware(RequirePermission::using('storefront.write'));
+            Route::post('/{return}/reject', [ReturnController::class, 'reject'])
+                ->whereNumber('return')->middleware(RequirePermission::using('storefront.write'));
+            Route::post('/{return}/receive', [ReturnController::class, 'receive'])
+                ->whereNumber('return')->middleware(RequirePermission::using('storefront.write'));
+            Route::post('/{return}/refund', [ReturnController::class, 'refund'])
+                ->whereNumber('return')->middleware(RequirePermission::using('storefront.write'));
+            Route::post('/{return}/close', [ReturnController::class, 'close'])
+                ->whereNumber('return')->middleware(RequirePermission::using('storefront.write'));
+        });
 
         // Reporting + ops (FR-ADM-06): read-only, tenant-scoped; ?format=csv
         // exports the same aggregation.

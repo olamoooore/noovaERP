@@ -115,6 +115,11 @@ class StorefrontServiceProvider extends ServiceProvider
                 'storefront.order.paid',
                 'storefront.order.refunded',
                 'storefront.order.shipped',
+                'storefront.return.requested',
+                'storefront.return.approved',
+                'storefront.return.rejected',
+                'storefront.return.received',
+                'storefront.return.refunded',
             );
         }
     }

@@ -133,6 +133,49 @@ final class PayController extends Controller
     }
 
     /**
+     * Customer return request (FR-ORD-06). Same ownership guards as /pay;
+     * quantities and the suggested refund are recomputed server-side.
+     */
+    public function requestReturn(
+        Request $request,
+        int $order,
+        \Modules\Storefront\Services\StorefrontReturnService $returns,
+    ): JsonResponse {
+        $validated = $request->validate([
+            'token' => ['nullable', 'string', 'min:32', 'max:64'],
+            'reason' => ['required', 'string', 'max:500'],
+            'lines' => ['required', 'array', 'min:1'],
+            'lines.*.line_id' => ['required', 'integer'],
+            'lines.*.quantity' => ['required', 'numeric', 'min:0.001'],
+        ]);
+
+        $session = $this->sessionGuard($request);
+        if ($session === false) {
+            return $this->csrfFailure();
+        }
+        $account = $session['account'] ?? null;
+
+        try {
+            $model = $this->payments->resolveOwnedOrder($order, $validated['token'] ?? null, $account);
+            $ret = $returns->request(
+                $model,
+                array_map(fn (array $l) => ['line_id' => (int) $l['line_id'], 'quantity' => (float) $l['quantity']], $validated['lines']),
+                (string) $validated['reason'],
+                $account,
+            );
+        } catch (CheckoutException $e) {
+            return $this->fail($e);
+        }
+
+        return response()->json(['data' => [
+            'return_id' => (int) $ret->id,
+            'status' => $ret->status,
+            'refund_amount' => (string) $ret->refund_amount,
+            'message' => 'Return requested — the shop will review it and email the next steps.',
+        ]]);
+    }
+
+    /**
      * @return array|false false => CSRF mismatch for a session request
      */
     private function sessionGuard(Request $request): array|false

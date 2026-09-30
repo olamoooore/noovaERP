@@ -79,6 +79,7 @@ class StorefrontTemplateSeeder extends Seeder
                     .'<p>Bank processing can take a few days depending on your original payment method.</p>',
                 'variables' => ['company.name', 'order.order_number', 'order.currency', 'order.confirmation_url', 'refund.amount', 'refund.reason'],
             ],
+            ...$this->returnTemplates($wrap),
             [
                 'key' => 'storefront.customer.email_verification',
                 'name' => 'Storefront — Email verification',
@@ -144,5 +145,44 @@ class StorefrontTemplateSeeder extends Seeder
     public function run(): void
     {
         $this->seeds();
+    }
+
+    /**
+     * Return lifecycle mail set (FR-MSG return events, A-22 full sequence).
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    private function returnTemplates(callable $wrap): array
+    {
+        $rows = [];
+        $defs = [
+            ['requested', 'Return requested for order {{order.order_number}}',
+                '<p>We received your return request <strong>#{{return.id}}</strong> for order <strong>{{order.order_number}}</strong>. We will review it and email you the next steps.</p>',
+                ['company.name', 'order.order_number', 'return.id']],
+            ['approved', 'Return #{{return.id}} approved',
+                '<p>Your return <strong>#{{return.id}}</strong> for order {{order.order_number}} is approved. Please send the items back — the refund (<strong>{{return.amount}} {{order.currency}}</strong>) is issued once we receive them.</p>',
+                ['company.name', 'order.order_number', 'return.id', 'return.amount', 'order.currency']],
+            ['rejected', 'Return #{{return.id}} declined',
+                '<p>We could not approve return <strong>#{{return.id}}</strong> for order {{order.order_number}}. Reason on file: {{return.reason}}. Reply to this email if you would like help.</p>',
+                ['company.name', 'order.order_number', 'return.id', 'return.reason']],
+            ['received', 'Return #{{return.id}} received',
+                '<p>We received your returned items for order <strong>{{order.order_number}}</strong>. The refund is now being processed.</p>',
+                ['company.name', 'order.order_number', 'return.id']],
+            ['refunded', 'Refund issued for return #{{return.id}}',
+                '<p>Your return <strong>#{{return.id}}</strong> was refunded: <strong>{{return.amount}} {{order.currency}}</strong> for order {{order.order_number}}. Bank processing can take a few days.</p>',
+                ['company.name', 'order.order_number', 'return.id', 'return.amount', 'order.currency']],
+        ];
+        foreach ($defs as [$event, $subject, $inner, $vars]) {
+            $rows[] = [
+                'key' => 'storefront.return.'.$event,
+                'name' => 'Storefront — Return '.$event,
+                'event' => 'storefront.return.'.$event,
+                'subject' => $subject,
+                'body' => '<h2 style="font-size:18px">Returns — '.ucfirst($event).'</h2>'.$inner,
+                'variables' => $vars,
+            ];
+        }
+
+        return $rows;
     }
 }

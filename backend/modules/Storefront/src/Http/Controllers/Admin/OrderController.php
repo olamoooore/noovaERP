@@ -124,6 +124,17 @@ final class OrderController extends Controller
                     'id', 'attempt_no', 'gateway', 'transaction_ref', 'status', 'error',
                 ])),
                 'refunds' => $this->refundsFor($model),
+                'returns' => $model->returns()->with('order:id,order_number,currency')->get()->map(fn ($r) => [
+                    'id' => $r->id,
+                    'status' => $r->status,
+                    'reason' => $r->reason,
+                    'notes' => $r->notes,
+                    'refund_amount' => (string) $r->refund_amount,
+                    'line_items' => $r->line_items,
+                    'requested_at' => optional($r->created_at)->toIso8601String(),
+                    'received_at' => optional($r->received_at)->toIso8601String(),
+                    'refunded_at' => optional($r->refunded_at)->toIso8601String(),
+                ]),
                 'payment_proofs' => $model->paymentProofs()->get()->map(fn ($p) => [
                     'id' => $p->id,
                     'method' => $p->method,

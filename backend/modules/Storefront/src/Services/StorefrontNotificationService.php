@@ -5,6 +5,7 @@ namespace Modules\Storefront\Services;
 use Illuminate\Support\Facades\Log;
 use Modules\Communication\Services\CommunicationEngine;
 use Modules\Storefront\Models\StorefrontOrder;
+use Modules\Storefront\Models\StorefrontReturn;
 use Modules\Storefront\Models\StorefrontSettings;
 
 /**
@@ -103,6 +104,50 @@ final class StorefrontNotificationService
             "Refund issued for order {$order->order_number}",
             "A refund of {$amount} {$order->currency} was issued for order {$order->order_number}. Reason: {$reason}.",
             'storefront.order.refunded',
+            $vars
+        );
+    }
+
+    /**
+     * FR-MSG return lifecycle (P4, A-22 "full message sequence"): one call
+     * per transition event of the returns flow. Toggle keys are
+     * return_requested/return_approved/return_rejected/return_received/
+     * return_refunded, default-on like the order events.
+     */
+    public function returnEvent(StorefrontReturn $ret, string $event): void
+    {
+        if (! $this->enabled('return_'.$event)) {
+            return;
+        }
+
+        $order = StorefrontOrder::query()->find($ret->order_id);
+        if ($order === null) {
+            return;
+        }
+
+        $vars = $this->orderVars($order);
+        $vars['return'] = [
+            'id' => (string) $ret->id,
+            'amount' => number_format((float) $ret->refund_amount, 2, '.', ''),
+            'currency' => (string) $order->currency,
+            'reason' => (string) $ret->reason,
+        ];
+
+        [$subject, $body] = match ($event) {
+            'requested' => ["Return requested for order {$order->order_number}", "We received your return request (#{$ret->id}) for order {$order->order_number}. We'll review it shortly."],
+            'approved' => ["Return #{$ret->id} approved", "Your return #{$ret->id} for order {$order->order_number} was approved. Please send the items back; we refund on receipt."],
+            'rejected' => ["Return #{$ret->id} declined", "We could not approve return #{$ret->id} for order {$order->order_number}. Reply to this email if you'd like help."],
+            'received' => ["Return #{$ret->id} received", "We received your returned items for order {$order->order_number}. The refund is being processed."],
+            'refunded' => ["Refund issued for return #{$ret->id}", "Your return #{$ret->id} was refunded ({$ret->refund_amount} {$order->currency}) for order {$order->order_number}."],
+            default => ["Return #{$ret->id} update", "Return #{$ret->id} for order {$order->order_number}: {$event}."],
+        };
+
+        $this->send(
+            $order,
+            'storefront.return.'.$event,
+            $subject,
+            $body,
+            'storefront.return.'.$event,
             $vars
         );
     }
