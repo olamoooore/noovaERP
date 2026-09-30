@@ -382,7 +382,6 @@ class SalesOrderService
                 'customer_id' => $order->customer_id,
                 'invoice_date' => now()->toDateString(),
                 'due_date' => now()->addDays($order->customer->payment_terms ?? 30)->toDateString(),
-                'notes' => "Sales Order #{$order->sales_order_number}",
                 'sales_order_id' => $order->id,
             ];
 

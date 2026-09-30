@@ -85,7 +85,7 @@ class InvoiceDataSource implements DataSourceContract
                 'company_code' => $invoice->company_code ?? '',
                 'billing_address' => $this->formatAddress($invoice->billing_address_snapshot),
                 'shipping_address' => $this->formatAddress($invoice->shipping_address_snapshot),
-                'notes' => $invoice->notes ?? '',
+                'notes' => $this->visibleNotes($invoice->notes),
                 'terms' => $invoice->terms ?? '',
                 'attention_to' => $invoice->attention_to ?? '',
                 'shipping_method' => $invoice->shipping_method ?? '',
@@ -257,6 +257,21 @@ class InvoiceDataSource implements DataSourceContract
             'CNY' => '¥',
             'JPY' => '¥',
         ][strtoupper($code)] ?? ($code.' ');
+    }
+
+    private function visibleNotes(?string $notes): string
+    {
+        if (! $notes) {
+            return '';
+        }
+
+        $lines = preg_split('/\R/', $notes) ?: [];
+        $visible = array_filter(
+            $lines,
+            fn (string $line): bool => ! preg_match('/^\s*Sales Order\s*#\s*\S+\s*$/i', $line)
+        );
+
+        return trim(implode("\n", $visible));
     }
 
     private function formatAddress(mixed $address): string
