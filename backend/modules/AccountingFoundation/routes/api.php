@@ -56,7 +56,7 @@ Route::middleware([\App\Http\Middleware\RequirePermission::using('accounting.ope
 */
 
 Route::prefix('accounting/tax-engine')
-    ->middleware([\App\Http\Middleware\RequirePermission::using('reports.view')])
+    ->middleware([\App\Http\Middleware\RequirePermission::using('tax.view')])
     ->group(function () {
         Route::get('/rules', [\App\Http\Controllers\Api\TaxEngineController::class, 'rules']);
         Route::get('/packs', [\App\Http\Controllers\Api\TaxEngineController::class, 'packStatus']);
@@ -65,7 +65,7 @@ Route::prefix('accounting/tax-engine')
         Route::get('/ai-advisory', [\App\Http\Controllers\Api\TaxEngineController::class, 'aiAdvisory'])
             ->middleware('entitlement:ai');
         Route::post('/packs/{jurisdiction}/activate', [\App\Http\Controllers\Api\TaxEngineController::class, 'activatePack'])
-            ->middleware(\App\Http\Middleware\RequirePermission::using('settings.write'));
+            ->middleware(\App\Http\Middleware\RequirePermission::using('tax.manage'));
     });
 
 /*
@@ -75,11 +75,11 @@ Route::prefix('accounting/tax-engine')
 */
 
 Route::prefix('accounting/tax-registrations')->group(function () {
-    Route::middleware([\App\Http\Middleware\RequirePermission::using('reports.view')])->group(function () {
+    Route::middleware([\App\Http\Middleware\RequirePermission::using('tax.view')])->group(function () {
         Route::get('/', [\App\Http\Controllers\Api\TaxRegistrationController::class, 'index']);
     });
 
-    Route::middleware([\App\Http\Middleware\RequirePermission::using('settings.write')])->group(function () {
+    Route::middleware([\App\Http\Middleware\RequirePermission::using('tax.manage')])->group(function () {
         Route::post('/', [\App\Http\Controllers\Api\TaxRegistrationController::class, 'store']);
         Route::put('/{registration}', [\App\Http\Controllers\Api\TaxRegistrationController::class, 'update']);
         Route::delete('/{registration}', [\App\Http\Controllers\Api\TaxRegistrationController::class, 'destroy']);

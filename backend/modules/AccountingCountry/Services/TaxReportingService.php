@@ -99,6 +99,19 @@ class TaxReportingService
             }
         }
 
+        // MRD R4.5: withheld codes are excluded from return buckets but they
+        // ARE expected on the ledger as payables (credit-positive).
+        $withheld = $this->withheldByCode($months, $legalEntityId);
+
+        foreach ($withheld as $code => $amount) {
+            $expectedByCode[$code] = [
+                'tax_code' => $code,
+                'direction' => 'withholding',
+                'trail_tax' => $amount,
+                'expected_gl_net' => $amount,
+            ];
+        }
+
         // Actual live GL nets per tax code within the period.
         $glRows = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
@@ -330,5 +343,87 @@ class TaxReportingService
             ->value('account_id');
 
         return $id ? (int) $id : null;
+    }
+
+    /**
+     * Withheld amounts per tax code (trail rows whose rule type is
+     * 'withholding') for the months, on live journal entries.
+     *
+     * @param  array<int, string>  $months
+     * @return array<string, float>
+     */
+    public function withheldByCode(array $months, ?int $legalEntityId = null): array
+    {
+        $ruleIds = DB::table('taxes')->where('type', 'withholding')->pluck('id')->all();
+
+        if ($ruleIds === []) {
+            return [];
+        }
+
+        $rows = DB::table('tax_transaction_details as ttd')
+            ->join('journal_entries as je', 'je.id', '=', 'ttd.journal_entry_id')
+            ->whereIn('ttd.tax_rule_id', $ruleIds)
+            ->whereIn('ttd.reporting_period', $months)
+            ->where('je.status', 'posted')
+            ->where(function ($q) {
+                $q->whereNull('je.lifecycle_status')
+                    ->orWhereNotIn('je.lifecycle_status', ['reversed', 'voided', 'superseded']);
+            })
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))
+                    ->from('journal_entries as rev')
+                    ->whereColumn('rev.reversed_entry_id', 'ttd.journal_entry_id')
+                    ->where('rev.status', 'posted');
+            })
+            ->when($legalEntityId !== null, fn ($q) => $q->where('je.legal_entity_id', $legalEntityId))
+            ->groupBy('ttd.tax_code')
+            ->get(['ttd.tax_code', DB::raw('sum(ttd.tax_amount) as withheld')]);
+
+        $out = [];
+
+        foreach ($rows as $row) {
+            $out[(string) $row->tax_code] = round((float) $row->withheld, 2);
+        }
+
+        return $out;
+    }
+
+    /**
+     * WHT payable view: withheld per month (trailing window the caller asks
+     * for) — feeds the Tax Report tracker; remittance itself is the payment
+     * leg booked separately.
+     *
+     * @return array{withheld_by_month: array<int, array{period:string, amount:float}>, total: float}
+     */
+    public function withholdingSummary(int $months = 12): array
+    {
+        $ruleIds = DB::table('taxes')->where('type', 'withholding')->pluck('id')->all();
+
+        if ($ruleIds === []) {
+            return ['withheld_by_month' => [], 'total' => 0.0];
+        }
+
+        $rows = DB::table('tax_transaction_details as ttd')
+            ->join('journal_entries as je', 'je.id', '=', 'ttd.journal_entry_id')
+            ->whereIn('ttd.tax_rule_id', $ruleIds)
+            ->where('je.status', 'posted')
+            ->where(function ($q) {
+                $q->whereNull('je.lifecycle_status')
+                    ->orWhereNotIn('je.lifecycle_status', ['reversed', 'voided', 'superseded']);
+            })
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))
+                    ->from('journal_entries as rev')
+                    ->whereColumn('rev.reversed_entry_id', 'ttd.journal_entry_id')
+                    ->where('rev.status', 'posted');
+            })
+            ->groupBy('ttd.reporting_period')
+            ->orderByDesc('ttd.reporting_period')
+            ->limit($months)
+            ->get(['ttd.reporting_period', DB::raw('sum(ttd.tax_amount) as withheld')]);
+
+        $out = array_map(fn ($r) => ['period' => $r->reporting_period, 'amount' => round((float) $r->withheld, 2)], $rows->all());
+
+        return ['withheld_by_month' => $out, 'total' => round(array_sum(array_column($out, 'amount')), 2)];
     }
 }

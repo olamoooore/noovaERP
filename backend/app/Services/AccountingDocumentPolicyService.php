@@ -71,10 +71,13 @@ class AccountingDocumentPolicyService
         foreach ($data->lines as $i => $line) {
             $this->validateLine($line, $i, 'bill');
 
-            // Expense bill lines must NOT have product_id
-            if ($data->billType === 'expense' && $line->productId !== null) {
+            // Expense bill lines must NOT have product_id — sole exception
+            // (MRD R4.5): a withholding-linked product, which IS the rule
+            // identity for s.109B/s.45 deduction and cannot be free text.
+            if ($data->billType === 'expense' && $line->productId !== null
+                && ! \App\Support\TaxWithholding::lineIsWithholding($line->productId)) {
                 throw new \InvalidArgumentException(
-                    "Line {$i}: expense bill lines must not reference a product. Use description instead."
+                    "Line {$i}: expense bill lines may only reference a product whose linked tax rule is withholding. Use description instead."
                 );
             }
 

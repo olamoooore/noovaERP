@@ -52,4 +52,16 @@ class TaxReportController extends Controller
     {
         return response()->json(['data' => $this->reporting->filings()]);
     }
+
+    /**
+     * MRD R4.5: withheld-per-month summary (WHT payable view for the tracker).
+     */
+    public function withholding(Request $request): JsonResponse
+    {
+        $validated = $request->validate(['months' => 'nullable|integer|min:1|max:36']);
+
+        return response()->json([
+            'data' => $this->reporting->withholdingSummary((int) ($validated['months'] ?? 12)),
+        ]);
+    }
 }

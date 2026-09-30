@@ -89,7 +89,12 @@ class AccountingOriginBillService
             $bill->load('lines');
             $bill->subtotal = $bill->lines->sum('line_total');
             $bill->tax_amount = $bill->lines->sum('tax_amount');
-            $bill->total = $bill->subtotal + $bill->tax_amount - $bill->discount_amount;
+            // MRD R4.5: withheld amounts are deducted from the payable.
+            // MRD R4.5: withheld tax is neither additive nor payable to the
+            // vendor: total = subtotal + (tax − withheld) − withheld − discount.
+            [, $withheldTax] = \App\Support\TaxWithholding::split($bill->lines);
+            $additiveTax = round((float) $bill->tax_amount - $withheldTax, 2);
+            $bill->total = $bill->subtotal + $additiveTax - $withheldTax - $bill->discount_amount;
             $bill->balance = $bill->total - $bill->paid_amount;
             $bill->save();
 
@@ -156,19 +161,11 @@ class AccountingOriginBillService
             );
         }
 
-        foreach (TaxDeterminationService::allocateBookedTax($taxDetermination['tax_lines'] ?? [], $bookedTaxTotal) as $allocation) {
-            if ($allocation['amount'] <= 0) {
-                continue;
-            }
-            $postingLines[] = new PostingRequestLine(
-                accountMappingKey: 'input_tax',
-                accountId: null,
-                debit: $allocation['amount'],
-                credit: 0,
-                description: "Tax - Bill {$bill->bill_number}".($allocation['tax_code'] ? " [{$allocation['tax_code']}]" : ''),
-                taxCode: $allocation['tax_code'],
-                taxId: $allocation['tax_id'],
-            );
+        foreach (\App\Support\TaxPostingLines::fromPurchases(
+            TaxDeterminationService::allocateBookedTax($taxDetermination['tax_lines'] ?? [], $bookedTaxTotal),
+            "Bill {$bill->bill_number}",
+        ) as $taxLine) {
+            $postingLines[] = $taxLine;
         }
 
         // CR Accounts Payable (total)

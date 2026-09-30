@@ -77,67 +77,10 @@ class VendorBillService
             // determined tax_code so every tax-bearing line writes a
             // tax_transaction_details row, while the booked bill tax total is
             // preserved exactly (balance-safe allocation).
-            $taxLines = [];
-            foreach (TaxDeterminationService::allocateBookedTax($taxDetermination['tax_lines'] ?? [], round($bookedTaxTotal, 2)) as $allocation) {
-                if ($allocation['amount'] <= 0) {
-                    continue;
-                }
-                $suffix = $allocation['tax_code'] ? " [{$allocation['tax_code']}]" : '';
-
-                // MRD R4.2/R4.3: recoverability is decided by the resolved
-                // rule. Non-creditable input (e.g. MY SST) is expensed to a
-                // VISIBLE blocked-input account, never silently claimed.
-                // Reverse-charge rules self-assess: paired DR reclaim + CR
-                // payable on the same code — net zero, both on the trail.
-                if (($allocation['treatment'] ?? null) === 'reverse_charge') {
-                    $taxLines[] = new PostingRequestLine(
-                        accountMappingKey: 'input_tax',
-                        accountId: null,
-                        debit: $allocation['amount'],
-                        credit: 0,
-                        description: "RC input (self-assessed reclaim) - Bill {$bill->bill_number}{$suffix}",
-                        taxCode: $allocation['tax_code'],
-                        taxId: $allocation['tax_id'],
-                        taxDirection: 'input',
-                    );
-                    $taxLines[] = new PostingRequestLine(
-                        accountMappingKey: 'sales_tax_payable',
-                        accountId: null,
-                        debit: 0,
-                        credit: $allocation['amount'],
-                        description: "RC output (self-assessed due) - Bill {$bill->bill_number}{$suffix}",
-                        taxCode: $allocation['tax_code'],
-                        taxId: $allocation['tax_id'],
-                        taxDirection: 'output',
-                    );
-
-                    continue;
-                }
-
-                if (($allocation['creditable'] ?? true) === false) {
-                    $taxLines[] = new PostingRequestLine(
-                        accountMappingKey: 'input_tax_blocked',
-                        accountId: $allocation['blocked_account_id'] ?? null,
-                        debit: $allocation['amount'],
-                        credit: 0,
-                        description: "Non-creditable tax expensed - Bill {$bill->bill_number}{$suffix}",
-                        taxCode: $allocation['tax_code'],
-                        taxId: $allocation['tax_id'],
-                    );
-
-                    continue;
-                }
-
-                $taxLines[] = new PostingRequestLine(
-                    accountMappingKey: 'input_tax',
-                    accountId: null,
-                    debit: $allocation['amount'],
-                    credit: 0,
-                    description: "Tax - Bill {$bill->bill_number}{$suffix}",
-                    taxCode: $allocation['tax_code'],
-                    taxId: $allocation['tax_id'],
-                );
-            }
+            $taxLines = \App\Support\TaxPostingLines::fromPurchases(
+                TaxDeterminationService::allocateBookedTax($taxDetermination['tax_lines'] ?? [], round($bookedTaxTotal, 2)),
+                "Bill {$bill->bill_number}",
+            );
 
             $netBeforeTax = round($lineTotalSum - (float) ($bill->discount_amount ?? 0), 2);
             $reliefAmount = $this->resolveGrniReliefAmount($bill, $netBeforeTax);

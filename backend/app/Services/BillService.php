@@ -109,9 +109,10 @@ class BillService
                             'Line #'.($idx + 1).": Expense bill lines cannot carry PO/GRN linkage. Use bill_type 'procurement' for PO-backed bills."
                         );
                     }
-                    if (! empty($lineData['product_id'])) {
+                    if (! empty($lineData['product_id'])
+                        && ! \App\Support\TaxWithholding::lineIsWithholding((int) $lineData['product_id'])) {
                         throw new \InvalidArgumentException(
-                            'Line #'.($idx + 1).': Expense bill lines should not reference products. Use a GL account and description instead.'
+                            'Line #'.($idx + 1).': Expense bill lines may only reference a product whose linked tax rule is withholding. Use a GL account and description instead.'
                         );
                     }
                 }
@@ -159,6 +160,7 @@ class BillService
                 BillLine::create([
                     'bill_id' => $bill->id,
                     'account_id' => $lineData['account_id'],
+                    'product_id' => $lineData['product_id'] ?? null,
                     'description' => $lineData['description'] ?? null,
                     'quantity' => $quantity,
                     'unit_price' => $unitPrice,
@@ -194,7 +196,13 @@ class BillService
             }
 
             $bill->subtotal = $grossSubtotal;
-            $bill->total = $bill->subtotal + $bill->tax_amount - $documentDiscount;
+            // MRD R4.5: withholding is deducted from the payable (remitted to
+            // the authority, not the vendor); tax_amount keeps the gross booked
+            // tax for audit.
+            // MRD R4.5: withheld tax is neither additive nor payable to the vendor.
+            [, $withheldTax] = \App\Support\TaxWithholding::split($bill->lines);
+            $additiveTax = round((float) $bill->tax_amount - $withheldTax, 2);
+            $bill->total = $bill->subtotal + $additiveTax - $withheldTax - $documentDiscount;
             $bill->balance = $bill->total - $bill->paid_amount;
             $bill->save();
 

@@ -203,6 +203,7 @@ class TaxEngineService
             'jurisdiction' => $effectiveJurisdiction,
             'regime' => $regime,
             'scope' => $tax->scope ?: $direction,
+            'tax_type' => $tax->type,
             'treatment' => $tax->treatment ?: ($tax->rate > 0 ? 'standard_rated' : 'zero_rated'),
             'source' => $source,
             // MRD R4.2: recoverability travels with the resolved rule.

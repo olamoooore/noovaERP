@@ -11,7 +11,7 @@ use Modules\AccountingCountry\Http\Controllers\TaxReportController;
 | Loaded into the authenticated tenant route group by ModuleManager.
 */
 Route::prefix('accounting/statutory-returns')
-    ->middleware(RequirePermission::using('reports.view'))
+    ->middleware(RequirePermission::using('tax.view'))
     ->group(function () {
         Route::get('/', [StatutoryReturnController::class, 'index']);
         Route::get('/periods', [StatutoryReturnController::class, 'periods']);
@@ -19,7 +19,7 @@ Route::prefix('accounting/statutory-returns')
         // Issue #265 + MRD TAX-REQ-08: file a return baseline (F7 / filing tracker)
         // and disclose F7 errors.
         Route::post('/{country}/{period}/file', [StatutoryReturnController::class, 'file'])
-            ->middleware(RequirePermission::using('reports.manage'));
+            ->middleware(RequirePermission::using('tax.manage'));
         Route::get('/SG/{period}/f7', [StatutoryReturnController::class, 'f7']);
     });
 
@@ -32,12 +32,13 @@ Route::get('/accounting/e-invoicing/capabilities', [EInvoicingCapabilityControll
 | filing tracker. Read-only; the underlying generators stay above.
 */
 Route::prefix('accounting/tax-report')
-    ->middleware(RequirePermission::using('reports.view'))
+    ->middleware(RequirePermission::using('tax.view'))
     ->group(function () {
         Route::get('/journal', [TaxReportController::class, 'journal']);
         Route::get('/reconciliation', [TaxReportController::class, 'reconciliation']);
         Route::get('/filings', [TaxReportController::class, 'filings']);
         Route::get('/periods', [\App\Http\Controllers\Api\TaxPeriodController::class, 'lockStates']);
+        Route::get('/withholding', [TaxReportController::class, 'withholding']);
     });
 
 /*
@@ -46,7 +47,7 @@ Route::prefix('accounting/tax-report')
 | through open-period documents.
 */
 Route::prefix('accounting/tax-periods')
-    ->middleware([RequirePermission::using('reports.manage')])
+    ->middleware([RequirePermission::using('tax.manage')])
     ->group(function () {
         Route::get('/', [\App\Http\Controllers\Api\TaxPeriodController::class, 'index']);
         Route::post('/{period}/close', [\App\Http\Controllers\Api\TaxPeriodController::class, 'close']);

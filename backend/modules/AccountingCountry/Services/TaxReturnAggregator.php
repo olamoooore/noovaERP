@@ -74,7 +74,15 @@ class TaxReturnAggregator
 
         $result = ['output' => [], 'input' => []];
 
+        // MRD R4.5: withholding trail rows belong to WHT reporting, never
+        // to GST/SST supply or claim buckets.
+        $withholdingRuleIds = DB::table('taxes')->where('type', 'withholding')->pluck('id')->flip();
+
         foreach ($rows as $row) {
+            if ($row->tax_rule_id !== null && isset($withholdingRuleIds[(int) $row->tax_rule_id])) {
+                continue;
+            }
+
             // MRD R4.3: an explicit row direction (reverse-charge pairs) wins
             // over the document-type default.
             $direction = $row->direction

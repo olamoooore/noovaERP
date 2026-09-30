@@ -439,6 +439,7 @@ class VendorBillsController extends Controller
                     BillLine::create([
                         'bill_id' => $bill->id,
                         'account_id' => $lineData['account_id'],
+                        'product_id' => $lineData['product_id'] ?? null,
                         'description' => $lineData['description'] ?? null,
                         'quantity' => $quantity,
                         'unit_price' => $unitPrice,
@@ -454,7 +455,10 @@ class VendorBillsController extends Controller
                 $bill->load('lines');
                 $bill->subtotal = $bill->lines->sum('line_total');
                 $bill->tax_amount = $bill->lines->sum('tax_amount');
-                $bill->total = $bill->subtotal + $bill->tax_amount - $bill->discount_amount;
+                // MRD R4.5: withheld amounts are deducted from the payable.
+                [, $withheldTax] = \App\Support\TaxWithholding::split($bill->lines);
+                $additiveTax = round((float) $bill->tax_amount - $withheldTax, 2);
+                $bill->total = $bill->subtotal + $additiveTax - $withheldTax - $bill->discount_amount;
                 $bill->balance = $bill->total - $bill->paid_amount;
                 $bill->save();
             }
