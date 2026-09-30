@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\RequirePermission;
+use App\Models\AuditLog;
 use App\Models\Setting;
 use App\Models\Tax;
+use App\Services\TenantRoleService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -14,6 +17,21 @@ class TaxController extends Controller
     {
         return response()->json(
             Tax::query()->orderBy('name')->get()
+        );
+    }
+
+    /**
+     * G-13 (#274): immutable audit lineage for tax rule changes.
+     */
+    public function auditTrail($tax)
+    {
+        $tax = Tax::withTrashed()->findOrFail($tax);
+
+        return response()->json(
+            AuditLog::where('reference_type', 'tax_rule')
+                ->where('reference_id', $tax->id)
+                ->orderByDesc('id')
+                ->get()
         );
     }
 
@@ -49,7 +67,18 @@ class TaxController extends Controller
             Tax::where('is_default', true)->update(['is_default' => false]);
         }
 
+        // G-11 (#274): activating a rule on creation is a policy action.
+        if (! empty($validated['is_active']) && ! $this->hasPermission($request, 'tax.policy.manage')) {
+            return response()->json([
+                'message' => 'Rule activation requires tax.policy.manage (separation of duties).',
+                'required_permission' => 'tax.policy.manage',
+            ], 403);
+        }
+
         $tax = Tax::create($validated);
+        $tax->refresh();
+
+        $this->audit('tax_rule_created', $tax, null, $tax->attributesToArray(), $request);
 
         return response()->json($tax, 201);
     }
@@ -73,7 +102,40 @@ class TaxController extends Controller
             'is_inclusive' => 'sometimes|boolean',
             'effective_from' => 'sometimes|nullable|date',
             'effective_to' => 'sometimes|nullable|date|after_or_equal:effective_from',
+            // G-10 (#274): optimistic concurrency token — no last-write-wins.
+            'expected_version' => 'sometimes|integer|min:1',
+            'lock_token' => 'sometimes|string',
         ]);
+
+        // G-10 (#274): reject stale edits before touching the rule.
+        $expectedVersion = $validated['expected_version'] ?? null;
+        $lockToken = $validated['lock_token'] ?? null;
+        unset($validated['expected_version'], $validated['lock_token']);
+
+        if ($expectedVersion !== null && (int) $expectedVersion !== (int) $tax->version) {
+            return response()->json([
+                'message' => 'Tax rule was modified by someone else — re-read and retry.',
+                'current_version' => (int) $tax->version,
+                'updated_at' => $tax->updated_at?->toIso8601String(),
+            ], 409);
+        }
+
+        if ($lockToken !== null && $tax->updated_at !== null && $lockToken !== $tax->updated_at->toIso8601String()) {
+            return response()->json([
+                'message' => 'Tax rule was modified by someone else — re-read and retry.',
+                'current_version' => (int) $tax->version,
+                'updated_at' => $tax->updated_at->toIso8601String(),
+            ], 409);
+        }
+
+        // G-11 (#274): activating a rule is a policy action (SoD from authoring).
+        if (array_key_exists('is_active', $validated) && $validated['is_active'] && ! $tax->is_active
+            && ! $this->hasPermission($request, 'tax.policy.manage')) {
+            return response()->json([
+                'message' => 'Rule activation requires tax.policy.manage (separation of duties).',
+                'required_permission' => 'tax.policy.manage',
+            ], 403);
+        }
 
         if (array_key_exists('jurisdiction', $validated) && $validated['jurisdiction'] !== null) {
             $validated['jurisdiction'] = strtoupper(trim($validated['jurisdiction']));
@@ -111,9 +173,14 @@ class TaxController extends Controller
                 Tax::where('id', '!=', $tax->id)->where('is_default', true)->update(['is_default' => false]);
             }
 
+            $before = $tax->attributesToArray();
             $tax->update($validated);
+            $tax->increment('version');
+            $tax->refresh();
 
-            return response()->json($tax->fresh());
+            $this->audit('tax_rule_updated', $tax, $before, $tax->attributesToArray(), $request);
+
+            return response()->json($tax);
         }
 
         $requestedFrom = ! empty($validated['effective_from'])
@@ -127,14 +194,20 @@ class TaxController extends Controller
 
         if ($tax->effective_from !== null && $tax->effective_from->toDateString() > $newFrom) {
             // Not yet effective in the future either — safe to edit in place.
+            $before = $tax->attributesToArray();
             $tax->update($validated);
+            $tax->increment('version');
+            $tax->refresh();
 
-            return response()->json($tax->fresh());
+            $this->audit('tax_rule_updated', $tax, $before, $tax->attributesToArray(), $request);
+
+            return response()->json($tax);
         }
 
         $closeTo = \Carbon\Carbon::parse($newFrom)->subDay()->toDateString();
 
-        $newTax = DB::transaction(function () use ($tax, $validated, $newFrom, $closeTo) {
+        $newTax = DB::transaction(function () use ($tax, $validated, $newFrom, $closeTo, $request) {
+            $oldBefore = $tax->attributesToArray();
             $merged = array_merge($tax->only([
                 'name', 'code', 'jurisdiction', 'regime', 'scope', 'treatment',
                 'type', 'rate', 'is_active', 'is_default', 'is_inclusive',
@@ -150,6 +223,12 @@ class TaxController extends Controller
                     : $closeTo,
                 'is_default' => false,
             ]);
+            $tax->increment('version');
+            $tax->refresh();
+
+            // G-13 (#274): lineage for the versioned replacement.
+            $this->audit('tax_rule_versioned', $tax, $oldBefore, array_merge($tax->attributesToArray(), ['versioned_to' => $fresh->id]), $request);
+            $this->audit('tax_rule_created', $fresh, null, $fresh->attributesToArray(), $request);
 
             // Re-point the tenant default so resolution keeps working forward.
             $taxSetting = Setting::getValue('tax', []);
@@ -171,8 +250,56 @@ class TaxController extends Controller
     public function destroy($tax)
     {
         $tax = Tax::findOrFail($tax);
+        $before = $tax->attributesToArray();
         $tax->delete();
 
+        $this->audit('tax_rule_deleted', $tax, $before, null, request());
+
         return response()->json(['message' => 'Tax deleted successfully']);
+    }
+
+    /**
+     * G-11 (#274): controller-level policy check for activation SoD, resolved
+     * through the same sources as RequirePermission (Issue #227 pattern).
+     */
+    private function hasPermission(Request $request, string $permission): bool
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return false;
+        }
+
+        if (($user->is_super_admin ?? false) || $user->role === 'platform_super_admin') {
+            return true;
+        }
+
+        $tenantId = RequirePermission::resolveTenantId($request);
+
+        if (! $tenantId) {
+            return false;
+        }
+
+        return app(TenantRoleService::class)->hasPermission(
+            RequirePermission::resolveCentralUserId($user),
+            $tenantId,
+            $permission,
+        );
+    }
+
+    /**
+     * G-13 (#274): append one immutable audit row for a rule change.
+     */
+    private function audit(string $operation, Tax $tax, ?array $before, ?array $after, Request $request): void
+    {
+        AuditLog::create([
+            'operation' => $operation,
+            'reference_type' => 'tax_rule',
+            'reference_id' => $tax->id,
+            'actor_id' => $request->user()?->id,
+            'source_route' => $request->path(),
+            'before_state' => $before,
+            'after_state' => $after,
+        ]);
     }
 }

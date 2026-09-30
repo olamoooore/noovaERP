@@ -125,14 +125,18 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
 
     // Taxes — MRD gap review G-01: every rule mutation is explicit-authorized
     // (family seeded by #273's predecessors: tax.view read / tax.manage write).
+    // G-11 (#274): policy families seeded and attached as alternatives; rule
+    // activation is a policy action gated in the controller (SoD).
     Route::get('/taxes', [TaxController::class, 'index'])
-        ->middleware(RequirePermission::using('tax.view'));
+        ->middleware(RequirePermission::using('tax.policy.view|tax.view'));
     Route::post('/taxes', [TaxController::class, 'store'])
-        ->middleware(RequirePermission::using('tax.manage'));
+        ->middleware(RequirePermission::using('tax.policy.manage|tax.manage'));
     Route::put('/taxes/{tax}', [TaxController::class, 'update'])
-        ->middleware(RequirePermission::using('tax.manage'));
+        ->middleware(RequirePermission::using('tax.policy.manage|tax.manage'));
     Route::delete('/taxes/{tax}', [TaxController::class, 'destroy'])
-        ->middleware(RequirePermission::using('tax.manage'));
+        ->middleware(RequirePermission::using('tax.policy.manage|tax.manage'));
+    Route::get('/taxes/{tax}/audit-trail', [TaxController::class, 'auditTrail'])
+        ->middleware(RequirePermission::using('tax.policy.view|tax.view'));
 
     // Features
     Route::get('/features', [FeatureController::class, 'index']);

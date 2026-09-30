@@ -184,6 +184,10 @@ class PostingEngine implements PostingEngineInterface
                     'tax_id' => $l->taxId,
                 ], $request->lines),
                 'tax_determination_result' => $request->taxDeterminationResult ?? ($request->metadata['tax_determination_result'] ?? null),
+                // G-08 (#274): caller-expected determination version — the
+                // TaxGate blocks when the supplied snapshot does not match it.
+                'expected_tax_result_version' => $request->expectedTaxResultVersion
+                    ?? ($request->metadata['expected_tax_result_version'] ?? null),
                 // HR69-01: thread period admission context so PeriodOpenGate
                 // can bind the mandatory posting period (Opening Balance, etc.)
                 // rather than resolving to NOT_APPLICABLE on a missing period.
@@ -1033,33 +1037,30 @@ class PostingEngine implements PostingEngineInterface
             $lineDetermination = $this->resolveLineDetermination($taxDeterminationResult, $line);
 
             if ($lineDetermination === null) {
-                Log::warning('Tax-bearing line has no resolvable TaxDeterminationResult', [
+                // G-05..G-09 (#274): NEVER write zero-valued trail rows after
+                // the fact. This runs inside the posting transaction, so
+                // throwing rolls back the journal entry — the posting fails
+                // closed with TAX_RESULT_MISSING instead of leaving a
+                // ledger-only tax event with fabricated zero evidence.
+                Log::error('Tax-bearing line has no resolvable TaxDeterminationResult — aborting posting', [
                     'journal_entry_id' => $entry->id,
                     'tax_code' => $line['tax_code'],
                 ]);
 
-                // The journal entry has already been written by this point; we
-                // log the warning and write zero-valued details rather than
-                // blocking after the fact. The TaxGate in the evaluator is the
-                // primary fail-closed mechanism (returns BLOCK when a tax line
-                // has no determination before any ledger write happens).
-                $taxableAmount = 0;
-                $taxRate = null;
-                $treatment = null;
-                $regime = null;
-                $resultVersion = null;
-                $determinationId = null;
-            } else {
-                $taxableAmount = (float) ($lineDetermination['taxable_base']
-                    ?? $lineDetermination['taxable_amount']
-                    ?? 0);
-                $taxRate = $lineDetermination['tax_rate'] ?? null;
-                $treatment = $lineDetermination['treatment']
-                    ?? ($lineDetermination['result_status'] ?? null);
-                $regime = $lineDetermination['tax_regime'] ?? null;
-                $resultVersion = $lineDetermination['result_version'] ?? null;
-                $determinationId = $lineDetermination['id'] ?? null;
+                throw new \RuntimeException(
+                    'TAX_RESULT_MISSING: no TaxDeterminationResult line for tax code '.$line['tax_code']
+                );
             }
+
+            $taxableAmount = (float) ($lineDetermination['taxable_base']
+                ?? $lineDetermination['taxable_amount']
+                ?? 0);
+            $taxRate = $lineDetermination['tax_rate'] ?? null;
+            $treatment = $lineDetermination['treatment']
+                ?? ($lineDetermination['result_status'] ?? null);
+            $regime = $lineDetermination['tax_regime'] ?? null;
+            $resultVersion = $lineDetermination['result_version'] ?? null;
+            $determinationId = $lineDetermination['id'] ?? null;
 
             DB::table('tax_transaction_details')->insert([
                 'journal_entry_id' => $entry->id,

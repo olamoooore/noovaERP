@@ -58,7 +58,7 @@ class Issue42TaxDeterminationTest extends TenantTestCase
         ]);
     }
 
-    private function makeTaxLineRequest(string $taxCode, ?array $taxDeterminationResult): PostingRequest
+    private function makeTaxLineRequest(string $taxCode, ?array $taxDeterminationResult, float $amount = 90.0): PostingRequest
     {
         $debit = $this->createAccount('TX-D-'.uniqid(), 'asset');
         $credit = $this->createAccount('TX-C-'.uniqid(), 'liability');
@@ -75,7 +75,7 @@ class Issue42TaxDeterminationTest extends TenantTestCase
                 new PostingRequestLine(
                     accountMappingKey: 'tax_input',
                     accountId: $debit->id,
-                    debit: 90.00,
+                    debit: $amount,
                     credit: 0,
                     description: 'GST 9% input tax',
                 ),
@@ -83,7 +83,7 @@ class Issue42TaxDeterminationTest extends TenantTestCase
                     accountMappingKey: 'tax_input',
                     accountId: $credit->id,
                     debit: 0,
-                    credit: 90.00,
+                    credit: $amount,
                     description: 'GST 9% input tax (offset)',
                     taxCode: $taxCode,
                     taxId: $this->taxRuleId,
@@ -145,7 +145,7 @@ class Issue42TaxDeterminationTest extends TenantTestCase
             ],
         ];
 
-        $request = $this->makeTaxLineRequest('MY-SST-0', $taxDetermination);
+        $request = $this->makeTaxLineRequest('MY-SST-0', $taxDetermination, 0.0);
         $result = app(PostingEngine::class)->post($request);
 
         $this->assertTrue($result->success);

@@ -29,6 +29,7 @@ class TaxDeterminationResult extends Model
         'source_record_type',
         'source_record_id',
         'superseded_by',
+        'determined_by',
         'correlation_id',
     ];
 

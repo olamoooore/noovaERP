@@ -32,6 +32,9 @@ class PostingRequest
         public readonly ?string $sourceCapability = null,
         // ── Tax determination context (P0-6, ACC-009) ──
         public readonly ?array $taxDeterminationResult = null,
+        // ── G-08 (#274): expected determination version — TaxGate fails closed
+        // when the supplied result does not match it (stale snapshot posting).
+        public readonly ?int $expectedTaxResultVersion = null,
         // ── Concurrency context (P1-8, ADR-005 §8.5) ──
         // Optimistic locking on the source aggregate. When set, ConcurrencyGate
         // will BLOCK if the current source aggregate version differs from

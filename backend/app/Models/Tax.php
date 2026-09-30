@@ -25,10 +25,12 @@ class Tax extends Model
         'effective_to',
         'creditable',
         'blocked_expense_account_id',
+        'version',
     ];
 
     protected $casts = [
         'rate' => 'decimal:2',
+        'version' => 'integer',
         'creditable' => 'boolean',
         'is_active' => 'bool',
         'is_default' => 'bool',

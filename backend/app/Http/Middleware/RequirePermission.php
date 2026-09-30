@@ -71,7 +71,16 @@ class RequirePermission
         // Resolve central user id — user_company_access stores central IDs, not tenant schema IDs
         $centralUserId = self::resolveCentralUserId($user);
 
-        $hasPerm = $this->roleService->hasPermission($centralUserId, $tenantId, $permission);
+        // G-11 (#274): permission families may be expressed as alternatives —
+        // e.g. 'tax.policy.manage|tax.manage' passes when the role holds ANY of
+        // the listed permissions. Single-permission usage is unchanged.
+        $hasPerm = false;
+        foreach (array_filter(array_map('trim', explode('|', $permission))) as $candidate) {
+            if ($this->roleService->hasPermission($centralUserId, $tenantId, $candidate)) {
+                $hasPerm = true;
+                break;
+            }
+        }
 
         if ($hasPerm) {
             return $next($request);

@@ -25,8 +25,11 @@ use Tests\TenantTestCase;
 class HR42TaxGatePostingPathTest extends TenantTestCase
 {
     private User $user;
+
     private ChartOfAccount $ar;
+
     private ChartOfAccount $revenue;
+
     private ChartOfAccount $gst;
 
     private int $taxRuleId;
@@ -134,8 +137,6 @@ class HR42TaxGatePostingPathTest extends TenantTestCase
                 'treatment' => 'standard',
                 'tax_regime' => 'gst',
                 'result_version' => 1,
-                // tax_determination_id is a uuid column.
-                'id' => (string) Str::uuid(),
             ]],
         ];
 

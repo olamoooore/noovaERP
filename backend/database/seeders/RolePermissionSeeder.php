@@ -66,6 +66,22 @@ class RolePermissionSeeder extends Seeder
         'sales.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
         'sales.settings' => [UserRole::OWNER, UserRole::ADMIN],
 
+        // Price lists — MRD pricelist-multicurrency-mrd FR-10.1 / §10.
+        // View is Sales-visible; manage is accounting-adjacent SoD (Owner/
+        // Admin/Manager); cost-based rules additionally require
+        // pricelists.cost (Manager+Accountant per §10 table).
+        'pricelists.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT, UserRole::VIEWER],
+        'pricelists.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
+        'pricelists.cost' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
+
+        // Currency enablement + manual rate overrides (FR-10.2) — Owner/
+        // Admin/Accountant per §10.
+        'currencies.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::ACCOUNTANT],
+
+        // Change a document's currency (FR-5.2): sales.write + accounting
+        // view audience; Viewer excluded.
+        'documents.currency.change' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT],
+
         // Quotations — sales documents (no ledger entry on confirm), so the
         // preparers keep access; the accounting SOD gate lives on the ledger
         // release actions of the documents a quotation spawns (invoice post,
@@ -193,6 +209,12 @@ class RolePermissionSeeder extends Seeder
         // tenants have been re-seeded (switchover documented, not silent).
         'tax.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::VIEWER],
         'tax.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
+        // G-11 (#274): policy family (rule lifecycle authority, SoD split from
+        // routine tax.manage) + determination execution. Attached to tax rule
+        // routes as alternatives in modules/Core/routes/api.php.
+        'tax.policy.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
+        'tax.policy.manage' => [UserRole::OWNER, UserRole::ADMIN],
+        'tax.determine' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
 
         // Issue #164: legal entity / group / branch / entity-book structure and
         // per-entity module activation. Tenant-structural authority — Owner and

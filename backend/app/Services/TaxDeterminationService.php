@@ -494,6 +494,11 @@ class TaxDeterminationService
      * one transaction; a unique key guards (tenant, type, id, version).
      * G-05: identical inputs (input_hash) return the existing version —
      * idempotent re-posting never burns snapshots.
+     * G-07: a version bump SUPERSEDES the previous row in the same transaction
+     * (status + superseded_by), so `->current()` is a real filter and stale
+     * snapshots can never be posted as authority.
+     * G-09: entity scope (tenant legal entity as a deterministic uuid, same
+     * convention as AuthorityEvaluationSnapshot actor mapping).
      */
     private function persistResult(
         string $transactionType,
@@ -504,8 +509,11 @@ class TaxDeterminationService
         string $transactionDate,
     ): array {
         $inputHash = hash('sha256', json_encode([$jurisdiction, $regime, $transactionDate, $taxLines]));
+        $entityUuid = $this->resolveEntityUuid();
+        $determinedBy = $this->resolveActorUuid();
+        $ruleRefs = $this->buildRuleRefs($taxLines);
 
-        return DB::transaction(function () use ($transactionType, $sourceId, $jurisdiction, $taxLines, $transactionDate, $inputHash) {
+        return DB::transaction(function () use ($transactionType, $sourceId, $jurisdiction, $taxLines, $transactionDate, $inputHash, $entityUuid, $determinedBy, $ruleRefs) {
             $determinationId = (string) Str::uuid();
             $resultVersion = 1;
 
@@ -527,27 +535,93 @@ class TaxDeterminationService
                 $resultVersion = (int) $existing->result_version + 1;
             }
 
-            TaxDeterminationResult::create([
+            $created = TaxDeterminationResult::create([
                 'tenant_id' => tenant('id'),
-                'entity_id' => null,
+                'entity_id' => $entityUuid,
                 'result_version' => $resultVersion,
                 'jurisdiction' => $jurisdiction,
                 'transaction_type' => $transactionType,
                 'transaction_date' => $transactionDate,
-                'tax_rule_refs' => collect($taxLines)->pluck('tax_code')->unique()->values()->all(),
+                'tax_rule_refs' => $ruleRefs,
                 'tax_lines' => $taxLines,
                 'input_hash' => $inputHash,
                 'rounding_method' => 'half_up',
                 'calculation_basis' => 'per_line',
                 'result_status' => 'DETERMINED',
                 'determined_at' => now(),
+                'determined_by' => $determinedBy,
                 'source_record_type' => $transactionType,
                 'source_record_id' => $sourceId,
                 'correlation_id' => $determinationId,
             ]);
 
+            if ($existing) {
+                $existing->update([
+                    'result_status' => 'SUPERSEDED',
+                    'superseded_by' => $created->id,
+                ]);
+            }
+
             return [$determinationId, $resultVersion];
         });
+    }
+
+    /**
+     * G-09: the requesting legal entity (request attribute set by
+     * ResolveEntityContext) mapped to a deterministic uuid — the central table
+     * column is uuid typed and tenant legal entities carry integer ids.
+     */
+    private function resolveEntityUuid(): ?string
+    {
+        $legalEntityId = request()->attributes->get('legal_entity_id');
+
+        if (! $legalEntityId) {
+            return null;
+        }
+
+        return \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'legal_entity:'.$legalEntityId)->toString();
+    }
+
+    /**
+     * G-13: actor lineage for the determination (deterministic uuid mapping,
+     * same convention as AuthorityEvaluationSnapshot actor ids).
+     */
+    private function resolveActorUuid(): ?string
+    {
+        $actorId = auth()->id();
+
+        if (! $actorId) {
+            return null;
+        }
+
+        return \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'actor:'.$actorId)->toString();
+    }
+
+    /**
+     * G-08: rule references carry the rule identity AND its version, so the
+     * posting gate can bind exact policy versions — not just tax codes.
+     *
+     * @param  array<int, array<string, mixed>>  $taxLines
+     * @return array<int, array{tax_code: string|null, tax_rule_id: int|null, rule_version: int|null}>
+     */
+    private function buildRuleRefs(array $taxLines): array
+    {
+        $ids = collect($taxLines)->pluck('tax_id')->filter()->unique()->values()->all();
+        $versions = collect();
+
+        if ($ids !== [] && \Illuminate\Support\Facades\Schema::hasColumn('taxes', 'version')) {
+            $versions = DB::table('taxes')->whereIn('id', $ids)->pluck('version', 'id');
+        }
+
+        return collect($taxLines)
+            ->map(fn ($line) => [
+                'tax_code' => $line['tax_code'] ?? null,
+                'tax_rule_id' => $line['tax_id'] ?? null,
+                'rule_version' => ! empty($line['tax_id']) ? (int) ($versions[$line['tax_id']] ?? 1) : null,
+            ])
+            ->unique(fn ($ref) => ($ref['tax_code'] ?? 'null').'|'.($ref['tax_rule_id'] ?? 'null'))
+            ->values()
+            ->all();
     }
 
     private function buildResult(
