@@ -223,6 +223,33 @@ class BookingFactsService
     /**
      * Retrieve booking facts for a booking
      */
+    /**
+     * Analytics-style fact rows for lifecycle events (payment_confirmed,
+     * ticket_issued, ...). The callers in BookingService/TicketService were
+     * written against this method but it never existed (L-10 root cause:
+     * the payment callback fataled with "call to undefined method", so
+     * bookings stayed pending forever). Facts are additive snapshots stored
+     * on the booking's metadata rows; getBookingFacts() keeps returning the
+     * ORIGINAL capture row only.
+     */
+    public function createAnalyticsFact(string $factType, Booking $booking, array $data = []): BookingFacts
+    {
+        return BookingFacts::create([
+            'booking_id' => $booking->id,
+            // snapshot columns are NOT NULL json — an analytics fact carries
+            // no new snapshot, so empty objects
+            'event_snapshot' => [],
+            'ticket_type_snapshot' => [],
+            'artist_snapshot' => [],
+            'pricing_snapshot' => [],
+            'tier_snapshot' => [],
+            'metadata' => array_merge([
+                'analytics_fact' => $factType,
+                'captured_at' => now()->toIso8601String(),
+            ], $data),
+        ]);
+    }
+
     public function getBookingFacts(int $bookingId): ?BookingFacts
     {
         return BookingFacts::where('booking_id', $bookingId)->first();

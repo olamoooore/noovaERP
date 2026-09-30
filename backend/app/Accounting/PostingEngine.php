@@ -743,7 +743,7 @@ class PostingEngine implements PostingEngineInterface
             'pos_order' => 'sales',
             'ocr_document' => 'purchases',
             'web_order' => 'sales',
-            'storefront_order', 'storefront_refund' => 'sales',
+            'storefront_order', 'storefront_refund', 'event_booking' => 'sales',
             'fx_revaluation', 'depreciation', 'asset_disposal', 'bank_adjustment' => 'journal_entries',
             default => 'journal_entries',
         };
@@ -1077,7 +1077,7 @@ class PostingEngine implements PostingEngineInterface
             // Retail / ecommerce sales posting — coarse module permission held
             // by the actors who create these documents (module-level RBAC aligned).
             'pos_order', 'pos_refund_payment' => 'pos.create',
-            'web_order' => 'sales.write',
+            'web_order', 'event_booking' => 'sales.write',
             // Storefront module sales posting — its own coarse permission
             // (seeded matrix + RequirePermission parity, FR-MOD-03).
             'storefront_order', 'storefront_refund' => 'storefront.write',

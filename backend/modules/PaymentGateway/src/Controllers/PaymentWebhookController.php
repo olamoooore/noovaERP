@@ -395,6 +395,17 @@ class PaymentWebhookController extends Controller
                 return;
             }
 
+            // P-04e: event bookings ride the canonical completion service too
+            // (status + ledger), like web orders already do.
+            if (($metadata['type'] ?? null) === 'event_booking' && ! $transaction->invoice_id) {
+                app(PaymentTransactionCompletionService::class)->complete(
+                    $transaction,
+                    $transaction->payment_method ?? $transaction->gateway?->gateway_name
+                );
+
+                return;
+            }
+
             // Standard invoice-based payment processing now routes through the
             // canonical completion service to avoid a second invoice mutation owner.
             $invoice = $transaction->invoice;

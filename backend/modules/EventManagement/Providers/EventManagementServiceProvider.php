@@ -14,6 +14,7 @@ use Modules\EventManagement\Http\Middleware\RequestValidationMiddleware;
 use Modules\EventManagement\Services\AuditService;
 use Modules\EventManagement\Services\BookingService;
 use Modules\EventManagement\Services\DataRetentionService;
+use Modules\EventManagement\Services\EventBookingPostingService;
 use Modules\EventManagement\Services\EventService;
 use Modules\EventManagement\Services\MigrationDependencyService;
 use Modules\EventManagement\Services\MigrationMonitoringService;
@@ -30,6 +31,13 @@ class EventManagementServiceProvider extends ServiceProvider
         // Register core services
         $this->app->singleton(EventService::class);
         $this->app->singleton(BookingService::class);
+        $this->app->singleton(EventBookingPostingService::class);
+        // P-04e: the shared completion service delegates event_booking
+        // settlements to this module through the platform seam.
+        $this->app->singleton(
+            \App\Contracts\EventBookingPaymentCompletion::class,
+            \Modules\EventManagement\Services\EventBookingCompletionService::class,
+        );
         $this->app->singleton(TicketService::class);
         $this->app->singleton(AuditService::class);
         $this->app->singleton(TenantSchemaManager::class);

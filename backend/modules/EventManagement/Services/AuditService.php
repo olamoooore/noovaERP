@@ -226,8 +226,11 @@ class AuditService
             return $this->request->header('X-Request-ID');
         }
 
-        // Generate a UUID-like request ID if not provided
-        return 'req_'.$this->generateUuid();
+        // Generate a UUID-like request ID if not provided. NOTE: must stay
+        // within the activity_logs.request_id varchar(36) — the previous
+        // 'req_'-prefixed 40-char value overflowed it and broke every
+        // unheaded (webhook/CLI) audit write.
+        return $this->generateUuid();
     }
 
     /**

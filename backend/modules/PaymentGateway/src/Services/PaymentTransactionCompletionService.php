@@ -63,6 +63,20 @@ class PaymentTransactionCompletionService
                 return $transaction->fresh();
             }
 
+            if (! $invoice && ($transaction->metadata['type'] ?? null) === 'event_booking') {
+                // P-04e: paid event bookings complete through the module's
+                // own state machine + ledger via this seam — fail closed
+                // rather than fall through to the invoice error path (which
+                // left bookings pending forever, L-10).
+                if (! app()->bound(\App\Contracts\EventBookingPaymentCompletion::class)) {
+                    throw new \RuntimeException('Event booking completion handler is unavailable.');
+                }
+
+                app(\App\Contracts\EventBookingPaymentCompletion::class)->complete($transaction, $paymentMethod);
+
+                return $transaction->fresh();
+            }
+
             if (! $invoice && (($transaction->metadata['type'] ?? null) === 'web_order' || ! empty($transaction->metadata['order_id']))) {
                 $webOrder = $this->resolveWebOrder($transaction);
 

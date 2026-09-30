@@ -348,19 +348,18 @@ class PublicEventController extends Controller
                 ], 402);
             }
 
-            $booking = $this->bookingService->processPaymentCallback($bookingReference, [
-                'payment_reference' => $paymentIntentId,
-                'status' => 'success',
-                'amount' => $booking->total_amount,
-                'currency' => $booking->currency,
-                'payment_method' => $paymentStatus['payment_method'] ?? 'card',
-                'timestamp' => now()->toISOString(),
-            ]);
+            // P-04e: state, capacity and ledger now complete through the
+            // CANONICAL completion service (same chain as the webhook) —
+            // idempotent, engine-journaled, no double-decrement races.
+            // Same contract as the webhook: caller marks the gateway truth
+            // (completed), the completion chain stamps processed_at last.
+            $transaction->update(['status' => 'completed']);
+            $completed = app(\Modules\PaymentGateway\Services\PaymentTransactionCompletionService::class)
+                ->complete($transaction, $paymentStatus['payment_method'] ?? $transaction->payment_method);
+            $transaction = $completed ?: $transaction;
 
-            if ((int) $event->available_capacity > 0) {
-                Event::where('id', $event->id)->decrement('available_capacity');
-                $event->refresh();
-            }
+            $booking = $booking->fresh();
+            $event->refresh();
 
             $this->sendBookingConfirmationEmail($booking->fresh(), $event, $queueNumber);
 
