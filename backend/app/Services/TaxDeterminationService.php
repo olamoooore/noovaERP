@@ -155,6 +155,8 @@ class TaxDeterminationService
                 'tax_amount' => $taxAmount,
                 'treatment' => $treatment,
                 'tax_id' => $taxId,
+                'creditable' => $resolved['creditable'] ?? true,
+                'blocked_account_id' => $resolved['blocked_account_id'] ?? null,
                 'source_line_id' => $line->id,
             ];
         }
@@ -202,6 +204,8 @@ class TaxDeterminationService
                 'tax_amount' => $tax,
                 'treatment' => $resolved['treatment'] ?? ($rate > 0 ? 'standard_rated' : 'zero_rated'),
                 'tax_id' => $resolved['tax_id'] ?? null,
+                'creditable' => $resolved['creditable'] ?? true,
+                'blocked_account_id' => $resolved['blocked_account_id'] ?? null,
                 'source_line_id' => $line->id,
             ];
         }
@@ -279,6 +283,8 @@ class TaxDeterminationService
                 'tax_amount' => $tax,
                 'treatment' => $treatment,
                 'tax_id' => $taxId,
+                'creditable' => $line['creditable_override'] ?? ($resolved['creditable'] ?? true),
+                'blocked_account_id' => $resolved['blocked_account_id'] ?? null,
                 'source_line_id' => $line['source_line_id'] ?? null,
             ];
         }
@@ -329,6 +335,9 @@ class TaxDeterminationService
             $allocations[] = [
                 'tax_code' => $row['tax_code'],
                 'tax_id' => $row['tax_id'] ?? null,
+                'treatment' => $row['treatment'] ?? null,
+                'creditable' => $row['creditable'] ?? true,
+                'blocked_account_id' => $row['blocked_account_id'] ?? null,
                 'amount' => $amount,
             ];
             $running = round($running + $amount, 2);
@@ -389,6 +398,8 @@ class TaxDeterminationService
                     'tax_rate' => (float) $line['tax_rate'],
                     'treatment' => $line['treatment'],
                     'tax_id' => $line['tax_id'] ?? null,
+                    'creditable' => $line['creditable'] ?? true,
+                    'blocked_account_id' => $line['blocked_account_id'] ?? null,
                     'source_line_ids' => [],
                 ];
             }
@@ -403,6 +414,11 @@ class TaxDeterminationService
             if ((float) $groups[$code]['tax_rate'] <= 0 && (float) $line['tax_rate'] > 0) {
                 $groups[$code]['tax_rate'] = (float) $line['tax_rate'];
                 $groups[$code]['treatment'] = $line['treatment'];
+            }
+
+            if (($groups[$code]['creditable'] ?? true) && (isset($line['creditable']) && $line['creditable'] === false)) {
+                $groups[$code]['creditable'] = false;
+                $groups[$code]['blocked_account_id'] = $line['blocked_account_id'] ?? ($groups[$code]['blocked_account_id'] ?? null);
             }
 
             if (isset($line['source_line_id'])) {

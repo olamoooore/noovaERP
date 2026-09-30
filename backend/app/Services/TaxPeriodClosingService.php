@@ -57,6 +57,26 @@ class TaxPeriodClosingService
     /**
      * Check if a period is locked (closed).
      */
+    public function reopenPeriod(string $period, int $tenantId): void
+    {
+        $this->validatePeriodFormat($period);
+
+        $deleted = DB::table('tax_period_locks')
+            ->where('period', $period)
+            ->where('tenant_id', $tenantId)
+            ->delete();
+
+        if (! $deleted) {
+            throw new \RuntimeException("Tax period {$period} is not closed.");
+        }
+
+        \Illuminate\Support\Facades\Log::info('tax.period.reopened', [
+            'period' => $period,
+            'tenant_id' => $tenantId,
+            'actor' => auth()->id(),
+        ]);
+    }
+
     public function isPeriodLocked(string $period, int $tenantId): bool
     {
         return DB::table('tax_period_locks')
@@ -105,9 +125,10 @@ class TaxPeriodClosingService
      */
     protected function buildPeriodSummary(string $period, int $tenantId): array
     {
+        // tax_transaction_details lives in the tenant schema — scoping is by
+        // schema, not by a column (there is none on this table).
         $rows = DB::table('tax_transaction_details')
             ->where('reporting_period', $period)
-            ->where('tenant_id', $tenantId)
             ->get();
 
         $byTaxCode = [];

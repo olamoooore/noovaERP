@@ -205,6 +205,9 @@ class TaxEngineService
             'scope' => $tax->scope ?: $direction,
             'treatment' => $tax->treatment ?: ($tax->rate > 0 ? 'standard_rated' : 'zero_rated'),
             'source' => $source,
+            // MRD R4.2: recoverability travels with the resolved rule.
+            'creditable' => $tax->creditable !== null ? (bool) $tax->creditable : true,
+            'blocked_account_id' => $tax->blocked_expense_account_id ? (int) $tax->blocked_expense_account_id : null,
         ];
     }
 

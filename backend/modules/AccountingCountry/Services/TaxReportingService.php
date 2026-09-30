@@ -195,6 +195,9 @@ class TaxReportingService
             'period' => $period,
             'months' => $months,
             'legal_entity_id' => $legalEntityId,
+            'tax_period_locked' => DB::table('tax_period_locks')
+                ->whereIn('period', $months)
+                ->exists(),
             'by_tax_code' => array_values($byCode),
             'uncoded_gl_movement' => $uncoded,
             'total_abs_variance' => $totalVariance,

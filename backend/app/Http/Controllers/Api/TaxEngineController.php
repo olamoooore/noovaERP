@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Tax;
 use App\Services\TaxAdvisoryService;
+use App\Services\TaxCountryPackService;
 use App\Services\TaxEngineService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class TaxEngineController extends Controller
@@ -13,6 +15,7 @@ class TaxEngineController extends Controller
     public function __construct(
         private readonly TaxEngineService $engine,
         private readonly TaxAdvisoryService $advisory,
+        private readonly TaxCountryPackService $packs,
     ) {}
 
     public function rules(Request $request)
@@ -33,6 +36,45 @@ class TaxEngineController extends Controller
                     ->orderBy('name')->get(),
             ],
         ]);
+    }
+
+    /**
+     * MRD R5.1/R6.1: which country packs are active for this tenant.
+     */
+    public function packStatus(): JsonResponse
+    {
+        return response()->json(['data' => $this->packs->status()]);
+    }
+
+    /**
+     * Activate a country pack as effective-dated rule DATA (idempotent by
+     * code; existing tenant rules are never overwritten). Rates still require
+     * verification against IRAS / LHDN-RMCD notices before a period files.
+     */
+    public function activatePack(string $jurisdiction): JsonResponse
+    {
+        try {
+            return response()->json(['data' => $this->packs->activate($jurisdiction)]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+    }
+
+    /**
+     * MRD R5.3/R6.2: rolling-12-month taxable value vs registration
+     * thresholds (monitoring flag only - registration is a human call).
+     */
+    public function thresholds(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'jurisdiction' => 'nullable|string|size:2',
+            'entity_id' => 'nullable|integer|exists:legal_entities,id',
+        ]);
+
+        return response()->json(['data' => $this->packs->thresholds(
+            isset($validated['jurisdiction']) ? strtoupper($validated['jurisdiction']) : null,
+            isset($validated['entity_id']) ? (int) $validated['entity_id'] : null,
+        )]);
     }
 
     /**

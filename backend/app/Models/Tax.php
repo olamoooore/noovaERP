@@ -23,10 +23,13 @@ class Tax extends Model
         'is_inclusive',
         'effective_from',
         'effective_to',
+        'creditable',
+        'blocked_expense_account_id',
     ];
 
     protected $casts = [
         'rate' => 'decimal:2',
+        'creditable' => 'boolean',
         'is_active' => 'bool',
         'is_default' => 'bool',
         'is_inclusive' => 'bool',

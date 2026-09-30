@@ -146,6 +146,7 @@ class VendorCreditNoteService
                     'tax_code_override' => $origin['tax_code'] ?? null,
                     'treatment_override' => $origin['treatment'] ?? null,
                     'tax_id_override' => $origin['tax_id'] ?? null,
+                    'creditable_override' => $origin['creditable'] ?? null,
                 ];
             }
 
@@ -179,12 +180,16 @@ class VendorCreditNoteService
                 if ($allocation['amount'] <= 0) {
                     continue;
                 }
+                // MRD R4.2: reversing a NON-creditable purchase credits the
+                // blocked-expense account actually used at posting, never a
+                // claim that never existed.
+                $blocked = ($allocation['creditable'] ?? true) === false;
                 $lines[] = new PostingRequestLine(
-                    accountMappingKey: 'input_tax',
-                    accountId: null,
+                    accountMappingKey: $blocked ? 'input_tax_blocked' : 'input_tax',
+                    accountId: $blocked ? ($allocation['blocked_account_id'] ?? null) : null,
                     debit: 0,
                     credit: $allocation['amount'],
-                    description: "Tax reversal - Credit Note {$creditNote->credit_note_number}".($allocation['tax_code'] ? " [{$allocation['tax_code']}]" : ''),
+                    description: ($blocked ? 'Non-creditable tax reversal - ' : 'Tax reversal - ').($allocation['tax_code'] ? "{$allocation['tax_code']} - " : '')."Tax reversal - Credit Note {$creditNote->credit_note_number}",
                     taxCode: $allocation['tax_code'],
                     taxId: $allocation['tax_id'],
                 );

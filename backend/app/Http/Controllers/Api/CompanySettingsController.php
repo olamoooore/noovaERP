@@ -626,11 +626,22 @@ class CompanySettingsController extends Controller
                     'acceptance_link_expiry_days' => (int) \App\Models\Setting::getValue('sales.portal.acceptance_link_expiry_days', 30),
                     'payment_link_expiry_days' => (int) \App\Models\Setting::getValue('sales.portal.payment_link_expiry_days', 14),
                 ],
-                'tax' => [
-                    'default_tax_rate' => (float) \App\Models\Setting::getValue('sales.tax.default_tax_rate', 0),
-                    'prices_include_tax' => (bool) \App\Models\Setting::getValue('sales.tax.prices_include_tax', false),
-                    'default_tax_treatment' => \App\Models\Setting::getValue('sales.tax.default_tax_treatment', 'standard'),
-                ],
+                // MRD R10.3: ONE tax config surface. The legacy sales.tax.*
+                // keys are now derived from the canonical Setting tax block
+                // that the engine actually reads — no orphan writes.
+                'tax' => (static function (): array {
+                    $tax = \App\Models\Setting::getValue('tax', []);
+                    $defaultRate = 0.0;
+                    if (! empty($tax['default_tax_id'])) {
+                        $defaultRate = (float) (\App\Models\Tax::query()->whereKey($tax['default_tax_id'])->value('rate') ?? 0);
+                    }
+
+                    return [
+                        'default_tax_rate' => $defaultRate,
+                        'prices_include_tax' => ($tax['pricing_mode'] ?? 'exclusive') === 'inclusive',
+                        'default_tax_treatment' => 'standard',
+                    ];
+                })(),
                 'delivery' => [
                     'attach_pdf' => (bool) \App\Models\Setting::getValue('sales.delivery.attach_pdf', true),
                     'cc_internal_email' => \App\Models\Setting::getValue('sales.delivery.cc_internal_email', ''),
@@ -686,14 +697,49 @@ class CompanySettingsController extends Controller
             'portal.require_signature' => 'sales.portal.require_signature',
             'portal.acceptance_link_expiry_days' => 'sales.portal.acceptance_link_expiry_days',
             'portal.payment_link_expiry_days' => 'sales.portal.payment_link_expiry_days',
-            'tax.default_tax_rate' => 'sales.tax.default_tax_rate',
-            'tax.prices_include_tax' => 'sales.tax.prices_include_tax',
-            'tax.default_tax_treatment' => 'sales.tax.default_tax_treatment',
             'delivery.attach_pdf' => 'sales.delivery.attach_pdf',
             'delivery.cc_internal_email' => 'sales.delivery.cc_internal_email',
             'delivery.document_type_on_send' => 'sales.delivery.document_type_on_send',
             'delivery_order.default_requires_approval' => 'sales.delivery_order.default_requires_approval',
         ];
+
+        // MRD R10.3: tax writes go to the ONE canonical Setting tax block
+        // the engine reads. default_tax_rate re-points default_tax_id to a
+        // matching active rule (never invents one); treatment is a per-rule
+        // property now and is ignored here (kept in the payload for UI
+        // compatibility).
+        if (array_key_exists('tax', $validated) && is_array($validated['tax'])) {
+            $taxSetting = \App\Models\Setting::getValue('tax', []);
+
+            if (array_key_exists('prices_include_tax', $validated['tax'])) {
+                $taxSetting['pricing_mode'] = $validated['tax']['prices_include_tax'] ? 'inclusive' : 'exclusive';
+            }
+
+            if (array_key_exists('default_tax_rate', $validated['tax'])) {
+                $rate = (float) $validated['tax']['default_tax_rate'];
+
+                if ($rate <= 0) {
+                    $taxSetting['default_tax_id'] = null;
+                } else {
+                    $match = \App\Models\Tax::query()
+                        ->where('is_active', true)
+                        ->whereRaw('ABS(rate - ?) < 0.005', [$rate])
+                        ->orderByDesc('is_default')
+                        ->first();
+
+                    if ($match) {
+                        $taxSetting['default_tax_id'] = $match->id;
+                    }
+                }
+            }
+
+            \App\Models\Setting::setValue('tax', array_merge([
+                'enabled' => true,
+                'pricing_mode' => 'exclusive',
+                'default_tax_id' => null,
+                'jurisdiction' => null,
+            ], $taxSetting));
+        }
 
         // $validated arrives nested (['invoice' => ['key' => value]]), while
         // $map is keyed in dot notation — walk the groups so every leaf is

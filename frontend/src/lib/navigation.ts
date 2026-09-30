@@ -539,6 +539,12 @@ export const baseNavItems: NavItem[] = [
         icon: 'solar:document-add-bold-duotone',
         featureKey: 'ocr-bookkeeping',
       },
+      {
+        title: 'AI Tax Advisory',
+        href: '/ai/tax-advisory',
+        icon: 'solar:magic-stick-3-bold-duotone',
+        keywords: ['tax ai', 'gst advice', 'sst advice', 'tax advisory'],
+      },
 
       
     ],

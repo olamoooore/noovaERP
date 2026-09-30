@@ -188,6 +188,11 @@ class RolePermissionSeeder extends Seeder
         // these. Accountant keeps manage capability so existing reporting
         // workflows do not regress.
         'reports.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
+        // MRD R7.5: dedicated tax-engine permissions seeded for future route
+        // switch; tax routes still enforce reports.view/reports.manage until
+        // tenants have been re-seeded (switchover documented, not silent).
+        'tax.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::VIEWER],
+        'tax.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
 
         // Issue #164: legal entity / group / branch / entity-book structure and
         // per-entity module activation. Tenant-structural authority — Owner and

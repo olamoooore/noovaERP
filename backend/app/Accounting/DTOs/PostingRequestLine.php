@@ -20,5 +20,8 @@ class PostingRequestLine
         // TASK TAX-001: Add tax_code for tax audit trail
         public readonly ?string $taxCode = null,
         public readonly ?int $taxId = null,
+        // MRD R4.3: overrides the doc-type-derived trail direction for
+        // self-assessed (reverse-charge) GL lines.
+        public readonly ?string $taxDirection = null,
     ) {}
 }

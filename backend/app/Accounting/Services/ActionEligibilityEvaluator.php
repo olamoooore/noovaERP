@@ -10,14 +10,14 @@ use App\Accounting\Services\Gates\ApprovalGate;
 use App\Accounting\Services\Gates\AssuranceGate;
 use App\Accounting\Services\Gates\ConcurrencyGate;
 use App\Accounting\Services\Gates\ControlAccountGate;
-use App\Accounting\Services\Gates\EntityAccessGate;
 use App\Accounting\Services\Gates\EntitlementGate;
+use App\Accounting\Services\Gates\EntityAccessGate;
 use App\Accounting\Services\Gates\IdempotencyGate;
-use App\Accounting\Services\Gates\PermissionGate;
 use App\Accounting\Services\Gates\PeriodOpenGate;
+use App\Accounting\Services\Gates\PermissionGate;
 use App\Accounting\Services\Gates\SoDGate;
-use App\Accounting\Services\Gates\TenantActiveGate;
 use App\Accounting\Services\Gates\TaxGate;
+use App\Accounting\Services\Gates\TenantActiveGate;
 use App\Accounting\Services\Gates\WorkflowGate;
 use App\Models\AuthorityEvaluationSnapshot;
 use Illuminate\Support\Str;
@@ -38,18 +38,19 @@ class ActionEligibilityEvaluator
         private readonly StateTransitionService $transitionService,
     ) {
         // Register mandatory gates (ADR-005 §8 — every mandatory gate must PASS)
-        $this->registerMandatoryGate(new TenantActiveGate());
-        $this->registerMandatoryGate(new PeriodOpenGate());
-        $this->registerMandatoryGate(new ConcurrencyGate());
-        $this->registerMandatoryGate(new IdempotencyGate());
-        $this->registerMandatoryGate(new AssuranceGate());
-        $this->registerMandatoryGate(new ControlAccountGate());
-        $this->registerMandatoryGate(new TaxGate());
-        $this->registerMandatoryGate(new WorkflowGate());
-        $this->registerMandatoryGate(new ApprovalGate());
-        $this->registerMandatoryGate(new EntitlementGate());
-        $this->registerMandatoryGate(new EntityAccessGate());
-        $this->registerMandatoryGate(new SoDGate());
+        $this->registerMandatoryGate(new TenantActiveGate);
+        $this->registerMandatoryGate(new PeriodOpenGate);
+        $this->registerMandatoryGate(new ConcurrencyGate);
+        $this->registerMandatoryGate(new IdempotencyGate);
+        $this->registerMandatoryGate(new AssuranceGate);
+        $this->registerMandatoryGate(new ControlAccountGate);
+        $this->registerMandatoryGate(new TaxGate);
+        $this->registerMandatoryGate(new \App\Accounting\Services\Gates\TaxPeriodLockGate);
+        $this->registerMandatoryGate(new WorkflowGate);
+        $this->registerMandatoryGate(new ApprovalGate);
+        $this->registerMandatoryGate(new EntitlementGate);
+        $this->registerMandatoryGate(new EntityAccessGate);
+        $this->registerMandatoryGate(new SoDGate);
 
         // Register mandatory permission gate (ADR-005 §8.4 — P19)
         // PermissionGate is mandatory — failure to resolve is fatal
@@ -67,11 +68,11 @@ class ActionEligibilityEvaluator
     /**
      * Evaluate all gates for a given action.
      *
-     * @param string $action         The requested action (e.g., 'POST_JOURNAL', 'REVERSE_ENTRY')
-     * @param string $recordType     The aggregate type being acted upon
-     * @param string $recordId       The aggregate ID
-     * @param array  $context        Additional context (tenant, actor, period, etc.)
-     * @param bool   $requireSnapshot Whether to persist an evaluation snapshot
+     * @param  string  $action  The requested action (e.g., 'POST_JOURNAL', 'REVERSE_ENTRY')
+     * @param  string  $recordType  The aggregate type being acted upon
+     * @param  string  $recordId  The aggregate ID
+     * @param  array  $context  Additional context (tenant, actor, period, etc.)
+     * @param  bool  $requireSnapshot  Whether to persist an evaluation snapshot
      */
     public function evaluate(
         string $action,
@@ -143,7 +144,7 @@ class ActionEligibilityEvaluator
             // Use deterministic UUID v5 for actor_id so it's traceable
             // (numeric user IDs mapped to UUID column type).
             $actorUuid = is_numeric($actorId)
-                ? \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'actor:' . $actorId)->toString()
+                ? \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'actor:'.$actorId)->toString()
                 : (string) $actorId;
 
             $snapshot = AuthorityEvaluationSnapshot::create([

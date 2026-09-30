@@ -75,7 +75,11 @@ class TaxReturnAggregator
         $result = ['output' => [], 'input' => []];
 
         foreach ($rows as $row) {
-            $direction = $this->direction((string) $row->source_document_type);
+            // MRD R4.3: an explicit row direction (reverse-charge pairs) wins
+            // over the document-type default.
+            $direction = $row->direction
+                ? (in_array($row->direction, ['output', 'input'], true) ? $row->direction : null)
+                : $this->direction((string) $row->source_document_type);
 
             if ($direction === null) {
                 continue;
@@ -88,6 +92,7 @@ class TaxReturnAggregator
                 'source_document_type' => $row->source_document_type,
                 'source_document_id' => $row->source_document_id,
                 'tax_code' => $row->tax_code,
+                'tax_rule_id' => $row->tax_rule_id !== null ? (int) $row->tax_rule_id : null,
                 'tax_rate' => $row->tax_rate !== null ? (float) $row->tax_rate : null,
                 'tax_treatment' => $row->tax_treatment,
                 'tax_regime' => $row->tax_regime,

@@ -132,6 +132,7 @@ const TaxConfigurationPage = lazy(() => import('@/pages/accounting/TaxConfigurat
 const TaxEnginePage = lazy(() => import('@/pages/accounting/TaxEnginePage'))
 const TaxReturnsPage = lazy(() => import('@/pages/accounting/TaxReturnsPage'))
 const TaxReportPage = lazy(() => import('@/pages/accounting/TaxReportPage'))
+const AiTaxAdvisoryPage = lazy(() => import('@/pages/AI/TaxAdvisoryPage'))
 const BankAccountsPage = lazy(() => import('@/pages/accounting/BankAccountsPage'))
 const CustomerCreditNotesPage = lazy(() => import('@/pages/accounting/CustomerCreditNotesPage'))
 const CustomerCreditNoteDetail = lazy(() => import('@/pages/accounting/customers/CustomerCreditNoteDetail'))
@@ -510,6 +511,7 @@ function App() {
                 <Route path="/accounting/tax-engine" element={<TaxEnginePage />} />
                 <Route path="/accounting/tax-returns" element={<TaxReturnsPage />} />
                 <Route path="/accounting/tax-report" element={<TaxReportPage />} />
+                <Route path="/ai/tax-advisory" element={<AiTaxAdvisoryPage />} />
                 <Route path="/accounting/configuration/bank-accounts" element={<BankAccountsPage />} />
                 <Route path="/accounting/configuration/country-plugin" element={<CountryPluginSettings />} />
                 

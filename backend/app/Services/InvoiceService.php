@@ -822,8 +822,22 @@ class InvoiceService
         });
     }
 
-    public function createPaymentLink(Invoice $invoice, float $amount, \DateTimeInterface $expiresAt): array
-    {
+    public function createPaymentLink(
+        Invoice $invoice,
+        float $amount,
+        \DateTimeInterface $expiresAt,
+        ?string $successUrl = null,
+        ?string $cancelUrl = null,
+    ): array {
+        // P-04c: real success/cancel landings. Caller-provided absolute
+        // http(s) URLs win; otherwise the platform's own confirmation
+        // endpoints answer (the old hardcoded stubs were dead routes).
+        $base = rtrim((string) config('app.url'), '/');
+        $success = $this->absoluteHttpUrl($successUrl)
+            ?? $base.'/api/v1/payments/invoice/'.$invoice->id.'/success';
+        $cancel = $this->absoluteHttpUrl($cancelUrl)
+            ?? $base.'/api/v1/payments/invoice/'.$invoice->id.'/cancelled';
+
         $existingLink = $invoice->payment_link_url;
         $existingExpiry = $invoice->payment_link_expires_at;
 
@@ -848,11 +862,14 @@ class InvoiceService
             ],
             'email' => $invoice->contact_email ?? $invoice->customer?->email,
             'customer_id' => $invoice->customer_id,
-            'redirect_url' => url('/api/v1/payments/success'),
-            'cancel_url' => url('/api/v1/payments/cancel'),
+            'redirect_url' => $success,
+            'cancel_url' => $cancel,
         ]);
 
-        $checkoutUrl = $result['checkout_url'] ?? $result['url'] ?? $result['client_secret'] ?? null;
+        // PaymentService::createIntent returns `payment_url` (the hosted
+        // checkout link) — reading only checkout_url/url/client_secret left
+        // the stored payment link NULL on HitPay/PayPal (P-04c defect).
+        $checkoutUrl = $result['payment_url'] ?? $result['checkout_url'] ?? $result['url'] ?? null;
 
         $invoice->updateQuietly([
             'payment_link_url' => $checkoutUrl,
@@ -865,7 +882,24 @@ class InvoiceService
             'amount' => $amount,
             'currency' => $invoice->currency_code,
             'transaction_id' => $result['transaction_id'] ?? null,
+            'success_url' => $success,
+            'cancel_url' => $cancel,
             'idempotent' => false,
         ];
+    }
+
+    private function absoluteHttpUrl(?string $url): ?string
+    {
+        if (! is_string($url) || trim($url) === '') {
+            return null;
+        }
+        if (filter_var($url, FILTER_VALIDATE_URL) === false) {
+            return null;
+        }
+        if (! preg_match('#^https?://#i', $url)) {
+            return null;
+        }
+
+        return $url;
     }
 }

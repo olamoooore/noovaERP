@@ -26,13 +26,41 @@ class Sst02ReturnService
         $taxes = $this->aggregator->aggregate($period, $legalEntityId);
 
         // MY SST is a single-stage tax: output-side rows only (no input credit).
+        //
+        // MRD D9 / R5.2: buckets are classified by the RESOLVED RULE's type
+        // (`taxes.type === 'service'|'sales'`, carried via tax_rule_id), NOT
+        // by a substring guess on the code. Rows with no rule reference fall
+        // back to the legacy heuristic and are surfaced so an accountant can
+        // remap them to a coded rule.
+        $ruleTypes = \App\Models\Tax::query()
+            ->whereIn('id', array_values(array_unique(array_filter(array_map(
+                fn (array $r) => $r['tax_rule_id'] ?? null,
+                $taxes['output'],
+            )))))
+            ->pluck('type', 'id');
+
         $salesTaxRows = [];
         $serviceTaxRows = [];
+        $unclassifiedRows = 0;
 
         foreach ($taxes['output'] as $row) {
+            $ruleType = $row['tax_rule_id'] !== null ? strtolower((string) ($ruleTypes[$row['tax_rule_id']] ?? '')) : '';
+
+            if ($ruleType !== '') {
+                if ($ruleType === 'service') {
+                    $serviceTaxRows[] = $row;
+                } else {
+                    $salesTaxRows[] = $row;
+                }
+
+                continue;
+            }
+
+            // Legacy fallback: no rule reference on the trail row.
+            $unclassifiedRows++;
             $regime = strtolower((string) ($row['tax_regime'] ?? '').' '.(string) ($row['tax_code'] ?? ''));
 
-            if (str_contains($regime, 'service')) {
+            if (str_contains($regime, 'service') || str_contains($regime, 'svc')) {
                 $serviceTaxRows[] = $row;
             } else {
                 $salesTaxRows[] = $row;
@@ -79,6 +107,10 @@ class Sst02ReturnService
                 'tax_due' => $serviceTaxDue,
             ],
             'total_tax_payable' => round($salesTaxDue + $serviceTaxDue, 2),
+            'classification' => [
+                'method' => 'rule_taxonomy',
+                'unclassified_legacy_rows' => $unclassifiedRows,
+            ],
         ];
     }
 }

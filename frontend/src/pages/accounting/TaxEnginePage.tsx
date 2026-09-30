@@ -33,6 +33,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+import { SOURCE_LABELS } from '@/lib/taxDisplay';
+import { TreatmentBadge } from '@/components/tax/TaxDisplay';
 import { useTaxConfig, useUpdateSettings } from '@/hooks/queries/useSettings';
 import api from '@/lib/api';
 
@@ -51,7 +53,10 @@ interface EngineRule {
   is_inclusive: boolean;
   effective_from?: string | null;
   effective_to?: string | null;
+  creditable?: boolean | null;
+  blocked_expense_account_id?: number | null;
 }
+
 
 interface RulesResponse {
   data: {
@@ -83,29 +88,6 @@ interface AdvisoryResponse {
   };
 }
 
-const SOURCE_LABELS: Record<string, string> = {
-  product_custom: 'Product override',
-  product: 'Product tax',
-  tenant_default: 'Default rule',
-  localized_rule: 'Configured rule',
-  none: 'No rule found',
-};
-
-const treatmentBadge = (treatment?: string | null) => {
-  switch ((treatment || '').toLowerCase()) {
-    case 'standard_rated':
-      return <Badge variant="secondary" className="whitespace-nowrap bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300">Standard rated</Badge>;
-    case 'zero_rated':
-      return <Badge variant="secondary" className="whitespace-nowrap bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">Zero rated</Badge>;
-    case 'exempt':
-      return <Badge variant="secondary" className="whitespace-nowrap bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300">Exempt</Badge>;
-    case 'out_of_scope':
-      return <Badge variant="secondary" className="whitespace-nowrap bg-muted text-muted-foreground">Out of scope</Badge>;
-    default:
-      return <Badge variant="secondary" className="whitespace-nowrap">{treatment || '—'}</Badge>;
-  }
-};
-
 export default function TaxEnginePage() {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -123,6 +105,7 @@ export default function TaxEnginePage() {
     name: '', code: '', type: 'gst', jurisdiction: 'SG', regime: '', scope: 'output',
     treatment: 'standard_rated', rate: '', is_inclusive: false, is_default: false,
     is_active: true, effective_from: '', effective_to: '',
+    creditable: true, blocked_expense_account_id: '',
   });
 
   const invalidateRules = () => {
@@ -137,6 +120,7 @@ export default function TaxEnginePage() {
       name: '', code: '', type: 'gst', jurisdiction, regime: '', scope: 'output',
       treatment: 'standard_rated', rate: '', is_inclusive: false, is_default: false,
       is_active: true, effective_from: '', effective_to: '',
+      creditable: true, blocked_expense_account_id: '',
     });
     setRuleDialogOpen(true);
   };
@@ -157,6 +141,8 @@ export default function TaxEnginePage() {
       is_active: !!rule.is_active,
       effective_from: rule.effective_from ? String(rule.effective_from).slice(0, 10) : '',
       effective_to: rule.effective_to ? String(rule.effective_to).slice(0, 10) : '',
+      creditable: rule.creditable !== false,
+      blocked_expense_account_id: rule.blocked_expense_account_id ? String(rule.blocked_expense_account_id) : '',
     });
     setRuleDialogOpen(true);
   };
@@ -177,6 +163,8 @@ export default function TaxEnginePage() {
         is_active: draft.is_active,
         effective_from: draft.effective_from || null,
         effective_to: draft.effective_to || null,
+        creditable: draft.creditable,
+        blocked_expense_account_id: draft.blocked_expense_account_id ? parseInt(draft.blocked_expense_account_id, 10) : null,
       };
       if (editingRuleId) {
         return (await api.put(`/taxes/${editingRuleId}`, payload)).data;
@@ -213,16 +201,63 @@ export default function TaxEnginePage() {
     queryFn: async () => (await api.get('/accounting/tax-engine/rules', { params: { jurisdiction } })).data,
   });
 
+  type PackInfo = { label: string; currency: string | null; activated: boolean; partial: boolean; present: string[]; missing: string[]; total_pack_rules: number };
+  type ThresholdLine = { key: string; label: string; amount: number; currency: string; note: string; trailing_value: number; percent_of_threshold: number | null; monitoring_flag: boolean };
+
+  const { data: expenseAccounts } = useQuery<{ data: { id: number; code: string; name: string }[] }>({
+    queryKey: ['coa-expense-accounts'],
+    queryFn: async () => {
+      const response = await api.get('/accounting/chart-of-accounts', { params: { type: 'expense' } });
+      return { data: response.data?.data ?? response.data ?? [] };
+    },
+  });
+
+  const { data: packsData, refetch: refetchPacks } = useQuery<{ data: Record<string, PackInfo> }>({
+    queryKey: ['tax-engine-packs'],
+    queryFn: async () => (await api.get('/accounting/tax-engine/packs')).data,
+  });
+
+  const { data: thresholdsData } = useQuery<{ data: Record<string, { trailing_12m_taxable_value: number; thresholds: ThresholdLine[] }> }>({
+    queryKey: ['tax-engine-thresholds', jurisdiction],
+    queryFn: async () => (await api.get('/accounting/tax-engine/thresholds', { params: { jurisdiction } })).data,
+  });
+
+  const { data: registrationsData, refetch: refetchRegistrations } = useQuery<{
+    data: { id: number; jurisdiction: string; regime: string | null; registration_number: string; effective_from: string; status: string; legal_entity_id: number | null }[];
+  }>({
+    queryKey: ['tax-registrations'],
+    queryFn: async () => (await api.get('/accounting/tax-registrations')).data,
+  });
+
+  const [regNumber, setRegNumber] = useState('');
+  const activatePack = useMutation({
+    mutationFn: async (j: string) => (await api.post(`/accounting/tax-engine/packs/${j}/activate`)).data,
+    onSuccess: (_d, j) => {
+      refetchPacks();
+      refetchRules();
+      toast({ title: `${j} pack activated`, description: 'Rates seeded — verify against the authority notice before filing.' });
+    },
+    onError: () => toast({ title: 'Could not activate pack', description: 'Requires settings.write permission.', variant: 'destructive' }),
+  });
+  const addRegistration = useMutation({
+    mutationFn: async () => (await api.post('/accounting/tax-registrations', {
+      jurisdiction,
+      registration_number: regNumber.trim(),
+      effective_from: new Date().toISOString().slice(0, 10),
+    })).data,
+    onSuccess: () => { setRegNumber(''); refetchRegistrations(); toast({ title: 'Registration saved' }); },
+    onError: () => toast({ title: 'Could not save registration', description: 'Check the number and your settings.write permission.', variant: 'destructive' }),
+  });
+  const removeRegistration = useMutation({
+    mutationFn: async (id: number) => (await api.delete(`/accounting/tax-registrations/${id}`)).data,
+    onSuccess: () => refetchRegistrations(),
+  });
+
+  const [previewInclusive, setPreviewInclusive] = useState(taxConfig.pricing_mode === 'inclusive');
   const [previewInput, setPreviewInput] = useState<{ enabled: boolean; req: Record<string, string | number | boolean> }>({
     enabled: false,
     req: {},
   });
-  const [aiAdvice, setAiAdvice] = useState<{
-    mode: string;
-    advice: { summary?: string; risks?: string[]; actions?: string[] };
-  } | null>(null);
-  const [aiPending, setAiPending] = useState(false);
-  const [previewInclusive, setPreviewInclusive] = useState(taxConfig.pricing_mode === 'inclusive');
 
   const {
     data: advisory,
@@ -233,47 +268,6 @@ export default function TaxEnginePage() {
     queryFn: async () => (await api.get('/accounting/tax-engine/advisory', { params: previewInput.req })).data,
     enabled: previewInput.enabled,
   });
-
-  const runAiAdvisory = async () => {
-    if (!previewInput.enabled || aiPending) {
-      if (!previewInput.enabled) {
-        toast({ title: 'Run the deterministic preview first', variant: 'destructive' });
-      }
-      return;
-    }
-    setAiPending(true);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 150_000);
-    try {
-      const response = await api.get('/accounting/tax-engine/ai-advisory', {
-        params: previewInput.req,
-        signal: controller.signal,
-      });
-      setAiAdvice({ mode: response.data?.data?.mode, advice: response.data?.data?.advice });
-    } catch (error) {
-      if ((error as { code?: string })?.code === 'ERR_CANCELED') {
-        toast({
-          title: 'AI review is taking too long',
-          description: 'The local model answers in ~30–90s. Wait for the current review to finish before clicking again.',
-          variant: 'destructive',
-        });
-      } else {
-        const status = (error as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
-        toast({
-          title: 'AI advisory unavailable',
-          description: status === 403
-            ? 'AI access is not enabled for this account.'
-            : (error as { response?: { data?: { message?: string } } })?.response?.data?.message
-              || 'The AI review endpoint rejected the request.',
-          variant: 'destructive',
-        });
-      }
-    } finally {
-      clearTimeout(timer);
-      setAiPending(false);
-    }
-  };
-
   const handlePreview = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
@@ -293,7 +287,6 @@ export default function TaxEnginePage() {
         inclusive: previewInclusive ? '1' : '0',
       },
     });
-    setAiAdvice(null);
   };
 
   const saveJurisdiction = () => {
@@ -416,6 +409,90 @@ export default function TaxEnginePage() {
         </CardContent>
       </Card>
 
+      {/* Packs, registrations, thresholds */}
+      <Card className="overflow-hidden rounded-xl">
+        <CardHeader className="border-b">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400">
+                <Icon icon="solar:box-bold-duotone" className="h-5 w-5" />
+              </div>
+              <div>
+                <CardTitle className="text-base">Country packs &amp; registrations</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Effective-dated rule data per jurisdiction — verify rates against IRAS / LHDN-RMCD notices before filing.
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4 p-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {Object.entries(packsData?.data ?? {}).map(([code, info]) => (
+              <div key={code} className="flex items-center justify-between gap-3 rounded-xl border p-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">{info.label}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {info.activated ? `${info.total_pack_rules}/${info.total_pack_rules} rules active` : info.partial ? `partial — ${info.present.length}/${info.total_pack_rules} present` : 'not activated'}
+                  </p>
+                </div>
+                <HeaderActionButton
+                  size="sm"
+                  variant={info.activated ? 'outline' : 'default'}
+                  icon={info.activated ? 'solar:check-circle-bold-duotone' : 'solar:download-bold-duotone'}
+                  disabled={info.activated || activatePack.isPending}
+                  onClick={() => activatePack.mutate(code)}
+                >
+                  {info.activated ? 'Active' : 'Activate'}
+                </HeaderActionButton>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Registration thresholds ({jurisdiction}, trailing 12 months)</p>
+            {(thresholdsData?.data?.[jurisdiction]?.thresholds ?? []).map((t) => (
+              <div key={t.key} className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3 text-sm ${t.monitoring_flag ? 'border-amber-300 bg-amber-50 dark:bg-amber-950/30' : ''}`}>
+                <div className="min-w-0">
+                  <p className="font-medium">{t.label}</p>
+                  <p className="text-xs text-muted-foreground">{t.note}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-mono tabular-nums">{Number(t.trailing_value).toLocaleString()} / {Number(t.amount).toLocaleString()} {t.currency}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t.percent_of_threshold ?? 0}%{t.monitoring_flag ? ' — registration monitoring flagged' : ''}
+                  </p>
+                </div>
+              </div>
+            ))}
+            {!thresholdsData?.data?.[jurisdiction] && (
+              <p className="text-xs text-muted-foreground">No threshold definitions for {jurisdiction} — only SG and MY are localized so far.</p>
+            )}
+          </div>
+
+          <div className="space-y-2 border-t pt-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tax registrations ({jurisdiction})</p>
+            {(registrationsData?.data ?? []).filter((r) => r.jurisdiction === jurisdiction).map((r) => (
+              <div key={r.id} className="flex items-center justify-between gap-2 rounded-xl border p-3 text-sm">
+                <div>
+                  <p className="font-mono">{r.registration_number}</p>
+                  <p className="text-xs text-muted-foreground">{r.regime ?? r.jurisdiction} · from {r.effective_from}{r.legal_entity_id ? ` · entity #${r.legal_entity_id}` : ' · all entities'}</p>
+                </div>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" aria-label="Remove registration" onClick={() => { if (confirm('Remove this registration?')) removeRegistration.mutate(r.id); }}>
+                  <Icon icon="solar:trash-bin-linear" className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+            <div className="flex gap-2">
+              <Input value={regNumber} onChange={(e) => setRegNumber(e.target.value)} placeholder={`e.g. ${jurisdiction === 'MY' ? 'W10-2026-000000 (SST no.)' : 'M1-XXXXXXX-X (GST no.)'}`} className="max-w-xs" />
+              <HeaderActionButton icon="solar:add-circle-bold-duotone" disabled={!regNumber.trim() || addRegistration.isPending} onClick={() => addRegistration.mutate()}>
+                Save registration
+              </HeaderActionButton>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Country reference rates */}
       {countryDefaults && (
         <Card className="overflow-hidden rounded-xl">
@@ -525,7 +602,7 @@ export default function TaxEnginePage() {
                       </TableCell>
                       <TableCell>{rule.regime || rule.type?.toUpperCase()}</TableCell>
                       <TableCell className="text-sm capitalize">{rule.scope || 'both'}</TableCell>
-                      <TableCell>{treatmentBadge(rule.treatment)}</TableCell>
+                      <TableCell>{<TreatmentBadge treatment={rule.treatment} />}</TableCell>
                       <TableCell className="text-right font-semibold tabular-nums">{Number(rule.rate)}%</TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {rule.is_inclusive ? 'Inclusive' : 'Exclusive'}
@@ -657,8 +734,8 @@ export default function TaxEnginePage() {
             {!previewInput.enabled && !advisoryError && (
               <p className="text-xs text-muted-foreground">
                 Runs the same live resolution pipeline used when posting invoices, taking POS
-                payments and confirming web orders. Use “AI Tax Advisory” on the right to have AI
-                explain this result.
+                payments and confirming web orders. Have the model explain a result in
+                AI Suites → AI Tax Advisory.
               </p>
             )}
 
@@ -670,7 +747,7 @@ export default function TaxEnginePage() {
                   </Badge>
                   <Badge variant="secondary" className="font-normal">{advisory.data.basis.tax_code}</Badge>
                   <Badge variant="secondary" className="tabular-nums">{Number(advisory.data.basis.rate)}%</Badge>
-                  {treatmentBadge(advisory.data.basis.treatment)}
+                  {<TreatmentBadge treatment={advisory.data.basis.treatment} />}
                 </div>
 
                 <div className="grid grid-cols-3 gap-3">
@@ -707,7 +784,6 @@ export default function TaxEnginePage() {
           </CardContent>
         </Card>
 
-        {/* AI Tax Advisory */}
         <Card className="overflow-hidden rounded-xl">
           <CardHeader className="border-b">
             <div className="flex items-center gap-3">
@@ -715,100 +791,30 @@ export default function TaxEnginePage() {
                 <Icon icon="solar:magic-stick-3-bold-duotone" className="h-5 w-5" />
               </div>
               <div>
-                <CardTitle className="text-base">AI Tax Advisory</CardTitle>
+                <CardTitle className="text-base">AI Tax Advisory lives in AI Suites</CardTitle>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  AI explains the engine's decision and flags gaps — using the local model.
+                  Deterministic-first review by the local model — summary, risks and suggested
+                  actions. Advisory only; the engine result is the system of record.
                 </p>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4 p-4">
-            <ul className="space-y-3 text-sm text-muted-foreground">
-              {[
-                'Advisory only — AI never changes rules, posts entries, or files returns.',
-                'The deterministic engine result stays the system of record; AI just reviews it.',
-                'Every answer reminds you to verify current IRAS / LHDN-RMCD guidance before filing.',
-                'If AI access is unavailable, you still get the engine warnings as a fallback.',
-              ].map((item) => (
-                <li key={item} className="flex gap-2">
-                  <Icon icon="solar:shield-check-bold-duotone" className="mt-0.5 h-4 w-4 shrink-0 text-fuchsia-600 dark:text-fuchsia-400" />
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-
+          <CardContent className="space-y-3 p-4">
             <HeaderActionButton
               variant="outline"
               icon="solar:magic-stick-3-bold-duotone"
-              loading={aiPending}
-              disabled={aiPending || !previewInput.enabled}
-              onClick={runAiAdvisory}
+              onClick={() => navigate('/ai/tax-advisory')}
             >
-              {previewInput.enabled ? 'Review latest engine result' : 'Run a tax preview first'}
+              Open AI Tax Advisory
             </HeaderActionButton>
-
-            {aiPending && (
-              <p className="text-xs text-muted-foreground">
-                The local model is writing the review — typically 30–90 seconds. Please wait;
-                extra clicks queue behind it and make the whole app slower.
-              </p>
-            )}
-
-            {aiAdvice && (
-              <div className="space-y-3 rounded-xl border bg-muted/30 p-4">
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="font-normal">
-                    {aiAdvice.mode === 'ai' ? 'AI advisory' : 'Deterministic fallback'}
-                  </Badge>
-                </div>
-
-                {(aiAdvice.advice.summary ?? '') !== '' && (
-                  <p className="text-sm leading-relaxed text-foreground">{aiAdvice.advice.summary}</p>
-                )}
-
-                {(aiAdvice.advice.risks ?? []).length > 0 && (
-                  <div className="space-y-1.5">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
-                      Risks to watch
-                    </p>
-                    <ul className="space-y-1">
-                      {(aiAdvice.advice.risks ?? []).map((risk) => (
-                        <li key={risk} className="flex gap-2 text-sm text-muted-foreground">
-                          <Icon icon="solar:danger-triangle-bold-duotone" className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-                          <span>{risk}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {(aiAdvice.advice.actions ?? []).length > 0 && (
-                  <div className="space-y-1.5">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
-                      Suggested review actions
-                    </p>
-                    <ol className="space-y-1">
-                      {(aiAdvice.advice.actions ?? []).map((action, index) => (
-                        <li key={action} className="flex gap-2 text-sm text-muted-foreground">
-                          <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400">
-                            {index + 1}
-                          </span>
-                          <span>{action}</span>
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
-                )}
-
-                <p className="border-t pt-2 text-xs text-muted-foreground">
-                  Advisory only — the engine result is authoritative. Verify current IRAS /
-                  LHDN-RMCD guidance before filing.
-                </p>
-              </div>
-            )}
+            <p className="text-xs text-muted-foreground">
+              Runs the same engine advisory API this console previews against — in its own
+              workspace beside Financial Close and OCR Bookkeeping.
+            </p>
           </CardContent>
         </Card>
       </div>
+
       <Dialog open={ruleDialogOpen} onOpenChange={setRuleDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -870,9 +876,35 @@ export default function TaxEnginePage() {
                     <SelectItem value="zero_rated">Zero rated</SelectItem>
                     <SelectItem value="exempt">Exempt</SelectItem>
                     <SelectItem value="out_of_scope">Out of scope</SelectItem>
+                    <SelectItem value="reverse_charge">Reverse charge</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-4 rounded-xl border bg-muted/30 px-3 py-2.5">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="rule-creditable"
+                  checked={draft.creditable}
+                  onCheckedChange={(v) => setDraft({ ...draft, creditable: v })}
+                />
+                <Label htmlFor="rule-creditable" className="cursor-pointer text-sm">Input tax on this rule is claimable</Label>
+              </div>
+              {!draft.creditable && (
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="rule-blocked-account" className="text-sm text-muted-foreground">Expense it to</Label>
+                  <Select value={draft.blocked_expense_account_id || 'default'} onValueChange={(v) => setDraft({ ...draft, blocked_expense_account_id: v === 'default' ? '' : v })}>
+                    <SelectTrigger id="rule-blocked-account" className="h-8 w-56 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">Input Tax Blocked (default 5210)</SelectItem>
+                      {(expenseAccounts?.data ?? []).map((account) => (
+                        <SelectItem key={account.id} value={String(account.id)}>{account.code} — {account.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">Uncheck for non-creditable regimes (e.g. MY SST input) — never silently claimed.</p>
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">

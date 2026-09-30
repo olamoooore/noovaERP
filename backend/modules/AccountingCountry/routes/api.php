@@ -37,4 +37,18 @@ Route::prefix('accounting/tax-report')
         Route::get('/journal', [TaxReportController::class, 'journal']);
         Route::get('/reconciliation', [TaxReportController::class, 'reconciliation']);
         Route::get('/filings', [TaxReportController::class, 'filings']);
+        Route::get('/periods', [\App\Http\Controllers\Api\TaxPeriodController::class, 'lockStates']);
+    });
+
+/*
+| Tax period close/reopen (MRD R7.4). Closing locks the month: the posting
+| gate refuses tax-bearing postings dated inside it, forcing amendments
+| through open-period documents.
+*/
+Route::prefix('accounting/tax-periods')
+    ->middleware([RequirePermission::using('reports.manage')])
+    ->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\TaxPeriodController::class, 'index']);
+        Route::post('/{period}/close', [\App\Http\Controllers\Api\TaxPeriodController::class, 'close']);
+        Route::post('/{period}/reopen', [\App\Http\Controllers\Api\TaxPeriodController::class, 'reopen']);
     });

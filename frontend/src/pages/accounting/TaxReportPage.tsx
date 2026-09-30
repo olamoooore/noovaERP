@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/hooks/use-toast';
 import { StatCard } from '@/components/ui/stat-card';
 import { Icon } from '@iconify/react';
 import { ReportExportToolbar } from '@/components/reports/ReportExportToolbar';
@@ -44,6 +45,7 @@ interface ReconciliationResponse {
   data: {
     period: string;
     balanced: boolean;
+    tax_period_locked?: boolean;
     total_abs_variance: number;
     by_tax_code: { tax_code: string; direction: string; trail_tax: number; expected_gl_net: number; gl_net: number; variance: number }[];
     uncoded_gl_movement: { count: number; net: number };
@@ -79,6 +81,8 @@ function currentMonth() {
 
 export default function TaxReportPage() {
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const month = currentMonth();
   const [from, setFrom] = useState(month);
   const [to, setTo] = useState(month);
@@ -94,6 +98,16 @@ export default function TaxReportPage() {
     queryKey: ['tax-report-journal', from, to, entityId],
     queryFn: async () => (await api.get('/accounting/tax-report/journal', { params: { from, to, ...entityParams } })).data,
     enabled: /^\d{4}-\d{2}$/.test(from) && /^\d{4}-\d{2}$/.test(to),
+  });
+
+  const periodLock = useMutation<{ message?: string; data?: unknown }, Error, { period: string; action: 'close' | 'reopen' }>({
+    mutationFn: async ({ period, action }) => (await api.post(`/accounting/tax-periods/${period}/${action}`)).data,
+    onSuccess: (_d, vars) => {
+      toast({ title: vars.action === 'close' ? `Tax period ${vars.period} closed` : `Tax period ${vars.period} reopened` });
+      queryClient.invalidateQueries({ queryKey: ['tax-report-reconciliation'] });
+      queryClient.invalidateQueries({ queryKey: ['tax-report-filings'] });
+    },
+    onError: (e) => toast({ title: 'Operation failed', description: e.message, variant: 'destructive' }),
   });
 
   const recon = useQuery<ReconciliationResponse>({
@@ -350,6 +364,19 @@ export default function TaxReportPage() {
                     onChange={(e) => setReconPeriod(e.target.value)}
                     className="h-8 w-28 rounded-full px-3 font-mono text-xs"
                   />
+                  {recon.data?.data.tax_period_locked && (
+                    <Badge variant="secondary" className="bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">
+                      Locked
+                    </Badge>
+                  )}
+                  <button
+                    type="button"
+                    disabled={periodLock.isPending}
+                    className="h-8 rounded-full border px-3 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                    onClick={() => periodLock.mutate({ period: reconPeriod, action: recon.data?.data.tax_period_locked ? 'reopen' : 'close' })}
+                  >
+                    {recon.data?.data.tax_period_locked ? 'Reopen period' : 'Close period'}
+                  </button>
                   {recon.data && (
                     <Badge
                       variant="secondary"
