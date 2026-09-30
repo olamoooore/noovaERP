@@ -166,10 +166,11 @@ final class CheckoutController extends Controller
             ],
             'items' => $order->items->map(fn ($i) => [
                 'name' => $i->name,
-                'quantity' => (float) $i->quantity,
+                'quantity' => (float) $i->quantity, 'fulfilled_quantity' => (float) $i->fulfilled_quantity,
                 'line_total' => (string) $i->line_total,
             ]),
             'shipping' => array_intersect_key($addr, array_flip(['name', 'address1', 'city', 'postal_code', 'country_code'])),
+            'tracking_numbers' => $order->tracking_numbers ?? [],
             'tracking_numbers' => $order->tracking_numbers ?? [],
         ];
     }

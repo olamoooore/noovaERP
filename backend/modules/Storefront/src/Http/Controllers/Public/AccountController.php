@@ -117,6 +117,7 @@ final class AccountController extends Controller
                 'currency' => $model->currency,
                 'items' => $model->items->map(fn ($i) => [
                     'name' => $i->name, 'sku' => $i->sku, 'quantity' => (float) $i->quantity,
+                    'fulfilled_quantity' => (float) $i->fulfilled_quantity,
                     'unit_price' => (string) $i->unit_price, 'line_total' => (string) $i->line_total,
                 ]),
                 'history' => $model->statusHistory()->get()->map(fn ($h) => [

@@ -54,6 +54,11 @@ Route::middleware(['auth:sanctum', 'entitlement:storefront'])
             ->whereNumber('order')
             ->middleware(RequirePermission::using('storefront.write'));
 
+        // Partial shipment + tracking (FR-ORD-05); logistics only.
+        Route::post('/orders/{order}/fulfil', [OrderController::class, 'fulfil'])
+            ->whereNumber('order')
+            ->middleware(RequirePermission::using('storefront.write'));
+
         // Offline settlement review (PAY-R13 flow 5): approve drives the SAME
         // canonical completion chain as a gateway webhook; reject returns the
         // order to pending. Proof files are private (bank evidence).

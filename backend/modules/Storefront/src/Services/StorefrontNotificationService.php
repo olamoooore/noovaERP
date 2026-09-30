@@ -63,6 +63,27 @@ final class StorefrontNotificationService
         );
     }
 
+    public function orderShipped(StorefrontOrder $order): void
+    {
+        if (! $this->enabled('order_shipped')) {
+            return;
+        }
+
+        $tracking = collect($order->tracking_numbers ?? [])->first();
+
+        $vars = $this->orderVars($order);
+        $vars['shipment'] = ['tracking' => (string) $tracking];
+
+        $this->send(
+            $order,
+            'storefront.order.shipped',
+            "Your order {$order->order_number} is on its way",
+            "Order {$order->order_number} has been shipped.".($tracking ? " Tracking: {$tracking}." : ''),
+            'storefront.order.shipped',
+            $vars
+        );
+    }
+
     public function orderRefunded(StorefrontOrder $order, float $amount, string $reason): void
     {
         if (! $this->enabled('order_refunded')) {

@@ -172,6 +172,43 @@ final class OrderController extends Controller
         return response()->json(['data' => ['id' => $updated->id, 'status' => $updated->status]]);
     }
 
+    /**
+     * FR-ORD-05 partial shipment entry. Logistics only — stock was issued
+     * once, canonically, at payment (SF015). Tracking presence decides the
+     * machine move: packed (processing) vs dispatched (shipped).
+     */
+    public function fulfil(Request $request, int $order, \Modules\Storefront\Services\StorefrontFulfilmentService $fulfilment): JsonResponse
+    {
+        $validated = $request->validate([
+            'lines' => ['required', 'array', 'min:1'],
+            'lines.*.line_id' => ['required', 'integer'],
+            'lines.*.quantity' => ['required', 'numeric', 'min:0.001'],
+            'tracking_number' => ['nullable', 'string', 'max:120'],
+            'note' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $model = StorefrontOrder::query()->find($order);
+        if ($model === null) {
+            return response()->json(['message' => 'Order not found.', 'code' => 'not_found'], 404);
+        }
+
+        try {
+            $out = $fulfilment->fulfil(
+                $model,
+                array_map(fn (array $l) => ['line_id' => (int) $l['line_id'], 'quantity' => (float) $l['quantity']], $validated['lines']),
+                $validated['tracking_number'] ?? null,
+                $validated['note'] ?? null,
+                $this->staffActorId(),
+            );
+        } catch (CheckoutException $e) {
+            return response()->json(['message' => $e->getMessage(), 'code' => $e->errorCode], $e->status);
+        } catch (InvalidOrderTransitionException $e) {
+            return response()->json(['message' => $e->getMessage(), 'code' => 'invalid_transition', 'allowed' => $e->allowedFrom], 409);
+        }
+
+        return response()->json(['data' => $out]);
+    }
+
     /** Staff audit reference: central user id (users are central; see RequirePermission). */
     private function staffActorId(): ?int
     {

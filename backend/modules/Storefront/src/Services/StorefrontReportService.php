@@ -8,6 +8,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Modules\PaymentGateway\Models\PaymentSettlement;
 use Modules\PaymentGateway\Models\PaymentTransaction;
+use Modules\Storefront\Enums\OrderStatus;
 use Modules\Storefront\Models\StorefrontCart;
 use Modules\Storefront\Models\StorefrontOrder;
 use Modules\Storefront\Models\StorefrontPaymentProof;
@@ -257,6 +258,13 @@ final class StorefrontReportService
                 'count' => $this->unsettledTransactions($today->copy()->subDays(30), $today->endOfDay())->count(),
                 'amount' => self::amt($this->unsettledTransactions($today->copy()->subDays(30), $today->endOfDay())->sum(fn ($t) => (float) $t->amount - (float) ($t->refunded_amount ?? 0))),
             ],
+            'unfulfilled_orders' => StorefrontOrder::query()
+                ->whereIn('status', [OrderStatus::PAID->value, OrderStatus::PROCESSING->value])
+                ->whereExists(fn ($q) => $q->select(DB::raw(1))
+                    ->from('storefront_order_items as ui')
+                    ->whereColumn('ui.order_id', 'storefront_orders.id')
+                    ->whereRaw('ui.fulfilled_quantity < ui.quantity'))
+                ->count(),
             'failed_payments_7d' => $failedPayments7d,
             'low_stock_products' => $lowStock,
             'low_stock_threshold' => $threshold,

@@ -56,6 +56,18 @@ class StorefrontTemplateSeeder extends Seeder
                 'variables' => ['company.name', 'order.order_number', 'order.total', 'order.currency', 'order.confirmation_url'],
             ],
             [
+                'key' => 'storefront.order.shipped',
+                'name' => 'Storefront — Order shipped',
+                'event' => 'storefront.order.shipped',
+                'subject' => 'Your order {{order.order_number}} is on its way',
+                'body' => '<h2 style="font-size:18px">Shipped!</h2>'
+                    .'<p>Order <strong>{{order.order_number}}</strong> has been dispatched.</p>'
+                    .'<p>Tracking: <strong>{{shipment.tracking}}</strong></p>'
+                    .'<p><a href="{{order.confirmation_url}}" style="color:#4c1d95">Track your order here</a></p>'
+                    .'<p>Thank you for shopping with {{company.name}}!</p>',
+                'variables' => ['company.name', 'order.order_number', 'order.confirmation_url', 'shipment.tracking'],
+            ],
+            [
                 'key' => 'storefront.order.refunded',
                 'name' => 'Storefront — Order refunded',
                 'event' => 'storefront.order.refunded',

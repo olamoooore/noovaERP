@@ -126,12 +126,12 @@ class SF019LifecycleTemplatesTest extends TenantTestCase
     {
         $this->artisan('storefront:templates:seed')->assertSuccessful();
         $first = CommunicationTemplate::withoutGlobalScopes()->where('module', 'storefront')->get();
-        $this->assertCount(6, $first);
+        $this->assertCount(7, $first);
         $this->assertTrue($first->every(fn ($t) => (int) $t->template_version === StorefrontTemplateSeeder::VERSION));
         $this->assertTrue($first->every(fn ($t) => $t->tenant_id === null && $t->is_system));
 
         $this->artisan('storefront:templates:seed')->assertSuccessful();
-        $this->assertSame(6, CommunicationTemplate::withoutGlobalScopes()->where('module', 'storefront')->count(),
+        $this->assertSame(7, CommunicationTemplate::withoutGlobalScopes()->where('module', 'storefront')->count(),
             're-seed must not duplicate rows');
     }
 

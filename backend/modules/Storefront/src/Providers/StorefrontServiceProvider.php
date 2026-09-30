@@ -114,6 +114,7 @@ class StorefrontServiceProvider extends ServiceProvider
                 'storefront.order.placed',
                 'storefront.order.paid',
                 'storefront.order.refunded',
+                'storefront.order.shipped',
             );
         }
     }
