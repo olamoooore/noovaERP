@@ -25,6 +25,8 @@ class InvoiceLine extends Model
         'department_id',
         'branch_id',
         'description',
+        'tax_type',
+        'tax_exemption_reason',
         'product_notes',
         'lot_number',
         'serial_number',

@@ -189,6 +189,8 @@ class Invoice extends Model
         'payment_terms_snapshot',
         'company_registration_number',
         'tax_registration_number',
+        'tax_exemption_code',
+        'tax_exemption_reason',
         'tax_jurisdiction',
         'tax_regime',
         'tax_treatment',

@@ -71,6 +71,61 @@ class MyInvoiceMapperTest extends TestCase
         $this->assertSame(157.50, $payload['totals']['amount_due']);
     }
 
+    public function test_map_invoice_persists_myinvois_exemption_fields(): void
+    {
+        // MRD R5.5: exemption columns were referenced by the mapper but never
+        // existed; now they must flow end-to-end into the mapped payload.
+        $invoice = new Invoice;
+        $invoice->setRawAttributes([
+            'id' => 18,
+            'invoice_number' => 'INV-2026-0018',
+            'invoice_date' => '2026-04-06',
+            'currency_code' => 'MYR',
+            'subtotal' => 500.00,
+            'tax_amount' => 0.00,
+            'discount_amount' => 0,
+            'total' => 500.00,
+            'paid_amount' => 0,
+            'tax_exemption_code' => 'A024',
+            'tax_exemption_reason' => 'Export of goods (zero-rated)',
+        ], true);
+
+        $invoice->supplier = (object) [
+            'name' => 'NoovaERP Sdn Bhd',
+            'tax_identification_number' => 'IG22308550020',
+            'company_registration' => '202401234567',
+            'country_code' => 'MY',
+        ];
+
+        $invoice->setRelation('customer', (object) [
+            'name' => 'Exempt Buyer',
+            'email' => 'buyer@example.com',
+            'is_individual' => false,
+            'country_code' => 'MY',
+        ]);
+
+        $line = new InvoiceLine;
+        $line->setRawAttributes([
+            'id' => 18,
+            'description' => 'Export batch',
+            'quantity' => 1,
+            'unit_price' => 500.00,
+            'tax_rate' => 0,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'line_total' => 500.00,
+            'tax_type' => 'Z',
+            'tax_exemption_reason' => 'International supply under SST Rules',
+        ], true);
+        $invoice->setRelation('lines', new Collection([$line]));
+
+        $payload = (new MyInvoiceMapper)->mapInvoice($invoice);
+
+        $this->assertSame('Z', $payload['line_items'][0]['tax_type']);
+        $this->assertSame('International supply under SST Rules', $payload['line_items'][0]['tax_exemption_reason']);
+        $this->assertSame('A024', $payload['tax_summary']['sst_exemption_code']);
+    }
+
     public function test_map_invoice_uses_legacy_customer_shipping_address_and_mobile(): void
     {
         $invoice = new Invoice;

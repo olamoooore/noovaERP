@@ -66,13 +66,13 @@ class TaxAdvisoryService
                 ['role' => 'user', 'content' => $prompt],
             ]);
 
-            return [
+            $result = [
                 'mode' => 'ai',
                 'review' => $review,
                 'advice' => self::parseAdvice((string) ($response['content'] ?? '')),
             ];
         } catch (\Throwable $exception) {
-            return [
+            $result = [
                 'mode' => 'deterministic_fallback',
                 'review' => $review,
                 'advice' => [
@@ -81,6 +81,36 @@ class TaxAdvisoryService
                     'actions' => $review['warnings'],
                 ],
             ];
+        }
+
+        // MRD R9.3: human-in-the-loop evidence — AI and fallback alike.
+        $this->logAdvisory($input, $result);
+
+        return $result;
+    }
+
+    /**
+     * MRD R9.3: record every advisory interaction with its engine inputs and
+     * structured output for auditor review. Logging must never take the
+     * advisory feature down.
+     */
+    private function logAdvisory(array $input, array $result): void
+    {
+        try {
+            \Illuminate\Support\Facades\DB::table('tax_ai_advisories')->insert([
+                'tenant_ref' => (string) (function_exists('tenant') && tenant() ? tenant('id') : ''),
+                'actor_user_id' => \Illuminate\Support\Facades\Auth::id() ? (int) \Illuminate\Support\Facades\Auth::id() : null,
+                'jurisdiction' => strtoupper((string) ($input['jurisdiction'] ?? '')) ?: null,
+                'direction' => (string) ($input['direction'] ?? 'output'),
+                'request' => json_encode($input),
+                'engine_basis' => json_encode($result['review']['basis'] ?? null),
+                'mode' => $result['mode'],
+                'advice' => json_encode($result['advice']),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('tax.ai_advisory_log_failed', ['error' => $e->getMessage()]);
         }
     }
 
