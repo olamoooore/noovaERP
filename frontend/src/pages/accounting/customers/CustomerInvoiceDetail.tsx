@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
 import { DocumentLinkChip } from '@/components/documents/DocumentLinkChip';
+import { DocumentTemplateDialog } from '@/components/documents/DocumentTemplateDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
@@ -22,6 +23,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { formatDate, resolveImageUrl, formatCurrency } from '@/lib/utils';
 import api from '@/lib/api';
+import { getVisibleInvoiceNotes } from '@/lib/invoicePresentation';
 import InvoiceCreditNotes from '../components/InvoiceCreditNotes';
 import CreateCreditNoteDialog from '../components/CreateCreditNoteDialog';
 import { useAuthStore } from '@/store/authStore';
@@ -72,29 +74,10 @@ export const CustomerInvoiceDetail: React.FC = () => {
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [showCreditNoteDialog, setShowCreditNoteDialog] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const isQuoteMode = location.pathname.startsWith('/sales/quotes');
   const documentLabel = isQuoteMode ? 'Quotation' : 'Invoice';
   const backPath = isQuoteMode ? '/sales/quotes' : '/accounting/customers/bills';
-
-  const handleDownloadPdf = async () => {
-    setIsDownloading(true);
-    try {
-      const response = await api.get(`/invoices/${id}/pdf`, { responseType: 'blob' });
-      const url = window.URL.createObjectURL(response.data);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `invoice-${id}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      toast({ variant: 'destructive', title: 'Failed to download PDF' });
-    } finally {
-      setIsDownloading(false);
-    }
-  };
 
   // Fetch invoice details
   const { data: invoice, isLoading } = useQuery({
@@ -242,6 +225,8 @@ export const CustomerInvoiceDetail: React.FC = () => {
     );
   }
 
+  const visibleNotes = getVisibleInvoiceNotes(invoice.notes);
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -338,16 +323,14 @@ export const CustomerInvoiceDetail: React.FC = () => {
             <HeaderActionButton
               variant="outline"
               icon="solar:printer-bold-duotone"
-              onClick={handleDownloadPdf}
-              disabled={isDownloading}
+              onClick={() => setTemplateDialogOpen(true)}
             >
               Print
             </HeaderActionButton>
             <HeaderActionButton
               variant="outline"
               icon="solar:download-minimalistic-bold-duotone"
-              onClick={handleDownloadPdf}
-              disabled={isDownloading}
+              onClick={() => setTemplateDialogOpen(true)}
             >
               PDF
             </HeaderActionButton>
@@ -436,10 +419,10 @@ export const CustomerInvoiceDetail: React.FC = () => {
               <p className="text-xl font-bold text-green-600">{formatCurrency(invoice.balance)}</p>
             </div>
           </div>
-          {!isAcmeTenant && invoice.notes && (
+          {!isAcmeTenant && visibleNotes && (
             <div className="mt-6 pt-6 border-t">
               <p className="text-sm text-muted-foreground mb-1">Notes</p>
-              <p className="text-sm">{invoice.notes}</p>
+              <p className="text-sm whitespace-pre-wrap">{visibleNotes}</p>
             </div>
           )}
           {invoice.terms && (
@@ -841,6 +824,15 @@ export const CustomerInvoiceDetail: React.FC = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <DocumentTemplateDialog
+        open={templateDialogOpen}
+        onOpenChange={setTemplateDialogOpen}
+        documentType="invoice"
+        pdfPath={`/invoices/${id}/pdf`}
+        filename={`invoice-${invoice.invoice_number || id}.pdf`}
+        title="Invoice"
+      />
 
       <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
         <AlertDialogContent>
