@@ -73,7 +73,10 @@ class BlockRendererTest extends TestCase
 
         $this->assertStringContainsString('tb-line-row-section', $html);
         $this->assertStringContainsString('tb-line-row-note', $html);
-        $this->assertSame(2, substr_count($html, 'colspan="3"'));
+        // Section rows span all but the final cell, which carries the section
+        // subtotal; note rows are full-width.
+        $this->assertSame(1, substr_count($html, 'colspan="2"'));
+        $this->assertSame(1, substr_count($html, 'colspan="3"'));
         $this->assertStringNotContainsString('data-tb-line-index', $html);
     }
 

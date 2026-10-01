@@ -173,6 +173,21 @@ class DocumentTemplateServiceTest extends TenantTestCase
         $this->assertNotNull(DocumentTemplate::withTrashed()->find($template->id)?->deleted_at);
     }
 
+    public function test_set_default_rejects_a_template_without_a_published_version(): void
+    {
+        $template = $this->service->create([
+            'document_type' => 'invoice',
+            'name' => 'Never Published',
+            'mode' => DocumentTemplate::MODE_BLOCK,
+            'layout_config' => ['blocks' => []],
+        ]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Publish this template before making it active.');
+
+        $this->service->setDefault($template->id);
+    }
+
     public function test_delete_unused_template_rejects_active_assignment(): void
     {
         $template = $this->service->create([
@@ -181,6 +196,11 @@ class DocumentTemplateServiceTest extends TenantTestCase
             'mode' => DocumentTemplate::MODE_BLOCK,
             'layout_config' => ['blocks' => []],
         ]);
+        // An active template must be renderable first (published definition).
+        $template->forceFill([
+            'status' => DocumentTemplate::STATUS_PUBLISHED,
+            'published_version' => 1,
+        ])->save();
         $this->service->setDefault($template->id);
 
         $this->expectException(\RuntimeException::class);

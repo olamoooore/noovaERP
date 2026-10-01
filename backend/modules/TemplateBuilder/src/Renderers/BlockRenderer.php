@@ -64,6 +64,12 @@ final class BlockRenderer implements TemplateRendererInterface
                 $body = $this->renderBlocks($remaining, 'document');
                 $summary = $this->renderBlock($footer, 'document')."\n".$this->renderBlock($totals, 'document');
 
+                // Keep footer + totals together: if the pair does not fit in
+                // the remaining space, dompdf moves BOTH to the next page
+                // rather than splitting the footer onto one page and the
+                // totals onto another. Single-page documents no longer use
+                // the reserved band, so they still fit (see PdfGenerationService
+                // two-pass build).
                 return $body."\n".'<div class="tb-final-summary" style="page-break-inside:avoid;">'.$summary.'</div>';
             }
         }

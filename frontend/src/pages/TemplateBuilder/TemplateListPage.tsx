@@ -21,7 +21,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { toast } from '@/hooks/use-toast'
-import { Plus, Pencil, Copy, Star, Archive, FileText, Download, CheckCircle2, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Copy, Star, Archive, FileText, Download, Trash2 } from 'lucide-react'
 import type { DocumentTemplate } from '@/types/template-builder'
 
 export default function TemplateListPage({ embedded = false }: { embedded?: boolean }) {
@@ -161,17 +161,26 @@ export default function TemplateListPage({ embedded = false }: { embedded?: bool
                     <p className="text-xs text-muted-foreground">{DOCUMENT_TYPE_LABELS[t.document_type]}</p>
                   </div>
                   <div className="flex items-center gap-1">
-                    {isActive && (
+                    {/* Single source of truth for "active": the resolved
+                        assignment (isActive). The legacy is_system_default
+                        flag rendered a star on a different card than the one
+                        actually in use (report 2026-10-01). */}
+                    {isActive ? (
                       <Badge className="gap-1 bg-emerald-600" title="This template is used for live documents">
-                        <CheckCircle2 className="h-3 w-3" /> Active
+                        <Star className="h-3 w-3 fill-current" /> Active
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-muted-foreground" title="Not the active template for this document type">
+                        Not active
                       </Badge>
                     )}
-                    {t.is_system_default && <Star className="h-4 w-4 fill-amber-400 text-amber-400" />}
-                    {t.status === 'published'
-                      ? <Badge variant="secondary">v{t.published_version}</Badge>
-                      : t.status === 'archived'
-                        ? <Badge variant="secondary">Archived</Badge>
-                        : <Badge variant="outline">Draft</Badge>}
+                    {t.status === 'archived'
+                      ? <Badge variant="secondary">Archived</Badge>
+                      : t.status === 'published'
+                        ? <Badge variant="secondary">v{t.published_version}</Badge>
+                        : t.published_version > 0
+                          ? <Badge variant="outline" title="Edited since the last publish — live documents still use the published version">v{t.published_version} · draft edits</Badge>
+                          : <Badge variant="outline">Draft</Badge>}
                   </div>
                 </div>
 

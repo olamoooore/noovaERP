@@ -150,8 +150,30 @@ class DocumentTemplate extends Model
 
     public function scopeResolvable($query)
     {
-        // Only PUBLISHED templates are eligible for runtime resolution (ADR-004 §9).
-        return $query->where('status', self::STATUS_PUBLISHED);
+        // A template is eligible for runtime resolution when a published
+        // definition exists: either it is published now, or it has been
+        // published before and carries editor changes on top (status=draft,
+        // published_version>0) — those still render the published definition
+        // (PdfGenerationService::forRendering). Archived templates never are.
+        return $query->where('status', '!=', self::STATUS_ARCHIVED)
+            ->where(function ($q) {
+                $q->where('status', self::STATUS_PUBLISHED)
+                    ->orWhere('published_version', '>', 0);
+            });
+    }
+
+    /**
+     * Whether a renderable definition exists (same rule as scopeResolvable()).
+     * NOTE: deliberately separate from isResolvable(), which follows the
+     * editorial state machine and rejects an edited published template.
+     */
+    public function hasRenderableDefinition(): bool
+    {
+        if ($this->status === self::STATUS_ARCHIVED) {
+            return false;
+        }
+
+        return $this->status === self::STATUS_PUBLISHED || (int) $this->published_version > 0;
     }
 
     public function scopeForDocumentType($query, string $type)

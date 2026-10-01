@@ -94,7 +94,11 @@ class TemplateController extends Controller
 
     public function setDefault(Request $request, string $id): JsonResponse
     {
-        $this->service->setDefault($id, $request->only(['scope_type', 'scope_value']));
+        try {
+            $this->service->setDefault($id, $request->only(['scope_type', 'scope_value']));
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
 
         return response()->json(['message' => 'Default template updated']);
     }

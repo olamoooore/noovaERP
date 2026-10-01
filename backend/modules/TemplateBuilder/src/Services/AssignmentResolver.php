@@ -116,8 +116,10 @@ final class AssignmentResolver
             ->filter(fn (DocumentTemplateAssignment $a) => $this->matchesContext($a, $context))
             ->filter(fn (DocumentTemplateAssignment $a) => $this->isEffective($a, $context))
             ->filter(function (DocumentTemplateAssignment $a) {
-                // Boundary rule (ADR-004 section 11): only PUBLISHED templates are eligible.
-                return $a->template && $a->template->status === DocumentTemplate::STATUS_PUBLISHED;
+                // Boundary rule (ADR-004 §11): only resolvable templates are
+                // eligible — published, or a draft carrying a published
+                // version (edited published template). Archived never is.
+                return $a->template && $a->template->hasRenderableDefinition();
             })
             ->sortByDesc('priority')
             ->sortBy('tiebreaker')

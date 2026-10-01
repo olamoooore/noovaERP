@@ -120,9 +120,24 @@ final class PdfGenerationService implements PdfGenerationServiceContract
             return ['bytes' => $fullHtml, 'html' => $fullHtml, 'mime' => 'text/html', 'hash' => $hash];
         }
 
+        // Pass 1 — natural flow, NO reserved decoration band. The band costs
+        // 40mm of page-1 height, which pushed tall footers and totals onto a
+        // second page even for 4-line invoices (report 2026-10-01).
         $pdf = Pdf::loadHTML($fullHtml);
         $pdf->setPaper($this->paperSize($renderTemplate), $renderTemplate->orientation ?: 'portrait');
-        $this->configurePhysicalPageDecorations($pdf, $renderTemplate, $data);
+        $pdf->render();
+        $pageCount = (int) $pdf->getDomPDF()->getCanvas()->get_page_count();
+
+        // Pass 2 — only genuinely multi-page documents reserve the band and
+        // pin per-page subtotals / the final-page footer.
+        $decorationBandMm = $this->decorationBandMm($renderTemplate);
+        if ($pageCount > 1 && $decorationBandMm > 0) {
+            $fullHtml = $this->wrapCanvas($renderTemplate, $body, $decorationBandMm);
+            $pdf = Pdf::loadHTML($fullHtml);
+            $pdf->setPaper($this->paperSize($renderTemplate), $renderTemplate->orientation ?: 'portrait');
+            $this->configurePhysicalPageDecorations($pdf, $renderTemplate, $data);
+        }
+
         $bytes = $pdf->output();
 
         return ['bytes' => $bytes, 'html' => $fullHtml, 'mime' => 'application/pdf', 'hash' => $hash];
@@ -443,21 +458,10 @@ final class PdfGenerationService implements PdfGenerationServiceContract
             .'</div>';
     }
 
-    private function wrapCanvas(DocumentTemplate $template, string $body): string
+    private function wrapCanvas(DocumentTemplate $template, string $body, ?int $bandMm = null): string
     {
         $font = $template->default_font ?: config('templatebuilder.defaults.font', 'DejaVu Sans');
         $margin = is_array($template->margin) ? $template->margin : config('templatebuilder.defaults.margin_mm');
-
-        // The physical bottom decoration band (page subtotals / pinned footer)
-        // is only reserved when this template actually draws into it. Reserving
-        // it unconditionally left a ~40mm blank strip under short invoices
-        // (report 2026-10-01: "large blank space at the bottom").
-        $pagination = $this->paginationConfig($template);
-        $reserveBand = $pagination !== null
-            && (($pagination['show_page_subtotal'] ?? true) !== false || $this->containsBlockType(
-                is_array($template->layout_config['blocks'] ?? null) ? $template->layout_config['blocks'] : [],
-                'footer',
-            ));
 
         return view('templatebuilder::canvas', [
             'body' => $body,
@@ -465,8 +469,24 @@ final class PdfGenerationService implements PdfGenerationServiceContract
             'margin' => $margin,
             'css' => (string) ($template->css ?? ''),
             'contentHeightMm' => $this->contentHeightMm($template, $margin),
-            'bottomBandMm' => $reserveBand ? 40 : 0,
+            'bottomBandMm' => $bandMm ?? $this->decorationBandMm($template),
         ])->render();
+    }
+
+    /**
+     * The physical bottom band (page subtotals / pinned footer) is only
+     * reserved when this template actually draws into it.
+     */
+    private function decorationBandMm(DocumentTemplate $template): int
+    {
+        $pagination = $this->paginationConfig($template);
+        $reserveBand = $pagination !== null
+            && (($pagination['show_page_subtotal'] ?? true) !== false || $this->containsBlockType(
+                is_array($template->layout_config['blocks'] ?? null) ? $template->layout_config['blocks'] : [],
+                'footer',
+            ));
+
+        return $reserveBand ? 40 : 0;
     }
 
     /**

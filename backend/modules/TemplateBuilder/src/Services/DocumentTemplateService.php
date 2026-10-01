@@ -158,14 +158,25 @@ final class DocumentTemplateService implements DocumentTemplateServiceContract
     {
         $template = $this->find($id) ?? $this->notFound($id);
 
+        // A template with no published definition can never render, so making
+        // it "active" would silently resolve back to another template.
+        if (! $template->hasRenderableDefinition()) {
+            throw new \RuntimeException('Publish this template before making it active.');
+        }
+
         DB::transaction(function () use ($template, $scope) {
             $scopeType = $scope['scope_type'] ?? 'tenant';
             $scopeValue = $scope['scope_value'] ?? null;
 
-            // Only one default per (document_type, scope).
+            // Only one default per (document_type, scope); scoped assignments
+            // (customer/branch/…) must not be deactivated by a tenant default.
             DocumentTemplateAssignment::where('document_type', $template->document_type)
                 ->where('scope_type', $scopeType)
-                ->when($scopeValue, fn ($q) => $q->where('scope_value', $scopeValue))
+                ->when(
+                    $scopeValue === null,
+                    fn ($q) => $q->whereNull('scope_value'),
+                    fn ($q) => $q->where('scope_value', $scopeValue),
+                )
                 ->update(['is_active' => false]);
 
             DocumentTemplateAssignment::create([
