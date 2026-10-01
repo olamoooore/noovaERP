@@ -45,6 +45,9 @@ Route::prefix('accounting/tax-report')
         Route::get('/return-detail', [TaxReportController::class, 'returnDetail'])
             ->middleware(RequirePermission::using('reports.view'));
         Route::get('/filings', [TaxReportController::class, 'filings']);
+
+        // #278 F4: tax-readiness fact for Financial Close.
+        Route::get('/readiness', [TaxReportController::class, 'readiness']);
         Route::get('/periods', [\App\Http\Controllers\Api\TaxPeriodController::class, 'lockStates']);
         Route::get('/withholding', [TaxReportController::class, 'withholding']);
         // #270: remittance loop + authority schedule export.

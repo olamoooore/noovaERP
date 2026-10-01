@@ -93,6 +93,36 @@ class RequirePermission
     }
 
     /**
+     * #278: shared controller-level re-check for endpoints whose action needs
+     * a stronger authority than the route middleware (e.g. reopening a filed
+     * tax period). Same resolution as the middleware.
+     */
+    public static function allows(Request $request, string $permission): bool
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return false;
+        }
+
+        if (($user->is_super_admin ?? false) || $user->role === 'platform_super_admin') {
+            return true;
+        }
+
+        $tenantId = self::resolveTenantId($request);
+
+        if (! $tenantId) {
+            return false;
+        }
+
+        return app(TenantRoleService::class)->hasPermission(
+            self::resolveCentralUserId($user),
+            $tenantId,
+            $permission,
+        );
+    }
+
+    /**
      * Issue #227: shared (public) so controller defence-in-depth re-checks use
      * the EXACT same resolution as this middleware instead of a drifting copy.
      */

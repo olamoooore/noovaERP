@@ -198,8 +198,8 @@ class StatutoryReturnController extends Controller
             $tenantInt = (int) (tenant()->id ?? 0);
 
             foreach (\Modules\AccountingCountry\Services\TaxReportingService::expandFilingPeriod($period) as $month) {
-                if (! $lockService->isPeriodLocked($month, $tenantInt)) {
-                    $lockService->closePeriod($month, $tenantInt);
+                if (! $lockService->isPeriodLocked($month, $tenantInt, $legalEntityId)) {
+                    $lockService->closePeriod($month, $tenantInt, $legalEntityId, $country);
                 }
             }
 

@@ -361,7 +361,6 @@ export function CustomerDetailsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customer', id] })
-      queryClient.invalidateQueries({ queryKey: ['invoice'] })
       toast({ title: 'Customer updated successfully' })
     },
     onError: (error: any) => {
@@ -381,7 +380,6 @@ export function CustomerDetailsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customer', id] })
-      queryClient.invalidateQueries({ queryKey: ['invoice'] })
       setAddressDialogOpen(false)
       setAddressForm({})
       toast({ title: 'Address added successfully' })
@@ -395,7 +393,6 @@ export function CustomerDetailsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customer', id] })
-      queryClient.invalidateQueries({ queryKey: ['invoice'] })
       toast({ title: 'Address deleted successfully' })
     },
   })
@@ -407,7 +404,6 @@ export function CustomerDetailsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customer', id] })
-      queryClient.invalidateQueries({ queryKey: ['invoice'] })
       setAddressDialogOpen(false)
       setEditingAddressId(null)
       setAddressForm({})

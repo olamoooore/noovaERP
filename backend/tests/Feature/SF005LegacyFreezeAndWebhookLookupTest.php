@@ -108,17 +108,23 @@ class SF005LegacyFreezeAndWebhookLookupTest extends TenantTestCase
         $this->assertSame(0, DB::table('web_orders')->where('id', 1)->count());
     }
 
-    // ─── 4. Legacy public runtime untouched at P0 (P2 will retire it) ───
+    // ─── 4. Legacy public runtime RETIRED at P2 (FR-ARC-06) ─────────────
 
-    public function test_legacy_public_runtime_routes_still_registered_for_now(): void
+    public function test_legacy_public_runtime_surface_is_retired_at_p2(): void
     {
-        // Guard against accidental over-deletion in the freeze: /store serving
-        // stops at P2 per Appendix A §A5, not here.
+        // This test previously pinned the P0 state ("still registered for
+        // now", with the note that /store serving stops at P2 per Appendix
+        // A §A5). It now pins the P2 state: the retired checkout route is
+        // GONE and the whole legacy prefix answers a canonical 410.
         $routes = collect(\Illuminate\Support\Facades\Route::getRoutes());
 
-        $this->assertTrue($routes->contains(
+        $this->assertFalse($routes->contains(
             fn ($r) => str_contains($r->uri(), 'web-shop/checkout/guest')
-        ), 'P0 freeze must not yet remove the live public checkout route (planned P2)');
+        ), 'P2 stop-serving must remove the legacy public checkout route');
+
+        $this->assertTrue($routes->contains(
+            fn ($r) => (string) $r->uri() === 'api/v1/web-shop/{legacyPath?}'
+        ), 'the retired legacy prefix must answer the canonical 410 catch-all');
     }
 
     // ─── 5/6. P-01: webhook tenant lookup is actually written ───────────

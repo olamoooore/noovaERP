@@ -124,6 +124,7 @@ class CustomerController extends Controller
                     $customer->matched_addresses = $customer->addresses
                         ->map(function ($address) {
                             $parts = [$address->label, $address->street, $address->street2, $address->city, $address->state, $address->zip, $address->country];
+
                             return collect($parts)->filter()->implode(', ');
                         })
                         ->filter(fn ($text) => $text && str_contains(mb_strtolower($text), $needle))
@@ -1032,6 +1033,30 @@ class CustomerController extends Controller
             'total_purchases' => $totalPurchases,
             'new_this_month' => $newThisMonth,
             'top_customers' => $topCustomers,
+        ]);
+    }
+
+    /**
+     * D2 (Oct-2026 invoice review): compact AR context strip shown while
+     * entering an invoice — outstanding, overdue, credit usage, last invoice.
+     */
+    public function creditContext($id): JsonResponse
+    {
+        return response()->json(
+            app(\App\Services\AgedReceivablesService::class)->getCustomerContext((int) $id)
+        );
+    }
+
+    /**
+     * D6 (Oct-2026 invoice review): the products this customer buys most
+     * often — one-click chips on the invoice entry screen.
+     */
+    public function frequentProducts($id): JsonResponse
+    {
+        Customer::withTrashed()->findOrFail($id);
+
+        return response()->json([
+            'data' => app(\App\Services\CustomerProductHistoryService::class)->frequentProducts((int) $id),
         ]);
     }
 

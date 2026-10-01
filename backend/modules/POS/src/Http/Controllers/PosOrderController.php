@@ -200,7 +200,7 @@ class PosOrderController extends Controller
 
         if ($allowedCurrencies !== [] && ! in_array($orderCurrency, $allowedCurrencies, true)) {
             throw \Illuminate\Validation\ValidationException::withMessages([
-                'currency' => "Currency {$orderCurrency} is not enabled on terminal '{$terminal?->name}'.". 
+                'currency' => "Currency {$orderCurrency} is not enabled on terminal '{$terminal?->name}'.".
                     ' Allowed: '.implode(', ', $allowedCurrencies).'.',
             ]);
         }

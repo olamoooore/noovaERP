@@ -13,15 +13,21 @@ class TaxPeriodClosingService
      * @param  string  $period  Format: YYYY-MM (e.g. "2026-04")
      * @return array Summary of the closed period
      */
-    public function closePeriod(string $period, int $tenantId): array
+    public function closePeriod(string $period, int $tenantId, ?int $legalEntityId = null, ?string $regime = null): array
     {
         $this->validatePeriodFormat($period);
 
-        return DB::transaction(function () use ($period, $tenantId) {
-            // Check period is not already closed
+        return DB::transaction(function () use ($period, $tenantId, $legalEntityId, $regime) {
+            // Check period is not already closed for this entity scope
+            // (NULL entity = tenant-wide lock).
             $existing = DB::table('tax_period_locks')
                 ->where('period', $period)
                 ->where('tenant_id', $tenantId)
+                ->when(
+                    $legalEntityId !== null,
+                    fn ($q) => $q->where('legal_entity_id', $legalEntityId),
+                    fn ($q) => $q->whereNull('legal_entity_id'),
+                )
                 ->first();
 
             if ($existing) {
@@ -35,6 +41,8 @@ class TaxPeriodClosingService
             DB::table('tax_period_locks')->insert([
                 'period' => $period,
                 'tenant_id' => $tenantId,
+                'legal_entity_id' => $legalEntityId,
+                'regime' => $regime,
                 'closed_at' => now(),
                 'closed_by' => auth()->id(),
                 'summary' => json_encode($summary),
@@ -77,11 +85,23 @@ class TaxPeriodClosingService
         ]);
     }
 
-    public function isPeriodLocked(string $period, int $tenantId): bool
+    /**
+     * #278: a period is locked for an entity when a tenant-wide lock (NULL
+     * entity) or an entity-specific lock exists. Without an entity context
+     * only tenant-wide locks apply.
+     */
+    public function isPeriodLocked(string $period, int $tenantId, ?int $legalEntityId = null): bool
     {
         return DB::table('tax_period_locks')
             ->where('period', $period)
             ->where('tenant_id', $tenantId)
+            ->where(function ($q) use ($legalEntityId) {
+                $q->whereNull('legal_entity_id');
+
+                if ($legalEntityId !== null) {
+                    $q->orWhere('legal_entity_id', $legalEntityId);
+                }
+            })
             ->exists();
     }
 

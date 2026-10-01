@@ -22,6 +22,7 @@ import {
 export interface SalesSettings {
   invoice: {
     allow_custom_number: boolean
+    field_profile: 'general' | 'medical' | 'trading' | 'services'
     default_requires_approval: boolean
     approval_expiry_days: number
     auto_send_to_customer_on_post: boolean
@@ -57,6 +58,7 @@ export interface SalesSettings {
 export const emptySalesSettings: SalesSettings = {
   invoice: {
     allow_custom_number: true,
+    field_profile: 'medical',
     default_requires_approval: false,
     approval_expiry_days: 7,
     auto_send_to_customer_on_post: true,
@@ -530,6 +532,26 @@ export function InvoiceDefaultsSettings() {
         description="Pre-fill new invoices with your preferred terms, notes, and posting behaviour."
       />
       <CardContent className="divide-y py-0">
+        <SettingsRow
+          title="Industry field profile"
+          description="Which extra fields the invoice entry screen shows. Medical keeps case, patient and doctor fields; Trading shows PO and delivery date; Services shows project reference. Other fields stay hidden."
+        >
+          <Select
+            value={invoice.field_profile ?? 'medical'}
+            onValueChange={(v) => setLocal({ ...local, field_profile: v as SalesSettings['invoice']['field_profile'] })}
+          >
+            <SelectTrigger className="w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="medical">Medical — case & patient</SelectItem>
+              <SelectItem value="trading">Trading — PO & delivery</SelectItem>
+              <SelectItem value="services">Services — project</SelectItem>
+              <SelectItem value="general">General — no extra fields</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+
         <SettingsRow
           title="Allow custom invoice numbers"
           description="Users may override the auto-generated number on a per-invoice basis."

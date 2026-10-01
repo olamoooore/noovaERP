@@ -13,6 +13,92 @@ use Illuminate\Support\Facades\Log;
 class AccountingFunctions
 {
     /**
+     * Highest-value invoices by paid amount (or total).
+     *
+     * Answers "what is my highest paid invoice", "biggest invoices", etc.
+     * Tenant-wide (no customer context required).
+     *
+     * @param  array  $args  {limit?: int, metric?: 'paid'|'total'}
+     * @return array Invoice list ordered by the chosen metric
+     */
+    public static function getHighestValueInvoices(array $args): array
+    {
+        try {
+            Log::info('AI Accounting: getHighestValueInvoices called', ['user_id' => auth()->id(), 'args' => $args]);
+
+            if (! tenancy()->initialized) {
+                throw new \RuntimeException('Tenant context not initialized for AI accounting audit');
+            }
+
+            DB::table('ai_accounting_audit_logs')->insert([
+                'user_id' => auth()->id(),
+                'tool_name' => 'getHighestValueInvoices',
+                'arguments' => json_encode($args),
+                'tenant_id' => (string) tenant()->id,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $limit = max(1, min(20, (int) ($args['limit'] ?? 5)));
+            $metric = ($args['metric'] ?? 'paid') === 'total' ? 'total' : 'paid_amount';
+
+            $invoices = DB::table('invoices')
+                ->whereNull('deleted_at')
+                ->whereNotIn('status', ['cancelled', 'voided', 'reversed'])
+                ->orderByDesc($metric)
+                ->limit($limit)
+                ->get([
+                    'id',
+                    'invoice_number',
+                    'customer_id',
+                    'invoice_date',
+                    'total',
+                    'paid_amount',
+                    'balance',
+                    'status',
+                ]);
+
+            if ($invoices->isEmpty()) {
+                return [
+                    'success' => true,
+                    'found' => false,
+                    'message' => 'No invoices found.',
+                    'invoices' => [],
+                ];
+            }
+
+            $customerNames = DB::table('customers')
+                ->whereIn('id', $invoices->pluck('customer_id')->filter()->unique()->values())
+                ->pluck('name', 'id');
+
+            return [
+                'success' => true,
+                'found' => true,
+                'metric' => $metric,
+                'count' => $invoices->count(),
+                'invoices' => collect($invoices)->map(fn ($invoice) => array_merge(
+                    (array) $invoice,
+                    [
+                        'customer_name' => $customerNames[$invoice->customer_id] ?? null,
+                        'url' => '/invoices/'.$invoice->id,
+                    ],
+                ))->values()->all(),
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('AccountingFunctions::getHighestValueInvoices failed', [
+                'error' => $e->getMessage(),
+                'args' => $args,
+            ]);
+
+            return [
+                'success' => false,
+                'error' => 'Failed to retrieve invoices.',
+            ];
+        }
+    }
+
+    /**
      * Get outstanding (unpaid) invoices
      *
      * @param  array  $args  Arguments

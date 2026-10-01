@@ -52,6 +52,12 @@ class InvoiceDeliveryService
                 $metadata['portal_url'] = $options['portal_url'];
             }
 
+            // D8 (Oct-2026 invoice review): the same email can carry a
+            // pay-now link (and its QR) alongside the acceptance link.
+            if (! empty($options['payment_url'])) {
+                $metadata['payment_url'] = $options['payment_url'];
+            }
+
             $delivery = InvoiceDelivery::create([
                 'invoice_id' => $invoice->id,
                 'channel' => $channel,
@@ -162,6 +168,7 @@ class InvoiceDeliveryService
     {
         try {
             $pdfData = $this->generatePdfData($invoice, $delivery->document_type);
+            $paymentUrl = $delivery->metadata['payment_url'] ?? null;
 
             Mail::to($delivery->recipient)->send(new CustomerEmail(
                 emailSubject: $this->getEmailSubject($invoice, $delivery->document_type),
@@ -169,6 +176,7 @@ class InvoiceDeliveryService
                     $invoice,
                     $delivery->document_type,
                     $delivery->metadata['portal_url'] ?? null,
+                    $paymentUrl,
                 ),
                 emailAttachments: [
                     [
@@ -177,6 +185,9 @@ class InvoiceDeliveryService
                         'mime' => 'application/pdf',
                     ],
                 ],
+                qrDataUri: $paymentUrl
+                    ? app(QrCodeService::class)->dataUri($paymentUrl)
+                    : null,
             ));
 
             $delivery->update([
@@ -276,7 +287,7 @@ class InvoiceDeliveryService
         return "{$prefix} {$invoice->invoice_number} from {$company}";
     }
 
-    private function getEmailBody(Invoice $invoice, string $documentType, ?string $portalUrl = null): string
+    private function getEmailBody(Invoice $invoice, string $documentType, ?string $portalUrl = null, ?string $paymentUrl = null): string
     {
         $type = $documentType === InvoiceDelivery::DOCUMENT_ACCEPTANCE_COPY
             ? 'acceptance copy'
@@ -291,6 +302,11 @@ class InvoiceDeliveryService
         if ($portalUrl) {
             $body .= "To review and electronically sign this invoice, open this link:\n".
                 "{$portalUrl}\n\n";
+        }
+
+        if ($paymentUrl) {
+            $body .= "To pay this invoice securely online, open this link or scan the QR code below:\n".
+                "{$paymentUrl}\n\n";
         }
 
         $body .= 'Thank you for your business.';

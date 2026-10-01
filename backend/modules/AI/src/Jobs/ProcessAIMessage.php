@@ -138,44 +138,59 @@ class ProcessAIMessage implements ShouldQueue
                 ));
             }
 
-            // Call Ollama
+            // Call the provider and resolve tool calls in a LOOP: models often
+            // need several rounds (e.g. list → fetch detail → answer). The old
+            // single-round path used the follow-up's empty content as the final
+            // answer, which surfaced as the "How can I help you?" greeting.
             $response = $ollama->chat($messages, $functions);
 
             $assistantMessage = '';
+            $executedTools = [];
+            $maxToolRounds = 5;
 
-            // Handle function call
-            if ($response['function_call']) {
+            for ($round = 0; $round < $maxToolRounds; $round++) {
+                $assistantMessage = (string) ($response['content'] ?? '');
+
+                if (empty($response['function_call'])) {
+                    break;
+                }
+
                 $functionCall = $response['function_call'];
                 $functionName = $functionCall['function']['name'] ?? null;
                 $arguments = json_decode($functionCall['function']['arguments'] ?? '{}', true) ?: [];
 
-                if ($functionName) {
-                    $result = $router->execute(
-                        $functionName,
-                        $arguments,
-                        $conversation->customer_id,
-                        $this->conversationId,
-                        array_column($functions, 'name'),
-                        $conversation->channel,
-                    );
-
-                    // Tell AI about the function result
-                    $messages[] = ['role' => 'assistant', 'content' => null, 'tool_calls' => [$functionCall]];
-                    $messages[] = [
-                        'role' => 'tool',
-                        'tool_call_id' => $functionCall['id'] ?? 'call_1',
-                        'content' => json_encode($result),
-                    ];
-
-                    $followUp = $ollama->chat($messages, $functions);
-                    $assistantMessage = $followUp['content'] ?? 'I found some results but had trouble formatting them.';
+                if (! $functionName) {
+                    break;
                 }
-            } else {
-                $assistantMessage = $response['content'] ?? 'I could not generate a response.';
+
+                $result = $router->execute(
+                    $functionName,
+                    $arguments,
+                    $conversation->customer_id,
+                    $this->conversationId,
+                    array_column($functions, 'name'),
+                    $conversation->channel,
+                );
+
+                $executedTools[] = [
+                    'name' => $functionName,
+                    'arguments' => $arguments,
+                    'success' => $result['success'] ?? null,
+                ];
+
+                // Tell AI about the function result
+                $messages[] = ['role' => 'assistant', 'content' => null, 'tool_calls' => [$functionCall]];
+                $messages[] = [
+                    'role' => 'tool',
+                    'tool_call_id' => $functionCall['id'] ?? 'call_1',
+                    'content' => json_encode($result),
+                ];
+
+                $response = $ollama->chat($messages, $functions);
             }
 
             // Clean up response
-            $assistantMessage = $this->cleanResponse($assistantMessage);
+            $assistantMessage = $this->cleanResponse($assistantMessage, $executedTools);
 
             // Update the pending message with the actual response
             $pendingMessage->update([
@@ -217,11 +232,25 @@ class ProcessAIMessage implements ShouldQueue
         }
     }
 
-    protected function cleanResponse(string $text): string
+    protected function cleanResponse(string $text, array $executedTools = []): string
     {
         $text = preg_replace('/```json\s*\{[^}]*\}\s*```/', '', $text);
         $text = preg_replace('/\{"(name|arguments)":[^}]*\}/', '', $text);
 
-        return trim($text) ?: 'How can I help you?';
+        $text = trim($text);
+
+        if ($text !== '') {
+            return $text;
+        }
+
+        // Never answer with the greeting when we actually ran lookups: tell
+        // the user the lookup ran but could not be summarised.
+        if ($executedTools !== []) {
+            $names = implode(', ', array_unique(array_column($executedTools, 'name')));
+
+            return "I ran the lookup ({$names}) but couldn't put it into words. Try a more specific question, e.g. \"top 5 invoices by paid amount\".";
+        }
+
+        return 'How can I help you?';
     }
 }

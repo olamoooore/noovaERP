@@ -10,7 +10,8 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { cn, formatCurrency, formatDate } from '@/lib/utils'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { ChatterDock } from '@/components/chatter'
 import { TagEditor } from '@/components/tags/TagEditor'
@@ -36,7 +37,6 @@ interface Invoice {
     email: string
     phone: string
     billing_address: string
-    addresses?: CustomerAddress[]
   }
   invoice_date: string
   due_date: string
@@ -141,17 +141,6 @@ interface InvoiceLine {
   line_total: number
 }
 
-interface CustomerAddress {
-  type: 'billing' | 'shipping' | 'other'
-  street?: string | null
-  street2?: string | null
-  city?: string | null
-  state?: string | null
-  zip?: string | null
-  country?: string | null
-  is_default: boolean
-}
-
 interface Payment {
   id: number
   payment_number: string
@@ -188,25 +177,6 @@ function formatAddress(address: string | null | undefined): string {
   }
 }
 
-function getCustomerBillingAddress(customer: Invoice['customer']): string {
-  const defaultBillingAddress = customer?.addresses?.find(
-    (address) => address.type === 'billing' && address.is_default,
-  )
-
-  if (defaultBillingAddress) {
-    return [
-      defaultBillingAddress.street,
-      defaultBillingAddress.street2,
-      defaultBillingAddress.city,
-      defaultBillingAddress.state,
-      defaultBillingAddress.zip,
-      defaultBillingAddress.country,
-    ].filter(Boolean).join('\n')
-  }
-
-  return formatAddress(customer?.billing_address)
-}
-
 export function InvoiceDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -231,6 +201,18 @@ export function InvoiceDetailPage() {
     enabled: !!id,
   })
 
+  // D7: pre-flight checklist for the Post badge (drafts only).
+  const { data: preflight } = useQuery<{
+    ready: boolean
+    passed: number
+    total: number
+    checks: Array<{ key: string; label: string; status: 'pass' | 'warn' | 'fail'; detail: string }>
+  }>({
+    queryKey: ['invoice-preflight', id],
+    queryFn: async () => (await api.get(`/invoices/${id}/preflight`)).data,
+    enabled: !!id && invoice?.status === 'draft',
+  })
+
   // Document-currency primary; base equivalent at the snapshot rate (FR-5.4).
   const docCurrency = invoice?.currency_code || undefined
   const money = (value: number) => formatCurrency(value, docCurrency)
@@ -238,7 +220,6 @@ export function InvoiceDetailPage() {
   const fxRate = Number(invoice?.exchange_rate ?? 1) || 1
   const showBaseEquivalent = Boolean(docCurrency && baseCurrency && docCurrency !== baseCurrency)
   const baseMoney = (value: number) => formatCurrency(value * fxRate, baseCurrency)
-  const customerBillingAddress = getCustomerBillingAddress(invoice?.customer)
 
   const submitApprovalMutation = useMutation({
     mutationFn: async () => {
@@ -287,6 +268,7 @@ export function InvoiceDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoice', id] })
+      queryClient.invalidateQueries({ queryKey: ['invoice-preflight', id] })
       toast({ title: 'Invoice posted successfully' })
     },
     onError: (error: any) => {
@@ -377,11 +359,11 @@ export function InvoiceDetailPage() {
     },
   })
 
+  // D8: one-click Send bundle — acceptance link, pay-now link (when payable)
+// and the PDF all go out in a single email with a payment QR.
   const sendInvoiceMutation = useMutation({
     mutationFn: async () => {
-      const response = await api.post(`/invoices/${id}/acceptance-link`, {
-        send_email: true,
-        document_type: 'final_invoice',
+      const response = await api.post(`/invoices/${id}/send-bundle`, {
         recipient_email: sendRecipientEmail.trim() || undefined,
         save_customer_email: saveCustomerEmail || undefined,
       })
@@ -391,9 +373,13 @@ export function InvoiceDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['invoice', id] })
       const url = data?.data?.url
       setSendDialogUrl(url ?? null)
+      const paymentUrl = data?.data?.payment_url
+      setSendDialogPaymentUrl(paymentUrl ?? null)
       toast({
         title: 'Invoice sent to customer',
-        description: url ? 'Acceptance link generated and emailed.' : 'Email sent with invoice PDF.',
+        description: paymentUrl
+          ? 'PDF, acceptance link and pay-now QR emailed in one message.'
+          : 'Acceptance link generated and emailed.',
       })
     },
     onError: (error: any) => {
@@ -409,6 +395,7 @@ export function InvoiceDetailPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [resetDialogOpen, setResetDialogOpen] = useState(false)
   const [sendDialogUrl, setSendDialogUrl] = useState<string | null>(null)
+  const [sendDialogPaymentUrl, setSendDialogPaymentUrl] = useState<string | null>(null)
   const [sendRecipientEmail, setSendRecipientEmail] = useState('')
   const [saveCustomerEmail, setSaveCustomerEmail] = useState(false)
   const [approvalComment, setApprovalComment] = useState('')
@@ -585,6 +572,7 @@ export function InvoiceDetailPage() {
                 loading={sendInvoiceMutation.isPending}
                 onClick={() => {
                   setSendDialogUrl(null)
+                  setSendDialogPaymentUrl(null)
                   setSendRecipientEmail(invoice.customer?.email ?? '')
                   setSaveCustomerEmail(false)
                   setSendDialogOpen(true)
@@ -616,6 +604,64 @@ export function InvoiceDetailPage() {
               >
                 Post Invoice
               </HeaderActionButton>
+            )}
+            {/* D7: pre-flight checklist — problems are visible before Post,
+                not only as an error after it. */}
+            {invoice.status === 'draft' && preflight && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    title="Pre-flight checklist"
+                    className={cn(
+                      'inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors',
+                      preflight.ready
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300'
+                        : 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300',
+                    )}
+                  >
+                    <Icon
+                      icon={preflight.ready ? 'solar:check-circle-bold' : 'solar:danger-triangle-bold'}
+                      className="h-4 w-4"
+                    />
+                    {preflight.ready
+                      ? `Ready ${preflight.passed}/${preflight.total}`
+                      : `${preflight.total - preflight.passed} issue${preflight.total - preflight.passed === 1 ? '' : 's'}`}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-80 p-0">
+                  <div className="border-b px-3 py-2 text-xs font-semibold">
+                    Pre-flight checklist · {preflight.passed}/{preflight.total} ready
+                  </div>
+                  <ul className="max-h-72 overflow-y-auto p-1.5 text-xs">
+                    {preflight.checks.map((check) => (
+                      <li key={check.key} className="flex gap-2 rounded-md p-2 hover:bg-muted/50">
+                        <Icon
+                          icon={
+                            check.status === 'pass'
+                              ? 'solar:check-circle-bold'
+                              : check.status === 'warn'
+                                ? 'solar:danger-triangle-bold'
+                                : 'solar:close-circle-bold'
+                          }
+                          className={cn(
+                            'mt-0.5 h-4 w-4 shrink-0',
+                            check.status === 'pass'
+                              ? 'text-emerald-600'
+                              : check.status === 'warn'
+                                ? 'text-amber-600'
+                                : 'text-red-600',
+                          )}
+                        />
+                        <div className="min-w-0">
+                          <div className="font-medium">{check.label}</div>
+                          <div className="text-muted-foreground">{check.detail}</div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </PopoverContent>
+              </Popover>
             )}
             {/* Approval channel: required invoices must be submitted before
                 they can be posted; pending ones can be withdrawn. */}
@@ -858,9 +904,9 @@ export function InvoiceDetailPage() {
                       {invoice.customer.phone}
                     </p>
                   )}
-                  {customerBillingAddress && (
+                  {(invoice.billing_address_snapshot || invoice.customer.billing_address) && (
                     <p className="text-sm text-muted-foreground mt-2 whitespace-pre-line">
-                      {customerBillingAddress}
+                      {formatAddress(invoice.billing_address_snapshot || invoice.customer.billing_address)}
                     </p>
                   )}
                 </div>
@@ -1159,7 +1205,7 @@ export function InvoiceDetailPage() {
                 <ul className="text-xs text-muted-foreground space-y-1">
                   <li>• Invoice PDF will be attached to the email</li>
                   <li>• Customer gets a unique signed acceptance link (no login)</li>
-                  <li>• Customer can sign digitally and view payment options</li>
+                  <li>• Pay-now link + scannable QR included when the invoice is payable</li>
                   <li>• You will see delivery + acceptance status on the timeline</li>
                 </ul>
                 {sendDialogUrl && (
@@ -1172,6 +1218,19 @@ export function InvoiceDetailPage() {
                       className="break-all text-xs text-green-700 underline dark:text-green-300"
                     >
                       {sendDialogUrl}
+                    </a>
+                  </div>
+                )}
+                {sendDialogPaymentUrl && (
+                  <div className="rounded-md border border-green-200 bg-green-50 p-3 dark:border-green-900 dark:bg-green-950/40">
+                    <div className="text-xs font-medium text-green-700 dark:text-green-400">Pay-now link</div>
+                    <a
+                      href={sendDialogPaymentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="break-all text-xs text-green-700 underline dark:text-green-300"
+                    >
+                      {sendDialogPaymentUrl}
                     </a>
                   </div>
                 )}

@@ -42,6 +42,7 @@ class FunctionDefinitions
             self::listRecentStockMovements(),
             // Other Functions
             self::getInvoice(),
+            self::getHighestValueInvoices(),
             self::getOutstandingInvoices(),
             self::getInvoiceDetails(),
             self::getOverdueInvoices(),
@@ -368,6 +369,29 @@ class FunctionDefinitions
                     'limit' => [
                         'type' => 'integer',
                         'description' => 'Maximum number of invoices to return (default: 10)',
+                    ],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    protected static function getHighestValueInvoices(): array
+    {
+        return [
+            'name' => 'get_highest_value_invoices',
+            'description' => 'Get the highest-value invoices ranked by how much has been paid (or by invoice total). Use this when the user asks about their highest paid invoice, biggest/largest invoices, top invoices by amount, or most valuable sales.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'limit' => [
+                        'type' => 'integer',
+                        'description' => 'Maximum number of invoices to return (default: 5)',
+                    ],
+                    'metric' => [
+                        'type' => 'string',
+                        'enum' => ['paid', 'total'],
+                        'description' => 'Rank by paid amount (default) or by invoice total.',
                     ],
                 ],
                 'required' => [],

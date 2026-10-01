@@ -40,8 +40,6 @@ Route::middleware([
         Route::post('/events/bookings/confirm-payment', [\Modules\EventManagement\Http\Controllers\PublicEventController::class, 'confirmPayment']);
     });
 
-    // Guest checkout (no login required for buying)
-    Route::post('/web-shop/checkout/guest', [\Modules\Ecommerce\Http\Controllers\WebCheckoutController::class, 'guestCheckout']);
 
     // -------------------------------------------------------------------------
     // Storefront public runtime (generic commerce module, MRD P1).
@@ -167,22 +165,14 @@ Route::middleware([
             });
         });
 
-    // Payment confirmation (called after Stripe success)
-    Route::post('/web-shop/checkout/confirm-payment', [\Modules\Ecommerce\Http\Controllers\WebCheckoutController::class, 'confirmPayment']);
+    // FR-ARC-06 (P2 stop-serving): checkout, shipping/payment helpers and
+    // the waiting-room queue are RETIRED — no route registered; they fall to
+    // the catch-all 410 below. Legacy shoppers were migrated to the new
+    // Storefront module (FR-ARC-05, decision D8).
 
-    // Shipping rates for checkout
-    Route::get('/web-shop/shipping-rates', [\Modules\Ecommerce\Http\Controllers\ShippingRatesController::class, 'getRates']);
-
-    // Available payment gateways
-    Route::get('/web-shop/payment-gateways', [\Modules\Ecommerce\Http\Controllers\WebCheckoutController::class, 'getPaymentGateways']);
-
-    // Web shop queue admission (waiting room)
-    Route::post('/web-shop/queue/join', [\Modules\Ecommerce\Http\Controllers\CheckoutQueueController::class, 'join']);
-    Route::post('/web-shop/queue/status', [\Modules\Ecommerce\Http\Controllers\CheckoutQueueController::class, 'status']);
-    Route::post('/web-shop/queue/heartbeat', [\Modules\Ecommerce\Http\Controllers\CheckoutQueueController::class, 'heartbeat']);
-    Route::post('/web-shop/queue/leave', [\Modules\Ecommerce\Http\Controllers\CheckoutQueueController::class, 'leave']);
-
-    // Guest order lookup by token
+    // KEPT (read-only historical order lookup, contractual): a legacy
+    // customer opening an old order-confirmation link can still see their
+    // order. Never a write path.
     Route::get('/web-shop/orders/guest/{token}', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'showGuest']);
 
     // Invoice public acceptance links (signed, expiring — no auth required)
@@ -207,34 +197,32 @@ Route::middleware([
     Route::post('/quotation-accept/{token}/accept', [\App\Http\Controllers\Api\SalesOrderAcceptanceController::class, 'accept'])
         ->middleware('throttle:5,1');
 
-    // Web shop auth (public - no login required)
-    // Pillar 2 Part 2 §2.3: dedicated brute-force throttle (5/min per IP).
-    Route::post('/web-shop/auth/register', [\Modules\Ecommerce\Http\Controllers\WebAuthController::class, 'register'])->middleware('throttle:5,1');
-    Route::post('/web-shop/auth/login', [\Modules\Ecommerce\Http\Controllers\WebAuthController::class, 'login'])->middleware('throttle:5,1');
+    // FR-ARC-06 (P2): legacy shopper register/login RETIRED — accounts are
+    // not migrated (FR-ARC-05/D8); the retired prefix falls to the 410
+    // catch-all below (the P2.6 brute-force throttle concern is moot).
 
-    // Web shop customer-authenticated routes (uses WebCustomerAuth, NOT auth:sanctum)
+    // Web shop customer-authenticated READ-ONLY order history (KEPT for
+    // legacy customers per the P2 contract exception). Every mutation
+    // (profile, addresses, cancel, retry-payment, logout) and every other
+    // legacy customer surface (tickets, loyalty) is RETIRED — no route
+    // registered, falls to the catch-all 410 below.
     Route::middleware([\Modules\Ecommerce\Http\Middleware\WebCustomerAuth::class])->prefix('web-shop')->group(function () {
-        Route::post('/auth/logout', [\Modules\Ecommerce\Http\Controllers\WebAuthController::class, 'logout']);
-        Route::get('/customer/profile', [\Modules\Ecommerce\Http\Controllers\WebAuthController::class, 'profile']);
-        Route::put('/customer/profile', [\Modules\Ecommerce\Http\Controllers\WebAuthController::class, 'updateProfile']);
-        Route::get('/customer', [\Modules\Ecommerce\Http\Controllers\WebCustomerController::class, 'show']);
-        Route::get('/customer/addresses', [\Modules\Ecommerce\Http\Controllers\WebCustomerController::class, 'addresses']);
-        Route::post('/customer/addresses', [\Modules\Ecommerce\Http\Controllers\WebCustomerController::class, 'addAddress']);
-        Route::put('/customer/addresses/{id}', [\Modules\Ecommerce\Http\Controllers\WebCustomerController::class, 'updateAddress']);
-        Route::delete('/customer/addresses/{id}', [\Modules\Ecommerce\Http\Controllers\WebCustomerController::class, 'deleteAddress']);
-        Route::post('/customer/addresses/{id}/default', [\Modules\Ecommerce\Http\Controllers\WebCustomerController::class, 'setDefaultAddress']);
         Route::get('/orders', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'index']);
         Route::get('/orders/{id}', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'show']);
-        Route::post('/orders/{id}/cancel', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'cancelOrder']);
-        Route::post('/orders/{id}/retry-payment', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'retryPayment']);
         Route::get('/orders/{id}/invoice', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'getInvoice']);
-        Route::get('/tickets', [\Modules\EventManagement\Http\Controllers\WebCustomerTicketController::class, 'index']);
-
-        // Loyalty routes for web shop customers
-        Route::get('/loyalty/balance', [\Modules\Loyalty\Http\Controllers\WebLoyaltyController::class, 'balance']);
-        Route::get('/loyalty/history', [\Modules\Loyalty\Http\Controllers\WebLoyaltyController::class, 'history']);
-        Route::post('/loyalty/calculate', [\Modules\Loyalty\Http\Controllers\WebLoyaltyController::class, 'calculate']);
     });
+
+    // FR-ARC-06 (P2 stop-serving) catch-all: ANY other legacy public
+    // /web-shop/* path — including everything deleted above and anything
+    // added by accident later — answers a canonical 410 Gone instead of
+    // reaching a controller. Registered AFTER the retained read-only
+    // routes so they keep matching first.
+    Route::any('/web-shop/{legacyPath?}', function () {
+        return response()->json([
+            'message' => 'The legacy online store has been retired. This merchant\'s new store is served from their own website.',
+            'code' => 'legacy_storefront_retired',
+        ], 410);
+    })->where('legacyPath', '.*');
 });
 
 // -------------------------------------------------------------------------

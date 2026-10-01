@@ -130,6 +130,25 @@ class TaxReportController extends Controller
     }
 
     /**
+     * #278 F4: tax-readiness fact (locked/filed/unfiled + reconciliation +
+     * version) for Financial Close consumption.
+     */
+    public function readiness(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate([
+            'period' => ['required', 'string', 'regex:/^\d{4}-(\d{2}|Q[1-4])$/'],
+            'entity_id' => ['nullable', 'integer', 'exists:legal_entities,id'],
+        ]);
+
+        return response()->json([
+            'data' => $this->reporting->readiness(
+                $validated['period'],
+                isset($validated['entity_id']) ? (int) $validated['entity_id'] : null,
+            ),
+        ]);
+    }
+
+    /**
      * F15 (#280): drill-down for a return box/total — contributing rows with
      * source document, tax code, journal entry and determination lineage.
      */

@@ -45,15 +45,62 @@ class TaxPeriodController extends Controller
         return response()->json(['message' => "Tax period {$period} closed", 'data' => $summary], 201);
     }
 
-    public function reopen(string $period): JsonResponse
+    public function reopen(\Illuminate\Http\Request $request, string $period): JsonResponse
     {
+        // #278 F4: reopening a filed period is a governed action — mandatory
+        // reason, elevated authority, audit trail and an amendment flag on
+        // every filed baseline covering the period.
+        $validated = $request->validate([
+            'reason' => 'required|string|min:5|max:500',
+        ]);
+
+        if (! \App\Http\Middleware\RequirePermission::allows($request, 'tax.policy.manage')) {
+            return response()->json([
+                'message' => 'Reopening a filed tax period requires tax.policy.manage.',
+                'required_permission' => 'tax.policy.manage',
+            ], 403);
+        }
+
         try {
             $this->service->reopenPeriod($period, (int) tenant('id'));
         } catch (\RuntimeException|\InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        return response()->json(['message' => "Tax period {$period} reopened"]);
+        $months = \Modules\AccountingCountry\Services\TaxReportingService::expandFilingPeriod($period) ?: [$period];
+        $flagged = 0;
+
+        foreach (\App\Models\StatutoryReturnFiling::whereNull('superseded_at')->get() as $filing) {
+            $filingMonths = \Modules\AccountingCountry\Services\TaxReportingService::expandFilingPeriod((string) $filing->period) ?: [(string) $filing->period];
+
+            if (array_intersect($months, $filingMonths)) {
+                $filing->update(['state' => 'AMENDMENT_REQUIRED', 'state_updated_at' => now()]);
+                $flagged++;
+            }
+        }
+
+        \App\Models\AuditLog::create([
+            'operation' => 'tax_period_reopened',
+            'reference_type' => 'tax_period',
+            'reference_id' => 0,
+            'actor_id' => $request->user()?->id,
+            'source_route' => $request->path(),
+            'before_state' => ['period' => $period, 'locked' => true],
+            'after_state' => ['period' => $period, 'locked' => false],
+            'metadata' => ['reason' => $validated['reason'], 'filings_flagged' => $flagged],
+        ]);
+
+        app(\App\Services\TaxOutboxPublisher::class)->publish(
+            'TaxPeriodReopened',
+            $period,
+            1,
+            ['period' => $period, 'reason' => $validated['reason'], 'filings_flagged' => $flagged],
+        );
+
+        return response()->json([
+            'message' => "Tax period {$period} reopened",
+            'filings_flagged_for_amendment' => $flagged,
+        ]);
     }
 
     /**

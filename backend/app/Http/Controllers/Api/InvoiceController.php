@@ -19,6 +19,7 @@ use App\Services\InvoiceEvidenceService;
 use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
 use App\Services\SalesApprovalGate;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -631,7 +632,6 @@ class InvoiceController extends Controller
             'tax_registration_number' => $data['tax_registration_number'] ?? null,
             'notes' => $data['notes'] ?? null,
             'terms' => $data['terms'] ?? null,
-            'payment_terms_snapshot' => isset($data['payment_terms']) ? (string) $data['payment_terms'] : null,
             'discount_amount' => $data['discount_amount'] ?? null,
             'po_number' => $data['po_number'] ?? null,
             // Contact IDs are handled separately via UPDATE after invoice creation
@@ -823,7 +823,7 @@ class InvoiceController extends Controller
 
     public function show(Request $request, $id)
     {
-        $invoice = Invoice::with(['customer.addresses', 'lines.product', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor', 'buyer', 'salesOrder', 'quotation', 'deliveryOrders', 'evidence.confirmedBy'])->find($id);
+        $invoice = Invoice::with(['customer', 'lines.product', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor', 'buyer', 'salesOrder', 'quotation', 'deliveryOrders', 'evidence.confirmedBy'])->find($id);
 
         if (! $invoice) {
             return response()->json(['message' => 'Invoice not found'], 404);
@@ -935,7 +935,6 @@ class InvoiceController extends Controller
             'tax_treatment' => 'nullable|string|max:40',
             'notes' => 'nullable|string',
             'terms' => 'nullable|string',
-            'payment_terms' => 'nullable|integer|min:0|max:365',
             'discount_amount' => 'nullable|numeric|min:0',
             'po_number' => 'nullable|string|max:100',
             'doctor_contact_id' => 'nullable|exists:core_contacts,id',
@@ -977,11 +976,6 @@ class InvoiceController extends Controller
             unset($validated[$nameKey]);
         }
 
-        if (array_key_exists('payment_terms', $validated)) {
-            $validated['payment_terms_snapshot'] = (string) $validated['payment_terms'];
-            unset($validated['payment_terms']);
-        }
-
         // Reject document discount exceeding the line subtotal
         $subtotal = isset($validated['lines'])
         ? array_reduce($validated['lines'], function ($sum, $line) {
@@ -1009,6 +1003,15 @@ class InvoiceController extends Controller
         DB::transaction(function () use ($invoice, $validated) {
             $lines = $validated['lines'] ?? null;
             unset($validated['lines']);
+
+            // `payment_terms` arrives as a day count; the document stores the
+            // immutable snapshot column.
+            if (array_key_exists('payment_terms', $validated)) {
+                $validated['payment_terms_snapshot'] = $validated['payment_terms'] !== null
+                    ? (string) $validated['payment_terms']
+                    : null;
+                unset($validated['payment_terms']);
+            }
 
             if (array_key_exists('cases', $validated)) {
                 $validated['case_information'] = $validated['cases'];
@@ -1562,6 +1565,147 @@ class InvoiceController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to create acceptance link',
+                'error' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * D8 (Oct-2026 invoice review): one-click Send bundle — creates the
+     * acceptance portal link, a pay-now link (when the invoice can take
+     * payment) and sends ONE email carrying the PDF, both links and a QR
+     * code for the payment page. Previously these were three separate steps
+     * (and two separate emails).
+     */
+    /**
+     * D7 (Oct-2026 invoice review): pre-flight checklist behind the badge on
+     * Post — approval, evidence, period lock, credit, duplicate, TIN, stock.
+     * Advisory only; posting keeps its own hard gates.
+     */
+    public function preflight($id): JsonResponse
+    {
+        $invoice = Invoice::with(['customer', 'lines.product', 'salesOrder'])->find($id);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        return response()->json(
+            app(\App\Services\InvoicePreflightService::class)->run($invoice)
+        );
+    }
+
+    public function sendBundle(Request $request, $id)
+    {
+        $invoice = is_object($id) && $id instanceof Invoice ? $id : Invoice::with('customer')->find($id);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        if (in_array($invoice->status, ['cancelled', 'voided', 'reversed'], true)) {
+            return response()->json(['message' => 'This invoice cannot be sent to the customer.'], 422);
+        }
+
+        $validated = $request->validate([
+            'expires_in_days' => 'nullable|integer|min:1|max:90',
+            'payment_expires_in_days' => 'nullable|integer|min:1|max:90',
+            'recipient_email' => 'nullable|email',
+            'save_customer_email' => 'nullable|boolean',
+        ]);
+
+        $recipientOverride = $validated['recipient_email'] ?? null;
+
+        if ($recipientOverride && ! empty($validated['save_customer_email']) && $invoice->customer) {
+            $invoice->customer->update(['email' => $recipientOverride]);
+            $invoice->unsetRelation('customer');
+        }
+
+        try {
+            // 1) Acceptance portal link (review / e-sign).
+            $linkData = $this->evidenceService->createPortalAcceptanceLink(
+                $invoice,
+                $validated['expires_in_days'] ?? 30
+            );
+
+            $this->activityService->log(
+                $invoice,
+                \App\Models\InvoiceActivityLog::EVENT_ACCEPTANCE_LINK_CREATED,
+                [
+                    'acceptance_url' => $linkData['url'],
+                    'expires_at' => $linkData['expires_at'],
+                    'evidence_id' => $linkData['evidence_id'],
+                    'send_email' => true,
+                    'bundle' => true,
+                ],
+                $invoice->getOriginal('evidence_status') ?? $invoice->evidence_status,
+                $invoice->fresh()->evidence_status,
+                \App\Models\InvoiceActivityLog::ACTOR_USER,
+                $request->user()->id,
+            );
+
+            // 2) Pay-now link — only for posted invoices with a live balance.
+            // Drafts are sent for acceptance first; a draft has no payable
+            // document yet, so the bundle degrades gracefully.
+            $paymentUrl = null;
+            $payment = null;
+
+            if ($invoice->status !== 'draft' && bccomp((string) $invoice->balance, '0.00', 2) > 0) {
+                try {
+                    $payment = $this->invoiceService->createPaymentLink(
+                        $invoice,
+                        (float) $invoice->balance,
+                        now()->addDays($validated['payment_expires_in_days'] ?? 14),
+                    );
+                    $paymentUrl = $payment['url'] ?? null;
+
+                    $this->activityService->log(
+                        $invoice,
+                        \App\Models\InvoiceActivityLog::EVENT_PAYMENT_LINK_ISSUED,
+                        [
+                            'payment_link_url' => $paymentUrl,
+                            'amount' => (float) $invoice->balance,
+                            'expires_at' => $invoice->payment_link_expires_at?->toIso8601String(),
+                        ],
+                        null,
+                        null,
+                        \App\Models\InvoiceActivityLog::ACTOR_USER,
+                        $request->user()->id,
+                    );
+                } catch (\Throwable $e) {
+                    \Log::warning('Send bundle: payment link creation failed, sending without it', [
+                        'invoice_id' => $invoice->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            // 3)ONE email: PDF + acceptance link + pay-now link + QR.
+            $delivery = $this->deliveryService->deliver($invoice, 'email', $request->user(), [
+                'document_type' => \App\Models\InvoiceDelivery::DOCUMENT_FINAL_INVOICE,
+                'portal_url' => $linkData['url'],
+                'payment_url' => $paymentUrl,
+                'recipient' => $recipientOverride,
+            ]);
+
+            return response()->json([
+                'message' => $paymentUrl
+                    ? 'Invoice sent with acceptance and pay-now links'
+                    : 'Invoice sent to customer',
+                'data' => [
+                    ...$linkData,
+                    'payment_url' => $paymentUrl,
+                    'payment' => $payment,
+                    'delivery' => [
+                        'id' => $delivery->id,
+                        'status' => $delivery->status,
+                        'recipient' => $delivery->recipient,
+                    ],
+                ],
+            ], 201);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Failed to send invoice',
                 'error' => $e->getMessage(),
             ], 422);
         }

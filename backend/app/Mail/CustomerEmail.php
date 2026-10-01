@@ -19,6 +19,7 @@ class CustomerEmail extends Mailable
         public string $emailSubject,
         public string $emailBody,
         public array $emailAttachments = [],
+        public ?string $qrDataUri = null,
     ) {}
 
     public function envelope(): Envelope
@@ -30,9 +31,15 @@ class CustomerEmail extends Mailable
 
     public function content(): Content
     {
-        return new Content(
-            htmlString: nl2br(e($this->emailBody)),
-        );
+        $html = nl2br(e($this->emailBody));
+
+        // D8: inline QR for the pay-now link so phone users can scan from the
+        // email itself (raster PNG when Imagick exists, SVG otherwise).
+        if ($this->qrDataUri) {
+            $html .= '<br><img src="'.e($this->qrDataUri).'" alt="Payment QR code" width="180" height="180">';
+        }
+
+        return new Content(htmlString: $html);
     }
 
     /**

@@ -604,6 +604,9 @@ class CompanySettingsController extends Controller
             'data' => [
                 'invoice' => [
                     'allow_custom_number' => (bool) \App\Models\Setting::getValue('sales.invoice.allow_custom_number', true),
+                    // D4: which extra header fields the invoice entry screen
+                    // shows. 'medical' preserves the pre-setting behaviour.
+                    'field_profile' => (string) \App\Models\Setting::getValue('sales.invoice.field_profile', 'medical'),
                     'default_requires_approval' => (bool) \App\Models\Setting::getValue('sales.invoice.default_requires_approval', false),
                     'approval_expiry_days' => (int) \App\Models\Setting::getValue('sales.invoice.approval_expiry_days', 7),
                     'reviewer_user_ids' => array_values(array_map('intval', (array) \App\Models\Setting::getValue('sales.invoice.reviewer_user_ids', []))),
@@ -658,6 +661,7 @@ class CompanySettingsController extends Controller
     {
         $validated = $request->validate([
             'invoice.allow_custom_number' => 'nullable|boolean',
+            'invoice.field_profile' => 'nullable|string|in:general,medical,trading,services',
             'invoice.default_requires_approval' => 'nullable|boolean',
             'invoice.approval_expiry_days' => 'nullable|integer|min:1|max:90',
             'invoice.reviewer_user_ids' => 'nullable|array',
@@ -684,6 +688,7 @@ class CompanySettingsController extends Controller
 
         $map = [
             'invoice.allow_custom_number' => 'sales.invoice.allow_custom_number',
+            'invoice.field_profile' => 'sales.invoice.field_profile',
             'invoice.default_requires_approval' => 'sales.invoice.default_requires_approval',
             'invoice.approval_expiry_days' => 'sales.invoice.approval_expiry_days',
             'invoice.reviewer_user_ids' => 'sales.invoice.reviewer_user_ids',

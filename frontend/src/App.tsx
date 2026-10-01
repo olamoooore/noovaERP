@@ -261,8 +261,10 @@ const PublicSiteViewer = lazy(() => import('@/pages/PublicSite').then(m => ({ de
 // Ecommerce Shop Pages (public-facing)
 const EcommerceShopPage = lazy(() => import('@/pages/WebShop/EcommerceStorefront').then(m => ({ default: m.EcommerceStorefront })))
 
-// Client Storefront (infiniti-kpop-store integration)
-const StorefrontApp = lazy(() => import('@/storefront/StorefrontApp'))
+// Legacy /store SPA retired (FR-ARC-06 P2) — client-side 410 notice.
+const LegacyStoreRetiredPage = lazy(() =>
+  import('@/pages/StoreRetired/LegacyStoreRetiredPage').then(m => ({ default: m.LegacyStoreRetiredPage }))
+)
 
 // Inventory pages
 const SuppliersPage = lazy(() => import('@/pages/Inventory/SuppliersPage').then(m => ({ default: m.SuppliersPage })))
@@ -723,8 +725,8 @@ function App() {
             <Route path="/shop" element={<EcommerceShopPage />} />
             <Route path="/shop/:pageType" element={<EcommerceShopPage />} />
 
-            {/* Client Storefront (infiniti-kpop-store) */}
-            <Route path="/store/*" element={<StorefrontApp />} />
+            {/* Legacy /store SPA retired (FR-ARC-06 P2 stop-serving) */}
+            <Route path="/store/*" element={<LegacyStoreRetiredPage />} />
 
             <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

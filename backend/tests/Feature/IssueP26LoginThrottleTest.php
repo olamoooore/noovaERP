@@ -65,17 +65,22 @@ class IssueP26LoginThrottleTest extends TestCase
         );
     }
 
-    public function test_web_shop_login_has_dedicated_brute_force_throttle(): void
+    public function test_web_shop_login_is_retired_not_throttled(): void
     {
-        $route = collect(\Illuminate\Support\Facades\Route::getRoutes())
+        // FR-ARC-06 (P2 stop-serving): the legacy web-shop login no longer
+        // exists — there is no credential-checking endpoint left to brute
+        // force. This replaces the previous throttle pin (test-semantic
+        // change disclosed in the retirement report); the retired prefix
+        // must fall to the canonical 410 catch-all rather than any handler.
+        $exact = collect(\Illuminate\Support\Facades\Route::getRoutes())
             ->first(fn ($r) => (string) $r->uri() === 'api/v1/web-shop/auth/login');
 
-        $throttle = $this->extractThrottle($route);
-        $this->assertSame(
-            '5,1',
-            $throttle,
-            'api/v1/web-shop/auth/login must have throttle:5,1 middleware'
-        );
+        $this->assertNull($exact, 'legacy web-shop login must no longer be registered');
+
+        $catchAll = collect(\Illuminate\Support\Facades\Route::getRoutes())
+            ->first(fn ($r) => (string) $r->uri() === 'api/v1/web-shop/{legacyPath?}');
+
+        $this->assertNotNull($catchAll, 'the retired legacy prefix must answer the canonical 410 catch-all');
     }
 
     public function test_admin_login_still_has_throttle(): void

@@ -31,6 +31,8 @@ class PosCurrencyTest extends TenantTestCase
 
     private PosSession $session;
 
+    private \App\Models\Customer $customer;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -49,6 +51,8 @@ class PosCurrencyTest extends TenantTestCase
             'from_currency' => 'SGD', 'to_currency' => 'USD', 'rate' => 0.74,
             'effective_date' => now()->toDateString(), 'source' => 'manual',
         ]);
+
+        $this->customer = \App\Models\Customer::factory()->create();
 
         $this->product = Product::factory()->create([
             'price' => 100, 'cost' => 40, 'tax_rate' => 0, 'track_inventory' => false,
@@ -78,6 +82,7 @@ class PosCurrencyTest extends TenantTestCase
         return $this->actingAs($this->admin)->postJson('/api/v1/pos/orders', [
             'session_id' => $this->session->id,
             'terminal_id' => $this->terminal->id,
+            'customer_id' => $this->customer->id,
             'currency' => $currency,
             'items' => [[
                 'product_id' => $this->product->id,
@@ -106,6 +111,7 @@ class PosCurrencyTest extends TenantTestCase
         $response = $this->actingAs($this->admin)->postJson('/api/v1/pos/orders', [
             'session_id' => $this->session->id,
             'terminal_id' => $this->terminal->id,
+            'customer_id' => $this->customer->id,
             'currency' => 'EUR', // not in ['USD','SGD']
             'items' => [['product_id' => $this->product->id, 'quantity' => 1]],
         ]);

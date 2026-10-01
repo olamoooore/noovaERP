@@ -157,6 +157,8 @@ class PostingEngine implements PostingEngineInterface
                 'action' => 'POST_JOURNAL',
                 'tenant_id' => (string) $tenantId,
                 'entity_id' => $request->legalEntityId ? (string) $request->legalEntityId : null,
+                // #278: numeric entity scope for the tax-period lock gate.
+                'legal_entity_id' => $request->legalEntityId,
                 'actor_id' => $userId ? (string) $userId : null,
                 'document_type' => $request->documentType,
                 'posting_date' => $request->postingDate,
@@ -229,7 +231,32 @@ class PostingEngine implements PostingEngineInterface
         // ── 4. Atomic create + post ───────────────────────────
         try {
             // ✅ ATOMIC
-            return DB::transaction(function () use ($request, $resolvedLines, $totalDebit, $totalCredit) {
+            return DB::transaction(function () use ($request, $resolvedLines, $totalDebit, $totalCredit, $tenantId) {
+                // #278 F4: commit-time lock re-check — a tax period locked
+                // AFTER gate evaluation must still reject the posting (no
+                // lost update between a concurrent close and this commit).
+                if ($this->postingIsTaxRelevant($request)) {
+                    $commitPeriod = date('Y-m', strtotime($request->postingDate));
+
+                    $lockedAtCommit = DB::table('tax_period_locks')
+                        ->where('period', $commitPeriod)
+                        ->where('tenant_id', (int) $tenantId)
+                        ->where(function ($q) use ($request) {
+                            $q->whereNull('legal_entity_id');
+
+                            if ($request->legalEntityId) {
+                                $q->orWhere('legal_entity_id', (int) $request->legalEntityId);
+                            }
+                        })
+                        ->exists();
+
+                    if ($lockedAtCommit) {
+                        throw new \RuntimeException(
+                            'TAX_PERIOD_LOCKED: tax period '.$commitPeriod.' was closed while this posting was in flight'
+                        );
+                    }
+                }
+
                 // Idempotency pre-check inside the transaction to avoid orphan postings.
                 // Issue #68: superseded references are history, not duplicates.
                 $existingLink = JournalEntryLink::where('source_document_type', $request->documentType)
@@ -1147,6 +1174,23 @@ class PostingEngine implements PostingEngineInterface
 
             $codedCodes[$code] = true;
         }
+    }
+
+    /**
+     * #278: tax-relevant = coded tax lines or a determination with tax lines
+     * (supply-only documents included).
+     */
+    private function postingIsTaxRelevant(PostingRequest $request): bool
+    {
+        foreach ($request->lines as $line) {
+            if ($line->taxCode !== null || $line->taxId !== null) {
+                return true;
+            }
+        }
+
+        $determination = $request->taxDeterminationResult ?? ($request->metadata['tax_determination_result'] ?? null);
+
+        return is_array($determination) && ! empty($determination['tax_lines']);
     }
 
     /**

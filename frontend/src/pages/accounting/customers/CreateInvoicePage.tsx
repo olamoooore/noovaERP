@@ -18,7 +18,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
-import { cn, formatCurrency, getApiErrorMessage } from '@/lib/utils';
+import { cn, formatCurrency, formatDate, getApiErrorMessage } from '@/lib/utils';
 import api from '@/lib/api'
 import { resolveLineTaxRate } from '@/lib/lineTax';
 import pricingApi from '@/lib/pricingApi'
@@ -28,11 +28,14 @@ import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 import { getProductLineDescription, ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
 import { CaseSearchCombobox, type MedicalCaseOption } from '@/components/sales/CaseSearchCombobox';
 import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard';
+import { CustomerContextStrip } from '@/components/sales/CustomerContextStrip';
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
 import { ProductTrackingSelector } from '@/components/inventory/ProductTrackingSelector';
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
 import { LineItemsTable } from '@/components/sales/LineItemsTable'
 import { TagEditor } from '@/components/tags/TagEditor'
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
+import { HeaderChip, StaticChip } from '@/components/ui/HeaderChip'
 import { TagPicker } from '@/components/tags/TagPicker'
 import {
   LINE_CELL,
@@ -70,6 +73,19 @@ interface InvoiceLine {
   override_reason?: string | null;
   // FR-3.8: public/reference price for the strikethrough display.
   list_price?: number | null;
+  // D5 (invoice review): full engine trace for the hover explanation —
+  // list/rule, tier compute info and the FX rate actually used.
+  pricing_trace?: {
+    source?: string | null;
+    pricelist_code?: string | null;
+    compute_type?: string | null;
+    compute_value?: number | null;
+    base?: string | null;
+    rate_used?: number | null;
+    rate_date?: string | null;
+  } | null;
+  pricing_currency?: string | null;
+  pricing_base_currency?: string | null;
 }
 
 interface CustomerAddress {
@@ -360,6 +376,33 @@ export const CreateInvoicePage: React.FC = () => {
   // due date, a later customer change must not silently overwrite it.
   const [termsOverridden, setTermsOverridden] = useState(false);
   const [requiresApproval, setRequiresApproval] = useState(false);
+  const [sendAfterSave, setSendAfterSave] = useState(false);
+  // D1: why this customer matched the search (contact/tag/address) — kept
+  // visible after the pick instead of being discarded with the dropdown.
+  const [customerMatch, setCustomerMatch] = useState<{
+    contacts: string[];
+    tags: string[];
+    addresses: string[];
+  } | null>(null);
+  // D6/D9: the customer's most recent invoice — powers "Repeat last invoice"
+  // and the prefill of remembered choices (warehouse, list, notes, contacts).
+  const [lastInvoice, setLastInvoice] = useState<{
+    id: number;
+    number: string;
+    warehouseId?: string;
+    priceListId?: string;
+    notes?: string;
+    terms: number | null;
+    lines: any[];
+    contacts: { billing?: string; shipping?: string; doctor?: string; requestor?: string; buyer?: string };
+  } | null>(null);
+  const [reuseNotice, setReuseNotice] = useState<string | null>(null);
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+  const [pasteBusy, setPasteBusy] = useState(false);
+  const [repeatConfirmOpen, setRepeatConfirmOpen] = useState(false);
+  const warehouseTouchedRef = useRef(false);
+  const appliedLastInvoiceRef = useRef<number | null>(null);
   const [customInvoiceNumber, setCustomInvoiceNumber] = useState('');
   const calcDueDate = (invDate: string, termsDays: number) => addCalendarDays(invDate, termsDays);
   const [dueDate, setDueDate] = useState(() => calcDueDate(todayDateOnly(), 30));
@@ -550,6 +593,113 @@ export const CreateInvoicePage: React.FC = () => {
     }
   }, [isEditMode, originalCustomerId, selectedCustomer]);
 
+  // D6/D9: fetch the customer's latest invoice once per pick on NEW documents
+  // (two cheap calls) — feeds "Repeat last invoice" and remembered choices.
+  useEffect(() => {
+    if (!customerId || isEditMode) {
+      setLastInvoice(null);
+      appliedLastInvoiceRef.current = null;
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const listRes = await api.get('/invoices', { params: { customer_id: customerId, per_page: 1 } });
+        const row = (listRes.data?.data ?? [])[0];
+        if (!row || cancelled) return;
+
+        const detailRes = await api.get(`/invoices/${row.id}`);
+        const full = detailRes.data?.data ?? detailRes.data;
+        if (!full || cancelled) return;
+
+        const trace = (full.lines ?? []).find((line: any) => line.pricing_trace?.pricelist_id)?.pricing_trace;
+
+        setLastInvoice({
+          id: Number(full.id),
+          number: full.invoice_number ?? `#${full.id}`,
+          warehouseId: full.sales_order?.warehouse_id ? String(full.sales_order.warehouse_id) : undefined,
+          priceListId: trace?.pricelist_id ? String(trace.pricelist_id) : undefined,
+          notes: full.notes || undefined,
+          terms: full.payment_terms_snapshot != null ? Number(full.payment_terms_snapshot) : null,
+          lines: full.lines ?? [],
+          contacts: {
+            billing: full.billing_contact_id ? String(full.billing_contact_id) : undefined,
+            shipping: full.shipping_contact_id ? String(full.shipping_contact_id) : undefined,
+            doctor: full.doctor_contact_id ? String(full.doctor_contact_id) : undefined,
+            requestor: full.requestor_contact_id ? String(full.requestor_contact_id) : undefined,
+            buyer: full.buyer_contact_id ? String(full.buyer_contact_id) : undefined,
+          },
+        });
+      } catch {
+        if (!cancelled) setLastInvoice(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [customerId, isEditMode]);
+
+  // D9: apply the remembered choices once per fetched invoice, never
+  // overriding anything the user already touched on this document.
+  useEffect(() => {
+    if (!lastInvoice || isEditMode || !selectedCustomerDetail) return;
+    if (appliedLastInvoiceRef.current === lastInvoice.id) return;
+    appliedLastInvoiceRef.current = lastInvoice.id;
+
+    const reused: string[] = [];
+
+    if (lastInvoice.warehouseId && !warehouseTouchedRef.current && lastInvoice.warehouseId !== warehouseId) {
+      setWarehouseId(lastInvoice.warehouseId);
+      reused.push('warehouse');
+    }
+    if (lastInvoice.priceListId && !priceListId) {
+      setPriceListId(lastInvoice.priceListId);
+      reused.push('price list');
+      void resolvePricingForLines(customerId, lines, undefined, lastInvoice.priceListId);
+    }
+    if (lastInvoice.notes && !notes) {
+      setNotes(lastInvoice.notes);
+      reused.push('notes');
+    }
+    if (!termsOverridden && lastInvoice.terms != null && Number.isFinite(lastInvoice.terms)) {
+      setPaymentTerms(lastInvoice.terms);
+      setDueDate(calcDueDate(invoiceDate, lastInvoice.terms));
+      reused.push('terms');
+    }
+
+    // Contacts are reused only while they still belong to this customer.
+    const contacts: any[] = (selectedCustomerDetail as any)?.customer_contacts
+      ?? (selectedCustomerDetail as any)?.customerContacts
+      ?? [];
+    const belongs = (id?: string) => (id && contacts.some((contact) => String(contact.id) === id) ? id : undefined);
+    const billing = belongs(lastInvoice.contacts.billing);
+    const shipping = belongs(lastInvoice.contacts.shipping);
+    const doctor = belongs(lastInvoice.contacts.doctor);
+    const requestor = belongs(lastInvoice.contacts.requestor);
+    const buyer = belongs(lastInvoice.contacts.buyer);
+    if (billing && !billingContactId) {
+      setBillingContactId(billing);
+      reused.push('billing contact');
+    }
+    if (shipping && !shippingContactId) {
+      setShippingContactId(shipping);
+      reused.push('shipping contact');
+    }
+    if (doctor && !doctorContactId) {
+      setDoctorContactId(doctor);
+      reused.push('doctor');
+    }
+    if (requestor && !requestorContactId) setRequestorContactId(requestor);
+    if (buyer && !buyerContactId) setBuyerContactId(buyer);
+
+    if (reused.length) {
+      setReuseNotice(`Reused from ${lastInvoice.number}: ${reused.join(', ')}.`);
+    }
+  }, [lastInvoice, isEditMode, selectedCustomerDetail]);
+
   useEffect(() => {
     if (!existingInvoice || !invoiceLoaded) return;
     const hydrateKey = String(existingInvoice.id);
@@ -649,11 +799,22 @@ export const CreateInvoicePage: React.FC = () => {
   // Apply tenant-level sales defaults when creating a NEW invoice (skip for edit)
   const [defaultsApplied, setDefaultsApplied] = useState(false);
   const defaultTaxRate = Number((salesSettings as any)?.tax?.default_tax_rate ?? 0);
+  // D4: the tenant's industry field profile decides which extra header
+  // fields render. 'medical' preserves the pre-setting behaviour.
+  const fieldProfile = ((salesSettings as any)?.invoice?.field_profile ?? 'medical') as
+    'general' | 'medical' | 'trading' | 'services';
   useEffect(() => {
     if (isEditMode || defaultsApplied || !salesSettings) return;
     const inv = salesSettings.invoice;
     if (inv?.default_requires_approval) {
       setRequiresApproval(true);
+    }
+    // Roadmap Phase 2: honour the configured default payment terms, unless
+    // the user already overrode terms on this document.
+    const defaultTermsDays = Number((inv as any)?.default_payment_terms_days);
+    if (!termsOverridden && Number.isFinite(defaultTermsDays) && defaultTermsDays >= 0) {
+      setPaymentTerms(defaultTermsDays);
+      setDueDate(calcDueDate(invoiceDate, defaultTermsDays));
     }
     if (inv?.default_terms && !terms) {
       setTerms(inv.default_terms);
@@ -684,9 +845,33 @@ export const CreateInvoicePage: React.FC = () => {
         : await api.post('/invoices', data);
       return response.data;
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       toast({ title: `${documentLabel} ${isEditMode ? 'updated' : 'created'} successfully` });
       const invoiceId = id || data?.id || data?.data?.id;
+      const savedStatus = data?.status ?? data?.data?.status;
+
+      // D8: Save & Send — save, post when still a draft, then send ONE email
+      // with the PDF, acceptance link, pay-now link and QR.
+      if (sendAfterSave && invoiceId && !isQuoteMode) {
+        setSendAfterSave(false);
+        try {
+          if (savedStatus === 'draft') {
+            await api.post(`/invoices/${invoiceId}/post`);
+          }
+          await api.post(`/invoices/${invoiceId}/send-bundle`, {});
+          toast({
+            title: 'Invoice sent to customer',
+            description: 'PDF, acceptance link and pay-now QR emailed in one message.',
+          });
+        } catch (error: any) {
+          toast({
+            variant: 'destructive',
+            title: 'Saved, but sending failed',
+            description: getApiErrorMessage(error) || 'Open the invoice and use Send to retry.',
+          });
+        }
+      }
+
       if (invoiceId) {
         navigate(isQuoteMode
           ? `/sales/quotes/${invoiceId}`
@@ -854,6 +1039,9 @@ export const CreateInvoicePage: React.FC = () => {
           price_mode: 'auto',
           pricing_source: quote.pricing_trace?.pricelist_code || quote.source || null,
           list_price: Number(quote.list_price ?? 0) || null,
+          pricing_trace: quote.pricing_trace ?? null,
+          pricing_currency: quote.currency ?? null,
+          pricing_base_currency: quote.base_currency ?? null,
         };
       });
 
@@ -950,6 +1138,152 @@ export const CreateInvoicePage: React.FC = () => {
     // FX), not just echo the catalogue number.
     void resolvePricingForLines(customerId, next);
   };
+
+  // D6(a): load the previous invoice's lines. Prices are carried verbatim, so
+  // a repeat keeps the agreed numbers until someone edits them.
+  const performRepeatLastInvoice = () => {
+    if (!lastInvoice?.lines?.length) return;
+    const mapped: InvoiceLine[] = lastInvoice.lines
+      .filter((line: any) => (line.line_type ?? 'product') === 'product' && (line.product_id || line.description))
+      .map((line: any) => ({
+        ...emptyLine(),
+        product_id: line.product_id ? String(line.product_id) : '',
+        sku: line.product?.sku ?? '',
+        description: line.description ?? '',
+        quantity: line.quantity != null ? Number(line.quantity) : 1,
+        unit_price: line.unit_price != null ? Number(line.unit_price) : '',
+        tax_rate: line.tax_rate != null ? Number(line.tax_rate) : (defaultTaxRate || ''),
+        discount_amount: line.discount_amount != null ? Number(line.discount_amount) : '',
+        price_mode: 'carried',
+        list_price: line.pricing_trace?.list_price ?? null,
+      }));
+    setLines(mapped);
+    setRepeatConfirmOpen(false);
+    toast({ title: `Loaded ${mapped.length} line${mapped.length === 1 ? '' : 's'} from ${lastInvoice.number}` });
+  };
+
+  const repeatLastInvoice = () => {
+    if (!lastInvoice?.lines?.length) {
+      toast({ variant: 'destructive', title: 'No previous invoice for this customer' });
+      return;
+    }
+    const hasContent = lines.some((line) => line.product_id || line.description.trim());
+    if (hasContent) {
+      setRepeatConfirmOpen(true);
+      return;
+    }
+    performRepeatLastInvoice();
+  };
+
+  // D6(c): paste rows copied from Excel — "SKU ⇥ Qty [⇥ Price]" per line.
+  const parsePastedRows = (text: string) =>
+    text
+      .split(/\r?\n/)
+      .map((row) => row.split('\t'))
+      .filter((cols) => cols.some((col) => col.trim() !== ''))
+      .map((cols) => {
+        const qty = Number((cols[1] ?? '').trim());
+        const price = Number((cols[2] ?? '').trim());
+        return {
+          code: (cols[0] ?? '').trim(),
+          quantity: Number.isFinite(qty) && qty > 0 ? qty : 1,
+          price: Number.isFinite(price) && price > 0 ? price : null,
+        };
+      })
+      .filter((row) => row.code !== '');
+
+  const importPastedRows = async (text: string) => {
+    const rows = parsePastedRows(text);
+    if (!rows.length) {
+      toast({ variant: 'destructive', title: 'Nothing to paste', description: 'Expected rows like SKU ⇥ Qty.' });
+      return;
+    }
+    setPasteBusy(true);
+    try {
+      const additions: InvoiceLine[] = [];
+      for (const row of rows) {
+        let product: any = null;
+        try {
+          const res = await api.get('/products', { params: { search: row.code, per_page: 10 } });
+          const results: any[] = res.data?.data ?? [];
+          const needle = row.code.toLowerCase();
+          product = results.find((candidate) =>
+            [candidate.sku, candidate.barcode].filter(Boolean).some((code: string) => String(code).toLowerCase() === needle))
+            ?? results.find((candidate) => String(candidate.name ?? '').toLowerCase() === needle)
+            ?? null;
+        } catch {
+          product = null;
+        }
+
+        if (!product) {
+          additions.push({ ...emptyLine(), description: row.code, quantity: row.quantity, unit_price: row.price ?? '', tax_rate: defaultTaxRate || '' });
+          continue;
+        }
+        additions.push({
+          ...emptyLine(),
+          product_id: String(product.id),
+          sku: product.sku || '',
+          description: product.name || '',
+          quantity: row.quantity,
+          unit_price: row.price ?? '',
+          price_mode: 'auto',
+          tax_rate: resolveLineTaxRate(product, defaultTaxRate),
+        });
+      }
+      const next = [...lines, ...additions];
+      setLines(next);
+      setPasteOpen(false);
+      setPasteText('');
+      void resolvePricingForLines(customerId, next);
+      toast({ title: `Added ${additions.length} row${additions.length === 1 ? '' : 's'}` });
+    } finally {
+      setPasteBusy(false);
+    }
+  };
+
+  const handleGridPaste = (event: React.ClipboardEvent) => {
+    const text = event.clipboardData?.getData('text/plain') ?? '';
+    if (!text.includes('\t')) return;
+    event.preventDefault();
+    void importPastedRows(text);
+  };
+
+  // D6(b): one click adds a frequently bought product (priced by the engine).
+  const addFrequentProduct = (product: { id: number; name: string; sku?: string | null }) => {
+    const next = [...lines];
+    const existing = next.find((line) => line.line_type === 'product' && line.product_id === String(product.id));
+    if (existing) {
+      const current = existing.quantity === '' ? 0 : Number(existing.quantity);
+      existing.quantity = current + 1;
+    } else {
+      next.push({
+        ...emptyLine(),
+        product_id: String(product.id),
+        sku: product.sku || '',
+        description: product.name || '',
+        price_mode: 'auto',
+        tax_rate: resolveLineTaxRate(product, defaultTaxRate),
+      });
+    }
+    setLines(next);
+    void resolvePricingForLines(customerId, next);
+  };
+
+  // D6(e): Enter on the last line appends the next empty row.
+  const appendLineIfLast = (index: number) => {
+    if (index === lines.length - 1) {
+      setLines((current) => [...current, { ...emptyLine(), tax_rate: defaultTaxRate || '' }]);
+    }
+  };
+
+  const { data: frequentProducts = [] } = useQuery<Array<{ id: number; name: string; sku?: string | null; total_quantity?: number; times?: number }>>({
+    queryKey: ['customer-frequent-products', customerId],
+    queryFn: async () => {
+      const res = await api.get(`/customers/${customerId}/frequent-products`);
+      return res.data?.data ?? [];
+    },
+    enabled: !!customerId,
+  });
 
   const duplicateLine = (index: number) => {
     const targetLine = lines[index];
@@ -1365,8 +1699,49 @@ export const CreateInvoicePage: React.FC = () => {
     },
   ];
 
+  // D5 (invoice review): plain-language explanation of how a line price was
+  // arrived at — price list/rule, tier compute, FX rate/date, manual reason.
+  const priceExplanation = (line: InvoiceLine): string[] => {
+    const notes: string[] = [];
+    const trace = line.pricing_trace ?? null;
+
+    if (line.price_mode === 'manual') {
+      notes.push('Manual price — typed directly on this line.');
+      if (line.override_reason) notes.push(`Reason: ${line.override_reason}`);
+      if (line.list_price != null) notes.push(`List price: ${money(Number(line.list_price))}`);
+      return notes;
+    }
+
+    if (trace?.pricelist_code) notes.push(`Price list: ${trace.pricelist_code}`);
+    else if (line.pricing_source) notes.push(`Source: ${String(line.pricing_source).replace(/_/g, ' ')}`);
+
+    if (trace?.compute_type && trace.compute_type !== 'none') {
+      const basis = trace.base ? String(trace.base).replace(/_/g, ' ') : 'list price';
+      const amount = trace.compute_value != null
+        ? `${trace.compute_value}${trace.compute_type === 'percentage' ? '%' : ''} `
+        : '';
+      notes.push(`Rule: ${amount}${String(trace.compute_type).replace(/_/g, ' ')} on ${basis}`);
+    }
+
+    if (
+      trace?.rate_used != null
+      && line.pricing_currency
+      && line.pricing_base_currency
+      && line.pricing_currency !== line.pricing_base_currency
+    ) {
+      const rateDate = trace.rate_date ? ` on ${String(trace.rate_date).slice(0, 10)}` : '';
+      notes.push(`FX: 1 ${line.pricing_currency} = ${trace.rate_used} ${line.pricing_base_currency}${rateDate}`);
+    }
+
+    if (line.list_price != null && line.unit_price !== '' && Number(line.unit_price) < Number(line.list_price)) {
+      notes.push(`List price: ${money(Number(line.list_price))}`);
+    }
+
+    return notes.length ? notes : ['Price resolved by the pricing engine.'];
+  };
+
   return (
-    <>
+    <TooltipProvider delayDuration={150}>
       <div className="p-6 space-y-6">
         <div>
           <Button
@@ -1406,13 +1781,20 @@ export const CreateInvoicePage: React.FC = () => {
                   row (customer/warehouse/dates/currency) and the commercial
                   row (price list + number) gets real width. */}
               <div className="grid grid-cols-2 items-end gap-3 md:grid-cols-4 xl:grid-cols-12">
-                <div className="col-span-2 md:col-span-2 xl:col-span-3">
+                <div className="col-span-2 md:col-span-2 xl:col-span-6">
                   <label className="mb-1 block text-xs font-medium">Customer *</label>
                   <CustomerSearchCombobox
                     compact
                     value={customerId}
                     onValueChange={(id, customer) => {
                       setCustomerId(id)
+                      // D1: keep the match explanation so the operator can see
+                      // the pick came from a contact/tag/address search.
+                      setCustomerMatch(customer ? {
+                        contacts: (customer as any).matched_contacts ?? [],
+                        tags: (customer as any).matched_tags ?? [],
+                        addresses: (customer as any).matched_addresses ?? [],
+                      } : null)
                       if (customer) {
                         // Auto-populate customer reference if available
                         if ((customer as any).code) {
@@ -1421,17 +1803,21 @@ export const CreateInvoicePage: React.FC = () => {
                       }
                     }}
                   />
+                  {customerMatch && (customerMatch.contacts.length > 0 || customerMatch.tags.length > 0 || customerMatch.addresses.length > 0) && (
+                    <p className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] leading-snug text-muted-foreground">
+                      {customerMatch.contacts.length > 0 && (
+                        <span>Matched contact: <span className="text-primary">{customerMatch.contacts.join(', ')}</span></span>
+                      )}
+                      {customerMatch.tags.length > 0 && (
+                        <span>Tag: <span className="text-amber-600">{customerMatch.tags.join(', ')}</span></span>
+                      )}
+                      {customerMatch.addresses.length > 0 && (
+                        <span className="truncate">Address: {customerMatch.addresses.join(' · ')}</span>
+                      )}
+                    </p>
+                  )}
                 </div>
-                {!isQuoteMode && (
-                  <div className="col-span-2 md:col-span-2 xl:col-span-2">
-                    <label className="mb-1 block text-xs font-medium">Warehouse *</label>
-                    <select value={warehouseId} onChange={(event) => { setWarehouseId(event.target.value); setLines((current) => current.map((line) => ({ ...line, product_batch_id: null, product_serial_id: null, lot_number: '', serial_number: '', expiry_date: '' }))); }} className="h-9 w-full rounded-full border border-input bg-background px-3 text-xs">
-                      <option value="">Select warehouse</option>
-                      {warehouses.map((warehouse: any) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}{warehouse.is_default ? ' (Default)' : ''}</option>)}
-                    </select>
-                  </div>
-                )}
-                <div className="col-span-1 md:col-span-1 xl:col-span-2">
+                <div className="col-span-1 md:col-span-1 xl:col-span-3">
                   <label className="mb-1 block text-xs font-medium">{isQuoteMode ? 'Quote Date' : 'Invoice Date'}</label>
                   <input
                     type="date"
@@ -1444,48 +1830,176 @@ export const CreateInvoicePage: React.FC = () => {
                     className="h-9 w-full min-w-0 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>
+              </div>
+
+              {/* D3: chip header — every secondary header value is a compact
+                  chip; clicking one edits it in place. */}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 {!isQuoteMode && (
-                  <div className="col-span-1 md:col-span-1 xl:col-span-1">
-                    <label className="mb-1 block text-xs font-medium">Terms</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={paymentTerms}
-                      onChange={(event) => {
-                        const days = Math.max(0, parseInt(event.target.value, 10) || 0);
-                        setPaymentTerms(days);
-                        setDueDate(calcDueDate(invoiceDate, days));
-                        // HR71-04: an intentional term edit is an override.
-                        setTermsOverridden(true);
-                      }}
-                      className="h-9 w-full min-w-0 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
+                  <HeaderChip
+                    icon="solar:calendar-bold-duotone"
+                    label="Terms"
+                    value={`${paymentTerms > 0 ? `Net ${paymentTerms}` : 'Due on receipt'} · ${dueDate ? formatDate(dueDate) : 'No due date'}`}
+                    title="Payment terms and due date"
+                  >
+                    <div className="space-y-2">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium">Payment terms (days)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={paymentTerms}
+                          onChange={(event) => {
+                            const days = Math.max(0, parseInt(event.target.value, 10) || 0);
+                            setPaymentTerms(days);
+                            setDueDate(calcDueDate(invoiceDate, days));
+                            // HR71-04: an intentional term edit is an override.
+                            setTermsOverridden(true);
+                          }}
+                          className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium">Due date</label>
+                        <input
+                          type="date"
+                          value={dueDate}
+                          onChange={(event) => {
+                            setDueDate(event.target.value);
+                            // HR71-04: an intentional due-date edit is an override.
+                            setTermsOverridden(true);
+                          }}
+                          className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                        />
+                      </div>
+                    </div>
+                  </HeaderChip>
                 )}
-                <div className="col-span-1 md:col-span-1 xl:col-span-2">
-                  <label className="mb-1 block text-xs font-medium">{isQuoteMode ? 'Valid Until' : 'Due Date'}</label>
-                  <input
-                    type="date"
-                    value={dueDate}
+                {isQuoteMode && (
+                  <HeaderChip
+                    icon="solar:calendar-bold-duotone"
+                    label="Valid until"
+                    value={dueDate ? formatDate(dueDate) : 'Not set'}
+                    title="Quote validity date"
+                  >
+                    <input
+                      type="date"
+                      value={dueDate}
+                      onChange={(event) => setDueDate(event.target.value)}
+                      className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </HeaderChip>
+                )}
+                {!isQuoteMode && (
+                  <HeaderChip
+                    icon="solar:buildings-bold-duotone"
+                    label="Warehouse"
+                    value={(warehouses as any[]).find((w: any) => String(w.id) === warehouseId)?.name ?? 'Select'}
+                    title="Stock warehouse — changing it clears batch/serial selections"
+                  >
+                    <select
+                      value={warehouseId}
+                      onChange={(event) => { warehouseTouchedRef.current = true; setWarehouseId(event.target.value); setLines((current) => current.map((line) => ({ ...line, product_batch_id: null, product_serial_id: null, lot_number: '', serial_number: '', expiry_date: '' }))); }}
+                      className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs"
+                    >
+                      <option value="">Select warehouse</option>
+                      {warehouses.map((warehouse: any) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}{warehouse.is_default ? ' (Default)' : ''}</option>)}
+                    </select>
+                  </HeaderChip>
+                )}
+                <HeaderChip
+                  icon="solar:wallet-money-bold-duotone"
+                  label="Currency"
+                  value={currencyCode || 'Auto'}
+                  title="Document currency — auto follows the customer's price list"
+                >
+                  <select
+                    value={currencyCode}
                     onChange={(event) => {
-                      setDueDate(event.target.value);
-                      // HR71-04: an intentional due-date edit is an override.
-                      setTermsOverridden(true);
+                      const next = event.target.value;
+                      setCurrencyCode(next);
+                      void resolvePricingForLines(customerId, lines, next || undefined);
                     }}
-                    className="h-9 w-full min-w-0 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </div>
-                                <div className="col-span-2 md:col-span-2 xl:col-span-2">
-                  <label className="mb-1 block text-xs font-medium">{documentLabel} Number</label>
+                    className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs"
+                  >
+                    <option value="">Auto</option>
+                    {currencyCode && !(sellableCurrencies as any[]).some((c: any) => c.code === currencyCode) && (
+                      <option value={currencyCode}>{currencyCode}</option>
+                    )}
+                    {(sellableCurrencies as any[]).map((currency: any) => (
+                      <option key={currency.code} value={currency.code}>
+                        {currency.code}{currency.symbol ? ` ${currency.symbol}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </HeaderChip>
+                <HeaderChip
+                  icon="solar:tag-price-bold-duotone"
+                  label="List"
+                  value={pricingMeta?.price_list_name
+                    ? `${pricingMeta.price_list_name}${pricingMeta.price_list_currency ? ` · ${pricingMeta.price_list_currency}` : ''}`
+                    : 'Auto'}
+                  tone="primary"
+                  title="Price list — Auto applies the customer's list"
+                >
+                  <select
+                    value={priceListId}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setPriceListId(next);
+                      void resolvePricingForLines(customerId, lines, undefined, next);
+                    }}
+                    className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs"
+                  >
+                    <option value="">Auto</option>
+                    {priceListRows.map((list: any) => (
+                      <option key={list.id} value={String(list.id)}>
+                        {list.name} · {list.currency_code}{list.code ? ` (${list.code})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-[11px] text-muted-foreground">Auto applies the customer's list.</p>
+                </HeaderChip>
+                <HeaderChip
+                  icon="solar:document-text-bold-duotone"
+                  label="Number"
+                  value={customInvoiceNumber || 'Auto'}
+                  title={`${documentLabel} number`}
+                >
                   <input
                     type="text"
                     value={customInvoiceNumber}
                     onChange={(e) => setCustomInvoiceNumber(e.target.value)}
                     placeholder={`INV-${new Date().getFullYear()}-XXXX`}
-                    className="h-9 w-full rounded-full border border-input bg-background px-3 font-mono text-xs"
+                    className="h-8 w-full rounded-md border border-input bg-background px-2.5 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                   />
-                </div>
+                </HeaderChip>
+                {!isQuoteMode && requiresApproval && (
+                  <StaticChip
+                    icon="solar:checklist-bold-duotone"
+                    value="Approval req."
+                    title="This invoice will require approval before posting"
+                  />
+                )}
               </div>
+
+              {/* D9: what was reused from the customer's last invoice. */}
+              {reuseNotice && (
+                <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
+                  <Icon icon="solar:history-bold" className="h-3.5 w-3.5" />
+                  {reuseNotice}
+                  <button
+                    type="button"
+                    className="underline hover:text-foreground"
+                    onClick={() => setReuseNotice(null)}
+                  >
+                    dismiss
+                  </button>
+                </div>
+              )}
+
+              {/* D2: compact AR context for the selected customer. */}
+              <CustomerContextStrip customerId={customerId || null} className="mt-3" />
 
               {/* Pricing feedback: rate snapshot, applied list, resolution
                   errors. Full width so long list names are never squeezed. */}
@@ -1561,63 +2075,9 @@ export const CreateInvoicePage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Currency + price list govern product/line pricing — same
-                      tile grid as the product actions they affect. */}
+                  {/* D3: currency and price list moved into the chip header; this
+                      panel keeps only the product actions they affect. */}
                   <div className="grid auto-rows-fr grid-cols-1 gap-2 sm:grid-cols-2">
-                    <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900/40">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                        <Icon icon="solar:wallet-money-bold-duotone" className="h-4 w-4" />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-medium text-slate-900 dark:text-slate-100">Currency</span>
-                        <span className="mt-0.5 block text-xs leading-snug text-slate-500">Auto follows the customer's currency.</span>
-                      </span>
-                      <select
-                        value={currencyCode}
-                        onChange={(event) => {
-                          const next = event.target.value;
-                          setCurrencyCode(next);
-                          void resolvePricingForLines(customerId, lines, next || undefined);
-                        }}
-                        className="h-8 w-[40%] shrink-0 rounded-full border border-input bg-background px-2.5 text-xs"
-                      >
-                        <option value="">Auto</option>
-                        {currencyCode && !(sellableCurrencies as any[]).some((c: any) => c.code === currencyCode) && (
-                          <option value={currencyCode}>{currencyCode}</option>
-                        )}
-                        {(sellableCurrencies as any[]).map((currency: any) => (
-                          <option key={currency.code} value={currency.code}>
-                            {currency.code}{currency.symbol ? ` ${currency.symbol}` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900/40">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                        <Icon icon="solar:tag-price-bold-duotone" className="h-4 w-4" />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-medium text-slate-900 dark:text-slate-100">Price List</span>
-                        <span className="mt-0.5 block text-xs leading-snug text-slate-500">Auto applies the customer's list.</span>
-                      </span>
-                      <select
-                        value={priceListId}
-                        onChange={(event) => {
-                          const next = event.target.value;
-                          setPriceListId(next);
-                          void resolvePricingForLines(customerId, lines, undefined, next);
-                        }}
-                        className="h-8 w-[40%] shrink-0 rounded-full border border-input bg-background px-2.5 text-xs"
-                      >
-                        <option value="">Auto</option>
-                        {priceListRows.map((list: any) => (
-                          <option key={list.id} value={String(list.id)}>
-                            {list.name} · {list.currency_code}{list.code ? ` (${list.code})` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
                     {productActions.map((action) => (
                       <button
                         key={action.key}
@@ -1713,6 +2173,19 @@ export const CreateInvoicePage: React.FC = () => {
                     placeholder="Phone or mobile"
                   />
                 </div>
+                {/* D4: Trading profile surfaces PO-related delivery date —
+                    other profiles don't render it at all. */}
+                {fieldProfile === 'trading' && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Delivery Date</label>
+                    <input
+                      type="date"
+                      value={deliveryDate}
+                      onChange={(event) => setDeliveryDate(event.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    />
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium mb-1">Company Reg. No.</label>
                   <input
@@ -1821,6 +2294,8 @@ export const CreateInvoicePage: React.FC = () => {
             </CardContent>
           </Card>
 
+          {/* D4: case/patient fields render only for the Medical profile. */}
+          {fieldProfile === 'medical' && (
           <Card className="mb-6">
             <CardHeader>
               <CardTitle>Case Information</CardTitle>
@@ -2011,12 +2486,33 @@ export const CreateInvoicePage: React.FC = () => {
               </div>
             </CardContent>
           </Card>
+          )}
 
           <Card className="mb-6">
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span>Line Items</span>
                 <div className="flex flex-wrap gap-2">
+                  {/* D6(a): repeat the previous invoice's lines in one click. */}
+                  <button
+                    type="button"
+                    onClick={repeatLastInvoice}
+                    disabled={!lastInvoice?.lines?.length}
+                    title={lastInvoice ? `Load lines from ${lastInvoice.number}` : 'No previous invoice for this customer'}
+                    className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Icon icon="solar:refresh-bold-duotone" className="h-4 w-4" />
+                    Repeat last invoice
+                  </button>
+                  {/* D6(c): paste rows copied from a spreadsheet. */}
+                  <button
+                    type="button"
+                    onClick={() => setPasteOpen(true)}
+                    className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-accent"
+                  >
+                    <Icon icon="solar:clipboard-text-bold-duotone" className="h-4 w-4" />
+                    Paste rows
+                  </button>
                   <details className="relative">
                     <summary className="list-none cursor-pointer rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-accent">
                       <Icon icon="solar:settings-bold-duotone" className="inline h-4 w-4 mr-1" />
@@ -2039,11 +2535,30 @@ export const CreateInvoicePage: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {/* D6(b): this customer's frequently bought items as one-click chips. */}
+              {frequentProducts.length > 0 && (
+                <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Frequent</span>
+                  {frequentProducts.map((product) => (
+                    <button
+                      key={product.id}
+                      type="button"
+                      onClick={() => addFrequentProduct(product)}
+                      title={`Bought ${product.times ?? ''} time${(product.times ?? 0) === 1 ? '' : 's'}${product.sku ? ` · SKU ${product.sku}` : ''}`}
+                      className="inline-flex h-7 items-center gap-1 rounded-full border border-border bg-background px-2.5 text-xs font-medium transition-colors hover:border-primary/40 hover:bg-primary/5"
+                    >
+                      <Icon icon="solar:plus-circle-bold" className="h-3.5 w-3.5 text-primary" />
+                      <span className="max-w-[14rem] truncate">{product.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               <div
                 className="overflow-x-auto"
                 onChangeCapture={() => { linesTouchedRef.current = true }}
                 onInputCapture={() => { linesTouchedRef.current = true }}
                 onClickCapture={() => { linesTouchedRef.current = true }}
+                onPaste={handleGridPaste}
               >
                 <LineItemsTable
                   variant="raw"
@@ -2087,6 +2602,8 @@ export const CreateInvoicePage: React.FC = () => {
                                 updated[index].tax_rate = resolveLineTaxRate(product, defaultTaxRate);
                               }
                               setLines(updated);
+                              // D6(e): picking on the last row advances to a new one.
+                              if (product) appendLineIfLast(index);
                             }}
                             wrapText
                           />
@@ -2143,6 +2660,13 @@ export const CreateInvoicePage: React.FC = () => {
                                 const parsed = Number(raw);
                                 if (!Number.isNaN(parsed)) updateLine(index, 'quantity', parsed);
                               }}
+                              onKeyDown={(event) => {
+                                // D6(e): Enter on the last row starts a new line.
+                                if (event.key === 'Enter') {
+                                  event.preventDefault();
+                                  appendLineIfLast(index);
+                                }
+                              }}
                               className={LINE_INPUT_NUMERIC}
                             />
                           </div>
@@ -2157,21 +2681,44 @@ export const CreateInvoicePage: React.FC = () => {
                                 placeholder="0.00"
                                 value={line.unit_price === '' ? '' : line.unit_price}
                                 onChange={(event) => updateLine(index, 'unit_price', event.target.value === '' ? '' : parseFloat(event.target.value))}
+                                onKeyDown={(event) => {
+                                  // D6(e): Enter on the last row starts a new line.
+                                  if (event.key === 'Enter') {
+                                    event.preventDefault();
+                                    appendLineIfLast(index);
+                                  }
+                                }}
                                 className={LINE_INPUT_NUMERIC}
                               />
-                              {/* FR-6.2: pricing source chip — where this price came from. */}
+                              {/* FR-6.2 + D5: pricing source chip — hover explains exactly
+                                  how the price was reached (list/rule, tier, FX, manual reason). */}
                               {line.price_mode === 'manual' && (
-                                <span className="self-start rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                                  Manual
-                                </span>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="self-start cursor-help rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                                      Manual
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="max-w-64 text-xs">
+                                    <ul className="space-y-1">
+                                      {priceExplanation(line).map((note, noteIndex) => <li key={noteIndex}>{note}</li>)}
+                                    </ul>
+                                  </TooltipContent>
+                                </Tooltip>
                               )}
                               {line.price_mode !== 'manual' && line.pricing_source && (
-                                <span
-                                  className="self-start max-w-full truncate rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300"
-                                  title="Priced from this price list"
-                                >
-                                  {line.pricing_source}
-                                </span>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="self-start max-w-full cursor-help truncate rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300">
+                                      {line.pricing_source}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="max-w-64 text-xs">
+                                    <ul className="space-y-1">
+                                      {priceExplanation(line).map((note, noteIndex) => <li key={noteIndex}>{note}</li>)}
+                                    </ul>
+                                  </TooltipContent>
+                                </Tooltip>
                               )}
                               {line.list_price != null && Number(line.list_price) > Number(line.unit_price || 0) && (
                                 <span className="self-start text-[10px] text-muted-foreground line-through">
@@ -2279,8 +2826,8 @@ export const CreateInvoicePage: React.FC = () => {
             <Button type="button" variant="outline" onClick={() => navigate(backPath)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={saveMutation.isPending || isInvoiceLoading}>
-              {saveMutation.isPending ? (
+            <Button type="submit" onClick={() => setSendAfterSave(false)} disabled={saveMutation.isPending || isInvoiceLoading}>
+              {saveMutation.isPending && !sendAfterSave ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
                   {isEditMode ? 'Saving...' : 'Creating...'}
@@ -2292,6 +2839,24 @@ export const CreateInvoicePage: React.FC = () => {
                 </>
               )}
             </Button>
+            {/* D8: Save & Send — one action: save, post if needed, email PDF +
+                acceptance link + pay-now QR. */}
+            {!isQuoteMode && (
+              <Button
+                type="submit"
+                variant="outline"
+                onClick={() => setSendAfterSave(true)}
+                disabled={saveMutation.isPending || isInvoiceLoading}
+                className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
+              >
+                {saveMutation.isPending && sendAfterSave ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-emerald-600 mr-2" />
+                ) : (
+                  <Icon icon="solar:plain-2-bold-duotone" className="h-4 w-4 mr-2" />
+                )}
+                Save &amp; Send
+              </Button>
+            )}
           </div>
         </form>
 
@@ -2480,7 +3045,55 @@ export const CreateInvoicePage: React.FC = () => {
           </form>
         </DialogContent>
       </Dialog>
-    </>
+
+      {/* D6(c): paste rows copied from Excel — SKU ⇥ Qty [⇥ Price]. */}
+      <Dialog open={pasteOpen} onOpenChange={setPasteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Paste rows from Excel</DialogTitle>
+            <DialogDescription>
+              Copy rows from your spreadsheet and paste them below. Columns: SKU or barcode, quantity
+              (optional price). Unknown codes are added as free-text lines.
+            </DialogDescription>
+          </DialogHeader>
+          <textarea
+            value={pasteText}
+            onChange={(event) => setPasteText(event.target.value)}
+            rows={8}
+            placeholder={'SKU-001\t2\t19.90\nSKU-002\t1'}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+            autoFocus
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPasteOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => void importPastedRows(pasteText)} disabled={pasteBusy || !pasteText.trim()}>
+              {pasteBusy ? 'Adding...' : 'Add rows'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* D6(a): replacing existing lines needs an explicit confirmation. */}
+      <Dialog open={repeatConfirmOpen} onOpenChange={setRepeatConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Replace current lines?</DialogTitle>
+            <DialogDescription>
+              The {lines.filter((line) => line.product_id || line.description.trim()).length} line(s) on this
+              document will be replaced with the lines from {lastInvoice?.number}.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRepeatConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={performRepeatLastInvoice}>Replace lines</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </TooltipProvider>
   );
 };
 

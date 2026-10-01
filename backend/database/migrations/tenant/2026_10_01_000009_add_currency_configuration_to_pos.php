@@ -49,7 +49,7 @@ return new class extends Migration
         $base = '(SELECT base_currency FROM company_settings ORDER BY id LIMIT 1)';
 
         DB::statement("UPDATE pos_orders SET base_currency_code = COALESCE(base_currency_code, {$base}, 'USD') WHERE exchange_rate IS NULL");
-        DB::statement("UPDATE pos_orders SET exchange_rate = 1.000000 WHERE exchange_rate IS NULL");
+        DB::statement('UPDATE pos_orders SET exchange_rate = 1.000000 WHERE exchange_rate IS NULL');
         // Historical rows carried a default 'USD' label while their amounts
         // were base-denominated; restate truthfully.
         DB::statement("UPDATE pos_orders SET currency = COALESCE({$base}, 'USD') WHERE currency IS NULL OR exchange_rate = 1.000000");

@@ -14,6 +14,76 @@ use Illuminate\Support\Facades\DB;
 class AgedReceivablesService
 {
     /**
+     * Compact customer AR context for document-entry screens (D2 of the
+     * Oct-2026 invoice review): outstanding, overdue amount/count, credit
+     * usage and last invoice date. Uses the same invoice scoping rules as
+     * the aging report so the strip can never disagree with it.
+     *
+     * @return array<string, mixed>
+     */
+    public function getCustomerContext(int $customerId): array
+    {
+        $customer = Customer::withTrashed()->findOrFail($customerId);
+
+        $invoices = Invoice::where('customer_id', $customerId)
+            ->whereIn('status', ['sent', 'posted', 'partial', 'overdue'])
+            ->where('balance', '>', 0)
+            ->notSuperseded()
+            ->get(['id', 'balance', 'due_date', 'invoice_date', 'currency_code', 'exchange_rate']);
+
+        $baseCurrency = DB::table('company_settings')->orderBy('id')->value('base_currency') ?: 'USD';
+        $today = Carbon::today();
+
+        $outstanding = 0.0;
+        $current = 0.0;
+        $overdue = 0.0;
+        $overdueCount = 0;
+        $oldestOverdueDays = 0;
+
+        foreach ($invoices as $invoice) {
+            // Base-currency equivalent via the invoice's snapshot rate, the
+            // same convention the aging report uses for its by_currency view.
+            $rate = (float) ($invoice->exchange_rate ?? 1.0);
+            $amount = (float) $invoice->balance * $rate;
+            $outstanding += $amount;
+
+            $due = $invoice->due_date ? Carbon::parse($invoice->due_date) : null;
+
+            if ($due && $due->lt($today)) {
+                $overdue += $amount;
+                $overdueCount++;
+                $oldestOverdueDays = max($oldestOverdueDays, (int) $due->diffInDays($today));
+            } else {
+                $current += $amount;
+            }
+        }
+
+        $creditLimit = $customer->credit_limit !== null ? (float) $customer->credit_limit : null;
+        $utilization = ($creditLimit !== null && $creditLimit > 0)
+            ? round($outstanding / $creditLimit * 100, 1)
+            : null;
+
+        $lastInvoiceDate = $customer->invoices()
+            ->whereIn('status', Customer::PURCHASE_INVOICE_STATUSES)
+            ->notSuperseded()
+            ->max('invoice_date');
+
+        return [
+            'customer_id' => $customerId,
+            'currency_code' => $baseCurrency,
+            'outstanding' => round($outstanding, 2),
+            'current' => round($current, 2),
+            'overdue' => round($overdue, 2),
+            'overdue_count' => $overdueCount,
+            'oldest_overdue_days' => $oldestOverdueDays,
+            'credit_limit' => $creditLimit,
+            'credit_utilization_pct' => $utilization,
+            'credit_available' => $creditLimit !== null ? round($creditLimit - $outstanding, 2) : null,
+            'last_invoice_date' => $lastInvoiceDate ? Carbon::parse($lastInvoiceDate)->toDateString() : null,
+        ];
+    }
+
+    /**
      * Get aged receivables report data
      *
      * @param  array  $filters  Optional filters (search, min_amount, aging_bucket)

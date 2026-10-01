@@ -62,14 +62,15 @@ final class BlockRenderer implements TemplateRendererInterface
                     ARRAY_FILTER_USE_BOTH,
                 ));
                 $body = $this->renderBlocks($remaining, 'document');
-                $summary = $this->renderBlock($footer, 'document')."\n".$this->renderBlock($totals, 'document');
+                // Totals BEFORE footer in the DOM: natural flow (single-page
+                // PDFs skip the pinned decoration band) then reads
+                // content → totals → footer, which is the required invoice
+                // order. Multi-page documents pin the footer to the page
+                // bottom and move the totals above it via callbacks.
+                $summary = $this->renderBlock($totals, 'document')."\n".$this->renderBlock($footer, 'document');
 
-                // Keep footer + totals together: if the pair does not fit in
-                // the remaining space, dompdf moves BOTH to the next page
-                // rather than splitting the footer onto one page and the
-                // totals onto another. Single-page documents no longer use
-                // the reserved band, so they still fit (see PdfGenerationService
-                // two-pass build).
+                // Keep footer + totals together so they can never split
+                // across pages (report 2026-10-01).
                 return $body."\n".'<div class="tb-final-summary" style="page-break-inside:avoid;">'.$summary.'</div>';
             }
         }
@@ -156,36 +157,12 @@ final class BlockRenderer implements TemplateRendererInterface
     /** @param array<string,mixed> $block */
     private function renderTable(array $block): string
     {
-        $source = array_key_exists('source', $block) ? $block['source'] : 'lines';
+        $source = $block['source'] ?? 'lines';
+        $rows = is_array($this->resolverValue("{$source}") ?? null) ? $this->resolverValue($source) : [];
         $columns = $block['columns'] ?? [];
         if (empty($columns) || ! is_array($columns)) {
             return '';
         }
-
-        // Older invoice templates used a source-less table as a one-row
-        // document-information block. Those definitions have column labels
-        // such as "Payment"/"terms", but no row source (and sometimes no
-        // explicit field), so the normal line-table renderer produced headers
-        // with an empty body. Preserve those templates by resolving their
-        // columns as invoice fields.
-        if ($source === null || $source === '') {
-            $informationRows = array_map(function (array $column): array {
-                $field = (string) ($column['field'] ?? '');
-                if ($field === '') {
-                    $field = $this->legacyInvoiceFieldForLabel((string) ($column['label'] ?? ''));
-                }
-
-                return [
-                    'label' => $column['label'] ?? '',
-                    'field' => $field,
-                    'format' => $column['format'] ?? null,
-                ];
-            }, $columns);
-
-            return $this->renderInformationTable(['rows' => $informationRows]);
-        }
-
-        $rows = is_array($this->resolverValue("{$source}") ?? null) ? $this->resolverValue($source) : [];
 
         $head = '';
         foreach ($columns as $col) {
@@ -236,20 +213,6 @@ final class BlockRenderer implements TemplateRendererInterface
         }
 
         return "<table class=\"tb-line-items\" style=\"width:100%;border-collapse:collapse;\"><thead><tr>{$head}</tr></thead><tbody>{$body}</tbody></table>";
-    }
-
-    private function legacyInvoiceFieldForLabel(string $label): string
-    {
-        return match (strtolower(trim($label))) {
-            'doctor' => 'invoice.doctor',
-            'date of case' => 'invoice.date_of_case',
-            'case number' => 'invoice.case_number',
-            'patient name' => 'invoice.patient_name',
-            'location', 'case location' => 'invoice.case_location',
-            'payment', 'payment term', 'payment terms', 'term', 'terms' => 'invoice.payment_terms',
-            'due date' => 'invoice.due_date',
-            default => '',
-        };
     }
 
     /** @param array<string,mixed> $block */

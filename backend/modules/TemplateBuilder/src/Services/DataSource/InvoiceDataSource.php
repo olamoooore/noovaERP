@@ -18,7 +18,7 @@ class InvoiceDataSource implements DataSourceContract
 
     public function load(string $documentId): self
     {
-        $this->invoice = Invoice::with(['customer.salesperson', 'customer.addresses', 'lines.product', 'doctor', 'requestor', 'buyer', 'billingContact', 'shippingContact'])->findOrFail($documentId);
+        $this->invoice = Invoice::with(['customer.salesperson', 'lines.product', 'doctor', 'requestor', 'buyer', 'billingContact', 'shippingContact'])->findOrFail($documentId);
 
         return $this;
     }
@@ -39,9 +39,6 @@ class InvoiceDataSource implements DataSourceContract
         $salesperson = $invoice->customer?->salesperson?->name ?? '';
         $doctor = $invoice->doctor?->full_name ?? $invoice->doctor?->display_name ?? '';
         $requestor = $invoice->requestor?->full_name ?? $invoice->requestor?->display_name ?? '';
-        $paymentTerms = $this->paymentTerms($invoice);
-        $billingAddress = $this->customerAddress($invoice, 'billing');
-        $shippingAddress = $this->customerAddress($invoice, 'shipping');
         $productIndex = 0;
         foreach ($invoice->lines as $i => $line) {
             $isProduct = ($line->line_type ?? 'product') === 'product';
@@ -94,11 +91,19 @@ class InvoiceDataSource implements DataSourceContract
                 'buyer' => $invoice->buyer?->full_name ?? $invoice->buyer?->display_name ?? '',
                 'plant_code' => $invoice->plant_code ?? '',
                 'company_code' => $invoice->company_code ?? '',
-                'billing_address' => $billingAddress,
-                'shipping_address' => $shippingAddress,
-                'notes' => $this->visibleNotes($invoice->notes),
-                'payment_terms' => $paymentTerms,
-                'terms' => $paymentTerms,
+                'billing_address' => $this->formatAddress($invoice->billing_address_snapshot),
+                'shipping_address' => $this->formatAddress($invoice->shipping_address_snapshot),
+                'notes' => $invoice->notes ?? '',
+                // Printed Payment Terms: the free-text terms win when written;
+                // otherwise fall back to the Net-N snapshot so picking "30
+                // days" on the invoice actually shows on the PDF.
+                'terms' => $invoice->terms
+                    ?: (($invoice->payment_terms_snapshot ?: $invoice->customer?->payment_terms)
+                        ? 'Net '.($invoice->payment_terms_snapshot ?: $invoice->customer?->payment_terms).' days'
+                        : ''),
+                'payment_terms' => ($invoice->payment_terms_snapshot ?: $invoice->customer?->payment_terms)
+                    ? 'Net '.($invoice->payment_terms_snapshot ?: $invoice->customer?->payment_terms).' days'
+                    : '',
                 'attention_to' => $invoice->attention_to ?? '',
                 'shipping_method' => $invoice->shipping_method ?? '',
                 'delivery_date' => optional($invoice->delivery_date)->format('Y-m-d') ?? '',
@@ -116,7 +121,7 @@ class InvoiceDataSource implements DataSourceContract
                 'phone' => $invoice->customer?->phone ?? $invoice->contact_phone ?? '',
                 'tax_id' => $invoice->tax_registration_number ?? $invoice->customer?->tax_number ?? '',
                 'company_registration_number' => $invoice->company_registration_number ?? $invoice->customer?->company_registration_number ?? '',
-                'billing_address' => $billingAddress,
+                'billing_address' => $this->formatAddress($invoice->billing_address_snapshot),
             ],
             'company' => $company,
             'lines' => $lines,
@@ -273,7 +278,6 @@ class InvoiceDataSource implements DataSourceContract
                 ['token' => 'invoice.salesperson', 'label' => 'Salesperson'],
                 ['token' => 'invoice.delivery_date', 'label' => 'Delivery Date'],
                 ['token' => 'invoice.notes', 'label' => 'Notes'],
-                ['token' => 'invoice.payment_terms', 'label' => 'Payment Terms'],
                 ['token' => 'invoice.terms', 'label' => 'Terms & Conditions'],
             ]],
             ['group' => 'Customer', 'fields' => [
@@ -333,7 +337,6 @@ class InvoiceDataSource implements DataSourceContract
                 'billing_address' => "Globex Corporation\n1 Infinite Loop\nSan Francisco, CA 94102",
                 'shipping_address' => "Globex Corporation\n1 Infinite Loop\nSan Francisco, CA 94102",
                 'notes' => 'Thank you for your business.',
-                'payment_terms' => 'Payment due within 30 days. Late payments incur 1.5% monthly interest.',
                 'terms' => 'Payment due within 30 days. Late payments incur 1.5% monthly interest.',
                 'attention_to' => 'Dr. Sarah Chen',
                 'doctor' => 'Dr. James Wilson',

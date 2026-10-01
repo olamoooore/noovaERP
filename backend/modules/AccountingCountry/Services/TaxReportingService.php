@@ -28,6 +28,46 @@ class TaxReportingService
      * @return array{months: array<int,string>, rows: array<int, array<string, mixed>>, by_tax_code: array<int, array<string, mixed>>, totals: array{output_tax: float, input_tax: float, net: float}}
      */
     /**
+     * #278 F4: versioned tax-readiness fact for ACC-011 Financial Close
+     * (locked / filed / unfiled + reconciliation state + deterministic
+     * version hash). Financial Close consumes this instead of guessing.
+     *
+     * @return array<string, mixed>
+     */
+    public function readiness(string $period, ?int $legalEntityId = null): array
+    {
+        $locked = app(\App\Services\TaxPeriodClosingService::class)
+            ->isPeriodLocked($period, (int) (tenant('id') ?? 0), $legalEntityId);
+
+        $filing = DB::table('statutory_return_filings')
+            ->whereNull('superseded_at')
+            ->where('period', $period)
+            ->where('entity_key', $legalEntityId ?? 0)
+            ->orderByDesc('filing_version')
+            ->first();
+
+        $reconciliation = $this->reconciliation($period);
+
+        $fact = [
+            'period' => $period,
+            'legal_entity_id' => $legalEntityId,
+            'locked' => $locked,
+            'filed' => $filing !== null,
+            'unfiled' => $filing === null,
+            'filing_state' => $filing->state ?? null,
+            'filing_version' => $filing !== null ? (int) $filing->filing_version : null,
+            'reconciliation' => $reconciliation,
+        ];
+
+        $fact['version'] = sha1(json_encode([
+            $fact['period'], $fact['locked'], $fact['filed'], $fact['filing_state'],
+            $fact['filing_version'], $reconciliation,
+        ]));
+
+        return $fact;
+    }
+
+    /**
      * F15 (#280): drill-down rows behind any return box/total. Shares the
      * aggregator's row path (sum equals the box value to the cent) and adds
      * journal entry + determination lineage.

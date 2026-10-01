@@ -23,6 +23,7 @@ interface Product {
   id: number
   name: string
   sku: string
+  barcode?: string | null
   stock_quantity: number
   short_description?: string | null
   description?: string | null
@@ -121,6 +122,17 @@ export function ProductSearchCombobox({
     setOpen(false)
   }
 
+  // D6(d): typing/scanning an exact SKU or barcode and pressing Enter picks
+  // that product directly — no need to click the dropdown row.
+  const trimmedQuery = searchQuery.trim().toLowerCase()
+  const exactMatch = trimmedQuery
+    ? searchResults?.find((product) =>
+        [product.sku, product.barcode]
+          .filter(Boolean)
+          .some((code) => String(code).toLowerCase() === trimmedQuery),
+      ) ?? null
+    : null
+
   return (
     <div className="relative w-full">
       <Popover open={open} onOpenChange={setOpen}>
@@ -176,6 +188,12 @@ export function ProductSearchCombobox({
             placeholder="Search name, SKU, barcode, lot or serial..."
             value={searchQuery}
             onValueChange={setSearchQuery}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && exactMatch) {
+                event.preventDefault()
+                handleSelect(String(exactMatch.id))
+              }
+            }}
           />
           <CommandList>
             {isLoading ? (

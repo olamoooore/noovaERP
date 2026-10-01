@@ -70,9 +70,20 @@ class TaxPeriodLockGate implements AuthorityGate
 
         $period = date('Y-m', strtotime($postingDate));
 
+        // #278: entity-scoped locks — a tenant-wide lock (NULL entity) blocks
+        // everything; an entity lock blocks only that entity's postings.
+        $entityId = $context['legal_entity_id'] ?? null;
+
         $locked = DB::table('tax_period_locks')
             ->where('period', $period)
             ->when($tenantId, fn ($q) => $q->where('tenant_id', (int) $tenantId))
+            ->where(function ($q) use ($entityId) {
+                $q->whereNull('legal_entity_id');
+
+                if ($entityId !== null) {
+                    $q->orWhere('legal_entity_id', (int) $entityId);
+                }
+            })
             ->exists();
 
         if ($locked) {

@@ -88,6 +88,7 @@ class FunctionRouter
                 'list_warehouses' => InventoryFunctions::listWarehouses($arguments),
                 'list_recent_stock_movements' => InventoryFunctions::listRecentStockMovements($arguments),
                 'get_invoice' => InvoiceFunctions::getDetails($arguments),
+                'get_highest_value_invoices' => AccountingFunctions::getHighestValueInvoices($arguments),
                 'get_outstanding_invoices' => AccountingFunctions::getOutstandingInvoices($arguments),
                 'get_invoice_details' => AccountingFunctions::getInvoiceDetails($arguments),
                 'get_overdue_invoices' => AccountingFunctions::getOverdueInvoices($arguments),

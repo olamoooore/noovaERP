@@ -277,6 +277,13 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
     // Customers - dynamic routes with {customer} parameter (must be after the
     // explicit resource routes). Issue #125: reads -> customers.view,
     // writes -> customers.write.
+    Route::get('customers/{customer}/context', [CustomerController::class, 'creditContext'])
+        ->middleware(RequirePermission::using('customers.view'));
+
+    // D6: frequently bought products for one-click line entry.
+    Route::get('customers/{customer}/frequent-products', [CustomerController::class, 'frequentProducts'])
+        ->middleware(RequirePermission::using('customers.view'));
+
     Route::get('customers/{customer}/statistics', [CustomerController::class, 'customerStatistics'])
         ->middleware(RequirePermission::using('customers.view'));
     Route::get('customers/{customer}/activity', [CustomerController::class, 'activity'])
@@ -353,6 +360,10 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::post('/invoices/{invoice}/post', [InvoiceController::class, 'post'])
             ->middleware(RequirePermission::using('accounting.post'));
 
+        // D7: pre-flight checklist shown before posting.
+        Route::get('/invoices/{invoice}/preflight', [InvoiceController::class, 'preflight'])
+            ->middleware(RequirePermission::using('invoices.view'));
+
         // Evidence
         Route::post('/invoices/{invoice}/evidence', [InvoiceController::class, 'uploadEvidence'])
             ->middleware(RequirePermission::using('invoices.evidence.manage'));
@@ -368,6 +379,11 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         // Acceptance link (public portal link for customer acceptance)
         Route::post('/invoices/{invoice}/acceptance-link', [InvoiceController::class, 'createAcceptanceLink'])
             ->middleware(RequirePermission::using('invoices.evidence.manage'));
+
+        // D8 one-click Send bundle: acceptance link + pay-now link + QR in
+        // ONE email. Sales action, not an accounting one.
+        Route::post('/invoices/{invoice}/send-bundle', [InvoiceController::class, 'sendBundle'])
+            ->middleware(RequirePermission::using('invoices.send'));
 
         // E-sign envelope (Phase E — external provider abstraction)
         Route::post('/invoices/{invoice}/send-for-esign', [InvoiceController::class, 'sendForEsign'])
