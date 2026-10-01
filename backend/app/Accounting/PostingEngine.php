@@ -1078,6 +1078,9 @@ class PostingEngine implements PostingEngineInterface
                 'tax_treatment' => $treatment,
                 'tax_regime' => $regime,
                 'result_version' => $resultVersion,
+                // G-39 (#272): document currency + booking FX on the trail.
+                'currency_code' => $request->currencyCode,
+                'exchange_rate' => $request->exchangeRate,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -1135,6 +1138,9 @@ class PostingEngine implements PostingEngineInterface
                 'tax_treatment' => $treatment,
                 'tax_regime' => $determinationForSupplies['tax_regime'] ?? null,
                 'result_version' => $determinationForSupplies['result_version'] ?? null,
+                // G-39 (#272): document currency + booking FX on the trail.
+                'currency_code' => $request->currencyCode,
+                'exchange_rate' => $request->exchangeRate,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);

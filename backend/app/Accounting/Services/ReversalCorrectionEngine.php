@@ -584,6 +584,10 @@ class ReversalCorrectionEngine
                 'tax_treatment' => $origRow->tax_treatment,
                 'tax_regime' => $origRow->tax_regime,
                 'result_version' => $origRow->result_version,
+                // G-39 (#272): the reversal mirror keeps the document currency
+                // and booking rate of the row it corrects.
+                'currency_code' => $origRow->currency_code,
+                'exchange_rate' => $origRow->exchange_rate,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
