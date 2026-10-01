@@ -51,7 +51,10 @@ class DocumentSnapshotService
             'contact_phone' => $primaryContact?->phone ?? $primaryContact?->mobile ?? $customer->phone,
             'billing_address_snapshot' => $billingAddress,
             'delivery_address_snapshot' => $this->resolveDeliveryAddress($customer, $primaryContact),
-            'payment_terms_snapshot' => $customer->payment_terms ?? null,
+            // A terms value chosen on the document (day count passed through
+            // the create payload) is authoritative; the customer default is
+            // only a fallback.
+            'payment_terms_snapshot' => $invoice->payment_terms_snapshot ?: ($customer->payment_terms ?? null),
             'company_registration_number' => $customer->company_registration_number ?? null,
             'tax_registration_number' => $customer->tax_number ?? null,
         ])->save();

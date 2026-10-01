@@ -257,6 +257,23 @@ export default function MultiCurrencyPage({ embedded = false }: { embedded?: boo
         variant: 'destructive',
       });
     },
+  })
+
+  const toggleSellableMutation = useMutation({
+    mutationFn: ({ code, isSellable }: { code: string; isSellable: boolean }) =>
+      currenciesApi.updateCurrency(code, { is_sellable: isSellable }),
+    onSuccess: () => {
+      invalidateCurrencyCaches()
+      queryClient.invalidateQueries({ queryKey: ['accounting-currencies'] })
+      toast({ title: 'Currency updated', description: 'Sellable flag saved (MRD FR-1.1).' })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to update currency',
+        description: error?.response?.data?.message || 'An error occurred',
+      })
+    },
   });
 
   // Legacy wrappers kept so existing callers (and tests) still compile.
@@ -371,6 +388,7 @@ export default function MultiCurrencyPage({ embedded = false }: { embedded?: boo
                     <TableHead>Name</TableHead>
                     <TableHead>Symbol</TableHead>
                     <TableHead>Decimal Places</TableHead>
+                    <TableHead>Sellable</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -382,6 +400,30 @@ export default function MultiCurrencyPage({ embedded = false }: { embedded?: boo
                       <TableCell>{currency.name}</TableCell>
                       <TableCell className="text-lg">{currency.symbol || '-'}</TableCell>
                       <TableCell>{currency.decimal_places}</TableCell>
+                      <TableCell>
+                        {/* FR-1.1: only sellable currencies are selectable
+                            on price lists and documents. */}
+                        <div
+                          className="flex items-center gap-2"
+                          title={
+                            currency.is_sellable === false
+                              ? 'Not sellable — hidden from price lists and document pickers'
+                              : 'Sellable on price lists and documents'
+                          }
+                        >
+                          <Switch
+                            checked={currency.is_sellable !== false}
+                            onCheckedChange={(checked) =>
+                              toggleSellableMutation.mutate({ code: currency.code, isSellable: checked })
+                            }
+                            disabled={toggleSellableMutation.isPending || !currency.is_active}
+                            aria-label={`Toggle ${currency.code} sellable state`}
+                          />
+                          <span className="text-xs text-muted-foreground">
+                            {currency.is_sellable !== false ? 'Yes' : 'No'}
+                          </span>
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <Badge variant={currency.is_active ? 'default' : 'secondary'}>
                           {currency.is_active ? 'Active' : 'Inactive'}

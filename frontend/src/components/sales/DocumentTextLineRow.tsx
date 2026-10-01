@@ -22,7 +22,7 @@ export function DocumentTextLineRow({ type, text, colSpan, total, onChange, onDe
   return <td colSpan={colSpan} className={type === 'section' ? 'bg-muted/60 px-3 py-3' : 'bg-muted/30 px-3 py-3'} onDragOver={(event) => { event.preventDefault(); event.stopPropagation() }} onDrop={(event) => { event.preventDefault(); event.stopPropagation(); onDrop() }}>
     <div className="flex items-center gap-2">
       <span draggable onDragStart={onDragStart} className="cursor-grab active:cursor-grabbing" title="Drag to reorder"><Icon icon="solar:hamburger-menu-linear" className="h-5 w-5 text-muted-foreground" /></span>
-      <input className={type === 'section' ? 'flex-1 border-0 bg-transparent p-2 font-semibold outline-none' : 'flex-1 border-0 bg-transparent p-2 italic text-muted-foreground outline-none'} placeholder={type === 'section' ? 'Section title' : 'Note text'} value={text} onChange={(event) => onChange(event.target.value)} />
+      <input data-enter-submit-ignore className={type === 'section' ? 'flex-1 border-0 bg-transparent p-2 font-semibold outline-none' : 'flex-1 border-0 bg-transparent p-2 italic text-muted-foreground outline-none'} placeholder={type === 'section' ? 'Section title' : 'Note text'} value={text} onChange={(event) => onChange(event.target.value)} />
       {type === 'section' && total !== undefined && <span className="whitespace-nowrap px-2 text-right font-semibold tabular-nums">{total}</span>}
       <Button type="button" variant="ghost" size="sm" onClick={onDelete}><Icon icon="solar:trash-bin-trash-bold-duotone" className="h-4 w-4 text-destructive" /></Button>
     </div>

@@ -77,6 +77,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // Add platform API rate limiting middleware
         $middleware->appendToGroup('api', \App\Http\Middleware\PlatformRateLimitMiddleware::class);
 
+        // Business data must never be cached: a plain refresh has to show the
+        // current state without a hard refresh (see NoCacheApiResponses).
+        $middleware->appendToGroup('api', \App\Http\Middleware\NoCacheApiResponses::class);
+
         // This project is API-first (SPA + Sanctum). For API routes, we should
         // return a 401 instead of trying to redirect to a named 'login' route.
         $middleware->redirectGuestsTo(function ($request) {

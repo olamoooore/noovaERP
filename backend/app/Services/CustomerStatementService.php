@@ -138,7 +138,11 @@ class CustomerStatementService
                 'billing_address' => $address,
                 'payment_terms' => $customer->payment_terms ? $customer->payment_terms.' Days from Invoice Date' : '',
             ],
-            'currency' => $setting->currency ?? 'MYR',
+            // MRD pricelist-multicurrency FR-8.2: the statement's reporting
+            // currency is the entity/tenant BASE; each row carries its own
+            // document currency and the snapshot-rate base equivalent.
+            'currency' => DB::table('company_settings')->orderBy('id')->value('base_currency')
+                ?? ($setting->currency ?? 'USD'),
             'bank' => [
                 'bank_name' => $bank->bank_name ?? '',
                 'account_name' => $bank->account_name ?? '',
@@ -315,6 +319,10 @@ class CustomerStatementService
                 'credit' => $openingBalance < 0 ? -$openingBalance : 0.0,
                 'outstanding' => null,
                 'status' => 'open',
+                'currency_code' => $context['currency'],
+                'exchange_rate' => 1.0,
+                'base_debit' => $openingBalance > 0 ? $openingBalance : 0.0,
+                'base_credit' => $openingBalance < 0 ? -$openingBalance : 0.0,
             ];
         }
 
@@ -344,6 +352,10 @@ class CustomerStatementService
                 'credit' => 0.0,
                 'outstanding' => $outstandingByInvoice[$invoice->id],
                 'status' => $invoice->status,
+                'currency_code' => $invoice->currency_code ?: $context['currency'],
+                'exchange_rate' => (float) ($invoice->exchange_rate ?? 1.0),
+                'base_debit' => round((float) $invoice->total * (float) ($invoice->exchange_rate ?? 1.0), 2),
+                'base_credit' => 0.0,
             ];
         }
 
@@ -378,6 +390,10 @@ class CustomerStatementService
                 'credit' => round((float) $payment->amount, 2),
                 'outstanding' => null,
                 'status' => $payment->payment_status,
+                'currency_code' => $payment->currency ?: $context['currency'],
+                'exchange_rate' => (float) ($payment->exchange_rate ?? 1.0),
+                'base_debit' => 0.0,
+                'base_credit' => round((float) $payment->amount * (float) ($payment->exchange_rate ?? 1.0), 2),
             ];
         }
 
@@ -408,6 +424,10 @@ class CustomerStatementService
                 'credit' => round((float) $creditNote->total_amount, 2),
                 'outstanding' => null,
                 'status' => $creditNote->status,
+                'currency_code' => $creditNote->currency_code ?: $context['currency'],
+                'exchange_rate' => (float) ($creditNote->exchange_rate ?? 1.0),
+                'base_debit' => 0.0,
+                'base_credit' => round((float) $creditNote->total_amount * (float) ($creditNote->exchange_rate ?? 1.0), 2),
             ];
         }
 
@@ -423,12 +443,34 @@ class CustomerStatementService
         $totalDebits = 0.0;
         $totalCredits = 0.0;
         $transactions = [];
+        $currencyTotals = [];
 
         foreach ($rows as $row) {
             if (! ($row['is_opening'] ?? false)) {
-                $runningBalance = round($runningBalance + $row['debit'] - $row['credit'], 2);
-                $totalDebits += $row['debit'];
-                $totalCredits += $row['credit'];
+                // FR-8.2: the running balance is a BASE-currency figure; rows
+                // display their own document currency and carry the snapshot-
+                // rate base equivalent for the ledger-consistent arithmetic.
+                $runningBalance = round(
+                    $runningBalance + ($row['base_debit'] ?? $row['debit']) - ($row['base_credit'] ?? $row['credit']),
+                    2
+                );
+                $totalDebits += ($row['base_debit'] ?? $row['debit']);
+                $totalCredits += ($row['base_credit'] ?? $row['credit']);
+
+                $code = $row['currency_code'] ?? $context['currency'];
+                $currencyTotals[$code] ??= [
+                    'currency_code' => $code,
+                    'debit' => 0.0,
+                    'credit' => 0.0,
+                    'base_debit' => 0.0,
+                    'base_credit' => 0.0,
+                    'document_count' => 0,
+                ];
+                $currencyTotals[$code]['debit'] = round($currencyTotals[$code]['debit'] + $row['debit'], 2);
+                $currencyTotals[$code]['credit'] = round($currencyTotals[$code]['credit'] + $row['credit'], 2);
+                $currencyTotals[$code]['base_debit'] = round($currencyTotals[$code]['base_debit'] + ($row['base_debit'] ?? $row['debit']), 2);
+                $currencyTotals[$code]['base_credit'] = round($currencyTotals[$code]['base_credit'] + ($row['base_credit'] ?? $row['credit']), 2);
+                $currencyTotals[$code]['document_count']++;
             }
 
             unset($row['sort_date'], $row['sort_id'], $row['is_opening']);
@@ -453,6 +495,7 @@ class CustomerStatementService
             'total_amount_due' => $closingBalance,
             'total_debits' => round($totalDebits, 2),
             'total_credits' => round($totalCredits, 2),
+            'currency_totals' => array_values($currencyTotals),
             'transactions' => $transactions,
             'aging' => $this->agingFor($invoices, $end, $outstandingByInvoice),
             'bank' => $context['bank'],

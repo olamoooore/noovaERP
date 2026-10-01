@@ -33,6 +33,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
 import { useAuthStore } from '@/store/authStore'
 import { cn, getApiErrorMessage } from '@/lib/utils'
+import api from '@/lib/api'
 import pricingApi, {
   type PriceList,
   type PriceListApplicationPayload,
@@ -125,10 +126,24 @@ export default function PriceListsPage() {
     queryFn: () => pricingApi.sellableCurrencies(),
   })
 
+  const { data: categoriesResponse } = useQuery({
+    queryKey: ['product-categories'],
+    queryFn: async () => (await api.get('/product-categories')).data,
+  })
+  const categoryRows: any[] = (categoriesResponse as any)?.data ?? categoriesResponse ?? []
+
   const { data: lists, isLoading } = useQuery({
     queryKey: ['price-lists', search],
     queryFn: () => pricingApi.listPriceLists({ search: search || undefined }),
   })
+
+  // Active lists for the formula "other pricelist" picker (independent of
+  // the search filter applied to the management table).
+  const { data: activeListsResponse } = useQuery({
+    queryKey: ['price-lists', 'active-picker'],
+    queryFn: () => pricingApi.listPriceLists({ active_only: true, per_page: 200 }),
+  })
+  const priceListRows: any[] = (activeListsResponse as any)?.data ?? activeListsResponse ?? []
 
   const rows: PriceList[] = lists?.data ?? lists ?? []
 
@@ -522,6 +537,21 @@ export default function PriceListsPage() {
                     onChange={(e) => updateDraft({ rounding_precision: Number(e.target.value) })}
                   />
                 </div>
+                <div className="space-y-1.5">
+                  <Label>Discount display</Label>
+                  <Select
+                    value={draft.discount_display}
+                    onValueChange={(value: any) => updateDraft({ discount_display: value })}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="show_discounted_price">Show discounted price</SelectItem>
+                      <SelectItem value="show_discount">Show public price + discount</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div className="space-y-1.5">
@@ -644,105 +674,234 @@ export default function PriceListsPage() {
                 </div>
 
                 {draft.items.map((item) => (
-                  <div
-                    key={item.key}
-                    className="grid items-end gap-3 rounded-xl border border-slate-200/80 p-3 dark:border-slate-800 md:grid-cols-12"
-                  >
-                    <div className="space-y-1 md:col-span-1">
-                      <Label className="text-xs">Seq</Label>
-                      <Input
-                        type="number"
-                        className="h-8"
-                        value={item.sequence}
-                        onChange={(e) => updateItem(item.key, { sequence: Number(e.target.value) })}
-                      />
-                    </div>
-                    <div className="space-y-1 md:col-span-2">
-                      <Label className="text-xs">Scope</Label>
-                      <Select
-                        value={item.apply_on}
-                        onValueChange={(value: any) => updateItem(item.key, { apply_on: value })}
-                      >
-                        <SelectTrigger className="h-8 rounded-full text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="product">Product</SelectItem>
-                          <SelectItem value="all">Any product</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {item.apply_on === 'product' && (
-                      <div className="space-y-1 md:col-span-3">
-                        <Label className="text-xs">Product</Label>
-                        <ProductSearchCombobox
-                          value={item.product_id ? String(item.product_id) : ''}
-                          onValueChange={(value) => updateItem(item.key, { product_id: value ? Number(value) : null })}
-                          placeholder="Search name, SKU, barcode, lot or serial..."
+                  <div key={item.key} className="space-y-3 rounded-xl border border-slate-200/80 p-3 dark:border-slate-800">
+                    <div className="grid items-end gap-3 md:grid-cols-12">
+                      <div className="space-y-1 md:col-span-1">
+                        <Label className="text-xs">Seq</Label>
+                        <Input
+                          type="number"
+                          className="h-8"
+                          value={item.sequence}
+                          onChange={(e) => updateItem(item.key, { sequence: Number(e.target.value) })}
                         />
                       </div>
-                    )}
-                    <div className="space-y-1 md:col-span-1">
-                      <Label className="text-xs">Min qty</Label>
-                      <Input
-                        type="number"
-                        className="h-8"
-                        value={item.min_quantity ?? 1}
-                        onChange={(e) => updateItem(item.key, { min_quantity: Number(e.target.value) })}
-                      />
+                      <div className="space-y-1 md:col-span-2">
+                        <Label className="text-xs">Scope</Label>
+                        <Select
+                          value={item.apply_on}
+                          onValueChange={(value: any) =>
+                            updateItem(item.key, { apply_on: value, product_id: null, category_id: null })
+                          }
+                        >
+                          <SelectTrigger className="h-8 rounded-full text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="product">Product</SelectItem>
+                            <SelectItem value="category">Category</SelectItem>
+                            <SelectItem value="all">Any product</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {item.apply_on === 'product' && (
+                        <div className="space-y-1 md:col-span-3">
+                          <Label className="text-xs">Product</Label>
+                          <ProductSearchCombobox
+                            value={item.product_id ? String(item.product_id) : ''}
+                            onValueChange={(value) => updateItem(item.key, { product_id: value ? Number(value) : null })}
+                            placeholder="Search name, SKU, barcode, lot or serial..."
+                          />
+                        </div>
+                      )}
+                      {item.apply_on === 'category' && (
+                        <div className="space-y-1 md:col-span-3">
+                          <Label className="text-xs">Category</Label>
+                          <Select
+                            value={item.category_id ? String(item.category_id) : ''}
+                            onValueChange={(value) => updateItem(item.key, { category_id: value ? Number(value) : null })}
+                          >
+                            <SelectTrigger className="h-8 rounded-full text-xs">
+                              <SelectValue placeholder="Select category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {categoryRows.map((category: any) => (
+                                <SelectItem key={category.id} value={String(category.id)}>
+                                  {category.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                      {item.apply_on === 'all' && <div className="hidden md:col-span-3 md:block" />}
+                      <div className="space-y-1 md:col-span-1">
+                        <Label className="text-xs">Min qty</Label>
+                        <Input
+                          type="number"
+                          className="h-8"
+                          value={item.min_quantity ?? 1}
+                          onChange={(e) => updateItem(item.key, { min_quantity: Number(e.target.value) })}
+                        />
+                      </div>
+                      <div className="space-y-1 md:col-span-1">
+                        <Label className="text-xs">Max qty</Label>
+                        <Input
+                          type="number"
+                          className="h-8"
+                          placeholder="∞"
+                          value={item.max_quantity ?? ''}
+                          onChange={(e) =>
+                            updateItem(item.key, { max_quantity: e.target.value === '' ? null : Number(e.target.value) })
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1 md:col-span-2">
+                        <Label className="text-xs">Valid from</Label>
+                        <Input
+                          type="date"
+                          className="h-8"
+                          value={item.date_start ?? ''}
+                          onChange={(e) => updateItem(item.key, { date_start: e.target.value || null })}
+                        />
+                      </div>
+                      <div className="space-y-1 md:col-span-2">
+                        <Label className="text-xs">Valid to</Label>
+                        <Input
+                          type="date"
+                          className="h-8"
+                          value={item.date_end ?? ''}
+                          onChange={(e) => updateItem(item.key, { date_end: e.target.value || null })}
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-1 md:col-span-2">
-                      <Label className="text-xs">Compute</Label>
-                      <Select
-                        value={item.compute_type}
-                        onValueChange={(value: any) => updateItem(item.key, { compute_type: value })}
-                      >
-                        <SelectTrigger className="h-8 rounded-full text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="fixed">Fixed price</SelectItem>
-                          <SelectItem value="percentage">% off list</SelectItem>
-                          <SelectItem value="formula">Formula</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1 md:col-span-2">
-                      <Label className="text-xs">
-                        {item.compute_type === 'fixed' ? 'Price (list ccy)' : item.compute_type === 'percentage' ? 'Percent (−/+)' : 'Markup %'}
-                      </Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        className="h-8"
-                        value={
-                          item.compute_type === 'fixed'
-                            ? item.fixed_price ?? ''
-                            : item.compute_type === 'percentage'
-                              ? item.percent ?? ''
-                              : item.markup_percent ?? ''
-                        }
-                        onChange={(e) => {
-                          const value = e.target.value === '' ? null : Number(e.target.value)
-                          if (item.compute_type === 'fixed') updateItem(item.key, { fixed_price: value })
-                          else if (item.compute_type === 'percentage') updateItem(item.key, { percent: value })
-                          else updateItem(item.key, { markup_percent: value })
-                        }}
-                      />
-                    </div>
-                    <div className="text-xs text-muted-foreground md:col-span-10">{itemSummary(item)}</div>
-                    <div className="text-right md:col-span-1">
-                      <HeaderActionButton
-                        type="button"
-                        variant="ghost"
-                        className="h-8 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        icon="solar:trash-bin-trash-bold-duotone"
-                        disabled={draft.items.length === 1}
-                        onClick={() => updateDraft({ items: draft.items.filter((entry) => entry.key !== item.key) })}
-                        title="Remove rule"
-                      >
-                        <span className="sr-only">Remove</span>
-                      </HeaderActionButton>
+
+                    <div className="grid items-end gap-3 md:grid-cols-12">
+                      <div className="space-y-1 md:col-span-2">
+                        <Label className="text-xs">Compute</Label>
+                        <Select
+                          value={item.compute_type}
+                          onValueChange={(value: any) => updateItem(item.key, { compute_type: value })}
+                        >
+                          <SelectTrigger className="h-8 rounded-full text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="fixed">Fixed price</SelectItem>
+                            <SelectItem value="percentage">% off list</SelectItem>
+                            <SelectItem value="formula">Formula</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {item.compute_type === 'fixed' && (
+                        <div className="space-y-1 md:col-span-2">
+                          <Label className="text-xs">Price (list ccy)</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            className="h-8"
+                            value={item.fixed_price ?? ''}
+                            onChange={(e) =>
+                              updateItem(item.key, { fixed_price: e.target.value === '' ? null : Number(e.target.value) })
+                            }
+                          />
+                        </div>
+                      )}
+                      {item.compute_type === 'percentage' && (
+                        <div className="space-y-1 md:col-span-2">
+                          <Label className="text-xs">Percent (−/+)</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            className="h-8"
+                            value={item.percent ?? ''}
+                            onChange={(e) =>
+                              updateItem(item.key, { percent: e.target.value === '' ? null : Number(e.target.value) })
+                            }
+                          />
+                        </div>
+                      )}
+                      {item.compute_type === 'formula' && (
+                        <>
+                          <div className="space-y-1 md:col-span-2">
+                            <Label className="text-xs">Based on</Label>
+                            <Select
+                              value={item.base ?? 'list_price'}
+                              onValueChange={(value: any) => updateItem(item.key, { base: value })}
+                            >
+                              <SelectTrigger className="h-8 rounded-full text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="list_price">List price</SelectItem>
+                                <SelectItem value="cost">Cost (guarded)</SelectItem>
+                                <SelectItem value="other_pricelist">Other price list</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          {item.base === 'other_pricelist' && (
+                            <div className="space-y-1 md:col-span-2">
+                              <Label className="text-xs">Other list</Label>
+                              <Select
+                                value={item.other_price_list_id ? String(item.other_price_list_id) : ''}
+                                onValueChange={(value) =>
+                                  updateItem(item.key, { other_price_list_id: value ? Number(value) : null })
+                                }
+                              >
+                                <SelectTrigger className="h-8 rounded-full text-xs">
+                                  <SelectValue placeholder="Select list" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {priceListRows
+                                    .filter((list: any) => list.id !== draft.id)
+                                    .map((list: any) => (
+                                      <SelectItem key={list.id} value={String(list.id)}>
+                                        {list.name} · {list.currency_code}
+                                      </SelectItem>
+                                    ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
+                          <div className="space-y-1 md:col-span-1">
+                            <Label className="text-xs">Markup %</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              className="h-8"
+                              value={item.markup_percent ?? ''}
+                              onChange={(e) =>
+                                updateItem(item.key, { markup_percent: e.target.value === '' ? null : Number(e.target.value) })
+                              }
+                            />
+                          </div>
+                          <div className="space-y-1 md:col-span-1">
+                            <Label className="text-xs">Discount %</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              className="h-8"
+                              value={item.percent ?? ''}
+                              onChange={(e) =>
+                                updateItem(item.key, { percent: e.target.value === '' ? null : Number(e.target.value) })
+                              }
+                            />
+                          </div>
+                        </>
+                      )}
+                      <div className="text-xs text-muted-foreground md:col-span-3">{itemSummary(item)}</div>
+                      <div className="text-right md:col-span-1">
+                        <HeaderActionButton
+                          type="button"
+                          variant="ghost"
+                          className="h-8 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          icon="solar:trash-bin-trash-bold-duotone"
+                          disabled={draft.items.length === 1}
+                          onClick={() => updateDraft({ items: draft.items.filter((entry) => entry.key !== item.key) })}
+                          title="Remove rule"
+                        >
+                          <span className="sr-only">Remove</span>
+                        </HeaderActionButton>
+                      </div>
                     </div>
                   </div>
                 ))}

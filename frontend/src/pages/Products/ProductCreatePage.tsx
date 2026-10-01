@@ -1727,7 +1727,7 @@ export function ProductCreatePage() {
                     <h3 className="flex items-center gap-2 text-lg font-semibold"><Icon icon="solar:dollar-minimalistic-bold-duotone" className="h-4 w-4 text-muted-foreground" />Commercial</h3>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                     <div className="space-y-2">
                       <Label>Selling Price</Label>
                       <Input
@@ -1933,7 +1933,6 @@ export function ProductCreatePage() {
                         </Select>
                         <div className="text-xs text-muted-foreground">Default tax comes from Settings and applies to products.</div>
                       </div>
-                    </div>
 
                     {formData.tax_mode === 'custom' ? (
                       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -1978,6 +1977,7 @@ export function ProductCreatePage() {
                         <div className="text-xs text-muted-foreground">Overrides the tax rule's inclusive/exclusive setting for this product only.</div>
                       </div>
                     ) : null}
+                    </div>
 
                     <div className="grid grid-cols-3 gap-4">
                       <div className="space-y-2"><Label>Net</Label><Input readOnly value={formatCurrency(pricingPreview.net)} /></div>

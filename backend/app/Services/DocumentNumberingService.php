@@ -23,9 +23,8 @@ class DocumentNumberingService
     /**
      * Generate a document number for the given document type.
      *
-     * @param string $documentType  e.g. 'invoice', 'quotation', 'delivery_order'
-     * @param string $defaultFormat e.g. 'INV-{YYYY}-{SEQ:4}'
-     * @return string
+     * @param  string  $documentType  e.g. 'invoice', 'quotation', 'delivery_order'
+     * @param  string  $defaultFormat  e.g. 'INV-{YYYY}-{SEQ:4}'
      */
     public function generate(string $documentType, string $defaultFormat): string
     {
@@ -53,9 +52,36 @@ class DocumentNumberingService
      */
     public function getFormat(string $documentType, string $default): string
     {
-        $value = \App\Models\Setting::getValue(self::SETTING_PREFIX . $documentType, $default);
+        $value = \App\Models\Setting::getValue(self::SETTING_PREFIX.$documentType, $default);
 
-        return $value ?: $default;
+        if (! $value) {
+            return $default;
+        }
+
+        // A stored pattern with no alphabetic token (e.g. "#{SEQ:5}" or
+        // "{SEQ:4}") regenerates every number without its document prefix —
+        // invoices then read as bare "#09009" instead of INV-2026-09009.
+        // Such patterns are malformed for numbering; fall back to the
+        // documented default and leave a breadcrumb for support.
+        // Remove the supported tokens first: their letters ({SEQ}, {YYYY})
+        // are not a document prefix. What remains must contain a letter.
+        $literal = (string) preg_replace(
+            '/\{(SEQ:\d+|SEQ|YYYY|YY|MM|PREFIX)\}/',
+            '',
+            $value,
+        );
+
+        if (! preg_match('/[A-Za-z]/', $literal)) {
+            Log::warning('DocumentNumberingService: prefix-less format ignored', [
+                'document_type' => $documentType,
+                'configured' => $value,
+                'using' => $default,
+            ]);
+
+            return $default;
+        }
+
+        return $value;
     }
 
     /**
@@ -63,7 +89,7 @@ class DocumentNumberingService
      */
     public function setFormat(string $documentType, string $format): void
     {
-        \App\Models\Setting::setValue(self::SETTING_PREFIX . $documentType, $format);
+        \App\Models\Setting::setValue(self::SETTING_PREFIX.$documentType, $format);
     }
 
     /**
@@ -100,10 +126,10 @@ class DocumentNumberingService
      */
     private function nextSequence(string $documentType, string $year, string $month): int
     {
-        $seqKey = self::SETTING_PREFIX . $documentType . '.seq.' . $year . '.' . $month;
+        $seqKey = self::SETTING_PREFIX.$documentType.'.seq.'.$year.'.'.$month;
 
         // Atomic increment using DB
-        $settingTable = (new \App\Models\Setting())->getTable();
+        $settingTable = (new \App\Models\Setting)->getTable();
         $existing = DB::table($settingTable)
             ->where('key', $seqKey)
             ->lockForUpdate()

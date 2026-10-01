@@ -43,6 +43,11 @@ export default defineConfig({
         categories: ['business', 'finance', 'productivity'],
       },
       workbox: {
+        // New service workers take over on the next load instead of waiting
+        // for every tab to close — without this, a deployed change needed a
+        // hard refresh before it appeared.
+        skipWaiting: true,
+        clientsClaim: true,
         // Cache all JS/CSS/SVG assets for offline shell — exclude index.html so
         // the browser always fetches the fresh version with current asset hashes
         globPatterns: ['**/*.{js,css,html,svg,ico,woff,woff2}'],
@@ -68,20 +73,12 @@ export default defineConfig({
             },
           },
           {
-            // Cache API GET requests (products, categories) with network-first
-            urlPattern: /\/api\/(?:products|categories|pos).*$/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60, // 1 hour
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-              networkTimeoutSeconds: 5,
-            },
+            // Business data is NEVER cached by the service worker. The old
+            // NetworkFirst rule here could serve up-to-1-hour-old responses
+            // (and timed out to cache after 5s), so a refresh showed stale
+            // lists until a hard refresh. Always hit the network instead.
+            urlPattern: /\/api\//i,
+            handler: 'NetworkOnly',
           },
         ],
         // Fallback to index.html for SPA navigation (offline support)

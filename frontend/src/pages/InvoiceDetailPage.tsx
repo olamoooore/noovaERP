@@ -17,6 +17,7 @@ import { TagEditor } from '@/components/tags/TagEditor'
 import { DocumentLinkChip } from '@/components/documents/DocumentLinkChip'
 import { PageHeader } from '@/components/layout/PageHeader'
 import api from '@/lib/api'
+import { getVisibleInvoiceNotes } from '@/lib/invoicePresentation'
 import { useAuthStore } from '@/store/authStore'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DocumentTemplateDialog } from '@/components/documents/DocumentTemplateDialog'
@@ -45,6 +46,10 @@ interface Invoice {
   total: number
   paid_amount: number
   balance: number
+  // MRD pricelist-multicurrency FR-5.1/5.4: document currency + snapshot.
+  currency_code?: string | null
+  base_currency_code?: string | null
+  exchange_rate?: number | string | null
   notes: string
   terms: string
   date_of_case?: string
@@ -194,6 +199,14 @@ export function InvoiceDetailPage() {
     },
     enabled: !!id,
   })
+
+  // Document-currency primary; base equivalent at the snapshot rate (FR-5.4).
+  const docCurrency = invoice?.currency_code || undefined
+  const money = (value: number) => formatCurrency(value, docCurrency)
+  const baseCurrency = invoice?.base_currency_code || undefined
+  const fxRate = Number(invoice?.exchange_rate ?? 1) || 1
+  const showBaseEquivalent = Boolean(docCurrency && baseCurrency && docCurrency !== baseCurrency)
+  const baseMoney = (value: number) => formatCurrency(value * fxRate, baseCurrency)
 
   const submitApprovalMutation = useMutation({
     mutationFn: async () => {
@@ -510,6 +523,8 @@ export function InvoiceDetailPage() {
       </div>
     )
   }
+
+  const visibleNotes = getVisibleInvoiceNotes(invoice.notes)
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -887,9 +902,9 @@ export function InvoiceDetailPage() {
                     <TableCell className="text-muted-foreground">{line.lot_number || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{line.expiry_date ? formatDate(line.expiry_date) : '-'}</TableCell>
                     <TableCell className="text-right">{line.quantity}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(line.tax_amount)}</TableCell>
-                    <TableCell className="text-right font-medium">{formatCurrency(line.line_total)}</TableCell>
+                    <TableCell className="text-right">{money(line.unit_price)}</TableCell>
+                    <TableCell className="text-right">{money(line.tax_amount)}</TableCell>
+                    <TableCell className="text-right font-medium">{money(line.line_total)}</TableCell>
                     </>}
                   </TableRow>
                 ))}
@@ -903,38 +918,50 @@ export function InvoiceDetailPage() {
             <div className="w-80 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Subtotal</span>
-                <span>{formatCurrency(invoice.subtotal)}</span>
+                <span>{money(invoice.subtotal)}</span>
               </div>
               {invoice.tax_amount > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Tax</span>
-                  <span>{formatCurrency(invoice.tax_amount)}</span>
+                  <span>{money(invoice.tax_amount)}</span>
                 </div>
               )}
               {invoice.discount_amount > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Discount</span>
-                  <span className="text-green-600">-{formatCurrency(invoice.discount_amount)}</span>
+                  <span className="text-green-600">-{money(invoice.discount_amount)}</span>
                 </div>
               )}
               <Separator />
               <div className="flex justify-between text-lg font-bold">
                 <span>Total</span>
-                <span>{formatCurrency(invoice.total)}</span>
+                <span>{money(invoice.total)}</span>
               </div>
+              {showBaseEquivalent && (
+                <div className="flex justify-between text-sm text-muted-foreground">
+                  <span>Base equivalent ({baseCurrency})</span>
+                  <span>{baseMoney(invoice.total)}</span>
+                </div>
+              )}
               {invoice.paid_amount > 0 && (
                 <>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Paid</span>
-                    <span className="text-green-600">{formatCurrency(invoice.paid_amount)}</span>
+                    <span className="text-green-600">{money(invoice.paid_amount)}</span>
                   </div>
                   <div className="flex justify-between text-sm font-semibold">
                     <span className="text-muted-foreground">Balance Due</span>
                     <span className={invoice.balance > 0 ? 'text-red-600' : 'text-green-600'}>
-                      {formatCurrency(invoice.balance)}
+                      {money(invoice.balance)}
                     </span>
                   </div>
                 </>
+              )}
+              {showBaseEquivalent && (
+                <p className="text-right text-xs text-muted-foreground">
+                  1 {docCurrency} = {fxRate.toFixed(4)} {baseCurrency}
+                  {invoice.exchange_rate ? '' : ''}
+                </p>
               )}
             </div>
           </div>
@@ -1314,12 +1341,12 @@ export function InvoiceDetailPage() {
           )}
 
           {/* Notes & Terms */}
-          {(invoice.terms || (!isAcmeTenant && invoice.notes)) && (
+          {(invoice.terms || (!isAcmeTenant && visibleNotes)) && (
             <div className="grid grid-cols-2 gap-8">
-              {!isAcmeTenant && invoice.notes && (
+              {!isAcmeTenant && visibleNotes && (
                 <div>
                   <h3 className="text-sm font-semibold text-muted-foreground uppercase mb-2">Notes</h3>
-                  <p className="text-sm whitespace-pre-wrap">{invoice.notes}</p>
+                  <p className="text-sm whitespace-pre-wrap">{visibleNotes}</p>
                 </div>
               )}
               {invoice.terms && (

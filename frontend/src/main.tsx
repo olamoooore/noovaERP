@@ -8,6 +8,18 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register(import.meta.env.BASE_URL + 'sw.js', { scope: import.meta.env.BASE_URL })
+      .then((registration) => {
+        // Deployed updates must land without a hard refresh: check for a new
+        // service worker whenever the app regains focus / becomes visible.
+        const checkForUpdate = () => {
+          registration.update().catch(() => {})
+        }
+
+        window.addEventListener('focus', checkForUpdate)
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') checkForUpdate()
+        })
+      })
       .catch((err) => {
         // Silently ignore SSL / security errors (self-signed cert environments)
         if (err instanceof DOMException && err.name === 'SecurityError') return

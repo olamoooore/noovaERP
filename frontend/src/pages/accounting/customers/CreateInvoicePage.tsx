@@ -64,6 +64,8 @@ interface InvoiceLine {
   price_mode?: 'auto' | 'manual' | 'carried';
   pricing_source?: string | null;
   override_reason?: string | null;
+  // FR-3.8: public/reference price for the strikethrough display.
+  list_price?: number | null;
 }
 
 interface CustomerAddress {
@@ -288,6 +290,14 @@ const getCustomerAddress = (customer?: CustomerRecord | null, type?: 'billing' |
   return '';
 };
 
+const PRESET_OVERRIDE_REASONS = [
+  'Tender / contract price',
+  'Promotional campaign',
+  'Management approval',
+  'Customer goodwill',
+  'Stock clearance',
+]
+
 export const CreateInvoicePage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -358,9 +368,14 @@ export const CreateInvoicePage: React.FC = () => {
     base_currency_code?: string;
     exchange_rate?: number;
     rate_date?: string | null;
+    rate_source?: string | null;
+    rate_stale?: boolean;
     price_list_name?: string | null;
     price_list_currency?: string | null;
   } | null>(null);
+  // FR-1.3/FR-5.2: a resolution failure (missing rate, unsellable currency,
+  // rule error) must be VISIBLE, not silently leave stale prices on screen.
+  const [pricingError, setPricingError] = useState<string | null>(null);
   const [overrideDialogOpen, setOverrideDialogOpen] = useState(false);
   const [overrideReason, setOverrideReason] = useState('');
   const [draggedLineIndex, setDraggedLineIndex] = useState<number | null>(null);
@@ -792,14 +807,23 @@ export const CreateInvoicePage: React.FC = () => {
         base_currency_code: result.base_currency_code,
         exchange_rate: result.exchange_rate,
         rate_date: result.rate_date,
+        rate_source: (result as any).rate_source ?? null,
+        rate_stale: Boolean((result as any).rate_stale),
         price_list_name: result.price_list_name,
         price_list_currency: result.price_list_currency,
       });
+      setPricingError(null);
 
       const updated = [...nextLines];
+      let lineError: string | null = null;
+
       result.lines.forEach((quote: any, quoteIndex: number) => {
         const target = productLines[quoteIndex]?.index;
-        if (target === undefined || quote?.error) return;
+        if (target === undefined) return;
+        if (quote?.error) {
+          lineError = quote.error;
+          return;
+        }
         // Auto-filled prices only override auto/empty lines — a hand-typed
         // price must never be silently replaced (FR-6.3).
         if (updated[target].price_mode === 'manual') return;
@@ -808,12 +832,17 @@ export const CreateInvoicePage: React.FC = () => {
           unit_price: quote.unit_price,
           price_mode: 'auto',
           pricing_source: quote.pricing_trace?.pricelist_code || quote.source || null,
+          list_price: Number(quote.list_price ?? 0) || null,
         };
       });
+
       setLines(updated);
-    } catch {
-      // Resolution failures (missing rate, etc.) are surfaced by the server
-      // on save with an actionable message; display stays usable meanwhile.
+      if (lineError) setPricingError(lineError);
+    } catch (error) {
+      // Missing FX rate / unsellable currency / engine errors: show the real
+      // message where the operator is looking (the currency + list fields).
+      const message = getApiErrorMessage(error) || 'Pricing could not be resolved.';
+      setPricingError(typeof message === 'string' ? message : 'Pricing could not be resolved.');
     }
   };
 
@@ -1106,6 +1135,11 @@ export const CreateInvoicePage: React.FC = () => {
     saveMutation.mutate(payload);
   };
 
+  // Every document-currency figure renders in the SELECTED currency
+  // (previously the default tenant symbol leaked through, e.g. S$ line items
+  // under an EUR header).
+  const money = (value: number) => formatCurrency(value, currencyCode || undefined);
+
   const customerMutationPending = createCustomerMutation.isPending || updateCustomerMutation.isPending;
   const customerActions = [
     {
@@ -1199,10 +1233,14 @@ export const CreateInvoicePage: React.FC = () => {
               <CardTitle>{documentLabel} Details</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-12 lg:items-end">
-                <div className="lg:col-span-3">
-                  <label className="block text-sm font-medium mb-1">Customer *</label>
+              {/* Compact single-strip header (MRD §11.2): rounded pill fields
+                  that stay on one row on wide screens, with inline pricing
+                  feedback (rate snapshot, applied list, resolution errors). */}
+              <div className="flex flex-wrap items-end gap-2 xl:flex-nowrap xl:overflow-x-auto">
+                <div className="w-full sm:w-52 shrink-0">
+                  <label className="mb-1 block text-xs font-medium">Customer *</label>
                   <CustomerSearchCombobox
+                    compact
                     value={customerId}
                     onValueChange={(id, customer) => {
                       setCustomerId(id)
@@ -1216,16 +1254,16 @@ export const CreateInvoicePage: React.FC = () => {
                   />
                 </div>
                 {!isQuoteMode && (
-                  <div className="lg:col-span-2">
-                    <label className="block text-sm font-medium mb-1">Warehouse *</label>
-                    <select value={warehouseId} onChange={(event) => { setWarehouseId(event.target.value); setLines((current) => current.map((line) => ({ ...line, product_batch_id: null, product_serial_id: null, lot_number: '', serial_number: '', expiry_date: '' }))); }} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm">
+                  <div className="w-full sm:w-36 shrink-0">
+                    <label className="mb-1 block text-xs font-medium">Warehouse *</label>
+                    <select value={warehouseId} onChange={(event) => { setWarehouseId(event.target.value); setLines((current) => current.map((line) => ({ ...line, product_batch_id: null, product_serial_id: null, lot_number: '', serial_number: '', expiry_date: '' }))); }} className="h-9 w-full rounded-full border border-input bg-background px-3 text-xs">
                       <option value="">Select warehouse</option>
                       {warehouses.map((warehouse: any) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}{warehouse.is_default ? ' (Default)' : ''}</option>)}
                     </select>
                   </div>
                 )}
-                <div className={isQuoteMode ? 'lg:col-span-2' : 'lg:col-span-2'}>
-                  <label className="block text-sm font-medium mb-1">{isQuoteMode ? 'Quote Date' : 'Invoice Date'}</label>
+                <div className="w-full sm:w-32 shrink-0">
+                  <label className="mb-1 block text-xs font-medium">{isQuoteMode ? 'Quote Date' : 'Invoice Date'}</label>
                   <input
                     type="date"
                     value={invoiceDate}
@@ -1234,74 +1272,12 @@ export const CreateInvoicePage: React.FC = () => {
                       setInvoiceDate(newDate);
                       setDueDate(calcDueDate(newDate, paymentTerms));
                     }}
-                    className="w-full min-w-0 px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="h-9 w-full min-w-0 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>
-                <div className="lg:col-span-2">
-                  <label className="block text-sm font-medium mb-1">Currency</label>
-                  <select
-                    value={currencyCode}
-                    onChange={(event) => {
-                      const next = event.target.value;
-                      setCurrencyCode(next);
-                      // FR-5.2: changing currency re-prices auto lines
-                      // through the engine; manual lines keep their value.
-                      void resolvePricingForLines(customerId, lines, next || undefined);
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                  >
-                    {currencyCode && !(sellableCurrencies as any[]).some((c: any) => c.code === currencyCode) && (
-                      <option value={currencyCode}>{currencyCode}</option>
-                    )}
-                    <option value="">Auto (customer's list currency)</option>
-                    {(sellableCurrencies as any[]).map((currency: any) => (
-                      <option key={currency.code} value={currency.code}>
-                        {currency.code}{currency.symbol ? ` ${currency.symbol}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  {currencyCode && pricingMeta?.base_currency_code && pricingMeta.base_currency_code !== currencyCode && (
-                    <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                      1 {currencyCode} = {Number(pricingMeta.exchange_rate || 0).toFixed(4)} {pricingMeta.base_currency_code}
-                      {pricingMeta.price_list_name ? ` · ${pricingMeta.price_list_name}` : ''}
-                    </p>
-                  )}
-                  {currencyCode && pricingMeta?.base_currency_code === currencyCode && pricingMeta.price_list_name && (
-                    <p className="mt-1 text-xs text-muted-foreground">{pricingMeta.price_list_name}</p>
-                  )}
-                </div>
-                <div className="lg:col-span-3">
-                  <label className="block text-sm font-medium mb-1">Price List</label>
-                  <select
-                    value={priceListId}
-                    onChange={(event) => {
-                      const next = event.target.value;
-                      setPriceListId(next);
-                      // An explicit list re-prices auto lines through the
-                      // engine; manual lines keep their values (FR-5.2).
-                      void resolvePricingForLines(customerId, lines, undefined, next);
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                  >
-                    <option value="">Auto — customer's applicable list</option>
-                    {priceListRows.map((list: any) => (
-                      <option key={list.id} value={String(list.id)}>
-                        {list.name} · {list.currency_code}{list.code ? ` (${list.code})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {pricingMeta?.price_list_name
-                      ? `Lines priced from “${pricingMeta.price_list_name}” (${pricingMeta.price_list_currency ?? currencyCode}).`
-                      : 'No list applied — catalogue prices are used.'}{' '}
-                    <Link to="/sales/price-lists" className="underline hover:text-foreground">
-                      Manage price lists →
-                    </Link>
-                  </p>
-                </div>
                 {!isQuoteMode && (
-                  <div className="lg:col-span-1">
-                    <label className="block text-sm font-medium mb-1">Terms (days)</label>
+                  <div className="w-full sm:w-20 shrink-0">
+                    <label className="mb-1 block text-xs font-medium">Terms</label>
                     <input
                       type="number"
                       min="0"
@@ -1313,12 +1289,12 @@ export const CreateInvoicePage: React.FC = () => {
                         // HR71-04: an intentional term edit is an override.
                         setTermsOverridden(true);
                       }}
-                      className="w-full min-w-0 px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="h-9 w-full min-w-0 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                   </div>
                 )}
-                <div className={isQuoteMode ? 'lg:col-span-2' : 'lg:col-span-2'}>
-                  <label className="block text-sm font-medium mb-1">{isQuoteMode ? 'Valid Until' : 'Due Date'}</label>
+                <div className="w-full sm:w-32 shrink-0">
+                  <label className="mb-1 block text-xs font-medium">{isQuoteMode ? 'Valid Until' : 'Due Date'}</label>
                   <input
                     type="date"
                     value={dueDate}
@@ -1327,19 +1303,92 @@ export const CreateInvoicePage: React.FC = () => {
                       // HR71-04: an intentional due-date edit is an override.
                       setTermsOverridden(true);
                     }}
-                    className="w-full min-w-0 px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="h-9 w-full min-w-0 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>
-                <div className="lg:col-span-2">
-                  <label className="block text-sm font-medium mb-1">{documentLabel} Number</label>
+                <div className="w-full sm:w-24 shrink-0">
+                  <label className="mb-1 block text-xs font-medium">Currency</label>
+                  <select
+                    value={currencyCode}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setCurrencyCode(next);
+                      // FR-5.2: changing currency re-prices auto lines
+                      // through the engine; manual lines keep their value.
+                      void resolvePricingForLines(customerId, lines, next || undefined);
+                    }}
+                    className="h-9 w-full rounded-full border border-input bg-background px-3 text-xs"
+                  >
+                    <option value="">Auto</option>
+                    {currencyCode && !(sellableCurrencies as any[]).some((c: any) => c.code === currencyCode) && (
+                      <option value={currencyCode}>{currencyCode}</option>
+                    )}
+                    {(sellableCurrencies as any[]).map((currency: any) => (
+                      <option key={currency.code} value={currency.code}>
+                        {currency.code}{currency.symbol ? ` ${currency.symbol}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="w-full sm:w-36 shrink-0">
+                  <label className="mb-1 block text-xs font-medium">Price List</label>
+                  <select
+                    value={priceListId}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setPriceListId(next);
+                      // An explicit list re-prices auto lines through the
+                      // engine; manual lines keep their values (FR-5.2).
+                      void resolvePricingForLines(customerId, lines, undefined, next);
+                    }}
+                    className="h-9 w-full rounded-full border border-input bg-background px-3 text-xs"
+                  >
+                    <option value="">Auto</option>
+                    {priceListRows.map((list: any) => (
+                      <option key={list.id} value={String(list.id)}>
+                        {list.name} · {list.currency_code}{list.code ? ` (${list.code})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="w-full sm:w-32 shrink-0">
+                  <label className="mb-1 block text-xs font-medium">{documentLabel} Number</label>
                   <input
                     type="text"
                     value={customInvoiceNumber}
                     onChange={(e) => setCustomInvoiceNumber(e.target.value)}
                     placeholder={`INV-${new Date().getFullYear()}-XXXX`}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm font-mono"
+                    className="h-9 w-full rounded-full border border-input bg-background px-3 font-mono text-xs"
                   />
                 </div>
+              </div>
+
+              {/* Pricing feedback strip: snapshot rate, applied list, errors. */}
+              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                {currencyCode && pricingMeta?.base_currency_code && pricingMeta.base_currency_code !== currencyCode && (
+                  <span className={pricingMeta.rate_stale ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}>
+                    1 {currencyCode} = {Number(pricingMeta.exchange_rate || 0).toFixed(4)} {pricingMeta.base_currency_code}
+                    {pricingMeta.rate_date ? ` · ${pricingMeta.rate_date}` : ''}
+                    {pricingMeta.rate_source ? ` · ${pricingMeta.rate_source}` : ''}
+                    {pricingMeta.rate_stale ? ' · stale' : ''}
+                  </span>
+                )}
+                {pricingMeta?.price_list_name ? (
+                  <span className="text-muted-foreground">
+                    List: {pricingMeta.price_list_name} ({pricingMeta.price_list_currency ?? currencyCode})
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">No list applied — catalogue prices are used.</span>
+                )}
+                <Link to="/sales/price-lists" className="underline hover:text-foreground">
+                  Manage price lists →
+                </Link>
+                {pricingError && (
+                  <span className="flex items-center gap-1 font-medium text-destructive">
+                    <Icon icon="solar:danger-triangle-bold" className="h-3.5 w-3.5" />
+                    {pricingError}
+                  </span>
+                )}
               </div>
 
               {!isQuoteMode && requiresApproval && (
@@ -1736,7 +1785,7 @@ export const CreateInvoicePage: React.FC = () => {
                 >
                     {lines.map((line, index) => (
                       <tr key={index} className="border-b transition-colors hover:bg-muted/20" draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }}>
-                        {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={13} total={line.line_type === 'section' ? formatCurrency(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }} /> : <>
+                        {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={13} total={line.line_type === 'section' ? money(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }} /> : <>
                         <td className={cn(LINE_CELL, 'w-10')}>
                           <div className={cn(LINE_CELL_BOX, 'justify-center text-xs font-medium text-muted-foreground')}>
                             {lines.slice(0, index + 1).filter((item) => (item.line_type ?? 'product') === 'product').length}
@@ -1848,6 +1897,11 @@ export const CreateInvoicePage: React.FC = () => {
                                   {line.pricing_source}
                                 </span>
                               )}
+                              {line.list_price != null && Number(line.list_price) > Number(line.unit_price || 0) && (
+                                <span className="self-start text-[10px] text-muted-foreground line-through">
+                                  {money(Number(line.list_price))}
+                                </span>
+                              )}
                               {currencyCode && pricingMeta?.base_currency_code && currencyCode !== pricingMeta.base_currency_code && line.unit_price !== '' && (
                                 <span className="self-start text-[10px] text-muted-foreground">
                                   ≈ {formatCurrency(Number(line.unit_price) * Number(pricingMeta.exchange_rate || 1), pricingMeta.base_currency_code)}
@@ -1872,7 +1926,7 @@ export const CreateInvoicePage: React.FC = () => {
                         </td>}
                         <td className={cn(LINE_CELL, 'w-[7.5rem] min-w-[6.5rem]')}>
                           <div className={cn(LINE_CELL_BOX, 'justify-end text-sm font-semibold tabular-nums')}>
-                            {formatCurrency(getLineTotal(line))}
+                            {money(getLineTotal(line))}
                           </div>
                         </td>
                         <td className={cn(LINE_CELL, 'w-[10.5rem]')}>
@@ -1900,6 +1954,16 @@ export const CreateInvoicePage: React.FC = () => {
                   <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-1" />
                   Add Line
                 </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  title="Re-run pricing for all auto lines (customer, currency or list changes do this automatically)"
+                  onClick={() => void resolvePricingForLines(customerId, lines)}
+                >
+                  <Icon icon="solar:refresh-bold-duotone" className="h-4 w-4 mr-1" />
+                  Recalculate
+                </Button>
                 <Button type="button" variant="outline" size="sm" onClick={() => addTextLine('section')}>Add Section</Button>
                 <Button type="button" variant="outline" size="sm" onClick={() => addTextLine('note')}>Add Note</Button>
               </div>
@@ -1908,7 +1972,7 @@ export const CreateInvoicePage: React.FC = () => {
                 <div className="w-full max-w-sm space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Subtotal:</span>
-                    <span className="font-medium">{formatCurrency(subtotal)}</span>
+                    <span className="font-medium">{money(subtotal)}</span>
                   </div>
                   <div className="flex items-center justify-between gap-3 text-sm">
                     <span className="text-muted-foreground">Document Discount:</span>
@@ -1934,21 +1998,19 @@ export const CreateInvoicePage: React.FC = () => {
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Tax:</span>
-                    <span className="font-medium">{formatCurrency(taxTotal)}</span>
+                    <span className="font-medium">{money(taxTotal)}</span>
                   </div>
                   {(documentDiscountAmount > 0 || lineDiscounts > 0) && (
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Discount:</span>
                       <span className="font-medium text-green-600">
-                        -{formatCurrency(documentDiscountAmount + lineDiscounts)}
+                        -{money(documentDiscountAmount + lineDiscounts)}
                       </span>
                     </div>
                   )}
                   <div className="flex justify-between text-lg font-bold pt-2 border-t">
                     <span>Total:</span>
-                    <span className="text-primary">
-                      {currencyCode ? formatCurrency(total, currencyCode) : formatCurrency(total)}
-                    </span>
+                    <span className="text-primary">{money(total)}</span>
                   </div>
                   {currencyCode && pricingMeta?.base_currency_code && pricingMeta.base_currency_code !== currencyCode && (
                     <div className="flex justify-between text-sm text-muted-foreground">
@@ -1996,6 +2058,18 @@ export const CreateInvoicePage: React.FC = () => {
                 discount). Provide a reason for the audit trail — it is stored with each overridden line.
               </DialogDescription>
             </DialogHeader>
+            <select
+              value={PRESET_OVERRIDE_REASONS.includes(overrideReason) ? overrideReason : ''}
+              onChange={(event) => {
+                if (event.target.value) setOverrideReason(event.target.value);
+              }}
+              className="h-9 w-full rounded-full border border-input bg-background px-3 text-xs"
+            >
+              <option value="">Common reasons…</option>
+              {PRESET_OVERRIDE_REASONS.map((reason) => (
+                <option key={reason} value={reason}>{reason}</option>
+              ))}
+            </select>
             <Textarea
               rows={3}
               placeholder="e.g. tender award price approved by management"

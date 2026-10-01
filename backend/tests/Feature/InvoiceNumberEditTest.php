@@ -131,6 +131,79 @@ class InvoiceNumberEditTest extends TenantTestCase
     }
 
     /** @test */
+    public function creating_an_invoice_keeps_the_typed_invoice_number(): void
+    {
+        // Store used to drop invoice_number from the validated payload, so a
+        // hand-typed number (INV-2026-10-001) was silently renumbered to the
+        // auto sequence on save — and the PDF then printed the auto number.
+        $response = $this->actingAs($this->owner)->postJson('/api/v1/invoices', [
+            'customer_id' => $this->customer->id,
+            'invoice_number' => 'INV-2026-10-001',
+            'invoice_date' => now()->toDateString(),
+            'due_date' => now()->addDays(30)->toDateString(),
+            'lines' => [[
+                'line_type' => 'product',
+                'description' => 'Typed number line',
+                'quantity' => 1,
+                'unit_price' => 10,
+                'tax_rate' => 9,
+                'discount_amount' => 0,
+            ]],
+        ]);
+
+        $response->assertCreated();
+
+        $invoice = Invoice::find($response->json('id'));
+        $this->assertSame('INV-2026-10-001', $invoice->invoice_number);
+    }
+
+    /** @test */
+    public function creating_an_invoice_with_a_duplicate_number_is_rejected(): void
+    {
+        $this->makeInvoice('INV-TAKEN-2');
+
+        $this->actingAs($this->owner)->postJson('/api/v1/invoices', [
+            'customer_id' => $this->customer->id,
+            'invoice_number' => 'INV-TAKEN-2',
+            'invoice_date' => now()->toDateString(),
+            'lines' => [[
+                'line_type' => 'product',
+                'description' => 'Duplicate number line',
+                'quantity' => 1,
+                'unit_price' => 10,
+                'tax_rate' => 0,
+                'discount_amount' => 0,
+            ]],
+        ])->assertStatus(422)->assertJsonValidationErrors('invoice_number');
+    }
+
+    /** @test */
+    public function creating_an_invoice_persists_the_chosen_payment_terms(): void
+    {
+        $this->customer->update(['payment_terms' => 7]);
+
+        $response = $this->actingAs($this->owner)->postJson('/api/v1/invoices', [
+            'customer_id' => $this->customer->id,
+            'invoice_date' => now()->toDateString(),
+            'due_date' => now()->addDays(30)->toDateString(),
+            'payment_terms' => 30,
+            'lines' => [[
+                'line_type' => 'product',
+                'description' => 'Terms line',
+                'quantity' => 1,
+                'unit_price' => 10,
+                'tax_rate' => 0,
+                'discount_amount' => 0,
+            ]],
+        ]);
+
+        $response->assertCreated();
+
+        // The editor's 30-day choice beats the customer's 7-day default.
+        $this->assertSame('30', (string) Invoice::find($response->json('id'))->payment_terms_snapshot);
+    }
+
+    /** @test */
     public function a_soft_deleted_invoice_number_is_still_reserved(): void
     {
         $deleted = $this->makeInvoice('INV-GONE-1');

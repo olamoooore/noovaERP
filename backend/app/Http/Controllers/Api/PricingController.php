@@ -96,6 +96,8 @@ class PricingController extends Controller
                 'exchange_rate' => $context['exchange_rate'],
                 'rate_date' => $context['rate']['rate_date'] ?? $context['date'],
                 'rate_source' => $context['rate']['rate_source'] ?? null,
+                'rate_id' => $context['rate']['rate_id'] ?? null,
+                'rate_stale' => (bool) ($context['rate']['rate_stale'] ?? false),
                 'price_list_id' => $appliedList?->id,
                 'price_list_name' => $appliedList?->name,
                 'price_list_currency' => $appliedList?->currency_code,

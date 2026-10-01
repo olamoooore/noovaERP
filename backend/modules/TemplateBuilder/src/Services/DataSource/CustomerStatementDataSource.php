@@ -28,9 +28,13 @@ final class CustomerStatementDataSource implements DataSourceContract
     {
         $statement = $this->statement ?? throw new \RuntimeException('Customer statement not loaded.');
         $company = CompanyDataSource::forCurrentTenant();
-        $currencyCode = $company['currency_code'] ?? 'MYR';
 
         $payload = $statement->payload ?? [];
+
+        // MRD pricelist-multicurrency FR-8.2: the statement's reporting
+        // currency is the payload's base; rows may be denominated in their
+        // own document currency.
+        $currencyCode = $payload['currency'] ?? ($company['currency_code'] ?? 'MYR');
 
         $transactions = [];
         foreach (($payload['transactions'] ?? []) as $i => $txn) {
@@ -48,8 +52,21 @@ final class CustomerStatementDataSource implements DataSourceContract
                 'balance' => (float) ($txn['balance'] ?? 0),
                 'total' => (float) ($txn['total'] ?? 0),
                 'status' => $txn['status'] ?? '',
+                'currency_code' => $txn['currency_code'] ?? $currencyCode,
+                'exchange_rate' => (float) ($txn['exchange_rate'] ?? 1.0),
+                'base_debit' => (float) ($txn['base_debit'] ?? $txn['debit'] ?? 0),
+                'base_credit' => (float) ($txn['base_credit'] ?? $txn['credit'] ?? 0),
             ];
         }
+
+        $currencyTotals = array_map(fn (array $bucket) => [
+            'currency_code' => $bucket['currency_code'] ?? '',
+            'debit' => (float) ($bucket['debit'] ?? 0),
+            'credit' => (float) ($bucket['credit'] ?? 0),
+            'base_debit' => (float) ($bucket['base_debit'] ?? 0),
+            'base_credit' => (float) ($bucket['base_credit'] ?? 0),
+            'document_count' => (int) ($bucket['document_count'] ?? 0),
+        ], $payload['currency_totals'] ?? []);
 
         return [
             'statement' => [
@@ -72,6 +89,7 @@ final class CustomerStatementDataSource implements DataSourceContract
             ],
             'company' => $company,
             'transactions' => $transactions,
+            'currency_totals' => $currencyTotals,
             'totals' => [
                 'opening_balance' => (float) ($payload['opening_balance'] ?? 0),
                 'total_amount_due' => (float) ($payload['total_amount_due'] ?? $payload['closing_balance'] ?? 0),
@@ -146,6 +164,9 @@ final class CustomerStatementDataSource implements DataSourceContract
             ]],
             ['group' => 'Transactions', 'fields' => [
                 ['token' => 'transactions', 'label' => 'Transactions table (binds a Table block)'],
+                ['token' => 'transactions.currency_code', 'label' => 'Document currency (per row)'],
+                ['token' => 'transactions.exchange_rate', 'label' => 'Snapshot rate (per row)'],
+                ['token' => 'currency_totals', 'label' => 'Per-currency subtotals table (binds a Table block)'],
             ]],
         ];
     }

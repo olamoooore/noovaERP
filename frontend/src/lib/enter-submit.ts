@@ -17,7 +17,9 @@
  *  - open comboboxes/menus/select popovers keep Enter for option selection,
  *  - checkboxes/radios/file inputs are ignored,
  *  - disabled buttons are respected,
- *  - already-handled events (defaultPrevented) are left alone.
+ *  - already-handled events (defaultPrevented) are left alone,
+ *  - anything inside `[data-enter-submit-ignore]` (line-item grids, note
+ *    rows) is left to the editor.
  */
 export function installEnterSubmit(): () => void {
   const handler = (event: KeyboardEvent) => {
@@ -39,6 +41,16 @@ export function installEnterSubmit(): () => void {
 
     // Enter belongs to an open dropdown/menu/combobox — let it select.
     if (target.closest('[cmdk-root], [role="listbox"], [role="menu"], [data-radix-popper-content-wrapper]')) {
+      return
+    }
+
+    // Editing grids (line items, note lines) opt out: Enter is used while
+    // typing rows, so it must never fire the document's primary action.
+    // preventDefault is required — returning alone still lets the browser's
+    // native implicit submission fire the form (regression: Enter in a note
+    // line created the invoice mid-edit even with the opt-out marker).
+    if (target.closest('[data-enter-submit-ignore]')) {
+      event.preventDefault()
       return
     }
 

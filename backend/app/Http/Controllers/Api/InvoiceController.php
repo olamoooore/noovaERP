@@ -188,8 +188,18 @@ class InvoiceController extends Controller
     {
         $validated = $request->validate([
             'customer_id' => 'required|exists:customers,id',
+            // A hand-typed document number must survive creation — dropping it
+            // silently renumbered the invoice (report 2026-10-01: typed
+            // INV-2026-10-001 printed as the auto number instead).
+            'invoice_number' => [
+                'nullable',
+                'string',
+                'max:100',
+                Rule::unique('invoices', 'invoice_number'),
+            ],
             'invoice_date' => 'nullable|date',
             'due_date' => 'nullable|date',
+            'payment_terms' => 'nullable|integer|min:0|max:365',
             'case_number' => 'nullable|string|max:100',
             'pr_no' => 'nullable|string|max:100', 'contract_no' => 'nullable|string|max:100',
             'plant_code' => 'nullable|string|max:100', 'company_code' => 'nullable|string|max:100',
@@ -214,6 +224,7 @@ class InvoiceController extends Controller
             'tax_treatment' => 'nullable|string|max:40',
             'notes' => 'nullable|string',
             'terms' => 'nullable|string',
+            'payment_terms' => 'nullable|integer|min:0|max:365',
             'discount_amount' => 'nullable|numeric|min:0',
             'po_number' => 'nullable|string|max:100',
             'doctor_contact_id' => 'nullable|exists:core_contacts,id',
@@ -471,6 +482,10 @@ class InvoiceController extends Controller
                 'shipping_contact_id' => $data['shipping_contact_id'] ?? null,
                 'notes' => $data['notes'] ?? null,
                 'terms' => $data['terms'] ?? null,
+                'invoice_number' => isset($data['invoice_number']) && trim((string) $data['invoice_number']) !== ''
+                    ? trim((string) $data['invoice_number'])
+                    : null,
+                'payment_terms_snapshot' => isset($data['payment_terms']) ? (string) $data['payment_terms'] : null,
                 'discount_amount' => $data['discount_amount'] ?? null,
                 'po_number' => $data['po_number'] ?? null,
                 'currency_code' => $draftContext['document_currency'],
@@ -612,6 +627,11 @@ class InvoiceController extends Controller
             if (($data[$contactKey] ?? null) !== null) {
                 $invoiceOverrides[$contactKey] = $data[$contactKey];
             }
+        }
+
+        // The editor's chosen credit terms beat the customer default snapshot.
+        if (isset($data['payment_terms']) && $data['payment_terms'] !== null) {
+            $invoiceOverrides['payment_terms_snapshot'] = (string) $data['payment_terms'];
         }
 
         $invoice = $this->salesOrderService->createInvoice(
@@ -945,6 +965,15 @@ class InvoiceController extends Controller
         DB::transaction(function () use ($invoice, $validated) {
             $lines = $validated['lines'] ?? null;
             unset($validated['lines']);
+
+            // `payment_terms` arrives as a day count; the document stores the
+            // immutable snapshot column.
+            if (array_key_exists('payment_terms', $validated)) {
+                $validated['payment_terms_snapshot'] = $validated['payment_terms'] !== null
+                    ? (string) $validated['payment_terms']
+                    : null;
+                unset($validated['payment_terms']);
+            }
 
             $invoice->update($validated);
 

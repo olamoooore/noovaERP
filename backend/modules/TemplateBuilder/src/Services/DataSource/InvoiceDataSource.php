@@ -94,7 +94,16 @@ class InvoiceDataSource implements DataSourceContract
                 'billing_address' => $this->formatAddress($invoice->billing_address_snapshot),
                 'shipping_address' => $this->formatAddress($invoice->shipping_address_snapshot),
                 'notes' => $invoice->notes ?? '',
-                'terms' => $invoice->terms ?? '',
+                // Printed Payment Terms: the free-text terms win when written;
+                // otherwise fall back to the Net-N snapshot so picking "30
+                // days" on the invoice actually shows on the PDF.
+                'terms' => $invoice->terms
+                    ?: (($invoice->payment_terms_snapshot ?: $invoice->customer?->payment_terms)
+                        ? 'Net '.($invoice->payment_terms_snapshot ?: $invoice->customer?->payment_terms).' days'
+                        : ''),
+                'payment_terms' => ($invoice->payment_terms_snapshot ?: $invoice->customer?->payment_terms)
+                    ? 'Net '.($invoice->payment_terms_snapshot ?: $invoice->customer?->payment_terms).' days'
+                    : '',
                 'attention_to' => $invoice->attention_to ?? '',
                 'shipping_method' => $invoice->shipping_method ?? '',
                 'delivery_date' => optional($invoice->delivery_date)->format('Y-m-d') ?? '',

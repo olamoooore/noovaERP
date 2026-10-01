@@ -59,6 +59,40 @@ const statementIdentityValue = (transaction: any, field: 'bank_reference' | 'cus
   return rawEntry ? String(rawEntry[1]) : '';
 };
 
+interface InvoiceEvidence {
+  id: number | null;
+  number: string;
+}
+
+const invoiceEvidenceFor = (transaction: any): InvoiceEvidence[] => {
+  const evidence = new Map<string, InvoiceEvidence>();
+
+  // Accepted matches are the authoritative evidence after reconciliation.
+  // Their match reasons capture the invoice linked to the matched payment.
+  (transaction.matches ?? [])
+    .filter((match: any) => match.status === 'accepted')
+    .forEach((match: any) => {
+      const invoiceId = Number(match.match_reasons?.invoice_id) || null;
+      const invoiceNumber = String(match.match_reasons?.invoice_number ?? '').trim();
+      if (!invoiceNumber && !invoiceId) return;
+
+      const number = invoiceNumber || `Invoice #${invoiceId}`;
+      evidence.set(String(invoiceId ?? number), { id: invoiceId, number });
+    });
+
+  // Before a match is accepted, retain imported invoice-reference evidence.
+  if (evidence.size === 0) {
+    (transaction.allocations ?? [])
+      .filter((allocation: any) => allocation.allocation_type === 'invoice_reference')
+      .forEach((allocation: any) => {
+        const number = String(allocation.external_reference ?? '').trim();
+        if (number) evidence.set(number, { id: null, number });
+      });
+  }
+
+  return Array.from(evidence.values());
+};
+
 export function BankReconciliationPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -388,7 +422,9 @@ export function BankReconciliationPage() {
       filtered = filtered.filter(
         (t) =>
           t.description.toLowerCase().includes(searchLower) ||
-          (t.reference ?? '').toLowerCase().includes(searchLower)
+          (t.reference ?? '').toLowerCase().includes(searchLower) ||
+          invoiceEvidenceFor(t).some((invoice) => invoice.number.toLowerCase().includes(searchLower)) ||
+          ((t as any).allocations ?? []).some((allocation: any) => String(allocation.external_reference ?? '').toLowerCase().includes(searchLower))
       );
     }
 
@@ -920,16 +956,33 @@ export function BankReconciliationPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredStatementTransactions.map((transaction: any) => (
+                    {filteredStatementTransactions.map((transaction: any) => {
+                      const invoiceEvidence = invoiceEvidenceFor(transaction);
+
+                      return (
                       <tr key={transaction.id} className="border-b last:border-0">
                         <td className="px-3 py-2"><Checkbox disabled={!['unmatched', 'suggested', 'partially_matched'].includes(transaction.status)} checked={groupStatementIds.has(transaction.id)} onCheckedChange={() => setGroupStatementIds((current) => { const next = new Set(current); if (next.has(transaction.id)) next.delete(transaction.id); else next.add(transaction.id); return next; })} /></td>
                         <td className="px-3 py-2 whitespace-nowrap">{String(transaction.transaction_date).slice(0, 10)}</td>
                         <td className="px-3 py-2">{transaction.description}</td>
                         <td className="px-3 py-2">{statementIdentityValue(transaction, 'bank_reference') || '—'}</td>
                         <td className="px-3 py-2">
-                          {(transaction.allocations ?? []).filter((allocation: any) => allocation.allocation_type === 'invoice_reference').length > 0
-                            ? (transaction.allocations ?? []).filter((allocation: any) => allocation.allocation_type === 'invoice_reference').map((allocation: any) => allocation.external_reference).join(', ')
-                            : '—'}
+                          {invoiceEvidence.length > 0 ? (
+                            <div className="flex flex-col items-start gap-1">
+                              {invoiceEvidence.map((invoice) => invoice.id ? (
+                                <Button
+                                  key={`${invoice.id}-${invoice.number}`}
+                                  type="button"
+                                  variant="link"
+                                  className="h-auto p-0 text-left font-medium"
+                                  onClick={() => navigate(`/accounting/customers/bills/${invoice.id}`)}
+                                >
+                                  {invoice.number}
+                                </Button>
+                              ) : (
+                                <span key={invoice.number}>{invoice.number}</span>
+                              ))}
+                            </div>
+                          ) : '—'}
                         </td>
                         <td className={`px-3 py-2 text-right font-medium ${Number(transaction.amount) < 0 ? 'text-red-600' : 'text-green-600'}`}>
                           {formatCurrency(Number(transaction.amount))}
@@ -1068,7 +1121,8 @@ export function BankReconciliationPage() {
                           )}
                         </td>
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </table>
                 <Pagination

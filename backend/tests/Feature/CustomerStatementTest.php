@@ -307,6 +307,65 @@ class CustomerStatementTest extends TenantTestCase
         $this->assertSame([150.0], $rows, 'The AR view must only expose posted credit notes.');
     }
 
+    /**
+     * MRD pricelist-multicurrency FR-8.2 — the statement carries the DOCUMENT
+     * currency per row, a per-currency subtotal, and converts totals to the
+     * base using each document's snapshot rate.
+     */
+    public function test_statement_carries_per_row_currency_and_subtotals(): void
+    {
+        // USD invoice @ 1.35 with a USD payment @ 1.362 (realized-FX scenario shape).
+        $usdInvoice = $this->invoice(['total' => 1000, 'subtotal' => 1000]);
+        DB::table('invoices')->where('id', $usdInvoice->id)->update([
+            'currency_code' => 'USD',
+            'exchange_rate' => 1.350000,
+            'base_currency_code' => 'SGD',
+        ]);
+
+        $payment = $this->payment($usdInvoice, 1000, '2026-01-20');
+        DB::table('payments')->where('id', $payment->id)->update([
+            'currency' => 'USD',
+            'exchange_rate' => 1.362000,
+            'base_currency_code' => 'SGD',
+        ]);
+
+        // A base-currency (SGD) invoice for the same customer.
+        $sgdInvoice = $this->invoice(['total' => 500, 'subtotal' => 500, 'invoice_date' => '2026-01-15']);
+        DB::table('invoices')->where('id', $sgdInvoice->id)->update([
+            'currency_code' => 'SGD',
+            'exchange_rate' => 1.000000,
+            'base_currency_code' => 'SGD',
+        ]);
+
+        // include_paid = true: the USD document is settled by its payment, so
+        // the default (outstanding-only) view would hide both rows.
+        $payload = app(\App\Services\CustomerStatementService::class)->buildRangePayload(
+            $this->customer,
+            \Carbon\Carbon::parse('2026-01-01'),
+            \Carbon\Carbon::parse('2026-01-31'),
+            true,
+        );
+
+        $usdRow = collect($payload['transactions'])->firstWhere('currency_code', 'USD');
+        $this->assertNotNull($usdRow, 'USD invoice row must carry its document currency');
+        $this->assertSame(1.35, round((float) $usdRow['exchange_rate'], 2));
+        $this->assertSame(1350.0, round((float) $usdRow['base_debit'], 2), 'base equivalent uses the invoice snapshot rate');
+
+        $usdBucket = collect($payload['currency_totals'])->firstWhere('currency_code', 'USD');
+        $this->assertNotNull($usdBucket, 'per-currency subtotal bucket for USD');
+        $this->assertSame(1350.0, round((float) $usdBucket['base_debit'], 2));
+        // Payment credits at ITS snapshot rate (1.362 × 1000).
+        $this->assertSame(1362.0, round((float) $usdBucket['base_credit'], 2));
+
+        $sgdBucket = collect($payload['currency_totals'])->firstWhere('currency_code', 'SGD');
+        $this->assertNotNull($sgdBucket, 'per-currency subtotal bucket for SGD');
+
+        // Totals/running balance are BASE figures at snapshot rates.
+        $this->assertSame(1850.0, round((float) $payload['total_debits'], 2), '1350 + 500');
+        $this->assertSame(1362.0, round((float) $payload['total_credits'], 2));
+        $this->assertSame(488.0, round((float) $payload['closing_balance'], 2), '1850 − 1362');
+    }
+
     /** #193/#194/#202 — comparison endpoint uses canonical math and reports the tenant currency. */
     public function test_comparison_endpoint_reports_currency_and_canonical_totals(): void
     {

@@ -1630,7 +1630,7 @@ export function ProductEditPage() {
 
                   <TabsContent value="tax" className="pt-4">
                     <div className="rounded-lg border p-3 space-y-3">
-                  <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div className="space-y-2">
                       <Label>Tax Option</Label>
                       <Select

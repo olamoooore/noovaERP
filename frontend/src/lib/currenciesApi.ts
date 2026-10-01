@@ -6,6 +6,7 @@ export interface Currency {
   symbol?: string;
   decimal_places: number;
   is_active: boolean;
+  is_sellable?: boolean;
 }
 
 export interface CreateCurrencyRequest {
@@ -17,6 +18,7 @@ export interface CreateCurrencyRequest {
 
 export type UpdateCurrencyRequest = Partial<CreateCurrencyRequest> & {
   is_active?: boolean;
+  is_sellable?: boolean;
 };
 
 export interface ExchangeRate {

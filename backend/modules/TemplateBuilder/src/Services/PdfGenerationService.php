@@ -397,13 +397,42 @@ final class PdfGenerationService implements PdfGenerationServiceContract
         $font = $template->default_font ?: config('templatebuilder.defaults.font', 'DejaVu Sans');
         $margin = is_array($template->margin) ? $template->margin : config('templatebuilder.defaults.margin_mm');
 
+        // The physical bottom decoration band (page subtotals / pinned footer)
+        // is only reserved when this template actually draws into it. Reserving
+        // it unconditionally left a ~40mm blank strip under short invoices
+        // (report 2026-10-01: "large blank space at the bottom").
+        $pagination = $this->paginationConfig($template);
+        $reserveBand = $pagination !== null
+            && (($pagination['show_page_subtotal'] ?? true) !== false || $this->containsBlockType(
+                is_array($template->layout_config['blocks'] ?? null) ? $template->layout_config['blocks'] : [],
+                'footer',
+            ));
+
         return view('templatebuilder::canvas', [
             'body' => $body,
             'font' => $font,
             'margin' => $margin,
             'css' => (string) ($template->css ?? ''),
             'contentHeightMm' => $this->contentHeightMm($template, $margin),
+            'bottomBandMm' => $reserveBand ? 40 : 0,
         ])->render();
+    }
+
+    /**
+     * @param  array<int,array<string,mixed>>  $blocks
+     */
+    private function containsBlockType(array $blocks, string $type): bool
+    {
+        foreach ($blocks as $block) {
+            if (($block['type'] ?? null) === $type) {
+                return true;
+            }
+            if (is_array($block['children'] ?? null) && $this->containsBlockType($block['children'], $type)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @param array<string,mixed> $margin */

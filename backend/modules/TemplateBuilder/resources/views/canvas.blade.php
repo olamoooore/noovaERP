@@ -62,7 +62,7 @@
 
         /* Keep the physical pagination safety band authoritative even when a
            template supplies custom @page CSS. */
-        @page { margin: {{ ($margin['top'] ?? 15) }}mm {{ ($margin['right'] ?? 12) }}mm {{ ($margin['bottom'] ?? 15) + 40 }}mm {{ ($margin['left'] ?? 12) }}mm; }
+        @page { margin: {{ ($margin['top'] ?? 15) }}mm {{ ($margin['right'] ?? 12) }}mm {{ ($margin['bottom'] ?? 15) + ($bottomBandMm ?? 0) }}mm {{ ($margin['left'] ?? 12) }}mm; }
     </style>
 </head>
 <body>
