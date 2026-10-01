@@ -156,12 +156,36 @@ final class BlockRenderer implements TemplateRendererInterface
     /** @param array<string,mixed> $block */
     private function renderTable(array $block): string
     {
-        $source = $block['source'] ?? 'lines';
-        $rows = is_array($this->resolverValue("{$source}") ?? null) ? $this->resolverValue($source) : [];
+        $source = array_key_exists('source', $block) ? $block['source'] : 'lines';
         $columns = $block['columns'] ?? [];
         if (empty($columns) || ! is_array($columns)) {
             return '';
         }
+
+        // Older invoice templates used a source-less table as a one-row
+        // document-information block. Those definitions have column labels
+        // such as "Payment"/"terms", but no row source (and sometimes no
+        // explicit field), so the normal line-table renderer produced headers
+        // with an empty body. Preserve those templates by resolving their
+        // columns as invoice fields.
+        if ($source === null || $source === '') {
+            $informationRows = array_map(function (array $column): array {
+                $field = (string) ($column['field'] ?? '');
+                if ($field === '') {
+                    $field = $this->legacyInvoiceFieldForLabel((string) ($column['label'] ?? ''));
+                }
+
+                return [
+                    'label' => $column['label'] ?? '',
+                    'field' => $field,
+                    'format' => $column['format'] ?? null,
+                ];
+            }, $columns);
+
+            return $this->renderInformationTable(['rows' => $informationRows]);
+        }
+
+        $rows = is_array($this->resolverValue("{$source}") ?? null) ? $this->resolverValue($source) : [];
 
         $head = '';
         foreach ($columns as $col) {
@@ -212,6 +236,20 @@ final class BlockRenderer implements TemplateRendererInterface
         }
 
         return "<table class=\"tb-line-items\" style=\"width:100%;border-collapse:collapse;\"><thead><tr>{$head}</tr></thead><tbody>{$body}</tbody></table>";
+    }
+
+    private function legacyInvoiceFieldForLabel(string $label): string
+    {
+        return match (strtolower(trim($label))) {
+            'doctor' => 'invoice.doctor',
+            'date of case' => 'invoice.date_of_case',
+            'case number' => 'invoice.case_number',
+            'patient name' => 'invoice.patient_name',
+            'location', 'case location' => 'invoice.case_location',
+            'payment', 'payment term', 'payment terms', 'term', 'terms' => 'invoice.payment_terms',
+            'due date' => 'invoice.due_date',
+            default => '',
+        };
     }
 
     /** @param array<string,mixed> $block */

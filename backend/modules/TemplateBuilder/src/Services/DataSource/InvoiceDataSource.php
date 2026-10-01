@@ -18,7 +18,7 @@ class InvoiceDataSource implements DataSourceContract
 
     public function load(string $documentId): self
     {
-        $this->invoice = Invoice::with(['customer.salesperson', 'lines.product', 'doctor', 'requestor', 'buyer', 'billingContact', 'shippingContact'])->findOrFail($documentId);
+        $this->invoice = Invoice::with(['customer.salesperson', 'customer.addresses', 'lines.product', 'doctor', 'requestor', 'buyer', 'billingContact', 'shippingContact'])->findOrFail($documentId);
 
         return $this;
     }
@@ -39,6 +39,9 @@ class InvoiceDataSource implements DataSourceContract
         $salesperson = $invoice->customer?->salesperson?->name ?? '';
         $doctor = $invoice->doctor?->full_name ?? $invoice->doctor?->display_name ?? '';
         $requestor = $invoice->requestor?->full_name ?? $invoice->requestor?->display_name ?? '';
+        $paymentTerms = $this->paymentTerms($invoice);
+        $billingAddress = $this->customerAddress($invoice, 'billing');
+        $shippingAddress = $this->customerAddress($invoice, 'shipping');
         $productIndex = 0;
         foreach ($invoice->lines as $i => $line) {
             $isProduct = ($line->line_type ?? 'product') === 'product';
@@ -91,19 +94,11 @@ class InvoiceDataSource implements DataSourceContract
                 'buyer' => $invoice->buyer?->full_name ?? $invoice->buyer?->display_name ?? '',
                 'plant_code' => $invoice->plant_code ?? '',
                 'company_code' => $invoice->company_code ?? '',
-                'billing_address' => $this->formatAddress($invoice->billing_address_snapshot),
-                'shipping_address' => $this->formatAddress($invoice->shipping_address_snapshot),
-                'notes' => $invoice->notes ?? '',
-                // Printed Payment Terms: the free-text terms win when written;
-                // otherwise fall back to the Net-N snapshot so picking "30
-                // days" on the invoice actually shows on the PDF.
-                'terms' => $invoice->terms
-                    ?: (($invoice->payment_terms_snapshot ?: $invoice->customer?->payment_terms)
-                        ? 'Net '.($invoice->payment_terms_snapshot ?: $invoice->customer?->payment_terms).' days'
-                        : ''),
-                'payment_terms' => ($invoice->payment_terms_snapshot ?: $invoice->customer?->payment_terms)
-                    ? 'Net '.($invoice->payment_terms_snapshot ?: $invoice->customer?->payment_terms).' days'
-                    : '',
+                'billing_address' => $billingAddress,
+                'shipping_address' => $shippingAddress,
+                'notes' => $this->visibleNotes($invoice->notes),
+                'payment_terms' => $paymentTerms,
+                'terms' => $paymentTerms,
                 'attention_to' => $invoice->attention_to ?? '',
                 'shipping_method' => $invoice->shipping_method ?? '',
                 'delivery_date' => optional($invoice->delivery_date)->format('Y-m-d') ?? '',
@@ -121,7 +116,7 @@ class InvoiceDataSource implements DataSourceContract
                 'phone' => $invoice->customer?->phone ?? $invoice->contact_phone ?? '',
                 'tax_id' => $invoice->tax_registration_number ?? $invoice->customer?->tax_number ?? '',
                 'company_registration_number' => $invoice->company_registration_number ?? $invoice->customer?->company_registration_number ?? '',
-                'billing_address' => $this->formatAddress($invoice->billing_address_snapshot),
+                'billing_address' => $billingAddress,
             ],
             'company' => $company,
             'lines' => $lines,
@@ -151,6 +146,83 @@ class InvoiceDataSource implements DataSourceContract
         ];
     }
 
+    private function paymentTerms(Invoice $invoice): string
+    {
+        $terms = trim((string) ($invoice->terms ?? ''));
+        if ($terms !== '') {
+            return $terms;
+        }
+
+        $snapshot = trim((string) ($invoice->payment_terms_snapshot ?? ''));
+        if ($snapshot !== '') {
+            return is_numeric($snapshot) ? $snapshot.' days' : $snapshot;
+        }
+
+        if ($invoice->invoice_date && $invoice->due_date) {
+            $days = $invoice->invoice_date->copy()->startOfDay()->diffInDays(
+                $invoice->due_date->copy()->startOfDay(),
+                false,
+            );
+
+            if ($days >= 0) {
+                return $days.' days';
+            }
+        }
+
+        $customerTerms = $invoice->customer?->payment_terms;
+        if ($customerTerms !== null && is_numeric($customerTerms)) {
+            return $customerTerms.' days';
+        }
+
+        return '';
+    }
+
+    private function customerAddress(Invoice $invoice, string $type): string
+    {
+        $defaultAddress = $invoice->customer?->addresses
+            ?->first(fn ($address) => $address->type === $type && (bool) $address->is_default);
+
+        if ($defaultAddress) {
+            $parts = [
+                $defaultAddress->label,
+                $defaultAddress->street,
+                $defaultAddress->street2,
+                $defaultAddress->city,
+                $defaultAddress->state,
+                $defaultAddress->zip,
+                $defaultAddress->country,
+            ];
+
+            $seen = [];
+            $parts = array_filter($parts, function ($part) use (&$seen): bool {
+                $value = trim((string) $part);
+                if ($value === '') {
+                    return false;
+                }
+
+                $key = mb_strtolower($value);
+                if (isset($seen[$key])) {
+                    return false;
+                }
+
+                $seen[$key] = true;
+
+                return true;
+            });
+
+            return implode("\n", $parts);
+        }
+
+        $snapshot = $type === 'billing'
+            ? $invoice->billing_address_snapshot
+            : $invoice->shipping_address_snapshot;
+        $legacy = $type === 'billing'
+            ? $invoice->customer?->billing_address
+            : $invoice->customer?->shipping_address;
+
+        return $this->formatAddress($snapshot ?: $legacy);
+    }
+
     public function fieldCatalog(): array
     {
         return [
@@ -177,6 +249,7 @@ class InvoiceDataSource implements DataSourceContract
                 ['token' => 'invoice.salesperson', 'label' => 'Salesperson'],
                 ['token' => 'invoice.delivery_date', 'label' => 'Delivery Date'],
                 ['token' => 'invoice.notes', 'label' => 'Notes'],
+                ['token' => 'invoice.payment_terms', 'label' => 'Payment Terms'],
                 ['token' => 'invoice.terms', 'label' => 'Terms & Conditions'],
             ]],
             ['group' => 'Customer', 'fields' => [
@@ -236,6 +309,7 @@ class InvoiceDataSource implements DataSourceContract
                 'billing_address' => "Globex Corporation\n1 Infinite Loop\nSan Francisco, CA 94102",
                 'shipping_address' => "Globex Corporation\n1 Infinite Loop\nSan Francisco, CA 94102",
                 'notes' => 'Thank you for your business.',
+                'payment_terms' => 'Payment due within 30 days. Late payments incur 1.5% monthly interest.',
                 'terms' => 'Payment due within 30 days. Late payments incur 1.5% monthly interest.',
                 'attention_to' => 'Dr. Sarah Chen',
                 'doctor' => 'Dr. James Wilson',

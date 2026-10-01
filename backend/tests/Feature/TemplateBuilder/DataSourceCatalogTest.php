@@ -22,6 +22,7 @@ class DataSourceCatalogTest extends TestCase
         $this->assertNotEmpty($sample['lines']);
         $this->assertArrayHasKey('subtotal', $sample['totals']);
         $this->assertArrayHasKey('currency_symbol', $sample['meta']);
+        $this->assertSame($sample['invoice']['terms'], $sample['invoice']['payment_terms']);
     }
 
     public function test_invoice_field_catalog_is_grouped(): void
@@ -32,6 +33,10 @@ class DataSourceCatalogTest extends TestCase
         $this->assertContains('Invoice', $groups);
         $this->assertContains('Customer', $groups);
         $this->assertContains('Totals', $groups);
+
+        $tokens = collect($catalog)
+            ->flatMap(fn (array $group) => array_column($group['fields'], 'token'));
+        $this->assertTrue($tokens->contains('invoice.payment_terms'));
     }
 
     public function test_purchase_order_sample_has_expected_shape(): void

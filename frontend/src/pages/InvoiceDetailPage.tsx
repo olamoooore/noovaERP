@@ -36,6 +36,7 @@ interface Invoice {
     email: string
     phone: string
     billing_address: string
+    addresses?: CustomerAddress[]
   }
   invoice_date: string
   due_date: string
@@ -140,6 +141,17 @@ interface InvoiceLine {
   line_total: number
 }
 
+interface CustomerAddress {
+  type: 'billing' | 'shipping' | 'other'
+  street?: string | null
+  street2?: string | null
+  city?: string | null
+  state?: string | null
+  zip?: string | null
+  country?: string | null
+  is_default: boolean
+}
+
 interface Payment {
   id: number
   payment_number: string
@@ -176,6 +188,25 @@ function formatAddress(address: string | null | undefined): string {
   }
 }
 
+function getCustomerBillingAddress(customer: Invoice['customer']): string {
+  const defaultBillingAddress = customer?.addresses?.find(
+    (address) => address.type === 'billing' && address.is_default,
+  )
+
+  if (defaultBillingAddress) {
+    return [
+      defaultBillingAddress.street,
+      defaultBillingAddress.street2,
+      defaultBillingAddress.city,
+      defaultBillingAddress.state,
+      defaultBillingAddress.zip,
+      defaultBillingAddress.country,
+    ].filter(Boolean).join('\n')
+  }
+
+  return formatAddress(customer?.billing_address)
+}
+
 export function InvoiceDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -207,6 +238,7 @@ export function InvoiceDetailPage() {
   const fxRate = Number(invoice?.exchange_rate ?? 1) || 1
   const showBaseEquivalent = Boolean(docCurrency && baseCurrency && docCurrency !== baseCurrency)
   const baseMoney = (value: number) => formatCurrency(value * fxRate, baseCurrency)
+  const customerBillingAddress = getCustomerBillingAddress(invoice?.customer)
 
   const submitApprovalMutation = useMutation({
     mutationFn: async () => {
@@ -826,9 +858,9 @@ export function InvoiceDetailPage() {
                       {invoice.customer.phone}
                     </p>
                   )}
-                  {(invoice.billing_address_snapshot || invoice.customer.billing_address) && (
+                  {customerBillingAddress && (
                     <p className="text-sm text-muted-foreground mt-2 whitespace-pre-line">
-                      {formatAddress(invoice.billing_address_snapshot || invoice.customer.billing_address)}
+                      {customerBillingAddress}
                     </p>
                   )}
                 </div>
