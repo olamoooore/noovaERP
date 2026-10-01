@@ -213,6 +213,9 @@ final class PdfGenerationService implements PdfGenerationServiceContract
         $seenRows = [];
         $footerTop = null;
         $totalsFrame = null;
+        // Numeric copies captured during layout: frame decorators are only
+        // valid while layout runs, so end_document must not touch them.
+        $totalsHeight = null;
         $totalsPosition = null;
         $showSubtotal = ($config['show_page_subtotal'] ?? true) !== false;
         $subtotalLabel = (string) ($config['subtotal_label'] ?? 'Page Subtotal');
@@ -225,7 +228,7 @@ final class PdfGenerationService implements PdfGenerationServiceContract
         $pdf->setCallbacks([
             [
                 'event' => 'begin_frame',
-                'f' => function (Frame $frame, Canvas $canvas) use (&$footerTop, &$totalsFrame, &$totalsPosition, $margin, $pointsPerMm): void {
+                'f' => function (Frame $frame, Canvas $canvas) use (&$footerTop, &$totalsFrame, &$totalsHeight, &$totalsPosition, $margin, $pointsPerMm): void {
                     $node = $frame->get_node();
                     if (! $node instanceof DOMElement) {
                         return;
@@ -260,9 +263,14 @@ final class PdfGenerationService implements PdfGenerationServiceContract
                     $footerTop = $targetY;
 
                     if ($totalsFrame instanceof Frame) {
+                        // The totals frame is fully laid out by now, so its
+                        // margin height is final (it is 0 during its own
+                        // begin_frame).
+                        $totalsHeight = $totalsFrame->get_margin_height();
+                        \Log::info('TB-DECOR footer-begin', ['page' => $canvas->get_page_number(), 'targetY' => $targetY, 'totalsHeight' => $totalsHeight]);
                         $totalsTargetY = $targetY
                             - (3 * $pointsPerMm)
-                            - $totalsFrame->get_margin_height();
+                            - $totalsHeight;
                         $totalsFrame->move(0, $totalsTargetY - (float) $totalsFrame->get_position('y'));
                         $totalsPosition = [
                             'page' => $canvas->get_page_number(),
@@ -306,6 +314,7 @@ final class PdfGenerationService implements PdfGenerationServiceContract
                 'f' => function (int $pageNumber, int $pageCount, Canvas $canvas, FontMetrics $fontMetrics) use (
                     &$pageSubtotals,
                     &$footerTop,
+                    &$totalsHeight,
                     &$totalsPosition,
                     $data,
                     $showSubtotal,
@@ -327,6 +336,8 @@ final class PdfGenerationService implements PdfGenerationServiceContract
                     $numberWidth = $fontMetrics->getTextWidth($number, $font, 8);
                     $canvas->text($pageWidth - $right - $numberWidth, $top, $number, $font, 8, [0.42, 0.45, 0.50]);
 
+                    \Log::info('TB-DECOR end-document', ['page' => $pageNumber, 'pageCount' => $pageCount, 'footerTop' => $footerTop, 'totalsHeight' => $totalsHeight, 'totalsPosition' => $totalsPosition]);
+
                     if (! $showSubtotal || ! array_key_exists($pageNumber, $pageSubtotals)) {
                         return;
                     }
@@ -337,7 +348,17 @@ final class PdfGenerationService implements PdfGenerationServiceContract
                     // Earlier pages use the reserved bottom decoration band. On the
                     // final page, use the blank slot immediately above overall totals.
                     $defaultY = $pageHeight - (((float) ($margin['bottom'] ?? 15) + 4) * $pointsPerMm);
-                    if ($pageNumber === $pageCount && ($totalsPosition['page'] ?? null) === $pageNumber) {
+                    if ($pageNumber === $pageCount && $footerTop !== null && $totalsHeight !== null) {
+                        // The footer's begin_frame callback pins the footer to the
+                        // page bottom and moves the totals above it (3mm gap).
+                        // Recompute the totals' final top from those two facts:
+                        // the callback-order-dependent $totalsPosition is unreliable
+                        // since the totals/footer DOM order changed (2026-10-01).
+                        $y = $footerTop
+                            - (3 * $pointsPerMm)
+                            - $totalsHeight
+                            - ($subtotalGapMm * $pointsPerMm);
+                    } elseif ($pageNumber === $pageCount && ($totalsPosition['page'] ?? null) === $pageNumber) {
                         $y = (float) $totalsPosition['y'] - ($subtotalGapMm * $pointsPerMm);
                     } elseif ($footerTop !== null && $pageNumber === $pageCount) {
                         $y = min($defaultY, $footerTop - (8 * $pointsPerMm));
