@@ -240,7 +240,7 @@ class PosPostingService
      * @param  string  $reason  Human-readable reversal reason
      * @return JournalEntry|null The reversal entry, or null if no GL existed
      */
-    public function reverseOrder(PosOrder $originalOrder, PosOrder $returnOrder, string $reason = 'POS return'): ?JournalEntry
+    public function reverseOrder(PosOrder $originalOrder, PosOrder $returnOrder, string $reason = 'POS return', ?array $returnLines = null): ?JournalEntry
     {
         $link = JournalEntryLink::where('source_document_type', 'pos_order')
             ->where('source_document_id', $originalOrder->id)
@@ -254,6 +254,20 @@ class PosPostingService
             ]);
 
             return null;
+        }
+
+        // #268: a partial return must NOT fully reverse the original posting.
+        // Partial returns route through the canonical proportional-reversal
+        // machinery (signed tax trail rows + proportional GL). Full returns
+        // (or legacy callers without line detail) keep the full reversal.
+        if ($returnLines !== null) {
+            $hasPriorReversal = JournalEntryLink::where('original_journal_entry_id', $link->journal_entry_id)
+                ->where('relation_type', 'reversal')
+                ->exists();
+
+            if ($hasPriorReversal || ! $this->returnCoversWholeOrder($originalOrder, $returnLines)) {
+                return $this->partialReverseOrder($originalOrder, (int) $link->journal_entry_id, $returnLines, $reason);
+            }
         }
 
         $result = $this->postingEngine->reverse(new ReversalRequest(
@@ -278,6 +292,256 @@ class PosPostingService
         ]);
 
         return $result->journalEntry;
+    }
+
+    /**
+     * #268: true (per-line) partial reversal — GL lines proportional to the
+     * returned items, tax trail rows signed per returned tax code, original
+     * entry's remaining-reversible tracked by ReversalComponent (multiple
+     * partial returns are safe).
+     */
+    private function partialReverseOrder(PosOrder $originalOrder, int $journalEntryId, array $returnLines, string $reason): ?JournalEntry
+    {
+        $original = JournalEntry::with('lines')->findOrFail($journalEntryId);
+        $lineAmounts = $this->buildPartialLineAmounts($originalOrder, $original, $returnLines);
+
+        if ($lineAmounts === []) {
+            Log::warning('POS partial return produced no reversible line amounts', [
+                'original_order_id' => $originalOrder->id,
+            ]);
+
+            return null;
+        }
+
+        $dto = new ReversalRequest(
+            journalEntryId: $journalEntryId,
+            reversalDate: now()->toDateString(),
+            reason: $reason,
+            reasonCode: 'POS_RETURN',
+            actorUserId: TenantUserHelper::resolveTenantUserId(),
+            tenantId: tenant()?->id,
+        );
+
+        $result = app(\App\Accounting\Services\ReversalCorrectionEngine::class)->partialReversal($dto, $lineAmounts);
+
+        if (! $result->success) {
+            throw new \RuntimeException(
+                "Partial GL reversal failed for POS return of order {$originalOrder->order_number}: {$result->error}"
+            );
+        }
+
+        Log::info('POS order partially reversed', [
+            'original_order_id' => $originalOrder->id,
+            'reversal_entry_id' => $result->journalEntry?->id,
+        ]);
+
+        return $result->journalEntry;
+    }
+
+    private function returnCoversWholeOrder(PosOrder $originalOrder, array $returnLines): bool
+    {
+        $requested = [];
+
+        foreach ($returnLines as $line) {
+            $itemId = (int) ($line['item_id'] ?? 0);
+            $requested[$itemId] = ($requested[$itemId] ?? 0) + (float) ($line['quantity'] ?? 0);
+        }
+
+        foreach ($originalOrder->items as $item) {
+            if (($requested[$item->id] ?? 0.0) < (float) $item->quantity) {
+                return false;
+            }
+        }
+
+        return $originalOrder->items->isNotEmpty();
+    }
+
+    /**
+     * Amounts for exactly the returned items, mapped onto the original JE
+     * lines: cash = returned net + returned tax; revenue = returned net;
+     * tax per returned tax code (from the persisted determination); cost
+     * lines (COGS/inventory) at the returned-quantity ratio.
+     *
+     * @return array<int, array{line_id: int, amount: float}>
+     */
+    private function buildPartialLineAmounts(PosOrder $originalOrder, JournalEntry $original, array $returnLines): array
+    {
+        $items = $originalOrder->items()->get()->keyBy('id');
+        $determination = app(\App\Services\TaxDeterminationService::class)
+            ->latestDeterminationLines('pos_order', (int) $originalOrder->id);
+
+        $totalQty = (float) $originalOrder->items->sum('quantity');
+        $returnedQty = 0.0;
+        $returnedNet = 0.0;
+        $taxByCode = [];
+
+        foreach ($returnLines as $line) {
+            $item = $items[(int) ($line['item_id'] ?? 0)] ?? null;
+            $qty = (float) ($line['quantity'] ?? 0);
+
+            if (! $item || $qty <= 0 || (float) $item->quantity <= 0) {
+                continue;
+            }
+
+            $ratio = min($qty / (float) $item->quantity, 1.0);
+            $gross = round((float) $item->line_total * $ratio, 2); // line_total is tax-inclusive for POS items
+            $tax = round((float) $item->tax_amount * $ratio, 2);
+
+            $returnedQty += $qty;
+            $returnedNet = round($returnedNet + ($gross - $tax), 2);
+
+            if ($tax > 0) {
+                $code = (string) ($determination[$item->id]['tax_code'] ?? '');
+                $taxByCode[$code] = round(($taxByCode[$code] ?? 0) + $tax, 2);
+            }
+        }
+
+        if ($returnedQty <= 0) {
+            return [];
+        }
+
+        $qtyRatio = $totalQty > 0 ? min($returnedQty / $totalQty, 1.0) : 0.0;
+
+        $accountId = fn (string $key): int => (int) (\App\Models\AccountMapping::where('mapping_key', $key)->value('account_id') ?: 0);
+        $mappingIds = [
+            'cash' => $accountId('cash'),
+            'sales_revenue' => $accountId('sales_revenue'),
+            'sales_tax_payable' => $accountId('sales_tax_payable'),
+            'cogs' => $accountId('cogs'),
+            'inventory' => $accountId('inventory'),
+        ];
+
+        $revenueLines = [];
+        $taxLines = [];
+        $cashLines = [];
+        $costLines = [];
+
+        foreach ($original->lines as $line) {
+            if ($line->tax_code !== null || ($mappingIds['sales_tax_payable'] && (int) $line->account_id === $mappingIds['sales_tax_payable'])) {
+                $taxLines[] = $line;
+            } elseif ($mappingIds['sales_revenue'] && (int) $line->account_id === $mappingIds['sales_revenue']) {
+                $revenueLines[] = $line;
+            } elseif ($mappingIds['cash'] && (int) $line->account_id === $mappingIds['cash']) {
+                $cashLines[] = $line;
+            } elseif (
+                ($mappingIds['cogs'] && (int) $line->account_id === $mappingIds['cogs'])
+                || ($mappingIds['inventory'] && (int) $line->account_id === $mappingIds['inventory'])
+            ) {
+                $costLines[] = $line;
+            }
+        }
+
+        $amounts = [];
+
+        // Tax per returned code, allocated across the original tax lines.
+        foreach ($taxByCode as $code => $taxAmount) {
+            $matching = $code === ''
+                ? $taxLines
+                : array_values(array_filter($taxLines, fn ($l) => (string) $l->tax_code === $code));
+
+            if ($matching === []) {
+                $matching = $taxLines;
+            }
+
+            $amounts = array_merge($amounts, $this->allocateAcross($matching, $taxAmount));
+        }
+
+        $amounts = array_merge($amounts, $this->allocateAcross($revenueLines, $returnedNet));
+
+        $taxTotal = round(array_sum($taxByCode), 2);
+        $amounts = array_merge($amounts, $this->allocateAcross($cashLines, round($returnedNet + $taxTotal, 2)));
+
+        // COGS / inventory revert at the returned-quantity ratio (both sides
+        // share the ratio, so the pair stays balanced).
+        foreach ($costLines as $line) {
+            $amount = round((float) max($line->debit, $line->credit) * $qtyRatio, 2);
+
+            if ($amount > 0) {
+                $amounts[] = ['line_id' => (int) $line->id, 'amount' => $amount];
+            }
+        }
+
+        // Rounding residual guard: keep the mirrored entry balanced by nudging
+        // the cash line (or the largest line) by the difference.
+        return $this->balancePartialAmounts($amounts, $cashLines, $original->lines->keyBy('id'));
+    }
+
+    /**
+     * @param  array<int, \App\Models\JournalEntryLine>  $lines
+     * @return array<int, array{line_id: int, amount: float}>
+     */
+    private function allocateAcross(array $lines, float $total): array
+    {
+        if ($lines === [] || $total <= 0) {
+            return [];
+        }
+
+        $sum = array_sum(array_map(fn ($l) => (float) max($l->debit, $l->credit), $lines));
+        $amounts = [];
+        $running = 0.0;
+        $last = count($lines) - 1;
+
+        foreach ($lines as $i => $line) {
+            $lineTotal = (float) max($line->debit, $line->credit);
+            $amount = $i === $last
+                ? round($total - $running, 2)
+                : ($sum > 0 ? round($total * ($lineTotal / $sum), 2) : 0.0);
+
+            if ($amount > 0) {
+                $amounts[] = ['line_id' => (int) $line->id, 'amount' => $amount];
+                $running = round($running + $amount, 2);
+            }
+        }
+
+        return $amounts;
+    }
+
+    /**
+     * @param  array<int, array{line_id: int, amount: float}>  $amounts
+     * @param  array<int, \App\Models\JournalEntryLine>  $cashLines
+     */
+    private function balancePartialAmounts(array $amounts, array $cashLines, \Illuminate\Support\Collection $linesById): array
+    {
+        $debits = 0.0;
+        $credits = 0.0;
+
+        foreach ($amounts as $entry) {
+            $line = $linesById[$entry['line_id']] ?? null;
+
+            if (! $line) {
+                continue;
+            }
+
+            if ((float) $line->debit > 0) {
+                $debits = round($debits + $entry['amount'], 2);
+            } else {
+                $credits = round($credits + $entry['amount'], 2);
+            }
+        }
+
+        $diff = round($debits - $credits, 2);
+
+        if (abs($diff) < 0.01 || $amounts === []) {
+            return $amounts;
+        }
+
+        $targetLineId = $cashLines !== []
+            ? (int) $cashLines[0]->id
+            : (int) collect($amounts)->sortByDesc('amount')->first()['line_id'];
+
+        foreach ($amounts as $i => $entry) {
+            if ($entry['line_id'] === $targetLineId) {
+                $amounts[$i]['amount'] = round($entry['amount'] - $diff, 2);
+
+                if ($amounts[$i]['amount'] <= 0) {
+                    unset($amounts[$i]);
+                }
+
+                break;
+            }
+        }
+
+        return array_values($amounts);
     }
 
     /**

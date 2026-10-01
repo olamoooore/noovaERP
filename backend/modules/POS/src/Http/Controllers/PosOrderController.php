@@ -1310,7 +1310,8 @@ class PosOrderController extends Controller
             app(PosPostingService::class)->reverseOrder(
                 $posOrder,
                 $returnOrder,
-                'POS return: '.($notes ?? $returnOrder->order_number)
+                'POS return: '.($notes ?? $returnOrder->order_number),
+                $items,
             );
         }
 
