@@ -59,12 +59,20 @@ class SyncTaxPermissions extends Command
      */
     public function syncCurrentSchema(): int
     {
-        [$viewRoleId, $manageRoleId] = $this->ensurePermissions();
+        $ids = $this->ensurePermissions();
 
+        // Legacy switchover (R7.5): tax.view/tax.manage mirror reports.*.
         $mirrors = [
-            [$viewRoleId, 'reports.view'],
-            [$manageRoleId, 'reports.manage'],
+            [$ids['tax.view'], 'reports.view'],
+            [$ids['tax.manage'], 'reports.manage'],
         ];
+
+        // #273 provisioning tail: the policy/determine families now ship with
+        // the tenant seeder; existing tenants get them from their natural
+        // counterparts — policy.view from tax.view, determine from tax.manage,
+        // and policy.manage for ELEVATED roles only (separation of duties).
+        $mirrors[] = [$ids['tax.policy.view'], 'tax.view'];
+        $mirrors[] = [$ids['tax.determine'], 'tax.manage'];
 
         $granted = 0;
 
@@ -90,26 +98,45 @@ class SyncTaxPermissions extends Command
             }
         }
 
+        $elevatedRoleIds = DB::table('roles')
+            ->whereIn('name', ['admin', 'Admin', 'Owner', 'owner', 'super-admin', 'super_admin'])
+            ->pluck('id')
+            ->all();
+
+        $alreadyPolicy = array_map('intval', DB::table('role_has_permissions')->where('permission_id', $ids['tax.policy.manage'])->pluck('role_id')->all());
+
+        foreach ($elevatedRoleIds as $roleId) {
+            if (in_array((int) $roleId, $alreadyPolicy, true)) {
+                continue;
+            }
+
+            DB::table('role_has_permissions')->insert([
+                'permission_id' => $ids['tax.policy.manage'],
+                'role_id' => (int) $roleId,
+            ]);
+            $granted++;
+        }
+
         return $granted;
     }
 
     /**
-     * @return array{0:int,1:int} permission ids for tax.view, tax.manage
+     * @return array<string, int> permission ids keyed by name
      */
     private function ensurePermissions(): array
     {
         $ids = [];
 
-        foreach (['tax.view', 'tax.manage'] as $name) {
+        foreach (['tax.view', 'tax.manage', 'tax.policy.view', 'tax.policy.manage', 'tax.determine'] as $name) {
             $existing = DB::table('permissions')->where('name', $name)->where('guard_name', 'web')->first();
 
             if ($existing) {
-                $ids[] = (int) $existing->id;
+                $ids[$name] = (int) $existing->id;
 
                 continue;
             }
 
-            $ids[] = (int) DB::table('permissions')->insertGetId([
+            $ids[$name] = (int) DB::table('permissions')->insertGetId([
                 'name' => $name,
                 'guard_name' => 'web',
                 'created_at' => now(),
