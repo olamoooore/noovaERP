@@ -147,6 +147,15 @@ class ActionEligibilityEvaluator
                 ? \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'actor:'.$actorId)->toString()
                 : (string) $actorId;
 
+            // Issue found during #280 verification: numeric entity ids feed a
+            // uuid column — map them with the same deterministic uuid5
+            // convention used for actors (and by TaxDeterminationService).
+            $entityId = $context['entity_id'] ?? null;
+
+            if (is_string($entityId) && $entityId !== '' && ! \Illuminate\Support\Str::isUuid($entityId)) {
+                $entityId = \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'legal_entity:'.$entityId)->toString();
+            }
+
             $snapshot = AuthorityEvaluationSnapshot::create([
                 'action_eligibility_evaluation_id' => Str::uuid()->toString(),
                 'requested_action' => $action,
@@ -154,7 +163,7 @@ class ActionEligibilityEvaluator
                 'record_id' => $recordId,
                 'record_version' => $context['current_record_version'] ?? null,
                 'tenant_id' => (string) $tenantId,
-                'entity_id' => $context['entity_id'] ?? null,
+                'entity_id' => $entityId,
                 'actor_id' => $actorUuid,
                 'context_snapshot_hash' => hash('sha256', json_encode($context)),
                 'policy_versions' => $this->buildPolicyVersions(),

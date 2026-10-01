@@ -27,6 +27,32 @@ class TaxReportingService
     /**
      * @return array{months: array<int,string>, rows: array<int, array<string, mixed>>, by_tax_code: array<int, array<string, mixed>>, totals: array{output_tax: float, input_tax: float, net: float}}
      */
+    /**
+     * F15 (#280): drill-down rows behind any return box/total. Shares the
+     * aggregator's row path (sum equals the box value to the cent) and adds
+     * journal entry + determination lineage.
+     *
+     * @return array{rows: array<int, array<string, mixed>>, totals: array{rows: int, taxable_amount: float, tax_amount: float}}
+     */
+    public function returnDetail(
+        string $period,
+        ?int $legalEntityId = null,
+        ?string $direction = null,
+        ?string $taxCode = null,
+        ?string $documentType = null,
+    ): array {
+        $rows = $this->aggregator->drilldown($period, $legalEntityId, $direction, $taxCode, $documentType);
+
+        return [
+            'rows' => $rows,
+            'totals' => [
+                'rows' => count($rows),
+                'taxable_amount' => round(array_sum(array_column($rows, 'taxable_amount')), 2),
+                'tax_amount' => round(array_sum(array_column($rows, 'tax_amount')), 2),
+            ],
+        ];
+    }
+
     public function journal(string $from, string $to, ?int $legalEntityId = null): array
     {
         $months = self::monthsBetween($from, $to);

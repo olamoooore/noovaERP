@@ -128,4 +128,29 @@ class TaxReportController extends Controller
             'Content-Disposition' => "attachment; filename=\"wht_schedule_{$authority}_{$validated['period']}.csv\"",
         ]);
     }
+
+    /**
+     * F15 (#280): drill-down for a return box/total — contributing rows with
+     * source document, tax code, journal entry and determination lineage.
+     */
+    public function returnDetail(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate([
+            'period' => ['required', 'string', 'regex:/^\d{4}-(\d{2}|Q[1-4])$/'],
+            'direction' => ['nullable', 'in:output,input'],
+            'tax_code' => ['nullable', 'string', 'max:30'],
+            'document_type' => ['nullable', 'string', 'max:50'],
+            'entity_id' => ['nullable', 'integer', 'exists:legal_entities,id'],
+        ]);
+
+        return response()->json([
+            'data' => $this->reporting->returnDetail(
+                $validated['period'],
+                isset($validated['entity_id']) ? (int) $validated['entity_id'] : null,
+                $validated['direction'] ?? null,
+                $validated['tax_code'] ?? null,
+                $validated['document_type'] ?? null,
+            ),
+        ]);
+    }
 }

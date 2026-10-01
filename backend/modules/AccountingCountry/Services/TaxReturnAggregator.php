@@ -36,6 +36,61 @@ class TaxReturnAggregator
      */
     public function aggregate(string|array $period, ?int $legalEntityId = null): array
     {
+        $keys = [
+            'reporting_period', 'source_document_type', 'source_document_id', 'tax_code',
+            'tax_rule_id', 'tax_rate', 'tax_treatment', 'tax_regime', 'taxable_amount',
+            'tax_amount', 'category',
+        ];
+
+        $result = ['output' => [], 'input' => []];
+
+        foreach ($this->normalizedRows($period, $legalEntityId) as $row) {
+            $result[$row['direction']][] = array_intersect_key($row, array_flip($keys));
+        }
+
+        return $result;
+    }
+
+    /**
+     * F15 (#280): the drill-down shares the EXACT row path with aggregate(),
+     * so the sum of drill-down rows equals the box value to the cent.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function drilldown(
+        string|array $period,
+        ?int $legalEntityId = null,
+        ?string $direction = null,
+        ?string $taxCode = null,
+        ?string $documentType = null,
+    ): array {
+        $rows = $this->normalizedRows($period, $legalEntityId);
+
+        return array_values(array_filter($rows, function (array $row) use ($direction, $taxCode, $documentType) {
+            if ($direction !== null && $row['direction'] !== strtolower($direction)) {
+                return false;
+            }
+
+            if ($taxCode !== null && (string) $row['tax_code'] !== $taxCode) {
+                return false;
+            }
+
+            if ($documentType !== null && (string) $row['source_document_type'] !== $documentType) {
+                return false;
+            }
+
+            return true;
+        }));
+    }
+
+    /**
+     * The single shared live-entry row path: expand periods, filter live
+     * entries, drop withholding rows, resolve direction/sign/category once.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizedRows(string|array $period, ?int $legalEntityId): array
+    {
         $periods = is_array($period) ? array_values($period) : [$period];
 
         // Expand quarter periods (YYYY-Qn) into their months so a quarterly
@@ -64,11 +119,11 @@ class TaxReturnAggregator
             ->orderBy('ttd.id')
             ->get(['ttd.*']);
 
-        $result = ['output' => [], 'input' => []];
-
         // MRD R4.5: withholding trail rows belong to WHT reporting, never
         // to GST/SST supply or claim buckets.
         $withholdingRuleIds = DB::table('taxes')->where('type', 'withholding')->pluck('id')->flip();
+
+        $normalized = [];
 
         foreach ($rows as $row) {
             if ($row->tax_rule_id !== null && isset($withholdingRuleIds[(int) $row->tax_rule_id])) {
@@ -93,7 +148,8 @@ class TaxReturnAggregator
 
             $sign = in_array((string) $row->source_document_type, self::NEGATIVE_DOCUMENTS, true) ? -1 : 1;
 
-            $result[$direction][] = [
+            $normalized[] = [
+                'id' => (int) $row->id,
                 'reporting_period' => $row->reporting_period,
                 'source_document_type' => $row->source_document_type,
                 'source_document_id' => $row->source_document_id,
@@ -105,10 +161,17 @@ class TaxReturnAggregator
                 'taxable_amount' => round($sign * (float) $row->taxable_amount, 2),
                 'tax_amount' => round($sign * (float) $row->tax_amount, 2),
                 'category' => $this->category($row),
+                'direction' => $direction,
+                'stored_direction' => $row->direction,
+                'journal_entry_id' => (int) $row->journal_entry_id,
+                'tax_determination_id' => $row->tax_determination_id,
+                'result_version' => $row->result_version !== null ? (int) $row->result_version : null,
+                'currency_code' => $row->currency_code ?? null,
+                'exchange_rate' => isset($row->exchange_rate) && $row->exchange_rate !== null ? (float) $row->exchange_rate : null,
             ];
         }
 
-        return $result;
+        return $normalized;
     }
 
     /**

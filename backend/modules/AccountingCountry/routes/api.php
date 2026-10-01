@@ -40,6 +40,10 @@ Route::prefix('accounting/tax-report')
     ->group(function () {
         Route::get('/journal', [TaxReportController::class, 'journal']);
         Route::get('/reconciliation', [TaxReportController::class, 'reconciliation']);
+
+        // F15 (#280): box/total drill-down — reports.view per acceptance.
+        Route::get('/return-detail', [TaxReportController::class, 'returnDetail'])
+            ->middleware(RequirePermission::using('reports.view'));
         Route::get('/filings', [TaxReportController::class, 'filings']);
         Route::get('/periods', [\App\Http\Controllers\Api\TaxPeriodController::class, 'lockStates']);
         Route::get('/withholding', [TaxReportController::class, 'withholding']);
