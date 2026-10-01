@@ -204,4 +204,54 @@ class TagService
             ->values()
             ->all();
     }
+
+    /**
+     * Subject ids of a type whose tags match a free-text search — used by the
+     * wide search so "vip" finds every customer tagged VIP.
+     *
+     * @return int[]
+     */
+    public function subjectIdsForTagNameSearch(string $search, string $alias): array
+    {
+        $class = $this->modelFor($alias);
+        if (! $class) {
+            return [];
+        }
+
+        return DB::table('taggables')
+            ->join('tags', 'tags.id', '=', 'taggables.tag_id')
+            ->where('tags.name', 'ilike', "%{$search}%")
+            ->where('taggables.taggable_type', (new $class)->getMorphClass())
+            ->pluck('taggables.taggable_id')
+            ->unique()
+            ->map('intval')
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Tag names (per subject id) that match the search — for showing WHY a
+     * row matched ("Tag: VIP") in pickers and lists.
+     *
+     * @param  int[]  $subjectIds
+     * @return array<int, array<int, string>>
+     */
+    public function matchingTagNames(array $subjectIds, string $alias, string $search): array
+    {
+        $class = $this->modelFor($alias);
+        if (! $class || $subjectIds === []) {
+            return [];
+        }
+
+        return DB::table('taggables')
+            ->join('tags', 'tags.id', '=', 'taggables.tag_id')
+            ->where('taggables.taggable_type', (new $class)->getMorphClass())
+            ->whereIn('taggables.taggable_id', $subjectIds)
+            ->where('tags.name', 'ilike', "%{$search}%")
+            ->select('taggables.taggable_id', 'tags.name')
+            ->get()
+            ->groupBy('taggable_id')
+            ->map(fn ($rows) => $rows->pluck('name')->unique()->take(3)->values()->all())
+            ->all();
+    }
 }

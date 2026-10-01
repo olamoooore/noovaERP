@@ -200,6 +200,7 @@ export function ProductEditPage() {
 
     tax_mode: 'default' as TaxMode,
     tax_included: false,
+    tax_inclusive_override: null as boolean | null,
     tax_rate_override: '',
     tax_id: '',
   })
@@ -376,6 +377,7 @@ export function ProductEditPage() {
       unit: product.unit || '',
       tax_mode: (product.tax_mode || 'default') as TaxMode,
       tax_included: !!product.tax_included,
+      tax_inclusive_override: product.tax_inclusive_override ?? null,
       tax_rate_override: product.tax_rate_override != null ? String(product.tax_rate_override) : '',
       tax_id: product.tax_id != null ? String(product.tax_id) : '',
       // New ERP fields
@@ -525,6 +527,7 @@ export function ProductEditPage() {
   const selectedTaxIsInclusive = useMemo(() => {
     if (formData.tax_mode === 'none') return false
     if (formData.tax_mode === 'custom') return formData.tax_included // For custom, use the form setting
+    if (formData.tax_inclusive_override !== null) return formData.tax_inclusive_override // Per-product override
     if (formData.tax_mode === 'tax' && formData.tax_id) {
       const match = taxes?.find((t) => t.id === Number(formData.tax_id))
       return match?.is_inclusive ?? false
@@ -535,7 +538,7 @@ export function ProductEditPage() {
       return match?.is_inclusive ?? false
     }
     return false
-  }, [formData.tax_mode, formData.tax_id, formData.tax_included, taxes, taxConfig.default_tax_id])
+  }, [formData.tax_mode, formData.tax_id, formData.tax_included, formData.tax_inclusive_override, taxes, taxConfig.default_tax_id])
 
   const pricingPreview = useMemo(() => {
     const price = parseFloat(formData.price || '0')
@@ -629,6 +632,7 @@ export function ProductEditPage() {
 
       tax_mode: formData.tax_mode,
       tax_included: !!formData.tax_included,
+      tax_inclusive_override: formData.tax_mode === 'custom' ? null : formData.tax_inclusive_override,
       tax_rate_override:
         formData.tax_mode === 'custom' && formData.tax_rate_override !== ''
           ? parseFloat(formData.tax_rate_override)
@@ -1701,6 +1705,26 @@ export function ProductEditPage() {
                           onChange={(e) => setFormData({ ...formData, tax_rate_override: e.target.value })}
                           placeholder="e.g. 9"
                         />
+                      </div>
+                    )}
+
+                    {formData.tax_mode !== 'none' && formData.tax_mode !== 'custom' && (
+                      <div className="space-y-2">
+                        <Label>Tax Method</Label>
+                        <Select
+                          value={formData.tax_inclusive_override === null ? 'inherit' : formData.tax_inclusive_override ? 'inclusive' : 'exclusive'}
+                          onValueChange={(v) => setFormData({ ...formData, tax_inclusive_override: v === 'inherit' ? null : v === 'inclusive' })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="inherit">Follow tax rule ({selectedTaxIsInclusive ? 'Inclusive' : 'Exclusive'})</SelectItem>
+                            <SelectItem value="exclusive">Tax exclusive (tax added on top)</SelectItem>
+                            <SelectItem value="inclusive">Tax inclusive (price includes tax)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <div className="text-xs text-muted-foreground">Overrides the tax rule's inclusive/exclusive setting for this product only.</div>
                       </div>
                     )}
                   </div>

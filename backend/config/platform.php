@@ -4,6 +4,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Default entitlements for unconfigured tenants
+    |--------------------------------------------------------------------------
+    |
+    | The platform fails closed: a tenant with no entitlement rows only gets
+    | core features. Demo/intern environments where every module should be
+    | available out of the box can set ENTITLEMENTS_DEFAULT_ALLOW=true — an
+    | empty `tenant_entitlements` then resolves as "all modules entitled".
+    | Explicit entitlement rows (including explicit exclusions) always win.
+    */
+    'entitlements' => [
+        'default_allow_when_unconfigured' => env('ENTITLEMENTS_DEFAULT_ALLOW', false),
+    ],
+
+
+    /*
+    |--------------------------------------------------------------------------
     | Platform API rate limiting
     |--------------------------------------------------------------------------
     |

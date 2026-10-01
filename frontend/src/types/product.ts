@@ -63,6 +63,7 @@ export interface Product {
   tax_rate?: number | null;
   tax_mode?: TaxMode | null;
   tax_included: boolean;
+  tax_inclusive_override?: boolean | null;
   tax_rate_override?: number | null;
   tax_id?: number | null;
 
@@ -607,6 +608,7 @@ export interface ProductFormData {
   // Tax
   tax_mode?: TaxMode;
   tax_included: boolean;
+  tax_inclusive_override?: boolean | null;
   tax_rate_override?: number | string;
   tax_id?: number | string;
   

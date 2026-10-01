@@ -27,7 +27,30 @@ class TaxEngineService
         ],
     ];
 
+    /**
+     * Resolve the effective tax for a product/document context.
+     *
+     * Per-product inclusivity override: for every mode EXCEPT 'custom' (which
+     * owns its own `tax_included` flag), a non-null
+     * products.tax_inclusive_override forces inclusive/exclusive pricing
+     * regardless of the resolved rule's flag.
+     */
     public function resolve(
+        ?Product $product = null,
+        ?string $jurisdiction = null,
+        string $direction = 'output',
+        ?string $taxType = null,
+        ?string $date = null,
+    ): array {
+        $result = $this->resolveRaw($product, $jurisdiction, $direction, $taxType, $date);
+
+        return $this->applyProductInclusiveOverride($result, $product);
+    }
+
+    /**
+     * The resolution ladder without the per-product inclusive override.
+     */
+    private function resolveRaw(
         ?Product $product = null,
         ?string $jurisdiction = null,
         string $direction = 'output',
@@ -207,6 +230,26 @@ class TaxEngineService
         }
 
         return 'SG';
+    }
+
+    /**
+     * Apply the per-product inclusive/exclusive override (NULL = inherit).
+     * 'custom' mode keeps its own tax_included flag; no-tax resolutions stay
+     * untouched.
+     */
+    private function applyProductInclusiveOverride(array $result, ?Product $product): array
+    {
+        if (! $product || $product->tax_inclusive_override === null || $product->tax_mode === 'custom') {
+            return $result;
+        }
+
+        if ((float) ($result['rate'] ?? 0.0) <= 0.0 && empty($result['tax_id'])) {
+            return $result;
+        }
+
+        $result['is_inclusive'] = (bool) $product->tax_inclusive_override;
+
+        return $result;
     }
 
     private function fromTax(Tax $tax, string $jurisdiction, string $direction, string $source): array

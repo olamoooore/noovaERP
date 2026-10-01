@@ -25,6 +25,12 @@ interface Customer {
   email?: string
   phone?: string
   code?: string
+  /** Populated by the API when the search matched one of the customer's contacts. */
+  matched_contacts?: string[]
+  /** Tag names that matched the search (e.g. "VIP"). */
+  matched_tags?: string[]
+  /** Address/building labels that matched the search. */
+  matched_addresses?: string[]
 }
 
 interface CustomerSearchComboboxProps {
@@ -148,8 +154,23 @@ export function CustomerSearchCombobox({
                       value === String(customer.id) ? 'opacity-100' : 'opacity-0'
                     )}
                   />
-                  <div className="flex flex-col">
-                    <span>{getDisplayName(customer)}</span>
+                  <div className="flex min-w-0 flex-col">
+                    <span className="truncate">{getDisplayName(customer)}</span>
+                    {(customer.matched_contacts?.length ?? 0) > 0 && (
+                      <span className="truncate text-xs text-primary">
+                        Contact: {customer.matched_contacts!.join(', ')}
+                      </span>
+                    )}
+                    {(customer.matched_tags?.length ?? 0) > 0 && (
+                      <span className="truncate text-xs text-amber-600">
+                        Tag: {customer.matched_tags!.join(', ')}
+                      </span>
+                    )}
+                    {(customer.matched_addresses?.length ?? 0) > 0 && (
+                      <span className="truncate text-xs text-muted-foreground">
+                        Address: {customer.matched_addresses!.join(' · ')}
+                      </span>
+                    )}
                     {customer.code && (
                       <span className="text-xs text-muted-foreground">{customer.code}</span>
                     )}

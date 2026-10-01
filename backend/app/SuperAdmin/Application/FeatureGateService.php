@@ -153,7 +153,7 @@ class FeatureGateService
     private function resolveFromDb(string $tenantId): array
     {
         try {
-            return DB::table('public.tenant_entitlements as tenant_entitlements')
+            $entitled = DB::table('public.tenant_entitlements as tenant_entitlements')
                 ->join('public.catalog_items as catalog_items', 'catalog_items.id', '=', 'tenant_entitlements.catalog_item_id')
                 ->where('tenant_entitlements.tenant_id', $tenantId)
                 ->where('tenant_entitlements.is_entitled', true)
@@ -169,6 +169,27 @@ class FeatureGateService
                     'source' => (string) $row->source,
                 ])
                 ->all();
+
+            // Demo/intern builds opt into "all modules enabled by default":
+            // a tenant with NO entitlement rows at all resolves as fully
+            // entitled. Tenants WITH configured rows are untouched.
+            if ($entitled === [] && config('platform.entitlements.default_allow_when_unconfigured', false)) {
+                $defaults = DB::table('public.features')
+                    ->whereNotNull('key')
+                    ->get(['key', 'name'])
+                    ->map(fn ($row) => [
+                        'key' => (string) $row->key,
+                        'name' => (string) $row->name,
+                        'source' => 'default_all',
+                    ])
+                    ->all();
+
+                if ($defaults !== []) {
+                    return $defaults;
+                }
+            }
+
+            return $entitled;
         } catch (\Throwable $e) {
             Log::warning('FeatureGateService: entitlement resolution failed', [
                 'tenant_id' => $tenantId,

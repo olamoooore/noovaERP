@@ -968,7 +968,7 @@ export function DeliveryOrderCreatePage() {
 
       {/* Submit */}
       <div className="flex justify-end">
-        <Button onClick={handleSubmit} disabled={createMutation.isPending} size="lg">
+        <Button onClick={handleSubmit} data-enter-submit disabled={createMutation.isPending} size="lg">
           {createMutation.isPending ? 'Creating...' : 'Create Delivery Order'}
         </Button>
       </div>

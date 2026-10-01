@@ -468,6 +468,7 @@ export function PurchaseOrderCreatePage() {
               <div className="flex flex-col gap-2">
                 <HeaderActionButton
                   type="submit"
+                  data-enter-submit
                   icon="solar:check-circle-bold-duotone"
                   loading={mutation.isPending}
                   disabled={mutation.isPending}

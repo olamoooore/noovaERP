@@ -102,7 +102,8 @@ Route::middleware([
 // middleware below. Without this the impersonation feature was a silent no-op.
 Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware::class, \App\Http\Middleware\SetTenantFromUserPreference::class, \App\Http\Middleware\EnsureTenantSearchPath::class, \App\Http\Middleware\SyncTenantUserFromCentralAuth::class])->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
-    Route::get('/products/{product}/tracking-availability', [ProductTrackingController::class, 'availability']);
+    Route::get('/products/{product}/tracking-availability', [ProductTrackingController::class, 'availability'])
+        ->middleware(RequirePermission::using('products.view'));
 
     // Settings — locked to OWNER/ADMIN via settings.view/settings.write.
     // SUPERADMIN bypasses via RequirePermission's is_super_admin shortcut.

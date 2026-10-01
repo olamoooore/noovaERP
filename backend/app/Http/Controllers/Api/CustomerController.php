@@ -33,16 +33,15 @@ class CustomerController extends Controller
                 'customerLoyalty.program',
             ]);
 
-        // Filters
-        if ($request->search) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'ilike', "%{$search}%")
-                    ->orWhere('email', 'ilike', "%{$search}%")
-                    ->orWhere('phone', 'ilike', "%{$search}%")
-                    ->orWhere('company', 'ilike', "%{$search}%")
-                    ->orWhere('code', 'ilike', "%{$search}%");
-            });
+        // Filters — Odoo-style wide search (see applyWideSearch).
+        $search = $request->filled('search') ? (string) $request->search : null;
+        if ($search !== null) {
+            $this->applyWideSearch($query, $search);
+
+            $query->with([
+                'customerContacts' => fn ($contact) => $contact->select('id', 'customer_id', 'name', 'job_title', 'contact_category', 'contact_type', 'is_primary'),
+                'addresses' => fn ($address) => $address->select('id', 'customer_id', 'type', 'label', 'street', 'street2', 'city', 'state', 'zip', 'country', 'is_default'),
+            ]);
         }
 
         if ($request->type) {
@@ -91,12 +90,50 @@ class CustomerController extends Controller
 
         $customers = $query->paginate($request->per_page ?? 20);
 
+        // Match context (contacts / tags / addresses) for the search results,
+        // so the picker can show WHY each customer matched.
+        $tagMatches = $search !== null
+            ? app(\App\Services\TagService::class)->matchingTagNames(
+                $customers->getCollection()->pluck('id')->map('intval')->all(),
+                'customer',
+                $search,
+            )
+            : [];
+
         // Transform data to include loyalty info for POS
-        $customers->getCollection()->transform(function ($customer) {
+        $customers->getCollection()->transform(function ($customer) use ($search, $tagMatches) {
             $loyalty = $customer->customerLoyalty;
             $customer->current_points = $loyalty?->current_points ?? 0;
             $customer->loyalty_tier_name = $loyalty?->tier?->name;
             $customer->is_enrolled = $loyalty !== null;
+
+            if ($search !== null) {
+                $needle = mb_strtolower($search);
+
+                if ($customer->relationLoaded('customerContacts')) {
+                    $customer->matched_contacts = $customer->customerContacts
+                        ->filter(fn ($contact) => $contact->name && str_contains(mb_strtolower($contact->name), $needle))
+                        ->pluck('name')
+                        ->take(3)
+                        ->values();
+                    unset($customer->customerContacts);
+                }
+
+                if ($customer->relationLoaded('addresses')) {
+                    // "Building name" style labels plus street/city text.
+                    $customer->matched_addresses = $customer->addresses
+                        ->map(function ($address) {
+                            $parts = [$address->label, $address->street, $address->street2, $address->city, $address->state, $address->zip, $address->country];
+                            return collect($parts)->filter()->implode(', ');
+                        })
+                        ->filter(fn ($text) => $text && str_contains(mb_strtolower($text), $needle))
+                        ->take(2)
+                        ->values();
+                    unset($customer->addresses);
+                }
+
+                $customer->matched_tags = $tagMatches[$customer->id] ?? [];
+            }
 
             return $customer;
         });
@@ -893,18 +930,66 @@ class CustomerController extends Controller
     // SEARCH & LOOKUP
     // ==========================================
 
+    /**
+     * Odoo-style wide customer search.
+     *
+     * Mirrors res.partner name_search behaviour: the record's own identity
+     * (name, email, phone/mobile, code, website, tax/registration numbers),
+     * its company field, its linked CONTACT PEOPLE (name, job title, direct
+     * details), its ADDRESSES (building/label, street, city, state, ZIP,
+     * country), its parent/company hierarchy, and its TAGS (categories).
+     */
+    private function applyWideSearch($query, string $search): void
+    {
+        $like = "%{$search}%";
+
+        $query->where(function ($q) use ($search, $like) {
+            $q->where('name', 'ilike', $like)
+                ->orWhere('email', 'ilike', $like)
+                ->orWhere('phone', 'ilike', $like)
+                ->orWhere('mobile', 'ilike', $like)
+                ->orWhere('company', 'ilike', $like)
+                ->orWhere('code', 'ilike', $like)
+                ->orWhere('website', 'ilike', $like)
+                ->orWhere('tax_number', 'ilike', $like)
+                ->orWhere('company_registration_number', 'ilike', $like)
+                // Contact people.
+                ->orWhereHas('customerContacts', function ($contact) use ($like) {
+                    $contact->where('name', 'ilike', $like)
+                        ->orWhere('job_title', 'ilike', $like)
+                        ->orWhere('email', 'ilike', $like)
+                        ->orWhere('phone', 'ilike', $like)
+                        ->orWhere('mobile', 'ilike', $like);
+                })
+                // Addresses — includes the building/label name.
+                ->orWhereHas('addresses', function ($address) use ($like) {
+                    $address->where('label', 'ilike', $like)
+                        ->orWhere('street', 'ilike', $like)
+                        ->orWhere('street2', 'ilike', $like)
+                        ->orWhere('city', 'ilike', $like)
+                        ->orWhere('state', 'ilike', $like)
+                        ->orWhere('zip', 'ilike', $like)
+                        ->orWhere('country', 'ilike', $like);
+                })
+                // Child accounts match their parent company too (Odoo's
+                // complete_name behaviour).
+                ->orWhereHas('parent', fn ($parent) => $parent->where('name', 'ilike', $like)->orWhere('company', 'ilike', $like));
+
+            $taggedIds = app(\App\Services\TagService::class)->subjectIdsForTagNameSearch($search, 'customer');
+            if ($taggedIds !== []) {
+                $q->orWhereIn('id', $taggedIds);
+            }
+        });
+    }
+
     public function search(Request $request): JsonResponse
     {
         $search = $request->q;
 
-        $customers = Customer::where(function ($q) use ($search) {
-            $q->where('name', 'ilike', "%{$search}%")
-                ->orWhere('email', 'ilike', "%{$search}%")
-                ->orWhere('phone', 'ilike', "%{$search}%")
-                ->orWhere('mobile', 'ilike', "%{$search}%")
-                ->orWhere('company', 'ilike', "%{$search}%")
-                ->orWhere('code', 'ilike', "%{$search}%");
-        })
+        $customers = Customer::query();
+        $this->applyWideSearch($customers, (string) $search);
+
+        $customers = $customers
             ->where('is_active', true)
             ->limit(20)
             ->get(['id', 'code', 'name', 'email', 'phone', 'company', 'type']);

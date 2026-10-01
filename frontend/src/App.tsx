@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, type ReactNode } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from '@/components/ui/toaster'
@@ -14,6 +14,7 @@ import { RequirePermissionAccess } from '@/components/auth/RequirePermissionAcce
 import { useAuthStore } from '@/store/authStore'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useStripeDevtoolsGuard } from '@/hooks/useStripeDevtoolsGuard'
+import { installEnterSubmit } from '@/lib/enter-submit'
 import { createOptimizedQueryClient } from '@/lib/optimized-query-client'
 
 // Lazy load heavy pages for better initial load performance
@@ -332,6 +333,9 @@ function App() {
   const currencyCode = useSettingsStore((s) => s.currencyCode)
 
   useStripeDevtoolsGuard()
+
+  // Enter-to-submit across create forms and dialogs (see lib/enter-submit.ts).
+  useEffect(() => installEnterSubmit(), [])
 
   return (
     <QueryClientProvider client={queryClient}>

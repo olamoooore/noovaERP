@@ -7,6 +7,7 @@ import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency, getApiErrorMessage } from '@/lib/utils';
 import api from '@/lib/api'
+import { resolveLineTaxRate } from '@/lib/lineTax';
 import pricingApi from '@/lib/pricingApi'
 import { useAuthStore } from '@/store/authStore';
 import { getProductLineDescription, ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
@@ -194,6 +195,7 @@ export const QuotationCreatePage: React.FC = () => {
       updated[index].model_number = product.manufacturer_part_number || '';
       updated[index].sku = product.sku || '';
       updated[index].price_mode = 'auto';
+      updated[index].tax_rate = resolveLineTaxRate(product);
       setLines(updated);
       void resolvePricingForLines(updated);
       return;
@@ -664,6 +666,7 @@ export const QuotationCreatePage: React.FC = () => {
                                 price_mode: productChanged ? ('auto' as const) : updated[index].price_mode,
                                 model_number: (product as any).manufacturer_part_number || (productChanged ? '' : updated[index].model_number),
                                 sku: (product as any).sku || (productChanged ? '' : updated[index].sku),
+                                tax_rate: productChanged ? resolveLineTaxRate(product) : updated[index].tax_rate,
                               }
                               setLines(updated)
                             }
@@ -826,7 +829,7 @@ export const QuotationCreatePage: React.FC = () => {
           <Button type="button" variant="outline" onClick={() => navigate('/quotations')}>
             Cancel
           </Button>
-          <Button type="submit" disabled={createMutation.isPending}>
+          <Button type="submit" data-enter-submit disabled={createMutation.isPending}>
             {createMutation.isPending ? (
               <>
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />

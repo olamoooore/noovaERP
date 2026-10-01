@@ -89,6 +89,7 @@ export function CustomerBonusSchemeCreatePage() {
           <HeaderActionButton
             type="submit"
             form="customer-bonus-scheme-form"
+            data-enter-submit
             icon="solar:user-check-bold-duotone"
             loading={createMutation.isPending}
             disabled={createMutation.isPending}

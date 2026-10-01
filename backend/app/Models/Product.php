@@ -82,6 +82,7 @@ class Product extends Model
         'tax_rate',
         'tax_mode',
         'tax_included',
+        'tax_inclusive_override',
         'tax_rate_override',
         'tax_id',
 
@@ -181,6 +182,7 @@ class Product extends Model
 
         // Booleans
         'tax_included' => 'boolean',
+        'tax_inclusive_override' => 'boolean',
         'track_inventory' => 'boolean',
         'is_active' => 'boolean',
         'is_preorder' => 'boolean',
@@ -439,6 +441,12 @@ class Product extends Model
         // If product uses custom tax mode, use the product's tax_included setting
         if ($this->tax_mode === 'custom') {
             return (bool) $this->tax_included;
+        }
+
+        // Per-product override wins for rule-linked / default / legacy modes
+        // (NULL = inherit from the resolved rule).
+        if ($this->tax_inclusive_override !== null) {
+            return (bool) $this->tax_inclusive_override;
         }
 
         // If product is linked to a Tax model, use that tax's is_inclusive

@@ -803,7 +803,7 @@ export const CreateVendorBillPage: React.FC = () => {
             <Button type="button" variant="outline" onClick={() => navigate('/accounting/vendors/bills')}>
               Cancel
             </Button>
-            <Button type="submit" disabled={createMutation.isPending}>
+            <Button type="submit" data-enter-submit disabled={createMutation.isPending}>
               {createMutation.isPending ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
@@ -948,7 +948,7 @@ export const CreateVendorBillPage: React.FC = () => {
               <Button type="button" variant="outline" onClick={() => setVendorDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={vendorMutationPending}>
+              <Button type="submit" data-enter-submit disabled={vendorMutationPending}>
                 {vendorMutationPending ? 'Saving...' : vendorDialogMode === 'create' ? 'Create Vendor' : 'Save Changes'}
               </Button>
             </DialogFooter>

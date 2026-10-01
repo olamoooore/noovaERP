@@ -121,6 +121,10 @@ interface Category {
 interface Customer {
   id: number
   name: string
+  /** Present when a search matched one of this customer's contacts. */
+  matched_contacts?: string[]
+  matched_tags?: string[]
+  matched_addresses?: string[]
   email?: string
   phone?: string
   code?: string
@@ -2669,6 +2673,15 @@ export function POSTerminal() {
                       </div>
                       <div className="text-left flex-1 min-w-0">
                         <p className="font-medium truncate">{customer.name}</p>
+                        {(customer.matched_contacts?.length ?? 0) > 0 && (
+                          <p className="truncate text-xs text-primary">Contact: {customer.matched_contacts!.join(', ')}</p>
+                        )}
+                        {(customer.matched_tags?.length ?? 0) > 0 && (
+                          <p className="truncate text-xs text-amber-600">Tag: {customer.matched_tags!.join(', ')}</p>
+                        )}
+                        {(customer.matched_addresses?.length ?? 0) > 0 && (
+                          <p className="truncate text-xs text-muted-foreground">Address: {customer.matched_addresses!.join(' · ')}</p>
+                        )}
                         {customer.code && <p className="text-xs text-muted-foreground truncate">{customer.code}</p>}
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           {customer.phone && <span>{customer.phone}</span>}

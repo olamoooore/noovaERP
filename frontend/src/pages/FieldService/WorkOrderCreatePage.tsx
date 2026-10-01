@@ -185,7 +185,7 @@ export function WorkOrderCreatePage() {
 
         <div className="flex justify-end gap-3">
           <Button type="button" variant="outline" onClick={() => navigate(-1)}>Cancel</Button>
-          <Button type="submit" disabled={create.isPending}>
+          <Button type="submit" data-enter-submit disabled={create.isPending}>
             {create.isPending ? 'Creating...' : 'Create Work Order'}
           </Button>
         </div>

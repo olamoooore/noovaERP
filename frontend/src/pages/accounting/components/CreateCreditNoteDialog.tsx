@@ -435,7 +435,7 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={createMutation.isPending || isLoading}>
+            <Button type="submit" data-enter-submit disabled={createMutation.isPending || isLoading}>
               {createMutation.isPending ? 'Creating...' : 'Create Credit Note'}
             </Button>
           </DialogFooter>

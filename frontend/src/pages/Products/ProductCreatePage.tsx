@@ -227,6 +227,7 @@ export function ProductCreatePage() {
 
     tax_mode: 'default' as TaxMode,
     tax_included: false,
+    tax_inclusive_override: null as boolean | null,
     tax_rate_override: '',
     tax_id: '',
   })
@@ -716,6 +717,7 @@ export function ProductCreatePage() {
 
       tax_mode: formData.tax_mode,
       tax_included: !!formData.tax_included,
+      tax_inclusive_override: formData.tax_mode === 'custom' ? null : formData.tax_inclusive_override,
       tax_rate_override:
         formData.tax_mode === 'custom' && formData.tax_rate_override !== ''
           ? parseFloat(formData.tax_rate_override)
@@ -793,6 +795,7 @@ export function ProductCreatePage() {
   const selectedTaxIsInclusive = useMemo(() => {
     if (formData.tax_mode === 'none') return false
     if (formData.tax_mode === 'custom') return formData.tax_included // For custom, use the form setting
+    if (formData.tax_inclusive_override !== null) return formData.tax_inclusive_override // Per-product override
     if (formData.tax_mode === 'tax' && formData.tax_id) {
       const match = taxes?.find((t) => t.id === Number(formData.tax_id))
       return match?.is_inclusive ?? false
@@ -803,7 +806,7 @@ export function ProductCreatePage() {
       return match?.is_inclusive ?? false
     }
     return false
-  }, [formData.tax_mode, formData.tax_id, formData.tax_included, taxes, taxConfig.default_tax_id])
+  }, [formData.tax_mode, formData.tax_id, formData.tax_included, formData.tax_inclusive_override, taxes, taxConfig.default_tax_id])
 
   const pricingPreview = useMemo(() => {
     const price = parseFloat(formData.price || '0')
@@ -899,6 +902,7 @@ export function ProductCreatePage() {
           <HeaderActionButton
             type="submit"
             form="product-form"
+            data-enter-submit
             icon="solar:check-circle-bold-duotone"
             loading={createMutation.isPending}
             disabled={createMutation.isPending}
@@ -1960,6 +1964,22 @@ export function ProductCreatePage() {
                             placeholder="e.g. 9"
                           />
                         </div>
+                      </div>
+                    ) : formData.tax_mode !== 'none' ? (
+                      <div className="space-y-2">
+                        <Label>Tax Method</Label>
+                        <Select
+                          value={formData.tax_inclusive_override === null ? 'inherit' : formData.tax_inclusive_override ? 'inclusive' : 'exclusive'}
+                          onValueChange={(v) => setFormData({ ...formData, tax_inclusive_override: v === 'inherit' ? null : v === 'inclusive' })}
+                        >
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="inherit">Follow tax rule</SelectItem>
+                            <SelectItem value="exclusive">Tax exclusive (tax added on top)</SelectItem>
+                            <SelectItem value="inclusive">Tax inclusive (price includes tax)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <div className="text-xs text-muted-foreground">Overrides the tax rule's inclusive/exclusive setting for this product only.</div>
                       </div>
                     ) : null}
 

@@ -8,6 +8,7 @@ import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency, getApiErrorMessage } from '@/lib/utils';
 import api from '@/lib/api';
+import { resolveLineTaxRate } from '@/lib/lineTax';
 import { getProductLineDescription, ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
 import { SalesLineColumnMenu, SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility';
 import { LineItemsTable } from '@/components/sales/LineItemsTable';
@@ -183,6 +184,7 @@ export const QuotationEditPage: React.FC = () => {
     if (product) {
       updated[index].unit_price = parseFloat(product.price || product.selling_price || '0');
       updated[index].model_number = product.manufacturer_part_number || '';
+      updated[index].tax_rate = resolveLineTaxRate(product);
     }
   }
 
@@ -197,7 +199,7 @@ export const QuotationEditPage: React.FC = () => {
     items.forEach(({ product, quantity }) => {
       const existing = updated.find((line) => line.line_type !== 'note' && line.product_id === String(product.id));
       if (existing) existing.quantity += quantity;
-      else updated.push({ ...emptyLine(), product_id: String(product.id), description: product.name || '', unit_price: Number(product.price || product.selling_price || 0), quantity });
+      else updated.push({ ...emptyLine(), product_id: String(product.id), description: product.name || '', unit_price: Number(product.price || product.selling_price || 0), quantity, tax_rate: resolveLineTaxRate(product) });
     });
     setLines(updated);
   };
@@ -643,6 +645,7 @@ export const QuotationEditPage: React.FC = () => {
                                 unit_price: productChanged
                                   ? (parseFloat((product as any).price || (product as any).selling_price || '0') || 0)
                                   : updated[index].unit_price,
+                                tax_rate: productChanged ? resolveLineTaxRate(product) : updated[index].tax_rate,
                               }
                               setLines(updated)
                             }

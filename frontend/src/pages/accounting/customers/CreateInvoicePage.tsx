@@ -18,6 +18,7 @@ import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
 import { cn, formatCurrency, getApiErrorMessage } from '@/lib/utils';
 import api from '@/lib/api'
+import { resolveLineTaxRate } from '@/lib/lineTax';
 import pricingApi from '@/lib/pricingApi'
 import { useAuthStore } from '@/store/authStore';
 import { ContactSearchCombobox } from '@/components/ui/ContactSearchCombobox';
@@ -83,6 +84,8 @@ interface CustomerContact {
   email?: string | null;
   phone?: string | null;
   mobile?: string | null;
+  contact_category?: string | null;
+  contact_type?: string | null;
   is_primary?: boolean;
   street?: string | null;
   street2?: string | null;
@@ -223,9 +226,21 @@ const formatAddress = (address?: CustomerAddress | null): string => {
     .join('\n');
 };
 
+/**
+ * The contact that belongs on an invoice's Bill-To snapshot: a billing-category
+ * contact first, then the primary contact, then the first one. Picking
+ * `contacts[0]` blindly put a doctor/requestor's details on invoices.
+ */
 const getPrimaryCustomerContact = (customer?: CustomerRecord | null): CustomerContact | undefined => {
   const contacts = customer?.customer_contacts ?? customer?.customerContacts ?? [];
-  return contacts.find((contact) => contact.is_primary) ?? contacts[0];
+  const categoryOf = (contact: CustomerContact) =>
+    (contact.contact_category || contact.contact_type || '').toLowerCase();
+
+  return (
+    contacts.find((contact) => categoryOf(contact) === 'billing')
+    ?? contacts.find((contact) => contact.is_primary)
+    ?? contacts[0]
+  );
 };
 
 const formatLegacyAddress = (address: string | null | undefined): string => {
@@ -597,6 +612,7 @@ export const CreateInvoicePage: React.FC = () => {
 
   // Apply tenant-level sales defaults when creating a NEW invoice (skip for edit)
   const [defaultsApplied, setDefaultsApplied] = useState(false);
+  const defaultTaxRate = Number((salesSettings as any)?.tax?.default_tax_rate ?? 0);
   useEffect(() => {
     if (isEditMode || defaultsApplied || !salesSettings) return;
     const inv = salesSettings.invoice;
@@ -609,8 +625,14 @@ export const CreateInvoicePage: React.FC = () => {
     if (inv?.default_notes && !notes) {
       setNotes(inv.default_notes);
     }
+    if (defaultTaxRate > 0) {
+      // Untouched lines ('' tax) inherit the tenant's configured default tax.
+      setLines((current) =>
+        current.map((line) => (line.tax_rate === '' ? { ...line, tax_rate: defaultTaxRate } : line)),
+      );
+    }
     setDefaultsApplied(true);
-  }, [salesSettings, isEditMode, defaultsApplied]);
+  }, [salesSettings, isEditMode, defaultsApplied, defaultTaxRate]);
 
   // Customer changes re-resolve the default document currency and prices
   // (FR-2.3/FR-5.2). Existing hand-typed prices are kept (FR-6.3).
@@ -808,6 +830,9 @@ export const CreateInvoicePage: React.FC = () => {
         updated[index].sku = product.sku || '';
         updated[index].price_mode = 'auto';
         updated[index].pricing_source = null;
+        // Configured tax follows the product (product tax → linked tax →
+        // tenant default), so a picked product is never silently zero-rated.
+        updated[index].tax_rate = resolveLineTaxRate(product, defaultTaxRate);
         setLines(updated);
         void resolvePricingForLines(customerId, updated);
         return;
@@ -845,7 +870,7 @@ export const CreateInvoicePage: React.FC = () => {
     });
   };
 
-  const addLine = () => setLines([...lines, emptyLine()]);
+  const addLine = () => setLines([...lines, { ...emptyLine(), tax_rate: defaultTaxRate || '' }]);
   const addTextLine = (line_type: 'note' | 'section') => setLines([...lines, { ...emptyLine(), line_type, quantity: 0, unit_price: 0, tax_rate: 0, discount_amount: 0 }]);
   const addCatalogProducts = (selected: Array<{ product: any; quantity: number }>) => {
     const next = [...lines];
@@ -1734,6 +1759,7 @@ export const CreateInvoicePage: React.FC = () => {
                                 updated[index].model_number = (product as any).manufacturer_part_number || '';
                                 updated[index].sku = (product as any).sku || '';
                                 updated[index].tracking_method = (product as any).tracking_method || 'none';
+                                updated[index].tax_rate = resolveLineTaxRate(product, defaultTaxRate);
                               }
                               setLines(updated);
                             }}
@@ -1945,7 +1971,7 @@ export const CreateInvoicePage: React.FC = () => {
             <Button type="button" variant="outline" onClick={() => navigate(backPath)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={saveMutation.isPending || isInvoiceLoading}>
+            <Button type="submit" data-enter-submit disabled={saveMutation.isPending || isInvoiceLoading}>
               {saveMutation.isPending ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
@@ -2127,7 +2153,7 @@ export const CreateInvoicePage: React.FC = () => {
               <Button type="button" variant="outline" onClick={() => setCustomerDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={customerMutationPending}>
+              <Button type="submit" data-enter-submit disabled={customerMutationPending}>
                 {customerMutationPending ? 'Saving...' : customerDialogMode === 'create' ? 'Create Customer' : 'Save Changes'}
               </Button>
             </DialogFooter>

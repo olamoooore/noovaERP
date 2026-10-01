@@ -72,6 +72,12 @@ interface Customer {
   salesperson?: { id: number; name: string }
   invoices_count?: number
   pos_orders_count?: number
+  /** Present when a search matched one of this customer's contacts. */
+  matched_contacts?: string[]
+  /** Tag names that matched the search (e.g. "VIP"). */
+  matched_tags?: string[]
+  /** Address/building labels that matched the search. */
+  matched_addresses?: string[]
 }
 
 interface CustomerFormData {
@@ -601,7 +607,7 @@ export function CustomersPage() {
                 <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={createMutation.isPending}>
+                <Button type="submit" data-enter-submit disabled={createMutation.isPending}>
                   {createMutation.isPending ? 'Creating...' : 'Create Customer'}
                 </Button>
               </DialogFooter>
@@ -800,6 +806,23 @@ export function CustomersPage() {
                         {customer.company && customer.company !== customer.name && (
                           <div className="truncate text-sm text-muted-foreground" title={customer.company}>
                             {customer.company}
+                          </div>
+                        )}
+                        {/* Searching a contact person returns the customer they belong to
+                            — show which contact matched so the row is identifiable. */}
+                        {(customer.matched_contacts?.length ?? 0) > 0 && (
+                          <div className="truncate text-xs text-primary" title={customer.matched_contacts!.join(', ')}>
+                            Contact: {customer.matched_contacts!.join(', ')}
+                          </div>
+                        )}
+                        {(customer.matched_tags?.length ?? 0) > 0 && (
+                          <div className="truncate text-xs text-amber-600" title={customer.matched_tags!.join(', ')}>
+                            Tag: {customer.matched_tags!.join(', ')}
+                          </div>
+                        )}
+                        {(customer.matched_addresses?.length ?? 0) > 0 && (
+                          <div className="truncate text-xs text-muted-foreground" title={customer.matched_addresses!.join(' · ')}>
+                            Address: {customer.matched_addresses!.join(' · ')}
                           </div>
                         )}
                       </TableCell>
@@ -1290,7 +1313,7 @@ export function CustomersPage() {
                 <Button type="button" variant="outline" onClick={() => setEditMode(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={updateMutation.isPending}>
+                <Button type="submit" data-enter-submit disabled={updateMutation.isPending}>
                   {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
                 </Button>
               </DialogFooter>
