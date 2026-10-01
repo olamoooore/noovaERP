@@ -55,6 +55,26 @@ class BlockRendererTest extends TestCase
         $this->assertStringContainsString('<th', $html);
     }
 
+    public function test_source_less_legacy_invoice_table_renders_payment_terms(): void
+    {
+        $html = $this->renderer()->render(
+            $this->template([[
+                'type' => 'table',
+                'source' => null,
+                'columns' => [
+                    ['label' => 'Doctor', 'field' => null],
+                    ['label' => 'terms', 'field' => null],
+                    ['label' => 'Due Date', 'field' => null],
+                ],
+            ]]),
+            (new InvoiceDataSource)->sample(),
+        )['html'];
+
+        $this->assertStringContainsString('Dr. James Wilson', $html);
+        $this->assertStringContainsString('Payment due within 30 days', $html);
+        $this->assertStringContainsString('2026-08-07', $html);
+    }
+
     public function test_renders_note_and_section_as_full_width_rows_without_index_cells(): void
     {
         $data = (new InvoiceDataSource)->sample();

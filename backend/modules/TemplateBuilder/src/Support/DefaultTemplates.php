@@ -94,7 +94,7 @@ final class DefaultTemplates
                         ]],
                     ]],
                     ['type' => 'spacer', 'height' => 16],
-                    ['type' => 'text', 'size' => 9, 'color' => '#6b7280', 'content' => '{{ invoice.terms }}'],
+                    ['type' => 'text', 'size' => 9, 'color' => '#6b7280', 'content' => '{{ invoice.payment_terms }}'],
                     ['type' => 'spacer', 'height' => 8],
                     ['type' => 'footer', 'children' => [
                         ['type' => 'divider'],

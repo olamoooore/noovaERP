@@ -204,6 +204,7 @@ class InvoiceController extends Controller
             'tax_treatment' => 'nullable|string|max:40',
             'notes' => 'nullable|string',
             'terms' => 'nullable|string',
+            'payment_terms' => 'nullable|integer|min:0|max:3650',
             'discount_amount' => 'nullable|numeric|min:0',
             'po_number' => 'nullable|string|max:100',
             'doctor_contact_id' => 'nullable|exists:core_contacts,id',
@@ -433,6 +434,7 @@ class InvoiceController extends Controller
                 'shipping_contact_id' => $data['shipping_contact_id'] ?? null,
                 'notes' => $data['notes'] ?? null,
                 'terms' => $data['terms'] ?? null,
+                'payment_terms_snapshot' => isset($data['payment_terms']) ? (string) $data['payment_terms'] : null,
                 'discount_amount' => $data['discount_amount'] ?? null,
                 'po_number' => $data['po_number'] ?? null,
                 'updated_at' => now(),
@@ -544,6 +546,7 @@ class InvoiceController extends Controller
             'tax_registration_number' => $data['tax_registration_number'] ?? null,
             'notes' => $data['notes'] ?? null,
             'terms' => $data['terms'] ?? null,
+            'payment_terms_snapshot' => isset($data['payment_terms']) ? (string) $data['payment_terms'] : null,
             'discount_amount' => $data['discount_amount'] ?? null,
             'po_number' => $data['po_number'] ?? null,
             // Contact IDs are handled separately via UPDATE after invoice creation
@@ -724,7 +727,7 @@ class InvoiceController extends Controller
 
     public function show(Request $request, $id)
     {
-        $invoice = Invoice::with(['customer', 'lines.product', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor', 'buyer', 'salesOrder', 'quotation', 'deliveryOrders', 'evidence.confirmedBy'])->find($id);
+        $invoice = Invoice::with(['customer.addresses', 'lines.product', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor', 'buyer', 'salesOrder', 'quotation', 'deliveryOrders', 'evidence.confirmedBy'])->find($id);
 
         if (! $invoice) {
             return response()->json(['message' => 'Invoice not found'], 404);
@@ -811,6 +814,7 @@ class InvoiceController extends Controller
             'tax_treatment' => 'nullable|string|max:40',
             'notes' => 'nullable|string',
             'terms' => 'nullable|string',
+            'payment_terms' => 'nullable|integer|min:0|max:3650',
             'discount_amount' => 'nullable|numeric|min:0',
             'po_number' => 'nullable|string|max:100',
             'doctor_contact_id' => 'nullable|exists:core_contacts,id',
@@ -846,6 +850,11 @@ class InvoiceController extends Controller
                 $validated[$idKey] = $this->resolveOrCreateContact($validated[$nameKey], 'person', 'invoice_form');
             }
             unset($validated[$nameKey]);
+        }
+
+        if (array_key_exists('payment_terms', $validated)) {
+            $validated['payment_terms_snapshot'] = (string) $validated['payment_terms'];
+            unset($validated['payment_terms']);
         }
 
         // Reject document discount exceeding the line subtotal
