@@ -261,15 +261,39 @@ class TaxReturnAggregator
         return array_values($periods);
     }
 
-    private function direction(string $documentType): ?string
+    /**
+     * F15 (#280): the auditable direction registry — a document type not in
+     * here cannot silently vanish from returns: it is skipped AND logged, and
+     * TaxReturnDrilldownTest asserts every engine posting type is registered.
+     *
+     * @return array<string, string> document_type => output|input
+     */
+    public static function directionRegistry(): array
     {
-        if (in_array($documentType, self::SALES_DOCUMENTS, true)) {
-            return 'output';
+        $registry = [];
+
+        foreach (self::SALES_DOCUMENTS as $type) {
+            $registry[$type] = 'output';
         }
 
-        if (in_array($documentType, self::PURCHASE_DOCUMENTS, true)) {
-            return 'input';
+        foreach (self::PURCHASE_DOCUMENTS as $type) {
+            $registry[$type] = 'input';
         }
+
+        return $registry;
+    }
+
+    private function direction(string $documentType): ?string
+    {
+        $registry = self::directionRegistry();
+
+        if (isset($registry[$documentType])) {
+            return $registry[$documentType];
+        }
+
+        \Illuminate\Support\Facades\Log::warning('tax.return.unregistered_document_type', [
+            'document_type' => $documentType,
+        ]);
 
         return null;
     }

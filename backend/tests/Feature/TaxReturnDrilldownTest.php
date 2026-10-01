@@ -67,7 +67,7 @@ class TaxReturnDrilldownTest extends TenantTestCase
         $this->taxRuleId = (int) Tax::query()->where('code', 'DD-GST-9')->value('id');
     }
 
-    private function postTaxedInvoice(?int $legalEntityId = null): void
+    private function postTaxedInvoice(?int $legalEntityId = null): int
     {
         $request = new PostingRequest(
             documentType: 'invoice',
@@ -90,7 +90,10 @@ class TaxReturnDrilldownTest extends TenantTestCase
             ],
         );
 
-        $this->assertTrue(app(PostingEngineInterface::class)->post($request)->success);
+        $result = app(PostingEngineInterface::class)->post($request);
+        $this->assertTrue($result->success);
+
+        return (int) $result->journalEntry->id;
     }
 
     private function postZeroRatedSupply(): void
@@ -122,16 +125,51 @@ class TaxReturnDrilldownTest extends TenantTestCase
 
     public function test_drilldown_sum_equals_the_box_value_and_exposes_supplies(): void
     {
-        $this->postTaxedInvoice();
+        $entryId = $this->postTaxedInvoice();
         $this->postZeroRatedSupply();
 
         $period = now()->format('Y-m');
         $aggregate = app(TaxReturnAggregator::class)->aggregate($period);
         $boxTax = round(array_sum(array_column($aggregate['output'], 'tax_amount')), 2);
+        $this->assertSame(9.0, $boxTax);
 
         $detail = app(TaxReportingService::class)->returnDetail($period, null, 'output');
-
         $this->assertSame($boxTax, $detail['totals']['tax_amount'], 'sum(drilldown) must equal the output box tax to the cent.');
+
+        // Full reversal: box nets to zero and the signed mirror appears in
+        // the same drill-down (F15 + G-33 interaction).
+        $reversal = app(PostingEngineInterface::class)->reverse(new \App\Accounting\DTOs\ReversalRequest(
+            journalEntryId: $entryId,
+            reversalDate: now()->toDateString(),
+            reason: 'drilldown reversal',
+            reasonCode: 'TEST',
+            actorUserId: $this->user->id,
+            tenantId: tenant('id'),
+        ));
+        $this->assertTrue($reversal->success, 'Reversal must succeed: '.($reversal->error ?? ''));
+
+        $aggregate = app(TaxReturnAggregator::class)->aggregate($period);
+        $boxTax = round(array_sum(array_column($aggregate['output'], 'tax_amount')), 2);
+        $detail = app(TaxReportingService::class)->returnDetail($period, null, 'output');
+
+        $this->assertSame(0.0, $boxTax, 'A full reversal must net the box to zero.');
+        $this->assertSame($boxTax, $detail['totals']['tax_amount'], 'Drill-down still ties the netted box.');
+        $this->assertTrue(collect($detail['rows'])->contains(fn ($r) => (float) $r['tax_amount'] < 0), 'The signed reversal row must appear in the drill-down.');
+
+        // Registry guard: every engine posting type must be registered.
+        $registry = TaxReturnAggregator::directionRegistry();
+        foreach ([
+            'invoice', 'sales_invoice', 'credit_note', 'pos_order', 'web_order', 'storefront_order',
+            'bill', 'purchase_invoice', 'vendor_credit_note', 'vendor_debit_note', 'goods_receipt', 'expense',
+        ] as $type) {
+            $this->assertArrayHasKey($type, $registry, "Document type {$type} must be registered for returns.");
+        }
+
+        // CSV export ties the same rows.
+        $csv = $this->actingAs($this->user)->get("/api/v1/accounting/tax-report/return-detail?period={$period}&direction=output&format=csv");
+        $csv->assertStatus(200);
+        $this->assertStringContainsString('DD-GST-9', $csv->getContent());
+        $this->assertStringContainsString('-9.00', $csv->getContent());
 
         $supply = collect($detail['rows'])->firstWhere('tax_code', 'DD-ZERO');
         $this->assertNotNull($supply, 'Zero-rated supplies must appear in the box drill-down.');
@@ -143,8 +181,10 @@ class TaxReturnDrilldownTest extends TenantTestCase
         $this->assertNotNull($taxed['journal_entry_id'] ?? null, 'Drill-down rows carry the journal entry.');
         $this->assertArrayHasKey('tax_determination_id', $taxed);
 
+        // The code filter returns the original AND its signed reversal mirror.
         $filtered = app(TaxReportingService::class)->returnDetail($period, null, 'output', 'DD-GST-9');
-        $this->assertCount(1, $filtered['rows']);
+        $this->assertCount(2, $filtered['rows']);
+        $this->assertSame(0.0, $filtered['totals']['tax_amount'], 'Original + reversal must net to zero for the code.');
         $this->assertSame('DD-GST-9', $filtered['rows'][0]['tax_code']);
     }
 
