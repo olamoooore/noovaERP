@@ -62,12 +62,12 @@ final class BlockRenderer implements TemplateRendererInterface
                     ARRAY_FILTER_USE_BOTH,
                 ));
                 $body = $this->renderBlocks($remaining, 'document');
-                // Totals BEFORE footer in the DOM: natural flow (single-page
-                // PDFs skip the pinned decoration band) then reads
-                // content → totals → footer, which is the required invoice
-                // order. Multi-page documents pin the footer to the page
-                // bottom and move the totals above it via callbacks.
-                $summary = $this->renderBlock($totals, 'document')."\n".$this->renderBlock($footer, 'document');
+                // Footer FIRST (then totals) in the DOM: on the page where both
+                // land, the footer's begin_frame pins it to the page bottom and
+                // the totals' begin_frame — which runs after — pins the totals
+                // just above it, before either frame is painted. That ordering
+                // is why the final summary reads totals → footer in the PDF.
+                $summary = $this->renderBlock($footer, 'document')."\n".$this->renderBlock($totals, 'document');
 
                 // Keep footer + totals together so they can never split
                 // across pages (report 2026-10-01).

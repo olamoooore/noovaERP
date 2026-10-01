@@ -128,11 +128,15 @@ final class PdfGenerationService implements PdfGenerationServiceContract
         $pdf->render();
         $pageCount = (int) $pdf->getDomPDF()->getCanvas()->get_page_count();
 
-        // Pass 2 — only genuinely multi-page documents reserve the band and
-        // pin per-page subtotals / the final-page footer.
+        // Pass 2 — pin the final-page footer/totals on every document, but
+        // reserve the 40mm decoration band only for genuinely multi-page
+        // output. On a single page the band is what pushed short invoices
+        // over the page limit (report 2026-10-01); with band 0 the pinned
+        // footer uses the blank tail of the page instead.
         $decorationBandMm = $this->decorationBandMm($renderTemplate);
-        if ($pageCount > 1 && $decorationBandMm > 0) {
-            $fullHtml = $this->wrapCanvas($renderTemplate, $body, $decorationBandMm);
+        if ($decorationBandMm > 0) {
+            $bandMm = $pageCount > 1 ? $decorationBandMm : 0;
+            $fullHtml = $this->wrapCanvas($renderTemplate, $body, $bandMm);
             $pdf = Pdf::loadHTML($fullHtml);
             $pdf->setPaper($this->paperSize($renderTemplate), $renderTemplate->orientation ?: 'portrait');
             $this->configurePhysicalPageDecorations($pdf, $renderTemplate, $data);
@@ -238,10 +242,17 @@ final class PdfGenerationService implements PdfGenerationServiceContract
                     if (str_contains($classes, ' tb-document-totals ')) {
                         $totalsFrame = $frame;
 
+                        // The footer is FIRST in the DOM, so on the page where
+                        // both land its begin_frame (and paint) already
+                        // happened: pin the totals just above the footer now,
+                        // before this frame is painted (moving it afterwards
+                        // from another callback would be too late — frames are
+                        // painted as they are traversed, in DOM order).
                         if ($footerTop !== null) {
+                            $totalsHeight = $frame->get_margin_height();
                             $totalsTargetY = $footerTop
                                 - (3 * $pointsPerMm)
-                                - $frame->get_margin_height();
+                                - $totalsHeight;
                             $frame->move(0, $totalsTargetY - (float) $frame->get_position('y'));
                             $totalsPosition = [
                                 'page' => $canvas->get_page_number(),
@@ -261,22 +272,6 @@ final class PdfGenerationService implements PdfGenerationServiceContract
                         - $frame->get_margin_height();
                     $frame->move(0, $targetY - (float) $frame->get_position('y'));
                     $footerTop = $targetY;
-
-                    if ($totalsFrame instanceof Frame) {
-                        // The totals frame is fully laid out by now, so its
-                        // margin height is final (it is 0 during its own
-                        // begin_frame).
-                        $totalsHeight = $totalsFrame->get_margin_height();
-                        \Log::info('TB-DECOR footer-begin', ['page' => $canvas->get_page_number(), 'targetY' => $targetY, 'totalsHeight' => $totalsHeight]);
-                        $totalsTargetY = $targetY
-                            - (3 * $pointsPerMm)
-                            - $totalsHeight;
-                        $totalsFrame->move(0, $totalsTargetY - (float) $totalsFrame->get_position('y'));
-                        $totalsPosition = [
-                            'page' => $canvas->get_page_number(),
-                            'y' => $totalsTargetY,
-                        ];
-                    }
                 },
             ],
             [
@@ -335,8 +330,6 @@ final class PdfGenerationService implements PdfGenerationServiceContract
                     $number = $pageNumber.'/'.$pageCount;
                     $numberWidth = $fontMetrics->getTextWidth($number, $font, 8);
                     $canvas->text($pageWidth - $right - $numberWidth, $top, $number, $font, 8, [0.42, 0.45, 0.50]);
-
-                    \Log::info('TB-DECOR end-document', ['page' => $pageNumber, 'pageCount' => $pageCount, 'footerTop' => $footerTop, 'totalsHeight' => $totalsHeight, 'totalsPosition' => $totalsPosition]);
 
                     if (! $showSubtotal || ! array_key_exists($pageNumber, $pageSubtotals)) {
                         return;

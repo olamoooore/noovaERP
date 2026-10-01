@@ -237,10 +237,10 @@ class BlockRendererTest extends TestCase
         $this->assertStringContainsString('data-tb-line-amount="50"', $html);
         $this->assertStringContainsString('tb-document-footer', $html);
         $this->assertStringContainsString('tb-final-summary', $html);
-        // Natural flow order is Totals then Footer (the PDF pins the footer to
-        // the page bottom for multi-page documents via render callbacks);
-        // a short invoice must read content → totals → footer.
-        $this->assertTrue(strpos($html, 'Grand Total') < strpos($html, 'FINAL FOOTER'));
+        // DOM is Footer then Totals inside the final summary: the footer's
+        // begin_frame then pins it to the page bottom and the totals'
+        // begin_frame (which runs after) pins the totals above it.
+        $this->assertTrue(strpos($html, 'FINAL FOOTER') < strpos($html, 'Grand Total'));
     }
 
     public function test_single_page_content_does_not_embed_a_synthetic_page_number(): void

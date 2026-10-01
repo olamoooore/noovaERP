@@ -47,9 +47,12 @@
             body {
                 padding: {{ ($margin['top'] ?? 15) * 3.78 }}px {{ ($margin['right'] ?? 12) * 3.78 }}px {{ ($margin['bottom'] ?? 15) * 3.78 }}px {{ ($margin['left'] ?? 12) * 3.78 }}px;
             }
-            /* Totals render before the footer in the DOM (and in the PDF);
-               screen previews keep the same natural order. */
-            .tb-final-summary { display: block; }
+            /* PDF measurement keeps Footer first in the DOM. Screen previews
+               reverse the pair so users see the intended Totals → Footer order. */
+            .tb-final-summary {
+                display: flex !important;
+                flex-direction: column-reverse !important;
+            }
             .tb-document-footer { position: static; margin-top: 20px; }
         }
 
