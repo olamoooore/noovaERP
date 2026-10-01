@@ -234,7 +234,7 @@ final class CartService
                 $variant,
             );
 
-            $taxInfo = $this->taxResolver->resolveTaxForProduct($product, $variant);
+            $taxInfo = $this->taxResolver->resolveTaxForProduct($product, $variant, null, 'output', now()->toDateString());
             $calc = $this->taxResolver->calculateTax($unit * $quantity, $taxInfo['rate'], $taxInfo['is_inclusive']);
 
             $netTotal += $calc['net'];

@@ -142,8 +142,12 @@ class TaxDeterminationService
                 $regime,
                 $taxRate,
             );
+            // G-27 (#274): only adopt the resolved rule's identity when its
+            // rate matches the booked rate — a booked-rate line must never
+            // borrow the code/treatment/tax_id of a rule with another rate.
+            $rateMatches = $resolved && abs((float) $resolved['rate'] - $taxRate) < 0.005;
             $taxId = null;
-            if ($resolved && ($line->tax_rate === null || $usesLocalizedDefault)) {
+            if ($resolved && ($line->tax_rate === null || $usesLocalizedDefault) && $rateMatches) {
                 $taxCode = $resolved['tax_code'];
                 $treatment = $resolved['treatment'];
                 $taxId = $resolved['tax_id'] ?? null;
@@ -156,9 +160,9 @@ class TaxDeterminationService
                 'tax_amount' => $taxAmount,
                 'treatment' => $treatment,
                 'tax_id' => $taxId,
-                'tax_type' => $resolved['tax_type'] ?? null,
-                'creditable' => $resolved['creditable'] ?? true,
-                'blocked_account_id' => $resolved['blocked_account_id'] ?? null,
+                'tax_type' => $rateMatches ? ($resolved['tax_type'] ?? null) : null,
+                'creditable' => $rateMatches ? ($resolved['creditable'] ?? true) : true,
+                'blocked_account_id' => $rateMatches ? ($resolved['blocked_account_id'] ?? null) : null,
                 'source_line_id' => $line->id,
             ];
         }
@@ -196,20 +200,34 @@ class TaxDeterminationService
             // BillLine::line_total is the pre-tax line value; unlike an
             // InvoiceLine it does not include tax.
             $base = max((float) $line->line_total, 0.0);
-            $tax = $this->engine::calculate($base, $rate, false)['tax'];
+            // G-26 (#274): honour the resolved rule's inclusive mode — an
+            // inclusive bill extracts tax FROM the entered amount (taxable
+            // base is the de-grossed net) instead of always adding it on top.
+            $isInclusive = (bool) ($resolved['is_inclusive'] ?? false);
+            $calc = $this->engine::calculate($base, $rate, $isInclusive);
+            $tax = $calc['tax'];
+            $taxableBase = $isInclusive ? $calc['net'] : $base;
+
+            // Booked-first: a historical document override stays authoritative.
             if ($line->tax_rate !== null && (float) $line->tax_amount > 0) {
                 $tax = (float) $line->tax_amount;
+                // Inclusive documents store the gross in line_total.
+                $taxableBase = $isInclusive ? $base - $tax : $base;
             }
+
+            // G-27 (#274): mismatched resolved rates must not lend their
+            // identity (code/treatment/tax_id) to the booked line.
+            $rateMatches = $resolved && abs((float) $resolved['rate'] - $rate) < 0.005;
             $taxLines[] = [
-                'tax_code' => $resolved['tax_code'] ?? $this->resolveTaxCode($line->product, $jurisdiction, $regime, $rate),
-                'taxable_base' => round($base, 2),
+                'tax_code' => $rateMatches ? $resolved['tax_code'] : $this->resolveTaxCode($line->product, $jurisdiction, $regime, $rate),
+                'taxable_base' => round($taxableBase, 2),
                 'tax_rate' => $rate,
                 'tax_amount' => $tax,
-                'treatment' => $resolved['treatment'] ?? ($rate > 0 ? 'standard_rated' : 'zero_rated'),
-                'tax_id' => $resolved['tax_id'] ?? null,
-                'tax_type' => $resolved['tax_type'] ?? null,
-                'creditable' => $resolved['creditable'] ?? true,
-                'blocked_account_id' => $resolved['blocked_account_id'] ?? null,
+                'treatment' => $rateMatches ? $resolved['treatment'] : ($rate > 0 ? 'standard_rated' : 'zero_rated'),
+                'tax_id' => $rateMatches ? ($resolved['tax_id'] ?? null) : null,
+                'tax_type' => $rateMatches ? ($resolved['tax_type'] ?? null) : null,
+                'creditable' => $rateMatches ? ($resolved['creditable'] ?? true) : true,
+                'blocked_account_id' => $rateMatches ? ($resolved['blocked_account_id'] ?? null) : null,
                 'source_line_id' => $line->id,
             ];
         }
@@ -398,9 +416,13 @@ class TaxDeterminationService
 
         foreach ($taxLines as $line) {
             $code = (string) $line['tax_code'];
+            // G-27 (#274): group by rate as well — two lines sharing a tax
+            // code at different rates must not collapse into one row that
+            // silently keeps the first rate.
+            $groupKey = $code.'|'.number_format((float) $line['tax_rate'], 4, '.', '');
 
-            if (! isset($groups[$code])) {
-                $groups[$code] = [
+            if (! isset($groups[$groupKey])) {
+                $groups[$groupKey] = [
                     'tax_code' => $code,
                     'taxable_base' => 0.0,
                     'tax_amount' => 0.0,
@@ -414,25 +436,25 @@ class TaxDeterminationService
                 ];
             }
 
-            $groups[$code]['taxable_base'] = round($groups[$code]['taxable_base'] + (float) $line['taxable_base'], 2);
-            $groups[$code]['tax_amount'] = round($groups[$code]['tax_amount'] + (float) $line['tax_amount'], 2);
+            $groups[$groupKey]['taxable_base'] = round($groups[$groupKey]['taxable_base'] + (float) $line['taxable_base'], 2);
+            $groups[$groupKey]['tax_amount'] = round($groups[$groupKey]['tax_amount'] + (float) $line['tax_amount'], 2);
 
-            if (empty($groups[$code]['tax_id']) && ! empty($line['tax_id'])) {
-                $groups[$code]['tax_id'] = $line['tax_id'];
+            if (empty($groups[$groupKey]['tax_id']) && ! empty($line['tax_id'])) {
+                $groups[$groupKey]['tax_id'] = $line['tax_id'];
             }
 
-            if ((float) $groups[$code]['tax_rate'] <= 0 && (float) $line['tax_rate'] > 0) {
-                $groups[$code]['tax_rate'] = (float) $line['tax_rate'];
-                $groups[$code]['treatment'] = $line['treatment'];
+            if ((float) $groups[$groupKey]['tax_rate'] <= 0 && (float) $line['tax_rate'] > 0) {
+                $groups[$groupKey]['tax_rate'] = (float) $line['tax_rate'];
+                $groups[$groupKey]['treatment'] = $line['treatment'];
             }
 
-            if (($groups[$code]['creditable'] ?? true) && (isset($line['creditable']) && $line['creditable'] === false)) {
-                $groups[$code]['creditable'] = false;
-                $groups[$code]['blocked_account_id'] = $line['blocked_account_id'] ?? ($groups[$code]['blocked_account_id'] ?? null);
+            if (($groups[$groupKey]['creditable'] ?? true) && (isset($line['creditable']) && $line['creditable'] === false)) {
+                $groups[$groupKey]['creditable'] = false;
+                $groups[$groupKey]['blocked_account_id'] = $line['blocked_account_id'] ?? ($groups[$groupKey]['blocked_account_id'] ?? null);
             }
 
             if (isset($line['source_line_id'])) {
-                $groups[$code]['source_line_ids'][] = $line['source_line_id'];
+                $groups[$groupKey]['source_line_ids'][] = $line['source_line_id'];
             }
         }
 

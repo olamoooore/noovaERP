@@ -27,24 +27,37 @@ class TaxResolutionService
      * This is the canonical method for all transaction flows.
      * Returns tax rate, inclusive/exclusive mode, and tax code for GL/audit.
      *
+     * G-28 (#274): callers pass the document's jurisdiction, direction and
+     * date so date-effective / jurisdiction-specific rules resolve correctly;
+     * a variant override — including an explicit 0% — always wins, and its
+     * audit code uses the same canonical `{jurisdiction}-{regime}-{rate}`
+     * format as the engine's synthetic codes (was `VARIANT-900`).
+     *
      * @return array{rate: float, is_inclusive: bool, tax_code: string, tax_id: int|null, tax_name: string|null}
      */
-    public function resolveTaxForProduct(Product $product, ?ProductVariant $variant = null): array
-    {
+    public function resolveTaxForProduct(
+        Product $product,
+        ?ProductVariant $variant = null,
+        ?string $jurisdiction = null,
+        string $direction = 'output',
+        ?string $date = null,
+    ): array {
         // Variant rates remain an explicit item override, then all other
         // resolution is delegated to the shared localized engine.
-        if ($variant && $variant->tax_rate !== null && (float) $variant->tax_rate > 0) {
-            $calculation = $this->engine->resolve($product);
+        if ($variant && $variant->tax_rate !== null) {
+            $calculation = $this->engine->resolve($product, $jurisdiction, $direction, null, $date);
+            $rate = (float) $variant->tax_rate;
+
             return [
-                'rate' => (float) $variant->tax_rate,
+                'rate' => $rate,
                 'is_inclusive' => $calculation['is_inclusive'],
-                'tax_code' => $this->generateTaxCode('VARIANT', $variant->tax_rate),
+                'tax_code' => $this->canonicalCode($calculation, $rate),
                 'tax_id' => null,
                 'tax_name' => "Variant Tax {$variant->tax_rate}%",
             ];
         }
 
-        $resolved = $this->engine->resolve($product);
+        $resolved = $this->engine->resolve($product, $jurisdiction, $direction, null, $date);
 
         return [
             'rate' => $resolved['rate'],
@@ -79,6 +92,24 @@ class TaxResolutionService
         $rateFormatted = number_format($rate, 2, '', '');
 
         return "{$source}-{$rateFormatted}";
+    }
+
+    /**
+     * G-28: canonical synthetic code for an override rate, in the engine's
+     * `{jurisdiction}-{regime}-{rate}` format.
+     */
+    private function canonicalCode(array $calculation, float $rate): string
+    {
+        $jurisdiction = strtoupper((string) ($calculation['jurisdiction'] ?? ''));
+        $regime = (string) ($calculation['regime'] ?? '');
+
+        if ($jurisdiction === '' || $regime === '') {
+            return $this->generateTaxCode('VARIANT', $rate);
+        }
+
+        $rateFormatted = rtrim(rtrim(number_format($rate, 2, '.', ''), '0'), '.');
+
+        return "{$jurisdiction}-{$regime}-{$rateFormatted}";
     }
 
     /**

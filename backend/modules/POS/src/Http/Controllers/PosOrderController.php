@@ -276,7 +276,7 @@ class PosOrderController extends Controller
                 $lineSubtotal = $qty * $unitPrice;
 
                 // TASK TAX-003: Use canonical TaxResolutionService instead of inline logic
-                $taxInfo = $taxResolutionService->resolveTaxForProduct($product, $variant);
+                $taxInfo = $taxResolutionService->resolveTaxForProduct($product, $variant, null, 'output', now()->toDateString());
                 $lineTaxRate = $taxEnabled ? $taxInfo['rate'] : 0.0;
                 $isInclusive = $taxInfo['is_inclusive'];
 

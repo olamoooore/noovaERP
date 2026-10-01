@@ -263,36 +263,70 @@ class TaxReportingService
             ->orderByDesc('filed_at')
             ->get(['id', 'country', 'form', 'period', 'entity_key', 'filed_at', 'filed_by']);
 
-        $filedKeys = $filings
-            ->map(fn ($f) => strtolower((string) $f->country).'|'.$f->period.'|'.$f->entity_key)
-            ->all();
+        // G-29 (#274): a filing period covers every month it spans — a
+        // quarterly filing (YYYY-Qn) must close its three monthly activity
+        // periods, not just match an exact string. Entity key is the filing's
+        // own legal-entity key (0 = tenant-wide), matched against the GL
+        // entry's legal entity.
+        $filedKeys = [];
+
+        foreach ($filings as $filing) {
+            foreach (self::expandFilingPeriod((string) $filing->period) as $month) {
+                $filedKeys[strtolower((string) $filing->country).'|'.$month.'|'.(int) $filing->entity_key] = true;
+            }
+        }
+
+        // G-29: one grouped pass over activity (period × jurisdiction × entity)
+        // replaces the per-period N+1 lookups. Filter mirrors
+        // TaxReturnAggregator::availablePeriods.
+        $activity = DB::table('tax_transaction_details as ttd')
+            ->join('journal_entries as je', 'je.id', '=', 'ttd.journal_entry_id')
+            ->where('je.status', 'posted')
+            ->where(function ($query) {
+                $query->whereNull('je.lifecycle_status')
+                    ->orWhereNotIn('je.lifecycle_status', ['reversed', 'voided', 'superseded']);
+            })
+            ->whereNotExists(function ($query) {
+                $query->select(DB::raw(1))
+                    ->from('journal_entries as rev')
+                    ->whereColumn('rev.reversed_entry_id', 'ttd.journal_entry_id')
+                    ->where('rev.status', 'posted');
+            })
+            ->groupBy('ttd.reporting_period', 'ttd.jurisdiction', 'je.legal_entity_id')
+            ->get([
+                'ttd.reporting_period as period',
+                'ttd.jurisdiction',
+                'je.legal_entity_id as entity_id',
+                DB::raw('count(*) as c'),
+            ]);
 
         $open = [];
 
-        foreach ($this->aggregator->availablePeriods(null) as $activity) {
-            $rows = DB::table('tax_transaction_details')
-                ->select('jurisdiction')
-                ->addSelect(DB::raw('count(*) as c'))
-                ->where('reporting_period', $activity['period'])
-                ->groupBy('jurisdiction')
-                ->get();
+        foreach ($activity as $row) {
+            $period = (string) ($row->period ?? '');
 
-            foreach ($rows as $row) {
-                $country = strtoupper((string) ($row->jurisdiction ?? ''));
+            if ($period === '') {
+                continue;
+            }
 
-                if ($country === '') {
-                    continue;
-                }
+            // G-29: rows without a jurisdiction were silently skipped; surface
+            // them so unfiled activity can never hide behind a null column.
+            $country = strtoupper(trim((string) ($row->jurisdiction ?? '')));
+            $country = $country === '' ? 'UNSPECIFIED' : $country;
 
-                if (! in_array(strtolower($country).'|'.$activity['period'].'|0', $filedKeys, true)) {
-                    $open[] = [
-                        'country' => $country,
-                        'period' => $activity['period'],
-                        'rows' => (int) $row->c,
-                    ];
-                }
+            $entityKey = (int) ($row->entity_id ?? 0);
+
+            if (! isset($filedKeys[strtolower($country).'|'.$period.'|'.$entityKey])) {
+                $open[] = [
+                    'country' => $country,
+                    'period' => $period,
+                    'entity_key' => $entityKey,
+                    'rows' => (int) $row->c,
+                ];
             }
         }
+
+        usort($open, fn ($a, $b) => [$b['period'], $a['country'], $a['entity_key']] <=> [$a['period'], $b['country'], $b['entity_key']]);
 
         return [
             'filings' => $filings->map(fn ($f) => [
@@ -306,6 +340,30 @@ class TaxReportingService
             ])->all(),
             'open_periods' => $open,
         ];
+    }
+
+    /**
+     * G-29: the month keys a filing period covers.
+     *
+     * @return array<int, string>
+     */
+    private static function expandFilingPeriod(string $period): array
+    {
+        if (preg_match('/^(\d{4})-Q([1-4])$/', $period, $m) === 1) {
+            $start = ((int) $m[2] - 1) * 3 + 1;
+
+            return [
+                sprintf('%s-%02d', $m[1], $start),
+                sprintf('%s-%02d', $m[1], $start + 1),
+                sprintf('%s-%02d', $m[1], $start + 2),
+            ];
+        }
+
+        if (preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $period) === 1) {
+            return [$period];
+        }
+
+        return [];
     }
 
     /**
@@ -328,12 +386,10 @@ class TaxReportingService
         while ($cursor <= $end) {
             $months[] = $cursor->format('Y-m');
             $cursor = $cursor->modify('+1 month');
-
-            if (count($months) > 24) {
-                break;
-            }
         }
 
+        // G-29 (#274): no silent truncation — callers passing ranges longer
+        // than two years get every month (validation bounds the input regex).
         return $months;
     }
 

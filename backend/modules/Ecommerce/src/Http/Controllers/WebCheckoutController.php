@@ -255,7 +255,7 @@ class WebCheckoutController extends Controller
                 $product = Product::find($item['product_id']);
 
                 // TASK TAX-003: Use canonical TaxResolutionService instead of inline logic
-                $taxInfo = $taxResolutionService->resolveTaxForProduct($product);
+                $taxInfo = $taxResolutionService->resolveTaxForProduct($product, null, null, 'output', now()->toDateString());
                 $taxRate = $taxInfo['rate'];
 
                 // Issue #244: priced via the shared PricingService — now also
