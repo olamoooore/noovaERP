@@ -853,13 +853,20 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::put('/bill-payments/{id}', [BillPaymentsController::class, 'update']);
         Route::delete('/bill-payments/{id}', [BillPaymentsController::class, 'destroy']);
 
-        // Tax Rates
-        Route::get('/tax-rates', [TaxRatesController::class, 'index']);
-        Route::get('/tax-rates/{id}', [TaxRatesController::class, 'show']);
-        Route::post('/tax-rates', [TaxRatesController::class, 'store']);
-        Route::put('/tax-rates/{id}', [TaxRatesController::class, 'update']);
-        Route::delete('/tax-rates/{id}', [TaxRatesController::class, 'destroy']);
-        Route::post('/tax-rates/calculate', [TaxRatesController::class, 'calculateTax']);
+        // Tax Rates — G-17/G-01 (#274): compatibility shim over the canonical
+        // `taxes` store; same authorization families as the /taxes engine routes.
+        Route::get('/tax-rates', [TaxRatesController::class, 'index'])
+            ->middleware(RequirePermission::using('tax.policy.view|tax.view'));
+        Route::get('/tax-rates/{id}', [TaxRatesController::class, 'show'])
+            ->middleware(RequirePermission::using('tax.policy.view|tax.view'));
+        Route::post('/tax-rates', [TaxRatesController::class, 'store'])
+            ->middleware(RequirePermission::using('tax.policy.manage|tax.manage'));
+        Route::put('/tax-rates/{id}', [TaxRatesController::class, 'update'])
+            ->middleware(RequirePermission::using('tax.policy.manage|tax.manage'));
+        Route::delete('/tax-rates/{id}', [TaxRatesController::class, 'destroy'])
+            ->middleware(RequirePermission::using('tax.policy.manage|tax.manage'));
+        Route::post('/tax-rates/calculate', [TaxRatesController::class, 'calculateTax'])
+            ->middleware(RequirePermission::using('tax.policy.view|tax.view'));
 
         // Customer Credit Notes (must be before /customers/{id} to avoid route conflict)
         Route::get('/customers/credit-notes', [CustomerCreditNotesController::class, 'index']);

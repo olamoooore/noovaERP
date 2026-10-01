@@ -21,6 +21,10 @@ Route::prefix('accounting/statutory-returns')
         Route::post('/{country}/{period}/file', [StatutoryReturnController::class, 'file'])
             ->middleware(RequirePermission::using('tax.manage'));
         Route::get('/SG/{period}/f7', [StatutoryReturnController::class, 'f7']);
+
+        // G-14 (#274): authority response recorded against a filing.
+        Route::post('/filings/{filing}/submission', [StatutoryReturnController::class, 'recordSubmissionOutcome'])
+            ->middleware(RequirePermission::using('tax.policy.manage|tax.manage'));
     });
 
 // Issue #99: honest e-invoicing capability reporting.

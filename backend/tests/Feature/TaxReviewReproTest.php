@@ -185,8 +185,18 @@ class TaxReviewReproTest extends TenantTestCase
         $first = StatutoryReturnFiling::first();
         $filedTax = $first->boxes['box_6_output_tax_due'];
 
-        // Books change AFTER filing (period not locked):
-        app(InvoiceService::class)->postInvoice($this->draftInvoice([['amount' => 100, 'rate' => 9]]));
+        // G-15 (#274): filing LOCKS the period — back-posting into it must be
+        // blocked (amendments belong in open periods).
+        $blocked = false;
+        try {
+            app(InvoiceService::class)->postInvoice($this->draftInvoice([['amount' => 100, 'rate' => 9]]));
+        } catch (\Exception $e) {
+            $blocked = str_contains($e->getMessage(), 'TAX_PERIOD_LOCKED');
+        }
+        fwrite(STDERR, "\n[R05] back-post after filing blocked=".json_encode($blocked)."\n");
+        $this->assertTrue($blocked, 'A filed period must block back-posting.');
+
+        // Re-filing still appends/serves the immutable baseline.
         $this->actingAs($this->admin)->postJson("/api/v1/accounting/statutory-returns/SG/{$this->period}/file")->assertStatus(201);
 
         $after = StatutoryReturnFiling::first();

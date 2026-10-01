@@ -347,7 +347,7 @@ class TaxReportingService
      *
      * @return array<int, string>
      */
-    private static function expandFilingPeriod(string $period): array
+    public static function expandFilingPeriod(string $period): array
     {
         if (preg_match('/^(\d{4})-Q([1-4])$/', $period, $m) === 1) {
             $start = ((int) $m[2] - 1) * 3 + 1;

@@ -584,6 +584,28 @@ class TaxDeterminationService
                 ]);
             }
 
+            // G-12 (#274): ACC-009 lifecycle events on the shared outbox.
+            $publisher = app(\App\Services\TaxOutboxPublisher::class);
+            $publisher->publish('TaxDetermined', $determinationId, $resultVersion, [
+                'correlation_id' => $determinationId,
+                'source_record_type' => $transactionType,
+                'source_record_id' => $sourceId,
+                'result_version' => $resultVersion,
+                'jurisdiction' => $jurisdiction,
+                'tax_total' => round(array_sum(array_map(fn ($l) => (float) ($l['tax_amount'] ?? 0), $taxLines)), 2),
+                'rule_ref_count' => count($ruleRefs),
+            ]);
+
+            if ($existing) {
+                $publisher->publish('TaxDeterminationCorrected', $determinationId, $resultVersion, [
+                    'correlation_id' => $determinationId,
+                    'source_record_type' => $transactionType,
+                    'source_record_id' => $sourceId,
+                    'superseded_version' => (int) $existing->result_version,
+                    'result_version' => $resultVersion,
+                ]);
+            }
+
             return [$determinationId, $resultVersion];
         });
     }

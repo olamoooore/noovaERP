@@ -161,7 +161,7 @@ class StatutoryReturnController extends Controller
                 $current->update(['superseded_at' => now()]);
             }
 
-            return StatutoryReturnFiling::create([
+            $filing = StatutoryReturnFiling::create([
                 'tenant_id' => tenant()->id ?? null,
                 'country' => $country,
                 'form' => $return['form'],
@@ -172,6 +172,35 @@ class StatutoryReturnController extends Controller
                 'filed_by' => $request->user()?->id,
                 'filed_at' => now(),
             ]);
+
+            // G-12 (#274): TaxReturnPrepared on the shared accounting outbox.
+            app(\App\Services\TaxOutboxPublisher::class)->publish(
+                'TaxReturnPrepared',
+                $country.'|'.$return['form'].'|'.$period.'|'.$entityKey,
+                (int) $version,
+                [
+                    'country' => $country,
+                    'form' => $return['form'],
+                    'period' => $period,
+                    'entity_key' => $entityKey,
+                    'filing_version' => (int) $version,
+                    'boxes' => $boxes,
+                    'superseded_version' => $current ? (int) $current->filing_version : null,
+                ],
+            );
+
+            // G-15 (#274): filing locks its period(s) against back-posting —
+            // the TaxPeriodLockGate blocks postings into locked months.
+            $lockService = app(\App\Services\TaxPeriodClosingService::class);
+            $tenantInt = (int) (tenant()->id ?? 0);
+
+            foreach (\Modules\AccountingCountry\Services\TaxReportingService::expandFilingPeriod($period) as $month) {
+                if (! $lockService->isPeriodLocked($month, $tenantInt)) {
+                    $lockService->closePeriod($month, $tenantInt);
+                }
+            }
+
+            return $filing;
         });
 
         return response()->json(['message' => $return['form'].' filed (version '.$filing->filing_version.')', 'data' => $filing], 201);
@@ -196,5 +225,56 @@ class StatutoryReturnController extends Controller
         } catch (\RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
+    }
+
+    /**
+     * G-14 (#274): record the authority's response for a filed return —
+     * separate from the immutable filing snapshot. Publishes the matching
+     * RegulatorySubmission{Accepted,Rejected} outbox event.
+     */
+    public function recordSubmissionOutcome(Request $request, int $filing): JsonResponse
+    {
+        $validated = $request->validate([
+            'outcome' => 'required|in:accepted,rejected',
+            'reference' => 'nullable|string|max:120',
+            'note' => 'nullable|string|max:500',
+        ]);
+
+        $filingModel = StatutoryReturnFiling::query()
+            ->whereNull('superseded_at')
+            ->find($filing);
+
+        if (! $filingModel) {
+            return response()->json(['message' => 'Current filing not found.'], 404);
+        }
+
+        $state = strtoupper($validated['outcome']);
+
+        $filingModel->update([
+            'state' => $state,
+            'authority_reference' => $validated['reference'] ?? null,
+            'state_updated_at' => now(),
+        ]);
+
+        app(\App\Services\TaxOutboxPublisher::class)->publish(
+            'RegulatorySubmission'.ucfirst($validated['outcome']),
+            $filingModel->country.'|'.$filingModel->form.'|'.$filingModel->period.'|'.$filingModel->entity_key,
+            (int) $filingModel->filing_version,
+            [
+                'country' => $filingModel->country,
+                'form' => $filingModel->form,
+                'period' => $filingModel->period,
+                'entity_key' => (int) $filingModel->entity_key,
+                'filing_version' => (int) $filingModel->filing_version,
+                'outcome' => $state,
+                'reference' => $validated['reference'] ?? null,
+                'note' => $validated['note'] ?? null,
+            ],
+        );
+
+        return response()->json([
+            'message' => "Submission recorded as {$state}.",
+            'data' => $filingModel->fresh(),
+        ]);
     }
 }

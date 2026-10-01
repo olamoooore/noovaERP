@@ -41,6 +41,11 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(PostingPolicyMapper::class);
         $this->app->singleton(RevisionPolicyResolver::class);
         $this->app->singleton(StructuredObservabilityService::class);
+        // G-19 (#274): ACC-009 tax services registered as shared singletons
+        // (single engine + determination + outbox publisher for the platform).
+        $this->app->singleton(\App\Services\TaxEngineService::class);
+        $this->app->singleton(\App\Services\TaxDeterminationService::class);
+        $this->app->singleton(\App\Services\TaxOutboxPublisher::class);
     }
 
     /**
