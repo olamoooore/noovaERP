@@ -135,7 +135,7 @@ class TaxEnginePhase4LocksAndLegacyTest extends TenantTestCase
         $this->assertDatabaseCount('tax_transaction_details', 0);
 
         // Reopen -> tax posting converges and lands the trail.
-        $this->actingAs($this->user)->postJson("/api/v1/accounting/tax-periods/{$this->period}/reopen")->assertOk();
+        $this->actingAs($this->user)->postJson("/api/v1/accounting/tax-periods/{$this->period}/reopen", ['reason' => 'Phase-4 lock test reopen'])->assertOk();
         $this->postPosOrder(9.0);
         $this->assertDatabaseHas('tax_transaction_details', ['source_document_type' => 'pos_order']);
 
