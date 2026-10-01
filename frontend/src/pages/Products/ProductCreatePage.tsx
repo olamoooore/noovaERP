@@ -1933,10 +1933,6 @@ export function ProductCreatePage() {
                         </Select>
                         <div className="text-xs text-muted-foreground">Default tax comes from Settings and applies to products.</div>
                       </div>
-                      <div className="space-y-2">
-                        <Label>Effective Tax Rate</Label>
-                        <Input readOnly value={`${selectedTaxRate}% (${selectedTaxIsInclusive ? 'Inclusive' : 'Exclusive'})`} />
-                      </div>
                     </div>
 
                     {formData.tax_mode === 'custom' ? (

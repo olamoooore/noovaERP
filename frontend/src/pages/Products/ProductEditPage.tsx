@@ -1730,10 +1730,6 @@ export function ProductEditPage() {
                   </div>
 
                   <div className="rounded-md border p-3 text-sm">
-                    <div className="flex items-center justify-between">
-                      <div className="text-muted-foreground">Effective tax rate</div>
-                      <div className="font-medium">{selectedTaxRate}% ({selectedTaxIsInclusive ? 'Inclusive' : 'Exclusive'})</div>
-                    </div>
                     <div className="mt-2 grid grid-cols-3 gap-2">
                       <div>
                         <div className="text-xs text-muted-foreground">Net</div>
