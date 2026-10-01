@@ -51,6 +51,10 @@ backend/storage/logs/*.log
 backend/storage/app/public/*
 !backend/storage/app/public/.gitkeep
 
+# Generated published-site snapshots — artifacts only, public pages are
+# served from the database (PublishingService); never commit these.
+backend/storage/app/website-builder/
+
 # Published/admin assets (generated)
 backend/public/css/filament/
 backend/public/js/filament/

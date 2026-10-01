@@ -17,9 +17,9 @@ final class StarterPageTemplates
 {
     /**
      * @param  string|null  $siteSlug  when known, product grid tokens get a
-     *         product_page locator pointing at THIS site's starter product
-     *         page — cards become real crawlable <a href>s (FR-SF-12/A-17:
-     *         "crawlable from the tenant domain" without JS).
+     *                                 product_page locator pointing at THIS site's starter product
+     *                                 page — cards become real crawlable <a href>s (FR-SF-12/A-17:
+     *                                 "crawlable from the tenant domain" without JS).
      * @return list<array{slug: string, title: string, html: string}>
      */
     public static function pages(?string $siteSlug = null): array
