@@ -146,6 +146,30 @@ class InvoiceDataSource implements DataSourceContract
         ];
     }
 
+    /**
+     * Legacy internal references ("Sales Order #SO-…") must not print on the
+     * customer PDF while genuine invoice notes are preserved. Mirrors the
+     * frontend filter (invoicePresentation.ts) so PDF and UI agree.
+     *
+     * Regression: a merge on main kept this call but dropped the method,
+     * returning 500 for every invoice PDF (report 2026-10-01).
+     */
+    private function visibleNotes(?string $notes): string
+    {
+        if (! $notes) {
+            return '';
+        }
+
+        $lines = preg_split('/\r?\n/', $notes) ?: [];
+
+        $kept = array_filter(
+            $lines,
+            fn (string $line): bool => ! preg_match('/^\s*Sales Order\s*#\s*\S+\s*$/i', $line),
+        );
+
+        return trim(implode("\n", $kept));
+    }
+
     private function paymentTerms(Invoice $invoice): string
     {
         $terms = trim((string) ($invoice->terms ?? ''));
