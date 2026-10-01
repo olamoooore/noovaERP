@@ -607,7 +607,7 @@ export function CustomersPage() {
                 <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" data-enter-submit disabled={createMutation.isPending}>
+                <Button type="submit" disabled={createMutation.isPending}>
                   {createMutation.isPending ? 'Creating...' : 'Create Customer'}
                 </Button>
               </DialogFooter>
@@ -1313,7 +1313,7 @@ export function CustomersPage() {
                 <Button type="button" variant="outline" onClick={() => setEditMode(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" data-enter-submit disabled={updateMutation.isPending}>
+                <Button type="submit" disabled={updateMutation.isPending}>
                   {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
                 </Button>
               </DialogFooter>

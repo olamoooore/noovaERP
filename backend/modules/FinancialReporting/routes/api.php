@@ -53,6 +53,7 @@ Route::middleware([
         Route::get('/sales/by-product', [AnalyticsController::class, 'salesByProduct'])->name('sales.by-product');
         Route::get('/sales/by-customer', [AnalyticsController::class, 'salesByCustomer'])->name('sales.by-customer');
         Route::get('/sales/trends', [AnalyticsController::class, 'salesTrends'])->name('sales.trends');
+        Route::get('/sales/by-currency', [AnalyticsController::class, 'salesByCurrency'])->name('sales.by-currency');
         Route::get('/sales/by-category', [AnalyticsController::class, 'salesByCategory'])->name('sales.by-category');
         Route::get('/sales/profit-margins', [AnalyticsController::class, 'profitMargins'])->name('sales.profit-margins');
 

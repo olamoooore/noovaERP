@@ -35,6 +35,7 @@ use App\Http\Controllers\Api\ExchangeRatesController;
 use App\Http\Controllers\Api\FeatureController;
 use App\Http\Controllers\Api\FiscalPeriodsController;
 use App\Http\Controllers\Api\FixedAssetsController;
+use App\Http\Controllers\Api\FxReportController;
 use App\Http\Controllers\Api\ImportController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\JournalEntriesController;
@@ -467,6 +468,11 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             ->middleware(RequirePermission::using('pricelists.manage'));
         Route::put('/price-lists/{id}/items', [PriceListController::class, 'replaceItems'])
             ->middleware(RequirePermission::using('pricelists.manage'));
+        // FR-2.7: CSV export (read) / import (manage, full replace).
+        Route::get('/price-lists/{id}/items/export', [PriceListController::class, 'exportItems'])
+            ->middleware(RequirePermission::using('pricelists.view'));
+        Route::post('/price-lists/{id}/items/import', [PriceListController::class, 'importItems'])
+            ->middleware(RequirePermission::using('pricelists.manage'));
         Route::put('/price-lists/{id}/applications', [PriceListController::class, 'replaceApplications'])
             ->middleware(RequirePermission::using('pricelists.manage'));
 
@@ -558,6 +564,10 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             ->middleware(EnsureAccountingPostAccess::class);
 
         // Aged Receivables Report
+        // FR-7.7: realized FX gain/loss + foreign currency exposure report.
+        Route::get('/reports/fx', [FxReportController::class, 'show'])
+            ->middleware(RequirePermission::using('accounting.view'));
+
         Route::get('/reports/aged-receivables', [AgedReceivablesController::class, 'index']);
         Route::get('/reports/aged-receivables/details', [AgedReceivablesController::class, 'details']);
 

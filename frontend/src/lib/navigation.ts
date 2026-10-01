@@ -595,6 +595,13 @@ export const baseNavItems: NavItem[] = [
         keywords: ['p&l', 'pnl', 'income statement'],
       },
       {
+        title: 'FX Report',
+        href: '/accounting/reporting/fx',
+        icon: 'solar:refresh-circle-bold-duotone',
+        requiredPermission: 'accounting.view',
+        keywords: ['fx', 'exchange rate', 'currency', 'gain', 'loss', 'exposure'],
+      },
+      {
         title: 'Expense Analytics',
         href: '/reports/expense-analytics',
         icon: 'solar:wallet-money-bold-duotone',

@@ -37,7 +37,7 @@ class SalesAnalyticsService
 
         try {
             $sales = DB::query()
-                ->fromSub($this->lineItemsUnion($startDate, $endDate, $this->salesOrderIdsForTag($filter->tag ?? null)), 'li')
+                ->fromSub($this->lineItemsUnion($startDate, $endDate, $this->salesOrderIdsForTag($filter->tag ?? null), $filter->currencyCode), 'li')
                 ->leftJoin('products as p', 'p.id', '=', 'li.product_id')
                 ->select([
                     'p.id',
@@ -195,6 +195,49 @@ class SalesAnalyticsService
         ];
     }
 
+    /**
+     * MRD pricelist-multicurrency FR-8.1 — revenue split by document
+     * currency with the snapshot-rate base equivalent per bucket.
+     */
+    public function getSalesByCurrency(ReportFilter $filter): array
+    {
+        $startDate = $filter->startDate ?? Carbon::now()->startOfMonth();
+        $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
+
+        try {
+            $rows = DB::query()
+                ->fromSub($this->lineItemsUnion($startDate, $endDate, $this->salesOrderIdsForTag($filter->tag ?? null), $filter->currencyCode), 'li')
+                ->select([
+                    'li.currency_code',
+                    DB::raw('SUM(li.line_total) as total_revenue'),
+                    DB::raw('SUM(li.line_total * li.exchange_rate) as base_revenue'),
+                    DB::raw('SUM(li.quantity) as total_quantity'),
+                    DB::raw('COUNT(DISTINCT li.order_ref) as order_count'),
+                ])
+                ->groupBy('li.currency_code')
+                ->orderByDesc('base_revenue')
+                ->get();
+        } catch (\Throwable $e) {
+            Log::error('SalesAnalyticsService getSalesByCurrency error', ['error' => $e->getMessage()]);
+
+            return $this->errorEnvelope('Sales by Currency', $e);
+        }
+
+        return [
+            'title' => 'Sales by Currency',
+            'data' => $rows->map(fn ($row) => [
+                'currency_code' => $row->currency_code,
+                'total_revenue' => round((float) $row->total_revenue, 2),
+                'base_revenue' => round((float) $row->base_revenue, 2),
+                'total_quantity' => (float) $row->total_quantity,
+                'order_count' => (int) $row->order_count,
+            ])->all(),
+            'summary' => [
+                'total_base_revenue' => round((float) $rows->sum('base_revenue'), 2),
+            ],
+        ];
+    }
+
     public function getSalesTrends(ReportFilter $filter, string $interval = 'day'): array
     {
         $startDate = $filter->startDate ?? Carbon::now()->startOfMonth();
@@ -216,7 +259,7 @@ class SalesAnalyticsService
             // reconcile for the selected period (document totals include tax and
             // shipping and would never match the line-based widgets).
             $trends = DB::query()
-                ->fromSub($this->lineItemsUnion($startDate, $endDate, $salesOrderIds), 'li')
+                ->fromSub($this->lineItemsUnion($startDate, $endDate, $salesOrderIds, $filter->currencyCode), 'li')
                 ->select([
                     DB::raw("TO_CHAR(li.revenue_date, '{$dateFormat}') as period"),
                     DB::raw('COUNT(DISTINCT li.order_ref) as order_count'),
@@ -282,7 +325,7 @@ class SalesAnalyticsService
 
         try {
             $sales = DB::query()
-                ->fromSub($this->lineItemsUnion($startDate, $endDate, $this->salesOrderIdsForTag($filter->tag ?? null)), 'li')
+                ->fromSub($this->lineItemsUnion($startDate, $endDate, $this->salesOrderIdsForTag($filter->tag ?? null), $filter->currencyCode), 'li')
                 ->leftJoin('products as p', 'p.id', '=', 'li.product_id')
                 ->leftJoin('product_categories as c', 'c.id', '=', 'p.category_id')
                 ->select([
@@ -399,10 +442,20 @@ class SalesAnalyticsService
         return app(\App\Services\TagService::class)->subjectIdsForTagSlugs([$tag], 'sales_order');
     }
 
-    private function lineItemsUnion(Carbon $startDate, Carbon $endDate, ?array $salesOrderIds = null)
+    private function lineItemsUnion(Carbon $startDate, Carbon $endDate, ?array $salesOrderIds = null, ?string $currencyCode = null)
     {
         $start = $startDate->format('Y-m-d H:i:s');
         $end = $endDate->endOfDay()->format('Y-m-d H:i:s');
+
+        // MRD FR-8.1: currency dimension. POS rows carry no document currency,
+        // so an active currency filter excludes them (their revenue is base).
+        $currencyFilter = '';
+        $posCurrencyFilter = '';
+        if ($currencyCode !== null && $currencyCode !== '') {
+            $safe = preg_replace('/[^A-Za-z]/', '', $currencyCode);
+            $currencyFilter = " AND so.currency_code = '{$safe}'";
+            $posCurrencyFilter = ' AND 1 = 0';
+        }
 
         // A tag filter only applies to documents that can carry tags. Sales
         // orders can; POS orders cannot, so an active tag filter excludes them
@@ -421,12 +474,14 @@ class SalesAnalyticsService
                    poi.quantity,
                    po.paid_at AS revenue_date,
                    'pos' AS channel,
-                   'pos:' || po.id AS order_ref
+                   'pos:' || po.id AS order_ref,
+                   COALESCE((SELECT base_currency FROM company_settings ORDER BY id LIMIT 1), 'USD') AS currency_code,
+                   1.0 AS exchange_rate
             FROM pos_order_items poi
             JOIN pos_orders po ON po.id = poi.pos_order_id
             WHERE po.paid_at BETWEEN '{$start}' AND '{$end}'
               AND po.status = 'paid'
-              AND po.is_return = false{$posTagClause}
+              AND po.is_return = false{$posTagClause}{$posCurrencyFilter}
         ) UNION ALL (
             SELECT sol.product_id,
                    so.customer_id,
@@ -434,13 +489,15 @@ class SalesAnalyticsService
                    COALESCE(sol.quantity, 0) AS quantity,
                    COALESCE(so.order_date, so.created_at) AS revenue_date,
                    so.channel,
-                   'so:' || so.id AS order_ref
+                   'so:' || so.id AS order_ref,
+                   COALESCE(so.currency_code, (SELECT base_currency FROM company_settings ORDER BY id LIMIT 1), 'USD') AS currency_code,
+                   COALESCE(so.exchange_rate, 1.0) AS exchange_rate
             FROM sales_order_lines sol
             JOIN sales_orders so ON so.id = sol.sales_order_id
             WHERE so.status NOT IN ('draft', 'cancelled')
               AND so.accounting_status <> 'reversed'
               AND so.channel <> 'pos'
-              AND COALESCE(so.order_date, so.created_at) BETWEEN '{$start}' AND '{$end}'{$soTagClause}
+              AND COALESCE(so.order_date, so.created_at) BETWEEN '{$start}' AND '{$end}'{$soTagClause}{$currencyFilter}
         )";
 
         return DB::table(DB::raw('('.$sql.') AS li'));

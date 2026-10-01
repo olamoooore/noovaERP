@@ -62,6 +62,24 @@ class Page extends Model
         return $this->hasOne(PageVersion::class, 'page_id')->where('is_current', true);
     }
 
+    /**
+     * The version the PUBLIC surfaces must serve (P5 publish truthfulness):
+     * the latest version explicitly marked published, so an unpublished
+     * draft edit can never change what visitors see before it is published.
+     * The `?? currentVersion` fallback keeps legacy pages (created before
+     * version-marking, incl. every page that predates this change) serving
+     * exactly as they always did — disclosed.
+     */
+    public function servedVersion(): ?PageVersion
+    {
+        $published = $this->versions()
+            ->where('is_published', true)
+            ->orderByDesc('version')
+            ->first();
+
+        return $published ?? $this->currentVersion;
+    }
+
     public function getContent(): ?array
     {
         return $this->currentVersion?->content;

@@ -104,7 +104,7 @@ export function BonusSchemeCreatePage() {
           <HeaderActionButton
             type="submit"
             form="bonus-scheme-form"
-            data-enter-submit
+           
             icon="solar:gift-bold-duotone"
             loading={createMutation.isPending}
             disabled={createMutation.isPending}

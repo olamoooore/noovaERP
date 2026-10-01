@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
+import { preventImplicitSubmit } from '@/lib/prevent-enter-submit';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { todayDateOnly, addCalendarDays, diffCalendarDays, isValidProductQuantity } from '@/lib/dateOnly';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
 import {
   Dialog,
   DialogContent,
@@ -24,6 +26,8 @@ import { useAuthStore } from '@/store/authStore';
 import { ContactSearchCombobox } from '@/components/ui/ContactSearchCombobox';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 import { getProductLineDescription, ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
+import { CaseSearchCombobox, type MedicalCaseOption } from '@/components/sales/CaseSearchCombobox';
+import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard';
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
 import { ProductTrackingSelector } from '@/components/inventory/ProductTrackingSelector';
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
@@ -298,6 +302,30 @@ const PRESET_OVERRIDE_REASONS = [
   'Stock clearance',
 ]
 
+export interface InvoiceCaseRow {
+  case_number: string;
+  date_of_case: string;
+  case_location: string;
+  patient_name: string;
+  cost_center_id: string;
+  delivery_date: string;
+  pr_no: string;
+  contract_no: string;
+  plant_code: string;
+  company_code: string;
+  po_number: string;
+  doctor_contact_id: string;
+  requestor_contact_id: string;
+  buyer_contact_id: string;
+  medical_case_id?: number | null;
+}
+
+const emptyInvoiceCase = (): InvoiceCaseRow => ({
+  case_number: '', date_of_case: '', case_location: '', patient_name: '', cost_center_id: '',
+  delivery_date: '', pr_no: '', contract_no: '', plant_code: '', company_code: '', po_number: '',
+  doctor_contact_id: '', requestor_contact_id: '', buyer_contact_id: '', medical_case_id: null,
+});
+
 export const CreateInvoicePage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -350,6 +378,13 @@ export const CreateInvoicePage: React.FC = () => {
   const [poNumber, setPoNumber] = useState('');
   const [doctorContactId, setDoctorContactId] = useState('');
   const [requestorContactId, setRequestorContactId] = useState('');
+
+  // Additional cases on the same invoice (the primary case above keeps the
+  // legacy single-case fields + templates working).
+  const [extraCases, setExtraCases] = useState<InvoiceCaseRow[]>([]);
+  // Registry link for the primary case (auto-linked on edit when the stored
+  // case number matches a case in the registry).
+  const [primaryMedicalCaseId, setPrimaryMedicalCaseId] = useState<number | null>(null);
   const [billingContactId, setBillingContactId] = useState('');
   const [shippingContactId, setShippingContactId] = useState('');
   const [billingAddress, setBillingAddress] = useState<AddressFormState>(emptyAddressForm);
@@ -543,21 +578,7 @@ export const CreateInvoicePage: React.FC = () => {
       setPaymentTerms(restoredTerms);
       setTermsOverridden(true);
     }
-    setCaseNumber(existingInvoice.case_number || '');
     setCustomInvoiceNumber(existingInvoice.invoice_number || '');
-    setPrNo(existingInvoice.pr_no || '');
-    setContractNo(existingInvoice.contract_no || '');
-    setPlantCode(existingInvoice.plant_code || '');
-    setCompanyCode(existingInvoice.company_code || '');
-    setBuyerContactId(existingInvoice.buyer_contact_id ? String(existingInvoice.buyer_contact_id) : '');
-    setDateOfCase(existingInvoice.date_of_case ? String(existingInvoice.date_of_case).split('T')[0] : '');
-    setCaseLocation(existingInvoice.case_location || '');
-    setPatientName(existingInvoice.patient_name || '');
-    setCostCenterId(existingInvoice.cost_center_id || '');
-    setDeliveryDate(existingInvoice.delivery_date ? String(existingInvoice.delivery_date).split('T')[0] : '');
-    setPoNumber(existingInvoice.po_number || '');
-    setDoctorContactId(existingInvoice.doctor_contact_id ? String(existingInvoice.doctor_contact_id) : '');
-    setRequestorContactId(existingInvoice.requestor_contact_id ? String(existingInvoice.requestor_contact_id) : '');
     setBillingContactId(existingInvoice.billing_contact_id ? String(existingInvoice.billing_contact_id) : '');
     setShippingContactId(existingInvoice.shipping_contact_id ? String(existingInvoice.shipping_contact_id) : '');
     setNotes(existingInvoice.notes || '');
@@ -909,10 +930,13 @@ export const CreateInvoicePage: React.FC = () => {
         const cur = existing.quantity === '' ? 0 : existing.quantity;
         existing.quantity = cur + quantity;
       } else {
-        next.push({ ...emptyLine(), product_id: String(product.id), sku: product.sku || '', description: product.name || '', unit_price: Number(product.price || 0), quantity });
+        next.push({ ...emptyLine(), product_id: String(product.id), sku: product.sku || '', description: product.name || '', unit_price: Number(product.price || 0), quantity, price_mode: 'auto' });
       }
     });
     setLines(next);
+    // Catalog additions must price through the engine too (list currency +
+    // FX), not just echo the catalogue number.
+    void resolvePricingForLines(customerId, next);
   };
 
   const duplicateLine = (index: number) => {
@@ -1016,6 +1040,117 @@ export const CreateInvoicePage: React.FC = () => {
     createCustomerMutation.mutate(customerForm);
   };
 
+    const applyMedicalCaseToPrimary = (medicalCase: MedicalCaseOption): InvoiceCaseRow => ({
+    case_number: medicalCase.case_no || '',
+    date_of_case: medicalCase.case_date ? String(medicalCase.case_date).slice(0, 10) : '',
+    case_location: medicalCase.location || '',
+    patient_name: medicalCase.patient_name || medicalCase.patient_reference || '',
+    cost_center_id: '',
+    delivery_date: '',
+    pr_no: '',
+    contract_no: '',
+    plant_code: '',
+    company_code: '',
+    po_number: '',
+    doctor_contact_id: medicalCase.doctor_contact_id ? String(medicalCase.doctor_contact_id) : '',
+    requestor_contact_id: medicalCase.requestor_contact_id ? String(medicalCase.requestor_contact_id) : '',
+    buyer_contact_id: medicalCase.buyer_contact_id ? String(medicalCase.buyer_contact_id) : '',
+    medical_case_id: medicalCase.id,
+  });
+
+  const primaryCaseRow = (): InvoiceCaseRow => ({
+    medical_case_id: primaryMedicalCaseId,
+    case_number: caseNumber, date_of_case: dateOfCase, case_location: caseLocation,
+    patient_name: patientName, cost_center_id: costCenterId, delivery_date: deliveryDate,
+    pr_no: prNo, contract_no: contractNo, plant_code: plantCode, company_code: companyCode,
+    po_number: poNumber, doctor_contact_id: doctorContactId,
+    requestor_contact_id: requestorContactId, buyer_contact_id: buyerContactId,
+  });
+
+  const toCasePayload = (row: InvoiceCaseRow) => ({
+    medical_case_id: row.medical_case_id ?? null,
+    case_number: row.case_number || null,
+    date_of_case: row.date_of_case || null,
+    case_location: row.case_location || null,
+    patient_name: row.patient_name || null,
+    cost_center_id: row.cost_center_id || null,
+    delivery_date: row.delivery_date || null,
+    pr_no: row.pr_no || null,
+    contract_no: row.contract_no || null,
+    plant_code: row.plant_code || null,
+    company_code: row.company_code || null,
+    po_number: row.po_number || null,
+    doctor_contact_id: row.doctor_contact_id && row.doctor_contact_id.includes('-') ? row.doctor_contact_id : null,
+    requestor_contact_id: row.requestor_contact_id && row.requestor_contact_id.includes('-') ? row.requestor_contact_id : null,
+    buyer_contact_id: row.buyer_contact_id && row.buyer_contact_id.includes('-') ? row.buyer_contact_id : null,
+  });
+
+  const buildCasesPayload = () =>
+    [toCasePayload(primaryCaseRow()), ...extraCases.map(toCasePayload)].filter((row) =>
+      Object.entries(row).some(([key, value]) => key !== 'medical_case_id' && value !== null && value !== ''),
+    );
+
+
+  // The Case Information block hydrates independently of the line-items
+  // dirty-gate above: opening an existing invoice must always show its
+  // stored case details, the registry link and any extra cases.
+  const caseHydratedInvoiceRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!existingInvoice || !invoiceLoaded) return;
+    const key = String(existingInvoice.id);
+    if (caseHydratedInvoiceRef.current === key) return;
+    caseHydratedInvoiceRef.current = key;
+
+    setCaseNumber(existingInvoice.case_number || '');
+    setPrNo(existingInvoice.pr_no || '');
+    setContractNo(existingInvoice.contract_no || '');
+    setPlantCode(existingInvoice.plant_code || '');
+    setCompanyCode(existingInvoice.company_code || '');
+    setBuyerContactId(existingInvoice.buyer_contact_id ? String(existingInvoice.buyer_contact_id) : '');
+    setDateOfCase(existingInvoice.date_of_case ? String(existingInvoice.date_of_case).split('T')[0] : '');
+    setCaseLocation(existingInvoice.case_location || '');
+    setPatientName(existingInvoice.patient_name || '');
+    setCostCenterId(existingInvoice.cost_center_id || '');
+    setDeliveryDate(existingInvoice.delivery_date ? String(existingInvoice.delivery_date).split('T')[0] : '');
+    setPoNumber(existingInvoice.po_number || '');
+    setDoctorContactId(existingInvoice.doctor_contact_id ? String(existingInvoice.doctor_contact_id) : '');
+    setRequestorContactId(existingInvoice.requestor_contact_id ? String(existingInvoice.requestor_contact_id) : '');
+
+    const storedCases = Array.isArray(existingInvoice.case_information) ? existingInvoice.case_information : [];
+    setPrimaryMedicalCaseId(storedCases[0]?.medical_case_id ? Number(storedCases[0].medical_case_id) : null);
+    setExtraCases(
+      storedCases.slice(1).map((row: any) => ({
+        ...emptyInvoiceCase(),
+        ...row,
+        date_of_case: row.date_of_case ? String(row.date_of_case).slice(0, 10) : '',
+        delivery_date: row.delivery_date ? String(row.delivery_date).slice(0, 10) : '',
+        doctor_contact_id: row.doctor_contact_id ? String(row.doctor_contact_id) : '',
+        requestor_contact_id: row.requestor_contact_id ? String(row.requestor_contact_id) : '',
+        buyer_contact_id: row.buyer_contact_id ? String(row.buyer_contact_id) : '',
+      })),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingInvoice, invoiceLoaded]);
+
+  // Existing invoices often carry only a free-text case number. When it
+  // matches a case in the registry (same customer), link it automatically.
+  useEffect(() => {
+    if (!isEditMode || !caseNumber || !customerId || primaryMedicalCaseId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await api.get('/medical-cases', { params: { search: caseNumber, customer_id: customerId, per_page: '10' } });
+        const rows = (res.data?.data ?? []) as Array<{ id: number; case_no?: string | null }>;
+        const match = rows.find((row) => (row.case_no || '').toLowerCase() === caseNumber.trim().toLowerCase());
+        if (!cancelled && match) setPrimaryMedicalCaseId(match.id);
+      } catch {
+        // Registry lookup is best-effort; the free-text number stays valid.
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditMode, caseNumber, customerId, primaryMedicalCaseId]);
+
   const handleSubmit = (event: React.FormEvent, linesOverride?: InvoiceLine[]) => {
     event.preventDefault();
     const submissionLines = linesOverride ?? lines;
@@ -1073,6 +1208,7 @@ export const CreateInvoicePage: React.FC = () => {
       invoice_date: invoiceDate,
       due_date: dueDate,
       case_number: caseNumber || undefined,
+      cases: buildCasesPayload(),
       pr_no: prNo || undefined, contract_no: contractNo || undefined,
       buyer_contact_id: buyerContactId.includes('-') ? buyerContactId : null,
       plant_code: plantCode || undefined, company_code: companyCode || undefined,
@@ -1182,7 +1318,7 @@ export const CreateInvoicePage: React.FC = () => {
     },
   ];
 
-  const productActions = [
+  const productActions: Array<{ key: string; label: string; description: string; icon: string; onClick: () => void; disabled?: boolean }> = [
     {
       key: 'product-list',
       label: 'Product List',
@@ -1227,7 +1363,7 @@ export const CreateInvoicePage: React.FC = () => {
           )}
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} onKeyDown={preventImplicitSubmit}>
           <Card className="mb-6">
             <CardHeader>
               <CardTitle>{documentLabel} Details</CardTitle>
@@ -1236,8 +1372,11 @@ export const CreateInvoicePage: React.FC = () => {
               {/* Compact single-strip header (MRD §11.2): rounded pill fields
                   that stay on one row on wide screens, with inline pricing
                   feedback (rate snapshot, applied list, resolution errors). */}
-              <div className="flex flex-wrap items-end gap-2 xl:flex-nowrap xl:overflow-x-auto">
-                <div className="w-full sm:w-52 shrink-0">
+              {/* 12-column document header grid: related fields align on one
+                  row (customer/warehouse/dates/currency) and the commercial
+                  row (price list + number) gets real width. */}
+              <div className="grid grid-cols-2 items-end gap-3 md:grid-cols-4 xl:grid-cols-12">
+                <div className="col-span-2 md:col-span-2 xl:col-span-3">
                   <label className="mb-1 block text-xs font-medium">Customer *</label>
                   <CustomerSearchCombobox
                     compact
@@ -1254,7 +1393,7 @@ export const CreateInvoicePage: React.FC = () => {
                   />
                 </div>
                 {!isQuoteMode && (
-                  <div className="w-full sm:w-36 shrink-0">
+                  <div className="col-span-2 md:col-span-2 xl:col-span-2">
                     <label className="mb-1 block text-xs font-medium">Warehouse *</label>
                     <select value={warehouseId} onChange={(event) => { setWarehouseId(event.target.value); setLines((current) => current.map((line) => ({ ...line, product_batch_id: null, product_serial_id: null, lot_number: '', serial_number: '', expiry_date: '' }))); }} className="h-9 w-full rounded-full border border-input bg-background px-3 text-xs">
                       <option value="">Select warehouse</option>
@@ -1262,7 +1401,7 @@ export const CreateInvoicePage: React.FC = () => {
                     </select>
                   </div>
                 )}
-                <div className="w-full sm:w-32 shrink-0">
+                <div className="col-span-1 md:col-span-1 xl:col-span-2">
                   <label className="mb-1 block text-xs font-medium">{isQuoteMode ? 'Quote Date' : 'Invoice Date'}</label>
                   <input
                     type="date"
@@ -1276,7 +1415,7 @@ export const CreateInvoicePage: React.FC = () => {
                   />
                 </div>
                 {!isQuoteMode && (
-                  <div className="w-full sm:w-20 shrink-0">
+                  <div className="col-span-1 md:col-span-1 xl:col-span-1">
                     <label className="mb-1 block text-xs font-medium">Terms</label>
                     <input
                       type="number"
@@ -1293,7 +1432,7 @@ export const CreateInvoicePage: React.FC = () => {
                     />
                   </div>
                 )}
-                <div className="w-full sm:w-32 shrink-0">
+                <div className="col-span-1 md:col-span-1 xl:col-span-2">
                   <label className="mb-1 block text-xs font-medium">{isQuoteMode ? 'Valid Until' : 'Due Date'}</label>
                   <input
                     type="date"
@@ -1306,52 +1445,7 @@ export const CreateInvoicePage: React.FC = () => {
                     className="h-9 w-full min-w-0 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>
-                <div className="w-full sm:w-24 shrink-0">
-                  <label className="mb-1 block text-xs font-medium">Currency</label>
-                  <select
-                    value={currencyCode}
-                    onChange={(event) => {
-                      const next = event.target.value;
-                      setCurrencyCode(next);
-                      // FR-5.2: changing currency re-prices auto lines
-                      // through the engine; manual lines keep their value.
-                      void resolvePricingForLines(customerId, lines, next || undefined);
-                    }}
-                    className="h-9 w-full rounded-full border border-input bg-background px-3 text-xs"
-                  >
-                    <option value="">Auto</option>
-                    {currencyCode && !(sellableCurrencies as any[]).some((c: any) => c.code === currencyCode) && (
-                      <option value={currencyCode}>{currencyCode}</option>
-                    )}
-                    {(sellableCurrencies as any[]).map((currency: any) => (
-                      <option key={currency.code} value={currency.code}>
-                        {currency.code}{currency.symbol ? ` ${currency.symbol}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="w-full sm:w-36 shrink-0">
-                  <label className="mb-1 block text-xs font-medium">Price List</label>
-                  <select
-                    value={priceListId}
-                    onChange={(event) => {
-                      const next = event.target.value;
-                      setPriceListId(next);
-                      // An explicit list re-prices auto lines through the
-                      // engine; manual lines keep their values (FR-5.2).
-                      void resolvePricingForLines(customerId, lines, undefined, next);
-                    }}
-                    className="h-9 w-full rounded-full border border-input bg-background px-3 text-xs"
-                  >
-                    <option value="">Auto</option>
-                    {priceListRows.map((list: any) => (
-                      <option key={list.id} value={String(list.id)}>
-                        {list.name} · {list.currency_code}{list.code ? ` (${list.code})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="w-full sm:w-32 shrink-0">
+                                <div className="col-span-2 md:col-span-2 xl:col-span-2">
                   <label className="mb-1 block text-xs font-medium">{documentLabel} Number</label>
                   <input
                     type="text"
@@ -1363,8 +1457,9 @@ export const CreateInvoicePage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Pricing feedback strip: snapshot rate, applied list, errors. */}
-              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+              {/* Pricing feedback: rate snapshot, applied list, resolution
+                  errors. Full width so long list names are never squeezed. */}
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-800 dark:bg-slate-900/40">
                 {currencyCode && pricingMeta?.base_currency_code && pricingMeta.base_currency_code !== currencyCode && (
                   <span className={pricingMeta.rate_stale ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}>
                     1 {currencyCode} = {Number(pricingMeta.exchange_rate || 0).toFixed(4)} {pricingMeta.base_currency_code}
@@ -1373,16 +1468,20 @@ export const CreateInvoicePage: React.FC = () => {
                     {pricingMeta.rate_stale ? ' · stale' : ''}
                   </span>
                 )}
-                {pricingMeta?.price_list_name ? (
+                {pricingMeta?.price_list_name && (
                   <span className="text-muted-foreground">
                     List: {pricingMeta.price_list_name} ({pricingMeta.price_list_currency ?? currencyCode})
                   </span>
-                ) : (
-                  <span className="text-muted-foreground">No list applied — catalogue prices are used.</span>
                 )}
-                <Link to="/sales/price-lists" className="underline hover:text-foreground">
-                  Manage price lists →
-                </Link>
+                {!isQuoteMode && requiresApproval && (
+                  <span className="flex items-center gap-1 text-orange-700 dark:text-orange-400">
+                    <Icon icon="solar:checklist-bold-duotone" className="h-3.5 w-3.5 shrink-0" />
+                    This {documentLabel.toLowerCase()} will require approval before posting
+                    {salesSettings?.invoice?.default_requires_approval && !isEditMode && (
+                      <span className="text-orange-600/70"> · set in Sales Settings</span>
+                    )}
+                  </span>
+                )}
                 {pricingError && (
                   <span className="flex items-center gap-1 font-medium text-destructive">
                     <Icon icon="solar:danger-triangle-bold" className="h-3.5 w-3.5" />
@@ -1391,19 +1490,7 @@ export const CreateInvoicePage: React.FC = () => {
                 )}
               </div>
 
-              {!isQuoteMode && requiresApproval && (
-                <div className="mt-4 flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-700 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-300">
-                  <Icon icon="solar:checklist-bold-duotone" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  <span>
-                    This {documentLabel.toLowerCase()} will require approval before posting
-                    {salesSettings?.invoice?.default_requires_approval && !isEditMode && (
-                      <span className="text-orange-600/70"> · set in Sales Settings</span>
-                    )}
-                  </span>
-                </div>
-              )}
-
-              <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
                 <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
                   <div>
                     <div className="text-sm font-semibold text-slate-900">Customer Actions</div>
@@ -1411,22 +1498,27 @@ export const CreateInvoicePage: React.FC = () => {
                       Keep the selected customer accurate before you save this {documentLabel.toLowerCase()}.
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="grid auto-rows-fr grid-cols-1 gap-2 sm:grid-cols-2">
                     {customerActions.map((action) => (
-                      <Button
+                      <button
                         key={action.key}
                         type="button"
-                        variant="outline"
                         onClick={action.onClick}
-                        disabled={action.disabled}
-                        className="h-auto min-h-[72px] justify-start px-3 py-3 text-left whitespace-normal"
+                        disabled={Boolean((action as { disabled?: boolean }).disabled)}
+                        className="group flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900/40 dark:hover:bg-primary/10"
                       >
-                        <Icon icon={action.icon} className="h-4 w-4 mr-3 shrink-0" />
-                        <span className="min-w-0">
-                          <span className="block text-sm font-medium text-slate-900">{action.label}</span>
-                          <span className="mt-1 block text-xs text-slate-500">{action.description}</span>
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                          <Icon icon={action.icon} className="h-4 w-4" />
                         </span>
-                      </Button>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-medium text-slate-900 dark:text-slate-100">{action.label}</span>
+                          <span className="mt-0.5 block text-xs leading-snug text-slate-500">{action.description}</span>
+                        </span>
+                        <Icon
+                          icon="solar:alt-arrow-right-linear"
+                          className="h-4 w-4 shrink-0 text-slate-300 transition-colors group-hover:text-primary"
+                        />
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -1438,21 +1530,84 @@ export const CreateInvoicePage: React.FC = () => {
                       Open the catalog or create a missing item before adding line entries.
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+
+                  {/* Currency + price list govern product/line pricing — same
+                      tile grid as the product actions they affect. */}
+                  <div className="grid auto-rows-fr grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900/40">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <Icon icon="solar:wallet-money-bold-duotone" className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium text-slate-900 dark:text-slate-100">Currency</span>
+                        <span className="mt-0.5 block text-xs leading-snug text-slate-500">Auto follows the customer's currency.</span>
+                      </span>
+                      <select
+                        value={currencyCode}
+                        onChange={(event) => {
+                          const next = event.target.value;
+                          setCurrencyCode(next);
+                          void resolvePricingForLines(customerId, lines, next || undefined);
+                        }}
+                        className="h-8 w-[40%] shrink-0 rounded-full border border-input bg-background px-2.5 text-xs"
+                      >
+                        <option value="">Auto</option>
+                        {currencyCode && !(sellableCurrencies as any[]).some((c: any) => c.code === currencyCode) && (
+                          <option value={currencyCode}>{currencyCode}</option>
+                        )}
+                        {(sellableCurrencies as any[]).map((currency: any) => (
+                          <option key={currency.code} value={currency.code}>
+                            {currency.code}{currency.symbol ? ` ${currency.symbol}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900/40">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <Icon icon="solar:tag-price-bold-duotone" className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium text-slate-900 dark:text-slate-100">Price List</span>
+                        <span className="mt-0.5 block text-xs leading-snug text-slate-500">Auto applies the customer's list.</span>
+                      </span>
+                      <select
+                        value={priceListId}
+                        onChange={(event) => {
+                          const next = event.target.value;
+                          setPriceListId(next);
+                          void resolvePricingForLines(customerId, lines, undefined, next);
+                        }}
+                        className="h-8 w-[40%] shrink-0 rounded-full border border-input bg-background px-2.5 text-xs"
+                      >
+                        <option value="">Auto</option>
+                        {priceListRows.map((list: any) => (
+                          <option key={list.id} value={String(list.id)}>
+                            {list.name} · {list.currency_code}{list.code ? ` (${list.code})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
                     {productActions.map((action) => (
-                      <Button
+                      <button
                         key={action.key}
                         type="button"
-                        variant="outline"
                         onClick={action.onClick}
-                        className="h-auto min-h-[72px] justify-start px-3 py-3 text-left whitespace-normal"
+                        disabled={Boolean((action as { disabled?: boolean }).disabled)}
+                        className="group flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900/40 dark:hover:bg-primary/10"
                       >
-                        <Icon icon={action.icon} className="h-4 w-4 mr-3 shrink-0" />
-                        <span className="min-w-0">
-                          <span className="block text-sm font-medium text-slate-900">{action.label}</span>
-                          <span className="mt-1 block text-xs text-slate-500">{action.description}</span>
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                          <Icon icon={action.icon} className="h-4 w-4" />
                         </span>
-                      </Button>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-medium text-slate-900 dark:text-slate-100">{action.label}</span>
+                          <span className="mt-0.5 block text-xs leading-snug text-slate-500">{action.description}</span>
+                        </span>
+                        <Icon
+                          icon="solar:alt-arrow-right-linear"
+                          className="h-4 w-4 shrink-0 text-slate-300 transition-colors group-hover:text-primary"
+                        />
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -1644,12 +1799,23 @@ export const CreateInvoicePage: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Case Number</label>
-                  <input
-                    type="text"
+                  <CaseSearchCombobox
                     value={caseNumber}
-                    onChange={(event) => setCaseNumber(event.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                    placeholder="Case reference number"
+                    onValueChange={setCaseNumber}
+                    onSelectCase={(medicalCase) => {
+                      // Selecting an existing case populates the section;
+                      // everything stays editable for a new case.
+                      const row = applyMedicalCaseToPrimary(medicalCase);
+                      setPrimaryMedicalCaseId(row.medical_case_id ?? null);
+                      setCaseNumber(row.case_number);
+                      setDateOfCase(row.date_of_case);
+                      setCaseLocation(row.case_location);
+                      setPatientName(row.patient_name);
+                      if (row.doctor_contact_id) setDoctorContactId(row.doctor_contact_id);
+                      if (row.requestor_contact_id) setRequestorContactId(row.requestor_contact_id);
+                      if (row.buyer_contact_id) setBuyerContactId(row.buyer_contact_id);
+                    }}
+                    customerId={customerId}
                   />
                 </div>
                 <div>
@@ -1732,6 +1898,86 @@ export const CreateInvoicePage: React.FC = () => {
                   />
                 </div>
                 <div><label className="block text-sm font-medium mb-1">Buyer</label><ContactSearchCombobox value={buyerContactId} onValueChange={setBuyerContactId} placeholder="Select buyer..." customerId={customerId} source="customer_contacts" /></div>
+              </div>
+
+              {/* Additional cases on the same invoice */}
+              {extraCases.map((row, index) => (
+                <div key={index} className="mt-4 space-y-4 rounded-lg border border-dashed p-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold">Case {index + 2}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 rounded-full"
+                      onClick={() => setExtraCases((prev) => prev.filter((_, i) => i !== index))}
+                      aria-label={`Remove case ${index + 2}`}
+                    >
+                      <Icon icon="solar:trash-bin-trash-bold" className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Case Number</label>
+                      <CaseSearchCombobox
+                        value={row.case_number}
+                        onValueChange={(v) => setExtraCases((prev) => prev.map((r, i) => (i === index ? { ...r, case_number: v } : r)))}
+                        onSelectCase={(medicalCase) => {
+                          const filled = applyMedicalCaseToPrimary(medicalCase);
+                          setExtraCases((prev) => prev.map((r, i) => (i === index
+                            ? { ...r, ...filled, date_of_case: filled.date_of_case || r.date_of_case, case_location: filled.case_location || r.case_location, patient_name: filled.patient_name || r.patient_name, doctor_contact_id: filled.doctor_contact_id || r.doctor_contact_id, requestor_contact_id: filled.requestor_contact_id || r.requestor_contact_id, buyer_contact_id: filled.buyer_contact_id || r.buyer_contact_id }
+                            : r)))
+                        }}
+                        customerId={customerId}
+                      />
+                    </div>
+                    {([
+                      ['date_of_case', 'Date of Case', 'date'],
+                      ['pr_no', 'PR No', 'text'],
+                      ['contract_no', 'Contract No', 'text'],
+                      ['plant_code', 'Plant Code', 'text'],
+                      ['company_code', 'Company Code', 'text'],
+                      ['case_location', 'Location', 'text'],
+                      ['patient_name', 'Patient Name', 'text'],
+                      ['cost_center_id', 'Cost Center ID', 'text'],
+                      ['delivery_date', 'Delivery Date', 'date'],
+                      ['po_number', 'PO Number', 'text'],
+                    ] as const).map(([field, label, type]) => (
+                      <div key={field}>
+                        <label className="block text-sm font-medium mb-1">{label}</label>
+                        <input
+                          type={type}
+                          value={row[field]}
+                          onChange={(event) => setExtraCases((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: event.target.value } : r)))}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                        />
+                      </div>
+                    ))}
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Doctor</label>
+                      <ContactSearchCombobox value={row.doctor_contact_id} onValueChange={(v) => setExtraCases((prev) => prev.map((r, i) => (i === index ? { ...r, doctor_contact_id: v } : r)))} placeholder="Select doctor..." customerId={customerId} source="customer_contacts" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Requestor</label>
+                      <ContactSearchCombobox value={row.requestor_contact_id} onValueChange={(v) => setExtraCases((prev) => prev.map((r, i) => (i === index ? { ...r, requestor_contact_id: v } : r)))} placeholder="Select requestor..." customerId={customerId} source="customer_contacts" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Buyer</label>
+                      <ContactSearchCombobox value={row.buyer_contact_id} onValueChange={(v) => setExtraCases((prev) => prev.map((r, i) => (i === index ? { ...r, buyer_contact_id: v } : r)))} placeholder="Select buyer..." customerId={customerId} source="customer_contacts" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              <div className="mt-4">
+                <HeaderActionButton
+                  type="button"
+                  variant="outline"
+                  icon="solar:add-circle-bold-duotone"
+                  onClick={() => setExtraCases((prev) => [...prev, emptyInvoiceCase()])}
+                >
+                  Add Case
+                </HeaderActionButton>
               </div>
             </CardContent>
           </Card>
@@ -1950,82 +2196,52 @@ export const CreateInvoicePage: React.FC = () => {
 
               <div className="mt-3 flex flex-wrap gap-2">
                 <ProductCatalogDialog products={products || []} onAdd={addCatalogProducts} />
-                <Button type="button" variant="outline" size="sm" onClick={addLine}>
-                  <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-1" />
+                <HeaderActionButton type="button" variant="outline" icon="solar:add-circle-bold-duotone" onClick={addLine}>
                   Add Line
-                </Button>
-                <Button
+                </HeaderActionButton>
+                <HeaderActionButton
                   type="button"
                   variant="outline"
-                  size="sm"
+                  icon="solar:refresh-bold-duotone"
                   title="Re-run pricing for all auto lines (customer, currency or list changes do this automatically)"
                   onClick={() => void resolvePricingForLines(customerId, lines)}
                 >
-                  <Icon icon="solar:refresh-bold-duotone" className="h-4 w-4 mr-1" />
                   Recalculate
-                </Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => addTextLine('section')}>Add Section</Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => addTextLine('note')}>Add Note</Button>
+                </HeaderActionButton>
+                <HeaderActionButton type="button" variant="outline" onClick={() => addTextLine('section')}>Add Section</HeaderActionButton>
+                <HeaderActionButton type="button" variant="outline" onClick={() => addTextLine('note')}>Add Note</HeaderActionButton>
               </div>
 
-              <div className="mt-6 flex justify-end">
-                <div className="w-full max-w-sm space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Subtotal:</span>
-                    <span className="font-medium">{money(subtotal)}</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 text-sm">
-                    <span className="text-muted-foreground">Document Discount:</span>
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={discountMode}
-                        onChange={(event) => setDiscountMode(event.target.value as 'fixed' | 'percentage')}
-                        className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
-                      >
-                        <option value="fixed">Fixed</option>
-                        <option value="percentage">%</option>
-                      </select>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        placeholder="0"
-                        value={discountAmount === '' ? '' : discountAmount}
-                        onChange={(event) => setDiscountAmount(event.target.value === '' ? '' : parseFloat(event.target.value))}
-                        className="w-28 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Tax:</span>
-                    <span className="font-medium">{money(taxTotal)}</span>
-                  </div>
-                  {(documentDiscountAmount > 0 || lineDiscounts > 0) && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Discount:</span>
-                      <span className="font-medium text-green-600">
-                        -{money(documentDiscountAmount + lineDiscounts)}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-lg font-bold pt-2 border-t">
-                    <span>Total:</span>
-                    <span className="text-primary">{money(total)}</span>
-                  </div>
-                  {currencyCode && pricingMeta?.base_currency_code && pricingMeta.base_currency_code !== currencyCode && (
-                    <div className="flex justify-between text-sm text-muted-foreground">
-                      <span>Base equivalent ({pricingMeta.base_currency_code}):</span>
-                      <span>{formatCurrency(total * Number(pricingMeta.exchange_rate || 1), pricingMeta.base_currency_code)}</span>
-                    </div>
-                  )}
-                  {pricingMeta?.price_list_name && (
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>Priced by:</span>
-                      <span>{pricingMeta.price_list_name} ({pricingMeta.price_list_currency ?? currencyCode})</span>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <DocumentTotalsCard
+                subtotal={subtotal}
+                tax={taxTotal}
+                total={total}
+                money={money}
+                discountMode={discountMode}
+                onDiscountModeChange={setDiscountMode}
+                discountAmount={discountAmount}
+                onDiscountAmountChange={setDiscountAmount}
+                lineDiscounts={lineDiscounts}
+                documentDiscountAmount={documentDiscountAmount}
+                footer={
+                  ((currencyCode && pricingMeta?.base_currency_code && pricingMeta.base_currency_code !== currencyCode) || pricingMeta?.price_list_name) ? (
+                    <>
+                      {currencyCode && pricingMeta?.base_currency_code && pricingMeta.base_currency_code !== currencyCode && (
+                        <div className="flex items-center justify-between">
+                          <span>Base equivalent ({pricingMeta.base_currency_code})</span>
+                          <span className="tabular-nums">{formatCurrency(total * Number(pricingMeta.exchange_rate || 1), pricingMeta.base_currency_code)}</span>
+                        </div>
+                      )}
+                      {pricingMeta?.price_list_name && (
+                        <div className="flex items-center justify-between">
+                          <span>Priced by</span>
+                          <span>{pricingMeta.price_list_name} ({pricingMeta.price_list_currency ?? currencyCode})</span>
+                        </div>
+                      )}
+                    </>
+                  ) : null
+                }
+              />
             </CardContent>
           </Card>
 
@@ -2033,7 +2249,7 @@ export const CreateInvoicePage: React.FC = () => {
             <Button type="button" variant="outline" onClick={() => navigate(backPath)}>
               Cancel
             </Button>
-            <Button type="submit" data-enter-submit disabled={saveMutation.isPending || isInvoiceLoading}>
+            <Button type="submit" disabled={saveMutation.isPending || isInvoiceLoading}>
               {saveMutation.isPending ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
@@ -2227,7 +2443,7 @@ export const CreateInvoicePage: React.FC = () => {
               <Button type="button" variant="outline" onClick={() => setCustomerDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" data-enter-submit disabled={customerMutationPending}>
+              <Button type="submit" disabled={customerMutationPending}>
                 {customerMutationPending ? 'Saving...' : customerDialogMode === 'create' ? 'Create Customer' : 'Save Changes'}
               </Button>
             </DialogFooter>

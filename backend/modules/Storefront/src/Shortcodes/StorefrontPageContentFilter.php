@@ -26,6 +26,7 @@ final class StorefrontPageContentFilter implements PageContentFilter
     public function __construct(
         private readonly Renderer $renderer,
         private readonly FeatureGateService $featureGate,
+        private readonly \Modules\Storefront\Services\StorefrontCache $cache = new \Modules\Storefront\Services\StorefrontCache,
     ) {}
 
     public function filterHtml(string $html, array $context): string
@@ -41,7 +42,10 @@ final class StorefrontPageContentFilter implements PageContentFilter
             return $this->renderer->stripTokens($html);
         }
 
-        return $this->injectRuntime($this->renderer->render($html, new Context(
+        $before = $this->cache->stats($tenantId);
+        $startedAt = hrtime(true);
+
+        $rendered = $this->renderer->render($html, new Context(
             tenantId: $tenantId,
             mode: Context::MODE_PUBLIC,
             pageId: isset($context['page_id']) ? (int) $context['page_id'] : null,
@@ -49,7 +53,21 @@ final class StorefrontPageContentFilter implements PageContentFilter
             websiteSlug: (string) ($context['website_slug'] ?? ''),
             locale: (string) ($context['locale'] ?? app()->getLocale()),
             query: (array) ($context['query'] ?? []),
-        )));
+        ));
+
+        // NFR-09/§B8 per-render observability (A-27 cache-ratio source).
+        $after = $this->cache->stats($tenantId);
+        Log::info('Storefront: page render', [
+            'tenant_id' => $tenantId,
+            'page_id' => $context['page_id'] ?? null,
+            'page_version_id' => $context['page_version_id'] ?? null,
+            'website_slug' => (string) ($context['website_slug'] ?? ''),
+            'duration_ms' => (int) round((hrtime(true) - $startedAt) / 1_000_000, 1),
+            'cache_hits' => $after['hits'] - $before['hits'],
+            'cache_misses' => $after['misses'] - $before['misses'],
+        ]);
+
+        return $this->injectRuntime($rendered);
     }
 
     /**

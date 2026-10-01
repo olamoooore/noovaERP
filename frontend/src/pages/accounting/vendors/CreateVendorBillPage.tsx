@@ -1,19 +1,32 @@
 import React, { useEffect, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { preventImplicitSubmit } from '@/lib/prevent-enter-submit';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
 import { accountingApi } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
+import { ProductSearchCombobox, getProductLineDescription } from '@/components/inventory/ProductSearchCombobox';
+import { VendorSearchCombobox } from '@/components/ui/VendorSearchCombobox';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
+import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
+import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard';
+import { LineItemsTable } from '@/components/sales/LineItemsTable';
+import {
+  ProductLineActions,
+  productLineColumns,
+  LINE_CELL,
+  LINE_CELL_BOX,
+  LINE_INPUT,
+  LINE_INPUT_NUMERIC,
+  LINE_TEXTAREA,
+  LINE_VALUE,
+} from '@/components/sales/ProductLineTable';
+import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
+import { resolveLineTaxRate } from '@/lib/lineTax';
+import { cn } from '@/lib/utils';
 
 const formatLegacyAddress = (address: string | null | undefined): string => {
   if (!address) return '';
@@ -35,10 +48,19 @@ const formatLegacyAddress = (address: string | null | undefined): string => {
   }
 };
 
+type BillLineType = 'product' | 'note' | 'section';
+
 interface BillLine {
-  account_id: string;
+  line_type: BillLineType;
+  product_id: string;
+  sku: string;
+  model_number: string;
+  product_notes: string;
+  lot_number: string;
+  serial_number: string;
+  expiry_date: string;
   description: string;
-  quantity: number;
+  quantity: number | '';
   unit_price: number | '';
   tax_rate: number | '';
 }
@@ -59,21 +81,6 @@ interface VendorRecord {
   is_active?: boolean;
 }
 
-interface VendorFormState {
-  name: string;
-  email: string;
-  phone: string;
-  company: string;
-  tax_number: string;
-  company_registration_number: string;
-  address: string;
-  contact_person: string;
-  website: string;
-  payment_terms: string;
-  notes: string;
-  is_active: boolean;
-}
-
 interface VendorDocumentSnapshot {
   vendor_reference: string;
   internal_reference: string;
@@ -87,27 +94,19 @@ interface VendorDocumentSnapshot {
 }
 
 const emptyLine = (): BillLine => ({
-  account_id: '',
+  line_type: 'product',
+  product_id: '',
+  sku: '',
+  model_number: '',
+  product_notes: '',
+  lot_number: '',
+  serial_number: '',
+  expiry_date: '',
   description: '',
   quantity: 1,
   unit_price: '',
   tax_rate: '',
 });
-
-const initialVendorForm: VendorFormState = {
-  name: '',
-  email: '',
-  phone: '',
-  company: '',
-  tax_number: '',
-  company_registration_number: '',
-  address: '',
-  contact_person: '',
-  website: '',
-  payment_terms: '30',
-  notes: '',
-  is_active: true,
-};
 
 const emptyDocumentSnapshot: VendorDocumentSnapshot = {
   vendor_reference: '',
@@ -123,7 +122,6 @@ const emptyDocumentSnapshot: VendorDocumentSnapshot = {
 
 export const CreateVendorBillPage: React.FC = () => {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const [vendorId, setVendorId] = useState('');
@@ -137,10 +135,17 @@ export const CreateVendorBillPage: React.FC = () => {
   const [discountMode, setDiscountMode] = useState<'fixed' | 'percentage'>('fixed');
   const [discountAmount, setDiscountAmount] = useState<number | ''>('');
   const [lines, setLines] = useState<BillLine[]>([emptyLine()]);
+  const [draggedLineIndex, setDraggedLineIndex] = useState<number | null>(null);
+  // Same field toggles and defaults as the invoice editor (parity 2026-10-01).
+  const [visibleLineColumns, setVisibleLineColumns] = useState<Record<string, boolean>>(() => {
+    const defaults = { sku: true, description: true, model_number: true, product_notes: false, lot_number: true, expiry_date: true, tax_rate: true };
+    try {
+      return { ...defaults, ...JSON.parse(localStorage.getItem('bill-line-columns-v1') || '{}') };
+    } catch {
+      return defaults;
+    }
+  });
   const [documentSnapshot, setDocumentSnapshot] = useState<VendorDocumentSnapshot>(emptyDocumentSnapshot);
-  const [vendorDialogOpen, setVendorDialogOpen] = useState(false);
-  const [vendorDialogMode, setVendorDialogMode] = useState<'create' | 'edit'>('create');
-  const [vendorForm, setVendorForm] = useState<VendorFormState>(initialVendorForm);
 
   const { data: vendors } = useQuery<VendorRecord[]>({
     queryKey: ['vendors-list'],
@@ -159,10 +164,10 @@ export const CreateVendorBillPage: React.FC = () => {
     enabled: Boolean(vendorId),
   });
 
-  const { data: accounts } = useQuery({
-    queryKey: ['chart-of-accounts-list'],
+  const { data: products = [] } = useQuery<any[]>({
+    queryKey: ['products-list'],
     queryFn: async () => {
-      const response = await accountingApi.get('/accounting/chart-of-accounts');
+      const response = await accountingApi.get('/products?per_page=1000');
       return response.data.data || response.data || [];
     },
   });
@@ -211,58 +216,27 @@ export const CreateVendorBillPage: React.FC = () => {
     },
   });
 
-  const createVendorMutation = useMutation({
-    mutationFn: async (payload: VendorFormState) => {
-      const response = await accountingApi.post('/accounting/vendors', {
-        ...payload,
-        payment_terms: payload.payment_terms ? parseInt(payload.payment_terms, 10) : undefined,
-      });
-      return response.data.data as VendorRecord;
-    },
-    onSuccess: async (vendor) => {
-      await queryClient.invalidateQueries({ queryKey: ['vendors-list'] });
-      toast({ title: 'Vendor created successfully' });
-      setVendorId(String(vendor.id));
-      setVendorDialogOpen(false);
-      setVendorForm(initialVendorForm);
-    },
-    onError: (error: any) => {
-      toast({
-        variant: 'destructive',
-        title: 'Failed to create vendor',
-        description: error.response?.data?.message || 'An error occurred',
-      });
-    },
-  });
-
-  const updateVendorMutation = useMutation({
-    mutationFn: async (payload: VendorFormState) => {
-      const response = await accountingApi.put(`/accounting/vendors/${vendorId}`, {
-        ...payload,
-        payment_terms: payload.payment_terms ? parseInt(payload.payment_terms, 10) : undefined,
-      });
-      return response.data.data as VendorRecord;
-    },
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['vendors-list'] }),
-        queryClient.invalidateQueries({ queryKey: ['vendor-document', vendorId] }),
-      ]);
-      toast({ title: 'Vendor updated successfully' });
-      setVendorDialogOpen(false);
-    },
-    onError: (error: any) => {
-      toast({
-        variant: 'destructive',
-        title: 'Failed to update vendor',
-        description: error.response?.data?.message || 'An error occurred',
-      });
-    },
-  });
-
-  const updateLine = (index: number, field: keyof BillLine, value: string | number) => {
+  // Product lines mirror the invoice editor: picking a product fills the
+  // description, cost, tax rate and capture fields. The expense account is
+  // derived server-side (product's own account, else the tenant mapping).
+  const selectProduct = (index: number, productId: string, product?: any) => {
     const updated = [...lines];
-    updated[index] = { ...updated[index], [field]: value };
+    const line: BillLine = {
+      ...updated[index],
+      line_type: 'product',
+      product_id: productId,
+      lot_number: '',
+      serial_number: '',
+      expiry_date: '',
+    };
+    if (product) {
+      line.description = getProductLineDescription(product);
+      line.unit_price = Number(product.cost ?? 0);
+      line.model_number = product.manufacturer_part_number || '';
+      line.sku = product.sku || '';
+      line.tax_rate = resolveLineTaxRate(product, 0) ?? '';
+    }
+    updated[index] = line;
     setLines(updated);
   };
 
@@ -275,11 +249,61 @@ export const CreateVendorBillPage: React.FC = () => {
 
   const addLine = () => setLines([...lines, emptyLine()]);
 
+  const addTextLine = (line_type: 'note' | 'section') => {
+    setLines([...lines, { ...emptyLine(), line_type, quantity: 0, unit_price: 0, tax_rate: 0 }]);
+  };
+
+  const addCatalogProducts = (items: Array<{ product: any; quantity: number }>) => {
+    const next = [...lines];
+    items.forEach(({ product, quantity }) => {
+      const existing = next.find((line) => line.line_type === 'product' && line.product_id === String(product.id));
+      if (existing) {
+        existing.quantity = Number(existing.quantity || 0) + quantity;
+      } else {
+        next.push({
+          ...emptyLine(),
+          product_id: String(product.id),
+          sku: product.sku || '',
+          description: getProductLineDescription(product),
+          model_number: product.manufacturer_part_number || '',
+          unit_price: Number(product.cost ?? 0),
+          quantity,
+          tax_rate: resolveLineTaxRate(product, 0) ?? '',
+        });
+      }
+    });
+    setLines(next);
+  };
+
+  // Re-price every product line from the product's cost (bills are costed
+  // from the catalogue, unlike invoices which re-run the pricing engine).
+  const recalculateFromCost = () => {
+    const byId = new Map((products as any[]).map((product) => [String(product.id), product]));
+    setLines((current) => current.map((line) => {
+      if (line.line_type !== 'product' || !line.product_id) return line;
+      const product = byId.get(line.product_id);
+      if (!product) return line;
+      const cost = Number(product.cost ?? 0);
+      return {
+        ...line,
+        unit_price: cost > 0 ? cost : line.unit_price,
+        tax_rate: resolveLineTaxRate(product, 0) ?? line.tax_rate,
+      };
+    }));
+    toast({ title: 'Recalculated from product cost' });
+  };
+
   const duplicateLine = (index: number) => {
     const targetLine = lines[index];
     if (!targetLine) return;
     const updated = [...lines];
     updated.splice(index + 1, 0, { ...targetLine });
+    setLines(updated);
+  };
+
+  const resetLine = (index: number) => {
+    const updated = [...lines];
+    updated[index] = emptyLine();
     setLines(updated);
   };
 
@@ -297,75 +321,53 @@ export const CreateVendorBillPage: React.FC = () => {
   const removeLine = (index: number) => {
     if (lines.length > 1) {
       setLines(lines.filter((_, currentIndex) => currentIndex !== index));
+    } else {
+      resetLine(index);
     }
+  };
+
+  const toggleLineColumn = (key: string) => {
+    setVisibleLineColumns((current) => {
+      const next = { ...current, [key]: !current[key] };
+      localStorage.setItem('bill-line-columns-v1', JSON.stringify(next));
+      return next;
+    });
   };
 
   const getLineTotal = (line: BillLine) => {
+    if (line.line_type !== 'product') return 0;
     const unitPrice = line.unit_price === '' ? 0 : line.unit_price;
     const taxRate = line.tax_rate === '' ? 0 : line.tax_rate;
-    const base = line.quantity * unitPrice;
-    const tax = base * (taxRate / 100);
-    return base + tax;
+    const base = Number(line.quantity || 0) * unitPrice;
+    return base + base * (taxRate / 100);
   };
 
-  const openCreateVendorDialog = () => {
-    setVendorDialogMode('create');
-    setVendorForm(initialVendorForm);
-    setVendorDialogOpen(true);
-  };
-
-  const openEditVendorDialog = () => {
-    if (!selectedVendor) {
-      return;
-    }
-
-    setVendorDialogMode('edit');
-    setVendorForm({
-      name: selectedVendor.name ?? '',
-      email: selectedVendor.email ?? '',
-      phone: selectedVendor.phone ?? '',
-      company: selectedVendor.company ?? '',
-      tax_number: selectedVendor.tax_number ?? '',
-      company_registration_number: selectedVendor.company_registration_number ?? '',
-      address: selectedVendor.address ?? '',
-      contact_person: selectedVendor.contact_person ?? '',
-      website: selectedVendor.website ?? '',
-      payment_terms: String(selectedVendor.payment_terms ?? 30),
-      notes: selectedVendor.notes ?? '',
-      is_active: selectedVendor.is_active ?? true,
-    });
-    setVendorDialogOpen(true);
-  };
-
-  const subtotal = lines.reduce((sum, line) => {
+  const productLines = lines.filter((line) => line.line_type === 'product');
+  const subtotal = productLines.reduce((sum, line) => {
     const unitPrice = line.unit_price === '' ? 0 : line.unit_price;
-    return sum + line.quantity * unitPrice;
+    return sum + Number(line.quantity || 0) * unitPrice;
   }, 0);
-  const taxTotal = lines.reduce((sum, line) => {
+  const taxTotal = productLines.reduce((sum, line) => {
     const unitPrice = line.unit_price === '' ? 0 : line.unit_price;
     const taxRate = line.tax_rate === '' ? 0 : line.tax_rate;
-    return sum + line.quantity * unitPrice * (taxRate / 100);
+    return sum + Number(line.quantity || 0) * unitPrice * (taxRate / 100);
   }, 0);
   const discountAmt = discountAmount === '' ? 0 : discountAmount;
   const documentDiscountAmount = discountMode === 'percentage'
     ? subtotal * (discountAmt / 100)
     : discountAmt;
   const discountedSubtotal = subtotal - documentDiscountAmount;
-  const taxRatio = subtotal > 0 ? discountedSubtotal / subtotal : 1;
-  const adjustedTaxTotal = Math.round(taxTotal * taxRatio * 100) / 100;
+  // Mirror TaxEngineService per line: allocate the document discount
+  // proportionally (rounded), then tax the reduced base.
+  const discountRatio = subtotal > 0 ? documentDiscountAmount / subtotal : 0;
+  const adjustedTaxTotal = productLines.reduce((sum, line) => {
+    const base = Number(line.quantity || 0) * (line.unit_price === '' ? 0 : line.unit_price);
+    const allocated = Math.min(Math.max(Math.round(base * discountRatio * 100) / 100, 0), Math.max(base, 0));
+    const taxable = Math.round((base - allocated) * 100) / 100;
+    const rate = line.tax_rate === '' ? 0 : line.tax_rate;
+    return sum + (rate > 0 ? Math.round(taxable * (rate / 100) * 100) / 100 : 0);
+  }, 0);
   const total = discountedSubtotal + adjustedTaxTotal;
-  const billNumberPreview = billNumber || `BILL-${new Date(billDate).getFullYear()}-XXXX`;
-
-  const handleVendorFormSubmit = (event: React.FormEvent) => {
-    event.preventDefault();
-
-    if (vendorDialogMode === 'edit') {
-      updateVendorMutation.mutate(vendorForm);
-      return;
-    }
-
-    createVendorMutation.mutate(vendorForm);
-  };
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -375,9 +377,11 @@ export const CreateVendorBillPage: React.FC = () => {
       return;
     }
 
-    const validLines = lines.filter((line) => line.account_id && line.quantity > 0 && line.unit_price !== '' && line.unit_price > 0);
-    if (validLines.length === 0) {
-      toast({ variant: 'destructive', title: 'Please add at least one line item with an account, quantity, and price' });
+    const validLines = lines.filter((line) => line.line_type === 'product'
+      ? Boolean(line.product_id) && Number(line.quantity || 0) > 0 && line.unit_price !== ''
+      : line.description.trim() !== '');
+    if (!validLines.some((line) => line.line_type === 'product' && line.product_id)) {
+      toast({ variant: 'destructive', title: 'Please add at least one product line with a quantity and price' });
       return;
     }
 
@@ -391,9 +395,15 @@ export const CreateVendorBillPage: React.FC = () => {
       discount_amount: documentDiscountAmount || 0,
       ...documentSnapshot,
       lines: validLines.map((line) => ({
-        account_id: parseInt(line.account_id, 10),
+        line_type: line.line_type,
+        product_id: line.product_id ? parseInt(line.product_id, 10) : undefined,
+        model_number: line.model_number || undefined,
+        product_notes: line.product_notes || undefined,
+        lot_number: line.lot_number || undefined,
+        serial_number: line.serial_number || undefined,
+        expiry_date: line.expiry_date || undefined,
         description: line.description || undefined,
-        quantity: line.quantity,
+        quantity: line.quantity === '' ? 0 : line.quantity,
         unit_price: line.unit_price === '' ? 0 : line.unit_price,
         tax_rate: line.tax_rate === '' ? 0 : line.tax_rate,
       })),
@@ -401,8 +411,6 @@ export const CreateVendorBillPage: React.FC = () => {
 
     createMutation.mutate(payload);
   };
-
-  const vendorMutationPending = createVendorMutation.isPending || updateVendorMutation.isPending;
 
   return (
     <>
@@ -423,7 +431,7 @@ export const CreateVendorBillPage: React.FC = () => {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} onKeyDown={preventImplicitSubmit}>
           <Card className="mb-6">
             <CardHeader>
               <CardTitle>Bill Details</CardTitle>
@@ -432,34 +440,21 @@ export const CreateVendorBillPage: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Vendor *</label>
-                  <select
+                  <VendorSearchCombobox
                     value={vendorId}
-                    onChange={(event) => setVendorId(event.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  >
-                    <option value="">Select vendor...</option>
-                    {vendors?.map((vendor) => (
-                      <option key={vendor.id} value={vendor.id}>
-                        {vendor.name}
-                      </option>
-                    ))}
-                  </select>
+                    onValueChange={(id) => setVendorId(id)}
+                    placeholder="Select vendor..."
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Bill Number</label>
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      value={billNumber}
-                      onChange={(event) => setBillNumber(event.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Auto-generated if blank"
-                    />
-                    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                      Preview: <span className="font-semibold text-slate-900">{billNumberPreview}</span>
-                    </div>
-                  </div>
+                  <input
+                    type="text"
+                    value={billNumber}
+                    onChange={(event) => setBillNumber(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Auto-generated if blank"
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Bill Date *</label>
@@ -480,21 +475,6 @@ export const CreateVendorBillPage: React.FC = () => {
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={openCreateVendorDialog}>
-                  <Icon icon="solar:add-square-bold-duotone" className="h-4 w-4 mr-2" />
-                  Add Vendor Inline
-                </Button>
-                <Button type="button" variant="outline" size="sm" onClick={openEditVendorDialog} disabled={!selectedVendor}>
-                  <Icon icon="solar:pen-bold-duotone" className="h-4 w-4 mr-2" />
-                  Edit Selected Vendor
-                </Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => navigate('/accounting/core/chart-of-accounts')}>
-                  <Icon icon="solar:book-bookmark-bold-duotone" className="h-4 w-4 mr-2" />
-                  Chart of Accounts
-                </Button>
               </div>
 
               {selectedVendor && (
@@ -642,160 +622,264 @@ export const CreateVendorBillPage: React.FC = () => {
               <CardTitle className="flex items-center justify-between">
                 <span>Line Items</span>
                 <div className="flex flex-wrap gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={addLine}>
-                    <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-1" />
-                    Add Line
-                  </Button>
+                  {/* Same field toggles as the invoice line editor. */}
+                  <details className="relative">
+                    <summary className="list-none cursor-pointer rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-accent">
+                      <Icon icon="solar:settings-bold-duotone" className="inline h-4 w-4 mr-1" />
+                      Show/Hide Fields
+                    </summary>
+                    <div className="absolute right-0 z-20 mt-2 w-52 rounded-md border bg-background p-3 shadow-lg">
+                      {[
+                        ['sku', 'SKU'], ['description', 'Description'], ['model_number', 'Model #'],
+                        ['product_notes', 'Product Notes'], ['lot_number', 'Lot Number'],
+                        ['expiry_date', 'Expiry Date'], ['tax_rate', 'Tax %'],
+                      ].map(([key, label]) => (
+                        <label key={key} className="flex cursor-pointer items-center gap-2 py-1 text-sm">
+                          <input type="checkbox" checked={visibleLineColumns[key]} onChange={() => toggleLineColumn(key)} />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  </details>
                 </div>
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-2 px-2 w-12">#</th>
-                      <th className="text-left py-2 px-2">Account *</th>
-                      <th className="text-left py-2 px-2">Description</th>
-                      <th className="text-right py-2 px-2 w-24">Qty</th>
-                      <th className="text-right py-2 px-2 w-32">Unit Price</th>
-                      <th className="text-right py-2 px-2 w-24">Tax %</th>
-                      <th className="text-right py-2 px-2 w-32">Line Total</th>
-                      <th className="py-2 px-2 w-40">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lines.map((line, index) => (
-                      <tr key={index} className="border-b">
-                        <td className="py-2 px-2 text-sm font-medium text-slate-500">{index + 1}</td>
-                        <td className="py-2 px-2">
-                          <select
-                            value={line.account_id}
-                            onChange={(event) => updateLine(index, 'account_id', event.target.value)}
-                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
-                            required
-                          >
-                            <option value="">Select account...</option>
-                            {accounts?.map((account: any) => (
-                              <option key={account.id} value={account.id}>
-                                {account.code} - {account.name}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="py-2 px-2">
-                          <input
-                            type="text"
-                            value={line.description}
-                            onChange={(event) => updateLine(index, 'description', event.target.value)}
-                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
-                            placeholder="Description"
-                          />
-                        </td>
-                        <td className="py-2 px-2">
-                          <input
-                            type="number"
-                            min="0"
-                            step="1"
-                            value={line.quantity}
-                            onChange={(event) => updateLine(index, 'quantity', parseFloat(event.target.value) || 0)}
-                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
-                          />
-                        </td>
-                        <td className="py-2 px-2">
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="0.00"
-                            value={line.unit_price === '' ? '' : line.unit_price}
-                            onChange={(event) => updateLine(index, 'unit_price', event.target.value === '' ? '' : parseFloat(event.target.value))}
-                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
-                          />
-                        </td>
-                        <td className="py-2 px-2">
-                          <input
-                            type="number"
-                            min="0"
-                            max="100"
-                            step="0.01"
-                            placeholder="0"
-                            value={line.tax_rate === '' ? '' : line.tax_rate}
-                            onChange={(event) => updateLine(index, 'tax_rate', event.target.value === '' ? '' : parseFloat(event.target.value))}
-                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
-                          />
-                        </td>
-                        <td className="py-2 px-2 text-right font-medium">
-                          {formatCurrency(getLineTotal(line))}
-                        </td>
-                        <td className="py-2 px-2">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button type="button" variant="ghost" size="sm" onClick={() => moveLine(index, 'up')} disabled={index === 0}>
-                              <Icon icon="solar:arrow-up-bold-duotone" className="h-4 w-4" />
-                            </Button>
-                            <Button type="button" variant="ghost" size="sm" onClick={() => moveLine(index, 'down')} disabled={index === lines.length - 1}>
-                              <Icon icon="solar:arrow-down-bold-duotone" className="h-4 w-4" />
-                            </Button>
-                            <Button type="button" variant="ghost" size="sm" onClick={() => duplicateLine(index)}>
-                              <Icon icon="solar:copy-bold-duotone" className="h-4 w-4" />
-                            </Button>
-                            {lines.length > 1 && (
-                              <Button type="button" variant="ghost" size="sm" onClick={() => removeLine(index)}>
-                                <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-4 w-4 text-destructive" />
-                              </Button>
-                            )}
+                <LineItemsTable
+                  variant="raw"
+                  tableClassName="w-full min-w-[1700px] text-sm"
+                  headRowClassName="border-b bg-muted/30"
+                  columns={productLineColumns({
+                    sku: visibleLineColumns.sku,
+                    description: visibleLineColumns.description,
+                    modelNumber: visibleLineColumns.model_number,
+                    productNotes: visibleLineColumns.product_notes,
+                    lotNumber: visibleLineColumns.lot_number,
+                    expiryDate: visibleLineColumns.expiry_date,
+                    taxRate: visibleLineColumns.tax_rate,
+                  })}
+                >
+                  {lines.map((line, index) => (
+                    <tr
+                      key={index}
+                      className="border-b transition-colors hover:bg-muted/20"
+                      draggable={line.line_type === 'product'}
+                      onDragStart={() => setDraggedLineIndex(index)}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={() => {
+                        if (draggedLineIndex !== null && draggedLineIndex !== index) {
+                          setLines(reorderDocumentLines(lines, draggedLineIndex, index));
+                        }
+                        setDraggedLineIndex(null);
+                      }}
+                    >
+                      {line.line_type === 'note' || line.line_type === 'section' ? (
+                        <DocumentTextLineRow
+                          type={line.line_type}
+                          text={line.description}
+                          colSpan={13}
+                          total={line.line_type === 'section' ? formatCurrency(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined}
+                          onChange={(text) => {
+                            const updated = [...lines];
+                            updated[index] = { ...updated[index], description: text };
+                            setLines(updated);
+                          }}
+                          onDelete={() => removeLine(index)}
+                          onDragStart={() => setDraggedLineIndex(index)}
+                          onDrop={() => {
+                            if (draggedLineIndex !== null) {
+                              setLines(reorderDocumentLines(lines, draggedLineIndex, index));
+                            }
+                            setDraggedLineIndex(null);
+                          }}
+                        />
+                      ) : <>
+                        <td className={cn(LINE_CELL, 'w-10')}>
+                          <div className={cn(LINE_CELL_BOX, 'justify-center text-xs font-medium text-muted-foreground')}>
+                            {lines.slice(0, index + 1).filter((item) => item.line_type === 'product').length}
                           </div>
                         </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        <td className={cn(LINE_CELL, 'min-w-[17rem]')}>
+                          <ProductSearchCombobox
+                            value={line.product_id}
+                            onValueChange={(productId, product) => selectProduct(index, productId, product)}
+                            wrapText
+                          />
+                        </td>
+                        {visibleLineColumns.sku && <td className={cn(LINE_CELL, 'min-w-[7rem]')}>
+                          <div className={LINE_VALUE}>{line.sku || <span className="opacity-60">SKU</span>}</div>
+                        </td>}
+                        {visibleLineColumns.description && <td className={cn(LINE_CELL, 'min-w-[16rem]')}>
+                          <textarea
+                            value={line.description}
+                            onChange={(event) => {
+                              const updated = [...lines];
+                              updated[index] = { ...updated[index], description: event.target.value };
+                              setLines(updated);
+                            }}
+                            rows={2}
+                            className={LINE_TEXTAREA}
+                            placeholder="Description"
+                          />
+                        </td>}
+                        {visibleLineColumns.model_number && <td className={cn(LINE_CELL, 'min-w-[7rem]')}>
+                          <div className={LINE_VALUE}>{line.model_number || <span className="opacity-60">Model #</span>}</div>
+                        </td>}
+                        {visibleLineColumns.product_notes && <td className={cn(LINE_CELL, 'min-w-[10rem]')}>
+                          <textarea
+                            value={line.product_notes}
+                            onChange={(event) => {
+                              const updated = [...lines];
+                              updated[index] = { ...updated[index], product_notes: event.target.value };
+                              setLines(updated);
+                            }}
+                            rows={2}
+                            className={LINE_TEXTAREA}
+                            placeholder="Product notes"
+                          />
+                        </td>}
+                        {visibleLineColumns.lot_number && <td className={cn(LINE_CELL, 'min-w-[7.5rem]')}>
+                          <div className={LINE_CELL_BOX}>
+                            <input
+                              type="text"
+                              value={line.lot_number}
+                              onChange={(event) => {
+                                const updated = [...lines];
+                                updated[index] = { ...updated[index], lot_number: event.target.value };
+                                setLines(updated);
+                              }}
+                              className={LINE_INPUT}
+                              placeholder="Lot / batch"
+                            />
+                          </div>
+                        </td>}
+                        {visibleLineColumns.expiry_date && <td className={cn(LINE_CELL, 'min-w-[9.5rem]')}>
+                          <div className={LINE_CELL_BOX}>
+                            <input
+                              type="date"
+                              value={line.expiry_date}
+                              onChange={(event) => {
+                                const updated = [...lines];
+                                updated[index] = { ...updated[index], expiry_date: event.target.value };
+                                setLines(updated);
+                              }}
+                              className={LINE_INPUT}
+                            />
+                          </div>
+                        </td>}
+                        <td className={cn(LINE_CELL, 'w-[5.5rem] min-w-[4.5rem]')}>
+                          <div className={LINE_CELL_BOX}>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.0001"
+                              inputMode="decimal"
+                              value={line.quantity}
+                              onChange={(event) => {
+                                const raw = event.target.value;
+                                const updated = [...lines];
+                                updated[index] = { ...updated[index], quantity: raw === '' ? '' : Number(raw) };
+                                setLines(updated);
+                              }}
+                              className={LINE_INPUT_NUMERIC}
+                            />
+                          </div>
+                        </td>
+                        <td className={cn(LINE_CELL, 'w-[7rem] min-w-[6rem]')}>
+                          <div className={LINE_CELL_BOX}>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="0.00"
+                              value={line.unit_price === '' ? '' : line.unit_price}
+                              onChange={(event) => {
+                                const updated = [...lines];
+                                updated[index] = {
+                                  ...updated[index],
+                                  unit_price: event.target.value === '' ? '' : parseFloat(event.target.value),
+                                };
+                                setLines(updated);
+                              }}
+                              className={LINE_INPUT_NUMERIC}
+                            />
+                          </div>
+                        </td>
+                        {visibleLineColumns.tax_rate && <td className={cn(LINE_CELL, 'w-[5rem] min-w-[4rem]')}>
+                          <div className={LINE_CELL_BOX}>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              placeholder="0"
+                              value={line.tax_rate === '' ? '' : line.tax_rate}
+                              onChange={(event) => {
+                                const updated = [...lines];
+                                updated[index] = {
+                                  ...updated[index],
+                                  tax_rate: event.target.value === '' ? '' : parseFloat(event.target.value),
+                                };
+                                setLines(updated);
+                              }}
+                              className={LINE_INPUT_NUMERIC}
+                            />
+                          </div>
+                        </td>}
+                        <td className={cn(LINE_CELL, 'w-[7.5rem] min-w-[6.5rem]')}>
+                          <div className={cn(LINE_CELL_BOX, 'justify-end text-sm font-semibold tabular-nums')}>
+                            {formatCurrency(getLineTotal(line))}
+                          </div>
+                        </td>
+                        <td className={cn(LINE_CELL, 'w-[10.5rem]')}>
+                          <div className={cn(LINE_CELL_BOX, 'justify-end')}>
+                            <ProductLineActions
+                              onMoveUp={() => moveLine(index, 'up')}
+                              onMoveDown={() => moveLine(index, 'down')}
+                              canMoveUp={index !== 0}
+                              canMoveDown={index !== lines.length - 1}
+                              onDuplicate={() => duplicateLine(index)}
+                              onReset={() => resetLine(index)}
+                              onDelete={() => removeLine(index)}
+                            />
+                          </div>
+                        </td>
+                      </>}
+                    </tr>
+                  ))}
+                </LineItemsTable>
               </div>
 
-              <div className="mt-6 flex justify-end">
-                <div className="w-full max-w-sm space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Subtotal:</span>
-                    <span className="font-medium">{formatCurrency(subtotal)}</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 text-sm">
-                    <span className="text-muted-foreground">Document Discount:</span>
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={discountMode}
-                        onChange={(event) => setDiscountMode(event.target.value as 'fixed' | 'percentage')}
-                        className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
-                      >
-                        <option value="fixed">Fixed</option>
-                        <option value="percentage">%</option>
-                      </select>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        placeholder="0"
-                        value={discountAmount === '' ? '' : discountAmount}
-                        onChange={(event) => setDiscountAmount(event.target.value === '' ? '' : parseFloat(event.target.value))}
-                        className="w-28 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Tax:</span>
-                    <span className="font-medium">{formatCurrency(taxTotal)}</span>
-                  </div>
-                  {documentDiscountAmount > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Discount:</span>
-                      <span className="font-medium text-green-600">-{formatCurrency(documentDiscountAmount)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-lg font-bold pt-2 border-t">
-                    <span>Total:</span>
-                    <span className="text-primary">{formatCurrency(total)}</span>
-                  </div>
-                </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <ProductCatalogDialog products={products as any[]} onAdd={addCatalogProducts} />
+                <HeaderActionButton type="button" variant="outline" icon="solar:add-circle-bold-duotone" onClick={addLine}>
+                  Add Line
+                </HeaderActionButton>
+                <HeaderActionButton
+                  type="button"
+                  variant="outline"
+                  icon="solar:refresh-bold-duotone"
+                  title="Re-price every product line from its catalogue cost"
+                  onClick={recalculateFromCost}
+                >
+                  Recalculate
+                </HeaderActionButton>
+                <HeaderActionButton type="button" variant="outline" onClick={() => addTextLine('section')}>Add Section</HeaderActionButton>
+                <HeaderActionButton type="button" variant="outline" onClick={() => addTextLine('note')}>Add Note</HeaderActionButton>
               </div>
+
+              <DocumentTotalsCard
+                subtotal={subtotal}
+                tax={taxTotal}
+                total={total}
+                money={formatCurrency}
+                discountMode={discountMode}
+                onDiscountModeChange={setDiscountMode}
+                discountAmount={discountAmount}
+                onDiscountAmountChange={setDiscountAmount}
+                documentDiscountAmount={documentDiscountAmount}
+              />
             </CardContent>
           </Card>
 
@@ -803,7 +887,7 @@ export const CreateVendorBillPage: React.FC = () => {
             <Button type="button" variant="outline" onClick={() => navigate('/accounting/vendors/bills')}>
               Cancel
             </Button>
-            <Button type="submit" data-enter-submit disabled={createMutation.isPending}>
+            <Button type="submit" disabled={createMutation.isPending}>
               {createMutation.isPending ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
@@ -820,141 +904,6 @@ export const CreateVendorBillPage: React.FC = () => {
         </form>
       </div>
 
-      <Dialog open={vendorDialogOpen} onOpenChange={setVendorDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{vendorDialogMode === 'create' ? 'Add Vendor' : 'Edit Vendor'}</DialogTitle>
-          </DialogHeader>
-
-          <form onSubmit={handleVendorFormSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Vendor Name *</label>
-                <input
-                  type="text"
-                  value={vendorForm.name}
-                  onChange={(event) => setVendorForm((current) => ({ ...current, name: event.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Company</label>
-                <input
-                  type="text"
-                  value={vendorForm.company}
-                  onChange={(event) => setVendorForm((current) => ({ ...current, company: event.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Email</label>
-                <input
-                  type="email"
-                  value={vendorForm.email}
-                  onChange={(event) => setVendorForm((current) => ({ ...current, email: event.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Phone</label>
-                <input
-                  type="text"
-                  value={vendorForm.phone}
-                  onChange={(event) => setVendorForm((current) => ({ ...current, phone: event.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Contact Person</label>
-                <input
-                  type="text"
-                  value={vendorForm.contact_person}
-                  onChange={(event) => setVendorForm((current) => ({ ...current, contact_person: event.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Website</label>
-                <input
-                  type="url"
-                  value={vendorForm.website}
-                  onChange={(event) => setVendorForm((current) => ({ ...current, website: event.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Tax Registration</label>
-                <input
-                  type="text"
-                  value={vendorForm.tax_number}
-                  onChange={(event) => setVendorForm((current) => ({ ...current, tax_number: event.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Company Registration</label>
-                <input
-                  type="text"
-                  value={vendorForm.company_registration_number}
-                  onChange={(event) => setVendorForm((current) => ({ ...current, company_registration_number: event.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Payment Terms (days)</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={vendorForm.payment_terms}
-                  onChange={(event) => setVendorForm((current) => ({ ...current, payment_terms: event.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Status</label>
-                <select
-                  value={vendorForm.is_active ? 'active' : 'inactive'}
-                  onChange={(event) => setVendorForm((current) => ({ ...current, is_active: event.target.value === 'active' }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                >
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Address</label>
-              <textarea
-                value={vendorForm.address}
-                onChange={(event) => setVendorForm((current) => ({ ...current, address: event.target.value }))}
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Notes</label>
-              <textarea
-                value={vendorForm.notes}
-                onChange={(event) => setVendorForm((current) => ({ ...current, notes: event.target.value }))}
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-              />
-            </div>
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setVendorDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" data-enter-submit disabled={vendorMutationPending}>
-                {vendorMutationPending ? 'Saving...' : vendorDialogMode === 'create' ? 'Create Vendor' : 'Save Changes'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
     </>
   );
 };

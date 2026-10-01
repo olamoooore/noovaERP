@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
+import { preventImplicitSubmit } from '@/lib/prevent-enter-submit';
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard';
 import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency, getApiErrorMessage } from '@/lib/utils';
@@ -365,7 +368,7 @@ export const QuotationCreatePage: React.FC = () => {
         </div>
       </PageHeader>
 
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} onKeyDown={preventImplicitSubmit}>
         <Card className="mb-6">
           <CardHeader>
             <CardTitle>Quotation Details</CardTitle>
@@ -782,54 +785,34 @@ export const QuotationCreatePage: React.FC = () => {
 
             <div className="mt-3 flex flex-wrap gap-2">
               <ProductCatalogDialog products={products || []} onAdd={addCatalogProducts} />
-              <Button type="button" variant="outline" size="sm" onClick={addLine}>
-                <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-1" />
+              <HeaderActionButton type="button" variant="outline" icon="solar:add-circle-bold-duotone" onClick={addLine}>
                 Add Line
-              </Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => addTextLine('section')}>Add Section</Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => addTextLine('note')}>Add Note</Button>
+              </HeaderActionButton>
+              <HeaderActionButton type="button" variant="outline" onClick={() => addTextLine('section')}>Add Section</HeaderActionButton>
+              <HeaderActionButton type="button" variant="outline" onClick={() => addTextLine('note')}>Add Note</HeaderActionButton>
             </div>
 
-            <div className="mt-6 flex justify-end">
-              <div className="w-full max-w-sm space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Subtotal:</span>
-                  <span className="font-medium">{formatCurrency(subtotal)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-3 text-sm">
-                  <span className="text-muted-foreground">Discount:</span>
-                  <div className="flex items-center gap-2">
-                    <select value={discountMode} onChange={(event) => setDiscountMode(event.target.value as 'fixed' | 'percentage')} className="rounded border bg-background px-2 py-1 text-sm">
-                      <option value="fixed">Fixed</option>
-                      <option value="percentage">%</option>
-                    </select>
-                    <input type="number" min="0" max={discountMode === 'percentage' ? 100 : undefined} step="0.01" value={discountAmount} onChange={(event) => setDiscountAmount(event.target.value === '' ? '' : Number(event.target.value))} className="w-28 rounded border bg-background px-2 py-1 text-right text-sm" placeholder="0" />
-                  </div>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Tax:</span>
-                  <span className="font-medium">{formatCurrency(taxAfterDocumentDiscount)}</span>
-                </div>
-                {(lineDiscounts > 0 || documentDiscountAmount > 0) && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Discount:</span>
-                    <span className="font-medium text-green-600">-{formatCurrency(lineDiscounts + documentDiscountAmount)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-lg font-bold pt-2 border-t">
-                  <span>Total:</span>
-                  <span className="text-primary">{formatCurrency(total)}</span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
+            <DocumentTotalsCard
+              subtotal={subtotal}
+              tax={taxAfterDocumentDiscount}
+              total={total}
+              money={formatCurrency}
+              discountLabel="Discount"
+              discountMode={discountMode}
+              onDiscountModeChange={setDiscountMode}
+              discountAmount={discountAmount}
+              onDiscountAmountChange={setDiscountAmount}
+              lineDiscounts={lineDiscounts}
+              documentDiscountAmount={documentDiscountAmount}
+            />
+            </CardContent>
         </Card>
 
         <div className="flex justify-end gap-3">
           <Button type="button" variant="outline" onClick={() => navigate('/quotations')}>
             Cancel
           </Button>
-          <Button type="submit" data-enter-submit disabled={createMutation.isPending}>
+          <Button type="submit" disabled={createMutation.isPending}>
             {createMutation.isPending ? (
               <>
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />

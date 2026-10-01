@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\RequirePermission;
 use Illuminate\Support\Facades\Route;
+use Modules\Storefront\Http\Controllers\Admin\HealthController;
 use Modules\Storefront\Http\Controllers\Admin\OfflinePaymentController;
 use Modules\Storefront\Http\Controllers\Admin\OrderController;
 use Modules\Storefront\Http\Controllers\Admin\PromotionController;
@@ -10,6 +11,7 @@ use Modules\Storefront\Http\Controllers\Admin\ReturnController;
 use Modules\Storefront\Http\Controllers\Admin\SettingsController;
 use Modules\Storefront\Http\Controllers\Editor\BlockController;
 use Modules\Storefront\Http\Controllers\Editor\PreviewController;
+use Modules\Storefront\Http\Controllers\Editor\StarterPagesController;
 
 // Storefront tenant API routes.
 //
@@ -119,6 +121,11 @@ Route::middleware(['auth:sanctum', 'entitlement:storefront'])
             Route::get('/overview', [ReportController::class, 'overview'])
                 ->middleware(RequirePermission::using('storefront.view'));
         });
+
+        // Ops health (Appendix E §E4.4): cache hit ratio + served-surface
+        // state for A-27 reporting. Read-only.
+        Route::get('/health', [HealthController::class, 'show'])
+            ->middleware(RequirePermission::using('storefront.view'));
     });
 
 // WebsiteBuilder editor integration (Appendix E §E4.3). Paths live under
@@ -132,4 +139,10 @@ Route::middleware(['auth:sanctum', 'entitlement:storefront'])
 
         Route::post('/preview', PreviewController::class)
             ->middleware(RequirePermission::using('storefront.view'));
+
+        // "Insert store pages" (Appendix-B §B4.4, P5): creates the starter
+        // shop pages on the tenant's website. A WRITE action — it inserts
+        // pages into the merchant's builder.
+        Route::post('/pages/starter', [StarterPagesController::class, 'store'])
+            ->middleware(RequirePermission::using('storefront.write'));
     });

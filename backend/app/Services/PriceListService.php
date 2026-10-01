@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\PriceList;
 use App\Models\PriceListApplication;
 use App\Models\PriceListItem;
+use App\Models\Product;
+use App\Models\ProductCategory;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -203,6 +205,152 @@ class PriceListService
         }
 
         return $candidate;
+    }
+
+    /**
+     * MRD pricelist-multicurrency FR-2.7 — export the items as portable rows
+     * (CSV columns, resolved to human keys: product SKU, category name,
+     * other-list code). Ordered exactly as the engine evaluates them.
+     *
+     * @return array<int,array<string,string|float|null>>
+     */
+    public function exportItemRows(PriceList $list): array
+    {
+        $list->loadMissing(['items.product', 'items.category', 'items.otherPriceList']);
+
+        return $list->items->map(fn (PriceListItem $item) => [
+            'sequence' => $item->sequence,
+            'apply_on' => $item->apply_on,
+            'product_sku' => $item->product?->sku ?? '',
+            'category_name' => $item->category?->name ?? '',
+            'min_quantity' => (float) $item->min_quantity,
+            'max_quantity' => $item->max_quantity !== null ? (float) $item->max_quantity : '',
+            'date_start' => optional($item->date_start)->toDateString() ?? '',
+            'date_end' => optional($item->date_end)->toDateString() ?? '',
+            'compute_type' => $item->compute_type,
+            'fixed_price' => $item->fixed_price !== null ? (float) $item->fixed_price : '',
+            'percent' => $item->percent !== null ? (float) $item->percent : '',
+            'base' => $item->base ?? '',
+            'other_pricelist_code' => $item->otherPriceList?->code ?? '',
+            'markup_percent' => $item->markup_percent !== null ? (float) $item->markup_percent : '',
+        ])->all();
+    }
+
+    /**
+     * MRD pricelist-multicurrency FR-2.7 — import item rows (full replace,
+     * matching the PUT /items contract). Rows are resolved and validated
+     * BEFORE any mutation (fail-closed); unknown SKUs / categories / other
+     * lists abort the import with row-addressed errors.
+     *
+     * @param  array<int,array<string,string|null>>  $rows
+     * @return array{imported:int}
+     */
+    public function importItemRows(PriceList $list, array $rows, ?int $actorId = null): array
+    {
+        $items = [];
+        $errors = [];
+
+        foreach ($rows as $index => $row) {
+            $lineNo = $index + 1;
+            $applyOn = strtolower(trim((string) ($row['apply_on'] ?? 'product')));
+            $compute = strtolower(trim((string) ($row['compute_type'] ?? 'percentage')));
+
+            $productId = null;
+            $categoryId = null;
+
+            if ($applyOn === 'product') {
+                $sku = trim((string) ($row['product_sku'] ?? ''));
+                if ($sku === '') {
+                    $errors["items.{$lineNo}"] = 'product_sku is required for product-scope rows.';
+
+                    continue;
+                }
+                $product = Product::query()->where('sku', $sku)->first();
+                if (! $product) {
+                    $errors["items.{$lineNo}"] = "Unknown product SKU '{$sku}'.";
+
+                    continue;
+                }
+                $productId = $product->id;
+            } elseif ($applyOn === 'category') {
+                $name = trim((string) ($row['category_name'] ?? ''));
+                if ($name === '') {
+                    $errors["items.{$lineNo}"] = 'category_name is required for category-scope rows.';
+
+                    continue;
+                }
+                $category = ProductCategory::query()->where('name', $name)->first();
+                if (! $category) {
+                    $errors["items.{$lineNo}"] = "Unknown product category '{$name}'.";
+
+                    continue;
+                }
+                $categoryId = $category->id;
+            } elseif ($applyOn !== 'all') {
+                $errors["items.{$lineNo}"] = "apply_on must be product, category or all (got '{$applyOn}').";
+
+                continue;
+            }
+
+            $otherListId = null;
+            $otherCode = trim((string) ($row['other_pricelist_code'] ?? ''));
+            $base = trim((string) ($row['base'] ?? '')) ?: null;
+
+            if ($base === 'other_pricelist') {
+                if ($otherCode === '') {
+                    $errors["items.{$lineNo}"] = 'other_pricelist_code is required when base=other_pricelist.';
+
+                    continue;
+                }
+                $other = PriceList::query()->where('code', $otherCode)->first();
+                if (! $other) {
+                    $errors["items.{$lineNo}"] = "Unknown price list code '{$otherCode}' for other_pricelist base.";
+
+                    continue;
+                }
+                if ((int) $other->id === (int) $list->id) {
+                    $errors["items.{$lineNo}"] = 'A list cannot base on itself.';
+
+                    continue;
+                }
+                $otherListId = $other->id;
+            }
+
+            $items[] = [
+                'sequence' => is_numeric($row['sequence'] ?? null) ? (int) $row['sequence'] : ($lineNo * 10),
+                'apply_on' => $applyOn,
+                'product_id' => $productId,
+                'category_id' => $categoryId,
+                'min_quantity' => is_numeric($row['min_quantity'] ?? null) ? (float) $row['min_quantity'] : 1,
+                'max_quantity' => is_numeric($row['max_quantity'] ?? null) ? (float) $row['max_quantity'] : null,
+                'date_start' => trim((string) ($row['date_start'] ?? '')) ?: null,
+                'date_end' => trim((string) ($row['date_end'] ?? '')) ?: null,
+                'compute_type' => $compute,
+                'fixed_price' => is_numeric($row['fixed_price'] ?? null) ? (float) $row['fixed_price'] : null,
+                'percent' => is_numeric($row['percent'] ?? null) ? (float) $row['percent'] : null,
+                'base' => $compute === 'formula' ? ($base ?? 'list_price') : null,
+                'other_price_list_id' => $otherListId,
+                'markup_percent' => is_numeric($row['markup_percent'] ?? null) ? (float) $row['markup_percent'] : null,
+            ];
+        }
+
+        if ($errors !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages($errors);
+        }
+
+        if ($items === []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'items' => 'No importable rows found. Download the export for the expected columns.',
+            ]);
+        }
+
+        // syncItems is validate-before-mutate; a semantic failure aborts
+        // before the table is touched.
+        $this->syncItems($list, $items, $actorId);
+
+        $this->audit('pricelist.items_imported', $list, null, ['imported' => count($items)], $actorId);
+
+        return ['imported' => count($items)];
     }
 
     /**

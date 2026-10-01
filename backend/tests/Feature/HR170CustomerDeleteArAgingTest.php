@@ -160,6 +160,12 @@ class HR170CustomerDeleteArAgingTest extends TenantTestCase
         $report = $service->getAgedReceivables([]);
 
         $this->assertIsArray($report);
+        // MRD pricelist-multicurrency FR-8.3: the aging payload carries the
+        // per-document-currency breakdown and a base-equivalent total.
+        $this->assertArrayHasKey('by_currency', $report);
+        $this->assertNotEmpty($report['by_currency']);
+        $this->assertArrayHasKey('base_outstanding', $report['summary']);
+        $this->assertArrayHasKey('currency_code', $report['by_currency'][0]);
         // The soft-deleted customer's real debt must still be represented
         // (withTrashed), under a fallback label rather than crashing.
         $rows = $report['data'] ?? $report;

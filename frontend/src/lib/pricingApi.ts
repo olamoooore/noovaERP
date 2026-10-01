@@ -128,6 +128,20 @@ const pricingApi = {
     return response.data;
   },
 
+  /** FR-2.7: CSV export of a list's rules (blob response). */
+  exportItems: async (id: number) => {
+    const response = await api.get(`/price-lists/${id}/items/export`, { responseType: 'blob' });
+    return response;
+  },
+
+  /** FR-2.7: CSV full-replace import of a list's rules. */
+  importItems: async (id: number, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await api.post(`/price-lists/${id}/items/import`, form);
+    return response.data;
+  },
+
   /**
    * FR-4.6 batch resolve — prices a whole document's lines in one call and
    * returns the resolved header currency + applied list + per-line quotes.

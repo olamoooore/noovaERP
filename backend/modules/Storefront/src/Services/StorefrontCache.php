@@ -76,4 +76,50 @@ final class StorefrontCache
     {
         Cache::put($key, $value, $ttlSeconds);
     }
+
+    /**
+     * A-27 "cache hit ratio reported": per-tenant fragment-cache counters.
+     * Counters live in the same cache as the fragments they measure, so a
+     * cache flush resets the window — acceptable for an ops signal.
+     */
+    public function noteHit(string $tenantId): void
+    {
+        $this->note($tenantId, 'hits');
+    }
+
+    public function noteMiss(string $tenantId): void
+    {
+        $this->note($tenantId, 'misses');
+    }
+
+    private function note(string $tenantId, string $bucket): void
+    {
+        if ($tenantId === '') {
+            return;
+        }
+
+        $key = "storefront:stats:{$tenantId}:{$bucket}";
+
+        try {
+            Cache::has($key) ? Cache::increment($key) : Cache::put($key, 1, now()->addDays(7));
+        } catch (\Throwable) {
+            // metrics must never break a render
+        }
+    }
+
+    /**
+     * @return array{hits: int, misses: int, ratio: float|null}
+     */
+    public function stats(string $tenantId): array
+    {
+        $hits = (int) Cache::get("storefront:stats:{$tenantId}:hits", 0);
+        $misses = (int) Cache::get("storefront:stats:{$tenantId}:misses", 0);
+        $total = $hits + $misses;
+
+        return [
+            'hits' => $hits,
+            'misses' => $misses,
+            'ratio' => $total > 0 ? round($hits / $total, 4) : null,
+        ];
+    }
 }

@@ -10,6 +10,8 @@ class DeliveryOrdersExport extends SalesDocumentExport
     public const COLUMNS = [
         'delivery_order_number' => ['heading' => 'Delivery Order No', 'type' => 'text'],
         'delivery_date' => ['heading' => 'Delivery Date', 'type' => 'date'],
+        // MRD pricelist-multicurrency FR-8.4: document currency column.
+        'currency_code' => ['heading' => 'Currency', 'type' => 'text'],
         'expected_date' => ['heading' => 'Due Date', 'type' => 'date'],
         'customer_name' => ['heading' => 'Customer', 'type' => 'text'],
         'customer_code' => ['heading' => 'Customer Code', 'type' => 'text'],

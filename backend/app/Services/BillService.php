@@ -99,20 +99,16 @@ class BillService
             // (b) PO/GRN linkage is forbidden (use bill_type 'procurement' for that).
             if ($billType === 'expense') {
                 foreach ($data['lines'] as $idx => $lineData) {
-                    if (empty(trim($lineData['description'] ?? ''))) {
+                    // A product identifies the line and supplies its expense
+                    // account; without one, a description is mandatory.
+                    if (empty(trim($lineData['description'] ?? '')) && empty($lineData['product_id'])) {
                         throw new \InvalidArgumentException(
-                            'Line #'.($idx + 1).': Expense bill lines require a description since they have no product linkage.'
+                            'Line #'.($idx + 1).': Expense bill lines require a description or a product.'
                         );
                     }
                     if (! empty($lineData['purchase_order_item_id']) || ! empty($lineData['goods_receipt_line_id'])) {
                         throw new \InvalidArgumentException(
                             'Line #'.($idx + 1).": Expense bill lines cannot carry PO/GRN linkage. Use bill_type 'procurement' for PO-backed bills."
-                        );
-                    }
-                    if (! empty($lineData['product_id'])
-                        && ! \App\Support\TaxWithholding::lineIsWithholding((int) $lineData['product_id'])) {
-                        throw new \InvalidArgumentException(
-                            'Line #'.($idx + 1).': Expense bill lines may only reference a product whose linked tax rule is withholding. Use a GL account and description instead.'
                         );
                     }
                 }
@@ -157,11 +153,22 @@ class BillService
                 // MRD R3.1: engine-owned arithmetic.
                 $taxAmount = \App\Services\TaxEngineService::calculate((float) $lineTotal, $taxRate, false)['tax'];
 
+                $lineType = $lineData['line_type'] ?? 'product';
+                $isTextLine = in_array($lineType, ['note', 'section'], true);
+
                 BillLine::create([
                     'bill_id' => $bill->id,
-                    'account_id' => $lineData['account_id'],
+                    // Notes/sections carry no GL posting; product lines derive
+                    // their account (explicit -> product -> mapping).
+                    'account_id' => $isTextLine ? null : $this->resolveLineAccountId($lineData),
+                    'line_type' => $lineType,
                     'product_id' => $lineData['product_id'] ?? null,
                     'description' => $lineData['description'] ?? null,
+                    'model_number' => $lineData['model_number'] ?? null,
+                    'product_notes' => $lineData['product_notes'] ?? null,
+                    'lot_number' => $lineData['lot_number'] ?? null,
+                    'serial_number' => $lineData['serial_number'] ?? null,
+                    'expiry_date' => $lineData['expiry_date'] ?? null,
                     'quantity' => $quantity,
                     'unit_price' => $unitPrice,
                     'tax_rate' => $taxRate,
@@ -172,39 +179,8 @@ class BillService
                 ]);
             }
 
-            // ── Calculate totals ──────────────────────────────────────────────────
-            $bill->load('lines');
-            $grossSubtotal = (float) $bill->lines->sum('line_total');
-            $documentDiscount = (float) ($bill->discount_amount ?? 0);
-
-            // Proportionally allocate document discount to recompute tax
-            if ($documentDiscount > 0 && $grossSubtotal > 0) {
-                $discountRatio = $documentDiscount / $grossSubtotal;
-                $adjustedTax = 0;
-                foreach ($bill->lines as $line) {
-                    $lineGross = (float) $line->quantity * (float) $line->unit_price;
-                    $adjustedTax += \App\Services\TaxEngineService::calculate(
-                        (float) $lineGross,
-                        (float) $line->tax_rate,
-                        false,
-                        round($lineGross * $discountRatio, 2),
-                    )['tax'];
-                }
-                $bill->tax_amount = round($adjustedTax, 2);
-            } else {
-                $bill->tax_amount = $bill->lines->sum('tax_amount');
-            }
-
-            $bill->subtotal = $grossSubtotal;
-            // MRD R4.5: withholding is deducted from the payable (remitted to
-            // the authority, not the vendor); tax_amount keeps the gross booked
-            // tax for audit.
-            // MRD R4.5: withheld tax is neither additive nor payable to the vendor.
-            [, $withheldTax] = \App\Support\TaxWithholding::split($bill->lines);
-            $additiveTax = round((float) $bill->tax_amount - $withheldTax, 2);
-            $bill->total = $bill->subtotal + $additiveTax - $withheldTax - $documentDiscount;
-            $bill->balance = $bill->total - $bill->paid_amount;
-            $bill->save();
+            // ── Calculate totals (shared with the update path) ────────────────────
+            $this->recalculateTotals($bill);
 
             // ── FIX-02: Three-way match enforcement for procurement bills ─────────
             // For procurement bills, validate AFTER lines exist so the service can
@@ -224,5 +200,69 @@ class BillService
 
             return $bill->load(['vendor', 'lines.account', 'purchaseOrder', 'goodsReceipt']);
         });
+    }
+
+    /**
+     * The expense account for a bill line: an explicit account wins, then the
+     * product's expense account, then the tenant's general-expense mapping.
+     */
+    public function resolveLineAccountId(array $lineData, int $idx = 0): int
+    {
+        if (! empty($lineData['account_id'])) {
+            return (int) $lineData['account_id'];
+        }
+
+        if (! empty($lineData['product_id'])) {
+            $accountId = \App\Models\Product::whereKey($lineData['product_id'])->value('expense_account_id');
+            if ($accountId) {
+                return (int) $accountId;
+            }
+        }
+
+        try {
+            return app(\App\Accounting\Services\AccountMappingService::class)->resolveId('general_expense', 'bill');
+        } catch (\Throwable $e) {
+            throw new \InvalidArgumentException(
+                'Line #'.($idx + 1).': an expense account is required — none was supplied and none could be derived from the product.'
+            );
+        }
+    }
+
+    /**
+     * Recompute subtotal/tax/total for a bill from its lines. Shared by the
+     * create and update paths so document-discount tax proration can never
+     * drift between them (report 2026-10-01: update charged full tax).
+     */
+    public function recalculateTotals(Bill $bill): void
+    {
+        $bill->load('lines');
+        $grossSubtotal = (float) $bill->lines->sum('line_total');
+        $documentDiscount = (float) ($bill->discount_amount ?? 0);
+
+        // Proportionally allocate document discount to recompute tax.
+        if ($documentDiscount > 0 && $grossSubtotal > 0) {
+            $discountRatio = $documentDiscount / $grossSubtotal;
+            $adjustedTax = 0;
+            foreach ($bill->lines as $line) {
+                $lineGross = (float) $line->quantity * (float) $line->unit_price;
+                $adjustedTax += \App\Services\TaxEngineService::calculate(
+                    (float) $lineGross,
+                    (float) $line->tax_rate,
+                    false,
+                    round($lineGross * $discountRatio, 2),
+                )['tax'];
+            }
+            $bill->tax_amount = round($adjustedTax, 2);
+        } else {
+            $bill->tax_amount = $bill->lines->sum('tax_amount');
+        }
+
+        $bill->subtotal = $grossSubtotal;
+        // MRD R4.5: withheld tax is neither additive nor payable to the vendor.
+        [, $withheldTax] = \App\Support\TaxWithholding::split($bill->lines);
+        $additiveTax = round((float) $bill->tax_amount - $withheldTax, 2);
+        $bill->total = $bill->subtotal + $additiveTax - $withheldTax - $documentDiscount;
+        $bill->balance = $bill->total - $bill->paid_amount;
+        $bill->save();
     }
 }

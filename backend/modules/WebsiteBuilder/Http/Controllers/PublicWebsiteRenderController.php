@@ -60,8 +60,17 @@ class PublicWebsiteRenderController extends Controller
             return response($this->generateErrorPage('Page Not Found', "The page you're looking for doesn't exist."), 404);
         }
 
-        // Get content from current version
-        $content = $page->currentVersion?->content ?? [
+        // P5 publish truthfulness: an unpublished page must not be publicly
+        // reachable — a never-published (draft) page 404s like a missing one.
+        if ($page->status !== 'published') {
+            return response($this->generateErrorPage('Page Not Found', "The page you're looking for doesn't exist."), 404);
+        }
+
+        // Get content from the PUBLISHED version (P5 truthfulness: an
+        // unpublished draft must never be what visitors see). servedVersion
+        // falls back to current for legacy pages predating version-marking.
+        $served = $page->servedVersion();
+        $content = $served?->content ?? [
             'html' => '',
             'css' => '',
         ];
@@ -88,7 +97,7 @@ class PublicWebsiteRenderController extends Controller
                 $html = $filter->filterHtml($html, [
                     'website_slug' => $website->slug,
                     'page_id' => $page->id,
-                    'page_version_id' => $page->currentVersion?->id,
+                    'page_version_id' => $served?->id,
                     'mode' => 'public',
                     'query' => $request->query(),
                 ]);
@@ -116,6 +125,11 @@ class PublicWebsiteRenderController extends Controller
         $fullHtml = $this->generateFullHtml([
             'title' => $page->seo_title ?: $page->title ?: $website->name,
             'description' => $page->seo_description ?: '',
+            'siteName' => (string) $website->name,
+            // FR-SF-12 canonical: absolute URL of this page on the serving
+            // host; the bounded ?product= locator is part of page identity
+            // (a product detail page IS a distinct URL), nothing else.
+            'canonical' => $this->canonicalUrl($request, $websiteSlug, $pageSlug),
             'html' => $html,
             'css' => $css,
             'headerJs' => $headerJs,
@@ -136,6 +150,25 @@ class PublicWebsiteRenderController extends Controller
     }
 
     /**
+     * FR-SF-12: absolute canonical URL of the rendered page on the serving
+     * host. The bounded ?product= locator is part of the page identity;
+     * every other query parameter is deliberately excluded (no parameter
+     * pollution in canonicals, no cross-tenant host guessing).
+     */
+    private function canonicalUrl(Request $request, string $websiteSlug, ?string $pageSlug): string
+    {
+        $base = rtrim($request->getSchemeAndHttpHost(), '/');
+        $path = '/w/'.$websiteSlug.($pageSlug !== null && $pageSlug !== '' ? '/'.$pageSlug : '');
+
+        $product = $request->query('product');
+        if (is_string($product) && $product !== '' && strlen($product) <= 128) {
+            $path .= '?product='.rawurlencode($product);
+        }
+
+        return $base.$path;
+    }
+
+    /**
      * Generate full HTML document with all required assets.
      */
     private function generateFullHtml(array $options): string
@@ -152,6 +185,26 @@ class PublicWebsiteRenderController extends Controller
 
         $shopSettingsJson = $shopSettings ? json_encode($shopSettings) : 'null';
         $escapedDescription = htmlspecialchars($description, ENT_QUOTES, 'UTF-8');
+
+        // FR-SF-12/NFR-08: canonical + Open Graph head tags (server-rendered,
+        // crawlable without JS). Absent when the caller gave no canonical.
+        $canonicalTag = '';
+        $ogTags = '';
+        $canonical = (string) ($options['canonical'] ?? '');
+        if ($canonical !== '') {
+            $escapedCanonical = htmlspecialchars($canonical, ENT_QUOTES, 'UTF-8');
+            $canonicalTag = "<link rel=\"canonical\" href=\"{$escapedCanonical}\">\n  ";
+            $escapedSiteName = htmlspecialchars((string) ($options['siteName'] ?? ''), ENT_QUOTES, 'UTF-8');
+            $escapedTitle = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
+            $ogTags = <<<OG
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{$escapedSiteName}">
+  <meta property="og:title" content="{$escapedTitle}">
+  <meta property="og:description" content="{$escapedDescription}">
+  <meta property="og:url" content="{$escapedCanonical}">
+  <meta name="twitter:card" content="summary">
+  OG;
+        }
 
         // Wrap headerJs and bodyJs in <script> tags if they don't already have them.
         // GrapesJS custom-code editor stores raw JS without <script> wrappers.
@@ -170,6 +223,7 @@ class PublicWebsiteRenderController extends Controller
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{$title}</title>
   <meta name="description" content="{$escapedDescription}">
+  {$canonicalTag}{$ogTags}
   
   <!-- Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">

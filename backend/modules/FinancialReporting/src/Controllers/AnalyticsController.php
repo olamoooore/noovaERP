@@ -27,6 +27,7 @@ class AnalyticsController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'tag' => 'nullable|string|max:120',
+            'currency_code' => 'nullable|string|size:3',
             'top' => 'nullable|integer|min:1|max:100',
         ]);
 
@@ -69,6 +70,7 @@ class AnalyticsController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'tag' => 'nullable|string|max:120',
+            'currency_code' => 'nullable|string|size:3',
         ]);
 
         try {
@@ -96,6 +98,36 @@ class AnalyticsController extends Controller
     }
 
     /**
+     * MRD FR-8.1 — sales split by document currency (snapshot-rate base).
+     */
+    public function salesByCurrency(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'start_date' => 'nullable|date',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'tag' => 'nullable|string|max:120',
+            'currency_code' => 'nullable|string|size:3',
+        ]);
+
+        try {
+            $filter = ReportFilter::fromRequest($validated);
+            $reportData = $this->salesAnalyticsService->getSalesByCurrency($filter);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'currencies' => $reportData['data'] ?? [],
+                    'summary' => $reportData['summary'] ?? [],
+                ],
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Sales by Currency analytics failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['error' => 'Failed to generate analytics. Please try again.'], 500);
+        }
+    }
+
+    /**
      * Get sales trends
      */
     public function salesTrends(Request $request): JsonResponse
@@ -105,6 +137,7 @@ class AnalyticsController extends Controller
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'interval' => 'nullable|in:day,week,month,year',
             'tag' => 'nullable|string|max:120',
+            'currency_code' => 'nullable|string|size:3',
             'interval' => 'nullable|in:day,week,month,year',
         ]);
 

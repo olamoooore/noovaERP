@@ -88,3 +88,35 @@
         @endif
     </div>
 </article>
+@if($layout === 'detail')
+    {{-- FR-SF-12 / A-17: Product structured data, server-rendered inside the
+         (tenant-scoped, cached) fragment. Deliberately NO absolute url here:
+         fragments are shared across the tenant's hosts — the canonical link
+         in the page <head> carries the host-truthful URL instead. --}}
+    @php
+        $availabilitySchema = [
+            'in' => 'https://schema.org/InStock',
+            'low' => 'https://schema.org/InStock',
+            'available' => 'https://schema.org/InStock',
+            'backorder' => 'https://schema.org/BackOrder',
+            'out' => 'https://schema.org/OutOfStock',
+        ];
+        $ld = array_filter([
+            '@context' => 'https://schema.org',
+            '@type' => 'Product',
+            'name' => $item['name'],
+            'image' => array_values(array_filter([$item['image'] ?? null, ...($item['gallery'] ?? [])])),
+            'description' => $item['description'] ?? $item['short_description'] ?? null,
+            'sku' => $item['sku'] ?? null,
+            'offers' => ($settings->currency_code ?? null)
+                ? [
+                    '@type' => 'Offer',
+                    'price' => number_format((float) $item['price'], 2, '.', ''),
+                    'priceCurrency' => $settings->currency_code,
+                    'availability' => $availabilitySchema[$item['availability'] ?? ''] ?? 'https://schema.org/InStock',
+                ]
+                : null,
+        ], static fn ($v) => $v !== null && $v !== []);
+    @endphp
+    <script type="application/ld+json">{!! json_encode($ld, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) !!}</script>
+@endif

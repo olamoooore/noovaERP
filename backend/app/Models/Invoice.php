@@ -184,6 +184,7 @@ class Invoice extends Model
         'invoice_date',
         'due_date',
         'case_number',
+        'case_information',
         'pr_no', 'contract_no', 'buyer_contact_id', 'plant_code', 'company_code',
         'date_of_case',
         'case_location',
@@ -288,6 +289,7 @@ class Invoice extends Model
         'credited_at' => 'datetime',
         'superseded_at' => 'datetime',
         'is_active_version' => 'boolean',
+        'case_information' => 'array',
     ];
 
     public function customer(): BelongsTo

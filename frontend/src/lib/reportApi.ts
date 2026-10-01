@@ -562,6 +562,22 @@ class ReportApiClient {
   /**
    * Get Sales Trends
    */
+  /**
+   * MRD FR-8.1 — revenue split by document currency (snapshot-rate base).
+   */
+  async getSalesByCurrency(filters: ReportFilters): Promise<{ currencies: Array<{ currency_code: string; total_revenue: number; base_revenue: number; order_count: number }>; summary: { total_base_revenue: number } }> {
+    try {
+      const response = await api.get<ApiResponse<{ currencies: Array<{ currency_code: string; total_revenue: number; base_revenue: number; order_count: number }>; summary: { total_base_revenue: number } }>>(
+        '/analytics/sales/by-currency',
+        { params: filters }
+      );
+      return response.data.data;
+    } catch (error) {
+      this.handleError(error, 'Failed to fetch Sales by Currency');
+      throw error;
+    }
+  }
+
   async getSalesTrends(filters: ReportFilters): Promise<SalesTrendsData> {
     try {
       const response = await api.get<ApiResponse<SalesTrendsData>>(

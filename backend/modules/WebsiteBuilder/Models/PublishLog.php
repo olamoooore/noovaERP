@@ -14,6 +14,8 @@ class PublishLog extends Model
         'website_id',
         'version',
         'output_path',
+        'page_versions',
+        'rollback_of',
         'status',
         'published_by',
         'published_at',
@@ -22,6 +24,8 @@ class PublishLog extends Model
 
     protected $casts = [
         'version' => 'integer',
+        'page_versions' => 'array',
+        'rollback_of' => 'integer',
         'published_at' => 'datetime',
     ];
 
@@ -35,7 +39,7 @@ class PublishLog extends Model
         return $this->belongsTo(User::class, 'published_by');
     }
 
-    public function markSuccess(string $outputPath): void
+    public function markSuccess(?string $outputPath): void
     {
         $this->update([
             'status' => 'success',

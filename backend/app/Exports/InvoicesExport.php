@@ -24,6 +24,8 @@ class InvoicesExport extends SalesDocumentExport
         'id' => ['heading' => 'Invoice ID', 'type' => 'number'],
         'invoice_number' => ['heading' => 'Invoice No', 'type' => 'text'],
         'invoice_date' => ['heading' => 'Date', 'type' => 'date'],
+        // MRD pricelist-multicurrency FR-8.4: document currency column.
+        'currency_code' => ['heading' => 'Currency', 'type' => 'text'],
         'customer_name' => ['heading' => 'Customer', 'type' => 'text'],
         'customer_code' => ['heading' => 'Customer Code', 'type' => 'text'],
         'subtotal' => ['heading' => 'Subtotal', 'type' => 'amount'],

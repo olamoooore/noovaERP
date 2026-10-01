@@ -179,7 +179,7 @@ export function WarehouseTransferCreatePage() {
           <HeaderActionButton
             type="submit"
             form="warehouse-transfer-form"
-            data-enter-submit
+           
             icon="solar:transfer-vertical-bold-duotone"
             loading={mutation.isPending}
             disabled={mutation.isPending}

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import api from '@/lib/api'
+import { useAuthStore } from '@/store/authStore'
 
 interface StorefrontSettings {
   enabled: boolean
@@ -24,9 +25,12 @@ interface StorefrontSettings {
 
 export function StorefrontSettingsPage() {
   const queryClient = useQueryClient()
+  const hasPermission = useAuthStore((state) => state.hasPermission)
   const [form, setForm] = useState<StorefrontSettings | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [starterResult, setStarterResult] = useState<string | null>(null)
+  const [starterError, setStarterError] = useState<string | null>(null)
 
   const { isLoading } = useQuery({
     queryKey: ['storefront-settings'],
@@ -70,6 +74,31 @@ export function StorefrontSettingsPage() {
   useEffect(() => {
     if (isLoading) setSaved(null)
   }, [isLoading])
+
+  const insertStarterPages = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post('/website-builder/storefront/pages/starter')
+      return data as {
+        message: string
+        data?: { created: string[]; skipped: string[] }
+      }
+    },
+    onSuccess: (res) => {
+      setStarterError(null)
+      const created = res.data?.created ?? []
+      const skipped = res.data?.skipped ?? []
+      setStarterResult(
+        created.length > 0
+          ? `Inserted ${created.length} page(s)${skipped.length ? `, skipped ${skipped.length} existing` : ''}. Review them in the Website Builder, then Publish.`
+          : 'All starter pages already exist — nothing was changed.',
+      )
+    },
+    onError: (e: unknown) => {
+      setStarterResult(null)
+      const message = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+      setStarterError(message ?? 'Could not insert starter pages.')
+    },
+  })
 
   if (isLoading || !form) {
     return (
@@ -186,6 +215,26 @@ export function StorefrontSettingsPage() {
           ))}
         </CardContent>
       </Card>
+
+      {hasPermission('storefront.write') && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Store pages</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Insert the recommended starter shop pages (Shop, Category, Product, Cart, Checkout, Account,
+              Order confirmation, Search) into your Website Builder as drafts — review, adjust, then Publish.
+              Existing pages are never overwritten.
+            </p>
+            <Button variant="outline" onClick={() => insertStarterPages.mutate()} disabled={insertStarterPages.isPending}>
+              {insertStarterPages.isPending ? 'Inserting…' : 'Insert store pages'}
+            </Button>
+            {starterResult && <p className="text-sm text-green-700">{starterResult}</p>}
+            {starterError && <p role="alert" className="text-sm text-destructive">{starterError}</p>}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="flex items-center gap-3">
         <Button onClick={() => save.mutate()} disabled={save.isPending}>

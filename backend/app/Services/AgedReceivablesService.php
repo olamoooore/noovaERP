@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Customer;
 use App\Models\Invoice;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Aged Receivables Service
@@ -150,10 +151,43 @@ class AgedReceivablesService
                 $value = round($value, 2);
             }
         }
+        unset($value);
+
+        // MRD pricelist-multicurrency FR-8.3: outstanding grouped by document
+        // currency, with the snapshot-rate base equivalent alongside.
+        $baseCurrency = DB::table('company_settings')->orderBy('id')->value('base_currency') ?: 'USD';
+        $byCurrency = [];
+
+        foreach ($invoices as $invoice) {
+            $code = $invoice->currency_code ?: $baseCurrency;
+            $rate = (float) ($invoice->exchange_rate ?? 1.0);
+            $outstanding = (float) $invoice->balance;
+
+            $byCurrency[$code] ??= [
+                'currency_code' => $code,
+                'base_equivalent' => 0.0,
+                'outstanding' => 0.0,
+                'base_outstanding' => 0.0,
+                'invoice_count' => 0,
+            ];
+
+            $byCurrency[$code]['outstanding'] = round($byCurrency[$code]['outstanding'] + $outstanding, 2);
+            $byCurrency[$code]['base_outstanding'] = round($byCurrency[$code]['base_outstanding'] + ($outstanding * $rate), 2);
+            $byCurrency[$code]['invoice_count']++;
+        }
+
+        foreach ($byCurrency as &$bucket) {
+            $bucket['base_equivalent'] = $bucket['base_outstanding'];
+        }
+        unset($bucket);
+
+        $summary['base_currency'] = $baseCurrency;
+        $summary['base_outstanding'] = round(array_sum(array_column($byCurrency, 'base_outstanding')), 2);
 
         return [
             'data' => $data,
             'summary' => $summary,
+            'by_currency' => array_values($byCurrency),
         ];
     }
 

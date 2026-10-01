@@ -54,6 +54,15 @@ export function DeliveryOrderDetailPage() {
     enabled: !!id,
   })
 
+  // MRD pricelist-multicurrency FR-5.4/5.6: DOs carry the SO/quotation
+  // currency + snapshot; totals show the base equivalent when foreign.
+  const docCurrency = (deliveryOrder as any)?.currency_code || undefined
+  const money = (value: number) => formatCurrency(value, docCurrency)
+  const baseCurrency = (deliveryOrder as any)?.base_currency_code || undefined
+  const fxRate = Number((deliveryOrder as any)?.exchange_rate ?? 1) || 1
+  const showBaseEquivalent = Boolean(docCurrency && baseCurrency && docCurrency !== baseCurrency)
+  const baseMoney = (value: number) => formatCurrency(value * fxRate, baseCurrency)
+
   const { hasPermission } = useAuthStore()
   // Posting/confirming sell-side documents is accounting-only (server enforces accounting.post).
   const canPost = hasPermission('accounting.post')
@@ -914,16 +923,16 @@ export function DeliveryOrderDetailPage() {
                   <TableCell className="text-right">{line.quantity_ordered}</TableCell>
                   <TableCell className="text-right font-medium text-green-600">{line.quantity_delivered}</TableCell>
                   <TableCell className="text-right">{line.unit}</TableCell>
-                  <TableCell className="text-right">{line.unit_price ? parseFloat(line.unit_price).toFixed(2) : '-'}</TableCell>
+                  <TableCell className="text-right">{line.unit_price ? money(Number(line.unit_price)) : '-'}</TableCell>
                   <TableCell className="text-right font-medium">
                     {(() => {
                       // Legacy lines can carry a price without a stored
                       // line_total; fall back to the computed amount instead of
                       // rendering '-' on an otherwise priced line.
-                      if (line.line_total != null) return parseFloat(line.line_total).toFixed(2)
+                      if (line.line_total != null) return money(Number(line.line_total))
                       const unitPrice = Number(line.unit_price || 0)
                       const quantity = Number(line.quantity_delivered || line.quantity_ordered || 0)
-                      return unitPrice > 0 ? (unitPrice * quantity).toFixed(2) : '-'
+                      return unitPrice > 0 ? money(unitPrice * quantity) : '-'
                     })()}
                   </TableCell>
                   <TableCell>{line.lot_number || '-'}</TableCell>
@@ -943,9 +952,16 @@ export function DeliveryOrderDetailPage() {
           </DeliveryOrderColumnVisibility>
           {deliveryOrder.total && (
             <div className="flex justify-end mt-4 pt-4 border-t">
-              <div className="text-right">
-                <span className="text-muted-foreground mr-4">Total:</span>
-                <span className="text-lg font-bold">{parseFloat(deliveryOrder.total).toFixed(2)}</span>
+              <div className="text-right space-y-1">
+                <div>
+                  <span className="text-muted-foreground mr-4">Total:</span>
+                  <span className="text-lg font-bold">{money(Number(deliveryOrder.total))}</span>
+                </div>
+                {showBaseEquivalent && (
+                  <div className="text-sm text-muted-foreground">
+                    ≈ {baseMoney(Number(deliveryOrder.total))} · 1 {docCurrency} = {fxRate.toFixed(4)} {baseCurrency}
+                  </div>
+                )}
               </div>
             </div>
           )}

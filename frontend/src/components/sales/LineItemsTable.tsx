@@ -55,7 +55,7 @@ export function LineItemsTable({
 
   if (variant === 'shadcn') {
     return (
-      <Table className={tableClassName} data-enter-submit-ignore>
+      <Table className={tableClassName}>
         <TableHeader>
           <TableRow className={headRowClassName}>
             {visibleColumns.map((column) => (
@@ -71,7 +71,7 @@ export function LineItemsTable({
   }
 
   return (
-    <table className={cn('w-full text-sm', tableClassName)} data-enter-submit-ignore>
+    <table className={cn('w-full text-sm', tableClassName)}>
       <thead>
         <tr className={headRowClassName}>
           {visibleColumns.map((column) => (

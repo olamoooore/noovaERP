@@ -10,6 +10,8 @@ class QuotationsExport extends SalesDocumentExport
     public const COLUMNS = [
         'quotation_number' => ['heading' => 'Quotation No', 'type' => 'text'],
         'quotation_date' => ['heading' => 'Date', 'type' => 'date'],
+        // MRD pricelist-multicurrency FR-8.4: document currency column.
+        'currency_code' => ['heading' => 'Currency', 'type' => 'text'],
         'valid_until' => ['heading' => 'Valid Until', 'type' => 'date'],
         'customer_name' => ['heading' => 'Customer', 'type' => 'text'],
         'customer_code' => ['heading' => 'Customer Code', 'type' => 'text'],

@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { TagFilterSelect } from '@/components/tags/TagFilterSelect';
+import pricingApi from '@/lib/pricingApi';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
 import { ReportExportToolbar } from '@/components/reports/ReportExportToolbar';
 import { ReportTable, Column } from '@/components/reports/ReportTable';
@@ -173,6 +174,16 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
   });
 
   // Sales Trends Query
+  const { data: sellableCurrencies = [] } = useQuery({
+    queryKey: ['currencies', 'sellable'],
+    queryFn: () => pricingApi.sellableCurrencies(),
+  });
+
+  const { data: byCurrencyData } = useQuery({
+    queryKey: ['sales-by-currency', filters],
+    queryFn: () => reportApi.getSalesByCurrency(filters),
+  });
+
   const {
     data: trendsData,
     isLoading: isTrendsLoading,
@@ -228,6 +239,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
 
   const hasCustomFilters =
     !!filters.tag ||
+    !!filters.currency_code ||
     filters.interval !== 'day' ||
     filters.start_date !== defaultFilters().start_date ||
     filters.end_date !== defaultFilters().end_date;
@@ -528,6 +540,24 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
         </div>
 
         <div className="space-y-1.5">
+          <Label className="text-xs font-medium text-muted-foreground">Currency</Label>
+          <Select
+            value={filters.currency_code || 'all'}
+            onValueChange={(value) => updateFilter('currency_code', value === 'all' ? undefined : value)}
+          >
+            <SelectTrigger className="h-9 w-[140px] rounded-full text-sm" aria-label="Currency">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All currencies</SelectItem>
+              {(sellableCurrencies as any[]).map((currency: any) => (
+                <SelectItem key={currency.code} value={currency.code}>{currency.code}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1.5">
           <Label className="text-xs font-medium text-muted-foreground">Interval</Label>
           <Select
             value={filters.interval}
@@ -700,6 +730,36 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     <div className="space-y-6">
       {header}
       {filterCard}
+
+      {/* MRD FR-8.1: order-currency dimension — document revenue with the
+          snapshot-rate base equivalent per currency. */}
+      {byCurrencyData?.currencies?.length ? (
+        <Card className="rounded-xl">
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 border-b pb-4">
+            <div>
+              <CardTitle className="text-base">Revenue by Currency</CardTitle>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Base-equivalent total: {formatCurrency(byCurrencyData.summary?.total_base_revenue ?? 0)}
+              </p>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <div className="flex flex-wrap gap-3">
+              {byCurrencyData.currencies.map((bucket) => (
+                <div key={bucket.currency_code} className="rounded-xl border px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium">{bucket.currency_code}</span>
+                    <span className="text-sm font-semibold">{formatCurrency(bucket.total_revenue, bucket.currency_code)}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    ≈ {formatCurrency(bucket.base_revenue)} · {bucket.order_count} order(s)
+                  </p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="h-10 w-fit rounded-full">

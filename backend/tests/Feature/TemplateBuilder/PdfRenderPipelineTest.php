@@ -63,6 +63,29 @@ class PdfRenderPipelineTest extends TenantTestCase
         $this->assertStringStartsWith('%PDF', $result['bytes']);
     }
 
+    public function test_foreign_currency_render_appends_dual_currency_footer(): void
+    {
+        $data = (new InvoiceDataSource)->sample();
+        $data['meta']['currency_code'] = 'USD';
+        $data['meta']['base_currency_code'] = 'SGD';
+        $data['meta']['exchange_rate'] = 1.3514;
+        $data['totals']['total'] = 740.00;
+        $data['totals']['base_total'] = 1000.00;
+
+        $result = $this->pdf->renderData('invoice', $data, null, 'html');
+
+        $this->assertStringContainsString('Exchange rate: 1 USD = 1.3514 SGD', $result['html'], 'FR-8.5 rate footnote');
+        $this->assertStringContainsString('Base total:', $result['html']);
+        $this->assertStringContainsString('1,000.00', $result['html']);
+    }
+
+    public function test_base_currency_render_has_no_fx_footer(): void
+    {
+        $result = $this->pdf->renderData('invoice', (new InvoiceDataSource)->sample(), null, 'html');
+
+        $this->assertStringNotContainsString('Exchange rate:', $result['html'], 'base documents stay clean');
+    }
+
     public function test_render_purchase_order_html_contains_merged_values(): void
     {
         $result = $this->pdf->renderData(

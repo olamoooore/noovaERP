@@ -141,7 +141,7 @@ export function MedicalCaseCreatePage() {
             <HeaderActionButton
               type="submit"
               form="medical-case-form"
-              data-enter-submit
+             
               icon="solar:medical-kit-bold-duotone"
               loading={createMutation.isPending}
               disabled={createMutation.isPending}

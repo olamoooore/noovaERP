@@ -103,6 +103,88 @@ class PriceListController extends Controller
     }
 
     /**
+     * GET /price-lists/{id}/items/export — CSV of the ordered rules (FR-2.7),
+     * resolved to portable keys (product SKU, category name, list code).
+     */
+    public function exportItems($id): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $list = PriceList::findOrFail($id);
+        $rows = $this->service->exportItemRows($list);
+
+        $filename = 'price-list-'.($list->code ?: $list->id).'-items-'.now()->format('Y-m-d').'.csv';
+
+        return response()->streamDownload(function () use ($rows) {
+            $handle = fopen('php://output', 'w');
+            fwrite($handle, "\xEF\xBB\xBF");
+            $columns = [
+                'sequence', 'apply_on', 'product_sku', 'category_name', 'min_quantity', 'max_quantity',
+                'date_start', 'date_end', 'compute_type', 'fixed_price', 'percent', 'base',
+                'other_pricelist_code', 'markup_percent',
+            ];
+            fputcsv($handle, $columns);
+            foreach ($rows as $row) {
+                fputcsv($handle, array_map(fn ($c) => $row[$c] ?? '', $columns));
+            }
+            fclose($handle);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * POST /price-lists/{id}/items/import — CSV full-replace of the rules
+     * (FR-2.7). Fail-closed: row errors abort before the table is touched.
+     */
+    public function importItems(Request $request, $id)
+    {
+        $list = PriceList::findOrFail($id);
+
+        $request->validate([
+            'file' => 'required|file|max:2048|mimes:csv,txt',
+        ]);
+
+        $handle = fopen($request->file('file')->getRealPath(), 'r');
+        if ($handle === false) {
+            return response()->json(['message' => 'The uploaded file could not be read.'], 422);
+        }
+
+        $header = null;
+        $rows = [];
+        while (($line = fgetcsv($handle)) !== false) {
+            $line = array_map(fn ($value) => is_string($value) ? preg_replace('/^\xEF\xBB\xBF/', '', $value) : $value, $line);
+
+            if ($header === null) {
+                $header = array_map(fn ($h) => strtolower(trim((string) $h)), $line);
+
+                continue;
+            }
+
+            if (count(array_filter($line, fn ($value) => $value !== null && $value !== '')) === 0) {
+                continue;
+            }
+
+            $row = [];
+            foreach ($header as $columnIndex => $column) {
+                $row[$column] = $line[$columnIndex] ?? null;
+            }
+            $rows[] = $row;
+        }
+        fclose($handle);
+
+        if ($header === null || ! in_array('compute_type', $header, true)) {
+            return response()->json([
+                'message' => 'Invalid CSV — expected the columns from the export (compute_type missing).',
+            ], 422);
+        }
+
+        $result = $this->service->importItemRows($list, $rows, $this->actorId());
+
+        return response()->json([
+            'message' => $result['imported'].' pricelist rule(s) imported',
+            'data' => $this->detail(PriceList::with(['items', 'applications'])->findOrFail($id)),
+            'imported' => $result['imported'],
+        ]);
+    }
+
+    /**
      * PUT /price-lists/{id}/applications — full replacement (FR-2.2).
      */
     public function replaceApplications(Request $request, $id)

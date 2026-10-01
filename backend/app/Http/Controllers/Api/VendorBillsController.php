@@ -39,7 +39,7 @@ class VendorBillsController extends Controller
             $status = $request->get('status');
             $vendorId = $request->get('vendor_id');
 
-            $query = Bill::with(['vendor', 'lines', 'purchaseOrder', 'goodsReceipt'])
+            $query = Bill::with(['vendor', 'lines.product', 'purchaseOrder', 'goodsReceipt'])
                 ->orderBy('created_at', 'desc')
                 ->orderBy('id', 'desc');
 
@@ -125,7 +125,7 @@ class VendorBillsController extends Controller
     public function show($id)
     {
         try {
-            $bill = Bill::with(['vendor', 'lines.account', 'journalEntry', 'purchaseOrder', 'goodsReceipt'])
+            $bill = Bill::with(['vendor', 'lines.account', 'lines.product', 'journalEntry', 'purchaseOrder', 'goodsReceipt'])
                 ->find($id);
 
             if (! $bill) {
@@ -181,8 +181,18 @@ class VendorBillsController extends Controller
                 'terms' => 'nullable|string',
                 'discount_amount' => 'nullable|numeric|min:0',
                 'lines' => 'required|array|min:1',
-                'lines.*.account_id' => 'required|exists:chart_of_accounts,id',
+                // Product lines derive their expense account (product's own,
+                // else the tenant general-expense mapping) — matching the
+                // invoice line editor. Account-only lines keep working.
+                'lines.*.account_id' => 'nullable|exists:chart_of_accounts,id',
+                'lines.*.product_id' => 'nullable|exists:products,id',
+                'lines.*.line_type' => 'nullable|in:product,note,section',
                 'lines.*.description' => 'nullable|string',
+                'lines.*.model_number' => 'nullable|string|max:100',
+                'lines.*.product_notes' => 'nullable|string',
+                'lines.*.lot_number' => 'nullable|string|max:100',
+                'lines.*.serial_number' => 'nullable|string|max:100',
+                'lines.*.expiry_date' => 'nullable|date',
                 'lines.*.quantity' => 'required|numeric|min:0',
                 'lines.*.unit_price' => 'required|numeric',
                 'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
@@ -289,8 +299,15 @@ class VendorBillsController extends Controller
                 'terms' => 'nullable|string',
                 'discount_amount' => 'nullable|numeric|min:0',
                 'lines' => 'nullable|array',
-                'lines.*.account_id' => 'required_with:lines|exists:chart_of_accounts,id',
+                'lines.*.account_id' => 'nullable|exists:chart_of_accounts,id',
+                'lines.*.product_id' => 'nullable|exists:products,id',
+                'lines.*.line_type' => 'nullable|in:product,note,section',
                 'lines.*.description' => 'nullable|string',
+                'lines.*.model_number' => 'nullable|string|max:100',
+                'lines.*.product_notes' => 'nullable|string',
+                'lines.*.lot_number' => 'nullable|string|max:100',
+                'lines.*.serial_number' => 'nullable|string|max:100',
+                'lines.*.expiry_date' => 'nullable|date',
                 'lines.*.quantity' => 'required_with:lines|numeric|min:0',
                 'lines.*.unit_price' => 'required_with:lines|numeric',
                 'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
@@ -337,12 +354,12 @@ class VendorBillsController extends Controller
             $linePayloads = $request->has('lines') ? $request->input('lines', []) : null;
             if ($billType === 'expense' && $linePayloads !== null) {
                 foreach ($linePayloads as $idx => $lineData) {
-                    if (empty(trim($lineData['description'] ?? ''))) {
+                    if (empty(trim($lineData['description'] ?? '')) && empty($lineData['product_id'])) {
                         DB::rollBack();
 
                         return response()->json([
                             'message' => 'Validation failed',
-                            'errors' => ["lines.{$idx}.description" => ['Expense bill lines require a description since they have no product linkage.']],
+                            'errors' => ["lines.{$idx}.description" => ['Expense bill lines require a description or a product.']],
                         ], 422);
                     }
                     if (! empty($lineData['purchase_order_item_id']) || ! empty($lineData['goods_receipt_line_id'])) {
@@ -351,14 +368,6 @@ class VendorBillsController extends Controller
                         return response()->json([
                             'message' => 'Validation failed',
                             'errors' => ["lines.{$idx}" => ['Expense bill lines cannot carry PO/GRN linkage.']],
-                        ], 422);
-                    }
-                    if (! empty($lineData['product_id'])) {
-                        DB::rollBack();
-
-                        return response()->json([
-                            'message' => 'Validation failed',
-                            'errors' => ["lines.{$idx}.product_id" => ['Expense bill lines should not reference products. Use a GL account and description instead.']],
                         ], 422);
                     }
                 }
@@ -427,7 +436,7 @@ class VendorBillsController extends Controller
                 $bill->lines()->delete();
 
                 // Create new lines
-                foreach ($request->lines as $lineData) {
+                foreach ($request->lines as $idx => $lineData) {
                     $quantity = $lineData['quantity'];
                     $unitPrice = $lineData['unit_price'];
                     $taxRate = $lineData['tax_rate'] ?? 0;
@@ -436,11 +445,20 @@ class VendorBillsController extends Controller
                     // MRD R3.1: engine-owned arithmetic (this path also missed rounding).
                     $taxAmount = \App\Services\TaxEngineService::calculate((float) $lineTotal, (float) $taxRate, false)['tax'];
 
+                    $lineType = $lineData['line_type'] ?? 'product';
+                    $isTextLine = in_array($lineType, ['note', 'section'], true);
+
                     BillLine::create([
                         'bill_id' => $bill->id,
-                        'account_id' => $lineData['account_id'],
+                        'account_id' => $isTextLine ? null : $this->billService->resolveLineAccountId($lineData, (int) $idx),
+                        'line_type' => $lineType,
                         'product_id' => $lineData['product_id'] ?? null,
                         'description' => $lineData['description'] ?? null,
+                        'model_number' => $lineData['model_number'] ?? null,
+                        'product_notes' => $lineData['product_notes'] ?? null,
+                        'lot_number' => $lineData['lot_number'] ?? null,
+                        'serial_number' => $lineData['serial_number'] ?? null,
+                        'expiry_date' => $lineData['expiry_date'] ?? null,
                         'quantity' => $quantity,
                         'unit_price' => $unitPrice,
                         'tax_rate' => $taxRate,
@@ -451,16 +469,9 @@ class VendorBillsController extends Controller
                     ]);
                 }
 
-                // Recalculate totals
-                $bill->load('lines');
-                $bill->subtotal = $bill->lines->sum('line_total');
-                $bill->tax_amount = $bill->lines->sum('tax_amount');
-                // MRD R4.5: withheld amounts are deducted from the payable.
-                [, $withheldTax] = \App\Support\TaxWithholding::split($bill->lines);
-                $additiveTax = round((float) $bill->tax_amount - $withheldTax, 2);
-                $bill->total = $bill->subtotal + $additiveTax - $withheldTax - $bill->discount_amount;
-                $bill->balance = $bill->total - $bill->paid_amount;
-                $bill->save();
+                // Recalculate totals through the shared service so document
+                // discounts prorate tax exactly like the create path.
+                $this->billService->recalculateTotals($bill);
             }
 
             // Re-validate three-way match after update (lines may have changed).

@@ -684,7 +684,7 @@ export function ProductCreatePage() {
     // If variants are enabled, stock quantity of main product is sum of variants or 0
     const baseStock = hasVariants
         ? generatedVariants.reduce((acc, v) => acc + (parseInt(v.stock_quantity) || 0), 0)
-        : (formData.track_inventory ? parseInt(formData.stock_quantity) : null)
+        : (formData.track_inventory ? (parseInt(formData.stock_quantity) || 0) : null)
 
     createMutation.mutate({
       name: formData.name,
@@ -902,7 +902,7 @@ export function ProductCreatePage() {
           <HeaderActionButton
             type="submit"
             form="product-form"
-            data-enter-submit
+           
             icon="solar:check-circle-bold-duotone"
             loading={createMutation.isPending}
             disabled={createMutation.isPending}
@@ -1285,121 +1285,7 @@ export function ProductCreatePage() {
                   </Label>
                 </div>
 
-                {!hasVariants ? (
-                  <div className="space-y-4">
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-semibold">Pricing</h3>
-                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="cost">Cost Price</Label>
-                          <Input
-                            id="cost"
-                            type="number"
-                            step="0.01"
-                            placeholder="0.00"
-                            value={formData.cost}
-                            onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
-                          />
-                          <p className="text-xs text-muted-foreground">Your purchase cost</p>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="price">Selling Price *</Label>
-                          <Input
-                            id="price"
-                            type="number"
-                            step="0.01"
-                            placeholder="0.00"
-                            value={formData.price}
-                            onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                            required
-                          />
-                          <p className="text-xs text-muted-foreground">Retail price</p>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="vendor_price">Vendor Price</Label>
-                          <Input
-                            id="vendor_price"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="0.00"
-                            value={formData.vendor_price}
-                            onChange={(e) => setFormData({ ...formData, vendor_price: e.target.value })}
-                          />
-                          <p className="text-xs text-muted-foreground">Current vendor quoted price</p>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="wholesale_price">Wholesale Price</Label>
-                          <Input
-                            id="wholesale_price"
-                            type="number"
-                            step="0.01"
-                            placeholder="0.00"
-                            value={formData.wholesale_price}
-                            onChange={(e) => setFormData({ ...formData, wholesale_price: e.target.value })}
-                          />
-                          <p className="text-xs text-muted-foreground">B2B/bulk price</p>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="msrp">MSRP</Label>
-                          <Input
-                            id="msrp"
-                            type="number"
-                            step="0.01"
-                            placeholder="0.00"
-                            value={formData.msrp}
-                            onChange={(e) => setFormData({ ...formData, msrp: e.target.value })}
-                          />
-                          <p className="text-xs text-muted-foreground">Manufacturer's suggested price</p>
-                        </div>
-                      </div>
-                      {formData.cost && formData.price && parseFloat(formData.cost) > 0 && parseFloat(formData.price) > 0 && (
-                        <div className="flex items-center gap-4 p-3 bg-muted/50 rounded-lg">
-                          <div className="text-sm">
-                            <span className="text-muted-foreground">Profit Margin: </span>
-                            <span className="font-medium text-green-600">
-                              {(((parseFloat(formData.price) - parseFloat(formData.cost)) / parseFloat(formData.price)) * 100).toFixed(1)}%
-                            </span>
-                          </div>
-                          <div className="text-sm">
-                            <span className="text-muted-foreground">Markup: </span>
-                            <span className="font-medium">
-                              {(((parseFloat(formData.price) - parseFloat(formData.cost)) / parseFloat(formData.cost)) * 100).toFixed(1)}%
-                            </span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Checkbox
-                        checked={formData.track_inventory}
-                        onCheckedChange={(checked) =>
-                          setFormData({ ...formData, track_inventory: checked === true })
-                        }
-                      />
-                      <Label
-                        className="cursor-pointer"
-                        onClick={() => setFormData({ ...formData, track_inventory: !formData.track_inventory })}
-                      >
-                        Track inventory
-                      </Label>
-                    </div>
-
-                    {formData.track_inventory && (
-                      <div className="space-y-2">
-                        <Label htmlFor="stock">Stock Quantity</Label>
-                        <Input
-                          id="stock"
-                          type="number"
-                          value={formData.stock_quantity}
-                          onChange={(e) => setFormData({ ...formData, stock_quantity: e.target.value })}
-                          required
-                        />
-                      </div>
-                    )}
-                  </div>
-                ) : (
+{!hasVariants ? null : (
                   <div className="space-y-6 border rounded-md p-4 bg-muted/10">
                     <div className="space-y-4">
                       <h3 className="font-medium">Attributes</h3>
@@ -1727,38 +1613,94 @@ export function ProductCreatePage() {
                     <h3 className="flex items-center gap-2 text-lg font-semibold"><Icon icon="solar:dollar-minimalistic-bold-duotone" className="h-4 w-4 text-muted-foreground" />Commercial</h3>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                    <div className="space-y-2">
-                      <Label>Selling Price</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="0.00"
-                        value={formData.price}
-                        onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                      />
+                  {/* Single source of pricing for the create flow — the old
+                      Basics-tab copy was removed because both edited the same
+                      form state and looked like double entry. */}
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="price">Selling Price *</Label>
+                        <Input
+                          id="price"
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={formData.price}
+                          onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                          required
+                        />
+                        <p className="text-xs text-muted-foreground">Retail price</p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="cost">Cost Price</Label>
+                        <Input
+                          id="cost"
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={formData.cost}
+                          onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
+                        />
+                        <p className="text-xs text-muted-foreground">Your purchase cost</p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="vendor_price">Vendor Price</Label>
+                        <Input
+                          id="vendor_price"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={formData.vendor_price}
+                          onChange={(e) => setFormData({ ...formData, vendor_price: e.target.value })}
+                        />
+                        <p className="text-xs text-muted-foreground">Current vendor quoted price</p>
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Cost Price</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="0.00"
-                        value={formData.cost}
-                        onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
-                      />
+
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="wholesale_price">Wholesale Price</Label>
+                        <Input
+                          id="wholesale_price"
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={formData.wholesale_price}
+                          onChange={(e) => setFormData({ ...formData, wholesale_price: e.target.value })}
+                        />
+                        <p className="text-xs text-muted-foreground">B2B/bulk price</p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="msrp">MSRP</Label>
+                        <Input
+                          id="msrp"
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={formData.msrp}
+                          onChange={(e) => setFormData({ ...formData, msrp: e.target.value })}
+                        />
+                        <p className="text-xs text-muted-foreground">Manufacturer's suggested price</p>
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Vendor Price</Label>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        placeholder="0.00"
-                        value={formData.vendor_price}
-                        onChange={(e) => setFormData({ ...formData, vendor_price: e.target.value })}
-                      />
-                    </div>
+
+                    {formData.cost && formData.price && parseFloat(formData.cost) > 0 && parseFloat(formData.price) > 0 && (
+                      <div className="flex items-center gap-4 p-3 bg-muted/50 rounded-lg">
+                        <div className="text-sm">
+                          <span className="text-muted-foreground">Profit Margin: </span>
+                          <span className="font-medium text-green-600">
+                            {(((parseFloat(formData.price) - parseFloat(formData.cost)) / parseFloat(formData.price)) * 100).toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="text-sm">
+                          <span className="text-muted-foreground">Markup: </span>
+                          <span className="font-medium">
+                            {(((parseFloat(formData.price) - parseFloat(formData.cost)) / parseFloat(formData.cost)) * 100).toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-4 border-t pt-5">
@@ -2049,6 +1991,24 @@ export function ProductCreatePage() {
                       <Separator />
 
                       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3 md:col-span-2">
+                          <Checkbox
+                            checked={formData.track_inventory}
+                            onCheckedChange={(checked) => setFormData({ ...formData, track_inventory: checked === true })}
+                          />
+                          <div>
+                            <Label
+                              className="cursor-pointer"
+                              onClick={() => setFormData({ ...formData, track_inventory: !formData.track_inventory })}
+                            >
+                              Track inventory
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                              Stock quantities are managed per warehouse in Inventory → Stock Operations (receive, remove, reconcile). Opening stock is set there, not on this form.
+                            </p>
+                          </div>
+                        </div>
+
                         <div className="space-y-2">
                           <Label htmlFor="reorder_point">Reorder Point</Label>
                           <Input
@@ -2476,22 +2436,6 @@ export function ProductCreatePage() {
                       </div>
                       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div className="space-y-2">
-                          <Label>Product Status</Label>
-                          <Select
-                            value={formData.status}
-                            onValueChange={(v) => setFormData({ ...formData, status: v as ProductStatus })}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="draft">Draft</SelectItem>
-                              <SelectItem value="active">Active</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <p className="text-xs text-muted-foreground">Draft products are not visible in POS or sales.</p>
-                        </div>
-                        <div className="space-y-2">
                           <Label>Warranty Period</Label>
                           <Input placeholder="Enter value" />
                         </div>
@@ -2747,42 +2691,6 @@ export function ProductCreatePage() {
                           type="date"
                           value={formData.preorder_available_at}
                           onChange={(e) => setFormData({ ...formData, preorder_available_at: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg border border-dashed bg-muted/20 p-4">
-                    <div className="mb-3 font-semibold text-primary">Channel Pricing</div>
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                      <div className="space-y-2">
-                        <Label>POS Price</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder="0.00"
-                          value={formData.price}
-                          onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Online Price</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder="0.00"
-                          value={formData.msrp}
-                          onChange={(e) => setFormData({ ...formData, msrp: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Wholesale Price</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder="0.00"
-                          value={formData.wholesale_price}
-                          onChange={(e) => setFormData({ ...formData, wholesale_price: e.target.value })}
                         />
                       </div>
                     </div>

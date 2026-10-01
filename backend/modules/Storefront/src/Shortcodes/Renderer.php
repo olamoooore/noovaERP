@@ -105,8 +105,11 @@ final class Renderer
         if ($cacheable && $key !== null) {
             $hit = $this->cache->get($key);
             if ($hit !== null) {
+                $this->cache->noteHit($context->tenantId);
+
                 return $hit;
             }
+            $this->cache->noteMiss($context->tenantId);
         }
 
         try {

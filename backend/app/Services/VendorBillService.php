@@ -44,6 +44,9 @@ class VendorBillService
         // Without this guard a null account_id falls through to the 'general_expense'
         // mapping key which resolves to the SUSPENSE account — silently wrong.
         foreach ($bill->lines as $billLine) {
+            if (in_array($billLine->line_type, ['note', 'section'], true)) {
+                continue; // Free-text lines carry no posting.
+            }
             if (! $billLine->account_id) {
                 return PostingResult::failure(
                     "Bill line '{$billLine->description}' (line #{$billLine->id}) has no GL account assigned. ".
@@ -60,6 +63,9 @@ class VendorBillService
             $bookedTaxTotal = 0.0;
 
             foreach ($bill->lines as $billLine) {
+                if (in_array($billLine->line_type, ['note', 'section'], true)) {
+                    continue;
+                }
                 $lineTotal = (float) $billLine->line_total;
                 $lineTotalSum += $lineTotal;
                 $bookedTaxTotal += (float) $billLine->tax_amount;

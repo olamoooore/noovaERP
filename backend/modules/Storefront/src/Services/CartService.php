@@ -205,12 +205,21 @@ final class CartService
         $netTotal = 0.0;
         $taxTotal = 0.0;
         $grossTotal = 0.0;
+        $baseNetTotal = 0.0;
+        $baseTaxTotal = 0.0;
+        $baseGrossTotal = 0.0;
         $breakdown = [];
 
         // ONE engine instance per quote: its per-request price-list + FX
         // memos (FR-13) then apply across every line instead of re-resolving
         // per call (which also keeps the bounded-query invariant).
         $pricing = app(\App\Services\PricingService::class);
+
+        // MRD FR-9.2: the cart's currency (visitor/session currency) is the
+        // DOCUMENT currency; prices bridge from list/catalogue into it and
+        // the base equivalents are carried alongside for the ledger handoff.
+        $baseCurrency = strtoupper((string) \App\Services\DocumentCurrencyResolver::baseFor(null, $customerId));
+        $cartCurrency = strtoupper((string) ($cart->currency ?: $baseCurrency));
 
         foreach ($lines as $line) {
             $product = $products->get($line->product_id);
@@ -222,17 +231,23 @@ final class CartService
             $variant = $line->variant_id !== null ? $variants->get($line->variant_id) : null;
             $quantity = (float) $line->quantity;
 
-            // Canonical pricing (MRD pricelist-multicurrency FR-4.1): the
-            // shared PricingService resolves price-list rules first, then the
-            // Issue #132 tier engine (tier/customer/variant/date aware).
-            $unit = $pricing->baseCurrencyPrice(
-                $product,
-                max(1.0, $quantity),
-                $customerId,
-                $variant?->id,
-                now()->toDateString(),
-                $variant,
-            );
+            // Canonical pricing (MRD pricelist-multicurrency FR-4.1/FR-9.2):
+            // the shared PricingService resolves price-list rules first, then
+            // the Issue #132 tier engine — priced in the CART currency with
+            // the entity-base equivalent for the accounting handoff.
+            $quote = $pricing->resolvePrice([
+                'product' => $product,
+                'quantity' => max(1.0, $quantity),
+                'date' => now()->toDateString(),
+                'customer_id' => $customerId,
+                'document_currency' => $cartCurrency,
+                'base_currency' => $baseCurrency,
+                'variant_id' => $variant?->id,
+                'variant' => $variant,
+            ]);
+
+            $unit = (float) $quote['unit_price'];
+            $lineRate = (float) ($quote['exchange_rate'] ?? 1.0);
 
             $taxInfo = $this->taxResolver->resolveTaxForProduct($product, $variant, null, 'output', now()->toDateString());
             $calc = $this->taxResolver->calculateTax($unit * $quantity, $taxInfo['rate'], $taxInfo['is_inclusive']);
@@ -240,6 +255,9 @@ final class CartService
             $netTotal += $calc['net'];
             $taxTotal += $calc['tax'];
             $grossTotal += $calc['gross'];
+            $baseNetTotal += $calc['net'] * $lineRate;
+            $baseTaxTotal += $calc['tax'] * $lineRate;
+            $baseGrossTotal += $calc['gross'] * $lineRate;
 
             $rateKey = (string) $taxInfo['rate'];
             $breakdown[$rateKey] ??= ['rate' => (float) $rateKey, 'inclusive' => $taxInfo['is_inclusive'], 'tax' => 0.0];
@@ -257,6 +275,9 @@ final class CartService
                 'tax_amount' => self::money($calc['tax']),
                 'line_net' => self::money($calc['net']),
                 'line_total' => self::money($calc['gross']),
+                'base_unit_price' => self::money((float) $quote['base_unit_price']),
+                'base_line_total' => self::money($calc['gross'] * $lineRate),
+                'exchange_rate' => $lineRate,
                 'in_stock' => ! $product->track_inventory || (int) $product->stock_quantity > 0,
             ];
         }
@@ -264,13 +285,17 @@ final class CartService
         return [
             'cart_id' => $cart->id,
             'status' => $cart->status,
-            'currency' => $cart->currency ?? \Modules\Storefront\Models\StorefrontSettings::current()->currency_code,
+            'currency' => $cartCurrency,
+            'base_currency' => $baseCurrency,
             'items' => $items,
             'item_count' => array_sum(array_column($items, 'quantity')),
             'totals' => [
                 'subtotal' => self::money($netTotal),
                 'tax' => self::money($taxTotal),
                 'total' => self::money($grossTotal),
+                'base_subtotal' => self::money($baseNetTotal),
+                'base_tax' => self::money($baseTaxTotal),
+                'base_total' => self::money($baseGrossTotal),
             ],
             'tax_breakdown' => array_values(array_map(
                 static fn (array $b): array => $b + ['tax' => self::money((float) $b['tax'])],

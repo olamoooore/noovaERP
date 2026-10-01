@@ -28,6 +28,8 @@ class ReportFilter
         public ?int $entityBookId = null,
         /** Tag slug — restrict the report to documents carrying this tag. */
         public ?string $tag = null,
+        /** MRD FR-8.1: restrict sales analytics to a document currency. */
+        public ?string $currencyCode = null,
     ) {}
 
     /**
@@ -56,6 +58,9 @@ class ReportFilter
             legalEntityId: isset($data['legal_entity_id']) ? (int) $data['legal_entity_id'] : null,
             entityBookId: isset($data['entity_book_id']) ? (int) $data['entity_book_id'] : null,
             tag: isset($data['tag']) && $data['tag'] !== '' ? (string) $data['tag'] : null,
+            currencyCode: isset($data['currency_code']) && $data['currency_code'] !== ''
+                ? strtoupper(substr((string) $data['currency_code'], 0, 3))
+                : null,
         );
     }
 

@@ -11,8 +11,8 @@ use Modules\Inventory\Models\PurchaseOrder;
 
 class Bill extends Model
 {
-    use HasFactory, SoftDeletes;
     use \App\Models\Concerns\GuardsJournalEntryLinks;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'bill_number',
@@ -69,9 +69,12 @@ class Bill extends Model
         'approved_by',
         'approved_at',
         'currency_code',
+        'exchange_rate',
+        'base_currency_code',
     ];
 
     protected $casts = [
+        'exchange_rate' => 'decimal:6',
         'bill_date' => 'date',
         'due_date' => 'date',
         'received_at' => 'datetime',

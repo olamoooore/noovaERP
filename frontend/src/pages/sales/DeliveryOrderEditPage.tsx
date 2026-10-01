@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -593,12 +594,11 @@ export function DeliveryOrderEditPage() {
           </DeliveryOrderColumnVisibility>
           <div className="mt-3 flex flex-wrap gap-2">
             <ProductCatalogDialog products={products || []} onAdd={addCatalogProducts} />
-            <Button variant="outline" size="sm" onClick={addLine}>
-              <Icon icon="solar:add-circle-bold" className="h-4 w-4 mr-1" />
+            <HeaderActionButton type="button" variant="outline" icon="solar:add-circle-bold" onClick={addLine}>
               Add Line
-            </Button>
-            <Button variant="outline" size="sm" onClick={addSection}>Add Section</Button>
-            <Button variant="outline" size="sm" onClick={addNote}>Add Note</Button>
+            </HeaderActionButton>
+            <HeaderActionButton type="button" variant="outline" onClick={addSection}>Add Section</HeaderActionButton>
+            <HeaderActionButton type="button" variant="outline" onClick={addNote}>Add Note</HeaderActionButton>
           </div>
         </CardContent>
       </Card>

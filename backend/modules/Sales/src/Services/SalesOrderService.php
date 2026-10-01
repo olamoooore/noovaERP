@@ -688,13 +688,26 @@ class SalesOrderService
             ];
         }
 
+        // MRD FR-9.2/FR-5.2: the storefront order currency is the visitor
+        // currency; checkout stores the REAL snapshot rate at the order date
+        // so the sales order (and any invoice) carries a ledger-consistent
+        // base equivalent. Missing rate → fail closed.
+        $storefrontCurrency = strtoupper((string) ($sfOrder->currency
+            ?: \App\Services\DocumentCurrencyResolver::baseFor($sfOrder->legal_entity_id, $sfOrder->customer_id)));
+        $storefrontSnapshot = \App\Services\DocumentCurrencyResolver::snapshot(
+            $storefrontCurrency,
+            $sfOrder->customer_id,
+            $sfOrder->legal_entity_id,
+            ($sfOrder->placed_at ?? now())->toDateString(),
+        );
+
         return $this->createOrder([
             'customer_id' => $sfOrder->customer_id,
             'channel' => 'storefront',
-            // FR-5.5: carried conversion; storefront currency label travels
-            // with a rate-1 snapshot until POS/storefront FX lands (P2).
-            'currency_code' => $sfOrder->currency ?: \App\Services\DocumentCurrencyResolver::baseFor($sfOrder->legal_entity_id, $sfOrder->customer_id),
-            'exchange_rate' => 1.000000,
+            // FR-5.5/FR-9.2: carried conversion with the checkout snapshot.
+            'currency_code' => $storefrontSnapshot['currency_code'],
+            'exchange_rate' => $storefrontSnapshot['exchange_rate'],
+            'base_currency_code' => $storefrontSnapshot['base_currency_code'],
             'warehouse_id' => $sfOrder->fulfillment_warehouse_id,
             'accounting_status' => $this->resolveSourceAccountingStatus('StorefrontOrder', $sfOrder->id),
             'source_document_type' => 'StorefrontOrder',

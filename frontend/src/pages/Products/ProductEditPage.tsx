@@ -617,12 +617,14 @@ export function ProductEditPage() {
       wholesale_price: formData.wholesale_price ? parseFloat(formData.wholesale_price) : null,
       msrp: formData.msrp ? parseFloat(formData.msrp) : null,
       track_inventory: !!formData.track_inventory,
+      // stock_quantity intentionally omitted: quantities are owned by the
+      // inventory module (stock_levels/warehouses). Re-sending the value
+      // loaded here could overwrite newer stock from Stock Operations.
       is_preorder: !!formData.is_preorder,
       is_new_arrival: !!formData.is_new_arrival,
       is_merchandise: !!formData.is_merchandise,
       show_on_website: !!formData.show_on_website,
       preorder_available_at: formData.preorder_available_at ? formData.preorder_available_at : null,
-      stock_quantity: formData.track_inventory ? parseInt(formData.stock_quantity) : null,
       description: formData.description || null,
       short_description: formData.short_description || null,
       image: formData.image || null,
@@ -1149,21 +1151,6 @@ export function ProductEditPage() {
 
                 <Separator />
 
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    checked={formData.track_inventory}
-                    onCheckedChange={(checked) =>
-                      setFormData({ ...formData, track_inventory: checked === true })
-                    }
-                  />
-                  <Label
-                    className="cursor-pointer"
-                    onClick={() => setFormData({ ...formData, track_inventory: !formData.track_inventory })}
-                  >
-                    Track inventory
-                  </Label>
-                </div>
-
                 <div className="flex items-start gap-2">
                   <Checkbox
                     checked={formData.is_preorder}
@@ -1251,19 +1238,6 @@ export function ProductEditPage() {
                   </div>
                 </div>
 
-                {formData.track_inventory && (
-                  <div className="space-y-2">
-                    <Label htmlFor="stock">Stock Quantity</Label>
-                    <Input
-                      id="stock"
-                      type="number"
-                      value={formData.stock_quantity}
-                      onChange={(e) => setFormData({ ...formData, stock_quantity: e.target.value })}
-                      required
-                    />
-                  </div>
-                )}
-
                 </div>
 
                 <Tabs
@@ -1281,6 +1255,24 @@ export function ProductEditPage() {
 
                   <TabsContent value="inventory" className="pt-4">
                     <div className="rounded-lg border p-3 space-y-4">
+                      <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3">
+                        <Checkbox
+                          checked={formData.track_inventory}
+                          onCheckedChange={(checked) => setFormData({ ...formData, track_inventory: checked === true })}
+                        />
+                        <div>
+                          <Label
+                            className="cursor-pointer"
+                            onClick={() => setFormData({ ...formData, track_inventory: !formData.track_inventory })}
+                          >
+                            Track inventory
+                          </Label>
+                          <p className="text-xs text-muted-foreground">
+                            Stock quantities are managed per warehouse in Inventory → Stock Operations (receive, remove, reconcile) — not on this form.
+                          </p>
+                        </div>
+                      </div>
+
                       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div className="space-y-2">
                           <Label>Product Status</Label>

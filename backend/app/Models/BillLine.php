@@ -15,6 +15,11 @@ class BillLine extends Model
         'line_type',
         'product_id',
         'description',
+        'model_number',
+        'product_notes',
+        'lot_number',
+        'serial_number',
+        'expiry_date',
         'quantity',
         'unit_price',
         'tax_rate',
@@ -30,6 +35,7 @@ class BillLine extends Model
     ];
 
     protected $casts = [
+        'expiry_date' => 'date',
         'quantity' => 'decimal:2',
         'unit_price' => 'decimal:2',
         'tax_rate' => 'decimal:2',

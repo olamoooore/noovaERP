@@ -26,6 +26,12 @@ Route::middleware([
     Route::get('/w/{websiteSlug}/{pageSlug}', [\Modules\WebsiteBuilder\Http\Controllers\PublicWebsiteRenderController::class, 'render'])
         ->where('pageSlug', '.*');
 
+    // SEO crawl surface (NFR-08/FR-SF-12): per-tenant sitemap + robots,
+    // resolved from the SAME host→tenant middleware as /w/ pages — a
+    // sitemap can only ever list the resolving tenant's own URLs.
+    Route::get('/sitemap.xml', [\Modules\Storefront\Http\Controllers\Public\PublicSeoController::class, 'sitemap']);
+    Route::get('/robots.txt', [\Modules\Storefront\Http\Controllers\Public\PublicSeoController::class, 'robots']);
+
     // Redirect /sites/ URLs to /w/ so existing links in page content don't break
     Route::get('/sites/{websiteSlug}', function (string $websiteSlug) {
         return redirect("/w/{$websiteSlug}", 301);

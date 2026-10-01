@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -955,12 +956,11 @@ export function DeliveryOrderCreatePage() {
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               <ProductCatalogDialog products={productsData || []} onAdd={addCatalogProducts} />
-              <Button variant="outline" size="sm" onClick={addStandaloneLine}>
-                <Icon icon="solar:add-circle-bold" className="h-4 w-4 mr-1" />
+              <HeaderActionButton type="button" variant="outline" icon="solar:add-circle-bold" onClick={addStandaloneLine}>
                 Add Line
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => addStandaloneTextLine('section')}>Add Section</Button>
-              <Button variant="outline" size="sm" onClick={() => addStandaloneTextLine('note')}>Add Note</Button>
+              </HeaderActionButton>
+              <HeaderActionButton type="button" variant="outline" onClick={() => addStandaloneTextLine('section')}>Add Section</HeaderActionButton>
+              <HeaderActionButton type="button" variant="outline" onClick={() => addStandaloneTextLine('note')}>Add Note</HeaderActionButton>
             </div>
           </CardContent>
         </Card>
@@ -968,7 +968,7 @@ export function DeliveryOrderCreatePage() {
 
       {/* Submit */}
       <div className="flex justify-end">
-        <Button onClick={handleSubmit} data-enter-submit disabled={createMutation.isPending} size="lg">
+        <Button onClick={handleSubmit} disabled={createMutation.isPending} size="lg">
           {createMutation.isPending ? 'Creating...' : 'Create Delivery Order'}
         </Button>
       </div>

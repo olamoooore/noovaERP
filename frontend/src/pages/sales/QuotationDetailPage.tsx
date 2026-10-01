@@ -41,6 +41,15 @@ export function QuotationDetailPage() {
     enabled: !!id,
   })
 
+  // MRD pricelist-multicurrency FR-5.4: document currency primary; base
+  // equivalent at the snapshot rate when the quote is foreign.
+  const docCurrency = (quotation as any)?.currency_code || undefined
+  const money = (value: number) => formatCurrency(value, docCurrency)
+  const baseCurrency = (quotation as any)?.base_currency_code || undefined
+  const fxRate = Number((quotation as any)?.exchange_rate ?? 1) || 1
+  const showBaseEquivalent = Boolean(docCurrency && baseCurrency && docCurrency !== baseCurrency)
+  const baseMoney = (value: number) => formatCurrency(value * fxRate, baseCurrency)
+
   const { hasPermission } = useAuthStore()
   // Quotations are sales documents: confirming creates the linked Sales Order
   // (no ledger entry) and converting spawns a draft/approval-gated invoice or
@@ -534,7 +543,7 @@ export function QuotationDetailPage() {
                         </span>
                       </TableCell>
                       <TableCell className="text-right text-sm font-medium tabular-nums">
-                        {formatCurrency(inv.total)}
+                        {formatCurrency(inv.total, (inv as any).currency_code || undefined)}
                       </TableCell>
                       <TableCell
                         className={cn(
@@ -542,7 +551,7 @@ export function QuotationDetailPage() {
                           Number(inv.balance) > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400',
                         )}
                       >
-                        {formatCurrency(inv.balance)}
+                        {formatCurrency(inv.balance, (inv as any).currency_code || undefined)}
                       </TableCell>
                       <TableCell className="text-right">
                         <Button
@@ -684,24 +693,35 @@ export function QuotationDetailPage() {
           <CardContent className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Subtotal</span>
-              <span>{formatCurrency(quotation.subtotal)}</span>
+              <span>{money(Number(quotation.subtotal))}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Tax</span>
-              <span>{formatCurrency(quotation.tax_amount)}</span>
+              <span>{money(Number(quotation.tax_amount))}</span>
             </div>
             {Number(quotation.discount_amount) > 0 && (
               <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">
                 Discount{quotation.discount_type === 'percentage' && quotation.discount_value != null ? ` (${Number(quotation.discount_value)}%)` : ''}
               </span>
-                <span className="text-green-600">-{formatCurrency(quotation.discount_amount)}</span>
+                <span className="text-green-600">-{money(Number(quotation.discount_amount))}</span>
               </div>
             )}
             <div className="flex justify-between text-lg font-bold pt-2 border-t">
               <span>Total</span>
-              <span className="text-primary">{formatCurrency(quotation.total)}</span>
+              <span className="text-primary">{money(Number(quotation.total))}</span>
             </div>
+            {showBaseEquivalent && (
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>Base equivalent ({baseCurrency})</span>
+                <span>{baseMoney(Number(quotation.total))}</span>
+              </div>
+            )}
+            {showBaseEquivalent && (
+              <p className="text-right text-xs text-muted-foreground">
+                1 {docCurrency} = {fxRate.toFixed(4)} {baseCurrency}
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -745,7 +765,7 @@ export function QuotationDetailPage() {
                   <TableRow key={line.id}>
                     {line.line_type === 'note' || line.line_type === 'section' ? (
                       <TableCell colSpan={10} className={line.line_type === 'section' ? 'bg-muted/60 font-semibold' : 'bg-muted/30 italic text-muted-foreground'}>
-                        <div className="flex items-center justify-between gap-4"><span>{line.description}</span>{line.line_type === 'section' && <span className="whitespace-nowrap tabular-nums">{formatCurrency(getDocumentSectionTotal(quotation.lines || [], index, (item: any) => Number(item.line_total || 0)))}</span>}</div>
+                        <div className="flex items-center justify-between gap-4"><span>{line.description}</span>{line.line_type === 'section' && <span className="whitespace-nowrap tabular-nums">{money(getDocumentSectionTotal(quotation.lines || [], index, (item: any) => Number(item.line_total || 0)))}</span>}</div>
                       </TableCell>
                     ) : (<>
                     <TableCell>
@@ -771,9 +791,9 @@ export function QuotationDetailPage() {
                     <TableCell className="text-muted-foreground">{line.model_number || line.product?.manufacturer_part_number || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{line.product_notes || '-'}</TableCell>
                   <TableCell className="text-right">{line.quantity}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
+                  <TableCell className="text-right">{money(Number(line.unit_price))}</TableCell>
                   <TableCell className="text-right">{line.tax_rate}%</TableCell>
-                  <TableCell className="text-right font-medium">{formatCurrency(line.line_total)}</TableCell>
+                  <TableCell className="text-right font-medium">{money(Number(line.line_total))}</TableCell>
                     </>)}
                 </TableRow>
               ))}

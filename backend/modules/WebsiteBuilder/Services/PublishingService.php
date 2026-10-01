@@ -2,48 +2,131 @@
 
 namespace Modules\WebsiteBuilder\Services;
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Modules\WebsiteBuilder\Models\Page;
+use Modules\WebsiteBuilder\Models\PageVersion;
 use Modules\WebsiteBuilder\Models\PublishLog;
 use Modules\WebsiteBuilder\Models\Website;
 
 class PublishingService
 {
     /**
-     * Publish a website to static HTML.
+     * Publish a website: every page's CURRENT version becomes THE published
+     * version (older published flags are demoted, so exactly one version per
+     * page is live), and the publish log records the page→version snapshot
+     * that rollback needs to be truthful.
      */
-    public function publish(Website $website, int $userId, ?int $rollbackVersion = null): PublishLog
+    public function publish(Website $website, int $userId): PublishLog
     {
-        $latestVersion = $website->publishLogs()->max('version') ?? 0;
-        $newVersion = $latestVersion + 1;
+        return $this->finalize($website, $userId, null);
+    }
+
+    /**
+     * Honest rollback (P5): the old flow only re-copied static files while
+     * the public route serves from the database — visitors never saw the
+     * "rolled back" site. This restores each snapshot page's recorded
+     * version as a NEW current version (forward restore, like a git revert:
+     * history is append-only and drafts in between remain recoverable),
+     * then publishes synchronously through the same finalize() path as a
+     * normal publish. The new log row carries rollback_of provenance.
+     *
+     * @throws \RuntimeException when the target snapshot is unusable
+     */
+    public function rollback(Website $website, int $fromVersion, int $userId): PublishLog
+    {
+        $source = $website->publishLogs()
+            ->where('version', $fromVersion)
+            ->where('status', 'success')
+            ->first();
+
+        if (! $source) {
+            throw new \RuntimeException("No successful publish log for version {$fromVersion}.", 404);
+        }
+
+        $snapshot = $source->page_versions ?? [];
+
+        if ($snapshot === []) {
+            // Logs written BEFORE the snapshot columns existed cannot be
+            // restored truthfully (the old rollback was a file-copy no-op).
+            // Refuse loudly instead of pretending.
+            throw new \RuntimeException(
+                'That publish predates version snapshots and cannot be rolled back to. Publish the site again to establish a restorable baseline.',
+                422
+            );
+        }
+
+        foreach ($snapshot as $pageId => $versionId) {
+            $page = Page::find($pageId);
+
+            if (! $page) {
+                continue; // page deleted after that publish — nothing to restore; remaining pages still roll back
+            }
+
+            $version = PageVersion::find($versionId);
+
+            if (! $version) {
+                throw new \RuntimeException("Snapshot version {$versionId} for page {$pageId} no longer exists.", 422);
+            }
+
+            $page->createVersion($version->content ?? [], $userId);
+        }
+
+        return $this->finalize($website, $userId, $fromVersion);
+    }
+
+    /**
+     * Shared publish finalization (also used by rollback). Synchronous by
+     * design — async publish/rollback silently did nothing when the queue
+     * worker was down (lesson recorded in PublishController).
+     */
+    private function finalize(Website $website, int $userId, ?int $rollbackOf): PublishLog
+    {
+        $newVersion = ($website->publishLogs()->max('version') ?? 0) + 1;
 
         $log = PublishLog::create([
             'website_id' => $website->id,
             'version' => $newVersion,
             'status' => 'pending',
+            'rollback_of' => $rollbackOf,
             'published_by' => $userId,
         ]);
 
         try {
             // Update website status first — the public route serves from the
-            // database (currentVersion), not static files, so this is what matters.
-            $website->update([
-                'status' => 'published',
-                'published_at' => now(),
-            ]);
+            // database (the published PageVersion snapshot), not static files.
+            $snapshot = DB::transaction(function () use ($website) {
+                $website->update([
+                    'status' => 'published',
+                    'published_at' => now(),
+                ]);
 
-            // Mark all page versions as published AND update page status
-            foreach ($website->pages as $page) {
-                if ($page->currentVersion) {
-                    $page->currentVersion->update(['is_published' => true]);
+                $map = [];
+
+                foreach ($website->pages as $page) {
+                    $current = $page->currentVersion;
+
+                    if ($current) {
+                        // Exactly one published version per page: demote all,
+                        // then promote the current one.
+                        PageVersion::where('page_id', $page->id)->update(['is_published' => false]);
+                        $current->update(['is_published' => true]);
+                        $map[$page->id] = $current->id;
+                    }
+
+                    $page->update(['status' => 'published']);
                 }
-                $page->update(['status' => 'published']);
-            }
+
+                return $map;
+            });
+
+            $log->update(['page_versions' => $snapshot]);
 
             // Generate static files (optional — failure here should not
             // prevent the publish from succeeding, since the public route
             // reads directly from the database).
             try {
-                $outputPath = $this->generateStaticSite($website, $newVersion, $rollbackVersion);
+                $outputPath = $this->generateStaticSite($website, $newVersion);
             } catch (\Exception $staticEx) {
                 \Log::warning('PublishingService: static site generation failed (non-fatal)', [
                     'website_id' => $website->id,
@@ -64,23 +147,9 @@ class PublishingService
     /**
      * Generate static HTML files from the website.
      */
-    private function generateStaticSite(Website $website, int $version, ?int $rollbackVersion = null): string
+    private function generateStaticSite(Website $website, int $version): string
     {
         $outputDir = "website-builder/published/{$website->uuid}/v{$version}";
-
-        // If rollback, copy from previous version
-        if ($rollbackVersion !== null) {
-            $sourceDir = "website-builder/published/{$website->uuid}/v{$rollbackVersion}";
-            if (Storage::exists($sourceDir)) {
-                $files = Storage::allFiles($sourceDir);
-                foreach ($files as $file) {
-                    $newPath = str_replace("v{$rollbackVersion}", "v{$version}", $file);
-                    Storage::copy($file, $newPath);
-                }
-
-                return $outputDir;
-            }
-        }
 
         // Generate HTML for each page
         foreach ($website->pages()->with('currentVersion')->get() as $page) {

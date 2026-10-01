@@ -82,10 +82,19 @@ class PublicSiteController extends Controller
                 ], 404);
             }
 
+            // P5 publish truthfulness: never serve an unpublished page.
+            if ($page->status !== 'published') {
+                return response()->json([
+                    'error' => 'Page not found',
+                    'message' => 'This page has not been published yet.',
+                ], 404);
+            }
+
             Log::info('Page found', ['id' => $page->id, 'title' => $page->title]);
 
-            // Get content from current version or return empty content
-            $content = $page->currentVersion?->content ?? [
+            // Get content from the PUBLISHED version (P5 truthfulness) or
+            // return empty content; legacy pages fall back to current.
+            $content = $page->servedVersion()?->content ?? [
                 'html' => '',
                 'css' => '',
                 'components' => [],

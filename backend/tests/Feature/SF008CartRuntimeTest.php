@@ -401,6 +401,75 @@ class SF008CartRuntimeTest extends TenantTestCase
         $this->assertLessThanOrEqual(2, $variantQueries, 'variant identity must stay batched (cart query + at most one inside canonical pricing)');
     }
 
+    // ─── MRD FR-9.2: storefront currency pricing + checkout snapshot ──
+
+    public function test_cart_quotes_in_the_cart_currency_with_base_equivalents(): void
+    {
+        \App\Models\CompanySettings::query()->create(['base_currency' => 'SGD']);
+        \App\Models\ExchangeRate::create([
+            'from_currency' => 'SGD', 'to_currency' => 'USD', 'rate' => 0.74,
+            'effective_date' => now()->toDateString(), 'source' => 'manual',
+        ]);
+
+        $product = $this->makeProduct(['name' => 'FX Cart Item', 'price' => 100]);
+
+        $cart = \Modules\Storefront\Models\StorefrontCart::create(['status' => 'active', 'currency' => 'USD']);
+        app(CartService::class)->addOrUpdateItem($cart, $product->id, null, 1);
+        $cart->unsetRelation('items');
+
+        $quote = app(CartService::class)->quote($cart);
+
+        $this->assertSame('USD', $quote['currency'], 'the cart currency is the document currency');
+        $this->assertSame('SGD', $quote['base_currency']);
+        $this->assertSame('74.00', $quote['items'][0]['unit_price'], '100 SGD × 0.74 = 74.00 USD');
+        $this->assertSame('100.00', $quote['items'][0]['base_unit_price'], 'base equivalent restores to 100.00 SGD');
+        $this->assertSame('74.00', $quote['totals']['total']);
+        $this->assertSame('100.00', $quote['totals']['base_total'], 'base total at the quote rate');
+    }
+
+    public function test_checkout_stores_the_currency_snapshot_on_the_sales_order(): void
+    {
+        \App\Models\CompanySettings::query()->create(['base_currency' => 'SGD']);
+        \App\Models\ExchangeRate::create([
+            'from_currency' => 'SGD', 'to_currency' => 'USD', 'rate' => 0.74,
+            'effective_date' => now()->toDateString(), 'source' => 'manual',
+        ]);
+
+        $product = $this->makeProduct(['name' => 'FX Checkout Item', 'price' => 100]);
+        $customer = \App\Models\Customer::factory()->create();
+
+        $order = \Modules\Storefront\Models\StorefrontOrder::create([
+            'order_number' => 'SF-FX-'.Str::upper(Str::random(6)),
+            'customer_id' => $customer->id,
+            'email' => 'fx-checkout@example.test',
+            'status' => 'pending',
+            'currency' => 'USD',
+            'subtotal' => 74,
+            'total' => 74,
+            'placed_at' => now(),
+        ]);
+        \Modules\Storefront\Models\StorefrontOrderItem::create([
+            'order_id' => $order->id,
+            'product_id' => $product->id,
+            'name' => $product->name,
+            'sku' => $product->sku,
+            'unit_price' => 74,
+            'quantity' => 1,
+            'tax_rate' => 0,
+            'line_total' => 74,
+        ]);
+
+        $salesOrder = app(\Modules\Sales\Services\SalesOrderService::class)
+            ->createFromStorefrontOrder($order->fresh('items'));
+
+        $this->assertSame('USD', $salesOrder->currency_code, 'visitor currency stored on the order');
+        $this->assertSame('SGD', $salesOrder->base_currency_code);
+        $this->assertSame(1.351351, round((float) $salesOrder->exchange_rate, 6), 'snapshot rate = 1/0.74');
+        $line = $salesOrder->lines()->first();
+        $this->assertSame(74.0, round((float) $line->unit_price, 2));
+        $this->assertSame(100.0, round((float) $line->base_unit_price, 2), '70.74 × 1.351351 ≈ 100.00 SGD');
+    }
+
     // ─── Helpers ────────────────────────────────────────────────────────
 
     private function grabCookie($response): ?\Symfony\Component\HttpFoundation\Cookie

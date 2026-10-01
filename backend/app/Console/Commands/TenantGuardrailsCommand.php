@@ -103,6 +103,11 @@ class TenantGuardrailsCommand extends Command
         $issues += $issuesCoreData;
         $fixed += $fixedCoreData;
 
+        // MRD pricelist-multicurrency FR-10.5: pricing/currency integrity.
+        [$issuesPricing, $fixedPricing] = $this->auditPricingIntegrity($tenants, $testTenantIds);
+        $issues += $issuesPricing;
+        $fixed += $fixedPricing;
+
         DB::statement('SET search_path TO public');
 
         $this->newLine();
@@ -192,6 +197,113 @@ class TenantGuardrailsCommand extends Command
      * Inspect a tenant schema: core table presence, baseline counts, and whether
      * any business data exists at all.
      */
+    /**
+     * MRD pricelist-multicurrency FR-10.5 — pricing & currency integrity per
+     * tenant schema. Read-only: detects unreachable/invalid price lists and
+     * posted documents that lack a currency snapshot (the class of drift the
+     * MRD guardrails were specified to surface). --fix is intentionally a
+     * no-op here; remediation is manual because silently deactivating lists
+     * or rewriting documents would hide the underlying data problem.
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $tenants
+     * @param  array<int, string>  $testTenantIds
+     * @return array{0:int,1:int} [issues, fixes]
+     */
+    private function auditPricingIntegrity($tenants, array $testTenantIds): array
+    {
+        $issues = 0;
+        $fixed = 0;
+
+        foreach ($tenants as $tenant) {
+            $tenantId = (string) $tenant->id;
+
+            if (in_array($tenantId, $testTenantIds, true)) {
+                continue;
+            }
+
+            $hasSchema = DB::table('information_schema.schemata')
+                ->where('schema_name', $tenantId)
+                ->exists();
+
+            if (! $hasSchema || ! $this->tenantHasTable($tenantId, 'price_lists')) {
+                continue;
+            }
+
+            DB::statement("SET search_path TO '{$tenantId}', public");
+
+            $unsellableLists = (int) DB::table('price_lists as pl')
+                ->leftJoin('currencies as c', 'c.code', '=', 'pl.currency_code')
+                ->where('pl.is_active', true)
+                ->where(function ($q) {
+                    $q->whereNull('c.code')
+                        ->orWhere('c.is_active', false)
+                        ->orWhere('c.is_sellable', false);
+                })
+                ->count('pl.id');
+
+            $unreachableLists = (int) DB::table('price_lists as pl')
+                ->where('pl.is_active', true)
+                ->whereNotExists(function ($q) {
+                    $q->select(DB::raw(1))
+                        ->from('price_list_applications as a')
+                        ->whereColumn('a.price_list_id', 'pl.id');
+                })
+                ->count('pl.id');
+
+            $itemsOnInactiveLists = (int) DB::table('price_list_items as i')
+                ->join('price_lists as src', 'src.id', '=', 'i.price_list_id')
+                ->join('price_lists as other', 'other.id', '=', 'i.other_price_list_id')
+                ->where('src.is_active', true)
+                ->where('other.is_active', false)
+                ->count('i.id');
+
+            $currencyLessPosted = [
+                'invoices' => $this->currencyLessCount($tenantId, 'invoices', "lifecycle_status = 'posted'"),
+                'quotations' => $this->currencyLessCount($tenantId, 'quotations', "status IN ('confirmed', 'invoiced')"),
+                'sales_orders' => $this->currencyLessCount($tenantId, 'sales_orders', "status NOT IN ('draft', 'cancelled')"),
+                'delivery_orders' => $this->currencyLessCount($tenantId, 'delivery_orders', "status NOT IN ('draft', 'cancelled')"),
+                'customer_credit_notes' => $this->currencyLessCount($tenantId, 'customer_credit_notes', "status = 'posted'"),
+            ];
+
+            $tenantIssues = $unsellableLists + $unreachableLists + $itemsOnInactiveLists
+                + array_sum($currencyLessPosted);
+
+            if ($tenantIssues > 0) {
+                $issues += $tenantIssues;
+                $this->line("  [pricing] tenant {$tenantId}: ".json_encode([
+                    'lists_using_non_sellable_currency' => $unsellableLists,
+                    'active_lists_without_applicability' => $unreachableLists,
+                    'items_based_on_inactive_list' => $itemsOnInactiveLists,
+                    'posted_documents_without_currency' => array_filter($currencyLessPosted),
+                ]));
+            }
+
+            DB::statement('SET search_path TO public');
+        }
+
+        return [$issues, $fixed];
+    }
+
+    private function tenantHasTable(string $tenantId, string $table): bool
+    {
+        return DB::table('information_schema.tables')
+            ->where('table_schema', $tenantId)
+            ->where('table_name', $table)
+            ->exists();
+    }
+
+    private function currencyLessCount(string $tenantId, string $table, string $statusClause): int
+    {
+        if (! $this->tenantHasTable($tenantId, $table)) {
+            return 0;
+        }
+
+        return (int) DB::table($table)
+            ->whereNull('currency_code')
+            ->whereRaw($statusClause)
+            ->count();
+    }
+
     private function inspectTenant(string $tenantId): array
     {
         $missing = [];

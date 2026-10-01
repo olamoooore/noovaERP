@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
@@ -120,6 +120,7 @@ export default function PriceListsPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [draft, setDraft] = useState<ListDraft>(emptyDraft())
   const [saveError, setSaveError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const { data: currencies = [] } = useQuery({
     queryKey: ['currencies', 'sellable'],
@@ -223,37 +224,74 @@ export default function PriceListsPage() {
     onError: (error: any) => toast({ variant: 'destructive', title: 'Deactivate failed', description: getApiErrorMessage(error) }),
   })
 
+  const exportItems = async () => {
+    if (!draft.id) return
+    try {
+      const response = await pricingApi.exportItems(draft.id)
+      const url = URL.createObjectURL(new Blob([response.data], { type: 'text/csv' }))
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `price-list-${draft.code || draft.id}-items.csv`
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(url)
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Export failed', description: getApiErrorMessage(error) })
+    }
+  }
+
+  const importItems = async (file: File) => {
+    if (!draft.id) return
+    try {
+      const result = await pricingApi.importItems(draft.id, file)
+      toast({ title: 'Import complete', description: `${result?.imported ?? 0} rule(s) replaced.` })
+      const full: PriceList = await pricingApi.getPriceList(draft.id)
+      setDraft(draftFromList(full))
+      setSaveError(null)
+      invalidate()
+    } catch (error: any) {
+      const message = getApiErrorMessage(error)
+      setSaveError(message)
+      toast({ variant: 'destructive', title: 'Import failed', description: message })
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
   const openCreate = () => {
     setDraft(emptyDraft(currencies[0]?.code ?? 'USD'))
     setSaveError(null)
     setDialogOpen(true)
   }
 
+  const draftFromList = (full: PriceList): ListDraft => ({
+    id: full.id,
+    name: full.name,
+    code: full.code ?? '',
+    currency_code: full.currency_code,
+    description: full.description ?? '',
+    sequence: full.sequence,
+    valid_from: full.valid_from ?? '',
+    valid_until: full.valid_until ?? '',
+    is_active: full.is_active,
+    rounding_enabled: full.rounding_enabled,
+    rounding_method: full.rounding_method,
+    rounding_precision: Number(full.rounding_precision),
+    discount_display: full.discount_display,
+    items: (full.items ?? []).map((item, index) => ({
+      ...emptyItem((index + 1) * 10),
+      ...item,
+      compute_type: (item.compute_type as any) === 'restricted' ? 'formula' : item.compute_type,
+    })),
+    applications: (full.applications ?? []).length
+      ? (full.applications ?? []).map((app) => ({ ...app, key: `app-${app.id ?? Math.random()}` }))
+      : [{ key: `app-${Date.now()}`, applies_to_type: 'all', applies_to_id: null }],
+  })
+
   const openEdit = async (list: PriceList) => {
     const full: PriceList = await pricingApi.getPriceList(list.id)
-    setDraft({
-      id: full.id,
-      name: full.name,
-      code: full.code ?? '',
-      currency_code: full.currency_code,
-      description: full.description ?? '',
-      sequence: full.sequence,
-      valid_from: full.valid_from ?? '',
-      valid_until: full.valid_until ?? '',
-      is_active: full.is_active,
-      rounding_enabled: full.rounding_enabled,
-      rounding_method: full.rounding_method,
-      rounding_precision: Number(full.rounding_precision),
-      discount_display: full.discount_display,
-      items: (full.items ?? []).map((item, index) => ({
-        ...emptyItem((index + 1) * 10),
-        ...item,
-        compute_type: (item.compute_type as any) === 'restricted' ? 'formula' : item.compute_type,
-      })),
-      applications: (full.applications ?? []).length
-        ? (full.applications ?? []).map((app) => ({ ...app, key: `app-${app.id ?? Math.random()}` }))
-        : [{ key: `app-${Date.now()}`, applies_to_type: 'all', applies_to_id: null }],
-    })
+    setDraft(draftFromList(full))
     setSaveError(null)
     setDialogOpen(true)
   }
@@ -909,7 +947,29 @@ export default function PriceListsPage() {
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="gap-2">
+            {draft.id && (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    if (file) void importItems(file)
+                  }}
+                />
+                <HeaderActionButton variant="outline" icon="solar:download-bold" onClick={() => void exportItems()}>
+                  Export CSV
+                </HeaderActionButton>
+                {canManage && (
+                  <HeaderActionButton variant="outline" icon="solar:upload-bold" onClick={() => fileInputRef.current?.click()}>
+                    Import CSV
+                  </HeaderActionButton>
+                )}
+              </>
+            )}
             <HeaderActionButton variant="outline" onClick={() => setDialogOpen(false)}>
               Close
             </HeaderActionButton>

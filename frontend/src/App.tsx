@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, type ReactNode } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from '@/components/ui/toaster'
@@ -14,7 +14,6 @@ import { RequirePermissionAccess } from '@/components/auth/RequirePermissionAcce
 import { useAuthStore } from '@/store/authStore'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useStripeDevtoolsGuard } from '@/hooks/useStripeDevtoolsGuard'
-import { installEnterSubmit } from '@/lib/enter-submit'
 import { createOptimizedQueryClient } from '@/lib/optimized-query-client'
 
 // Lazy load heavy pages for better initial load performance
@@ -157,6 +156,7 @@ const ProfitLossPage = lazy(() => import('@/pages/accounting/reports/ProfitLossP
 const CashFlowPage = lazy(() => import('@/pages/accounting/reports/CashFlowPage'))
 const GeneralLedgerPage = lazy(() => import('@/pages/accounting/reports/GeneralLedgerPage'))
 const TrialBalancePage = lazy(() => import('@/pages/accounting/reports/TrialBalancePage'))
+const FxReportPage = lazy(() => import('@/pages/accounting/reports/FxReportPage'))
 const ComplianceReportsPage = lazy(() => import('@/pages/accounting/reports/ComplianceReportsPage'))
 const MyInvoisEinvoicePage = lazy(() => import('@/pages/accounting/MyInvoisEinvoicePage'))
 const MyInvoiceDocumentPage = lazy(() => import('@/pages/accounting/MyInvoiceDocumentPage'))
@@ -334,9 +334,6 @@ function App() {
 
   useStripeDevtoolsGuard()
 
-  // Enter-to-submit across create forms and dialogs (see lib/enter-submit.ts).
-  useEffect(() => installEnterSubmit(), [])
-
   return (
     <QueryClientProvider client={queryClient}>
       <div data-currency={currencyCode}>
@@ -498,6 +495,7 @@ function App() {
                 <Route path="/accounting/reporting/cash-flow" element={<CashFlowPage />} />
                 <Route path="/accounting/reporting/general-ledger" element={<GeneralLedgerPage />} />
                 <Route path="/accounting/reporting/trial-balance" element={<TrialBalancePage />} />
+                <Route path="/accounting/reporting/fx" element={<FxReportPage />} />
                 <Route path="/accounting/reporting/aged-receivables" element={<AgedReceivablesPage />} />
                 <Route path="/accounting/reporting/aged-payables" element={<AgedPayablesPage />} />
                 <Route path="/accounting/reporting/customer-statements" element={<CustomerStatements />} />

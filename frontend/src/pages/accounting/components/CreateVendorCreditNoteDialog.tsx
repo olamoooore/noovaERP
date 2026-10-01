@@ -393,7 +393,7 @@ export default function CreateVendorCreditNoteDialog({ onClose, onSuccess, billI
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" data-enter-submit disabled={createMutation.isPending}>
+            <Button type="submit" disabled={createMutation.isPending}>
               {createMutation.isPending ? 'Creating...' : 'Create Credit Note'}
             </Button>
           </DialogFooter>

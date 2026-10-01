@@ -771,7 +771,7 @@ export default function TenantUsersPage() {
               Cancel
             </Button>
             <Button
-              data-enter-submit
+             
               onClick={() => requestMutation.mutate()}
               disabled={requestMutation.isPending || !requestEmail.trim()}
             >

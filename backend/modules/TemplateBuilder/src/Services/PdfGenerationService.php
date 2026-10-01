@@ -108,7 +108,9 @@ final class PdfGenerationService implements PdfGenerationServiceContract
 
         // A signed document carries its signature block on the same template, so
         // every tenant template gets one without being edited.
-        $body = $rendered['html'].($signature !== null ? $this->signatureBlockHtml($signature) : '');
+        $body = $rendered['html']
+            .($signature !== null ? $this->signatureBlockHtml($signature) : '')
+            .$this->fxFooterHtml($renderTemplate, $data);
 
         $fullHtml = $this->wrapCanvas($renderTemplate, $body);
 
@@ -390,6 +392,55 @@ final class PdfGenerationService implements PdfGenerationServiceContract
         }
 
         return $template;
+    }
+
+    /**
+     * MRD pricelist-multicurrency FR-8.5 — AUTOMATIC dual-currency footer for
+     * foreign-currency documents: document currency primary, snapshot rate +
+     * base total underneath. Skipped when the template already draws its own
+     * footer block (no duplication), and when the document is base-currency.
+     *
+     * @param  array<string,mixed>  $data
+     */
+    private function fxFooterHtml(DocumentTemplate $template, array $data): string
+    {
+        $meta = is_array($data['meta'] ?? null) ? $data['meta'] : [];
+        $totals = is_array($data['totals'] ?? null) ? $data['totals'] : [];
+
+        $currency = strtoupper((string) ($meta['currency_code'] ?? ''));
+        $baseCurrency = strtoupper((string) ($meta['base_currency_code'] ?? ''));
+        $rate = (float) ($meta['exchange_rate'] ?? 1.0);
+
+        if ($currency === '' || $baseCurrency === '' || $currency === $baseCurrency || $rate <= 0) {
+            return '';
+        }
+
+        // FR-8.5: the footnote is AUTOMATIC for every foreign-currency
+        // document — provenance of the rate must not depend on template
+        // authoring. (Templates that print their own FX line will simply
+        // repeat the same frozen numbers, never contradictory ones.)
+        $e = fn (string $v): string => htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
+        $symbol = fn (string $code): string => \Modules\TemplateBuilder\Services\DataSource\InvoiceDataSource::currencySymbol($code);
+
+        $documentTotal = isset($totals['total']) ? number_format((float) $totals['total'], 2) : null;
+        $baseTotal = isset($totals['base_total']) ? number_format((float) $totals['base_total'], 2) : null;
+        $rateText = rtrim(rtrim(number_format($rate, 6, '.', ''), '0'), '.');
+        $rateDate = (string) ($meta['rate_date'] ?? '');
+
+        $parts = [];
+        if ($documentTotal !== null) {
+            $parts[] = 'Document total: '.$e($symbol($currency).' '.$documentTotal);
+        }
+        $parts[] = 'Exchange rate: 1 '.$e($currency).' = '.$e($rateText).' '.$e($baseCurrency)
+            .($rateDate !== '' ? ' ('.$e($rateDate).')' : '');
+        if ($baseTotal !== null) {
+            $parts[] = 'Base total: '.$e($symbol($baseCurrency).' '.$baseTotal);
+        }
+
+        return '<div class="tb-fx-footer" style="margin-top:6mm; padding-top:2mm; border-top:1px solid #e5e7eb; '
+            .'text-align:right; font-size:9px; color:#6b7280; line-height:1.5;">'
+            .implode(' &middot; ', $parts)
+            .'</div>';
     }
 
     private function wrapCanvas(DocumentTemplate $template, string $body): string

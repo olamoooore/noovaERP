@@ -16,6 +16,8 @@ export interface ReportFilters {
   vendor_id?: number;
   /** Tag slug — filter documents carrying this tag. */
   tag?: string;
+  /** MRD FR-8.1: restrict sales analytics to a document currency. */
+  currency_code?: string;
   movement_type?: string;
   method?: 'direct' | 'indirect';
   interval?: 'day' | 'week' | 'month' | 'year';

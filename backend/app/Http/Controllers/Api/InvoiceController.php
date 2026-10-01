@@ -209,6 +209,22 @@ class InvoiceController extends Controller
             'patient_name' => 'nullable|string|max:255',
             'cost_center_id' => 'nullable|string|max:100',
             'delivery_date' => 'nullable|date',
+            'cases' => 'nullable|array|max:20',
+            'cases.*.medical_case_id' => 'nullable|integer',
+            'cases.*.case_number' => 'nullable|string|max:100',
+            'cases.*.date_of_case' => 'nullable|date',
+            'cases.*.case_location' => 'nullable|string|max:255',
+            'cases.*.patient_name' => 'nullable|string|max:255',
+            'cases.*.cost_center_id' => 'nullable|string|max:100',
+            'cases.*.delivery_date' => 'nullable|date',
+            'cases.*.pr_no' => 'nullable|string|max:100',
+            'cases.*.contract_no' => 'nullable|string|max:100',
+            'cases.*.plant_code' => 'nullable|string|max:100',
+            'cases.*.company_code' => 'nullable|string|max:100',
+            'cases.*.po_number' => 'nullable|string|max:100',
+            'cases.*.doctor_contact_id' => 'nullable|exists:core_contacts,id',
+            'cases.*.requestor_contact_id' => 'nullable|exists:core_contacts,id',
+            'cases.*.buyer_contact_id' => 'nullable|exists:core_contacts,id',
             'warehouse_id' => 'nullable|integer|exists:warehouses,id',
             'customer_reference' => 'nullable|string|max:100',
             'internal_reference' => 'nullable|string|max:100',
@@ -463,6 +479,7 @@ class InvoiceController extends Controller
                 'invoice_date' => $data['invoice_date'] ?? null,
                 'due_date' => $data['due_date'] ?? null,
                 'case_number' => $data['case_number'] ?? null,
+                'case_information' => $data['cases'] ?? null,
                 'pr_no' => $data['pr_no'] ?? null, 'contract_no' => $data['contract_no'] ?? null,
                 'plant_code' => $data['plant_code'] ?? null, 'company_code' => $data['company_code'] ?? null,
                 'buyer_contact_id' => $data['buyer_contact_id'] ?? null,
@@ -638,6 +655,10 @@ class InvoiceController extends Controller
             $salesOrder,
             empty($invoiceOverrides) ? null : $invoiceOverrides
         );
+
+        if (! empty($data['cases'])) {
+            $invoice->update(['case_information' => array_values($data['cases'])]);
+        }
 
         // Lot/expiry values belong to the invoice lines rather than sales-order
         // lines. Match by the source line's `sequence` (stable even when the
@@ -883,6 +904,22 @@ class InvoiceController extends Controller
             'patient_name' => 'nullable|string|max:255',
             'cost_center_id' => 'nullable|string|max:100',
             'delivery_date' => 'nullable|date',
+            'cases' => 'nullable|array|max:20',
+            'cases.*.medical_case_id' => 'nullable|integer',
+            'cases.*.case_number' => 'nullable|string|max:100',
+            'cases.*.date_of_case' => 'nullable|date',
+            'cases.*.case_location' => 'nullable|string|max:255',
+            'cases.*.patient_name' => 'nullable|string|max:255',
+            'cases.*.cost_center_id' => 'nullable|string|max:100',
+            'cases.*.delivery_date' => 'nullable|date',
+            'cases.*.pr_no' => 'nullable|string|max:100',
+            'cases.*.contract_no' => 'nullable|string|max:100',
+            'cases.*.plant_code' => 'nullable|string|max:100',
+            'cases.*.company_code' => 'nullable|string|max:100',
+            'cases.*.po_number' => 'nullable|string|max:100',
+            'cases.*.doctor_contact_id' => 'nullable|exists:core_contacts,id',
+            'cases.*.requestor_contact_id' => 'nullable|exists:core_contacts,id',
+            'cases.*.buyer_contact_id' => 'nullable|exists:core_contacts,id',
             'customer_reference' => 'nullable|string|max:100',
             'internal_reference' => 'nullable|string|max:100',
             'attention_to' => 'nullable|string|max:255',
@@ -973,6 +1010,11 @@ class InvoiceController extends Controller
                     ? (string) $validated['payment_terms']
                     : null;
                 unset($validated['payment_terms']);
+            }
+
+            if (array_key_exists('cases', $validated)) {
+                $validated['case_information'] = $validated['cases'];
+                unset($validated['cases']);
             }
 
             $invoice->update($validated);
