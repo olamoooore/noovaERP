@@ -102,6 +102,9 @@ class StatutoryReturnController extends Controller
             'legal_entity_id' => $entityId,
         ];
 
+        // #269: VERIFY-tagged pack rates are not filing-ready until sign-off.
+        $data['verification_warning'] = \App\Support\TaxPackVerificationGuard::warningFor($country, $period);
+
         return response()->json(['data' => $data]);
     }
 
@@ -203,7 +206,11 @@ class StatutoryReturnController extends Controller
             return $filing;
         });
 
-        return response()->json(['message' => $return['form'].' filed (version '.$filing->filing_version.')', 'data' => $filing], 201);
+        return response()->json([
+            'message' => $return['form'].' filed (version '.$filing->filing_version.')',
+            'data' => $filing,
+            'verification_warning' => \App\Support\TaxPackVerificationGuard::warningFor($country, $period),
+        ], 201);
     }
 
     /**
