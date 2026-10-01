@@ -184,10 +184,39 @@ class PosOrderController extends Controller
 
         $session = $this->validateSessionIsOpen($validated['session_id'], $validated['terminal_id']);
 
-        return DB::transaction(function () use ($validated) {
+        // ── MRD FR-9.1: terminal currency configuration + order FX snapshot ──
+        $terminal = \Modules\POS\Models\PosTerminal::find($validated['terminal_id']);
+        $currencySetting = Setting::getValue('currency', ['code' => 'USD']);
+        $baseCurrency = \App\Services\DocumentCurrencyResolver::baseFor(null, $validated['customer_id'] ?? null);
+
+        $requestedCurrency = strtoupper(trim((string) ($validated['currency'] ?? '')));
+        $orderCurrency = $requestedCurrency !== ''
+            ? $requestedCurrency
+            : strtoupper((string) ($terminal?->default_currency ?: ($currencySetting['code'] ?? $baseCurrency)));
+
+        $allowedCurrencies = is_array($terminal?->allowed_currencies)
+            ? array_map('strtoupper', $terminal->allowed_currencies)
+            : [];
+
+        if ($allowedCurrencies !== [] && ! in_array($orderCurrency, $allowedCurrencies, true)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'currency' => "Currency {$orderCurrency} is not enabled on terminal '{$terminal?->name}'.". 
+                    ' Allowed: '.implode(', ', $allowedCurrencies).'.',
+            ]);
+        }
+
+        $posSnapshot = \App\Services\DocumentCurrencyResolver::snapshot(
+            $orderCurrency,
+            $validated['customer_id'] ?? null,
+            null,
+            now()->toDateString(),
+        );
+        $posForeign = $posSnapshot['currency_code'] !== $posSnapshot['base_currency_code'];
+        $posRate = (float) $posSnapshot['exchange_rate'];
+
+        return DB::transaction(function () use ($validated, $posSnapshot, $posForeign, $posRate) {
             $externalId = $validated['external_id'] ?? (string) Str::uuid();
 
-            $currencySetting = Setting::getValue('currency', ['code' => 'USD']);
             $taxSetting = Setting::getValue('tax', [
                 'enabled' => true,
                 'pricing_mode' => 'exclusive',
@@ -201,7 +230,9 @@ class PosOrderController extends Controller
                 [
                     'order_number' => $this->makeOrderNumber(),
                     'status' => 'draft',
-                    'currency' => $validated['currency'] ?? ($currencySetting['code'] ?? 'USD'),
+                    'currency' => $posSnapshot['currency_code'],
+                    'exchange_rate' => $posRate,
+                    'base_currency_code' => $posSnapshot['base_currency_code'],
                     'notes' => $validated['notes'] ?? null,
                     'customer_id' => $validated['customer_id'] ?? null,
                     'session_id' => $validated['session_id'] ?? null,
@@ -272,6 +303,14 @@ class PosOrderController extends Controller
                         ! empty($validated['customer_id']) ? (int) $validated['customer_id'] : null,
                         $variant?->id,
                     );
+
+                // FR-9.1: the POS UI prices from the BASE catalogue; a foreign
+                // order converts every line into the order currency using the
+                // inverse of the snapshot rate (snapshot = doc → base), so the
+                // order totals and the GL at post time stay consistent.
+                if ($posForeign && $posRate > 0) {
+                    $unitPrice = round($unitPrice / $posRate, 2);
+                }
 
                 $lineSubtotal = $qty * $unitPrice;
 

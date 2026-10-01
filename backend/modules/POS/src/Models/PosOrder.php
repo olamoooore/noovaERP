@@ -33,6 +33,8 @@ class PosOrder extends Model
         'discount_value',
         'discount_amount',
         'currency',
+        'exchange_rate',
+        'base_currency_code',
         'notes',
         'journal_entry_id',
         'created_by',
@@ -54,6 +56,7 @@ class PosOrder extends Model
     ];
 
     protected $casts = [
+        'exchange_rate' => 'decimal:6',
         'subtotal' => 'decimal:2',
         'tax_amount' => 'decimal:2',
         'total' => 'decimal:2',

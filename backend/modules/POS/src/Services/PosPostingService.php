@@ -25,27 +25,37 @@ class PosPostingService
     {
         $lines = [];
 
-        // DR Cash
+        // MRD FR-9.1: a foreign POS order posts BASE amounts at the order's
+        // snapshot rate; the receipt-facing columns keep the document figures
+        // (currency_code=base, original_amount=doc, exchange_rate=snapshot).
+        $baseCurrency = strtoupper((string) ($order->base_currency_code
+            ?: \App\Services\DocumentCurrencyResolver::baseFor(null, $order->customer_id)));
+        $docCurrency = strtoupper((string) ($order->currency ?: $baseCurrency));
+        $rate = (float) ($order->exchange_rate ?? 1.0);
+        $foreign = $docCurrency !== $baseCurrency && $rate > 0;
+        $toBase = static fn (float $docAmount): float => $foreign
+            ? round($docAmount * $rate, 2)
+            : round($docAmount, 2);
+
+        // DR Cash (at the order snapshot rate when foreign)
         $lines[] = new PostingRequestLine(
             accountMappingKey: 'cash',
             accountId: null,
-            debit: $totalPaid,
+            debit: $toBase($totalPaid),
             credit: 0,
             description: 'POS payment received',
             reference: $order->order_number,
+            currencyCode: $foreign ? $baseCurrency : null,
+            originalAmount: $foreign ? round($totalPaid, 2) : null,
+            exchangeRate: $foreign ? $rate : null,
         );
 
-        // CR Sales Revenue
-        if ((float) $order->subtotal > 0) {
-            $lines[] = new PostingRequestLine(
-                accountMappingKey: 'sales_revenue',
-                accountId: null,
-                debit: 0,
-                credit: (float) $order->subtotal,
-                description: 'POS sales revenue',
-                reference: $order->order_number,
-            );
-        }
+        // CR Sales Revenue — for foreign orders the revenue leg is emitted
+        // AFTER tax so it can absorb the ≤0.01-per-leg conversion residual
+        // and keep the entry exactly balanced (same §9.4 rule as invoices).
+        $revenueBase = $toBase((float) $order->subtotal);
+        $revenueOriginal = round((float) $order->subtotal, 2);
+        $emitRevenue = (float) $order->subtotal > 0;
 
         // CR Sales Tax — MRD TAX-REQ-07 (D2): build a canonical, persisted
         // TaxDeterminationResult from the booked item tax and pass it into the
@@ -55,6 +65,7 @@ class PosPostingService
         // exactly (balance-safe allocation).
         $taxDetermination = null;
         $bookedTaxTotal = round((float) $order->tax_amount, 2);
+        $taxBaseTotal = 0.0;
 
         if ($bookedTaxTotal > 0) {
             $determinationService = app(\App\Services\TaxDeterminationService::class);
@@ -78,17 +89,40 @@ class PosPostingService
                 if ($allocation['amount'] <= 0) {
                     continue;
                 }
+                $taxBaseTotal += $toBase((float) $allocation['amount']);
                 $lines[] = new PostingRequestLine(
                     accountMappingKey: 'sales_tax_payable',
                     accountId: null,
                     debit: 0,
-                    credit: $allocation['amount'],
+                    credit: $toBase((float) $allocation['amount']),
                     description: 'POS sales tax'.($allocation['tax_code'] ? " [{$allocation['tax_code']}]" : ''),
                     reference: $order->order_number,
                     taxCode: $allocation['tax_code'],
                     taxId: $allocation['tax_id'],
+                    currencyCode: $foreign ? $baseCurrency : null,
+                    originalAmount: $foreign ? round((float) $allocation['amount'], 2) : null,
+                    exchangeRate: $foreign ? $rate : null,
                 );
             }
+
+            if ($foreign && $emitRevenue) {
+                $revenueBase = round($toBase($totalPaid) - $taxBaseTotal, 2);
+                $revenueOriginal = round($revenueBase / max($rate, 0.000001), 2);
+            }
+        }
+
+        if ($emitRevenue) {
+            $lines[] = new PostingRequestLine(
+                accountMappingKey: 'sales_revenue',
+                accountId: null,
+                debit: 0,
+                credit: $revenueBase,
+                description: 'POS sales revenue',
+                reference: $order->order_number,
+                currencyCode: $foreign ? $baseCurrency : null,
+                originalAmount: $foreign ? $revenueOriginal : null,
+                exchangeRate: $foreign ? $rate : null,
+            );
         }
 
         // COGS / Inventory

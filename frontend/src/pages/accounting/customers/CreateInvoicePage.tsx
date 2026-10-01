@@ -930,7 +930,19 @@ export const CreateInvoicePage: React.FC = () => {
         const cur = existing.quantity === '' ? 0 : existing.quantity;
         existing.quantity = cur + quantity;
       } else {
-        next.push({ ...emptyLine(), product_id: String(product.id), sku: product.sku || '', description: product.name || '', unit_price: Number(product.price || 0), quantity, price_mode: 'auto' });
+        next.push({
+          ...emptyLine(),
+          product_id: String(product.id),
+          sku: product.sku || '',
+          description: product.name || '',
+          unit_price: Number(product.price || 0),
+          quantity,
+          price_mode: 'auto',
+          // F2: catalogue additions must follow the same tax resolution as a
+          // line-row pick (product tax → linked tax → tenant default) — they
+          // were silently saved as 0% tax.
+          tax_rate: resolveLineTaxRate(product, defaultTaxRate),
+        });
       }
     });
     setLines(next);
@@ -1009,25 +1021,35 @@ export const CreateInvoicePage: React.FC = () => {
     setCustomerDialogOpen(true);
   };
 
-  const subtotal = lines.reduce((sum, line) => {
+  const grossSubtotal = lines.reduce((sum, line) => {
     const qty = line.quantity === '' ? 0 : line.quantity;
     const unitPrice = line.unit_price === '' ? 0 : line.unit_price;
     return sum + qty * unitPrice;
   }, 0);
-  const taxTotal = lines.reduce((sum, line) => {
+  const lineDiscounts = lines.reduce((sum, line) => sum + (line.discount_amount === '' ? 0 : line.discount_amount), 0);
+  // Mirrors Invoice::calculateTotals(): the stored subtotal is net of line
+  // discounts, the document discount is applied BEFORE tax and scales the
+  // total tax by (subtotal − discount) / subtotal.
+  const subtotal = grossSubtotal - lineDiscounts;
+  const lineTaxSum = lines.reduce((sum, line) => {
     const qty = line.quantity === '' ? 0 : line.quantity;
     const unitPrice = line.unit_price === '' ? 0 : line.unit_price;
     const taxRate = line.tax_rate === '' ? 0 : line.tax_rate;
     const discount = line.discount_amount === '' ? 0 : line.discount_amount;
-    const base = qty * unitPrice;
-    return sum + (base - discount) * (taxRate / 100);
+    return sum + (qty * unitPrice - discount) * (taxRate / 100);
   }, 0);
-  const lineDiscounts = lines.reduce((sum, line) => sum + (line.discount_amount === '' ? 0 : line.discount_amount), 0);
   const discountAmt = discountAmount === '' ? 0 : discountAmount;
-  const documentDiscountAmount = discountMode === 'percentage'
-    ? subtotal * (discountAmt / 100)
-    : discountAmt;
-  const total = subtotal + taxTotal - lineDiscounts - documentDiscountAmount;
+  const documentDiscountAmount = Math.min(
+    discountMode === 'percentage' ? subtotal * (discountAmt / 100) : discountAmt,
+    Math.max(subtotal, 0),
+  );
+  const taxableRatio = documentDiscountAmount > 0 && subtotal > 0
+    ? Math.max(subtotal - documentDiscountAmount, 0) / subtotal
+    : 0;
+  const taxTotal = documentDiscountAmount > 0
+    ? Math.round(lineTaxSum * taxableRatio * 100) / 100
+    : lineTaxSum;
+  const total = subtotal - documentDiscountAmount + taxTotal;
 
   const handleCustomerFormSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -1153,19 +1175,27 @@ export const CreateInvoicePage: React.FC = () => {
 
   const handleSubmit = (event: React.FormEvent, linesOverride?: InvoiceLine[]) => {
     event.preventDefault();
-    const submissionLines = linesOverride ?? lines;
+    // F4: untouched placeholder rows are ignored everywhere — they used to
+    // block saving ("Product required on line 1") after catalogue adds while
+    // an empty starting row remained.
+    const isBlankPlaceholder = (line: InvoiceLine) =>
+      (line.line_type ?? 'product') === 'product'
+      && !line.product_id
+      && !line.description.trim()
+      && !line.sku.trim();
+    const submissionLines = (linesOverride ?? lines).filter((line) => !isBlankPlaceholder(line));
 
     if (!customerId) {
       toast({ variant: 'destructive', title: 'Please select a customer' });
       return;
     }
 
-    if (lines.length === 0 || lines.every((line) => !line.description && !line.product_id)) {
+    if (submissionLines.length === 0 || submissionLines.every((line) => !line.description && !line.product_id)) {
       toast({ variant: 'destructive', title: 'Please add at least one line item' });
       return;
     }
 
-    const missingProductIndex = lines.findIndex((line) =>
+    const missingProductIndex = submissionLines.findIndex((line) =>
       (line.line_type ?? 'product') === 'product' && !line.product_id
     );
     if (missingProductIndex >= 0) {
@@ -2222,7 +2252,7 @@ export const CreateInvoicePage: React.FC = () => {
                 discountAmount={discountAmount}
                 onDiscountAmountChange={setDiscountAmount}
                 lineDiscounts={lineDiscounts}
-                documentDiscountAmount={documentDiscountAmount}
+                documentDiscountAmount={0}
                 footer={
                   ((currencyCode && pricingMeta?.base_currency_code && pricingMeta.base_currency_code !== currencyCode) || pricingMeta?.price_list_name) ? (
                     <>

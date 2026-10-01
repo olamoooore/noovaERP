@@ -16,6 +16,8 @@ class PosTerminal extends Model
         'name',
         'code',
         'warehouse_id',
+        'default_currency',
+        'allowed_currencies',
         'receipt_header',
         'receipt_footer',
         'is_active',
@@ -25,6 +27,7 @@ class PosTerminal extends Model
     protected $casts = [
         'is_active' => 'boolean',
         'settings' => 'array',
+        'allowed_currencies' => 'array',
     ];
 
     public function warehouse(): BelongsTo

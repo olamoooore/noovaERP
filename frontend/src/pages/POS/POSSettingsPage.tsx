@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import api from '@/lib/api'
+import pricingApi from '@/lib/pricingApi'
 import { Button } from '@/components/ui/button'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Input } from '@/components/ui/input'
@@ -102,6 +103,9 @@ interface Terminal {
   warehouse_id: number | null
   receipt_header: string | null
   receipt_footer: string | null
+  // MRD FR-9.1: POS terminal currency configuration.
+  default_currency: string | null
+  allowed_currencies: string[] | null
   is_active: boolean
   settings: {
     receipt_print_mode?: 'web' | 'direct'
@@ -547,11 +551,18 @@ function TerminalsTab({
   const queryClient = useQueryClient()
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<Terminal | null>(null)
+
+  const { data: sellableCurrencies = [] } = useQuery({
+    queryKey: ['currencies', 'sellable'],
+    queryFn: () => pricingApi.sellableCurrencies(),
+  })
   const [form, setForm] = useState({
     name: '',
     warehouse_id: '' as string,
     receipt_header: '',
     receipt_footer: '',
+    default_currency: '' as string,
+    allowed_currencies: [] as string[],
     receipt_print_mode: 'web' as 'web' | 'direct',
     printer_agent_id: '',
     receipt_printer_device_id: '',
@@ -617,6 +628,8 @@ function TerminalsTab({
       warehouse_id: '',
       receipt_header: '',
       receipt_footer: '',
+      default_currency: '',
+      allowed_currencies: [],
       receipt_print_mode: 'web',
       printer_agent_id: linkedAgentId || '',
       receipt_printer_device_id: '',
@@ -639,6 +652,8 @@ function TerminalsTab({
       warehouse_id: t.warehouse_id?.toString() ?? '',
       receipt_header: t.receipt_header ?? '',
       receipt_footer: t.receipt_footer ?? '',
+      default_currency: t.default_currency ?? '',
+      allowed_currencies: Array.isArray(t.allowed_currencies) ? t.allowed_currencies : [],
       receipt_print_mode: settings.receipt_print_mode === 'direct' ? 'direct' : 'web',
       printer_agent_id: settings.printer_agent_id || linkedAgentId || '',
       receipt_printer_device_id: settings.receipt_printer_device_id || '',
@@ -655,6 +670,8 @@ function TerminalsTab({
         warehouse_id: form.warehouse_id ? Number(form.warehouse_id) : null,
         receipt_header: form.receipt_header || null,
         receipt_footer: form.receipt_footer || null,
+        default_currency: form.default_currency || null,
+        allowed_currencies: form.allowed_currencies.length ? form.allowed_currencies : null,
         settings: {
           receipt_print_mode: form.receipt_print_mode,
           printer_agent_id: form.printer_agent_id || null,
@@ -842,6 +859,56 @@ function TerminalsTab({
                   placeholder="Thank you for shopping with us!"
                   rows={4}
                 />
+              </div>
+            </div>
+
+            {/* MRD FR-9.1: terminal currency configuration. */}
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Default Currency</Label>
+                <Select
+                  value={form.default_currency || 'auto'}
+                  onValueChange={(v) => setForm((p) => ({ ...p, default_currency: v === 'auto' ? '' : v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">Auto (store currency → base)</SelectItem>
+                    {(sellableCurrencies as any[]).map((currency: any) => (
+                      <SelectItem key={currency.code} value={currency.code}>{currency.code}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Currency new orders on this terminal open in.</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Allowed Currencies</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {(sellableCurrencies as any[]).map((currency: any) => {
+                    const checked = form.allowed_currencies.includes(currency.code)
+                    return (
+                      <button
+                        key={currency.code}
+                        type="button"
+                        onClick={() =>
+                          setForm((p) => ({
+                            ...p,
+                            allowed_currencies: checked
+                              ? p.allowed_currencies.filter((c) => c !== currency.code)
+                              : [...p.allowed_currencies, currency.code],
+                          }))
+                        }
+                        className={`rounded-full border px-2.5 py-1 text-xs ${checked ? 'border-primary bg-primary/10 font-medium' : 'border-input text-muted-foreground'}`}
+                      >
+                        {currency.code}
+                      </button>
+                    )
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Leave everything unselected to allow any enabled currency.
+                </p>
               </div>
             </div>
 

@@ -134,11 +134,31 @@ class ReceiptPrintingService
             'tax' => (float) $order->tax_amount,
             'discount' => (float) ($order->discount_amount ?? 0),
             'total' => (float) $order->total,
+            // MRD FR-9.1: the receipt carries BOTH currencies for foreign orders.
+            'currency_code' => $order->currency,
+            'currency_symbol' => $this->symbolFor($order->currency),
+            'base_currency_code' => $order->base_currency_code,
+            'base_symbol' => $this->symbolFor($order->base_currency_code),
+            'exchange_rate' => (float) ($order->exchange_rate ?? 1.0),
+            'base_total' => round((float) $order->total * (float) ($order->exchange_rate ?? 1.0), 2),
             'payment_method' => ucfirst(str_replace('_', ' ', $paymentMethod)),
             'payment_amount' => $paymentAmount,
             'change' => $change,
             'footer_message' => $footerMessage,
         ];
+    }
+
+    /**
+     * Currency symbol from the tenant catalogue (falls back to the code).
+     */
+    private function symbolFor(?string $code): string
+    {
+        if (! $code) {
+            return '$';
+        }
+
+        return \App\Models\Currency::query()->where('code', strtoupper($code))->value('symbol')
+            ?: strtoupper($code);
     }
 
     /**

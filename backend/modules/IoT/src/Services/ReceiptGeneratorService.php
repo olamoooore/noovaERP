@@ -53,6 +53,15 @@ class ReceiptGeneratorService
         $subtotal = $data['subtotal'] ?? 0;
         $tax = $data['tax'] ?? 0;
         $total = $data['total'] ?? 0;
+        // MRD FR-9.1: currency-aware receipt; foreign orders append the
+        // frozen base equivalent (document currency primary).
+        $symbol = (string) ($data['currency_symbol'] ?? '$');
+        $baseSymbol = (string) ($data['base_symbol'] ?? '');
+        $baseCurrency = (string) ($data['base_currency_code'] ?? '');
+        $currency = (string) ($data['currency_code'] ?? '');
+        $exchangeRate = (float) ($data['exchange_rate'] ?? 1.0);
+        $baseTotal = isset($data['base_total']) ? (float) $data['base_total'] : null;
+        $showBase = $baseCurrency !== '' && $currency !== '' && $currency !== $baseCurrency && $baseTotal !== null;
         $paymentMethod = $data['payment_method'] ?? 'Cash';
         $paymentAmount = $data['payment_amount'] ?? $total;
         $change = $data['change'] ?? 0;
@@ -95,7 +104,7 @@ class ReceiptGeneratorService
 
             // Quantity x Price = Total
             $qtyPrice = sprintf('%d x $%.2f', $quantity, $price);
-            $totalStr = sprintf('$%.2f', $lineTotal);
+            $totalStr = sprintf($symbol.'%.2f', $lineTotal);
             $commands .= $this->formatLine($qtyPrice, $totalStr, 42).self::LF;
         }
 
@@ -103,23 +112,28 @@ class ReceiptGeneratorService
         $commands .= str_repeat('-', 42).self::LF;
 
         // Totals (right-aligned values)
-        $commands .= $this->formatLine('Subtotal:', sprintf('$%.2f', $subtotal), 42).self::LF;
+        $commands .= $this->formatLine('Subtotal:', sprintf($symbol.'%.2f', $subtotal), 42).self::LF;
 
         if ($tax > 0) {
-            $commands .= $this->formatLine('Tax:', sprintf('$%.2f', $tax), 42).self::LF;
+            $commands .= $this->formatLine('Tax:', sprintf($symbol.'%.2f', $tax), 42).self::LF;
         }
 
         $commands .= self::TEXT_BOLD;
-        $commands .= $this->formatLine('TOTAL:', sprintf('$%.2f', $total), 42).self::LF;
+        $commands .= $this->formatLine('TOTAL:', sprintf($symbol.'%.2f', $total), 42).self::LF;
+        if ($showBase) {
+            $rateText = rtrim(rtrim(number_format($exchangeRate, 6, '.', ''), '0'), '.');
+            $commands .= $this->formatLine('Base total:', sprintf($baseSymbol.'%.2f', $baseTotal), 42).self::LF;
+            $commands .= $this->formatLine('Rate:', '1 '.$currency.' = '.$rateText.' '.$baseCurrency, 42).self::LF;
+        }
         $commands .= self::TEXT_NORMAL;
 
         $commands .= self::LF;
 
         // Payment info
-        $commands .= $this->formatLine("Payment ({$paymentMethod}):", sprintf('$%.2f', $paymentAmount), 42).self::LF;
+        $commands .= $this->formatLine("Payment ({$paymentMethod}):", sprintf($symbol.'%.2f', $paymentAmount), 42).self::LF;
 
         if ($change > 0) {
-            $commands .= $this->formatLine('Change:', sprintf('$%.2f', $change), 42).self::LF;
+            $commands .= $this->formatLine('Change:', sprintf($symbol.'%.2f', $change), 42).self::LF;
         }
 
         $commands .= self::LF;

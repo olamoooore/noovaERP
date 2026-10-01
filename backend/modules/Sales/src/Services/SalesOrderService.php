@@ -632,10 +632,11 @@ class SalesOrderService
         $order = $this->createOrder([
             'customer_id' => $posOrder->customer_id,
             'channel' => 'pos',
-            // FR-5.5: conversions copy currency + prices and NEVER re-price.
-            // POS v1 settles in the entity base currency at rate 1.
-            'currency_code' => \App\Services\DocumentCurrencyResolver::baseFor(null, $posOrder->customer_id),
-            'exchange_rate' => 1.000000,
+            // FR-5.5/FR-9.1: conversions copy the POS order's currency and
+            // snapshot (captured at sale time) and NEVER re-price.
+            'currency_code' => $posOrder->currency ?: \App\Services\DocumentCurrencyResolver::baseFor(null, $posOrder->customer_id),
+            'exchange_rate' => (float) ($posOrder->exchange_rate ?? 1.0),
+            'base_currency_code' => $posOrder->base_currency_code ?: null,
             'warehouse_id' => $posOrder->terminal?->warehouse_id,
             'created_by' => $posOrder->created_by,
             'accounting_status' => $this->resolveSourceAccountingStatus('PosOrder', $posOrder->id, $posOrder->journal_entry_id),

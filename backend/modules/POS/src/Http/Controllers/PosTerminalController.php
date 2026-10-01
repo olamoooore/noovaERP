@@ -46,6 +46,10 @@ class PosTerminalController extends Controller
             'settings.printer_agent_id' => 'nullable|string|max:255',
             'settings.receipt_printer_device_id' => 'nullable|string|max:255',
             'settings.label_printer_device_id' => 'nullable|string|max:255',
+            // MRD FR-9.1: terminal currency configuration.
+            'default_currency' => 'nullable|string|size:3|exists:currencies,code',
+            'allowed_currencies' => 'nullable|array',
+            'allowed_currencies.*' => 'string|size:3|exists:currencies,code',
         ]);
 
         $terminal = PosTerminal::create($request->all());
@@ -91,6 +95,10 @@ class PosTerminalController extends Controller
             'settings.receipt_printer_device_id' => 'nullable|string|max:255',
             'settings.label_printer_device_id' => 'nullable|string|max:255',
             'is_active' => 'boolean',
+            // MRD FR-9.1: terminal currency configuration.
+            'default_currency' => 'nullable|string|size:3|exists:currencies,code',
+            'allowed_currencies' => 'nullable|array',
+            'allowed_currencies.*' => 'string|size:3|exists:currencies,code',
         ]);
 
         $terminal->update($request->all());
