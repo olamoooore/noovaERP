@@ -45,6 +45,18 @@ class TaxPeriodLockGate implements AuthorityGate
             }
         }
 
+        // #278: supply-only documents (zero-rated/exempt bills) carry no GL
+        // tax line but DO change the return (F5 box 2/3) — a determination
+        // with tax_lines is tax-bearing for lock purposes even without a
+        // coded posting line.
+        if (! $isTaxBearing) {
+            $determination = $context['tax_determination_result'] ?? null;
+
+            if (is_array($determination) && ! empty($determination['tax_lines'])) {
+                $isTaxBearing = true;
+            }
+        }
+
         if (! $isTaxBearing) {
             return GateEvaluationResult::notApplicable($this->gateCode(), $this->gateOwner());
         }
