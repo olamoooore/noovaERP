@@ -43,6 +43,10 @@ Route::prefix('accounting/tax-report')
         Route::get('/filings', [TaxReportController::class, 'filings']);
         Route::get('/periods', [\App\Http\Controllers\Api\TaxPeriodController::class, 'lockStates']);
         Route::get('/withholding', [TaxReportController::class, 'withholding']);
+        // #270: remittance loop + authority schedule export.
+        Route::post('/withholding/remit', [TaxReportController::class, 'remit'])
+            ->middleware(RequirePermission::using('tax.policy.manage|tax.manage'));
+        Route::get('/withholding/export', [TaxReportController::class, 'withholdingExport']);
     });
 
 /*

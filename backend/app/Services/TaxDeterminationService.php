@@ -287,11 +287,15 @@ class TaxDeterminationService
             } else {
                 $rateMatchesEngine = $resolved && $rate > 0 && abs((float) $resolved['rate'] - $rate) < 0.005;
                 $engineIsZero = $resolved && $rate <= 0 && (float) $resolved['rate'] <= 0;
+                // #270 R4.6: a vendor-profile withholding-rate OVERRIDE keeps
+                // the withholding rule's identity (code/tax_id) even though the
+                // effective rate intentionally differs from the rule.
+                $withholdingOverride = $resolved && ($resolved['tax_type'] ?? null) === 'withholding';
 
-                if ($rateMatchesEngine || $engineIsZero) {
+                if ($rateMatchesEngine || $engineIsZero || $withholdingOverride) {
                     $taxCode = $resolved['tax_code'];
                     $treatment = $resolved['treatment'];
-                    $taxId = $rateMatchesEngine ? ($resolved['tax_id'] ?? null) : null;
+                    $taxId = ($rateMatchesEngine || $withholdingOverride) ? ($resolved['tax_id'] ?? null) : null;
                 } else {
                     $taxCode = $this->resolveTaxCode($product, $jurisdiction, $regime, $rate);
                     $treatment = $rate > 0 ? 'standard_rated' : 'zero_rated';

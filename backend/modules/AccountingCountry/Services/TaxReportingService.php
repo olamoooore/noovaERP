@@ -458,7 +458,10 @@ class TaxReportingService
         $ruleIds = DB::table('taxes')->where('type', 'withholding')->pluck('id')->all();
 
         if ($ruleIds === []) {
-            return ['withheld_by_month' => [], 'total' => 0.0];
+            return [
+                'withheld_by_month' => [], 'total' => 0.0, 'remitted_total' => 0.0,
+                'open_total' => 0.0, 'payable_balance' => $this->whtPayableBalance(), 'variance' => 0.0,
+            ];
         }
 
         $rows = DB::table('tax_transaction_details as ttd')
@@ -481,7 +484,170 @@ class TaxReportingService
             ->get(['ttd.reporting_period', DB::raw('sum(ttd.tax_amount) as withheld')]);
 
         $out = array_map(fn ($r) => ['period' => $r->reporting_period, 'amount' => round((float) $r->withheld, 2)], $rows->all());
+        $total = round(array_sum(array_column($out, 'amount')), 2);
+        $periods = array_column($out, 'period');
+        $remitted = $periods === [] ? 0.0 : $this->remittedTotal($periods);
+        $openAll = round($this->withheldAllTime() - $this->remittedTotal(null), 2);
+        $balance = $this->whtPayableBalance();
 
-        return ['withheld_by_month' => $out, 'total' => round(array_sum(array_column($out, 'amount')), 2)];
+        return [
+            'withheld_by_month' => $out,
+            'total' => $total,
+            'remitted_total' => $remitted,
+            'open_total' => round($total - $remitted, 2),
+            'payable_balance' => $balance,
+            'variance' => round($balance - $openAll, 2),
+        ];
+    }
+
+    /**
+     * #270: WHT schedule per authority + period (YYYY-MM or YYYY-Qn).
+     * Rows: tax_code, withheld, remitted (allocated by withheld share), open.
+     * Remittances are attributed to the period by payment date; the authority
+     * dimension is descriptive on the remittance journal.
+     *
+     * @return array<int, array{tax_code: string, withheld: float, remitted: float, open: float}>
+     */
+    public function withholdingSchedule(string $authority, string $period): array
+    {
+        $authority = strtoupper($authority);
+        $months = str_contains($period, 'Q') ? self::expandFilingPeriod($period) : [$period];
+
+        if ($months === []) {
+            return [];
+        }
+
+        $ruleIds = DB::table('taxes')->where('type', 'withholding')->pluck('id')->all();
+
+        if ($ruleIds === []) {
+            return [];
+        }
+
+        $rows = DB::table('tax_transaction_details as ttd')
+            ->join('journal_entries as je', 'je.id', '=', 'ttd.journal_entry_id')
+            ->leftJoin('taxes as t', 't.id', '=', 'ttd.tax_rule_id')
+            ->whereIn('ttd.tax_rule_id', $ruleIds)
+            ->whereIn('ttd.reporting_period', $months)
+            ->where('je.status', 'posted')
+            // Authority follows the withholding RULE's jurisdiction (the trail
+            // row carries the document's jurisdiction, which may differ).
+            ->whereRaw("upper(coalesce(t.jurisdiction, ttd.jurisdiction, '')) = ?", [$authority])
+            ->where(function ($q) {
+                $q->whereNull('je.lifecycle_status')
+                    ->orWhereNotIn('je.lifecycle_status', ['reversed', 'voided', 'superseded']);
+            })
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))
+                    ->from('journal_entries as rev')
+                    ->whereColumn('rev.reversed_entry_id', 'ttd.journal_entry_id')
+                    ->where('rev.status', 'posted');
+            })
+            ->groupBy('ttd.tax_code')
+            ->get(['ttd.tax_code', DB::raw('sum(ttd.tax_amount) as withheld')]);
+
+        $byCode = [];
+        $withheldTotal = 0.0;
+
+        foreach ($rows as $row) {
+            $byCode[(string) $row->tax_code] = round((float) $row->withheld, 2);
+            $withheldTotal = round($withheldTotal + (float) $row->withheld, 2);
+        }
+
+        $remittedTotal = $this->remittedTotal($months);
+
+        $schedule = [];
+        $running = 0.0;
+        $codes = array_keys($byCode);
+        $lastIndex = count($codes) - 1;
+
+        foreach ($codes as $i => $code) {
+            $remitted = $i === $lastIndex
+                ? round($remittedTotal - $running, 2)
+                : ($withheldTotal > 0 ? round($remittedTotal * ($byCode[$code] / $withheldTotal), 2) : 0.0);
+            $running = round($running + $remitted, 2);
+
+            $schedule[] = [
+                'tax_code' => $code,
+                'withheld' => $byCode[$code],
+                'remitted' => $remitted,
+                'open' => round($byCode[$code] - $remitted, 2),
+            ];
+        }
+
+        return $schedule;
+    }
+
+    /**
+     * Remittances booked for the months (or all time when null): DR legs on
+     * the wht_payable control account from wht_remittance journals.
+     *
+     * @param  array<int, string>|null  $months
+     */
+    private function remittedTotal(?array $months = null): float
+    {
+        $whtAccountId = (int) (\App\Models\AccountMapping::where('mapping_key', 'wht_payable')->value('account_id') ?: 0);
+
+        if (! $whtAccountId) {
+            return 0.0;
+        }
+
+        $query = DB::table('journal_entry_lines as jel')
+            ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
+            ->where('jel.account_id', $whtAccountId)
+            ->where('je.type', 'wht_remittance')
+            ->where('je.status', 'posted');
+
+        if ($months !== null && $months !== []) {
+            $query->whereRaw("to_char(je.entry_date, 'YYYY-MM') IN (".implode(',', array_fill(0, count($months), '?')).')', $months);
+        }
+
+        return round((float) $query->sum('jel.debit'), 2);
+    }
+
+    private function withheldAllTime(): float
+    {
+        $ruleIds = DB::table('taxes')->where('type', 'withholding')->pluck('id')->all();
+
+        if ($ruleIds === []) {
+            return 0.0;
+        }
+
+        return round((float) DB::table('tax_transaction_details as ttd')
+            ->join('journal_entries as je', 'je.id', '=', 'ttd.journal_entry_id')
+            ->whereIn('ttd.tax_rule_id', $ruleIds)
+            ->where('je.status', 'posted')
+            ->where(function ($q) {
+                $q->whereNull('je.lifecycle_status')
+                    ->orWhereNotIn('je.lifecycle_status', ['reversed', 'voided', 'superseded']);
+            })
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))
+                    ->from('journal_entries as rev')
+                    ->whereColumn('rev.reversed_entry_id', 'ttd.journal_entry_id')
+                    ->where('rev.status', 'posted');
+            })
+            ->sum('ttd.tax_amount'), 2);
+    }
+
+    private function whtPayableBalance(): float
+    {
+        $whtAccountId = (int) (\App\Models\AccountMapping::where('mapping_key', 'wht_payable')->value('account_id') ?: 0);
+
+        if (! $whtAccountId) {
+            return 0.0;
+        }
+
+        $row = DB::table('journal_entry_lines as jel')
+            ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
+            ->where('jel.account_id', $whtAccountId)
+            ->where('je.status', 'posted')
+            ->where(function ($q) {
+                $q->whereNull('je.lifecycle_status')
+                    ->orWhereNotIn('je.lifecycle_status', ['reversed', 'voided', 'superseded']);
+            })
+            ->selectRaw('coalesce(sum(jel.credit - jel.debit), 0) as balance')
+            ->value('balance');
+
+        return round((float) $row, 2);
     }
 }

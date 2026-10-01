@@ -63,6 +63,17 @@ class AccountingOriginBillService
                 $quantity = (float) $line->quantity;
                 $unitPrice = (float) $line->unitPrice;
                 $taxRate = (float) $line->taxRate;
+
+                // R4.6 (#270): vendor tax-profile consultation — exemption and
+                // withholding-rate overrides supersede the product rule rate.
+                $taxWarnings = [];
+                $taxRate = \App\Support\VendorTaxProfileResolver::resolveWithholdingRate(
+                    $data->vendorId ? (int) $data->vendorId : null,
+                    $line->productId ? (int) $line->productId : null,
+                    $taxRate,
+                    $taxWarnings,
+                );
+
                 $lineTotal = $quantity * $unitPrice;
                 // MRD R3.1: engine-owned arithmetic (this path also missed rounding).
                 $taxAmount = \App\Services\TaxEngineService::calculate((float) $lineTotal, $taxRate, false)['tax'];
