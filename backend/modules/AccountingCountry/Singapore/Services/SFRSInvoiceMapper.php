@@ -157,6 +157,72 @@ class SFRSInvoiceMapper implements InvoiceSchemaMapperContract
      */
     private function mapTotals($invoice): array
     {
+        // G-37 (#274): tax breakdown per Peppol category (S/Z/E/O) sourced
+        // from the persisted determination when available; falls back to a
+        // rate-based split from the lines.
+        $determinationLines = [];
+        if (function_exists('tenant') && tenant() !== null && isset($invoice->id)) {
+            $determinationLines = app(\App\Services\TaxDeterminationService::class)
+                ->latestDeterminationLines('invoice', (int) $invoice->id);
+        }
+
+        $categories = [];
+        $lines = $invoice->lineItems ?? $invoice->lines ?? collect();
+
+        foreach ($lines as $line) {
+            $det = $determinationLines[$line->id] ?? null;
+            $treatment = $det['treatment'] ?? null;
+
+            $code = match ($treatment) {
+                'standard_rated' => 'S',
+                'zero_rated' => 'Z',
+                'exempt' => 'E',
+                'out_of_scope' => 'O',
+                default => (float) ($line->tax_amount ?? 0) > 0 ? 'S' : 'Z',
+            };
+
+            $taxable = (float) ($det['taxable_base']
+                ?? ((float) ($line->quantity ?? 1) * (float) ($line->unit_price ?? 0) - (float) ($line->discount_amount ?? 0)));
+            $taxAmount = (float) ($det['tax_amount'] ?? $line->tax_amount ?? 0);
+            $rate = (float) ($det['tax_rate'] ?? $line->tax_rate ?? 0);
+
+            $categories[$code] ??= ['code' => $code, 'percent' => $rate, 'taxable' => 0.0, 'tax' => 0.0];
+            $categories[$code]['taxable'] = round($categories[$code]['taxable'] + $taxable, 2);
+            $categories[$code]['tax'] = round($categories[$code]['tax'] + $taxAmount, 2);
+        }
+
+        $taxSubtotals = [];
+
+        foreach ($categories as $category) {
+            $taxSubtotals[] = [
+                'tax_category_code' => $category['code'],
+                'percent' => $category['percent'],
+                'taxable_amount' => [
+                    'amount' => $category['taxable'],
+                    'currency_id' => $invoice->currency_code ?? 'SGD',
+                ],
+                'tax_amount' => [
+                    'amount' => $category['tax'],
+                    'currency_id' => $invoice->currency_code ?? 'SGD',
+                ],
+            ];
+        }
+
+        if ($taxSubtotals === []) {
+            $taxSubtotals[] = [
+                'tax_category_code' => 'S', // Standard rate
+                'percent' => $invoice->tax_rate ?? 0,
+                'taxable_amount' => [
+                    'amount' => $invoice->subtotal,
+                    'currency_id' => $invoice->currency_code ?? 'SGD',
+                ],
+                'tax_amount' => [
+                    'amount' => $invoice->tax_amount ?? 0,
+                    'currency_id' => $invoice->currency_code ?? 'SGD',
+                ],
+            ];
+        }
+
         return [
             'line_extension_total_amount' => [
                 'amount' => $invoice->subtotal,
@@ -165,20 +231,7 @@ class SFRSInvoiceMapper implements InvoiceSchemaMapperContract
             'tax_total' => [
                 'amount' => $invoice->tax_amount ?? 0,
                 'currency_id' => $invoice->currency_code ?? 'SGD',
-                'tax_subtotal' => [
-                    [
-                        'tax_category_code' => 'S', // Standard rate
-                        'percent' => $invoice->tax_rate ?? 0,
-                        'taxable_amount' => [
-                            'amount' => $invoice->subtotal,
-                            'currency_id' => $invoice->currency_code ?? 'SGD',
-                        ],
-                        'tax_amount' => [
-                            'amount' => $invoice->tax_amount ?? 0,
-                            'currency_id' => $invoice->currency_code ?? 'SGD',
-                        ],
-                    ],
-                ],
+                'tax_subtotal' => $taxSubtotals,
             ],
             'legal_monetary_total' => [
                 'line_extension_total_amount' => [

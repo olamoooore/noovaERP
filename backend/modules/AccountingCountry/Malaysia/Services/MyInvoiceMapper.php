@@ -22,8 +22,8 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
     /**
      * Map internal-expense JournalEntry as a MyInvois document.
      *
-     * @param  bool  $selfBilled  When true (default): LHDN type 05 self-billed invoice.
-     *                            When false: regular invoice (type 01). Pass false when the
+     * @param  bool  $selfBilled  When true (default): LHDN self-billed invoice (type 11 per the
+     *                            e-Invoice API v1.0 spec). When false: regular invoice (type 01).
      *                            LHDN portal account does not have self-billing activated.
      */
     public function mapJournalEntry(\App\Models\JournalEntry $journalEntry, bool $selfBilled = true): array
@@ -145,8 +145,19 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
         $currency = $invoice->currency_code ?? 'MYR';
 
         $lineCollection = $invoice->lineItems ?? $invoice->lines ?? collect();
-        $lineItems = $lineCollection->map(function ($line, int $index) {
-            return $this->mapLineItem($line, $index + 1);
+
+        // G-37 (#274): e-invoice tax identity is sourced from the PERSISTED
+        // determination (treatment, rate, amount), not recomputed guesses.
+        // No determination (or no tenant context, e.g. pure unit tests) keeps
+        // the legacy booked-line behaviour.
+        $determinationLines = [];
+        if (function_exists('tenant') && tenant() !== null) {
+            $determinationLines = app(\App\Services\TaxDeterminationService::class)
+                ->latestDeterminationLines('invoice', (int) $invoice->id);
+        }
+
+        $lineItems = $lineCollection->map(function ($line, int $index) use ($determinationLines) {
+            return $this->mapLineItem($line, $index + 1, $determinationLines[$line->id] ?? null);
         })->toArray();
 
         if (empty($lineItems)) {
@@ -774,23 +785,38 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
     /**
      * Map line item
      */
-    private function mapLineItem($line, int $lineNumber): array
+    private function mapLineItem($line, int $lineNumber, ?array $determinationLine = null): array
     {
         $quantity = (float) ($line->quantity ?? 1);
         $unitPrice = (float) ($line->unit_price ?? 0);
         $discountAmount = (float) ($line->discount_amount ?? 0);
-        $taxRate = (float) ($line->tax_rate ?? 0);
-        $taxAmount = (float) ($line->tax_amount ?? 0);
+        $taxRate = (float) ($determinationLine['tax_rate'] ?? $line->tax_rate ?? 0);
+        $taxAmount = (float) ($determinationLine['tax_amount'] ?? $line->tax_amount ?? 0);
         $lineSubtotal = round(($quantity * $unitPrice) - $discountAmount, 2);
 
         if ($lineSubtotal < 0) {
             $lineSubtotal = 0.0;
         }
 
-        if ($taxAmount <= 0 && $taxRate > 0) {
+        if ($taxAmount <= 0 && $taxRate > 0 && $determinationLine === null) {
             // MRD R3.1: single tax arithmetic via TaxEngineService::calculate().
-        $taxAmount = \App\Services\TaxEngineService::calculate((float) $lineSubtotal, (float) $taxRate, false)['tax'];
+            $taxAmount = \App\Services\TaxEngineService::calculate((float) $lineSubtotal, (float) $taxRate, false)['tax'];
         }
+
+        // G-37 (#274): LHDN tax type per line — standard-rated sales uses 01,
+        // services 02; zero-rated is '06' (Not Applicable); exempt/out-of-scope
+        // is 'E' with exemption reason + amount (distinct from zero-rated).
+        $treatment = $determinationLine['treatment'] ?? null;
+        $engineTaxType = $determinationLine['tax_type'] ?? null;
+
+        $taxTypeCode = match (true) {
+            in_array($treatment, ['exempt', 'out_of_scope'], true) => 'E',
+            $treatment === 'zero_rated' => '06',
+            $treatment === 'standard_rated' => $engineTaxType === 'service' ? '02' : '01',
+            default => $taxAmount > 0 ? '01' : 'E',
+        };
+
+        $isExemptOrZero = in_array($taxTypeCode, ['E', '06'], true);
 
         return [
             'line_number' => $lineNumber,
@@ -803,9 +829,11 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
             'discount_amount' => round($discountAmount, 2),
             'discount_percent' => round((float) ($line->discount_percent ?? 0), 2),
             'tax_type' => $line->tax_type ?? 'SST',
+            'tax_type_code' => $taxTypeCode,
             'sst_rate' => $taxRate,
             'sst_amount' => round($taxAmount, 2),
             'tax_exemption_reason' => $line->tax_exemption_reason ?? null,
+            'tax_exemption_amount' => $isExemptOrZero ? $lineSubtotal : null,
         ];
     }
 

@@ -242,9 +242,50 @@ class PeppolSubmissionProvider implements SubmissionProviderContract
         }
 
         $taxTotal = $document->createElement('cac:TaxTotal');
+        $currency = $payload['currency'] ?? 'SGD';
         $taxAmount = $document->createElement('cbc:TaxAmount', number_format((float) ($payload['tax_amount'] ?? 0), 2, '.', ''));
-        $taxAmount->setAttribute('currencyID', $payload['currency'] ?? 'SGD');
+        $taxAmount->setAttribute('currencyID', $currency);
         $taxTotal->appendChild($taxAmount);
+
+        // G-37 (#274): Peppol TaxTotal carries a TaxSubtotal per category
+        // (S standard / Z zero-rated / E exempt / O out of scope). Falls back
+        // to deriving one category from the totals when the mapper supplied
+        // no breakdown.
+        $taxSubtotalEntries = $payload['tax_subtotal'] ?? null;
+
+        if (! is_array($taxSubtotalEntries) || $taxSubtotalEntries === []) {
+            $taxSubtotalEntries = [[
+                'tax_category_code' => (float) ($payload['tax_amount'] ?? 0) > 0 ? 'S' : 'Z',
+                'percent' => $payload['tax_rate'] ?? 0,
+                'taxable_amount' => ['amount' => $payload['subtotal'] ?? 0],
+                'tax_amount' => ['amount' => $payload['tax_amount'] ?? 0],
+            ]];
+        }
+
+        foreach ($taxSubtotalEntries as $entry) {
+            $subtotal = $document->createElement('cac:TaxSubtotal');
+
+            $taxableAmount = $document->createElement('cbc:TaxableAmount', number_format((float) ($entry['taxable_amount']['amount'] ?? 0), 2, '.', ''));
+            $taxableAmount->setAttribute('currencyID', $currency);
+            $subtotal->appendChild($taxableAmount);
+
+            $subtotalTax = $document->createElement('cbc:TaxAmount', number_format((float) ($entry['tax_amount']['amount'] ?? 0), 2, '.', ''));
+            $subtotalTax->setAttribute('currencyID', $currency);
+            $subtotal->appendChild($subtotalTax);
+
+            $percent = $document->createElement('cbc:Percent', number_format((float) ($entry['percent'] ?? 0), 2, '.', ''));
+            $subtotal->appendChild($percent);
+
+            $category = $document->createElement('cac:TaxCategory');
+            $category->appendChild($document->createElement('cbc:ID', (string) ($entry['tax_category_code'] ?? 'S')));
+            $taxScheme = $document->createElement('cac:TaxScheme');
+            $taxScheme->appendChild($document->createElement('cbc:ID', 'GST'));
+            $category->appendChild($taxScheme);
+            $subtotal->appendChild($category);
+
+            $taxTotal->appendChild($subtotal);
+        }
+
         $invoice->appendChild($taxTotal);
 
         $monetaryTotal = $document->createElement('cac:LegalMonetaryTotal');

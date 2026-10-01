@@ -175,6 +175,9 @@ class MyInvoiceSubmissionProviderTest extends TestCase
 
         $payload = $this->validPayload();
         unset($payload['buyer']['tin'], $payload['buyer']['company_registration']);
+        // G-37 (#274): an explicitly non-consolidated document must not be
+        // silently upgraded to consolidated; it requires a real buyer TIN.
+        $payload['is_consolidated'] = false;
         $result = $provider->submit($payload, [
             'api_key' => 'sandbox-key',
             'api_token' => 'sandbox-token',
@@ -259,7 +262,10 @@ class MyInvoiceSubmissionProviderTest extends TestCase
         $document = $method->invoke($provider, $payload);
         $postalAddress = $document['Invoice'][0]['AccountingCustomerParty'][0]['Party'][0]['PostalAddress'][0];
 
-        $this->assertSame('NA', $postalAddress['CountrySubentityCode'][0]['_']);
+        // G-37 (#274): a buyer without TIN is auto-classified consolidated, and
+        // LHDN requires state '17' (Not Applicable) for consolidated MY invoices
+        // instead of the invalid 'NA' literal.
+        $this->assertSame('17', $postalAddress['CountrySubentityCode'][0]['_']);
         $this->assertSame('NA', $postalAddress['AddressLine'][0]['Line'][0]['_']);
         $this->assertSame('NA', $postalAddress['CityName'][0]['_']);
         $this->assertSame('00000', $postalAddress['PostalZone'][0]['_']);
@@ -569,7 +575,7 @@ class MyInvoiceSubmissionProviderTest extends TestCase
         $this->assertSame('04', $ubl['Invoice'][0]['InvoiceTypeCode'][0]['_'], 'Refund Note must be type 04');
     }
 
-    public function test_self_billed_invoice_produces_type_code_05(): void
+    public function test_self_billed_invoice_produces_type_code_11(): void
     {
         $container = [];
         $provider = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
@@ -583,10 +589,10 @@ class MyInvoiceSubmissionProviderTest extends TestCase
 
         $this->assertTrue($result['success'], $result['message'] ?? '');
         $ubl = $this->captureUbl($container);
-        $this->assertSame('05', $ubl['Invoice'][0]['InvoiceTypeCode'][0]['_'], 'Self-Billed Invoice must be type 05');
+        $this->assertSame('11', $ubl['Invoice'][0]['InvoiceTypeCode'][0]['_'], 'Self-Billed Invoice must be type 11 (LHDN e-Invoice API v1.0)');
     }
 
-    public function test_self_billed_credit_note_produces_type_code_06(): void
+    public function test_self_billed_credit_note_produces_type_code_12(): void
     {
         $container = [];
         $provider = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
@@ -602,7 +608,7 @@ class MyInvoiceSubmissionProviderTest extends TestCase
 
         $this->assertTrue($result['success'], $result['message'] ?? '');
         $ubl = $this->captureUbl($container);
-        $this->assertSame('06', $ubl['Invoice'][0]['InvoiceTypeCode'][0]['_']);
+        $this->assertSame('12', $ubl['Invoice'][0]['InvoiceTypeCode'][0]['_']);
     }
 
     // -------------------------------------------------------------------------
@@ -722,5 +728,37 @@ class MyInvoiceSubmissionProviderTest extends TestCase
             $ubl['Invoice'][0],
             'MyInvois JSON 1.0 rejects BillingPeriod as an additional property'
         );
+    }
+
+    public function test_build_payload_emits_per_category_tax_subtotals_and_exemption_fields(): void
+    {
+        $provider = $this->makeProviderWithResponses([]);
+
+        $payload = $this->validPayload();
+        $payload['line_items'] = [
+            ['line_number' => 1, 'description' => 'Standard sale', 'quantity' => 1, 'unit_price' => 100, 'line_amount' => 100, 'sst_rate' => 9, 'sst_amount' => 9, 'tax_type_code' => '01'],
+            ['line_number' => 2, 'description' => 'Zero-rated export', 'quantity' => 1, 'unit_price' => 50, 'line_amount' => 50, 'sst_rate' => 0, 'sst_amount' => 0, 'tax_type_code' => '06', 'tax_exemption_reason' => 'Zero-rated supply', 'tax_exemption_amount' => 50],
+            ['line_number' => 3, 'description' => 'Exempt supply', 'quantity' => 1, 'unit_price' => 50, 'line_amount' => 50, 'sst_rate' => 0, 'sst_amount' => 0, 'tax_type_code' => 'E', 'tax_exemption_reason' => 'Statutory exemption', 'tax_exemption_amount' => 50],
+        ];
+        $payload['totals'] = ['net_amount' => 200, 'tax_amount' => 9, 'gross_amount' => 209];
+
+        $reflection = new \ReflectionClass($provider);
+        $method = $reflection->getMethod('buildUblDocumentFromMappedPayload');
+        $method->setAccessible(true);
+
+        $document = $method->invoke($provider, $payload);
+        $lines = $document['Invoice'][0]['InvoiceLine'];
+
+        $this->assertSame('01', $lines[0]['TaxTotal'][0]['TaxSubtotal'][0]['TaxCategory'][0]['ID'][0]['_']);
+        $this->assertSame('06', $lines[1]['TaxTotal'][0]['TaxSubtotal'][0]['TaxCategory'][0]['ID'][0]['_']);
+        $this->assertSame('Zero-rated supply', $lines[1]['TaxTotal'][0]['TaxSubtotal'][0]['TaxExemptionReason'][0]['_']);
+        $this->assertSame('E', $lines[2]['TaxTotal'][0]['TaxSubtotal'][0]['TaxCategory'][0]['ID'][0]['_']);
+        $this->assertSame('Statutory exemption', $lines[2]['TaxTotal'][0]['TaxSubtotal'][0]['TaxExemptionReason'][0]['_']);
+        $this->assertEqualsWithDelta(50.0, (float) $lines[2]['TaxTotal'][0]['TaxSubtotal'][0]['TaxExemptionAmount'][0]['_'], 0.001);
+
+        $invoiceSubtotals = $document['Invoice'][0]['TaxTotal'][0]['TaxSubtotal'];
+        $codes = array_map(fn ($st) => $st['TaxCategory'][0]['ID'][0]['_'], $invoiceSubtotals);
+        sort($codes);
+        $this->assertSame(['01', '06', 'E'], $codes, 'Invoice-level TaxTotal must carry one TaxSubtotal per category.');
     }
 }

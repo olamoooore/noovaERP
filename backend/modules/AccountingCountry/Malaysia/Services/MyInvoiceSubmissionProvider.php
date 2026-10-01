@@ -503,7 +503,12 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         // LHDN rule: EI00000000010 is the end-consumer TIN and is only valid for
         // consolidated invoices (type 004). Auto-classify as consolidated when the
         // buyer has no real TIN so submission proceeds correctly.
-        if ($buyerTin === 'EI00000000010' || $buyerTin === '') {
+        // G-37 (#274): an EXPLICIT non-consolidated payload must never be
+        // silently upgraded to consolidated — it requires a real buyer TIN.
+        // Unspecified callers (B2C/POS) keep the auto-classification.
+        $explicitlyNonConsolidated = array_key_exists('is_consolidated', $payload) && $payload['is_consolidated'] === false;
+
+        if (! $explicitlyNonConsolidated && ($buyerTin === 'EI00000000010' || $buyerTin === '')) {
             $isConsolidatedInvoice = true;
         }
 
@@ -1011,7 +1016,8 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         $buyerTaxId = $this->resolveTaxTypeCode($buyer['identity_type'] ?? null, ! empty($buyer['company_registration'] ?? null));
         $buyerTinValue = strtoupper((string) ($buyer['tin'] ?? ''));
         $isGeneralBuyerTin = $buyerTinValue === '' || $buyerTinValue === 'EI00000000010';
-        if ($isGeneralBuyerTin) {
+        $explicitlyNonConsolidated = array_key_exists('is_consolidated', $payload) && $payload['is_consolidated'] === false;
+        if ($isGeneralBuyerTin && ! $explicitlyNonConsolidated) {
             $isConsolidatedInvoice = true;
             // LHDN's consolidated/general-public identity is TIN
             // EI00000000010 with BRN "NA". A fabricated NRIC is rejected by
@@ -1023,6 +1029,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         $formattedIssueTime = $this->formatIssueTime($issueTime);
 
         $invoiceLines = [];
+        $taxCategoryTotals = [];
         foreach ($lineItems as $index => $line) {
             if (! is_array($line)) {
                 continue;
@@ -1036,8 +1043,45 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             $taxRate = (float) ($line['sst_rate'] ?? $line['tax_rate'] ?? 0);
             $taxAmount = (float) ($line['sst_amount'] ?? \App\Services\TaxEngineService::calculate((float) $lineAmount, (float) $taxRate, false)['tax']);
             $classificationCode = (string) ($line['classification_code'] ?? '001');
-            $taxTypeCode = (string) ($line['tax_type_code'] ?? '01');
+            // G-37 (#274): never default to '01' blindly — a zero-tax line is
+            // at least Not Applicable ('E' when exemption data exists).
+            $taxTypeCode = (string) ($line['tax_type_code'] ?? ($taxAmount > 0 ? '01' : 'E'));
             $discountAmount = (float) ($line['discount_amount'] ?? 0);
+
+            $taxSubtotal = [
+                'TaxableAmount' => [['_' => $this->formatDecimal($lineAmount), 'currencyID' => $currency]],
+                'TaxAmount' => [['_' => $this->formatDecimal($taxAmount), 'currencyID' => $currency]],
+                'Percent' => [['_' => $this->formatDecimal($taxRate)]],
+                'TaxCategory' => [[
+                    'ID' => [['_' => $taxTypeCode]],
+                    'TaxScheme' => [[
+                        'ID' => [['_' => 'OTH', 'schemeID' => 'UN/ECE 5153', 'schemeAgencyID' => '6']],
+                    ]],
+                ]],
+            ];
+
+            // G-37: exemption/zero-rated lines carry reason + exempted amount.
+            if (in_array($taxTypeCode, ['E', '06'], true)) {
+                $taxSubtotal['TaxExemptionReason'] = [[
+                    '_' => (string) ($line['tax_exemption_reason']
+                        ?? ($taxTypeCode === '06' ? 'Zero-rated supply' : 'Exempt supply')),
+                ]];
+                $taxSubtotal['TaxExemptionAmount'] = [[
+                    '_' => $this->formatDecimal((float) ($line['tax_exemption_amount'] ?? $lineAmount)),
+                    'currencyID' => $currency,
+                ]];
+            }
+
+            $categoryKey = $taxTypeCode.'|'.$this->formatDecimal($taxRate);
+            $taxCategoryTotals[$categoryKey] ??= [
+                'code' => $taxTypeCode,
+                'rate' => $taxRate,
+                'taxable' => 0.0,
+                'tax' => 0.0,
+                'reason' => $taxSubtotal['TaxExemptionReason'][0]['_'] ?? null,
+            ];
+            $taxCategoryTotals[$categoryKey]['taxable'] = round($taxCategoryTotals[$categoryKey]['taxable'] + $lineAmount, 2);
+            $taxCategoryTotals[$categoryKey]['tax'] = round($taxCategoryTotals[$categoryKey]['tax'] + $taxAmount, 2);
 
             $invoiceLine = [
                 'ID' => [['_' => $lineNo]],
@@ -1045,17 +1089,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
                 'LineExtensionAmount' => [['_' => $this->formatDecimal($lineAmount), 'currencyID' => $currency]],
                 'TaxTotal' => [[
                     'TaxAmount' => [['_' => $this->formatDecimal($taxAmount), 'currencyID' => $currency]],
-                    'TaxSubtotal' => [[
-                        'TaxableAmount' => [['_' => $this->formatDecimal($lineAmount), 'currencyID' => $currency]],
-                        'TaxAmount' => [['_' => $this->formatDecimal($taxAmount), 'currencyID' => $currency]],
-                        'Percent' => [['_' => $this->formatDecimal($taxRate)]],
-                        'TaxCategory' => [[
-                            'ID' => [['_' => $taxTypeCode]],
-                            'TaxScheme' => [[
-                                'ID' => [['_' => 'OTH', 'schemeID' => 'UN/ECE 5153', 'schemeAgencyID' => '6']],
-                            ]],
-                        ]],
-                    ]],
+                    'TaxSubtotal' => [$taxSubtotal],
                 ]],
                 'Item' => [[
                     'CommodityClassification' => [[
@@ -1095,6 +1129,47 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
 
         $shouldIncludeSignature = ! empty($signatureMetadata['enabled'])
             && $signatureValue !== '';
+
+        // G-37 (#274): invoice-level TaxTotal carries one TaxSubtotal per
+        // category/rate (was a single blanket subtotal).
+        $taxSubtotals = [];
+
+        foreach ($taxCategoryTotals as $category) {
+            $subtotal = [
+                'TaxableAmount' => [['_' => $this->formatDecimal($category['taxable']), 'currencyID' => $currency]],
+                'TaxAmount' => [['_' => $this->formatDecimal($category['tax']), 'currencyID' => $currency]],
+                'TaxCategory' => [[
+                    'ID' => [['_' => $category['code']]],
+                    'TaxScheme' => [[
+                        'ID' => [['_' => 'OTH', 'schemeID' => 'UN/ECE 5153', 'schemeAgencyID' => '6']],
+                    ]],
+                ]],
+            ];
+
+            if ((float) $category['rate'] > 0) {
+                $subtotal['Percent'] = [['_' => $this->formatDecimal($category['rate'])]];
+            }
+
+            if (in_array($category['code'], ['E', '06'], true)) {
+                $subtotal['TaxExemptionReason'] = [['_' => (string) ($category['reason'] ?? 'Exempt supply')]];
+                $subtotal['TaxExemptionAmount'] = [['_' => $this->formatDecimal($category['taxable']), 'currencyID' => $currency]];
+            }
+
+            $taxSubtotals[] = $subtotal;
+        }
+
+        if ($taxSubtotals === []) {
+            $taxSubtotals[] = [
+                'TaxableAmount' => [['_' => $this->formatDecimal($totalExcludingTax), 'currencyID' => $currency]],
+                'TaxAmount' => [['_' => $this->formatDecimal($totalTax), 'currencyID' => $currency]],
+                'TaxCategory' => [[
+                    'ID' => [['_' => $totalTax > 0 ? '01' : 'E']],
+                    'TaxScheme' => [[
+                        'ID' => [['_' => 'OTH', 'schemeID' => 'UN/ECE 5153', 'schemeAgencyID' => '6']],
+                    ]],
+                ]],
+            ];
+        }
 
         $invoice = [
             'ID' => [['_' => $invoiceNumber]],
@@ -1153,16 +1228,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             ]],
             'TaxTotal' => [[
                 'TaxAmount' => [['_' => $this->formatDecimal($totalTax), 'currencyID' => $currency]],
-                'TaxSubtotal' => [[
-                    'TaxableAmount' => [['_' => $this->formatDecimal($totalExcludingTax), 'currencyID' => $currency]],
-                    'TaxAmount' => [['_' => $this->formatDecimal($totalTax), 'currencyID' => $currency]],
-                    'TaxCategory' => [[
-                        'ID' => [['_' => $totalTax > 0 ? '01' : 'E']],
-                        'TaxScheme' => [[
-                            'ID' => [['_' => 'OTH', 'schemeID' => 'UN/ECE 5153', 'schemeAgencyID' => '6']],
-                        ]],
-                    ]],
-                ]],
+                'TaxSubtotal' => $taxSubtotals,
             ]],
             'LegalMonetaryTotal' => [[
                 'LineExtensionAmount' => [['_' => $this->formatDecimal($totalExcludingTax), 'currencyID' => $currency]],
