@@ -23,7 +23,15 @@ class WarehouseTransferController extends Controller
             ->orderBy('created_at', 'desc');
 
         if ($request->filled('search')) {
-            $query->where('transfer_number', 'like', "%{$request->input('search')}%");
+            // Wide: transfer number/notes and the source/destination warehouses.
+            $search = trim((string) $request->input('search'));
+            $like = "%{$search}%";
+            $query->where(function ($q) use ($like) {
+                $q->where('transfer_number', 'like', $like)
+                    ->orWhere('notes', 'like', $like)
+                    ->orWhereHas('fromWarehouse', fn ($warehouse) => $warehouse->where('name', 'like', $like))
+                    ->orWhereHas('toWarehouse', fn ($warehouse) => $warehouse->where('name', 'like', $like));
+            });
         }
 
         if ($request->filled('status')) {

@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\CustomerBonusScheme;
-use App\Models\BonusScheme;
 use App\Models\Customer;
+use App\Models\CustomerBonusScheme;
+use App\Services\CustomerWideSearchService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -29,14 +29,15 @@ class CustomerBonusSchemeController extends Controller
         }
 
         if ($request->filled('search')) {
-            $search = $request->search;
+            // Wide: the customer's full surface (name, contacts, addresses,
+            // tags) plus the scheme name/code.
+            $search = trim((string) $request->search);
             $query->where(function ($q) use ($search) {
-                $q->whereHas('customer', function ($q2) use ($search) {
-                    $q2->where('company_name', 'ilike', "%{$search}%");
-                })->orWhereHas('bonusScheme', function ($q2) use ($search) {
-                    $q2->where('name', 'ilike', "%{$search}%")
-                        ->orWhere('scheme_code', 'ilike', "%{$search}%");
-                });
+                $q->whereHas('customer', fn ($customer) => app(CustomerWideSearchService::class)->apply($customer, $search))
+                    ->orWhereHas('bonusScheme', function ($q2) use ($search) {
+                        $q2->where('name', 'ilike', "%{$search}%")
+                            ->orWhere('scheme_code', 'ilike', "%{$search}%");
+                    });
             });
         }
 
@@ -112,7 +113,7 @@ class CustomerBonusSchemeController extends Controller
         $assignment = CustomerBonusScheme::with(['customer', 'bonusScheme', 'usages.salesOrderItem', 'usages.invoiceItem'])
             ->find($id);
 
-        if (!$assignment) {
+        if (! $assignment) {
             return response()->json(['message' => 'Customer bonus scheme assignment not found'], 404);
         }
 
@@ -123,7 +124,7 @@ class CustomerBonusSchemeController extends Controller
     {
         $assignment = CustomerBonusScheme::find($id);
 
-        if (!$assignment) {
+        if (! $assignment) {
             return response()->json(['message' => 'Assignment not found'], 404);
         }
 
@@ -153,7 +154,7 @@ class CustomerBonusSchemeController extends Controller
     {
         $assignment = CustomerBonusScheme::find($id);
 
-        if (!$assignment) {
+        if (! $assignment) {
             return response()->json(['message' => 'Assignment not found'], 404);
         }
 
@@ -177,7 +178,7 @@ class CustomerBonusSchemeController extends Controller
     {
         $assignment = CustomerBonusScheme::find($id);
 
-        if (!$assignment) {
+        if (! $assignment) {
             return response()->json(['message' => 'Assignment not found'], 404);
         }
 
@@ -204,7 +205,7 @@ class CustomerBonusSchemeController extends Controller
     {
         $assignment = CustomerBonusScheme::find($id);
 
-        if (!$assignment) {
+        if (! $assignment) {
             return response()->json(['message' => 'Assignment not found'], 404);
         }
 
