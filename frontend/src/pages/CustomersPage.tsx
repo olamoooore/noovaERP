@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { TagFilterSelect } from '@/components/tags/TagFilterSelect'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
+import { buildCustomerPayload } from '@/lib/customerPayload'
 import { useToast } from '@/hooks/use-toast'
 import { formatCurrency, formatDate, getApiErrorMessage } from '@/lib/utils'
 import api from '@/lib/api'
@@ -242,11 +243,8 @@ export function CustomersPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: Partial<CustomerFormData>) => {
-      const response = await api.post('/customers', {
-        ...data,
-        credit_limit: data.credit_limit ? parseFloat(data.credit_limit as string) : null,
-        payment_terms: data.payment_terms ? parseInt(data.payment_terms as string) : 30,
-      })
+      // #429 (CU1): 0 stays 0 — only an emptied field falls back.
+      const response = await api.post('/customers', buildCustomerPayload(data))
       return response.data
     },
     onSuccess: () => {
@@ -266,11 +264,8 @@ export function CustomersPage() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: Partial<CustomerFormData> }) => {
-      const response = await api.put(`/customers/${id}`, {
-        ...data,
-        credit_limit: data.credit_limit ? parseFloat(data.credit_limit as string) : null,
-        payment_terms: data.payment_terms ? parseInt(data.payment_terms as string) : 30,
-      })
+      // #429 (CU1): 0 stays 0 — only an emptied field falls back.
+      const response = await api.put(`/customers/${id}`, buildCustomerPayload(data))
       return response.data
     },
     onSuccess: () => {
