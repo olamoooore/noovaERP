@@ -25,24 +25,7 @@ use Illuminate\Support\Facades\DB;
  */
 class TaxCountryPackService
 {
-    /**
-     * Registration threshold monitoring (MRD R5.3 / R6.2 + #737 T4): the
-     * authority's registration thresholds compared against sales-revenue
-     * turnover (posted invoices less posted credit notes, excluding exempt
-     * and out-of-scope supplies) over the last 12 COMPLETE months — forward
-     * (forecast input) checked separately. Advisory signal only; registration
-     * status is a human/legal determination. Threshold DEFINITIONS move to
-     * the pack with T10 (#743).
-     */
-    private const THRESHOLDS = [
-        'SG' => [
-            ['key' => 'expected_taxable_turnover', 'label' => 'IRAS GST mandatory registration', 'amount' => 1000000.00, 'currency' => 'SGD', 'note' => 'Real-time trailing-twelve-month taxable supplies'],
-        ],
-        'MY' => [
-            ['key' => 'taxable_services', 'label' => 'RMCD service tax registration', 'amount' => 500000.00, 'currency' => 'MYR', 'note' => 'Threshold raised to RM1.975m for catering & accommodation (2024 revision) — verify per sector'],
-            ['key' => 'taxable_goods', 'label' => 'RMCD sales tax registration (manufacturers)', 'amount' => 500000.00, 'currency' => 'MYR', 'note' => 'Value of taxable goods manufactured in 12 months'],
-        ],
-    ];
+    public function __construct(private readonly TaxPackRegistry $registry) {}
 
     /**
      * #738 T5: map a product's line category to the pack's tax rule type.
@@ -482,8 +465,16 @@ class TaxCountryPackService
 
         $out = [];
 
-        foreach (self::THRESHOLDS as $code => $definitions) {
+        foreach (array_keys((array) config('tax_packs', [])) as $code) {
+            $code = strtoupper((string) $code);
+
             if ($jurisdiction !== null && strtoupper($jurisdiction) !== $code) {
+                continue;
+            }
+
+            $definitions = $this->registry->thresholds($code);
+
+            if ($definitions === []) {
                 continue;
             }
 

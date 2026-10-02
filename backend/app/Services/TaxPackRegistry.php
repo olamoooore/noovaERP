@@ -123,6 +123,45 @@ class TaxPackRegistry
     }
 
     /**
+     * #743 T10: the pack's threshold rows effective on $date, each carrying
+     * amount, currency, category, test (backward/forward/both) and source.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function thresholds(string $jurisdiction, ?string $date = null): array
+    {
+        $jurisdiction = strtoupper(trim($jurisdiction));
+        $pack = $this->pack($jurisdiction);
+
+        if ($pack === null) {
+            return [];
+        }
+
+        $date = $date ?: now()->toDateString();
+        $rows = [];
+
+        foreach ($pack['thresholds'] ?? [] as $threshold) {
+            if (! is_array($threshold)) {
+                continue;
+            }
+
+            $from = $threshold['effective_from'] ?? null;
+            $to = $threshold['effective_to'] ?? null;
+
+            if ($from !== null && $from > $date) {
+                continue;
+            }
+            if ($to !== null && $to < $date) {
+                continue;
+            }
+
+            $rows[] = $threshold + ['jurisdiction' => $jurisdiction];
+        }
+
+        return $rows;
+    }
+
+    /**
      * Country → jurisdiction code from the geography map. Unknown codes pass
      * through unchanged (they stay their own jurisdiction).
      */

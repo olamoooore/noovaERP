@@ -31,6 +31,25 @@ return [
         'version' => 1,
         // #741 T8: period shapes this pack can be filed under.
         'period_shapes' => ['monthly', 'quarterly'],
+        // #743 T10: registration thresholds as DATA (amount, currency, sector
+        // category, backward/forward test, effective window, source). Values
+        // are PENDING tax-agent confirmation (verified:false) — no release
+        // should rely on them until that sign-off and an official citation.
+        'thresholds' => [
+            [
+                'key' => 'expected_taxable_turnover',
+                'label' => 'IRAS GST mandatory registration',
+                'amount' => 1000000.00,
+                'currency' => 'SGD',
+                'category' => 'all',
+                'test' => 'backward',
+                'effective_from' => null,
+                'effective_to' => null,
+                'source' => 'IRAS — GST registration guidance ("Who must register for GST")',
+                'verified' => false,
+                'note' => 'Backward-looking trailing-twelve-month taxable supplies; forward figures are a separate input. Effective date not asserted — pending tax-agent confirmation.',
+            ],
+        ],
         'rules' => [
             [
                 'code' => 'SG-GST-9',
@@ -109,6 +128,39 @@ return [
         // 'monthly' stays accepted for existing single-month reporting; a
         // quarterly SST-02 is not a real RMCD period and is rejected.
         'period_shapes' => ['bimonthly', 'monthly'],
+        // #743 T10: thresholds keyed by service-tax category. Sector keys
+        // (leasing/financial, construction, …) land with the #735 taxonomy;
+        // values and effective dates are PENDING RMCD confirmation and
+        // tax-agent sign-off (verified:false). The unsourced "RM1.975m
+        // catering & accommodation" note in the old constant was removed.
+        'thresholds' => [
+            [
+                'key' => 'taxable_services',
+                'label' => 'RMCD service tax registration',
+                'amount' => 500000.00,
+                'currency' => 'MYR',
+                'category' => 'services',
+                'test' => 'backward',
+                'effective_from' => null,
+                'effective_to' => null,
+                'source' => 'RMCD — Service Tax registration threshold guidance',
+                'verified' => false,
+                'note' => 'Sector categories pending #735 taxonomy and RMCD confirmation.',
+            ],
+            [
+                'key' => 'taxable_goods',
+                'label' => 'RMCD sales tax registration (manufacturers)',
+                'amount' => 500000.00,
+                'currency' => 'MYR',
+                'category' => 'goods',
+                'test' => 'backward',
+                'effective_from' => null,
+                'effective_to' => null,
+                'source' => 'RMCD — Sales Tax registration threshold guidance',
+                'verified' => false,
+                'note' => 'Value of taxable goods manufactured in 12 months. Pending tax-agent confirmation.',
+            ],
+        ],
         // #738 T5: MY classifies lines as service vs sales; SG has a single
         // GST type and must not be filtered by a MY-specific 'service' type.
         'line_type_map' => ['service' => 'service'],
