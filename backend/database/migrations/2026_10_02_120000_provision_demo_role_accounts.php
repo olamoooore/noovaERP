@@ -2,6 +2,7 @@
 
 use App\Models\Tenant;
 use App\Models\User;
+use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -13,16 +14,21 @@ use Spatie\Permission\Models\Role;
  * (e255e52c-a4a6-4158-954a-af04408e9386), requested for role-gating
  * walkthroughs:
  *
- *   superadmin@demo.com  platform_super_admin + tenant admin access
- *   owner@demo.com       tenant Owner
- *   sales@demo.com       tenant Sales
- *   account@demo.com     tenant Accountant
- *   admin@demo.com       tenant Admin (already existed; access/password ensured)
+ *   superadmin@demo.com  platform_super_admin (+ tenant admin access)
+ *   owner@demo.com       Owner
+ *   sales@demo.com       Sales
+ *   account@demo.com     Accountant
+ *   admin@demo.com       Admin (already existed; access/password ensured)
  *
  * Password for every account: "password" (demo-only credentials).
  *
  * Production-only by explicit request — local/dev databases are untouched.
  * Idempotent: safe to re-run; it only creates/updates these five accounts.
+ *
+ * It also re-runs RolePermissionSeeder inside the demo tenant so its seeded
+ * roles converge to the current permission matrix (the tenant predates some
+ * matrix changes, e.g. Sales previously held reports.view/accounting.view).
+ * Roles the tenant has explicitly customized are skipped by the seeder.
  */
 return new class extends Migration
 {
@@ -80,30 +86,16 @@ return new class extends Migration
             );
         }
 
-        // Mirror the accounts into the tenant schema and assign the matching
-        // Spatie role, so the first login already reports the correct role and
-        // permissions (rather than relying on the first-request sync).
-        $tenant->run(function () {
-            foreach ($this->accounts() as $account) {
-                $tenantUser = User::query()->updateOrCreate(
-                    ['email' => $account['email']],
-                    [
-                        'name' => $account['name'],
-                        'password' => Hash::make(self::PASSWORD),
-                    ]
-                );
+        $this->runInTenant($tenant);
+        $this->restoreLandlordSession();
 
-                $roleName = Str::title(str_replace(['-', '_'], ' ', $account['role']));
-                $role = Role::firstOrCreate([
-                    'name' => $roleName,
-                    'guard_name' => 'web',
-                ]);
-
-                if (! $tenantUser->hasRole($role)) {
-                    $tenantUser->assignRole($role);
-                }
-            }
-        });
+        // Clean out the record an earlier version of this migration leaked
+        // into the tenant schema (it was written while the tenant connection
+        // was active). Central migrations must only live in public.migrations.
+        DB::statement(
+            'DELETE FROM "'.self::TENANT_ID.'".migrations WHERE migration = ?',
+            ['2026_10_02_120000_provision_demo_role_accounts']
+        );
     }
 
     public function down(): void
@@ -134,6 +126,55 @@ return new class extends Migration
         $tenant->run(function () use ($emails) {
             User::query()->whereIn('email', $emails)->delete();
         });
+
+        $this->restoreLandlordSession();
+    }
+
+    /**
+     * Mirror the accounts into the tenant schema, assign the matching Spatie
+     * role, and converge the tenant's role permissions to the current matrix.
+     */
+    private function runInTenant(Tenant $tenant): void
+    {
+        $tenant->run(function () {
+            foreach ($this->accounts() as $account) {
+                $tenantUser = User::query()->updateOrCreate(
+                    ['email' => $account['email']],
+                    [
+                        'name' => $account['name'],
+                        'password' => Hash::make(self::PASSWORD),
+                    ]
+                );
+
+                $roleName = Str::title(str_replace(['-', '_'], ' ', $account['role']));
+                $role = Role::firstOrCreate([
+                    'name' => $roleName,
+                    'guard_name' => 'web',
+                ]);
+
+                if (! $tenantUser->hasRole($role)) {
+                    $tenantUser->assignRole($role);
+                }
+            }
+
+            // Converge roles to the current PERMISSION_MATRIX (grants AND
+            // revokes) so stale grants like Sales holding reports.view are
+            // removed. Tenant-customized roles are skipped by the seeder.
+            (new RolePermissionSeeder)->run();
+        });
+    }
+
+    /**
+     * tenancy()->end() leaves the landlord connection's session pointing at
+     * the tenant schema, which made the migration repository WRITE the
+     * migration record into the tenant schema. Purge + reset so the record
+     * lands in public.migrations.
+     */
+    private function restoreLandlordSession(): void
+    {
+        DB::purge(config('database.default'));
+        DB::reconnect(config('database.default'));
+        DB::statement('SET search_path TO public');
     }
 
     /**
