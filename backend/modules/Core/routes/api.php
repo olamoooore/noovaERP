@@ -916,16 +916,33 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             ->middleware(RequirePermission::using('tax.policy.view|tax.view'));
 
         // Customer Credit Notes (must be before /customers/{id} to avoid route conflict)
-        Route::get('/customers/credit-notes', [CustomerCreditNotesController::class, 'index']);
-        Route::get('/customers/credit-notes/{creditNote}', [CustomerCreditNotesController::class, 'show']);
-        Route::post('/customers/credit-notes', [CustomerCreditNotesController::class, 'store']);
-        Route::put('/customers/credit-notes/{creditNote}', [CustomerCreditNotesController::class, 'update']);
-        Route::delete('/customers/credit-notes/{creditNote}', [CustomerCreditNotesController::class, 'destroy']);
-        Route::post('/customers/credit-notes/{creditNote}/post', [CustomerCreditNotesController::class, 'post']);
+        //
+        // #515 (CN6): explicit authority per route. Posting and voiding a credit
+        // note reduce revenue and reverse a ledger entry, so they require the
+        // same accounting.post that invoice posting requires — previously `post`
+        // carried no permission at all and `void` asked only for
+        // `customers.write`, which let a MANAGER (accounting.write, no
+        // accounting.post) post and void credit notes while being blocked from
+        // posting the invoices they credit. Drafting requires
+        // accounting.write, reading requires accounting.view.
+        Route::get('/customers/credit-notes', [CustomerCreditNotesController::class, 'index'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.view'));
+        Route::get('/customers/credit-notes/{creditNote}', [CustomerCreditNotesController::class, 'show'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.view'));
+        Route::post('/customers/credit-notes', [CustomerCreditNotesController::class, 'store'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.write'));
+        Route::put('/customers/credit-notes/{creditNote}', [CustomerCreditNotesController::class, 'update'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.write'));
+        Route::delete('/customers/credit-notes/{creditNote}', [CustomerCreditNotesController::class, 'destroy'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.write'));
+        Route::post('/customers/credit-notes/{creditNote}/post', [CustomerCreditNotesController::class, 'post'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.post')); // #515
         Route::post('/customers/credit-notes/{creditNote}/void', [CustomerCreditNotesController::class, 'void'])
-            ->middleware(\App\Http\Middleware\RequirePermission::using('customers.write'));
-        Route::get('/customers/invoices/{invoiceId}/credit-notes', [CustomerCreditNotesController::class, 'getByInvoice']);
-        Route::post('/customers/credit-notes/validate', [CustomerCreditNotesController::class, 'validateCreditNote']);
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.post')); // #515
+        Route::get('/customers/invoices/{invoiceId}/credit-notes', [CustomerCreditNotesController::class, 'getByInvoice'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.view'));
+        Route::post('/customers/credit-notes/validate', [CustomerCreditNotesController::class, 'validateCreditNote'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.write'));
 
         // Customers List
         Route::get('/customers', [CustomersController::class, 'index'])
