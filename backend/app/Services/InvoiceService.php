@@ -410,12 +410,34 @@ class InvoiceService
             }
 
             // ── Post via PostingEngine (domain contract) ─────
+            // Issue #875: bind the posting to the invoice's legal entity (and
+            // entity book). Legacy rows that predate the entity columns are
+            // resolved here from the sales order / customer / request context
+            // and stamped on the invoice so document and ledger agree.
+            $entityResolver = app(\App\Services\LegalEntityContextResolver::class);
+            $legalEntityId = $entityResolver->resolveEntity(
+                explicit: $invoice->legal_entity_id ? (int) $invoice->legal_entity_id : null,
+                salesOrderId: $invoice->sales_order_id ? (int) $invoice->sales_order_id : null,
+                customerId: $invoice->customer_id ? (int) $invoice->customer_id : null,
+                required: true,
+            );
+            $entityBookId = $invoice->entity_book_id
+                ? (int) $invoice->entity_book_id
+                : $entityResolver->resolveBookId($legalEntityId);
+
+            if ($legalEntityId && ((int) $invoice->legal_entity_id !== $legalEntityId || (int) $invoice->entity_book_id !== (int) $entityBookId)) {
+                $invoice->forceFill([
+                    'legal_entity_id' => $legalEntityId,
+                    'entity_book_id' => $entityBookId,
+                ])->save();
+            }
+
             $result = $this->postingEngine->domainPosting(new DomainPostingRequest(
                 postingRequestId: DomainPostingRequest::generateRequestId(),
                 idempotencyKey: "invoice:{$invoice->id}:post",
                 tenantId: (string) (function_exists('tenant') && tenant() ? tenant('id') : ''),
-                entityId: '',
-                accountingBookId: '',
+                entityId: $legalEntityId !== null ? (string) $legalEntityId : '',
+                accountingBookId: $entityBookId !== null ? (string) $entityBookId : '',
                 sourceCapability: 'ACC-003',
                 sourceRecordType: 'invoice',
                 sourceRecordId: (string) $invoice->id,

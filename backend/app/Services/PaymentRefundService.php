@@ -203,6 +203,16 @@ class PaymentRefundService
     ): \App\Models\JournalEntry {
         // Post a new GL entry: DR Revenue (reduction), CR Accounts Receivable (reduction)
         // This effectively reverses the revenue recognition
+        // Issue #875: the refund entry inherits the refunded invoice's entity.
+        $entityResolver = app(\App\Services\LegalEntityContextResolver::class);
+        $legalEntityId = $entityResolver->resolveEntity(
+            explicit: $invoice->legal_entity_id ? (int) $invoice->legal_entity_id : null,
+            salesOrderId: $invoice->sales_order_id ? (int) $invoice->sales_order_id : null,
+            customerId: $invoice->customer_id ? (int) $invoice->customer_id : null,
+            required: true,
+        );
+        $entityBookId = $entityResolver->resolveBookId($legalEntityId);
+
         $result = $this->postingEngine->post(new PostingRequest(
             documentType: 'payment_refund',
             documentId: $invoice->id,
@@ -228,6 +238,8 @@ class PaymentRefundService
             ],
             reference: "REFUND-{$invoice->invoice_number}",
             userId: $actorUserId,
+            legalEntityId: $legalEntityId,
+            entityBookId: $entityBookId,
         ));
 
         if (! $result->success) {

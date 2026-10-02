@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Invoice extends Model
 {
     use \App\Models\Concerns\GuardsJournalEntryLinks;
+    use \App\Models\Concerns\ResolvesLegalEntityContext;
     use HasFactory, SoftDeletes;
 
     // Approval dimension (writer: InvoiceApprovalService)
@@ -263,6 +264,9 @@ class Invoice extends Model
         'currency_code',
         'exchange_rate',
         'base_currency_code',
+        // Issue #875: Sales documents carry their legal entity + book.
+        'legal_entity_id',
+        'entity_book_id',
     ];
 
     protected $casts = [
