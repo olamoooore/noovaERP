@@ -56,11 +56,31 @@ class InvoiceController extends Controller
             return response()->json(['data' => $ids, 'total' => $ids->count()]);
         }
 
-        $query->with(['customer', 'lines', 'approvalRequest']);
+        $search = $request->filled('search') ? trim((string) $request->search) : '';
+
+        $with = ['customer', 'lines', 'approvalRequest'];
+        if ($search !== '') {
+            // Load the surfaces the wide search can match through, so the list
+            // can show WHY each row matched (contact person, address, line, tag).
+            $with = array_merge($with, [
+                'customer.customerContacts',
+                'customer.addresses',
+                'doctor',
+                'requestor',
+                'buyer',
+                'billingContact',
+                'shippingContact',
+            ]);
+        }
+        $query->with($with);
 
         $invoices = $query->paginate($request->per_page ?? 20);
 
         $this->annotateApprovalView($invoices, $request->user());
+
+        if ($search !== '') {
+            $this->annotateSearchMatches($invoices, $search);
+        }
 
         return response()->json($invoices);
     }
@@ -96,6 +116,97 @@ class InvoiceController extends Controller
                 'approval_view',
                 $isReviewer && ! $isSubmitter ? 'to_approve' : 'submitted'
             );
+        }
+    }
+
+    /**
+     * For a searched invoice list, annotate each row with WHICH related record
+     * matched the term — the list-page counterpart of the customer picker's
+     * "Contact: … / Tag: … / Address: …" hints. Keeps the wide search
+     * explicable: a user typing a contact person, address, tag or line value
+     * sees why the invoice surfaced instead of an unexplained match.
+     */
+    private function annotateSearchMatches($invoices, string $search): void
+    {
+        $needle = mb_strtolower($search);
+
+        $tagMatches = app(\App\Services\TagService::class)->matchingTagNames(
+            collect($invoices->items())->pluck('id')->map('intval')->all(),
+            'invoice',
+            $search,
+        );
+
+        $contains = fn (?string $value) => $value !== null && $value !== ''
+            && str_contains(mb_strtolower($value), $needle);
+
+        foreach ($invoices as $invoice) {
+            // Contact people: the customer's contacts plus the invoice's own
+            // header contacts (doctor / requestor / buyer / billing / shipping).
+            $contactNames = collect();
+
+            $customer = $invoice->relationLoaded('customer') ? $invoice->customer : null;
+            if ($customer && $customer->relationLoaded('customerContacts')) {
+                $contactNames = $contactNames->merge(
+                    $customer->customerContacts
+                        ->filter(fn ($contact) => $contains($contact->name))
+                        ->pluck('name')
+                );
+                $customer->unsetRelation('customerContacts');
+            }
+
+            foreach (['doctor', 'requestor', 'buyer', 'billingContact', 'shippingContact'] as $relation) {
+                $contact = $invoice->relationLoaded($relation) ? $invoice->getRelation($relation) : null;
+                if (! $contact) {
+                    continue;
+                }
+                $label = $contact->display_name
+                    ?: trim(($contact->first_name ?? '').' '.($contact->last_name ?? ''))
+                    ?: $contact->company_name;
+                if ($contains($label)) {
+                    $contactNames->push($label);
+                }
+                $invoice->unsetRelation($relation);
+            }
+
+            $invoice->matched_contacts = $contactNames->filter()->unique()->take(3)->values();
+
+            // Customer addresses — "Building name" labels plus street/city text.
+            if ($customer && $customer->relationLoaded('addresses')) {
+                $invoice->matched_addresses = $customer->addresses
+                    ->map(function ($address) {
+                        $parts = [$address->label, $address->street, $address->street2, $address->city, $address->state, $address->zip, $address->country];
+
+                        return collect($parts)->filter()->implode(', ');
+                    })
+                    ->filter(fn ($text) => $contains($text))
+                    ->take(2)
+                    ->values();
+                $customer->unsetRelation('addresses');
+            } else {
+                $invoice->matched_addresses = collect();
+            }
+
+            // Line contents (description / model / lot / serial / notes).
+            if ($invoice->relationLoaded('lines')) {
+                $invoice->matched_lines = $invoice->lines
+                    ->map(function ($line) use ($contains) {
+                        foreach (['description', 'model_number', 'lot_number', 'serial_number', 'product_notes'] as $field) {
+                            if ($contains($line->{$field} ?? null)) {
+                                return $line->{$field};
+                            }
+                        }
+
+                        return null;
+                    })
+                    ->filter()
+                    ->unique()
+                    ->take(2)
+                    ->values();
+            } else {
+                $invoice->matched_lines = collect();
+            }
+
+            $invoice->matched_tags = $tagMatches[$invoice->id] ?? [];
         }
     }
 

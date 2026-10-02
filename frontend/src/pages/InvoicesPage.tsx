@@ -469,6 +469,28 @@ export function InvoicesPage() {
                             <span className="text-xs font-mono text-muted-foreground">{invoice.customer.code}</span>
                           )}
                           <div>{invoice.customer?.name}</div>
+                          {/* Wide search can match a contact person, address, line or tag
+                              on the invoice's customer — show which so the row is explicable. */}
+                          {(invoice.matched_contacts?.length ?? 0) > 0 && (
+                            <div className="truncate text-xs text-primary" title={invoice.matched_contacts.join(', ')}>
+                              Contact: {invoice.matched_contacts.join(', ')}
+                            </div>
+                          )}
+                          {(invoice.matched_tags?.length ?? 0) > 0 && (
+                            <div className="truncate text-xs text-amber-600" title={invoice.matched_tags.join(', ')}>
+                              Tag: {invoice.matched_tags.join(', ')}
+                            </div>
+                          )}
+                          {(invoice.matched_lines?.length ?? 0) > 0 && (
+                            <div className="truncate text-xs text-muted-foreground" title={invoice.matched_lines.join(' · ')}>
+                              Line: {invoice.matched_lines.join(' · ')}
+                            </div>
+                          )}
+                          {(invoice.matched_addresses?.length ?? 0) > 0 && (
+                            <div className="truncate text-xs text-muted-foreground" title={invoice.matched_addresses.join(' · ')}>
+                              Address: {invoice.matched_addresses.join(' · ')}
+                            </div>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>{formatDate(invoice.invoice_date || invoice.created_at)}</TableCell>
