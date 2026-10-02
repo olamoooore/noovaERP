@@ -420,6 +420,36 @@ class SalesApprovalReviewerResolutionTest extends TenantTestCase
     }
 
     // ─────────────────────────────────────────────────────────────────────
+    // Sales Settings API: per-type reviewer configuration round-trips
+    // ─────────────────────────────────────────────────────────────────────
+
+    public function test_sales_settings_api_round_trips_per_type_reviewer_lists(): void
+    {
+        $this->actingAs($this->admin)
+            ->putJson('/api/v1/settings/sales', [
+                'quotation' => ['reviewer_user_ids' => [$this->reviewer->id], 'reviewer_roles' => ['manager']],
+                'sales_order' => ['reviewer_user_ids' => [$this->sales->id], 'reviewer_roles' => []],
+                'invoice_threshold' => ['reviewer_user_ids' => [], 'reviewer_roles' => ['admin']],
+                'delivery_order' => ['reviewer_user_ids' => [$this->reviewer->id], 'reviewer_roles' => []],
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.quotation.reviewer_user_ids', [$this->reviewer->id])
+            ->assertJsonPath('data.quotation.reviewer_roles', ['manager'])
+            ->assertJsonPath('data.sales_order.reviewer_user_ids', [$this->sales->id])
+            ->assertJsonPath('data.invoice_threshold.reviewer_roles', ['admin'])
+            ->assertJsonPath('data.delivery_order.reviewer_user_ids', [$this->reviewer->id]);
+
+        $this->assertSame(
+            [$this->reviewer->id],
+            Setting::getValue('sales.quotation.reviewer_user_ids')
+        );
+        $this->assertSame(
+            ['manager'],
+            Setting::getValue('sales.quotation.reviewer_roles')
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
     // Data check: pending sales requests past their expiry
     // ─────────────────────────────────────────────────────────────────────
 

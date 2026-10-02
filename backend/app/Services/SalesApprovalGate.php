@@ -32,8 +32,11 @@ class SalesApprovalGate
     public const SETTING_KEY = 'sales.approval_threshold_amount';
 
     public const REQUEST_TYPE_SALES_ORDER = 'sales_order_approval';
+
     public const REQUEST_TYPE_QUOTATION = 'quotation_approval';
+
     public const REQUEST_TYPE_INVOICE = 'invoice_threshold_approval';
+
     public const REQUEST_TYPE_DELIVERY_ORDER = 'delivery_order_approval';
 
     /**
@@ -103,6 +106,7 @@ class SalesApprovalGate
         if ($raw === null || $raw === '' || $raw === 0 || $raw === '0') {
             return null;
         }
+
         return (float) $raw;
     }
 
