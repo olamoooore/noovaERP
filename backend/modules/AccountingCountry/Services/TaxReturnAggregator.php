@@ -34,6 +34,20 @@ class TaxReturnAggregator
      *                                   does not file one combined return.
      * @return array{output: array<int, array<string, mixed>>, input: array<int, array<string, mixed>>}
      */
+    /**
+     * #742 T9: the ONE lifecycle filter shared by the return aggregate and
+     * the period list. Voided/superseded documents leave the return (they
+     * have no offsetting signed trail), reversed originals stay because the
+     * reversal engine writes signed rows — both queries must agree.
+     */
+    private function liveLifecycleFilter(): \Closure
+    {
+        return function ($query) {
+            $query->whereNull('je.lifecycle_status')
+                ->orWhereNotIn('je.lifecycle_status', ['voided', 'superseded']);
+        };
+    }
+
     public function aggregate(string|array $period, ?int $legalEntityId = null): array
     {
         $keys = [
@@ -107,10 +121,7 @@ class TaxReturnAggregator
         $rows = DB::table('tax_transaction_details as ttd')
             ->join('journal_entries as je', 'je.id', '=', 'ttd.journal_entry_id')
             ->where('je.status', 'posted')
-            ->where(function ($query) {
-                $query->whereNull('je.lifecycle_status')
-                    ->orWhereNotIn('je.lifecycle_status', ['voided', 'superseded']);
-            })
+            ->where($this->liveLifecycleFilter())
             ->whereIn('ttd.reporting_period', $periods)
             ->when(
                 $legalEntityId !== null,
@@ -212,16 +223,7 @@ class TaxReturnAggregator
         $rows = DB::table('tax_transaction_details as ttd')
             ->join('journal_entries as je', 'je.id', '=', 'ttd.journal_entry_id')
             ->where('je.status', 'posted')
-            ->where(function ($query) {
-                $query->whereNull('je.lifecycle_status')
-                    ->orWhereNotIn('je.lifecycle_status', ['reversed', 'voided', 'superseded']);
-            })
-            ->whereNotExists(function ($query) {
-                $query->select(DB::raw(1))
-                    ->from('journal_entries as rev')
-                    ->whereColumn('rev.reversed_entry_id', 'ttd.journal_entry_id')
-                    ->where('rev.status', 'posted');
-            })
+            ->where($this->liveLifecycleFilter())
             ->when(
                 $legalEntityId !== null,
                 fn ($query) => $query->where('je.legal_entity_id', $legalEntityId)

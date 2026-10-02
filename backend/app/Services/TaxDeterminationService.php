@@ -112,7 +112,10 @@ class TaxDeterminationService
                     $line->product,
                     $jurisdiction,
                     'output',
-                    ($line->product->type ?? null) === 'service' ? 'service' : null,
+                    app(\App\Services\TaxCountryPackService::class)->lineTaxType(
+                        $jurisdiction,
+                        $line->product->type ?? null,
+                    ),
                     $transactionDate,
                 )
                 : null;

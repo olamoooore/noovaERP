@@ -41,6 +41,22 @@ class TaxCountryPackService
     ];
 
     /**
+     * #738 T5: map a product's line category to the pack's tax rule type.
+     * The pack declares the classification; jurisdictions without a map use
+     * no type filter (SG has one GST type, not a MY-style service/sales split).
+     */
+    public function lineTaxType(string $jurisdiction, ?string $productType): ?string
+    {
+        if ($productType === null) {
+            return null;
+        }
+
+        $map = config('tax_packs.'.strtoupper($jurisdiction).'.line_type_map', []);
+
+        return is_array($map) ? ($map[$productType] ?? null) : null;
+    }
+
+    /**
      * @return array{jurisdiction:string, label:string, activated:bool, created:array<int,string>, existing:array<int,string>, total_pack_rules:int}
      */
     public function activate(string $jurisdiction): array

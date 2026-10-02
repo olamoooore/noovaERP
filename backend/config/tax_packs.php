@@ -97,6 +97,9 @@ return [
     'MY' => [
         'label' => 'Malaysia SST (LHDN / RMCD)',
         'currency' => 'MYR',
+        // #738 T5: MY classifies lines as service vs sales; SG has a single
+        // GST type and must not be filtered by a MY-specific 'service' type.
+        'line_type_map' => ['service' => 'service'],
         'rules' => [
             [
                 'code' => 'MY-SALES-10',
