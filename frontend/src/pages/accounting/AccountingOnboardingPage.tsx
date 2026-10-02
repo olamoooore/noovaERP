@@ -10,8 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import api from '@/lib/api';
 import { useState, useMemo } from 'react';
+import { buildGaugeRows } from '@/lib/thresholdGauge';
+import { TaxThresholdGauge } from '@/components/tax/TaxThresholdGauge';
 import { toast } from '@/components/ui/use-toast';
 
 /* ------------------------------------------------------------------ */
@@ -504,10 +507,138 @@ function GoLiveForm({ data, onChange }: { data: any; onChange: (d: any) => void 
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  #748 TU2 — Tax registration step                                   */
+/* ------------------------------------------------------------------ */
+
+const TAX_FREQUENCIES: Record<string, { value: string; label: string }[]> = {
+  SG: [
+    { value: 'monthly', label: 'Monthly' },
+    { value: 'quarterly', label: 'Quarterly' },
+  ],
+  MY: [
+    { value: 'bimonthly', label: 'Two-monthly (SST-02)' },
+    { value: 'monthly', label: 'Monthly' },
+  ],
+};
+
+function TaxRegistrationForm({ data, onChange }: { data: any; onChange: (d: any) => void }) {
+  const jurisdiction: string = data?.jurisdiction || 'SG';
+  const registered: boolean = data?.registered === true;
+  const frequencies = TAX_FREQUENCIES[jurisdiction] || TAX_FREQUENCIES.SG;
+
+  const { data: thresholds } = useQuery<{ data: Record<string, { thresholds: any[] }> }>({
+    queryKey: ['onboarding-tax-thresholds', jurisdiction],
+    queryFn: async () => (await api.get('/accounting/tax-engine/thresholds', { params: { jurisdiction } })).data,
+    enabled: !registered,
+  });
+
+  const gaugeRows = buildGaugeRows(thresholds?.data?.[jurisdiction]?.thresholds ?? [], null);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between rounded-xl border p-3">
+        <div>
+          <Label>Is this entity registered for tax?</Label>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Determines whether the entity charges tax (per-entity regime) or only monitors its thresholds.
+          </p>
+        </div>
+        <Switch checked={registered} onCheckedChange={(v) => onChange({ ...data, registered: v })} />
+      </div>
+
+      <div>
+        <Label>Country / jurisdiction</Label>
+        <Select
+          value={jurisdiction}
+          onValueChange={(v) => onChange({ ...data, jurisdiction: v, filing_frequency: (TAX_FREQUENCIES[v] || TAX_FREQUENCIES.SG)[0].value })}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="SG">Singapore (GST)</SelectItem>
+            <SelectItem value="MY">Malaysia (SST)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {!registered && (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            Not registered — no tax setup is created. The entity monitors its registration threshold:
+          </p>
+          {gaugeRows.length > 0 ? (
+            gaugeRows.map((row) => <TaxThresholdGauge key={row.key} row={row} />)
+          ) : (
+            <p className="text-xs text-muted-foreground">Threshold data is unavailable for {jurisdiction}.</p>
+          )}
+        </div>
+      )}
+
+      {registered && (
+        <div className="space-y-4">
+          <div>
+            <Label>Registration number *</Label>
+            <Input
+              placeholder={jurisdiction === 'MY' ? 'e.g. W10-2026-000000 (SST no.)' : 'e.g. M1-XXXXXXX-X (GST no.)'}
+              value={data?.registration_number || ''}
+              onChange={(e) => onChange({ ...data, registration_number: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>Effective from *</Label>
+            <Input
+              type="date"
+              value={data?.effective_from || ''}
+              onChange={(e) => onChange({ ...data, effective_from: e.target.value })}
+            />
+          </div>
+          {jurisdiction === 'MY' && (
+            <div>
+              <Label>Registration type</Label>
+              <Select value={data?.registration_type || 'service'} onValueChange={(v) => onChange({ ...data, registration_type: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="service">Service tax</SelectItem>
+                  <SelectItem value="sales">Sales tax</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <div>
+            <Label>Filing frequency</Label>
+            <Select value={data?.filing_frequency || frequencies[0].value} onValueChange={(v) => onChange({ ...data, filing_frequency: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {frequencies.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          {jurisdiction === 'MY' && (data?.filing_frequency || frequencies[0].value) === 'bimonthly' && (
+            <div>
+              <Label>Two-month cycle start month</Label>
+              <Select value={String(data?.filing_start_month || 1)} onValueChange={(v) => onChange({ ...data, filing_start_month: Number(v) })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                    <SelectItem key={m} value={String(m)}>{new Date(2026, m - 1, 1).toLocaleString('en', { month: 'long' })}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const STEP_FORMS: Record<string, React.FC<any>> = {
   group_setup: GroupSetupForm,
   entity_selection: EntitySelectionForm,
   country_compliance: CountryComplianceForm,
+  tax_registration: TaxRegistrationForm,
   coa_import: CoAImportForm,
   role_assignment: RoleAssignmentForm,
   validation: ValidationForm,

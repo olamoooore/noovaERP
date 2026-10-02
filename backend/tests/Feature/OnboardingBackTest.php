@@ -168,6 +168,10 @@ class OnboardingBackTest extends TenantTestCase
         // 2nd back: role_assignment -> coa_import
         $this->assertSame('coa_import', $this->machine->back($sessionId)['session']->current_step);
 
+        // #748 TU2 (test-semantic change, disclosed): the flow gained the
+        // 'tax_registration' step between country_compliance and coa_import.
+        $this->assertSame('tax_registration', $this->machine->back($sessionId)['session']->current_step);
+
         // Walk back to the first step (group_setup), then a further back must be blocked.
         $this->assertSame('country_compliance', $this->machine->back($sessionId)['session']->current_step);
         $this->assertSame('entity_selection', $this->machine->back($sessionId)['session']->current_step);

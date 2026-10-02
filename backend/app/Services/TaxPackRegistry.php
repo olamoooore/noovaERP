@@ -175,6 +175,19 @@ class TaxPackRegistry
     }
 
     /**
+     * #748/#750: the filing-period shapes a jurisdiction's pack supports
+     * (e.g. SG monthly/quarterly, MY bimonthly/monthly).
+     *
+     * @return array<int, string>
+     */
+    public function periodShapes(string $jurisdiction): array
+    {
+        $shapes = $this->pack($jurisdiction)['period_shapes'] ?? [];
+
+        return is_array($shapes) ? array_values($shapes) : [];
+    }
+
+    /**
      * Country → jurisdiction code from the geography map. Unknown codes pass
      * through unchanged (they stay their own jurisdiction).
      */

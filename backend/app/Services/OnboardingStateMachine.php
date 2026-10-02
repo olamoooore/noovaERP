@@ -79,6 +79,32 @@ class OnboardingStateMachine
      *
      * @throws \RuntimeException When the session is not found for the current tenant.
      */
+    /**
+     * #748 TU2: a guided onboarding step that records a tax registration.
+     * "Not registered" writes nothing — the UI shows the threshold gauge.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function applyTaxRegistrationStep(array $data): void
+    {
+        if (empty($data['registered'])) {
+            return;
+        }
+
+        $payload = array_intersect_key($data, array_flip([
+            'legal_entity_id', 'jurisdiction', 'regime', 'registration_number',
+            'effective_from', 'effective_to', 'filing_start_month',
+            'filing_frequency', 'notes',
+        ]));
+
+        if (empty($payload['jurisdiction']) || empty($payload['registration_number']) || empty($payload['effective_from'])) {
+            // Incomplete step data must not crash onboarding; nothing is written.
+            return;
+        }
+
+        app(\App\Services\TaxRegistrationService::class)->upsert($payload);
+    }
+
     private function sessionForCurrentTenant(int $sessionId): object
     {
         $session = DB::table('onboarding_sessions')->find($sessionId);
@@ -114,6 +140,12 @@ class OnboardingStateMachine
 
         // Validate prerequisites for the NEXT step
         $nextIndex = $currentIndex + 1;
+
+        // #748 TU2: the tax-registration step writes the entity's registration
+        // (or nothing when the entity is not registered).
+        if ($currentStep === 'tax_registration' && is_array($stepData)) {
+            $this->applyTaxRegistrationStep($stepData);
+        }
 
         // Mark current step completed
         DB::table('onboarding_step_states')
