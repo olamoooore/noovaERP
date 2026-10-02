@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useCustomerCreditNotes, useDeleteCreditNote } from '@/hooks/useCustomerCreditNotes';
 import type { CreditNoteFilters } from '@/types/creditNote';
@@ -33,6 +33,14 @@ export default function CustomerCreditNotesPage() {
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
+  // Wide search hits the DB per term; debounce typing like the other lists do.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      handleFilterChange('search', searchTerm || undefined);
+    }, 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm]);
   const [filters, setFilters] = useState<CreditNoteFilters>({
     search: searchParams.get('search') || undefined,
   });
@@ -81,13 +89,9 @@ export default function CustomerCreditNotesPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Input
             type="text"
-            placeholder="Search by credit note number or customer..."
+            placeholder="Search credit note, customer, contact…"
             value={searchTerm}
-            onChange={(e) => {
-              const value = e.target.value;
-              setSearchTerm(value);
-              handleFilterChange('search', value || undefined);
-            }}
+            onChange={(e) => setSearchTerm(e.target.value)}
             className="h-8 w-64 rounded-full px-3 text-xs"
           />
           <select
@@ -162,7 +166,25 @@ export default function CustomerCreditNotesPage() {
                       >
                         {creditNote.credit_note_number}
                       </TableCell>
-                      <TableCell>{creditNote.customer_name || '-'}</TableCell>
+                      <TableCell>
+                        <div>{creditNote.customer_name || '-'}</div>
+                        {/* Wide search can match a contact/address/line/tag on the customer. */}
+                        {(creditNote.matched_contacts?.length ?? 0) > 0 && (
+                          <div className="truncate text-xs text-primary" title={creditNote.matched_contacts.join(', ')}>
+                            Contact: {creditNote.matched_contacts.join(', ')}
+                          </div>
+                        )}
+                        {(creditNote.matched_lines?.length ?? 0) > 0 && (
+                          <div className="truncate text-xs text-muted-foreground" title={creditNote.matched_lines.join(' · ')}>
+                            Line: {creditNote.matched_lines.join(' · ')}
+                          </div>
+                        )}
+                        {(creditNote.matched_addresses?.length ?? 0) > 0 && (
+                          <div className="truncate text-xs text-muted-foreground" title={creditNote.matched_addresses.join(' · ')}>
+                            Address: {creditNote.matched_addresses.join(' · ')}
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell>{creditNote.invoice_number || '-'}</TableCell>
                       <TableCell>{new Date(creditNote.credit_note_date).toLocaleDateString()}</TableCell>
                       <TableCell className="text-right font-medium">

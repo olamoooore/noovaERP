@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\VendorDebitNote;
+use App\Services\DocumentWideSearchService;
 use App\Services\VendorDebitNoteService;
+use App\Services\VendorWideSearchService;
 use Illuminate\Http\Request;
 
 class VendorDebitNotesController extends Controller
@@ -37,19 +39,38 @@ class VendorDebitNotesController extends Controller
             $query->where('debit_note_date', '<=', $request->end_date);
         }
 
-        if ($request->has('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('debit_note_number', 'ILIKE', "%{$search}%")
-                    ->orWhereHas('vendor', function ($vq) use ($search) {
-                        $vq->where('name', 'ILIKE', "%{$search}%");
-                    });
-            });
+        // Search — wide: document refs, vendor's full surface (identity,
+        // address book, tags), line contents and the billed bill number.
+        $search = $request->filled('search') ? trim((string) $request->search) : '';
+        if ($search !== '') {
+            app(DocumentWideSearchService::class)->apply($query, $search, $this->wideSearchConfig());
+            $query->with(app(DocumentWideSearchService::class)->eagerLoads($this->wideSearchConfig()));
         }
 
         $debitNotes = $query->paginate(20);
 
+        if ($search !== '') {
+            app(DocumentWideSearchService::class)->annotate($debitNotes, $search, $this->wideSearchConfig());
+        }
+
         return response()->json($debitNotes);
+    }
+
+    /**
+     * Wide-search configuration for the vendor debit-note list.
+     */
+    private function wideSearchConfig(): array
+    {
+        return [
+            'columns' => ['debit_note_number', 'reason', 'notes'],
+            'party' => [
+                'relation' => 'vendor',
+                'service' => VendorWideSearchService::class,
+                'addresses' => 'addresses',
+            ],
+            'lines' => ['relation' => 'lines', 'columns' => ['description']],
+            'related' => ['bill' => 'bill_number'],
+        ];
     }
 
     public function show($debitNote)
