@@ -38,8 +38,20 @@ describe('legacy commerce nav freeze (FR-ARC-02)', () => {
 describe('storefront admin nav (FR-MOD-06)', () => {
   const flat = flattenNav(baseNavItems)
 
+  // Storefront now lives UNDER the Website module — find it anywhere in the tree.
+  const findByHref = (items: typeof baseNavItems, href: string): (typeof baseNavItems)[number] | undefined => {
+    for (const item of items) {
+      if (item.href === href) return item
+      if (item.children) {
+        const found = findByHref(item.children, href)
+        if (found) return found
+      }
+    }
+    return undefined
+  }
+
   it('has a Storefront section with orders and settings', () => {
-    const section = baseNavItems.find((item) => item.href === '/storefront/orders')
+    const section = findByHref(baseNavItems, '/storefront/orders')
     expect(section).toBeDefined()
     expect(section?.featureKey).toBe('storefront')
     const hrefs = (section?.children ?? []).map((c) => c.href)
@@ -48,7 +60,7 @@ describe('storefront admin nav (FR-MOD-06)', () => {
   })
 
   it('gates the section on storefront.view; children inherit it (server enforces storefront.settings — SF001)', () => {
-    const section = baseNavItems.find((item) => item.href === '/storefront/orders')!
+    const section = findByHref(baseNavItems, '/storefront/orders')!
     expect(deriveNavPermission(section)).toBe('storefront.view')
 
     // flattenNav propagates the section's permission to children as
@@ -64,7 +76,7 @@ describe('storefront admin nav (FR-MOD-06)', () => {
     expect(
       flat
         .filter((item) => item.href.startsWith('/storefront'))
-        .every((item) => ['/storefront/orders', '/storefront/settings'].includes(item.href)),
+        .every((item) => ['/storefront/orders', '/storefront/returns', '/storefront/promotions', '/storefront/reports', '/storefront/settings'].includes(item.href)),
     ).toBe(true)
   })
 })

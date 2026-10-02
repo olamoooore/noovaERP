@@ -5,4 +5,7 @@
 // lives under /api/v1/storefront on the backend host.
 export { StorefrontOrdersPage } from './StorefrontOrdersPage'
 export { StorefrontOrderDetailPage } from './StorefrontOrderDetailPage'
+export { StorefrontReturnsPage } from './StorefrontReturnsPage'
+export { StorefrontPromotionsPage } from './StorefrontPromotionsPage'
+export { StorefrontReportsPage } from './StorefrontReportsPage'
 export { StorefrontSettingsPage } from './StorefrontSettingsPage'

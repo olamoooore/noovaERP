@@ -641,26 +641,6 @@ export const baseNavItems: NavItem[] = [
       },
     ],
   },
-  // Storefront (generic commerce, MRD ecommerce-Enterprice). Merchant-facing
-  // admin only — the SHOP itself is published pages in the Website Builder.
-  {
-    title: 'Storefront',
-    href: '/storefront/orders',
-    icon: 'solar:bag-4-bold-duotone',
-    featureKey: 'storefront',
-    children: [
-      {
-        title: 'Orders',
-        href: '/storefront/orders',
-        icon: 'solar:receipt-bold-duotone',
-      },
-      {
-        title: 'Settings',
-        href: '/storefront/settings',
-        icon: 'solar:settings-bold-duotone',
-      },
-    ],
-  },
   {
     title: 'Loyalty',
     href: '/loyalty',
@@ -747,6 +727,43 @@ export const baseNavItems: NavItem[] = [
         href: '/website-builder',
         icon: 'solar:buildings-bold-duotone',
         featureKey: 'website-builder',
+      },
+      // Storefront (generic commerce, MRD ecommerce-Enterprice) lives UNDER
+      // the Website module — the SHOP itself is published Website Builder
+      // pages composed from the Store blocks; these are the merchant-facing
+      // admin surfaces.
+      {
+        title: 'Storefront',
+        href: '/storefront/orders',
+        icon: 'solar:bag-4-bold-duotone',
+        featureKey: 'storefront',
+        children: [
+          {
+            title: 'Orders',
+            href: '/storefront/orders',
+            icon: 'solar:receipt-bold-duotone',
+          },
+          {
+            title: 'Returns',
+            href: '/storefront/returns',
+            icon: 'solar:box-bold-duotone',
+          },
+          {
+            title: 'Promotions',
+            href: '/storefront/promotions',
+            icon: 'solar:ticket-sale-bold-duotone',
+          },
+          {
+            title: 'Reports',
+            href: '/storefront/reports',
+            icon: 'solar:chart-2-bold-duotone',
+          },
+          {
+            title: 'Settings',
+            href: '/storefront/settings',
+            icon: 'solar:settings-bold-duotone',
+          },
+        ],
       },
       // FR-ARC-02 (legacy freeze): the 'Online Shop' (/store) entry was
       // removed from navigation — the legacy ecommerce stack is archived and
