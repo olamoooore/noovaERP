@@ -19,9 +19,9 @@ class PeppolSubmissionProvider implements SubmissionProviderContract
 
     protected bool $testMode;
 
-    public function __construct()
+    public function __construct(?Client $client = null)
     {
-        $this->client = new Client;
+        $this->client = $client ?? new Client;
         $this->testMode = (bool) config('compliance.singapore.peppol_test_mode', true);
         // Issue #99: there is deliberately NO example.com fallback. A real
         // access-point endpoint must be configured; an unconfigured deployment
