@@ -48,7 +48,7 @@ class Issue898CsvFormulaInjectionTest extends TestCase
 
     public function test_csv_output_neutralises_every_spreadsheet_formula_trigger(): void
     {
-        foreach (['=', '+', '-', '@', "\t", "\r"] as $trigger) {
+        foreach (['=', '+', '-', '@', "\t"] as $trigger) {
             $name = $trigger.'SUM(1+1)';
             $export = new CustomersExport(Mockery::mock(Builder::class), ['name'], 'csv');
             $customer = (new Customer)->forceFill(['name' => $name]);
@@ -61,6 +61,27 @@ class Issue898CsvFormulaInjectionTest extends TestCase
                 sprintf('A value starting with %s must be escaped in CSV.', json_encode($trigger))
             );
         }
+    }
+
+    /**
+     * PhpSpreadsheet normalises a leading CR to LF inside a text cell
+     * (`Cell::setValueExplicit` — verified against the installed vendor
+     * version), so a CR can never survive verbatim into the CSV. What must
+     * still hold is the security property: the value is prefixed with an
+     * apostrophe, so a formula behind the CR cannot execute.
+     */
+    public function test_csv_output_neutralises_a_leading_carriage_return(): void
+    {
+        $export = new CustomersExport(Mockery::mock(Builder::class), ['name'], 'csv');
+        $customer = (new Customer)->forceFill(['name' => "\r=SUM(1+1)"]);
+
+        $cells = $this->renderCsv($export, $export->map($customer));
+
+        $this->assertStringStartsWith(
+            "'",
+            (string) $cells[0],
+            'A CR-leading value must still be prefixed so CSV consumers treat it as text, never as a formula.'
+        );
     }
 
     public function test_csv_output_leaves_ordinary_text_and_numbers_untouched(): void
