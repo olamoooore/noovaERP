@@ -33,6 +33,12 @@ export const VendorBills: React.FC = () => {
   const [showUpload, setShowUpload] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  // Wide search hits the DB per term; debounce typing like the other lists do.
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchQuery(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
   const vendorIdParam = searchParams.get('vendor_id');
   const agingBucketParam = searchParams.get('aging_bucket');
   const [vendorFilter, setVendorFilter] = useState<string | null>(vendorIdParam);
@@ -48,7 +54,7 @@ export const VendorBills: React.FC = () => {
 
   // Fetch vendor bills from both OCR documents and regular bills API
   const { data: bills, isLoading, refetch } = useQuery({
-    queryKey: ['vendor-bills', statusFilter, searchQuery, vendorFilter, agingBucketFilter],
+    queryKey: ['vendor-bills', statusFilter, debouncedSearchQuery, vendorFilter, agingBucketFilter],
     queryFn: async () => {
       if (vendorFilter && agingBucketFilter) {
         const response = await api.get('/accounting/reports/aged-payables/details', {
@@ -86,7 +92,7 @@ export const VendorBills: React.FC = () => {
             per_page: 1000,
             vendor_id: vendorFilter || undefined,
             status: statusFilter !== 'all' ? statusFilter : undefined,
-            search: searchQuery || undefined,
+            search: debouncedSearchQuery || undefined,
           },
         });
 
@@ -102,6 +108,11 @@ export const VendorBills: React.FC = () => {
           vendor_name: bill.vendor?.name || 'Unknown Vendor',
           total_amount: bill.total,
           balance: bill.balance,
+          // Wide-search hints set by the list endpoint.
+          matched_contacts: bill.matched_contacts,
+          matched_tags: bill.matched_tags,
+          matched_lines: bill.matched_lines,
+          matched_addresses: bill.matched_addresses,
           extracted_data: {
             invoice_number: bill.bill_number,
             vendor_name: bill.vendor?.name || 'Unknown Vendor',
@@ -119,7 +130,7 @@ export const VendorBills: React.FC = () => {
         const ocrParams = new URLSearchParams();
         ocrParams.append('document_type', 'vendor_bill');
         if (statusFilter !== 'all') ocrParams.append('status', statusFilter);
-        if (searchQuery) ocrParams.append('search', searchQuery);
+        if (debouncedSearchQuery) ocrParams.append('search', debouncedSearchQuery);
 
         const ocrResponse = await api.get(`/ocr/documents?${ocrParams.toString()}`);
         const ocrBills = ocrResponse.data.data || [];
@@ -287,7 +298,7 @@ export const VendorBills: React.FC = () => {
               className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
             />
             <Input
-              placeholder="Search by vendor, bill number..."
+              placeholder="Search bill, vendor, address, line…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="h-8 rounded-full pl-9 pr-3 text-xs"
@@ -450,7 +461,28 @@ export const VendorBills: React.FC = () => {
                         {bill.extracted_data?.invoice_number || bill.uuid.toString().slice(0, 8)}
                       </TableCell>
                       <TableCell className="font-medium text-primary hover:underline">
-                        {bill.extracted_data?.vendor_name || bill.vendor_name || '-'}
+                        <div>{bill.extracted_data?.vendor_name || bill.vendor_name || '-'}</div>
+                        {/* Wide search can match a vendor address/line/tag — show which. */}
+                        {(bill.matched_contacts?.length ?? 0) > 0 && (
+                          <div className="truncate text-xs text-primary" title={bill.matched_contacts.join(', ')}>
+                            Contact: {bill.matched_contacts.join(', ')}
+                          </div>
+                        )}
+                        {(bill.matched_tags?.length ?? 0) > 0 && (
+                          <div className="truncate text-xs text-amber-600" title={bill.matched_tags.join(', ')}>
+                            Tag: {bill.matched_tags.join(', ')}
+                          </div>
+                        )}
+                        {(bill.matched_lines?.length ?? 0) > 0 && (
+                          <div className="truncate text-xs text-muted-foreground" title={bill.matched_lines.join(' · ')}>
+                            Line: {bill.matched_lines.join(' · ')}
+                          </div>
+                        )}
+                        {(bill.matched_addresses?.length ?? 0) > 0 && (
+                          <div className="truncate text-xs text-muted-foreground" title={bill.matched_addresses.join(' · ')}>
+                            Address: {bill.matched_addresses.join(' · ')}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>{formatDate(bill.sort_bill_date)}</TableCell>
                       <TableCell>{formatDate(bill.sort_due_date)}</TableCell>
