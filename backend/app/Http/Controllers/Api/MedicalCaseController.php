@@ -3,11 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\MedicalCase;
-use App\Models\MedicalCaseItem;
 use App\Models\BonusSchemeUsage;
 use App\Models\Customer;
-use App\Models\Product;
+use App\Models\MedicalCase;
+use App\Models\MedicalCaseItem;
+use App\Services\CustomerWideSearchService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -33,13 +33,31 @@ class MedicalCaseController extends Controller
         }
 
         if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('case_no', 'ilike', "%{$search}%")
-                    ->orWhere('patient_reference', 'ilike', "%{$search}%")
-                    ->orWhereHas('customer', function ($q2) use ($search) {
-                        $q2->where('company_name', 'ilike', "%{$search}%");
-                    });
+            // Wide: case identity/tag/location/notes, the customer's full
+            // surface (name, contacts, addresses, tags) and the case contacts.
+            $search = trim((string) $request->search);
+            $like = "%{$search}%";
+
+            // Case contacts are CustomerContact records (name/job_title).
+            $contactMatches = function ($contact) use ($like) {
+                $contact->where('name', 'ilike', $like)
+                    ->orWhere('job_title', 'ilike', $like)
+                    ->orWhere('email', 'ilike', $like)
+                    ->orWhere('phone', 'ilike', $like)
+                    ->orWhere('mobile', 'ilike', $like);
+            };
+
+            $query->where(function ($q) use ($search, $like, $contactMatches) {
+                $q->where('case_no', 'ilike', $like)
+                    ->orWhere('case_tag', 'ilike', $like)
+                    ->orWhere('patient_reference', 'ilike', $like)
+                    ->orWhere('location', 'ilike', $like)
+                    ->orWhere('delivered_to', 'ilike', $like)
+                    ->orWhere('notes', 'ilike', $like)
+                    ->orWhereHas('customer', fn ($customer) => app(CustomerWideSearchService::class)->apply($customer, $search))
+                    ->orWhereHas('doctorContact', $contactMatches)
+                    ->orWhereHas('requestorContact', $contactMatches)
+                    ->orWhereHas('buyerContact', $contactMatches);
             });
         }
 
@@ -96,7 +114,7 @@ class MedicalCaseController extends Controller
                     'created_by' => $request->user()->id,
                 ]);
 
-                if (!empty($validated['items'])) {
+                if (! empty($validated['items'])) {
                     foreach ($validated['items'] as $item) {
                         MedicalCaseItem::create([
                             'medical_case_id' => $case->id,
@@ -143,7 +161,7 @@ class MedicalCaseController extends Controller
             'createdBy',
         ])->find($id);
 
-        if (!$case) {
+        if (! $case) {
             return response()->json(['message' => 'Medical case not found'], 404);
         }
 
@@ -154,7 +172,7 @@ class MedicalCaseController extends Controller
     {
         $case = MedicalCase::find($id);
 
-        if (!$case) {
+        if (! $case) {
             return response()->json(['message' => 'Medical case not found'], 404);
         }
 
@@ -199,7 +217,7 @@ class MedicalCaseController extends Controller
     {
         $case = MedicalCase::find($id);
 
-        if (!$case) {
+        if (! $case) {
             return response()->json(['message' => 'Medical case not found'], 404);
         }
 
@@ -223,7 +241,7 @@ class MedicalCaseController extends Controller
     {
         $case = MedicalCase::with('items')->find($id);
 
-        if (!$case) {
+        if (! $case) {
             return response()->json(['message' => 'Medical case not found'], 404);
         }
 
@@ -266,7 +284,7 @@ class MedicalCaseController extends Controller
     {
         $case = MedicalCase::with('items')->find($id);
 
-        if (!$case) {
+        if (! $case) {
             return response()->json(['message' => 'Medical case not found'], 404);
         }
 
@@ -329,11 +347,11 @@ class MedicalCaseController extends Controller
     {
         $case = MedicalCase::with('items')->find($id);
 
-        if (!$case) {
+        if (! $case) {
             return response()->json(['message' => 'Medical case not found'], 404);
         }
 
-        if (!in_array($case->status, ['allocated', 'delivered'])) {
+        if (! in_array($case->status, ['allocated', 'delivered'])) {
             return response()->json(['message' => 'Case must be allocated or delivered before invoicing'], 403);
         }
 
@@ -404,7 +422,7 @@ class MedicalCaseController extends Controller
     {
         $case = MedicalCase::with('items')->find($id);
 
-        if (!$case) {
+        if (! $case) {
             return response()->json(['message' => 'Medical case not found'], 404);
         }
 
@@ -467,7 +485,7 @@ class MedicalCaseController extends Controller
     {
         $case = MedicalCase::with('items')->find($id);
 
-        if (!$case) {
+        if (! $case) {
             return response()->json(['message' => 'Medical case not found'], 404);
         }
 
