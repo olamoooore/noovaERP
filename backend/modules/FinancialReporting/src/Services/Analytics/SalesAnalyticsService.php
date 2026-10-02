@@ -123,7 +123,7 @@ class SalesAnalyticsService
             'total_cost' => round((float) $sales->sum('total_cost'), 2),
             'total_profit' => round((float) $sales->sum('total_profit'), 2),
             'average_profit_margin' => $sales->count() > 0 ? round((float) $sales->avg('profit_margin'), 2) : 0,
-            'total_quantity_sold' => (int) $sales->sum('total_quantity'),
+            'total_quantity_sold' => $this->roundQuantity($sales->sum('total_quantity')),
             'channels_included' => self::CHANNELS_INCLUDED,
         ]);
 
@@ -138,8 +138,8 @@ class SalesAnalyticsService
                 'name' => $item->name,
                 'product_name' => $item->name,
                 'sku' => $item->sku,
-                'total_quantity' => (int) $item->total_quantity,
-                'quantity_sold' => (int) $item->total_quantity,
+                'total_quantity' => $this->roundQuantity($item->total_quantity),
+                'quantity_sold' => $this->roundQuantity($item->total_quantity),
                 'total_revenue' => round((float) $item->total_revenue, 2),
                 'total_sales' => round((float) $item->total_revenue, 2),
                 'total_cost' => round((float) $item->total_cost, 2),
@@ -414,7 +414,7 @@ class SalesAnalyticsService
                 'category_id' => $item->category_id,
                 'category_name' => $item->category_name ?? 'Uncategorized',
                 'product_count' => (int) $item->product_count,
-                'quantity_sold' => (int) $item->total_quantity,
+                'quantity_sold' => $this->roundQuantity($item->total_quantity),
                 'revenue' => round((float) $item->total_revenue, 2),
                 'total_sales' => round((float) $item->total_revenue, 2),
                 'cost' => round((float) $item->total_cost, 2),
@@ -710,6 +710,19 @@ class SalesAnalyticsService
     {
         return "ROUND({$lineNet} - COALESCE({$docDiscount}, 0) * {$lineNet}"
             ." / NULLIF(SUM({$lineNet}) OVER (PARTITION BY {$docKey}), 0), 2)";
+    }
+
+    /**
+     * Base-unit quantity scale used across the stock path: #250 widened
+     * stock_levels / stock_movements / products.stock_quantity to numeric(15,4),
+     * sales_order_lines is decimal(15,4) (cast decimal:4) and the pipeline
+     * analytics already round to 4. Issue #592: report quantities at that scale
+     * instead of (int)-truncating them, so the Qty Sold column reconciles with
+     * the revenue those quantities earned.
+     */
+    private function roundQuantity(mixed $quantity): float
+    {
+        return round((float) $quantity, 4);
     }
 
     /**
