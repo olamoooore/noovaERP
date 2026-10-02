@@ -6,6 +6,7 @@ use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\DTOs\ReversalRequest;
+use App\Accounting\Events\CreditNotePosted;
 use App\Models\CustomerCreditNote;
 use App\Models\CustomerCreditNoteLine;
 use App\Models\Invoice;
@@ -241,6 +242,10 @@ class CustomerCreditNoteService
      */
     public function postCreditNote(CustomerCreditNote $creditNote): CustomerCreditNote
     {
+        // #516 (CN7): captured before the posting work, which tears the
+        // tenancy context down before the post-commit dispatch below.
+        $postingTenantId = tenancy()->tenant?->id;
+
         if ($creditNote->status !== 'draft') {
             throw new \Exception('Only draft credit notes can be posted');
         }
@@ -452,6 +457,14 @@ class CustomerCreditNoteService
             app(InvoiceService::class)->applyCreditNoteToInvoice($invoice, (float) $creditNote->total_amount);
 
             DB::commit();
+
+            // #516 (CN7): after the commit, mirroring InvoicePosted — the
+            // e-invoicing listener must only ever see a credit note whose
+            // ledger effect is durable.
+            CreditNotePosted::dispatch(
+                $creditNote->fresh(['journalEntry', 'lines', 'customer', 'invoice']),
+                $postingTenantId
+            );
 
             return $creditNote->fresh(['journalEntry', 'lines', 'customer', 'invoice']);
 
