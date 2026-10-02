@@ -47,6 +47,7 @@ class Customer extends Model
         'customer_group',
         'payment_terms',
         'total_outstanding',
+        'credit_balance',
         'price_list_id',
 
         // Personal (for individuals)
@@ -77,6 +78,7 @@ class Customer extends Model
         'type' => 'string',
         'credit_limit' => 'decimal:2',
         'total_outstanding' => 'decimal:2',
+        'credit_balance' => 'decimal:2',
         'total_purchases' => 'decimal:2',
         'average_order_value' => 'decimal:2',
         'is_active' => 'boolean',

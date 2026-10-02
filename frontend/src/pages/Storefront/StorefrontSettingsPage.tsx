@@ -1,12 +1,30 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
+import { Link } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
 import api from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
+
+interface StorefrontHealth {
+  storefront_enabled: boolean
+  currency_code: string | null
+  cache: { hits?: number; misses?: number; ratio?: number | null; version?: number | null }
+  website: { slug: string; published_pages: number } | null
+  sitemap_ready: boolean
+}
+
+const QUICK_LINKS = [
+  { to: '/storefront/orders', label: 'Orders', icon: 'solar:bag-4-bold-duotone', desc: 'Payments, fulfilment, refunds' },
+  { to: '/storefront/returns', label: 'Returns', icon: 'solar:box-bold-duotone', desc: 'Approve, receive, refund' },
+  { to: '/storefront/promotions', label: 'Promotions', icon: 'solar:ticket-sale-bold-duotone', desc: 'Discount codes' },
+  { to: '/storefront/reports', label: 'Reports', icon: 'solar:chart-2-bold-duotone', desc: 'Sales, tax, funnel, reconciliation' },
+  { to: '/website-builder', label: 'Website Builder', icon: 'solar:widget-5-bold-duotone', desc: 'Compose the shop with Store blocks' },
+]
 
 interface StorefrontSettings {
   enabled: boolean
@@ -26,6 +44,11 @@ interface StorefrontSettings {
 export function StorefrontSettingsPage() {
   const queryClient = useQueryClient()
   const hasPermission = useAuthStore((state) => state.hasPermission)
+
+  const { data: health } = useQuery({
+    queryKey: ['storefront-health'],
+    queryFn: async () => (await api.get('/admin/storefront/health')).data.data as StorefrontHealth,
+  })
   const [form, setForm] = useState<StorefrontSettings | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -119,6 +142,37 @@ export function StorefrontSettingsPage() {
           Builder with Store blocks.
         </p>
       </div>
+
+      {/* Health / overview */}
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-base">Storefront status</CardTitle></CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <Badge variant="secondary" className={health?.storefront_enabled ? 'bg-green-100 text-green-800' : 'bg-neutral-200 text-neutral-700'}>
+              {health?.storefront_enabled ? 'Enabled' : 'Disabled'}
+            </Badge>
+            <Badge variant="outline">Currency: {health?.currency_code ?? '—'}</Badge>
+            <Badge variant="outline">
+              {health?.website ? `Site: ${health.website.slug} · ${health.website.published_pages} published pages` : 'No published website yet'}
+            </Badge>
+            <Badge variant="outline" className={health?.sitemap_ready ? 'bg-green-50 text-green-700' : ''}>
+              Sitemap {health?.sitemap_ready ? 'ready' : 'pending'}
+            </Badge>
+            {health?.cache?.ratio != null && (
+              <Badge variant="outline">Cache hit ratio: {Math.round((health.cache.ratio ?? 0) * 100)}%</Badge>
+            )}
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {QUICK_LINKS.map((q) => (
+              <Link key={q.to} to={q.to} className="rounded-lg border p-3 transition-colors hover:bg-muted">
+                <Icon icon={q.icon} className="mb-1 h-5 w-5 text-primary" />
+                <div className="text-sm font-medium">{q.label}</div>
+                <div className="text-xs text-muted-foreground">{q.desc}</div>
+              </Link>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

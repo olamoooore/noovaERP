@@ -531,7 +531,7 @@ class TaxReportingService
         $filedKeys = [];
 
         foreach ($filings as $filing) {
-            foreach (self::expandFilingPeriod((string) $filing->period) as $month) {
+            foreach (self::expandFilingPeriod((string) $filing->period, (string) $filing->country) as $month) {
                 $filedKeys[strtolower((string) $filing->country).'|'.$month.'|'.(int) $filing->entity_key] = true;
             }
         }
@@ -607,8 +607,16 @@ class TaxReportingService
      *
      * @return array<int, string>
      */
-    public static function expandFilingPeriod(string $period): array
+    /**
+     * #741 T8: bimonthly SST-02 periods (YYYY-Bn) expand to their two months
+     * via the shared period parser (registrant cycle start month).
+     */
+    public static function expandFilingPeriod(string $period, ?string $jurisdiction = null): array
     {
+        if (preg_match('/^\d{4}-B[1-6]$/', $period) === 1) {
+            return TaxReturnAggregator::periodMonths($period, $jurisdiction) ?? [];
+        }
+
         if (preg_match('/^(\d{4})-Q([1-4])$/', $period, $m) === 1) {
             $start = ((int) $m[2] - 1) * 3 + 1;
 

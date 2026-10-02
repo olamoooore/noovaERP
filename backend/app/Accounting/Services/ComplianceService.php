@@ -7,6 +7,7 @@ use App\Models\Accounting\ComplianceDocument;
 use App\Models\Accounting\ComplianceEvent;
 use App\Models\Accounting\ComplianceSubmission;
 use App\Models\Accounting\CountryConfiguration;
+use App\Models\CustomerCreditNote;
 use App\Models\Invoice;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -68,6 +69,38 @@ class ComplianceService
         $this->stampOriginalComplianceReference($document, $invoice);
 
         return $this->submitComplianceDocument($document, $countryCode, $invoice);
+    }
+
+    /**
+     * #516 (CN7): submit a posted customer credit note to a country's
+     * e-invoicing provider. Single entry point for both the automatic
+     * post-submission workflow (CreditNotePosted) and the manual
+     * submit endpoint, so the compliance document is created the same way
+     * either path.
+     *
+     * @param  string  $countryCode  ISO country code (e.g. MY, SG)
+     * @return array ['success' => bool, 'submission_id' => int|null, 'message' => string]
+     */
+    public function submitCreditNote(CustomerCreditNote $creditNote, string $countryCode): array
+    {
+        $document = ComplianceDocument::firstOrCreate(
+            [
+                'tenant_id' => $this->currentTenantId(),
+                'country_code' => strtoupper($countryCode),
+                'document_type' => 'credit_note',
+                'document_id' => $creditNote->id,
+            ],
+            [
+                'document_number' => $creditNote->credit_note_number,
+                'issued_date' => $creditNote->credit_note_date,
+                'total_amount' => $creditNote->total_amount,
+                'currency_code' => $creditNote->currency_code ?? 'MYR',
+                'compliance_status' => 'pending',
+                'created_by' => \Auth::id(),
+            ]
+        );
+
+        return $this->submitComplianceDocument($document, $countryCode, $creditNote);
     }
 
     /**

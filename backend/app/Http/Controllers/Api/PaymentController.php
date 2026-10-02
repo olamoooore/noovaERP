@@ -6,12 +6,14 @@ use App\Exports\PaymentsExport;
 use App\Http\Controllers\Controller;
 use App\Models\Invoice;
 use App\Models\Payment;
+use App\Models\PaymentMethod;
 use App\Services\CustomerWideSearchService;
 use App\Services\DocumentWideSearchService;
 use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Maatwebsite\Excel\Facades\Excel;
 
 class PaymentController extends Controller
@@ -215,11 +217,20 @@ class PaymentController extends Controller
             'payment_date' => 'nullable|date',
             'amount' => 'required|numeric|min:0',
             'discount_amount' => 'nullable|numeric|min:0',
-            'method' => 'required|in:cash,card,bank_transfer,check,other',
+            'method' => ['required', 'string', Rule::in($this->methodCodes())],
             'reference' => 'nullable|string',
             'notes' => 'nullable|string',
             'bank_account_id' => 'nullable|exists:bank_accounts,id',
         ]);
+
+        // #486: field requirements come from the method master, not a
+        // hardcoded guess (e.g. Cheque requires a reference).
+        $methodRow = PaymentMethod::query()->active()->where('code', $validated['method'])->first();
+        if ($methodRow?->requires_reference && blank($validated['reference'] ?? null)) {
+            return response()->json([
+                'message' => "A reference number is required for {$methodRow->label} payments.",
+            ], 422);
+        }
 
         try {
             $invoice = Invoice::findOrFail($validated['invoice_id']);
@@ -249,20 +260,9 @@ class PaymentController extends Controller
                 ], 422);
             }
 
-            // Validate bank balance if paying from a bank account
-            if (! empty($validated['bank_account_id'])) {
-                $bankAccount = \App\Models\BankAccount::find($validated['bank_account_id']);
-                if ($bankAccount) {
-                    $currentBalance = $bankAccount->getCurrentBalance();
-                    if ($validated['amount'] > $currentBalance) {
-                        return response()->json([
-                            'message' => 'Payment amount exceeds bank account balance',
-                            'bank_balance' => $currentBalance,
-                            'requested_amount' => $validated['amount'],
-                        ], 422);
-                    }
-                }
-            }
+            // #479: NO bank-balance ceiling on an incoming receipt. That guard
+            // is an OUTFLOW rule (vendor payments/refunds) — applying it here
+            // rejected exactly the deposits that fund a new/low-balance account.
 
             // Manual recording creates a DRAFT payment (no journal entry). The
             // operator reviews and posts it from the Payments page — creating
@@ -284,11 +284,34 @@ class PaymentController extends Controller
         }
     }
 
+    /**
+     * Active payment-method codes from the tenant master (#486).
+     * Falls back to the historical hardcoded list when the master has not
+     * been seeded yet, so behaviour is unchanged for unseeded tenants.
+     */
+    private function methodCodes(): array
+    {
+        $codes = PaymentMethod::query()->active()->pluck('code')->all();
+
+        return $codes ?: ['cash', 'card', 'bank_transfer', 'check', 'other'];
+    }
+
     public function show($payment)
     {
         $payment = Payment::findOrFail($payment);
 
-        return response()->json($payment->load(['customer', 'invoice', 'journalEntry', 'receivedBy']));
+        $payment->load(['customer', 'invoice', 'journalEntry', 'receivedBy', 'bankAccount.glAccount']);
+
+        // #485: the detail view labels the receiving account by name AND GL
+        // code — the join the list endpoint does, done explicitly here.
+        // NOTE: relations live in $payment->relations under the CAMEL key, so
+        // read via $payment->bankAccount; the JSON key is snake_cased on
+        // serialization by Laravel.
+        if ($payment->bankAccount) {
+            $payment->bankAccount->setAttribute('gl_account_code', $payment->bankAccount->glAccount?->code);
+        }
+
+        return response()->json($payment);
     }
 
     /**
@@ -381,9 +404,11 @@ class PaymentController extends Controller
             'payment_date' => 'nullable|date',
             'invoice_id' => 'nullable|integer|exists:invoices,id',
             'amount' => 'nullable|numeric|min:0.01',
-            'method' => 'nullable|in:cash,card,bank_transfer,check,other',
+            'method' => ['nullable', 'string', Rule::in($this->methodCodes())],
             'reference' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
+            // #485: the edit dialog must be able to move the deposit account.
+            'bank_account_id' => 'nullable|exists:bank_accounts,id',
         ]);
 
         if (array_key_exists('payment_date', $validated)) {
@@ -408,6 +433,9 @@ class PaymentController extends Controller
                 if (array_key_exists('method', $validated)) {
                     $payment->method = $validated['method'];
                 }
+                if (array_key_exists('bank_account_id', $validated)) {
+                    $payment->bank_account_id = $validated['bank_account_id'];
+                }
                 if (array_key_exists('reference', $validated)) {
                     $payment->reference = $validated['reference'];
                 }
@@ -422,47 +450,20 @@ class PaymentController extends Controller
                     ? (float) $validated['amount']
                     : $previousAmount;
 
-                // When invoice or amount changes we re-allocate so both
-                // invoices stay balanced. Validate the new allocation fits.
-                $invoiceChanged = (int) $newInvoiceId !== (int) $previousInvoiceId;
-                $amountChanged = abs($newAmount - $previousAmount) > 0.005;
-
-                if ($invoiceChanged || $amountChanged) {
-                    // Remove the existing allocation first. This makes the
-                    // payment's current amount available when editing it on
-                    // the same invoice and prevents double-counting.
-                    if ($previousInvoiceId !== null) {
-                        $previous = Invoice::lockForUpdate()->find($previousInvoiceId);
-                        if ($previous) {
-                            $previous->paid_amount = max(0, (float) $previous->paid_amount - $previousAmount);
-                            $previous->balance = max(0, (float) $previous->total - (float) $previous->paid_amount);
-                            $previous->status = $this->resolveInvoiceStatus($previous);
-                            $previous->settlement_status = $previous->paid_amount <= 0 ? 'unpaid' : 'partially_paid';
-                            $previous->save();
-                        }
-                    }
-
-                    if ($newInvoiceId !== null) {
-                        $target = Invoice::lockForUpdate()->findOrFail($newInvoiceId);
-
-                        if ($newAmount > (float) $target->balance) {
-                            throw new \RuntimeException(
-                                "Payment amount ({$newAmount}) exceeds invoice {$target->invoice_number} balance (".(float) $target->balance.')'
-                            );
-                        }
-
-                        $target->paid_amount = (float) $target->paid_amount + $newAmount;
-                        $target->balance = max(0, (float) $target->total - (float) $target->paid_amount);
-                        $target->status = $this->resolveInvoiceStatus($target);
-                        $target->settlement_status = $target->paid_amount <= 0 ? 'unpaid' : ($target->balance <= 0 ? 'paid' : 'partially_paid');
-                        $target->save();
-
+                // #477 (Decision 2026-10-02): a draft payment does not touch any
+                // invoice, so editing it (amount or linked invoice) must NOT
+                // mutate invoice balances either. Settlement — paid_amount,
+                // balance, status, AR — happens only when the payment is posted.
+                // Only drafts reach here (posted payments are locked above).
+                if ((int) $newInvoiceId !== (int) $previousInvoiceId && $newInvoiceId !== null) {
+                    $target = Invoice::find($newInvoiceId);
+                    if ($target) {
                         $payment->customer_id = $target->customer_id;
                     }
-
-                    $payment->invoice_id = $newInvoiceId;
-                    $payment->amount = $newAmount;
                 }
+
+                $payment->invoice_id = $newInvoiceId;
+                $payment->amount = $newAmount;
 
                 $payment->save();
             });
@@ -521,22 +522,13 @@ class PaymentController extends Controller
             }
 
             try {
+                // #477/#482: new drafts never touched the invoice. A LEGACY
+                // draft may still carry live applications (it settled before
+                // #477) — reverse them through the canonical allocation path
+                // (restores each invoice + writes the settlement audit rows)
+                // before removing the payment.
                 DB::transaction(function () use ($payment) {
-                    if ($payment->invoice_id) {
-                        $invoice = Invoice::find($payment->invoice_id);
-                        if ($invoice) {
-                            $invoice->paid_amount = max(0, (float) $invoice->paid_amount - (float) $payment->amount);
-                            $invoice->balance = $invoice->total - $invoice->paid_amount;
-                            $invoice->status = $this->resolveInvoiceStatus($invoice);
-                            $invoice->settlement_status = $invoice->paid_amount <= 0 ? 'unpaid' : 'partially_paid';
-                            $invoice->save();
-
-                            if ($invoice->customer) {
-                                $invoice->customer->updateOutstanding();
-                            }
-                        }
-                    }
-
+                    $this->reverseLiveApplications($payment);
                     $payment->delete();
                 });
 
@@ -565,17 +557,11 @@ class PaymentController extends Controller
             ], 403);
         }
 
+        // #477/#482: a new draft never touched the invoice, but a LEGACY draft
+        // may still carry live applications — reverse them canonically before
+        // deleting so the invoices (and their audit trail) are restored.
         DB::transaction(function () use ($payment) {
-            if ($payment->invoice_id) {
-                $invoice = Invoice::find($payment->invoice_id);
-                if ($invoice) {
-                    $invoice->paid_amount = max(0, (float) $invoice->paid_amount - (float) $payment->amount);
-                    $invoice->balance = $invoice->total - $invoice->paid_amount;
-                    $invoice->status = $this->resolveInvoiceStatus($invoice);
-                    $invoice->settlement_status = $invoice->paid_amount <= 0 ? 'unpaid' : 'partially_paid';
-                    $invoice->save();
-                }
-            }
+            $this->reverseLiveApplications($payment);
             $payment->delete();
         });
 
@@ -656,11 +642,27 @@ class PaymentController extends Controller
             return response()->json(['message' => 'Only recorded payments can be cancelled'], 403);
         }
 
+        // #483: a draft has no journal entry — there is nothing for the posted
+        // payment correction flow to unapply. Cancel it through the delete path
+        // (reversing any legacy allocation); no reversal JE is created.
+        if ($payment->journal_entry_id === null) {
+            DB::transaction(function () use ($payment) {
+                $this->reverseLiveApplications($payment);
+                $payment->delete();
+            });
+
+            return response()->json(['message' => 'Draft payment cancelled']);
+        }
+
         try {
+            // #483: the actor is the TENANT user — auth()->id() is the central
+            // public.users id and must not be recorded on corrections.
+            $actorId = \Modules\OCRBookkeeping\Helpers\TenantUserHelper::requireTenantUserId();
+
             $correctionRequest = new \App\Services\CorrectionRequest(
                 reasonCode: 'PAYMENT_CANCELLATION',
-                reasonText: 'Payment cancelled by user '.auth()->id(),
-                userId: auth()->id(),
+                reasonText: 'Payment cancelled by user '.$actorId,
+                userId: $actorId,
             );
 
             $result = app(\App\Services\PaymentCorrectionService::class)
@@ -684,6 +686,20 @@ class PaymentController extends Controller
      * Compute the invoice status string based on the canonical balance math
      * (single source of truth for "Partially Paid" vs "Paid").
      */
+    /**
+     * #482: reverse any live payment_applications before a draft is removed.
+     * Legacy drafts (created before #477) settled their invoices directly and
+     * still carry applications; deleting them without reversing left the
+     * invoices marked paid. Runs through PaymentAllocationService (canonical)
+     * so every invoice is restored and a settlement audit row is written.
+     */
+    private function reverseLiveApplications(Payment $payment): void
+    {
+        if ($payment->applications()->whereNull('reversed_at')->exists()) {
+            app(\App\Services\PaymentAllocationService::class)->reverseAllocations($payment);
+        }
+    }
+
     private function resolveInvoiceStatus(Invoice $invoice): string
     {
         $paid = (float) $invoice->paid_amount;

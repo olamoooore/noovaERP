@@ -129,6 +129,22 @@ class ComplianceController extends Controller
         $perPage = min($request->get('per_page', 20), 100);
         $documents = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
+        // #670 (EINV-UX1): list rows show the effective e-invoice status, which
+        // can live on the latest submission (an accepted document with an open
+        // buyer rejection request is not "valid"). One extra query for the
+        // whole page instead of one per row.
+        if ($request->boolean('with_latest_submission') && $documents->isNotEmpty()) {
+            $latest = ComplianceSubmission::whereIn('document_id', $documents->pluck('id'))
+                ->orderByDesc('id')
+                ->get()
+                ->groupBy('document_id')
+                ->map(fn ($group) => $group->first());
+
+            foreach ($documents as $document) {
+                $document->setAttribute('latest_submission', $latest->get($document->id));
+            }
+        }
+
         return response()->json([
             'success' => true,
             'data' => $documents->items(),
@@ -564,30 +580,11 @@ class ComplianceController extends Controller
         ]);
 
         $creditNote = CustomerCreditNote::with(['customer', 'invoice', 'lines'])->findOrFail($creditNoteId);
-        $tenantId = $this->currentTenantId();
 
-        $document = ComplianceDocument::firstOrCreate(
-            [
-                'tenant_id' => $tenantId,
-                'country_code' => strtoupper($validated['country_code']),
-                'document_type' => 'credit_note',
-                'document_id' => $creditNote->id,
-            ],
-            [
-                'document_number' => $creditNote->credit_note_number,
-                'issued_date' => $creditNote->credit_note_date,
-                'total_amount' => $creditNote->total_amount,
-                'currency_code' => $creditNote->currency_code ?? 'MYR',
-                'compliance_status' => 'pending',
-                'created_by' => Auth::id(),
-            ]
-        );
-
-        $result = $this->complianceService->submitComplianceDocument(
-            $document,
-            $validated['country_code'],
-            $creditNote
-        );
+        // #516 (CN7): the compliance document is created by the service, which
+        // is also what the automatic post-submission workflow calls — one
+        // implementation for the manual and the automatic path.
+        $result = $this->complianceService->submitCreditNote($creditNote, $validated['country_code']);
 
         if ($result['success']) {
             return response()->json([

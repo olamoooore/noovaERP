@@ -27,8 +27,9 @@ class TaxPackVerificationGuard
             return null;
         }
 
-        $months = str_contains($period, 'Q')
-            ? TaxReportingService::expandFilingPeriod($period)
+        // #741 T8: compound periods include bimonthly SST-02 blocks.
+        $months = preg_match('/-(?:Q[1-4]|B[1-6])$/', $period) === 1
+            ? TaxReportingService::expandFilingPeriod($period, strtoupper($country))
             : [$period];
 
         if ($months === []) {

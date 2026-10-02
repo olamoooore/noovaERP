@@ -2,6 +2,7 @@
 
 namespace Modules\AccountingCountry\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Models\StatutoryReturnFiling;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -56,18 +57,24 @@ class StatutoryReturnController extends Controller
     /**
      * Generate a jurisdiction's statutory return for a reporting period.
      *
-     * Period: YYYY-MM (month) or YYYY-Qn (quarter).
+     * Period: YYYY-MM (month), YYYY-Qn (quarter) or YYYY-Bn (bimonthly —
+     * the SST-02 taxable period, #741 T8); the pack declares its shapes.
      * Entity: optional `entity_id` query parameter (the tenant's legal entity).
      */
     public function show(Request $request, string $country, string $period): JsonResponse
     {
         $country = strtoupper($country);
 
-        $months = \Modules\AccountingCountry\Services\TaxReturnAggregator::periodMonths($period);
-        if ($months === null) {
+        $shape = $this->periodShape($period);
+        if ($shape === null) {
             return response()->json([
-                'message' => 'The reporting period must be in YYYY-MM or YYYY-Qn format.',
+                'message' => 'The reporting period must be in YYYY-MM, YYYY-Qn or YYYY-Bn format.',
             ], 422);
+        }
+
+        $shapeError = $this->rejectUnsupportedShape($country, $shape);
+        if ($shapeError !== null) {
+            return $shapeError;
         }
 
         $entityId = null;
@@ -83,6 +90,15 @@ class StatutoryReturnController extends Controller
                 ], 422);
             }
         }
+
+        // #736 T3: a multi-entity tenant must generate per registration.
+        if ($entityId === null && $this->tenantHasMultipleEntities()) {
+            return response()->json([
+                'message' => 'entity_id is required for statutory returns in a multi-entity tenant.',
+            ], 422);
+        }
+
+        $months = \Modules\AccountingCountry\Services\TaxReturnAggregator::periodMonths($period, $country, $entityId);
 
         $data = match ($country) {
             'SG' => app(GstF5ReturnService::class)->generate($period, $entityId),
@@ -121,16 +137,48 @@ class StatutoryReturnController extends Controller
             return response()->json(['message' => 'Filing baselines are supported for SG (GST F5) and MY (SST-02) only.'], 422);
         }
 
-        if (! preg_match('/^\d{4}-(\d{2}|Q[1-4])$/', $period)) {
-            return response()->json(['message' => 'The reporting period must be YYYY-MM or YYYY-Qn.'], 422);
+        $shape = $this->periodShape($period);
+        if ($shape === null) {
+            return response()->json(['message' => 'The reporting period must be YYYY-MM, YYYY-Qn or YYYY-Bn.'], 422);
         }
 
-        $validated = $request->validate(['entity_id' => 'nullable|integer|exists:legal_entities,id']);
-        $legalEntityId = isset($validated['entity_id']) ? (int) $validated['entity_id'] : null;
+        $shapeError = $this->rejectUnsupportedShape($country, $shape);
+        if ($shapeError !== null) {
+            return $shapeError;
+        }
 
+        $validated = $request->validate([
+            'entity_id' => 'nullable|integer|exists:legal_entities,id',
+            // #745 T12: operator inputs for the manual/declaration F5 boxes.
+            'box_inputs' => 'nullable|array',
+        ]);
+        $legalEntityId = isset($validated['entity_id']) ? (int) $validated['entity_id'] : null;
+        $boxInputs = (array) ($validated['box_inputs'] ?? []);
+
+        // #736 T3: a multi-entity tenant must file per registration.
+        if ($legalEntityId === null && $this->tenantHasMultipleEntities()) {
+            return response()->json([
+                'message' => 'entity_id is required for statutory returns in a multi-entity tenant.',
+            ], 422);
+        }
+
+        // The F5 has manual/declaration boxes; SST-02 does not accept inputs.
         $return = $country === 'SG'
-            ? app(GstF5ReturnService::class)->generate($period, $legalEntityId)
+            ? app(GstF5ReturnService::class)->generate($period, $legalEntityId, $boxInputs)
             : app(\Modules\AccountingCountry\Malaysia\Services\Sst02ReturnService::class)->generate($period, $legalEntityId);
+
+        // #741 T8: a rule type that is neither sales nor service cannot be
+        // bucketed — filing it would misstate the return. Block until mapped.
+        $unclassified = (int) ($return['classification']['unclassified_rows'] ?? 0);
+        if ($unclassified > 0) {
+            return response()->json([
+                'message' => "Filing blocked: {$unclassified} tax row(s) are unclassified. Map them to a sales or service tax rule first.",
+                'data' => [
+                    'period' => $period,
+                    'classification' => $return['classification'],
+                ],
+            ], 422);
+        }
 
         $boxes = $return['boxes'] ?? [
             'sales_tax_due' => $return['sales_tax']['tax_due'] ?? 0,
@@ -141,7 +189,7 @@ class StatutoryReturnController extends Controller
         // G-35: filings are immutable evidence. Re-filing APPENDS a new
         // version and supersedes the previous current row; the original
         // snapshot (F7 baseline) survives untouched.
-        $filing = \DB::transaction(function () use ($country, $return, $period, $legalEntityId, $boxes, $request) {
+        $filing = \DB::transaction(function () use ($country, $return, $period, $legalEntityId, $boxes, $boxInputs, $request) {
             $entityKey = StatutoryReturnFiling::entityKey($legalEntityId);
 
             $current = StatutoryReturnFiling::query()
@@ -179,6 +227,26 @@ class StatutoryReturnController extends Controller
                 'state_updated_at' => now(),
             ]);
 
+            // #745 T12 AC2: manual box inputs are recorded and audited before
+            // filing — the F5 baseline must be explainable line by line.
+            if ($boxInputs !== []) {
+                AuditLog::create([
+                    'operation' => 'statutory_return_box_inputs',
+                    'reference_type' => 'statutory_return_filing',
+                    'reference_id' => $filing->id,
+                    'actor_id' => $request->user()?->id,
+                    'source_route' => $request->path(),
+                    'before_state' => null,
+                    'after_state' => $boxInputs,
+                    'metadata' => [
+                        'country' => $country,
+                        'form' => $return['form'],
+                        'period' => $period,
+                        'entity_key' => $entityKey,
+                    ],
+                ]);
+            }
+
             // G-12 (#274): TaxReturnPrepared on the shared accounting outbox.
             app(\App\Services\TaxOutboxPublisher::class)->publish(
                 'TaxReturnPrepared',
@@ -200,7 +268,7 @@ class StatutoryReturnController extends Controller
             $lockService = app(\App\Services\TaxPeriodClosingService::class);
             $tenantInt = (int) (tenant()->id ?? 0);
 
-            foreach (\Modules\AccountingCountry\Services\TaxReportingService::expandFilingPeriod($period) as $month) {
+            foreach (\Modules\AccountingCountry\Services\TaxReportingService::expandFilingPeriod($period, $country) as $month) {
                 if (! $lockService->isPeriodLocked($month, $tenantInt, $legalEntityId)) {
                     $lockService->closePeriod($month, $tenantInt, $legalEntityId, $country);
                 }
@@ -401,5 +469,50 @@ class StatutoryReturnController extends Controller
         ]);
 
         return response()->json(['message' => 'Delivery state recorded as unknown; resubmission blocked until reconciled.', 'data' => $model->fresh()]);
+    }
+
+    /**
+     * #736 T3: does this tenant hold more than one legal entity?
+     */
+    private function tenantHasMultipleEntities(): bool
+    {
+        return \Illuminate\Support\Facades\DB::table('legal_entities')->count() > 1;
+    }
+
+    /**
+     * #741 T8: which period shape the request asks for.
+     */
+    private function periodShape(string $period): ?string
+    {
+        if (preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $period) === 1) {
+            return 'monthly';
+        }
+
+        if (preg_match('/^\d{4}-Q[1-4]$/', $period) === 1) {
+            return 'quarterly';
+        }
+
+        if (preg_match('/^\d{4}-B[1-6]$/', $period) === 1) {
+            return 'bimonthly';
+        }
+
+        return null;
+    }
+
+    /**
+     * #741 T8: periods are declared by the pack (SG monthly/quarterly, MY
+     * monthly/bimonthly). Unknown packs skip the check (404 path follows).
+     */
+    private function rejectUnsupportedShape(string $country, string $shape): ?JsonResponse
+    {
+        $shapes = (array) config('tax_packs.'.$country.'.period_shapes', []);
+
+        if ($shapes !== [] && ! in_array($shape, $shapes, true)) {
+            return response()->json([
+                'message' => "Period shape {$shape} is not supported by the {$country} pack.",
+            ], 422);
+        }
+
+        return null;
     }
 }

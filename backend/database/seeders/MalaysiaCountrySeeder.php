@@ -44,6 +44,8 @@ class MalaysiaCountrySeeder extends Seeder
         $this->ensureCountryCodeColumn();
         $this->seedChartOfAccounts();
         $this->seedTaxRates();
+        // #486: contribute MY payment rails (DuitNow/FPX/GrabPay) to the master.
+        $this->callWith(PaymentMethodRailsSeeder::class, ['countryCode' => 'MY']);
     }
 
     /**

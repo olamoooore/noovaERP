@@ -14,18 +14,15 @@ use App\Models\Tax;
  */
 class TaxEngineService
 {
-    private const COUNTRY_DEFAULTS = [
-        'SG' => [
-            'regime' => 'GST',
-            'currency' => 'SGD',
-            'rates' => ['gst' => 9.0],
-        ],
-        'MY' => [
-            'regime' => 'SST',
-            'currency' => 'MYR',
-            'rates' => ['sales' => 10.0, 'service' => 8.0],
-        ],
-    ];
+    public function __construct(private ?TaxPackRegistry $registry = null) {}
+
+    /**
+     * #744 T11: country facts come from the pack registry, never a constant.
+     */
+    private function packs(): TaxPackRegistry
+    {
+        return $this->registry ??= app(TaxPackRegistry::class);
+    }
 
     /**
      * Resolve the effective tax for a product/document context.
@@ -81,7 +78,7 @@ class TaxEngineService
                 'tax_id' => null,
                 'tax_name' => 'Product custom tax',
                 'jurisdiction' => $jurisdiction,
-                'regime' => self::COUNTRY_DEFAULTS[$jurisdiction]['regime'] ?? 'GST',
+                'regime' => $this->packs()->regime($jurisdiction),
                 'scope' => $direction,
                 'treatment' => $rate > 0 ? 'standard_rated' : 'out_of_scope',
                 'source' => 'product_custom',
@@ -96,6 +93,20 @@ class TaxEngineService
         // output-only rule must not surface on purchase-side resolution.
         if ($explicitTax && $this->isValidOn($explicitTax, $date) && $this->scopeMatches($explicitTax, $direction)) {
             return $this->fromTax($explicitTax, $jurisdiction, $direction, 'product');
+        }
+
+        // #746 T13: an expired explicit rule follows its successor chain with
+        // the same treatment — never a silent default/newest-rule fallback.
+        // Without a successor the line resolves blocked (fail closed), not
+        // silently charged at whatever rate the fallback happens to carry.
+        if ($explicitTax && ! $this->isValidOn($explicitTax, $date)) {
+            $successor = $this->resolveSuccessor($explicitTax, $date, $direction);
+
+            if ($successor !== null) {
+                return $this->fromTax($successor, $jurisdiction, $direction, 'product_successor');
+            }
+
+            return $this->blockedExpiredRule($explicitTax, $jurisdiction, $direction);
         }
 
         $setting = Setting::getValue('tax', []);
@@ -153,7 +164,7 @@ class TaxEngineService
                 'tax_id' => null,
                 'tax_name' => 'Product tax',
                 'jurisdiction' => $jurisdiction,
-                'regime' => self::COUNTRY_DEFAULTS[$jurisdiction]['regime'] ?? 'GST',
+                'regime' => $this->packs()->regime($jurisdiction),
                 'scope' => $direction,
                 'treatment' => 'standard_rated',
                 'source' => 'product',
@@ -199,11 +210,9 @@ class TaxEngineService
         return ['net' => $grossOrNet, 'tax' => $tax, 'gross' => round($grossOrNet + $tax, 2)];
     }
 
-    public function countryDefaults(string $jurisdiction): array
+    public function countryDefaults(string $jurisdiction, ?string $date = null): array
     {
-        return self::COUNTRY_DEFAULTS[strtoupper($jurisdiction)] ?? [
-            'regime' => 'GST', 'currency' => null, 'rates' => [],
-        ];
+        return $this->packs()->defaultsFor($jurisdiction, $date);
     }
 
     /**
@@ -255,7 +264,7 @@ class TaxEngineService
     private function fromTax(Tax $tax, string $jurisdiction, string $direction, string $source): array
     {
         $effectiveJurisdiction = strtoupper((string) ($tax->jurisdiction ?: $jurisdiction));
-        $regime = strtoupper((string) ($tax->regime ?: $this->countryDefaults($effectiveJurisdiction)['regime']));
+        $regime = strtoupper((string) ($tax->regime ?: $this->packs()->regime($effectiveJurisdiction)));
 
         return [
             'rate' => (float) $tax->rate,
@@ -280,7 +289,7 @@ class TaxEngineService
         return [
             'rate' => 0.0, 'is_inclusive' => false, 'tax_code' => 'NO-TAX',
             'tax_id' => null, 'tax_name' => 'No Tax', 'jurisdiction' => $jurisdiction,
-            'regime' => self::COUNTRY_DEFAULTS[$jurisdiction]['regime'] ?? 'GST',
+            'regime' => $this->packs()->regime($jurisdiction),
             'scope' => 'both', 'treatment' => 'out_of_scope', 'source' => 'none', 'reason' => $reason,
         ];
     }
@@ -288,6 +297,112 @@ class TaxEngineService
     private function isEnabled(): bool
     {
         return (bool) (Setting::getValue('tax', ['enabled' => true])['enabled'] ?? true);
+    }
+
+    /**
+     * #746 T13: walk superseded_by_id until a rule that is valid on $date and
+     * direction-compatible is found. Null when the chain ends without one.
+     */
+    private function resolveSuccessor(Tax $tax, string $date, string $direction): ?Tax
+    {
+        $seen = [];
+        $current = $tax;
+
+        while ($current->superseded_by_id !== null && ! isset($seen[$current->id])) {
+            $seen[$current->id] = true;
+
+            $next = Tax::query()
+                ->whereKey($current->superseded_by_id)
+                ->where('is_active', true)
+                ->where('lifecycle_state', 'ACTIVE')
+                ->first();
+
+            if ($next === null) {
+                return null;
+            }
+
+            if ($this->isValidOn($next, $date) && $this->scopeMatches($next, $direction)) {
+                return $next;
+            }
+
+            $current = $next;
+        }
+
+        return null;
+    }
+
+    /**
+     * #746 T13: a resolution that must stop the document, carrying the reason
+     * instead of a silent zero or a fallback rate. The determination marks
+     * the result TAX_RULE_EXPIRED and TaxGate refuses to post it.
+     */
+    private function blockedExpiredRule(Tax $tax, string $jurisdiction, string $direction): array
+    {
+        $expired = $tax->effective_to?->toDateString() ?? 'unknown date';
+
+        return [
+            'rate' => 0.0,
+            'is_inclusive' => false,
+            'tax_code' => null,
+            'tax_id' => null,
+            'tax_name' => 'Expired tax rule',
+            'jurisdiction' => strtoupper((string) ($tax->jurisdiction ?: $jurisdiction)),
+            'regime' => strtoupper((string) ($tax->regime ?: $this->packs()->regime($jurisdiction))),
+            'scope' => $direction,
+            'treatment' => 'unresolved',
+            'source' => 'expired_rule_no_successor',
+            'blocked' => true,
+            'warning' => sprintf(
+                'TAX_RULE_EXPIRED_NO_SUCCESSOR: product tax rule %s expired on %s and has no successor; link a successor rule or set an explicit tax on the product.',
+                $tax->code ?: (string) $tax->id,
+                $expired,
+            ),
+        ];
+    }
+
+    /**
+     * #746 T13 AC3: products pinned to a rule that can no longer resolve —
+     * expired, inactive, deleted or missing — with the successor status so
+     * the fix is actionable.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function expiredRuleProducts(): array
+    {
+        $today = now()->toDateString();
+        $rows = [];
+
+        foreach (Product::query()->whereNotNull('tax_id')->orderBy('name')->get(['id', 'name', 'sku', 'tax_id']) as $product) {
+            $rule = Tax::withTrashed()->find($product->tax_id);
+
+            $valid = $rule !== null
+                && ! $rule->trashed()
+                && $rule->is_active
+                && $this->isValidOn($rule, $today)
+                && $this->scopeMatches($rule, 'output');
+
+            if ($valid) {
+                continue;
+            }
+
+            $successor = $rule !== null ? $this->resolveSuccessor($rule, $today, 'output') : null;
+
+            $rows[] = [
+                'product_id' => (int) $product->id,
+                'product_name' => $product->name,
+                'sku' => $product->sku,
+                'tax_rule_id' => (int) $product->tax_id,
+                'tax_rule_code' => $rule?->code,
+                'effective_to' => $rule?->effective_to?->toDateString(),
+                'has_successor' => $successor !== null,
+                'successor_rule_id' => $successor?->id,
+                'reason' => $rule === null
+                    ? 'rule_missing'
+                    : ($rule->trashed() ? 'rule_deleted' : (! $rule->is_active ? 'rule_inactive' : 'rule_expired')),
+            ];
+        }
+
+        return $rows;
     }
 
     private function isValidOn(Tax $tax, string $date): bool

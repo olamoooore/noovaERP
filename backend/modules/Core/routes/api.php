@@ -45,6 +45,7 @@ use App\Http\Controllers\Api\MedicalCaseController;
 use App\Http\Controllers\Api\OnboardingSessionsController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PaymentImportController;
+use App\Http\Controllers\Api\PaymentMethodsController;
 use App\Http\Controllers\Api\PaymentTermsController;
 use App\Http\Controllers\Api\PriceListController;
 use App\Http\Controllers\Api\PricingController;
@@ -431,20 +432,27 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         // Quotations are registered further down, outside the accounting-write group.
 
         // Payments
-        Route::get('/payments', [PaymentController::class, 'index']);
-        Route::get('/payments/export', [PaymentController::class, 'export']);
-        Route::get('/payments/eligible-invoices', [PaymentController::class, 'eligibleInvoices']);
+        Route::get('/payments', [PaymentController::class, 'index'])
+            ->middleware(RequirePermission::using('accounting.view')); // #481
+        Route::get('/payments/export', [PaymentController::class, 'export'])
+            ->middleware(RequirePermission::using('accounting.view')); // #481
+        Route::get('/payments/eligible-invoices', [PaymentController::class, 'eligibleInvoices'])
+            ->middleware(RequirePermission::using('accounting.view')); // #481
         Route::post('/payments/import', [PaymentImportController::class, 'import']);
         Route::post('/payments/bulk-delete', [PaymentController::class, 'bulkDestroy']);
-        Route::post('/payments/bulk-post', [PaymentController::class, 'bulkPost']);
+        Route::post('/payments/bulk-post', [PaymentController::class, 'bulkPost'])
+            ->middleware(RequirePermission::using('accounting.post')); // #480
         Route::post('/payments', [PaymentController::class, 'store']);
-        Route::get('/payments/{payment}', [PaymentController::class, 'show']);
+        Route::get('/payments/{payment}', [PaymentController::class, 'show'])
+            ->middleware(RequirePermission::using('accounting.view')); // #481
         Route::put('/payments/{payment}', [PaymentController::class, 'update']);
         Route::delete('/payments/{payment}', [PaymentController::class, 'destroy']);
         Route::post('/payments/{payment}/cancel', [PaymentController::class, 'cancel']);
-        Route::post('/payments/{payment}/post', [PaymentController::class, 'post']);
+        Route::post('/payments/{payment}/post', [PaymentController::class, 'post'])
+            ->middleware(RequirePermission::using('accounting.post')); // #480
         // Issue #155: split payments / unapplied credit.
-        Route::get('/payments/{payment}/allocations', [PaymentController::class, 'allocations']);
+        Route::get('/payments/{payment}/allocations', [PaymentController::class, 'allocations'])
+            ->middleware(RequirePermission::using('accounting.view')); // #481
         Route::post('/payments/{payment}/allocations', [PaymentController::class, 'allocate']);
     });
 
@@ -873,6 +881,9 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::put('/payment-terms/{id}', [PaymentTermsController::class, 'update']);
         Route::delete('/payment-terms/{id}', [PaymentTermsController::class, 'destroy']);
 
+        // Payment Methods (#486 method master)
+        Route::get('/payment-methods', [PaymentMethodsController::class, 'index']);
+
         // Bank Accounts
         Route::get('/bank-accounts', [BankAccountsController::class, 'index']);
         Route::get('/bank-accounts/{id}', [BankAccountsController::class, 'show']);
@@ -905,16 +916,33 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             ->middleware(RequirePermission::using('tax.policy.view|tax.view'));
 
         // Customer Credit Notes (must be before /customers/{id} to avoid route conflict)
-        Route::get('/customers/credit-notes', [CustomerCreditNotesController::class, 'index']);
-        Route::get('/customers/credit-notes/{creditNote}', [CustomerCreditNotesController::class, 'show']);
-        Route::post('/customers/credit-notes', [CustomerCreditNotesController::class, 'store']);
-        Route::put('/customers/credit-notes/{creditNote}', [CustomerCreditNotesController::class, 'update']);
-        Route::delete('/customers/credit-notes/{creditNote}', [CustomerCreditNotesController::class, 'destroy']);
-        Route::post('/customers/credit-notes/{creditNote}/post', [CustomerCreditNotesController::class, 'post']);
+        //
+        // #515 (CN6): explicit authority per route. Posting and voiding a credit
+        // note reduce revenue and reverse a ledger entry, so they require the
+        // same accounting.post that invoice posting requires — previously `post`
+        // carried no permission at all and `void` asked only for
+        // `customers.write`, which let a MANAGER (accounting.write, no
+        // accounting.post) post and void credit notes while being blocked from
+        // posting the invoices they credit. Drafting requires
+        // accounting.write, reading requires accounting.view.
+        Route::get('/customers/credit-notes', [CustomerCreditNotesController::class, 'index'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.view'));
+        Route::get('/customers/credit-notes/{creditNote}', [CustomerCreditNotesController::class, 'show'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.view'));
+        Route::post('/customers/credit-notes', [CustomerCreditNotesController::class, 'store'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.write'));
+        Route::put('/customers/credit-notes/{creditNote}', [CustomerCreditNotesController::class, 'update'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.write'));
+        Route::delete('/customers/credit-notes/{creditNote}', [CustomerCreditNotesController::class, 'destroy'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.write'));
+        Route::post('/customers/credit-notes/{creditNote}/post', [CustomerCreditNotesController::class, 'post'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.post')); // #515
         Route::post('/customers/credit-notes/{creditNote}/void', [CustomerCreditNotesController::class, 'void'])
-            ->middleware(\App\Http\Middleware\RequirePermission::using('customers.write'));
-        Route::get('/customers/invoices/{invoiceId}/credit-notes', [CustomerCreditNotesController::class, 'getByInvoice']);
-        Route::post('/customers/credit-notes/validate', [CustomerCreditNotesController::class, 'validateCreditNote']);
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.post')); // #515
+        Route::get('/customers/invoices/{invoiceId}/credit-notes', [CustomerCreditNotesController::class, 'getByInvoice'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.view'));
+        Route::post('/customers/credit-notes/validate', [CustomerCreditNotesController::class, 'validateCreditNote'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.write'));
 
         // Customers List
         Route::get('/customers', [CustomersController::class, 'index'])

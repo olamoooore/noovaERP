@@ -22,10 +22,12 @@ class TaxRegistration extends Model
         'effective_from',
         'effective_to',
         'status',
+        'filing_start_month',
         'notes',
     ];
 
     protected $casts = [
+        'filing_start_month' => 'integer',
         'effective_from' => 'date',
         'effective_to' => 'date',
     ];

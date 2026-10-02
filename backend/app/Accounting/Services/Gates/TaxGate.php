@@ -45,6 +45,19 @@ class TaxGate implements AuthorityGate
         $postingLines = $context['posting_lines'] ?? [];
         $taxDeterminationResult = $context['tax_determination_result'] ?? null;
 
+        // #746 T13: an expired product rule with no successor blocks the
+        // posting even when the determination is zero-tax — otherwise a
+        // silent zero-charge would post exactly like a valid exemption.
+        if (is_array($taxDeterminationResult) && ($taxDeterminationResult['result_status'] ?? null) === 'TAX_RULE_EXPIRED') {
+            return GateEvaluationResult::block(
+                $this->gateCode(),
+                $this->gateOwner(),
+                ReasonCode::TAX_RESULT_INVALIDATED->value,
+                $this->gateVersion(),
+                'Tax determination blocked: a product tax rule expired without a successor rule.',
+            );
+        }
+
         // ── Detect tax-bearing posting lines and the booked tax total ──
         $hasTaxLines = false;
         $bookedTax = 0.0;
