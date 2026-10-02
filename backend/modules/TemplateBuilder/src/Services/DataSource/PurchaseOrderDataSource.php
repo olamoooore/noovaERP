@@ -16,6 +16,21 @@ final class PurchaseOrderDataSource implements DataSourceContract
         return 'purchase_order';
     }
 
+    public function permission(): string
+    {
+        return 'inventory.view';
+    }
+
+    public function legalEntityId(): ?int
+    {
+        $po = $this->po ?? throw new \RuntimeException('Purchase order not loaded.');
+
+        // purchase_orders (and its supplier/warehouse relations) carry no
+        // legal_entity_id on this base — see issue #611. Entity scoping is
+        // therefore not enforceable for this source yet.
+        return $po->legal_entity_id !== null ? (int) $po->legal_entity_id : null;
+    }
+
     public function load(string $documentId): self
     {
         $this->po = PurchaseOrder::with(['supplier', 'warehouse', 'items.product'])->findOrFail($documentId);

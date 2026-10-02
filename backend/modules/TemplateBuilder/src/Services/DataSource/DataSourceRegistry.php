@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Modules\TemplateBuilder\Services\DataSource;
 
+use App\Http\Middleware\RequirePermission;
+use App\Platform\DataSecurity\FieldMaskingService;
 use Illuminate\Support\Collection;
 use Modules\TemplateBuilder\Contracts\DataSourceContract;
 use RuntimeException;
@@ -61,11 +63,55 @@ final class DataSourceRegistry
     /**
      * Load a record's typed payload.
      *
+     * PHI (patient names) is masked unless the caller holds
+     * medical_cases.phi.view (#567/#611) — enforced here, at the single
+     * choke point every PDF/HTML render reads through, so no data source
+     * can bypass it.
+     *
      * @return array<string,mixed>
      */
     public function loadPayload(string $documentType, string $documentId): array
     {
-        return $this->make($documentType)->load($documentId)->toArray();
+        return self::maskProtectedFields($this->make($documentType)->load($documentId)->toArray());
+    }
+
+    /**
+     * Recursively mask PHI fields when the current request's user does not
+     * hold medical_cases.phi.view. Uses the platform FieldMaskingService.
+     *
+     * @param  array<array-key,mixed>  $payload
+     * @return array<array-key,mixed>
+     */
+    public static function maskProtectedFields(array $payload): array
+    {
+        if (self::canViewPhi()) {
+            return $payload;
+        }
+
+        foreach ($payload as $key => $value) {
+            if (is_array($value)) {
+                $payload[$key] = self::maskProtectedFields($value);
+            } elseif ($key === 'patient_name' && is_string($value) && $value !== '') {
+                $payload[$key] = FieldMaskingService::maskDefault($value);
+            }
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Whether the current request user may see PHI. Fail closed when there is
+     * no authenticated user (queues/console) or no tenant context.
+     */
+    private static function canViewPhi(): bool
+    {
+        $request = request();
+
+        if ($request === null || $request->user() === null) {
+            return false;
+        }
+
+        return RequirePermission::allows($request, 'medical_cases.phi.view');
     }
 
     /** @return Collection<string, class-string<DataSourceContract>> */

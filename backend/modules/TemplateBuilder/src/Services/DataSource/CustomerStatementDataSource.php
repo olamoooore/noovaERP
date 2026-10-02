@@ -17,6 +17,19 @@ final class CustomerStatementDataSource implements DataSourceContract
         return 'customer_statement';
     }
 
+    public function permission(): string
+    {
+        return 'customers.view';
+    }
+
+    public function legalEntityId(): ?int
+    {
+        $statement = $this->statement ?? throw new \RuntimeException('Customer statement not loaded.');
+        $entityId = $statement->customer?->legal_entity_id;
+
+        return $entityId !== null ? (int) $entityId : null;
+    }
+
     public function load(string $documentId): self
     {
         $this->statement = CustomerStatement::with(['customer'])->findOrFail($documentId);

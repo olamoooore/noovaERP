@@ -16,6 +16,19 @@ class InvoiceDataSource implements DataSourceContract
         return 'invoice';
     }
 
+    public function permission(): string
+    {
+        return 'invoices.view';
+    }
+
+    public function legalEntityId(): ?int
+    {
+        $invoice = $this->invoice ?? throw new \RuntimeException('Invoice not loaded.');
+        $entityId = $invoice->customer?->legal_entity_id;
+
+        return $entityId !== null ? (int) $entityId : null;
+    }
+
     public function load(string $documentId): self
     {
         $this->invoice = Invoice::with(['customer.salesperson', 'lines.product', 'doctor', 'requestor', 'buyer', 'billingContact', 'shippingContact'])->findOrFail($documentId);

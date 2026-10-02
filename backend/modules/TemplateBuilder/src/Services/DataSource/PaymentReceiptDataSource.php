@@ -16,6 +16,20 @@ final class PaymentReceiptDataSource implements DataSourceContract
         return 'receipt';
     }
 
+    public function permission(): string
+    {
+        return 'accounting.view';
+    }
+
+    public function legalEntityId(): ?int
+    {
+        $payment = $this->payment ?? throw new \RuntimeException('Payment not loaded.');
+        $entityId = $payment->customer?->legal_entity_id
+            ?? $payment->invoice?->customer?->legal_entity_id;
+
+        return $entityId !== null ? (int) $entityId : null;
+    }
+
     public function load(string $documentId): self
     {
         $this->payment = Payment::with(['customer', 'invoice'])->findOrFail($documentId);
