@@ -197,6 +197,11 @@ class CustomerCreditNotesController extends Controller
                 'credit_note' => $posted,
             ]);
 
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'message' => 'Failed to post credit note',
+                'error' => $e->getMessage(),
+            ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to post credit note',

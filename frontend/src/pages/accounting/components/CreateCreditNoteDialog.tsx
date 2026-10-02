@@ -334,6 +334,7 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
                 value={formData.customer_id ? String(formData.customer_id) : ''}
                 onValueChange={(value) => setFormData(prev => ({ ...prev, customer_id: value ? Number(value) : 0 }))}
                 placeholder="Search customer name or code..."
+                disabled={!!selectedInvoice}
               />
             </div>
 

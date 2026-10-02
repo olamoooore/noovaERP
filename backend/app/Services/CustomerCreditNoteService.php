@@ -41,6 +41,19 @@ class CustomerCreditNoteService
             // INVOICE currency and rate snapshot — never its own defaults.
             $sourceInvoice = ! empty($data['invoice_id']) ? Invoice::find($data['invoice_id']) : null;
 
+            // #511 (CN2): the credit note's customer must be the invoice's
+            // customer. Two independent `exists` rules let a credit note for
+            // customer A land on customer B's invoice — reject the pairing
+            // (store maps RuntimeException → 422) and derive the customer
+            // server-side when the caller omits it.
+            if ($sourceInvoice) {
+                if (empty($data['customer_id'])) {
+                    $data['customer_id'] = $sourceInvoice->customer_id;
+                } elseif ((int) $data['customer_id'] !== (int) $sourceInvoice->customer_id) {
+                    throw new \RuntimeException('The selected invoice belongs to a different customer.');
+                }
+            }
+
             if ($sourceInvoice) {
                 $data['currency_code'] = $data['currency_code'] ?? $sourceInvoice->currency_code;
                 $data['exchange_rate'] = $data['exchange_rate'] ?? $sourceInvoice->exchange_rate;
@@ -124,6 +137,13 @@ class CustomerCreditNoteService
     {
         if ($creditNote->status !== 'draft') {
             throw new \Exception('Only draft credit notes can be posted');
+        }
+
+        // #511 (CN2): re-enforce the pairing at post time — legacy rows or
+        // direct model writes must not reach the ledger with a customer that
+        // does not own the invoice.
+        if ($creditNote->invoice && (int) $creditNote->invoice->customer_id !== (int) $creditNote->customer_id) {
+            throw new \RuntimeException('Credit note customer does not match the invoice customer.');
         }
 
         // Validate credit note amount doesn't exceed invoice amount
