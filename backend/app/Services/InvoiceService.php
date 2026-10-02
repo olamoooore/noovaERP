@@ -351,58 +351,62 @@ class InvoiceService
             }
 
             // ── COGS lines for inventory items ───────────────
-            // Issue #176: when a completed delivery order already posted COGS
-            // for this invoice's goods, the invoice must NOT post it again (the
-            // DO is the inventory-issue event; the invoice only recognises
-            // revenue/AR).
-            $totalCogs = 0;
-            if (! $this->deliveryAlreadyPostedCogs($invoice)) {
-                $bundleDecomposition = app(\App\Services\BundleDecompositionService::class);
-                $batchConsumption = app(\App\Services\BatchSerialConsumptionService::class);
+            // Issue #176/#682: COGS and the stock movement below are derived from
+            // ONE number per line — the quantity no document has issued yet
+            // (GoodsIssueLedger) — so they can no longer disagree about whether
+            // a delivery order already shipped these goods. A delivery order
+            // that issued them first leaves nothing to recognise here: the
+            // invoice only books revenue/AR.
+            $bundleDecomposition = app(\App\Services\BundleDecompositionService::class);
+            $batchConsumption = app(\App\Services\BatchSerialConsumptionService::class);
+            $goodsIssueLedger = app(\App\Services\GoodsIssueLedger::class);
 
-                // Issue #131: batch-tracked lines cost their FEFO layers (previewed
-                // here because GL posts before stock is deducted).
-                try {
-                    $cogsWarehouseId = $this->resolveInventoryWarehouseId($invoice);
-                } catch (\Throwable) {
-                    $cogsWarehouseId = null;
+            // Issue #131: batch-tracked lines cost their FEFO layers (previewed
+            // here because GL posts before stock is deducted).
+            try {
+                $cogsWarehouseId = $this->resolveInventoryWarehouseId($invoice);
+            } catch (\Throwable) {
+                $cogsWarehouseId = null;
+            }
+
+            $unissuedQuantities = [];
+            $totalCogs = 0.0;
+
+            foreach ($invoice->lines as $line) {
+                if (($line->line_type ?? 'product') !== 'product' || ! $line->product) {
+                    continue;
                 }
 
-                foreach ($invoice->lines as $line) {
-                    if (($line->line_type ?? 'product') !== 'product') {
-                        continue;
-                    }
-                    if ($line->product) {
-                        $qty = (float) $line->quantity;
-                        $lineCogs = $batchConsumption->costForLine($line->product, $qty, $cogsWarehouseId)
-                            ?? $bundleDecomposition->cost($line->product, $qty);
+                $qty = $goodsIssueLedger->remainingForInvoiceLine($line, (float) $line->quantity);
 
-                        if ($lineCogs > 0) {
-                            $totalCogs += $lineCogs;
-                        }
-                    }
+                if ($qty <= 0) {
+                    continue;
                 }
 
-                if ($totalCogs > 0) {
-                    // Cost of Goods Sold → profile direction: debit.
-                    // Valuation comes from stock layers, which are stored in
-                    // the BASE currency — never converted (FR-12 §12).
-                    $lines[] = new DomainPostingLine(
-                        accountRole: 'cogs',
-                        amount: round($totalCogs, 2),
-                        currencyCode: $foreign ? $baseCurrency : null,
-                        description: "COGS - Invoice {$invoice->invoice_number}",
-                    );
+                $unissuedQuantities[$line->id] = $qty;
 
-                    // Inventory → profile direction: credit
-                    $lines[] = new DomainPostingLine(
-                        accountRole: 'inventory',
-                        amount: round($totalCogs, 2),
-                        currencyCode: $foreign ? $baseCurrency : null,
-                        description: "Inventory - Invoice {$invoice->invoice_number}",
-                    );
-                }
+                $totalCogs += $batchConsumption->costForLine($line->product, $qty, $cogsWarehouseId)
+                    ?? $bundleDecomposition->cost($line->product, $qty);
+            }
 
+            if ($totalCogs > 0) {
+                // Cost of Goods Sold → profile direction: debit.
+                // Valuation comes from stock layers, which are stored in
+                // the BASE currency — never converted (FR-12 §12).
+                $lines[] = new DomainPostingLine(
+                    accountRole: 'cogs',
+                    amount: round($totalCogs, 2),
+                    currencyCode: $foreign ? $baseCurrency : null,
+                    description: "COGS - Invoice {$invoice->invoice_number}",
+                );
+
+                // Inventory → profile direction: credit
+                $lines[] = new DomainPostingLine(
+                    accountRole: 'inventory',
+                    amount: round($totalCogs, 2),
+                    currencyCode: $foreign ? $baseCurrency : null,
+                    description: "Inventory - Invoice {$invoice->invoice_number}",
+                );
             }
 
             // ── Post via PostingEngine (domain contract) ─────
@@ -457,12 +461,20 @@ class InvoiceService
             // still posted component COGS. Demand is aggregated per component
             // product because stock_movements_ref_product_type_unique allows a
             // single movement per (reference, product, type).
+            //
+            // Issue #682: only the quantity no document has issued yet
+            // ($unissuedQuantities, computed above from the SAME ledger read the
+            // COGS used) leaves the warehouse here, so the stock movement and
+            // the COGS entry can never disagree.
             $componentDemand = [];
-            foreach ($invoice->lines as $line) {
-                if (! $line->product) {
+            foreach ($unissuedQuantities as $lineId => $unissuedQty) {
+                $line = $invoice->lines->firstWhere('id', $lineId);
+
+                if (! $line?->product) {
                     continue;
                 }
-                foreach ($this->bundleDecomposition->stockConsumingComponents($line->product, (float) $line->quantity) as $component) {
+
+                foreach ($this->bundleDecomposition->stockConsumingComponents($line->product, (float) $unissuedQty) as $component) {
                     $productId = $component['product']->id;
                     $qty = (float) $component['quantity'];
                     if ($qty <= 0) {
@@ -472,22 +484,15 @@ class InvoiceService
                 }
             }
 
-            $requiresInventoryMovement = $componentDemand !== [] && ! $this->shouldSkipInventoryAdjustment($invoice);
-            $warehouseId = $requiresInventoryMovement ? $this->resolveInventoryWarehouseId($invoice) : null;
-            if ($requiresInventoryMovement && $warehouseId === null) {
+            $warehouseId = $componentDemand === [] ? null : $this->resolveInventoryWarehouseId($invoice);
+            if ($componentDemand !== [] && $warehouseId === null) {
                 throw new \RuntimeException(
                     "Cannot post invoice {$invoice->invoice_number}: no inventory warehouse context available."
                 );
             }
 
             if ($warehouseId !== null) {
-                foreach ($componentDemand as $productId => $neededQty) {
-                    $alreadyDeducted = (float) \App\Models\StockMovement::where('reference_type', 'Invoice')
-                        ->where('reference_id', $invoice->id)
-                        ->where('type', 'sale')
-                        ->where('product_id', $productId)
-                        ->sum('quantity');
-                    $remainingToDeduct = $neededQty - $alreadyDeducted;
+                foreach ($componentDemand as $productId => $remainingToDeduct) {
                     if ($remainingToDeduct <= 0) {
                         continue;
                     }
@@ -687,57 +692,6 @@ class InvoiceService
         $salesOrder->forceFill([
             'accounting_status' => $accountingStatus,
         ])->saveQuietly();
-    }
-
-    private function shouldSkipInventoryAdjustment(Invoice $invoice): bool
-    {
-        // Issue #176: a completed DO linked to this invoice already moved stock.
-        if (\Modules\Sales\Models\DeliveryOrder::where('invoice_id', $invoice->id)
-            ->where('status', 'done')
-            ->exists()) {
-            return true;
-        }
-
-        $salesOrder = $invoice->salesOrder;
-
-        if (! $salesOrder) {
-            return false;
-        }
-
-        if ($salesOrder->source_document_type === 'WorkOrder') {
-            return true;
-        }
-
-        if ($salesOrder->isFulfilled()) {
-            return true;
-        }
-
-        // Skip for invoiced orders — stock was already deducted via delivery orders
-        if ($salesOrder->status === 'invoiced') {
-            return true;
-        }
-
-        return false;
-    }
-
-    /**
-     * Issue #176: a completed delivery order linked to this invoice already
-     * issued the goods (stock + COGS); the invoice must not repeat either.
-     */
-    private function deliveryAlreadyPostedCogs(Invoice $invoice): bool
-    {
-        $doIds = \Modules\Sales\Models\DeliveryOrder::where('invoice_id', $invoice->id)
-            ->where('status', 'done')
-            ->pluck('id');
-
-        if ($doIds->isEmpty()) {
-            return false;
-        }
-
-        return \App\Models\JournalEntryLink::where('source_document_type', 'delivery_order')
-            ->whereIn('source_document_id', $doIds)
-            ->where('relation_type', 'post')
-            ->exists();
     }
 
     /**

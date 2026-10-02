@@ -279,30 +279,77 @@ class HR682GoodsIssueDoubleIssueTest extends TenantTestCase
     }
 
     /**
-     * The data check from the issue: no sales-order line may be issued by BOTH
-     * an invoice and a delivery order for the same goods.
+     * The data check from the issue: a sales-order line's goods must never be
+     * issued more than once, whether the two issues come from one invoice and
+     * one delivery order or from two of either.
      *
-     * Returns the offending sales-order line ids (empty when the ledger is clean).
+     * An invoice and a delivery order may BOTH appear against one line — a
+     * partial delivery legitimately issues part of the line and the invoice
+     * issues the remainder — so the invariant is on the TOTAL: the `sale` stock
+     * movements of every invoice and delivery order of the sales order must not
+     * exceed the quantity ordered on the line.
+     *
+     * @return array<int, array<string, mixed>> offenders with the documents to look at
      */
-    private function salesOrderLinesIssuedTwice(): array
+    private function overIssuedSalesOrderLines(): array
     {
-        $rows = DB::table('stock_movements as sm')
-            ->where('sm.type', 'sale')
-            ->whereIn('sm.reference_type', ['Invoice', 'DeliveryOrder'])
-            ->where('sm.product_id', $this->product->id)
-            ->join('delivery_orders as d', function ($join) {
-                $join->on('d.id', '=', 'sm.reference_id')
-                    ->where('sm.reference_type', '=', 'DeliveryOrder');
-            })
-            ->join('sales_orders as so', 'so.id', '=', 'd.sales_order_id')
-            ->join('sales_order_lines as sol', 'sol.sales_order_id', '=', 'so.id')
-            ->join('invoices as i', 'i.id', '=', 'sm.reference_id')
-            ->whereRaw("sm.reference_type = 'Invoice' AND i.sales_order_id = so.id")
-            ->groupBy('sol.id')
-            ->selectRaw('sol.id as sales_order_line_id, count(*) as issues')
-            ->get();
+        $offenders = [];
 
-        return $rows->pluck('sales_order_line_id')->map(fn ($id) => (int) $id)->all();
+        foreach (\Modules\Sales\Models\SalesOrderLine::where('product_id', $this->product->id)->get() as $line) {
+            $salesOrder = \Modules\Sales\Models\SalesOrder::find($line->sales_order_id);
+
+            if (! $salesOrder) {
+                continue;
+            }
+
+            $deliveryOrderIds = \Modules\Sales\Models\DeliveryOrder::where('sales_order_id', $salesOrder->id)
+                ->where('status', 'done')
+                ->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $invoiceIds = \App\Models\Invoice::where('sales_order_id', $salesOrder->id)
+                ->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+            $issued = (float) StockMovement::where('type', 'sale')
+                ->where('product_id', $this->product->id)
+                ->where(function ($query) use ($deliveryOrderIds, $invoiceIds) {
+                    $query->where(function ($q) use ($deliveryOrderIds) {
+                        $q->where('reference_type', 'DeliveryOrder');
+                        if ($deliveryOrderIds !== []) {
+                            $q->whereIn('reference_id', $deliveryOrderIds);
+                        }
+                    })->orWhere(function ($q) use ($invoiceIds) {
+                        $q->where('reference_type', 'Invoice');
+                        if ($invoiceIds !== []) {
+                            $q->whereIn('reference_id', $invoiceIds);
+                        }
+                    });
+                })
+                ->sum('quantity');
+
+            $sellable = (float) $line->quantity - (float) $line->quantity_cancelled;
+
+            if ($issued > $sellable + 0.0001) {
+                $offenders[] = [
+                    'sales_order_line_id' => (int) $line->id,
+                    'ordered' => $sellable,
+                    'issued' => $issued,
+                    'invoice_ids' => $invoiceIds,
+                    'delivery_order_ids' => $deliveryOrderIds,
+                ];
+            }
+        }
+
+        return $offenders;
+    }
+
+    /**
+     * Assert the data-check invariant, printing the offending documents when it
+     * breaks so the failure says which invoices / delivery orders to inspect.
+     */
+    private function assertNoOverIssuedLines(string $message): void
+    {
+        $offenders = $this->overIssuedSalesOrderLines();
+
+        $this->assertSame([], $offenders, $message.': '.json_encode($offenders, JSON_PRETTY_PRINT));
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -332,8 +379,7 @@ class HR682GoodsIssueDoubleIssueTest extends TenantTestCase
             'COGS must be recognised once for the 10 units sold, not twice');
         $this->assertSame(0.0, $this->cogsForDocument('delivery_order', $deliveryOrderId),
             'The delivery order posted no goods, so it may recognise no COGS');
-        $this->assertSame([], $this->salesOrderLinesIssuedTwice(),
-            'Data check: no sales-order line may carry an Invoice-type and a DeliveryOrder-type issue');
+        $this->assertNoOverIssuedLines('Data check: the invoice and the delivery order must not issue the line more than once over');
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -363,8 +409,7 @@ class HR682GoodsIssueDoubleIssueTest extends TenantTestCase
         $this->assertSame(400.0, $this->cogsForDocument('delivery_order', $deliveryOrderId));
         $this->assertSame(600.0, $this->cogsForDocument('invoice', $invoiceId),
             'The invoice recognises only the 60 units the delivery had not issued');
-        $this->assertSame([], $this->salesOrderLinesIssuedTwice(),
-            'Data check: no sales-order line may carry an Invoice-type and a DeliveryOrder-type issue');
+        $this->assertNoOverIssuedLines('Data check: the invoice and the delivery order must not issue the line more than once over');
     }
 
     public function test_full_delivery_then_so_invoice_recognises_no_further_goods(): void
@@ -526,5 +571,98 @@ class HR682GoodsIssueDoubleIssueTest extends TenantTestCase
         $this->assertSame(4.0, $this->stockOut());
         $this->assertSame(96.0, $this->stockOnHand());
         $this->assertSame(40.0, $this->cogsRecognised());
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Document-level exclusions keep behaving — now on both halves of the rule
+    // ═══════════════════════════════════════════════════════════════════════
+
+    public function test_field_service_work_order_invoice_neither_moves_stock_nor_recognises_cogs(): void
+    {
+        // A work order consumes its own parts through
+        // FieldService\Services\StockDeductionService, so the sales invoice is
+        // not the goods-issue event: neither stock nor COGS may be booked.
+        $response = $this->apiPost('/api/v1/sales/orders', [
+            'customer_id' => $this->customer->id,
+            'channel' => 'admin',
+            'source_document_type' => 'WorkOrder',
+            'source_document_id' => 1,
+            'lines' => [[
+                'product_id' => $this->product->id,
+                'description' => 'Field service part',
+                'quantity' => 3,
+                'unit_price' => 25,
+                'tax_rate' => 0,
+            ]],
+        ]);
+        $response->assertCreated();
+        $orderId = (int) $response->json('id');
+        $this->apiPost("/api/v1/sales/orders/{$orderId}/confirm")->assertOk();
+
+        $this->postInvoice($this->invoiceFromSalesOrder($orderId));
+
+        $this->assertSame(0.0, $this->stockOut(),
+            'A field-service work order issues its parts itself, so the invoice moves no stock');
+        $this->assertSame(100.0, $this->stockOnHand());
+        $this->assertSame(0.0, $this->cogsRecognised(),
+            'COGS follows the same rule as stock — no goods issued, no COGS');
+    }
+
+    public function test_reversing_a_delivery_that_issued_nothing_does_not_conjure_stock(): void
+    {
+        $orderId = $this->confirmedSalesOrder(7);
+        $invoiceId = $this->invoiceFromSalesOrder($orderId);
+        $this->postInvoice($invoiceId);
+
+        $deliveryOrderId = $this->deliveryOrderFor($orderId, 7);
+        $this->completeDeliveryOrder($deliveryOrderId);
+
+        $this->assertSame(7.0, $this->stockOut(), 'Only the invoice issued stock');
+        $this->assertSame(93.0, $this->stockOnHand());
+
+        $this->apiPost("/api/v1/sales/delivery-orders/{$deliveryOrderId}/reverse", [
+            'reason' => 'Shipped to the wrong site',
+        ])->assertOk();
+
+        $this->assertSame(7.0, $this->stockOut(),
+            'The reversal must not re-issue stock the delivery never took');
+        $this->assertSame(93.0, $this->stockOnHand(),
+            'Stock on hand must stay at 100 - 7 sold; a phantom restock would show 100');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // The issue's data check, stated on its own
+    // ═══════════════════════════════════════════════════════════════════════
+
+    public function test_data_check_no_invoice_and_delivery_order_both_issue_the_same_sales_order_goods(): void
+    {
+        $orderId = $this->confirmedSalesOrder(60);
+
+        $firstDelivery = $this->deliveryOrderFor($orderId, 20);
+        $this->completeDeliveryOrder($firstDelivery);
+        $secondDelivery = $this->deliveryOrderFor($orderId, 15);
+        $this->completeDeliveryOrder($secondDelivery);
+
+        $invoiceId = $this->invoiceFromSalesOrder($orderId);
+        $this->postInvoice($invoiceId);
+
+        // Half 1 — stock movements: the invoice and the two delivery orders
+        // together may issue the ordered quantity, but never more.
+        $this->assertNoOverIssuedLines(
+            'Data check 1: the invoice and delivery orders must not issue more than the ordered quantity'
+        );
+
+        // Half 2 — COGS journal pairs: across the invoice and the two delivery
+        // orders the recognised cost must equal the cost of the units sold.
+        $pairTotal = $this->cogsForDocument('invoice', $invoiceId)
+            + $this->cogsForDocument('delivery_order', $firstDelivery)
+            + $this->cogsForDocument('delivery_order', $secondDelivery);
+
+        $this->assertSame(600.0, $pairTotal,
+            'Data check 2: the COGS pairs of the invoice and both delivery orders must total 60 units @ 10.00');
+        $this->assertSame(600.0, $this->cogsRecognised(),
+            'COGS recognised once for the 60 units sold — no per-document double count');
+        $this->assertSame(60.0, $this->stockOut(), 'Total stock out equals the 60 units sold');
+        $this->assertSame(40.0, $this->stockOnHand());
     }
 }
