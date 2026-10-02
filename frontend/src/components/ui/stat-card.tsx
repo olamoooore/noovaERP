@@ -36,15 +36,20 @@ export function StatCard({
       )}
       onClick={onClick}
     >
-      <CardContent className="flex items-center justify-between gap-4 p-5">
-        <div className="min-w-0">
-          <p className="text-sm text-muted-foreground">{label}</p>
-          <p className="mt-1 text-2xl font-bold tabular-nums">{value}</p>
-          {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
+      <CardContent className="overflow-hidden p-4 sm:p-5">
+        {/* Icon sits on the LABEL row: the value then owns the full card
+            width, so long amounts (S$17,985.00) stay on one line instead of
+            painting over the icon tile (report 2026-10-01). */}
+        <div className="flex items-start justify-between gap-3">
+          <p className="min-w-0 text-xs text-muted-foreground sm:text-sm">{label}</p>
+          <div className={cn('-mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', tone)}>
+            <Icon icon={icon} className="h-4 w-4" />
+          </div>
         </div>
-        <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', tone)}>
-          <Icon icon={icon} className="h-5 w-5" />
-        </div>
+        {/* Smaller value type keeps amounts like S$24,525.00 on ONE line in
+            the narrower five-column strip. */}
+        <p className="mt-1 text-base font-bold leading-tight tabular-nums sm:text-lg">{value}</p>
+        {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
       </CardContent>
     </Card>
   )

@@ -36,6 +36,8 @@ import { LineItemsTable } from '@/components/sales/LineItemsTable'
 import { TagEditor } from '@/components/tags/TagEditor'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
 import { HeaderChip, StaticChip } from '@/components/ui/HeaderChip'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { useDensity } from '@/hooks/useDensity'
 import { TagPicker } from '@/components/tags/TagPicker'
 import {
   LINE_CELL,
@@ -401,6 +403,14 @@ export const CreateInvoicePage: React.FC = () => {
   const [pasteText, setPasteText] = useState('');
   const [pasteBusy, setPasteBusy] = useState(false);
   const [repeatConfirmOpen, setRepeatConfirmOpen] = useState(false);
+  // 8.3: one drawer for secondary details + per-user density.
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [density, setDensity] = useDensity();
+  // D10: keyboard command bar (Ctrl/⌘+K) for power users.
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [commandText, setCommandText] = useState('');
+  const [commandBusy, setCommandBusy] = useState(false);
+  const [commandResults, setCommandResults] = useState<Array<{ id: number; name: string; sku?: string | null }>>([]);
   const warehouseTouchedRef = useRef(false);
   const appliedLastInvoiceRef = useRef<number | null>(null);
   const [customInvoiceNumber, setCustomInvoiceNumber] = useState('');
@@ -458,6 +468,10 @@ export const CreateInvoicePage: React.FC = () => {
   const [overrideReason, setOverrideReason] = useState('');
   const [draggedLineIndex, setDraggedLineIndex] = useState<number | null>(null);
   const [documentSnapshot, setDocumentSnapshot] = useState<InvoiceDocumentSnapshot>(emptyDocumentSnapshot);
+  // Billing and shipping details are stacked rows with independent toggles:
+  // collapsed on load, clicking one shows only that one (report 2026-10-01).
+  const [billingOpen, setBillingOpen] = useState(false);
+  const [shippingOpen, setShippingOpen] = useState(false);
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [customerDialogMode, setCustomerDialogMode] = useState<'create' | 'edit'>('create');
   const [customerForm, setCustomerForm] = useState<CustomerFormState>(initialCustomerForm);
@@ -698,6 +712,10 @@ export const CreateInvoicePage: React.FC = () => {
     if (reused.length) {
       setReuseNotice(`Reused from ${lastInvoice.number}: ${reused.join(', ')}.`);
     }
+    // Runs once per fetched invoice (appliedLastInvoiceRef); the referenced
+    // state is deliberately read as "has the user touched it yet" and must
+    // not re-trigger the effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastInvoice, isEditMode, selectedCustomerDetail]);
 
   useEffect(() => {
@@ -1276,6 +1294,132 @@ export const CreateInvoicePage: React.FC = () => {
     }
   };
 
+  // D10: command bar. Ctrl/⌘+K opens it; commands mirror the on-screen
+  // actions so power users never need the mouse.
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setCommandOpen((open) => !open);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  const addProductToLines = (product: any, quantity: number, price: number | null) => {
+    const next = [...lines];
+    const existing = next.find((line) => line.line_type === 'product' && line.product_id === String(product.id));
+    if (existing && price == null) {
+      const current = existing.quantity === '' ? 0 : Number(existing.quantity);
+      existing.quantity = current + quantity;
+    } else {
+      next.push({
+        ...emptyLine(),
+        product_id: String(product.id),
+        sku: product.sku || '',
+        description: product.name || '',
+        quantity,
+        unit_price: price ?? '',
+        price_mode: price != null ? 'manual' : 'auto',
+        tax_rate: resolveLineTaxRate(product, defaultTaxRate),
+      });
+    }
+    setLines(next);
+    void resolvePricingForLines(customerId, next);
+  };
+
+  const executeCommand = async (raw: string) => {
+    const input = raw.trim();
+    if (!input) return;
+    const lower = input.toLowerCase();
+
+    const closeBar = () => {
+      setCommandOpen(false);
+      setCommandText('');
+      setCommandResults([]);
+    };
+
+    const termsMatch = lower.match(/^terms\s+(\d{1,3})$/);
+    if (termsMatch) {
+      const days = Number(termsMatch[1]);
+      setPaymentTerms(days);
+      setDueDate(calcDueDate(invoiceDate, days));
+      setTermsOverridden(true);
+      toast({ title: `Terms set to Net ${days}` });
+      closeBar();
+      return;
+    }
+
+    const discountMatch = lower.match(/^discount\s+(\d+(?:\.\d+)?)(%?)$/);
+    if (discountMatch) {
+      const value = Number(discountMatch[1]);
+      if (discountMatch[2] === '%') {
+        setDiscountMode('percentage');
+        setDiscountAmount(value);
+      } else {
+        setDiscountMode('fixed');
+        setDiscountAmount(value);
+      }
+      toast({ title: `Discount set to ${discountMatch[1]}${discountMatch[2] || ' (fixed amount)'}` });
+      closeBar();
+      return;
+    }
+
+    const currencyMatch = input.match(/^currency\s+([A-Za-z]{3})$/);
+    if (currencyMatch) {
+      const code = currencyMatch[1].toUpperCase();
+      setCurrencyCode(code);
+      void resolvePricingForLines(customerId, lines, code);
+      toast({ title: `Currency set to ${code}` });
+      closeBar();
+      return;
+    }
+
+    if (lower.startsWith('note ')) {
+      setNotes(input.slice(5).trim());
+      toast({ title: 'Notes updated' });
+      closeBar();
+      return;
+    }
+
+    const addMatch = input.match(/^add\s+(?:(\d+(?:\.\d+)?)\s+)?(.+?)(?:\s*@\s*(\d+(?:\.\d+)?))?$/i);
+    if (addMatch) {
+      const quantity = addMatch[1] ? Number(addMatch[1]) : 1;
+      const query = addMatch[2].trim();
+      const price = addMatch[3] ? Number(addMatch[3]) : null;
+
+      setCommandBusy(true);
+      try {
+        const res = await api.get('/products', { params: { search: query, per_page: 8 } });
+        const results: any[] = res.data?.data ?? [];
+        if (!results.length) {
+          toast({ variant: 'destructive', title: `No product matches “${query}”` });
+          return;
+        }
+        const needle = query.toLowerCase();
+        const exact = results.find((candidate) =>
+          [candidate.sku, candidate.barcode].filter(Boolean).some((code: string) => String(code).toLowerCase() === needle));
+        const chosen = exact ?? results[0];
+        addProductToLines(chosen, quantity, price);
+        toast({ title: `${quantity} × ${chosen.name} added${exact ? '' : ' (closest match — check it)'}` });
+        closeBar();
+      } finally {
+        setCommandBusy(false);
+      }
+      return;
+    }
+
+    // Anything else is a product search — pick from the results.
+    setCommandBusy(true);
+    try {
+      const res = await api.get('/products', { params: { search: input, per_page: 8 } });
+      setCommandResults(res.data?.data ?? []);
+    } finally {
+      setCommandBusy(false);
+    }
+  };
+
   const { data: frequentProducts = [] } = useQuery<Array<{ id: number; name: string; sku?: string | null; total_quantity?: number; times?: number }>>({
     queryKey: ['customer-frequent-products', customerId],
     queryFn: async () => {
@@ -1639,12 +1783,19 @@ export const CreateInvoicePage: React.FC = () => {
   // (previously the default tenant symbol leaked through, e.g. S$ line items
   // under an EUR header).
   const money = (value: number) => formatCurrency(value, currencyCode || undefined);
+  // The pricing feedback strip only renders when there is something to say —
+  // otherwise it left a stray empty bordered row under the header.
+  const hasPricingFeedback = Boolean(
+    (currencyCode && pricingMeta?.base_currency_code && pricingMeta.base_currency_code !== currencyCode)
+      || pricingMeta?.price_list_name
+      || pricingError,
+  );
 
   const customerMutationPending = createCustomerMutation.isPending || updateCustomerMutation.isPending;
   const customerActions = [
     {
       key: 'add-customer',
-      label: 'Add Customer Inline',
+      label: 'Add Customer',
       description: 'Create and select a new customer without leaving this document.',
       icon: 'solar:add-square-bold-duotone',
       onClick: openCreateCustomerDialog,
@@ -1652,7 +1803,7 @@ export const CreateInvoicePage: React.FC = () => {
     },
     {
       key: 'edit-customer',
-      label: 'Edit Selected Customer',
+      label: 'Edit Customer',
       description: 'Update the selected customer before issuing this document.',
       icon: 'solar:pen-bold-duotone',
       onClick: openEditCustomerDialog,
@@ -1660,7 +1811,7 @@ export const CreateInvoicePage: React.FC = () => {
     },
     {
       key: 'manage-customers',
-      label: 'Manage Customers',
+      label: 'All Customers',
       description: 'Open the full customer workspace in a separate screen.',
       icon: 'solar:users-group-rounded-bold-duotone',
       onClick: () => navigate('/customers'),
@@ -1668,7 +1819,7 @@ export const CreateInvoicePage: React.FC = () => {
     },
     {
       key: 'open-profile',
-      label: 'Open Customer Profile',
+      label: 'Profile',
       description: selectedCustomer
         ? 'Jump directly to the selected customer record.'
         : 'Select a customer first to open the profile.',
@@ -1692,12 +1843,40 @@ export const CreateInvoicePage: React.FC = () => {
     },
     {
       key: 'create-product',
-      label: 'Create Product',
+      label: 'New Product',
       description: 'Add a missing product, service, or catalog item.',
       icon: 'solar:add-square-bold-duotone',
       onClick: () => navigate('/products/new'),
     },
   ];
+
+  // One compact row: customer + product shortcuts share the same destination
+  // (the document being edited), so they render as a single Quick Actions strip.
+  const quickActions = [...customerActions, ...productActions];
+
+  const contactNameById = (id: string) => {
+    const contacts: any[] = (selectedCustomerDetail as any)?.customer_contacts
+      ?? (selectedCustomerDetail as any)?.customerContacts
+      ?? [];
+    const match = contacts.find((contact) => String(contact.id) === id);
+    return match?.name || match?.display_name || '';
+  };
+
+  const addressSummary = (address: AddressFormState) =>
+    [address.street, address.city, address.state].filter(Boolean).join(', ');
+
+  const caseCount =
+    (caseNumber || patientName || dateOfCase || caseLocation || primaryMedicalCaseId ? 1 : 0)
+    + extraCases.length;
+
+  const detailsSummary = [
+    documentSnapshot.customer_reference ? `PO ${documentSnapshot.customer_reference}` : null,
+    contactNameById(billingContactId) || documentSnapshot.attention_to || null,
+    fieldProfile === 'medical' && caseCount > 0 ? `cases ${caseCount}` : null,
+    notes ? 'notes' : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   // D5 (invoice review): plain-language explanation of how a line price was
   // arrived at — price list/rule, tier compute, FX rate/date, manual reason.
@@ -1742,7 +1921,7 @@ export const CreateInvoicePage: React.FC = () => {
 
   return (
     <TooltipProvider delayDuration={150}>
-      <div className="p-6 space-y-6">
+      <div className="p-6 space-y-6" data-density={density}>
         <div>
           <Button
             variant="ghost"
@@ -1830,89 +2009,89 @@ export const CreateInvoicePage: React.FC = () => {
                     className="h-9 w-full min-w-0 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>
+
+                {/* Terms / Valid until live on the first row, next to the dates. */}
+                {!isQuoteMode ? (
+                  <div className="col-span-1 md:col-span-1 xl:col-span-3">
+                    <label className="mb-1 block text-xs font-medium">Terms</label>
+                    <HeaderChip
+                      icon="solar:calendar-bold-duotone"
+                      value={`${paymentTerms > 0 ? `Net ${paymentTerms}` : 'Due on receipt'} · ${dueDate ? formatDate(dueDate) : 'No due date'}`}
+                      title="Payment terms and due date"
+                      className="w-full justify-between"
+                    >
+                      <div className="space-y-2">
+                        <div>
+                          <label className="mb-1 block text-xs font-medium">Payment terms (days)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={paymentTerms}
+                            onChange={(event) => {
+                              const days = Math.max(0, parseInt(event.target.value, 10) || 0);
+                              setPaymentTerms(days);
+                              setDueDate(calcDueDate(invoiceDate, days));
+                              // HR71-04: an intentional term edit is an override.
+                              setTermsOverridden(true);
+                            }}
+                            className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium">Due date</label>
+                          <input
+                            type="date"
+                            value={dueDate}
+                            onChange={(event) => {
+                              setDueDate(event.target.value);
+                              // HR71-04: an intentional due-date edit is an override.
+                              setTermsOverridden(true);
+                            }}
+                            className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                          />
+                        </div>
+                      </div>
+                    </HeaderChip>
+                  </div>
+                ) : (
+                  <div className="col-span-1 md:col-span-1 xl:col-span-3">
+                    <label className="mb-1 block text-xs font-medium">Valid until</label>
+                    <HeaderChip
+                      icon="solar:calendar-bold-duotone"
+                      value={dueDate ? formatDate(dueDate) : 'Not set'}
+                      title="Quote validity date"
+                      className="w-full justify-between"
+                    >
+                      <input
+                        type="date"
+                        value={dueDate}
+                        onChange={(event) => setDueDate(event.target.value)}
+                        className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                      />
+                    </HeaderChip>
+                  </div>
+                )}
+
               </div>
 
               {/* D3: chip header — every secondary header value is a compact
                   chip; clicking one edits it in place. */}
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {!isQuoteMode && (
-                  <HeaderChip
-                    icon="solar:calendar-bold-duotone"
-                    label="Terms"
-                    value={`${paymentTerms > 0 ? `Net ${paymentTerms}` : 'Due on receipt'} · ${dueDate ? formatDate(dueDate) : 'No due date'}`}
-                    title="Payment terms and due date"
-                  >
-                    <div className="space-y-2">
-                      <div>
-                        <label className="mb-1 block text-xs font-medium">Payment terms (days)</label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={paymentTerms}
-                          onChange={(event) => {
-                            const days = Math.max(0, parseInt(event.target.value, 10) || 0);
-                            setPaymentTerms(days);
-                            setDueDate(calcDueDate(invoiceDate, days));
-                            // HR71-04: an intentional term edit is an override.
-                            setTermsOverridden(true);
-                          }}
-                          className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-xs font-medium">Due date</label>
-                        <input
-                          type="date"
-                          value={dueDate}
-                          onChange={(event) => {
-                            setDueDate(event.target.value);
-                            // HR71-04: an intentional due-date edit is an override.
-                            setTermsOverridden(true);
-                          }}
-                          className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                        />
-                      </div>
-                    </div>
-                  </HeaderChip>
-                )}
-                {isQuoteMode && (
-                  <HeaderChip
-                    icon="solar:calendar-bold-duotone"
-                    label="Valid until"
-                    value={dueDate ? formatDate(dueDate) : 'Not set'}
-                    title="Quote validity date"
-                  >
-                    <input
-                      type="date"
-                      value={dueDate}
-                      onChange={(event) => setDueDate(event.target.value)}
-                      className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </HeaderChip>
-                )}
-                {!isQuoteMode && (
-                  <HeaderChip
-                    icon="solar:buildings-bold-duotone"
-                    label="Warehouse"
-                    value={(warehouses as any[]).find((w: any) => String(w.id) === warehouseId)?.name ?? 'Select'}
-                    title="Stock warehouse — changing it clears batch/serial selections"
-                  >
+                  <label className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background px-3 text-xs" title="Stock warehouse — changing it clears batch/serial selections">
+                    <span className="text-muted-foreground">Warehouse</span>
                     <select
                       value={warehouseId}
                       onChange={(event) => { warehouseTouchedRef.current = true; setWarehouseId(event.target.value); setLines((current) => current.map((line) => ({ ...line, product_batch_id: null, product_serial_id: null, lot_number: '', serial_number: '', expiry_date: '' }))); }}
-                      className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs"
+                      className="max-w-[14rem] bg-transparent text-xs font-medium focus:outline-none"
                     >
-                      <option value="">Select warehouse</option>
+                      <option value="">Select</option>
                       {warehouses.map((warehouse: any) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}{warehouse.is_default ? ' (Default)' : ''}</option>)}
                     </select>
-                  </HeaderChip>
+                  </label>
                 )}
-                <HeaderChip
-                  icon="solar:wallet-money-bold-duotone"
-                  label="Currency"
-                  value={currencyCode || 'Auto'}
-                  title="Document currency — auto follows the customer's price list"
-                >
+                <label className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background px-3 text-xs" title="Document currency — auto follows the customer's price list">
+                  <span className="text-muted-foreground">Currency</span>
                   <select
                     value={currencyCode}
                     onChange={(event) => {
@@ -1920,7 +2099,7 @@ export const CreateInvoicePage: React.FC = () => {
                       setCurrencyCode(next);
                       void resolvePricingForLines(customerId, lines, next || undefined);
                     }}
-                    className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs"
+                    className="bg-transparent text-xs font-medium focus:outline-none"
                   >
                     <option value="">Auto</option>
                     {currencyCode && !(sellableCurrencies as any[]).some((c: any) => c.code === currencyCode) && (
@@ -1932,16 +2111,9 @@ export const CreateInvoicePage: React.FC = () => {
                       </option>
                     ))}
                   </select>
-                </HeaderChip>
-                <HeaderChip
-                  icon="solar:tag-price-bold-duotone"
-                  label="List"
-                  value={pricingMeta?.price_list_name
-                    ? `${pricingMeta.price_list_name}${pricingMeta.price_list_currency ? ` · ${pricingMeta.price_list_currency}` : ''}`
-                    : 'Auto'}
-                  tone="primary"
-                  title="Price list — Auto applies the customer's list"
-                >
+                </label>
+                <label className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background px-3 text-xs" title="Price list — Auto applies the customer's list">
+                  <span className="text-muted-foreground">List</span>
                   <select
                     value={priceListId}
                     onChange={(event) => {
@@ -1949,7 +2121,7 @@ export const CreateInvoicePage: React.FC = () => {
                       setPriceListId(next);
                       void resolvePricingForLines(customerId, lines, undefined, next);
                     }}
-                    className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs"
+                    className="max-w-[18rem] bg-transparent text-xs font-medium focus:outline-none"
                   >
                     <option value="">Auto</option>
                     {priceListRows.map((list: any) => (
@@ -1958,8 +2130,7 @@ export const CreateInvoicePage: React.FC = () => {
                       </option>
                     ))}
                   </select>
-                  <p className="mt-1 text-[11px] text-muted-foreground">Auto applies the customer's list.</p>
-                </HeaderChip>
+                </label>
                 <HeaderChip
                   icon="solar:document-text-bold-duotone"
                   label="Number"
@@ -1981,6 +2152,38 @@ export const CreateInvoicePage: React.FC = () => {
                     title="This invoice will require approval before posting"
                   />
                 )}
+                {/* 8.3: all secondary details live in one drawer, with a live summary. */}
+                <button
+                  type="button"
+                  onClick={() => setDetailsOpen(true)}
+                  title="References, contacts, addresses, notes and profile fields"
+                  className="inline-flex h-8 max-w-[22rem] items-center gap-1.5 rounded-full border border-border bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60"
+                >
+                  <Icon icon="solar:document-add-bold-duotone" className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">
+                    Details{detailsSummary ? ` · ${detailsSummary}` : ''}
+                  </span>
+                </button>
+                {/* 8.3: comfort/compact density, remembered per user. */}
+                <button
+                  type="button"
+                  onClick={() => setDensity(density === 'compact' ? 'comfortable' : 'compact')}
+                  title="Switch between comfortable and compact row density"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60"
+                >
+                  <Icon icon="solar:slider-vertical-bold" className="h-3.5 w-3.5" />
+                  {density === 'compact' ? 'Compact' : 'Comfortable'}
+                </button>
+                {/* D10: keyboard command bar. */}
+                <button
+                  type="button"
+                  onClick={() => setCommandOpen(true)}
+                  title="Command bar (Ctrl/⌘+K)"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60"
+                >
+                  <Icon icon="solar:keyboard-bold" className="h-3.5 w-3.5" />
+                  Commands · ⌘K
+                </button>
               </div>
 
               {/* D9: what was reused from the customer's last invoice. */}
@@ -2003,103 +2206,49 @@ export const CreateInvoicePage: React.FC = () => {
 
               {/* Pricing feedback: rate snapshot, applied list, resolution
                   errors. Full width so long list names are never squeezed. */}
-              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-800 dark:bg-slate-900/40">
-                {currencyCode && pricingMeta?.base_currency_code && pricingMeta.base_currency_code !== currencyCode && (
-                  <span className={pricingMeta.rate_stale ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}>
-                    1 {currencyCode} = {Number(pricingMeta.exchange_rate || 0).toFixed(4)} {pricingMeta.base_currency_code}
-                    {pricingMeta.rate_date ? ` · ${pricingMeta.rate_date}` : ''}
-                    {pricingMeta.rate_source ? ` · ${pricingMeta.rate_source}` : ''}
-                    {pricingMeta.rate_stale ? ' · stale' : ''}
-                  </span>
-                )}
-                {pricingMeta?.price_list_name && (
-                  <span className="text-muted-foreground">
-                    List: {pricingMeta.price_list_name} ({pricingMeta.price_list_currency ?? currencyCode})
-                  </span>
-                )}
-                {!isQuoteMode && requiresApproval && (
-                  <span className="flex items-center gap-1 text-orange-700 dark:text-orange-400">
-                    <Icon icon="solar:checklist-bold-duotone" className="h-3.5 w-3.5 shrink-0" />
-                    This {documentLabel.toLowerCase()} will require approval before posting
-                    {salesSettings?.invoice?.default_requires_approval && !isEditMode && (
-                      <span className="text-orange-600/70"> · set in Sales Settings</span>
-                    )}
-                  </span>
-                )}
-                {pricingError && (
-                  <span className="flex items-center gap-1 font-medium text-destructive">
-                    <Icon icon="solar:danger-triangle-bold" className="h-3.5 w-3.5" />
-                    {pricingError}
-                  </span>
-                )}
-              </div>
-
-              <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
-                <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
-                  <div>
-                    <div className="text-sm font-semibold text-slate-900">Customer Actions</div>
-                    <div className="text-xs text-slate-500 mt-1">
-                      Keep the selected customer accurate before you save this {documentLabel.toLowerCase()}.
-                    </div>
-                  </div>
-                  <div className="grid auto-rows-fr grid-cols-1 gap-2 sm:grid-cols-2">
-                    {customerActions.map((action) => (
-                      <button
-                        key={action.key}
-                        type="button"
-                        onClick={action.onClick}
-                        disabled={Boolean((action as { disabled?: boolean }).disabled)}
-                        className="group flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900/40 dark:hover:bg-primary/10"
-                      >
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                          <Icon icon={action.icon} className="h-4 w-4" />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-medium text-slate-900 dark:text-slate-100">{action.label}</span>
-                          <span className="mt-0.5 block text-xs leading-snug text-slate-500">{action.description}</span>
-                        </span>
-                        <Icon
-                          icon="solar:alt-arrow-right-linear"
-                          className="h-4 w-4 shrink-0 text-slate-300 transition-colors group-hover:text-primary"
-                        />
-                      </button>
-                    ))}
-                  </div>
+              {hasPricingFeedback && (
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-800 dark:bg-slate-900/40">
+                  {currencyCode && pricingMeta?.base_currency_code && pricingMeta.base_currency_code !== currencyCode && (
+                    <span className={pricingMeta.rate_stale ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}>
+                      1 {currencyCode} = {Number(pricingMeta.exchange_rate || 0).toFixed(4)} {pricingMeta.base_currency_code}
+                      {pricingMeta.rate_date ? ` · ${pricingMeta.rate_date}` : ''}
+                      {pricingMeta.rate_source ? ` · ${pricingMeta.rate_source}` : ''}
+                      {pricingMeta.rate_stale ? ' · stale' : ''}
+                    </span>
+                  )}
+                  {pricingMeta?.price_list_name && (
+                    <span className="text-muted-foreground">
+                      List: {pricingMeta.price_list_name} ({pricingMeta.price_list_currency ?? currencyCode})
+                    </span>
+                  )}
+                  {pricingError && (
+                    <span className="flex items-center gap-1 font-medium text-destructive">
+                      <Icon icon="solar:danger-triangle-bold" className="h-3.5 w-3.5" />
+                      {pricingError}
+                    </span>
+                  )}
                 </div>
+              )}
 
-                <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
-                  <div>
-                    <div className="text-sm font-semibold text-slate-900">Product Actions</div>
-                    <div className="text-xs text-slate-500 mt-1">
-                      Open the catalog or create a missing item before adding line entries.
-                    </div>
-                  </div>
-
-                  {/* D3: currency and price list moved into the chip header; this
-                      panel keeps only the product actions they affect. */}
-                  <div className="grid auto-rows-fr grid-cols-1 gap-2 sm:grid-cols-2">
-                    {productActions.map((action) => (
-                      <button
-                        key={action.key}
-                        type="button"
-                        onClick={action.onClick}
-                        disabled={Boolean((action as { disabled?: boolean }).disabled)}
-                        className="group flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900/40 dark:hover:bg-primary/10"
-                      >
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                          <Icon icon={action.icon} className="h-4 w-4" />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-medium text-slate-900 dark:text-slate-100">{action.label}</span>
-                          <span className="mt-0.5 block text-xs leading-snug text-slate-500">{action.description}</span>
-                        </span>
-                        <Icon
-                          icon="solar:alt-arrow-right-linear"
-                          className="h-4 w-4 shrink-0 text-slate-300 transition-colors group-hover:text-primary"
-                        />
-                      </button>
-                    ))}
-                  </div>
+              {/* One compact Quick Actions row (customer + product shortcuts). */}
+              <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Quick Actions</div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+                  {quickActions.map((action) => (
+                    <button
+                      key={action.key}
+                      type="button"
+                      title={action.description}
+                      onClick={action.onClick}
+                      disabled={Boolean((action as { disabled?: boolean }).disabled)}
+                      className="group flex flex-col items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2 py-3 text-center transition-colors hover:border-primary/40 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900/40 dark:hover:bg-primary/10"
+                    >
+                      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <Icon icon={action.icon} className="h-4 w-4" />
+                      </span>
+                      <span className="text-xs font-medium text-slate-900 dark:text-slate-100">{action.label}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -2122,7 +2271,20 @@ export const CreateInvoicePage: React.FC = () => {
                 </div>
               )}
 
-              <div className="mt-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+              {/* 8.3: one drawer for all secondary details — references,
+                  contacts, addresses, notes and profile fields. */}
+              <Sheet open={detailsOpen} onOpenChange={setDetailsOpen}>
+                <SheetContent side="right" className="w-full overflow-y-auto p-0 sm:max-w-xl" data-density={density}>
+                  <div className="border-b px-5 py-4">
+                    <SheetHeader>
+                      <SheetTitle>Document details</SheetTitle>
+                      <SheetDescription>
+                        References, contacts, addresses, notes and profile fields.
+                      </SheetDescription>
+                    </SheetHeader>
+                  </div>
+                  <div className="space-y-4 px-5 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Customer Ref.</label>
                   <input
@@ -2208,57 +2370,77 @@ export const CreateInvoicePage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Billing Contact</label>
-                  <ContactSearchCombobox
-                    value={billingContactId}
-                    onValueChange={(val, contact) => {
-                      setBillingContactId(val);
-                      if (contact) {
-                        setDocumentSnapshot((current) => ({
-                          ...current,
-                          attention_to: (contact as any).name || contact.display_name || current.attention_to,
-                          contact_email: contact.email || current.contact_email,
-                          contact_phone: contact.phone || (contact as any).mobile || current.contact_phone,
-                        }));
-                      }
-                    }}
-                    placeholder="Select customer contact..."
-                    customerId={customerId}
-                    source="customer_contacts"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Shipping Contact</label>
-                  <ContactSearchCombobox
-                    value={shippingContactId}
-                    onValueChange={(val) => setShippingContactId(val)}
-                    placeholder="Select customer contact..."
-                    customerId={customerId}
-                    source="customer_contacts"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
-                {([
-                  ['billing', 'Billing Address', billingAddress],
-                  ['shipping', 'Shipping Address', shippingAddress],
-                ] as const).map(([type, title, address]) => (
-                  <div key={type} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="mb-3 text-sm font-semibold text-slate-900">{title}</div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Contacts and addresses are auto-filled from the customer, so they
+                  stay collapsed to a one-line summary and only open for edits. */}
+              <div className="mt-4 grid grid-cols-1 gap-3">
+                <details
+                  open={billingOpen}
+                  onToggle={(event) => {
+                    const open = (event.currentTarget as HTMLDetailsElement).open;
+                    setBillingOpen(open);
+                    // Accordion: only one section is expanded at a time.
+                    if (open) setShippingOpen(false);
+                  }}
+                  className="group rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+                >
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <Icon icon="solar:card-bold-duotone" className="h-4 w-4 shrink-0 text-slate-400" />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-slate-900">Billing details</span>
+                        <span className="mt-0.5 block truncate text-xs text-slate-500">
+                          {contactNameById(billingContactId) || documentSnapshot.attention_to || 'No contact'}
+                          {' · '}
+                          {addressSummary(billingAddress) || 'No address'}
+                        </span>
+                      </span>
+                    </span>
+                    <Icon icon="solar:alt-arrow-down-linear" className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="mt-3 space-y-3">
+                    <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[minmax(0,1fr)_9rem]">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-600">Contact</label>
+                        <ContactSearchCombobox
+                          value={billingContactId}
+                          onValueChange={(val, contact) => {
+                            setBillingContactId(val);
+                            if (contact) {
+                              setDocumentSnapshot((current) => ({
+                                ...current,
+                                attention_to: (contact as any).name || contact.display_name || current.attention_to,
+                                contact_email: contact.email || current.contact_email,
+                                contact_phone: contact.phone || (contact as any).mobile || current.contact_phone,
+                              }));
+                            }
+                          }}
+                          placeholder="Select customer contact..."
+                          customerId={customerId}
+                          source="customer_contacts"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-600">Label</label>
+                        <input
+                          type="text"
+                          value={billingAddress.label}
+                          onChange={(event) => updateAddress('billing', 'label', event.target.value)}
+                          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
+                          placeholder="e.g. HQ"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                       {([
-                        ['label', 'Label'], ['street', 'Street'], ['street2', 'Street 2'],
+                        ['street', 'Street'], ['street2', 'Street 2'],
                         ['city', 'City'], ['state', 'State'], ['zip', 'ZIP'], ['country', 'Country'],
                       ] as const).map(([field, label]) => (
                         <div key={field} className={field === 'street' || field === 'street2' ? 'md:col-span-2' : ''}>
-                          <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
+                          <label className="mb-1 block text-xs font-medium text-slate-600">{label}</label>
                           <input
                             type="text"
-                            value={address[field]}
-                            onChange={(event) => updateAddress(type, field, event.target.value)}
+                            value={billingAddress[field]}
+                            onChange={(event) => updateAddress('billing', field, event.target.value)}
                             className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
                             placeholder={label}
                           />
@@ -2266,41 +2448,117 @@ export const CreateInvoicePage: React.FC = () => {
                       ))}
                     </div>
                   </div>
-                ))}
+                </details>
+
+                <details
+                  open={shippingOpen}
+                  onToggle={(event) => {
+                    const open = (event.currentTarget as HTMLDetailsElement).open;
+                    setShippingOpen(open);
+                    // Accordion: only one section is expanded at a time.
+                    if (open) setBillingOpen(false);
+                  }}
+                  className="group rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+                >
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <Icon icon="solar:delivery-bold-duotone" className="h-4 w-4 shrink-0 text-slate-400" />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-slate-900">Shipping details</span>
+                        <span className="mt-0.5 block truncate text-xs text-slate-500">
+                          {contactNameById(shippingContactId) || 'No contact'}
+                          {' · '}
+                          {addressSummary(shippingAddress) || 'No address'}
+                        </span>
+                      </span>
+                    </span>
+                    <Icon icon="solar:alt-arrow-down-linear" className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="mt-3 space-y-3">
+                    <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[minmax(0,1fr)_9rem]">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-600">Contact</label>
+                        <ContactSearchCombobox
+                          value={shippingContactId}
+                          onValueChange={(val) => setShippingContactId(val)}
+                          placeholder="Select customer contact..."
+                          customerId={customerId}
+                          source="customer_contacts"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-600">Label</label>
+                        <input
+                          type="text"
+                          value={shippingAddress.label}
+                          onChange={(event) => updateAddress('shipping', 'label', event.target.value)}
+                          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
+                          placeholder="e.g. Site B"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      {([
+                        ['street', 'Street'], ['street2', 'Street 2'],
+                        ['city', 'City'], ['state', 'State'], ['zip', 'ZIP'], ['country', 'Country'],
+                      ] as const).map(([field, label]) => (
+                        <div key={field} className={field === 'street' || field === 'street2' ? 'md:col-span-2' : ''}>
+                          <label className="mb-1 block text-xs font-medium text-slate-600">{label}</label>
+                          <input
+                            type="text"
+                            value={shippingAddress[field]}
+                            onChange={(event) => updateAddress('shipping', field, event.target.value)}
+                            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
+                            placeholder={label}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </details>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Notes</label>
+              {/* Terms live in the chip header; only internal notes belong here. */}
+              <div className="mt-4 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <Icon icon="solar:notes-bold-duotone" className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                <div className="min-w-0 flex-1">
+                  <label className="block text-xs font-medium text-slate-600">
+                    Notes <span className="font-normal text-slate-400">(internal — not printed on the invoice)</span>
+                  </label>
                   <textarea
                     value={notes}
                     onChange={(event) => setNotes(event.target.value)}
                     rows={2}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Internal notes..."
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Terms</label>
-                  <textarea
-                    value={terms}
-                    onChange={(event) => setTerms(event.target.value)}
-                    rows={2}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Payment terms..."
+                    className="mt-1 w-full resize-y rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800"
+                    placeholder="Add a note for your team…"
                   />
                 </div>
               </div>
+
+                  </div>
+                </SheetContent>
+              </Sheet>
             </CardContent>
           </Card>
 
-          {/* D4: case/patient fields render only for the Medical profile. */}
+          {/* D4: case/patient fields render only for the Medical profile, and stay
+              collapsed behind a one-line summary until they are needed. */}
           {fieldProfile === 'medical' && (
           <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>Case Information</CardTitle>
+            <CardHeader className="pb-3">
+              <CardTitle>Cases</CardTitle>
             </CardHeader>
             <CardContent>
+              <details className="group">
+                <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm font-medium transition-colors hover:bg-accent">
+                  <Icon icon="solar:folder-with-files-bold-duotone" className="h-4 w-4 text-primary" />
+                  {caseCount > 0 ? `Cases (${caseCount})` : 'Add case'}
+                  <span className="ml-auto truncate text-xs font-normal text-muted-foreground">
+                    {caseCount > 0 ? 'View or edit case details' : 'Case number, patient, doctor…'}
+                  </span>
+                  <Icon icon="solar:alt-arrow-down-linear" className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="mt-4">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Case Number</label>
@@ -2484,6 +2742,8 @@ export const CreateInvoicePage: React.FC = () => {
                   Add Case
                 </HeaderActionButton>
               </div>
+                </div>
+              </details>
             </CardContent>
           </Card>
           )}
@@ -2562,7 +2822,7 @@ export const CreateInvoicePage: React.FC = () => {
               >
                 <LineItemsTable
                   variant="raw"
-                  tableClassName="w-full min-w-[1700px] text-sm"
+                  tableClassName="doc-lines-table w-full min-w-[1700px] text-sm"
                   headRowClassName="border-b bg-muted/30"
                   columns={productLineColumns({
                     sku: visibleLineColumns.sku,
@@ -2575,14 +2835,14 @@ export const CreateInvoicePage: React.FC = () => {
                   })}
                 >
                     {lines.map((line, index) => (
-                      <tr key={index} className="border-b transition-colors hover:bg-muted/20" draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }}>
+                      <tr key={index} className="doc-line-row border-b transition-colors hover:bg-muted/20" draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }}>
                         {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={13} total={line.line_type === 'section' ? money(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }} /> : <>
-                        <td className={cn(LINE_CELL, 'w-10')}>
+                        <td data-label="#" className={cn(LINE_CELL, 'w-10')}>
                           <div className={cn(LINE_CELL_BOX, 'justify-center text-xs font-medium text-muted-foreground')}>
                             {lines.slice(0, index + 1).filter((item) => (item.line_type ?? 'product') === 'product').length}
                           </div>
                         </td>
-                        <td className={cn(LINE_CELL, 'min-w-[17rem]', LINE_PRODUCT_WRAP)}>
+                        <td data-label="Product" className={cn(LINE_CELL, 'min-w-[17rem]', LINE_PRODUCT_WRAP)}>
                           <ProductSearchCombobox
                             value={line.product_id}
                             onValueChange={(productId, product) => {
@@ -2608,10 +2868,10 @@ export const CreateInvoicePage: React.FC = () => {
                             wrapText
                           />
                         </td>
-                        {visibleLineColumns.sku && <td className={cn(LINE_CELL, 'min-w-[7rem]')}>
+                        {visibleLineColumns.sku && <td data-label="SKU" className={cn(LINE_CELL, 'min-w-[7rem]')}>
                           <div className={LINE_VALUE}>{line.sku || <span className="opacity-60">SKU</span>}</div>
                         </td>}
-                        {visibleLineColumns.description && <td className={cn(LINE_CELL, 'min-w-[16rem]')}>
+                        {visibleLineColumns.description && <td data-label="Description" className={cn(LINE_CELL, 'min-w-[16rem]')}>
                           <textarea
                             value={line.description}
                             onChange={(event) => updateLine(index, 'description', event.target.value)}
@@ -2620,10 +2880,10 @@ export const CreateInvoicePage: React.FC = () => {
                             placeholder="Description"
                           />
                         </td>}
-                        {visibleLineColumns.model_number && <td className={cn(LINE_CELL, 'min-w-[7rem]')}>
+                        {visibleLineColumns.model_number && <td data-label="Model #" className={cn(LINE_CELL, 'min-w-[7rem]')}>
                           <div className={LINE_VALUE}>{line.model_number || <span className="opacity-60">Model #</span>}</div>
                         </td>}
-                        {visibleLineColumns.product_notes && <td className={cn(LINE_CELL, 'min-w-[10rem]')}>
+                        {visibleLineColumns.product_notes && <td data-label="Product notes" className={cn(LINE_CELL, 'min-w-[10rem]')}>
                           <textarea
                             value={line.product_notes}
                             onChange={(event) => updateLine(index, 'product_notes', event.target.value)}
@@ -2632,7 +2892,7 @@ export const CreateInvoicePage: React.FC = () => {
                             placeholder="Product notes"
                           />
                         </td>}
-                        {visibleLineColumns.lot_number && <td className={cn(LINE_CELL, 'min-w-[7.5rem]')}>
+                        {visibleLineColumns.lot_number && <td data-label="Lot / Serial" className={cn(LINE_CELL, 'min-w-[7.5rem]')}>
                           <ProductTrackingSelector
                             productId={line.product_id}
                             warehouseId={warehouseId}
@@ -2643,10 +2903,10 @@ export const CreateInvoicePage: React.FC = () => {
                           />
                           {line.tracking_method === 'none' || line.tracking_method === 'quantity' ? <span className="text-xs text-muted-foreground">Not tracked</span> : null}
                         </td>}
-                        {visibleLineColumns.expiry_date && <td className={cn(LINE_CELL, 'min-w-[9.5rem]')}>
+                        {visibleLineColumns.expiry_date && <td data-label="Expiry" className={cn(LINE_CELL, 'min-w-[9.5rem]')}>
                           <div className={LINE_VALUE}>{line.expiry_date || <span className="opacity-60">Expiry</span>}</div>
                         </td>}
-                        <td className={cn(LINE_CELL, 'w-[5.5rem] min-w-[4.5rem]')}>
+                        <td data-label="Qty" className={cn(LINE_CELL, 'w-[5.5rem] min-w-[4.5rem]')}>
                           <div className={LINE_CELL_BOX}>
                             <input
                               type="number"
@@ -2671,7 +2931,7 @@ export const CreateInvoicePage: React.FC = () => {
                             />
                           </div>
                         </td>
-                        <td className={cn(LINE_CELL, 'w-[7rem] min-w-[6rem]')}>
+                        <td data-label="Unit price" className={cn(LINE_CELL, 'w-[7rem] min-w-[6rem]')}>
                           <div className={LINE_CELL_BOX}>
                             <div className="flex w-full flex-col gap-0.5">
                               <input
@@ -2733,7 +2993,7 @@ export const CreateInvoicePage: React.FC = () => {
                             </div>
                           </div>
                         </td>
-                        {visibleLineColumns.tax_rate && <td className={cn(LINE_CELL, 'w-[5rem] min-w-[4rem]')}>
+                        {visibleLineColumns.tax_rate && <td data-label="Tax %" className={cn(LINE_CELL, 'w-[5rem] min-w-[4rem]')}>
                           <div className={LINE_CELL_BOX}>
                             <input
                               type="number"
@@ -2747,12 +3007,12 @@ export const CreateInvoicePage: React.FC = () => {
                             />
                           </div>
                         </td>}
-                        <td className={cn(LINE_CELL, 'w-[7.5rem] min-w-[6.5rem]')}>
+                        <td data-label="Total" className={cn(LINE_CELL, 'w-[7.5rem] min-w-[6.5rem]')}>
                           <div className={cn(LINE_CELL_BOX, 'justify-end text-sm font-semibold tabular-nums')}>
                             {money(getLineTotal(line))}
                           </div>
                         </td>
-                        <td className={cn(LINE_CELL, 'w-[10.5rem]')}>
+                        <td data-label="" className={cn(LINE_CELL, 'w-[10.5rem]')}>
                           <div className={cn(LINE_CELL_BOX, 'justify-end')}>
                             <ProductLineActions
                               onMoveUp={() => moveLine(index, 'up')}
@@ -3072,6 +3332,71 @@ export const CreateInvoicePage: React.FC = () => {
               {pasteBusy ? 'Adding...' : 'Add rows'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* D10: command bar — Ctrl/⌘+K. */}
+      <Dialog
+        open={commandOpen}
+        onOpenChange={(open) => {
+          setCommandOpen(open);
+          if (!open) {
+            setCommandText('');
+            setCommandResults([]);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Command bar</DialogTitle>
+            <DialogDescription>
+              Type a command and press Enter — or type any product name/SKU to add it.
+            </DialogDescription>
+          </DialogHeader>
+          <input
+            autoFocus
+            value={commandText}
+            onChange={(event) => setCommandText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                void executeCommand(commandText);
+              }
+            }}
+            placeholder="add 10 widget-a @90 · terms 60 · discount 5% · currency MYR · note …"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+          {commandBusy && <p className="text-xs text-muted-foreground">Working…</p>}
+          {!commandBusy && commandResults.length > 0 && (
+            <div className="max-h-56 space-y-1 overflow-y-auto">
+              {commandResults.map((product) => (
+                <button
+                  key={product.id}
+                  type="button"
+                  onClick={() => {
+                    addProductToLines(product, 1, null);
+                    setCommandOpen(false);
+                    setCommandText('');
+                    setCommandResults([]);
+                  }}
+                  className="flex w-full items-center justify-between gap-3 rounded-md border px-2.5 py-1.5 text-left text-xs hover:bg-accent"
+                >
+                  <span className="truncate font-medium">{product.name}</span>
+                  <span className="shrink-0 text-muted-foreground">{product.sku}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+            <div className="mb-1 font-medium text-foreground">Commands</div>
+            <ul className="space-y-0.5">
+              <li><span className="font-mono">add [qty] &lt;product&gt; [@ price]</span> — add a line</li>
+              <li><span className="font-mono">terms 60</span> — payment terms &amp; due date</li>
+              <li><span className="font-mono">discount 5%</span> or <span className="font-mono">discount 50</span></li>
+              <li><span className="font-mono">currency MYR</span> — document currency</li>
+              <li><span className="font-mono">note &lt;text&gt;</span> — replace internal notes</li>
+            </ul>
+          </div>
         </DialogContent>
       </Dialog>
 

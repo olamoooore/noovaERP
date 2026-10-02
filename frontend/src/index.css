@@ -97,3 +97,77 @@ h1.text-9xl { font-size: 7.8125rem; line-height: 1; } /* 127 → 125px */
   pointer-events: none !important;
 }
 
+
+/* ── 8.3 One consistent compact design ───────────────────────────────────
+   Two densities (per-user, applied via data-density on the document root)
+   and stacked line cards below 768px instead of the 1,700px-wide table. */
+
+[data-density='compact'] .doc-line-row > td {
+  padding-top: 0.125rem;
+  padding-bottom: 0.125rem;
+}
+
+[data-density='compact'] .doc-line-row input,
+[data-density='compact'] .doc-line-row select {
+  height: 1.75rem;
+  font-size: 11px;
+}
+
+[data-density='compact'] .doc-line-row textarea {
+  font-size: 11px;
+  min-height: 2.25rem;
+}
+
+@media (max-width: 767px) {
+  .doc-lines-table {
+    min-width: 0 !important;
+  }
+
+  .doc-lines-table thead {
+    display: none;
+  }
+
+  .doc-lines-table tbody,
+  .doc-lines-table tr,
+  .doc-lines-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .doc-lines-table tr {
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.75rem;
+    margin-bottom: 0.75rem;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .doc-lines-table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    width: auto !important;
+    min-width: 0 !important;
+    padding: 0.3rem 0;
+    border: 0;
+  }
+
+  .doc-lines-table td::before {
+    content: attr(data-label);
+    flex: 0 0 6.5rem;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .doc-lines-table td[data-label='']::before,
+  .doc-lines-table td:not([data-label])::before {
+    display: none;
+  }
+
+  .doc-lines-table td > * {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}

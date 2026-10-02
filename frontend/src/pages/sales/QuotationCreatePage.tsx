@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { preventImplicitSubmit } from '@/lib/prevent-enter-submit';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router-dom';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard';
@@ -31,9 +31,13 @@ import {
   productLineColumns,
 } from '@/components/sales/ProductLineTable';
 import { cn } from '@/lib/utils';
-import { QuotationCaseInformation, emptyQuotationCaseInformation } from '@/components/sales/QuotationCaseInformation';
+import { emptyQuotationCaseInformation } from '@/components/sales/QuotationCaseInformation';
 import { InternalReferenceTags } from '@/components/sales/InternalReferenceTags';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
+import { CaseSearchCombobox } from '@/components/sales/CaseSearchCombobox';
+import { ContactSearchCombobox } from '@/components/ui/ContactSearchCombobox';
+import { HeaderChip } from '@/components/ui/HeaderChip';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 
 const QUOTATION_CREATE_COLUMNS = ['#', 'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Qty', 'Unit Price', 'Tax %', 'Line Total', 'Actions']
   .map((label, index) => ({ label, index: index + 1 }));
@@ -54,6 +58,27 @@ interface QuotationLine {
   override_reason?: string | null;
 }
 
+type AddressFormState = Record<'label' | 'street' | 'street2' | 'city' | 'state' | 'zip' | 'country', string>;
+
+const emptyAddressForm: AddressFormState = {
+  label: '', street: '', street2: '', city: '', state: '', zip: '', country: '',
+};
+
+const toAddressForm = (address?: any): AddressFormState => ({
+  label: address?.label ?? '',
+  street: address?.street ?? '',
+  street2: address?.street2 ?? '',
+  city: address?.city ?? '',
+  state: address?.state ?? '',
+  zip: address?.zip ?? '',
+  country: address?.country ?? '',
+});
+
+const addressFormToSnapshot = (address: AddressFormState): string =>
+  [address.label, address.street, address.street2, address.city, address.state, address.zip, address.country]
+    .filter(Boolean)
+    .join('\n');
+
 const emptyLine = (): QuotationLine => ({
   line_type: 'product',
   product_id: '',
@@ -72,19 +97,28 @@ export const QuotationCreatePage: React.FC = () => {
   const [tags, setTags] = useState<string[]>([])
   const [draggedLineIndex, setDraggedLineIndex] = useState<number | null>(null)
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { toast } = useToast()
   const canViewPriceLists = useAuthStore((state) => state.hasPermission('pricelists.view'));
 
   const [customerId, setCustomerId] = useState('');
   // Explicit price-list selection (FR-2.3 step 1); '' = auto.
   const [priceListId, setPriceListId] = useState('');
+  const [currencyCode, setCurrencyCode] = useState('');
+  const [pricingMeta, setPricingMeta] = useState<{
+    base_currency_code?: string;
+    exchange_rate?: number;
+    rate_date?: string | null;
+    rate_source?: string | null;
+    rate_stale?: boolean;
+    price_list_name?: string | null;
+    price_list_currency?: string | null;
+  } | null>(null);
+  const [pricingError, setPricingError] = useState<string | null>(null);
   const [quotationDate, setQuotationDate] = useState(new Date().toISOString().split('T')[0]);
   const [validUntil, setValidUntil] = useState(
     new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   );
   const [notes, setNotes] = useState('');
-  const [terms, setTerms] = useState('');
   const [discountAmount, setDiscountAmount] = useState<number | ''>('');
   const [discountMode, setDiscountMode] = useState<'fixed' | 'percentage'>('fixed');
   const [lines, setLines] = useState<QuotationLine[]>([emptyLine()]);
@@ -94,14 +128,23 @@ export const QuotationCreatePage: React.FC = () => {
   const [attentionTo, setAttentionTo] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [contactPhone, setContactPhone] = useState('');
-  const [billingAddressSnapshot, setBillingAddressSnapshot] = useState('');
-  const [shippingAddressSnapshot, setShippingAddressSnapshot] = useState('');
+  // Structured addresses (invoice parity) — snapshots derive from these.
+  const [billingAddress, setBillingAddress] = useState<AddressFormState>(emptyAddressForm);
+  const [shippingAddress, setShippingAddress] = useState<AddressFormState>(emptyAddressForm);
+  const [billingContactId, setBillingContactId] = useState('');
+  const [shippingContactId, setShippingContactId] = useState('');
   const [salesperson, setSalesperson] = useState('');
   const [deliveryLeadTime, setDeliveryLeadTime] = useState('');
   const [shippingMethod, setShippingMethod] = useState('');
   const [shippingTerms, setShippingTerms] = useState('');
   const [validity, setValidity] = useState('');
   const [caseInformation, setCaseInformation] = useState(emptyQuotationCaseInformation);
+  // Invoice-page parity: secondary fields live in one drawer, not inline.
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [billingOpen, setBillingOpen] = useState(false);
+  const [shippingOpen, setShippingOpen] = useState(false);
+  const [customerMatch, setCustomerMatch] = useState<{ contacts: string[]; tags: string[]; addresses: string[] } | null>(null);
+  const autofilledCustomerRef = useRef<string | null>(null);
 
   const { data: products } = useQuery({
     queryKey: ['products-list'],
@@ -110,6 +153,43 @@ export const QuotationCreatePage: React.FC = () => {
       return response.data.data || response.data || [];
     },
   });
+
+  // One pick fills everything (invoice parity): primary contact, references
+  // and the saved billing/shipping addresses pre-fill from the customer.
+  const { data: customerDetail } = useQuery({
+    queryKey: ['quotation-customer-detail', customerId],
+    queryFn: async () => {
+      const response = await api.get(`/customers/${customerId}`);
+      return response.data?.data ?? response.data;
+    },
+    enabled: Boolean(customerId),
+  });
+
+  useEffect(() => {
+    if (!customerDetail || autofilledCustomerRef.current === customerId) return;
+    autofilledCustomerRef.current = customerId;
+
+    const contacts = customerDetail.customer_contacts ?? customerDetail.customerContacts ?? [];
+    const primary = contacts.find((contact: any) => contact.is_primary) ?? contacts[0];
+
+    setAttentionTo(primary?.name ?? customerDetail.name ?? '');
+    setContactEmail(primary?.email ?? customerDetail.email ?? '');
+    setContactPhone(primary?.phone ?? primary?.mobile ?? customerDetail.phone ?? customerDetail.mobile ?? '');
+    setCustomerReference((prev) => prev || customerDetail.code || '');
+
+    const days = Number(customerDetail.payment_terms);
+    if (Number.isFinite(days) && days >= 0) {
+      setCreditTerms((prev) => prev || (days > 0 ? `Net ${days} days` : 'Due on receipt'));
+    }
+
+    const addresses = customerDetail.addresses ?? [];
+    const pick = (type: string) => addresses.find((address: any) => address.type === type && address.is_default)
+      ?? addresses.find((address: any) => address.type === type);
+    setBillingAddress(toAddressForm(pick('billing')));
+    setShippingAddress(toAddressForm(pick('shipping')));
+    setBillingContactId('');
+    setShippingContactId('');
+  }, [customerDetail, customerId]);
 
   const createMutation = useMutation({
     mutationFn: async (data: unknown) => {
@@ -146,7 +226,46 @@ export const QuotationCreatePage: React.FC = () => {
   });
   const priceListRows: any[] = (activePriceLists as any)?.data ?? activePriceLists ?? [];
 
-  const resolvePricingForLines = async (nextLines: QuotationLine[], listOverride?: string) => {
+  const { data: sellableCurrencies = [] } = useQuery({
+    queryKey: ['currencies', 'sellable'],
+    queryFn: () => pricingApi.sellableCurrencies(),
+  });
+
+  const { data: salesSettings } = useQuery({
+    queryKey: ['sales-settings'],
+    queryFn: async () => (await api.get('/settings/sales')).data,
+  });
+  const fieldProfile = ((salesSettings as any)?.quotation?.field_profile
+    ?? (salesSettings as any)?.invoice?.field_profile
+    ?? 'medical') as 'medical' | 'trading' | 'services';
+
+  const contactNameById = (id: string) => {
+    const contacts = customerDetail?.customer_contacts ?? customerDetail?.customerContacts ?? [];
+    return contacts.find((contact: any) => String(contact.id) === id)?.name ?? '';
+  };
+  const addressSummary = (address: AddressFormState) =>
+    [address.street, address.city, address.state].filter(Boolean).join(', ');
+  const updateAddress = (type: 'billing' | 'shipping', field: keyof AddressFormState, value: string) => {
+    const setter = type === 'billing' ? setBillingAddress : setShippingAddress;
+    setter((current) => ({ ...current, [field]: value }));
+  };
+  const caseCount = Object.values(caseInformation).some((value) => value) ? 1 : 0;
+
+  const hasPricingFeedback = Boolean(
+    (currencyCode && pricingMeta?.base_currency_code && pricingMeta.base_currency_code !== currencyCode)
+      || pricingMeta?.price_list_name
+      || pricingError,
+  );
+  const money = (value: number) => formatCurrency(value, currencyCode || undefined);
+
+  const detailsSummary = [
+    customerReference ? `PO ${customerReference}` : null,
+    attentionTo || null,
+    caseCount > 0 ? `cases ${caseCount}` : null,
+    notes ? 'notes' : null,
+  ].filter(Boolean).join(' · ');
+
+  const resolvePricingForLines = async (nextLines: QuotationLine[], listOverride?: string, currencyOverride?: string) => {
     const productLines = nextLines
       .map((line, index) => ({ line, index }))
       .filter(({ line }) => (line.line_type ?? 'product') === 'product' && !!line.product_id);
@@ -157,6 +276,9 @@ export const QuotationCreatePage: React.FC = () => {
         {
           customer_id: customerId ? parseInt(customerId, 10) : null,
           date: quotationDate || undefined,
+          // The editor's currency wins; empty lets the server resolve from
+          // the customer's list (FR-5.2).
+          document_currency: (currencyOverride ?? currencyCode) || undefined,
           price_list_id: ((listOverride !== undefined ? listOverride : priceListId) || '') !== ''
             ? Number(listOverride !== undefined ? listOverride : priceListId)
             : undefined,
@@ -166,6 +288,21 @@ export const QuotationCreatePage: React.FC = () => {
           quantity: Number(line.quantity) || 1,
         })),
       );
+      setCurrencyCode(result.currency_code);
+      setPricingMeta({
+        base_currency_code: result.base_currency_code,
+        exchange_rate: result.exchange_rate,
+        rate_date: result.rate_date,
+        rate_source: (result as any).rate_source ?? null,
+        rate_stale: Boolean((result as any).rate_stale),
+        price_list_name: result.price_list_name,
+        price_list_currency: result.price_list_currency,
+      });
+
+      // Surface resolution failures instead of silently keeping stale prices.
+      const lineError = (result.lines ?? []).map((quote: any) => quote?.error).find(Boolean) ?? null;
+      setPricingError(lineError);
+
       const updated = [...nextLines];
       result.lines.forEach((quote: any, quoteIndex: number) => {
         const target = productLines[quoteIndex]?.index;
@@ -319,8 +456,10 @@ export const QuotationCreatePage: React.FC = () => {
       attention_to: attentionTo || undefined,
       contact_email: contactEmail || undefined,
       contact_phone: contactPhone || undefined,
-      billing_address_snapshot: billingAddressSnapshot || undefined,
-      shipping_address_snapshot: shippingAddressSnapshot || undefined,
+      billing_address_snapshot: addressFormToSnapshot(billingAddress) || undefined,
+      shipping_address_snapshot: addressFormToSnapshot(shippingAddress) || undefined,
+      ...(billingContactId.includes('-') ? { billing_contact_id: billingContactId } : {}),
+      ...(shippingContactId.includes('-') ? { shipping_contact_id: shippingContactId } : {}),
       salesperson: salesperson || undefined,
       delivery_lead_time: deliveryLeadTime || undefined,
       shipping_method: shippingMethod || undefined,
@@ -328,10 +467,11 @@ export const QuotationCreatePage: React.FC = () => {
       validity: validity || undefined,
       ...Object.fromEntries(Object.entries(caseInformation).map(([key, value]) => [key, value || null])),
       notes: notes || undefined,
-      terms: terms || undefined,
       discount_amount: documentDiscountAmount || 0,
       // FR-2.3 step 1: explicit list selection wins over applicability.
       ...(priceListId ? { price_list_id: Number(priceListId) } : {}),
+      // FR-5.1/5.2: explicit document currency; empty = server resolves.
+      ...(currencyCode ? { currency_code: currencyCode } : {}),
       discount_type: discountMode,
       discount_value: discountValue,
       ...(tags.length ? { tags } : {}),
@@ -374,26 +514,90 @@ export const QuotationCreatePage: React.FC = () => {
             <CardTitle>Quotation Details</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Customer *</label>
+            {/* Compact header (invoice parity): customer + dates on row 1,
+                commercial pills on row 2; secondary fields stay in the drawer. */}
+            <div className="grid grid-cols-2 items-end gap-3 md:grid-cols-4 xl:grid-cols-12">
+              <div className="col-span-2 md:col-span-2 xl:col-span-6">
+                <label className="mb-1 block text-xs font-medium">Customer *</label>
                 <CustomerSearchCombobox
+                  compact
                   value={customerId}
-                  onValueChange={setCustomerId}
-                  placeholder="Search customer name or code..."
+                  onValueChange={(id, customer) => {
+                    autofilledCustomerRef.current = null;
+                    setCustomerId(id);
+                    setCustomerMatch(customer ? {
+                      contacts: (customer as any).matched_contacts ?? [],
+                      tags: (customer as any).matched_tags ?? [],
+                      addresses: (customer as any).matched_addresses ?? [],
+                    } : null);
+                    if (customer && (customer as any).code) {
+                      setCustomerReference((current) => current || (customer as any).code);
+                    }
+                  }}
+                  placeholder="Search customers..."
                 />
+                {customerMatch && (customerMatch.contacts.length > 0 || customerMatch.tags.length > 0 || customerMatch.addresses.length > 0) && (
+                  <p className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] leading-snug text-muted-foreground">
+                    {customerMatch.contacts.length > 0 && (
+                      <span>Matched contact: <span className="text-primary">{customerMatch.contacts.join(', ')}</span></span>
+                    )}
+                    {customerMatch.tags.length > 0 && (
+                      <span>Tag: <span className="text-amber-600">{customerMatch.tags.join(', ')}</span></span>
+                    )}
+                    {customerMatch.addresses.length > 0 && (
+                      <span className="truncate">Address: {customerMatch.addresses.join(' · ')}</span>
+                    )}
+                  </p>
+                )}
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Quote Date</label>
+              <div className="col-span-1 md:col-span-1 xl:col-span-3">
+                <label className="mb-1 block text-xs font-medium">Quote Date</label>
                 <input
                   type="date"
                   value={quotationDate}
                   onChange={(event) => setQuotationDate(event.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="h-9 w-full min-w-0 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Price List</label>
+              <div className="col-span-1 md:col-span-1 xl:col-span-3">
+                <label className="mb-1 block text-xs font-medium">Valid Until</label>
+                <input
+                  type="date"
+                  value={validUntil}
+                  onChange={(event) => setValidUntil(event.target.value)}
+                  className="h-9 w-full min-w-0 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+            </div>
+
+            {/* Row 2: direct dropdowns + chips, one compact strip. */}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <label className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background px-3 text-xs" title="Document currency — auto follows the customer's price list">
+                <span className="text-muted-foreground">Currency</span>
+                <select
+                  value={currencyCode}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setCurrencyCode(next);
+                    // FR-5.2: changing currency re-prices auto lines through
+                    // the engine; manual lines keep their value.
+                    void resolvePricingForLines(lines, undefined, next || undefined);
+                  }}
+                  className="bg-transparent text-xs font-medium focus:outline-none"
+                >
+                  <option value="">Auto</option>
+                  {currencyCode && !(sellableCurrencies as any[]).some((currency: any) => currency.code === currencyCode) && (
+                    <option value={currencyCode}>{currencyCode}</option>
+                  )}
+                  {(sellableCurrencies as any[]).map((currency: any) => (
+                    <option key={currency.code} value={currency.code}>
+                      {currency.code}{currency.symbol ? ` ${currency.symbol}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background px-3 text-xs" title="Price list — Auto applies the customer's list">
+                <span className="text-muted-foreground">List</span>
                 <select
                   value={priceListId}
                   onChange={(event) => {
@@ -402,196 +606,482 @@ export const QuotationCreatePage: React.FC = () => {
                     // Pass the selection explicitly — state has not committed.
                     void resolvePricingForLines(lines, next);
                   }}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  className="max-w-[18rem] bg-transparent text-xs font-medium focus:outline-none"
                 >
-                  <option value="">Auto — customer's applicable list</option>
+                  <option value="">Auto</option>
                   {priceListRows.map((list: any) => (
                     <option key={list.id} value={String(list.id)}>
                       {list.name} · {list.currency_code}
                     </option>
                   ))}
                 </select>
-                <Link to="/sales/price-lists" className="mt-1 inline-block text-xs text-muted-foreground underline hover:text-foreground">
-                  Manage price lists →
-                </Link>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Valid Until</label>
-                <input
-                  type="date"
-                  value={validUntil}
-                  onChange={(event) => setValidUntil(event.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Quotation Number</label>
+              </label>
+              <HeaderChip
+                icon="solar:document-text-bold-duotone"
+                label="Number"
+                value={customQuoteNumber || 'Auto'}
+                title="Quotation number"
+              >
                 <input
                   type="text"
                   value={customQuoteNumber}
                   onChange={(event) => setCustomQuoteNumber(event.target.value)}
                   placeholder={quoteNumberPreview}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800"
+                  className="h-8 w-full rounded-md border border-input bg-background px-2.5 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                 />
-                <div className="mt-1 text-xs text-slate-500">
-                  Leave blank to use the next auto-generated number ({quoteNumberPreview}).
-                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">Leave blank to use the next auto-generated number ({quoteNumberPreview}).</p>
+              </HeaderChip>
+              <button
+                type="button"
+                onClick={() => setDetailsOpen(true)}
+                title="References, contacts, addresses, logistics and terms"
+                className="inline-flex h-8 max-w-[24rem] items-center gap-1.5 rounded-full border border-border bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60"
+              >
+                <Icon icon="solar:document-add-bold-duotone" className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">Details{detailsSummary ? ` · ${detailsSummary}` : ''}</span>
+              </button>
+            </div>
+
+            {/* Pricing feedback (invoice parity): rate snapshot, applied list,
+                resolution errors — rendered only when there is something. */}
+            {hasPricingFeedback && (
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-800 dark:bg-slate-900/40">
+                {currencyCode && pricingMeta?.base_currency_code && pricingMeta.base_currency_code !== currencyCode && (
+                  <span className={pricingMeta.rate_stale ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}>
+                    1 {currencyCode} = {Number(pricingMeta.exchange_rate || 0).toFixed(4)} {pricingMeta.base_currency_code}
+                    {pricingMeta.rate_date ? ` · ${pricingMeta.rate_date}` : ''}
+                    {pricingMeta.rate_source ? ` · ${pricingMeta.rate_source}` : ''}
+                    {pricingMeta.rate_stale ? ' · stale' : ''}
+                  </span>
+                )}
+                {pricingMeta?.price_list_name && (
+                  <span className="text-muted-foreground">
+                    List: {pricingMeta.price_list_name} ({pricingMeta.price_list_currency ?? currencyCode})
+                  </span>
+                )}
+                {pricingError && (
+                  <span className="flex items-center gap-1 font-medium text-destructive">
+                    <Icon icon="solar:danger-triangle-bold" className="h-3.5 w-3.5" />
+                    {pricingError}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* One compact Quick Actions row (invoice parity). */}
+            <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900/40">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Quick Actions</div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {[
+                  { key: 'customers', label: 'Manage Customers', icon: 'solar:users-group-rounded-bold-duotone', onClick: () => navigate('/customers') },
+                  { key: 'profile', label: 'Open Profile', icon: 'solar:user-id-bold-duotone', onClick: () => customerId && navigate(`/customers/${customerId}`), disabled: !customerId },
+                  { key: 'products', label: 'Product List', icon: 'solar:box-bold-duotone', onClick: () => navigate('/products') },
+                  { key: 'new-product', label: 'New Product', icon: 'solar:add-square-bold-duotone', onClick: () => navigate('/products/new') },
+                ].map((action) => (
+                  <button
+                    key={action.key}
+                    type="button"
+                    onClick={action.onClick}
+                    disabled={Boolean(action.disabled)}
+                    className="group flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900/40 dark:hover:bg-primary/10"
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <Icon icon={action.icon} className="h-4 w-4" />
+                    </span>
+                    <span className="min-w-0 flex-1 text-xs font-medium text-slate-900 dark:text-slate-100">{action.label}</span>
+                    <Icon icon="solar:alt-arrow-right-linear" className="h-4 w-4 shrink-0 text-slate-300 transition-colors group-hover:text-primary" />
+                  </button>
+                ))}
               </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Customer Reference</label>
-                <input
-                  type="text"
-                  value={customerReference}
-                  onChange={(event) => setCustomerReference(event.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                  placeholder="PO / customer code"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Internal Reference</label>
-                <InternalReferenceTags value={internalReference} onChange={setInternalReference} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Credit Terms</label>
-                <input type="text" value={creditTerms} onChange={(event) => setCreditTerms(event.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm" placeholder="e.g. Net 30 days" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Attention To</label>
-                <input
-                  type="text"
-                  value={attentionTo}
-                  onChange={(event) => setAttentionTo(event.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                  placeholder="Primary contact"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Contact Email</label>
-                <input
-                  type="email"
-                  value={contactEmail}
-                  onChange={(event) => setContactEmail(event.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                  placeholder="billing@customer.com"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Contact Phone</label>
-                <input
-                  type="text"
-                  value={contactPhone}
-                  onChange={(event) => setContactPhone(event.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                  placeholder="Phone or mobile"
-                />
-              </div>
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Billing Address</label>
-                <textarea
-                  value={billingAddressSnapshot}
-                  onChange={(event) => setBillingAddressSnapshot(event.target.value)}
-                  rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                  placeholder="Billing address"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Shipping Address</label>
-                <textarea
-                  value={shippingAddressSnapshot}
-                  onChange={(event) => setShippingAddressSnapshot(event.target.value)}
-                  rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                  placeholder="Delivery address"
-                />
-              </div>
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Salesperson</label>
-                <input
-                  type="text"
-                  value={salesperson}
-                  onChange={(event) => setSalesperson(event.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                  placeholder="Assigned salesperson"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Delivery Lead Time</label>
-                <input
-                  type="text"
-                  value={deliveryLeadTime}
-                  onChange={(event) => setDeliveryLeadTime(event.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                  placeholder="e.g. 2 weeks"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Shipping Method</label>
-                <input
-                  type="text"
-                  value={shippingMethod}
-                  onChange={(event) => setShippingMethod(event.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                  placeholder="e.g. Sea freight, Air"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Shipping Terms</label>
-                <input
-                  type="text"
-                  value={shippingTerms}
-                  onChange={(event) => setShippingTerms(event.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                  placeholder="e.g. FOB, CIF, EXW"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Validity</label>
-                <input
-                  type="text"
-                  value={validity}
-                  onChange={(event) => setValidity(event.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                  placeholder="e.g. 30 days"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Notes</label>
-                <textarea
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Internal notes..."
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Terms</label>
-                <textarea
-                  value={terms}
-                  onChange={(event) => setTerms(event.target.value)}
-                  rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Payment terms..."
-                />
-              </div>
-            </div>
           </CardContent>
         </Card>
 
-        <QuotationCaseInformation value={caseInformation} onChange={setCaseInformation} />
+        <Sheet open={detailsOpen} onOpenChange={setDetailsOpen}>
+          <SheetContent side="right" className="w-full overflow-y-auto p-0 sm:max-w-xl">
+            <div className="border-b px-5 py-4">
+              <SheetHeader>
+                <SheetTitle>Quotation details</SheetTitle>
+                <SheetDescription>
+                  References, contacts, addresses and terms.
+                </SheetDescription>
+              </SheetHeader>
+            </div>
+            <div className="space-y-4 px-5 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Customer Ref.</label>
+                  <input
+                    type="text"
+                    value={customerReference}
+                    onChange={(event) => setCustomerReference(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="PO / customer code"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Internal Ref.</label>
+                  <InternalReferenceTags value={internalReference} onChange={setInternalReference} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Attention To</label>
+                  <input
+                    type="text"
+                    value={attentionTo}
+                    onChange={(event) => setAttentionTo(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="Primary contact"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Contact Email</label>
+                  <input
+                    type="email"
+                    value={contactEmail}
+                    onChange={(event) => setContactEmail(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="billing@customer.com"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Contact Phone</label>
+                  <input
+                    type="text"
+                    value={contactPhone}
+                    onChange={(event) => setContactPhone(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="Phone or mobile"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Salesperson</label>
+                  <input
+                    type="text"
+                    value={salesperson}
+                    onChange={(event) => setSalesperson(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="Assigned salesperson"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Delivery Lead Time</label>
+                  <input
+                    type="text"
+                    value={deliveryLeadTime}
+                    onChange={(event) => setDeliveryLeadTime(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="e.g. 2 weeks"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Shipping Method</label>
+                  <input
+                    type="text"
+                    value={shippingMethod}
+                    onChange={(event) => setShippingMethod(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="e.g. Sea freight, Air"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Shipping Terms</label>
+                  <input
+                    type="text"
+                    value={shippingTerms}
+                    onChange={(event) => setShippingTerms(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="e.g. FOB, CIF, EXW"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Credit Terms</label>
+                  <input
+                    type="text"
+                    value={creditTerms}
+                    onChange={(event) => setCreditTerms(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="e.g. Net 30 days"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Validity</label>
+                  <input
+                    type="text"
+                    value={validity}
+                    onChange={(event) => setValidity(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="e.g. 30 days"
+                  />
+                </div>
+              </div>
+
+              {/* Addresses are auto-filled from the customer, so they stay
+                  collapsed to a one-line summary and only open for edits. */}
+              <div className="grid grid-cols-1 gap-3">
+                <details
+                  open={billingOpen}
+                  onToggle={(event) => {
+                    const open = (event.currentTarget as HTMLDetailsElement).open;
+                    setBillingOpen(open);
+                    if (open) setShippingOpen(false);
+                  }}
+                  className="group rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+                >
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <Icon icon="solar:card-bold-duotone" className="h-4 w-4 shrink-0 text-slate-400" />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-slate-900">Billing details</span>
+                        <span className="mt-0.5 block truncate text-xs text-slate-500">
+                          {contactNameById(billingContactId) || attentionTo || 'No contact'}
+                          {' · '}
+                          {addressSummary(billingAddress) || 'No address'}
+                        </span>
+                      </span>
+                    </span>
+                    <Icon icon="solar:alt-arrow-down-linear" className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="mt-3 space-y-3">
+                    <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[minmax(0,1fr)_9rem]">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-600">Contact</label>
+                        <ContactSearchCombobox
+                          value={billingContactId}
+                          onValueChange={(val, contact) => {
+                            setBillingContactId(val);
+                            if (contact) {
+                              setAttentionTo((current) => (contact as any).name || (contact as any).display_name || current);
+                              setContactEmail((current) => contact.email || current);
+                              setContactPhone((current) => contact.phone || (contact as any).mobile || current);
+                            }
+                          }}
+                          placeholder="Select customer contact..."
+                          customerId={customerId}
+                          source="customer_contacts"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-600">Label</label>
+                        <input
+                          type="text"
+                          value={billingAddress.label}
+                          onChange={(event) => updateAddress('billing', 'label', event.target.value)}
+                          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
+                          placeholder="e.g. HQ"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      {([
+                        ['street', 'Street'], ['street2', 'Street 2'],
+                        ['city', 'City'], ['state', 'State'], ['zip', 'ZIP'], ['country', 'Country'],
+                      ] as const).map(([field, label]) => (
+                        <div key={field} className={field === 'street' || field === 'street2' ? 'md:col-span-2' : ''}>
+                          <label className="mb-1 block text-xs font-medium text-slate-600">{label}</label>
+                          <input
+                            type="text"
+                            value={billingAddress[field]}
+                            onChange={(event) => updateAddress('billing', field, event.target.value)}
+                            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
+                            placeholder={label}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </details>
+
+                <details
+                  open={shippingOpen}
+                  onToggle={(event) => {
+                    const open = (event.currentTarget as HTMLDetailsElement).open;
+                    setShippingOpen(open);
+                    if (open) setBillingOpen(false);
+                  }}
+                  className="group rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+                >
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <Icon icon="solar:delivery-bold-duotone" className="h-4 w-4 shrink-0 text-slate-400" />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-slate-900">Shipping details</span>
+                        <span className="mt-0.5 block truncate text-xs text-slate-500">
+                          {contactNameById(shippingContactId) || 'No contact'}
+                          {' · '}
+                          {addressSummary(shippingAddress) || 'No address'}
+                        </span>
+                      </span>
+                    </span>
+                    <Icon icon="solar:alt-arrow-down-linear" className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="mt-3 space-y-3">
+                    <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[minmax(0,1fr)_9rem]">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-600">Contact</label>
+                        <ContactSearchCombobox
+                          value={shippingContactId}
+                          onValueChange={(val) => setShippingContactId(val)}
+                          placeholder="Select customer contact..."
+                          customerId={customerId}
+                          source="customer_contacts"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-600">Label</label>
+                        <input
+                          type="text"
+                          value={shippingAddress.label}
+                          onChange={(event) => updateAddress('shipping', 'label', event.target.value)}
+                          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
+                          placeholder="e.g. Site B"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      {([
+                        ['street', 'Street'], ['street2', 'Street 2'],
+                        ['city', 'City'], ['state', 'State'], ['zip', 'ZIP'], ['country', 'Country'],
+                      ] as const).map(([field, label]) => (
+                        <div key={field} className={field === 'street' || field === 'street2' ? 'md:col-span-2' : ''}>
+                          <label className="mb-1 block text-xs font-medium text-slate-600">{label}</label>
+                          <input
+                            type="text"
+                            value={shippingAddress[field]}
+                            onChange={(event) => updateAddress('shipping', field, event.target.value)}
+                            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
+                            placeholder={label}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </details>
+              </div>
+
+              <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <Icon icon="solar:notes-bold-duotone" className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                <div className="min-w-0 flex-1">
+                  <label className="block text-xs font-medium text-slate-600">
+                    Notes <span className="font-normal text-slate-400">(internal — not printed on the quotation)</span>
+                  </label>
+                  <textarea
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                    rows={2}
+                    className="mt-1 w-full resize-y rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800"
+                    placeholder="Add a note for your team…"
+                  />
+                </div>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        {/* D4 (invoice parity): case/patient fields render only for the
+            Medical profile and stay collapsed behind a one-line summary. */}
+        {fieldProfile === 'medical' && (
+          <Card className="mb-6">
+            <CardHeader className="pb-3">
+              <CardTitle>Cases</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <details className="group">
+                <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm font-medium transition-colors hover:bg-accent">
+                  <Icon icon="solar:folder-with-files-bold-duotone" className="h-4 w-4 text-primary" />
+                  {caseCount > 0 ? `Cases (${caseCount})` : 'Add case'}
+                  <span className="ml-auto truncate text-xs font-normal text-muted-foreground">
+                    {caseCount > 0 ? 'View or edit case details' : 'Case number, patient, doctor…'}
+                  </span>
+                  <Icon icon="solar:alt-arrow-down-linear" className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Case Number</label>
+                    <CaseSearchCombobox
+                      value={caseInformation.case_number}
+                      onValueChange={(value) => setCaseInformation((current) => ({ ...current, case_number: value }))}
+                      onSelectCase={(medicalCase) => {
+                        // Selecting an existing case populates the section;
+                        // everything stays editable for a new case.
+                        setCaseInformation((current) => ({
+                          ...current,
+                          case_number: medicalCase.case_no ?? current.case_number,
+                          date_of_case: medicalCase.case_date ? String(medicalCase.case_date).slice(0, 10) : current.date_of_case,
+                          case_location: medicalCase.location ?? current.case_location,
+                          patient_name: medicalCase.patient_name ?? current.patient_name,
+                        }));
+                      }}
+                      customerId={customerId}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Date of Case</label>
+                    <input
+                      type="date"
+                      value={caseInformation.date_of_case}
+                      onChange={(event) => setCaseInformation((current) => ({ ...current, date_of_case: event.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    />
+                  </div>
+                  {([
+                    ['pr_no', 'PR No'], ['contract_no', 'Contract No'],
+                    ['plant_code', 'Plant Code'], ['company_code', 'Company Code'],
+                  ] as const).map(([field, label]) => (
+                    <div key={field}>
+                      <label className="block text-sm font-medium mb-1">{label}</label>
+                      <input
+                        type="text"
+                        value={caseInformation[field]}
+                        onChange={(event) => setCaseInformation((current) => ({ ...current, [field]: event.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                      />
+                    </div>
+                  ))}
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Location</label>
+                    <input
+                      type="text"
+                      value={caseInformation.case_location}
+                      onChange={(event) => setCaseInformation((current) => ({ ...current, case_location: event.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                      placeholder="Case / site location"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Patient Name</label>
+                    <input
+                      type="text"
+                      value={caseInformation.patient_name}
+                      onChange={(event) => setCaseInformation((current) => ({ ...current, patient_name: event.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                      placeholder="Patient name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Cost Center ID</label>
+                    <input
+                      type="text"
+                      value={caseInformation.cost_center_id}
+                      onChange={(event) => setCaseInformation((current) => ({ ...current, cost_center_id: event.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                      placeholder="Cost center reference"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Delivery Date</label>
+                    <input
+                      type="date"
+                      value={caseInformation.delivery_date}
+                      onChange={(event) => setCaseInformation((current) => ({ ...current, delivery_date: event.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    />
+                  </div>
+                </div>
+              </details>
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="mb-6">
           <CardHeader>
@@ -634,7 +1124,7 @@ export const QuotationCreatePage: React.FC = () => {
                           type={line.line_type}
                           text={line.description}
                           colSpan={11}
-                          total={line.line_type === 'section' ? formatCurrency(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined}
+                          total={line.line_type === 'section' ? money(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined}
                           onChange={(text) => updateLine(index, 'description', text)}
                           onDelete={() => removeLine(index)}
                           onDragStart={() => setDraggedLineIndex(index)}
@@ -759,7 +1249,7 @@ export const QuotationCreatePage: React.FC = () => {
 
                       <td className={cn(LINE_CELL, 'w-[7.5rem] min-w-[6.5rem]')}>
                         <div className={cn(LINE_CELL_BOX, 'justify-end text-sm font-semibold tabular-nums')}>
-                          {formatCurrency(getLineTotal(line))}
+                          {money(getLineTotal(line))}
                         </div>
                       </td>
 
@@ -796,7 +1286,7 @@ export const QuotationCreatePage: React.FC = () => {
               subtotal={subtotal}
               tax={taxAfterDocumentDiscount}
               total={total}
-              money={formatCurrency}
+              money={money}
               discountLabel="Discount"
               discountMode={discountMode}
               onDiscountModeChange={setDiscountMode}
