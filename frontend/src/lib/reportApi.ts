@@ -41,6 +41,22 @@ import type {
  * Report API Client
  * Provides methods to interact with all financial reporting, inventory, and analytics endpoints
  */
+/**
+ * #352 (S4): format the LOCAL calendar date as YYYY-MM-DD.
+ *
+ * `toISOString()` converts to UTC first, so a date built at local midnight in
+ * a UTC+ timezone (every MY/SG tenant) was serialised as the previous day —
+ * "this month" ran 2026-09-30 → 2026-10-30, including September's last day and
+ * dropping 31 October. Reading the local calendar fields is timezone-safe.
+ */
+export function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
 class ReportApiClient {
   // ==================== Financial Reports ====================
 
@@ -845,7 +861,7 @@ class ReportApiClient {
    * Format date for API requests (YYYY-MM-DD)
    */
   formatDate(date: Date): string {
-    return date.toISOString().split('T')[0];
+    return formatLocalDate(date);
   }
 
   /**
