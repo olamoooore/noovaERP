@@ -72,18 +72,54 @@ class CustomerCreditNoteService
                 $data['exchange_rate'] = 1.000000;
             }
 
-            // Calculate totals from lines BEFORE inserting (columns are NOT NULL)
-            $subtotal = 0;
-            $taxAmount = 0;
+            // #512 (CN3): totals use the SAME line arithmetic as invoices
+            // (InvoiceLine::computeLineTotals → TaxEngineService::calculate)
+            // with the source line's discount and tax mode carried over, then
+            // the invoice's document-level discount is pro-rated by the
+            // credited share — a full credit of any invoice equals that
+            // invoice's total exactly, tax included.
+            $sourceLines = $sourceInvoice ? $sourceInvoice->lines()->get()->keyBy('id') : collect();
+
+            $subtotal = 0.0;
+            $lineTaxSum = 0.0;
+
             foreach ($lines as $lineData) {
-                $lineTotal = (float) $lineData['quantity'] * (float) $lineData['unit_price'];
-                $subtotal += $lineTotal;
-                // MRD R3.1: engine-owned arithmetic.
-                $taxAmount += \App\Services\TaxEngineService::calculate($lineTotal, (float) ($lineData['tax_rate'] ?? 0), false)['tax'];
+                $origin = ($lineData['invoice_line_id'] ?? null) ? $sourceLines->get($lineData['invoice_line_id']) : null;
+
+                $calc = \App\Models\InvoiceLine::computeLineTotals(
+                    (float) $lineData['quantity'],
+                    (float) $lineData['unit_price'],
+                    (float) ($lineData['tax_rate'] ?? 0),
+                    (bool) ($lineData['tax_inclusive'] ?? $origin?->tax_inclusive ?? false),
+                    (float) ($lineData['discount_amount'] ?? $origin?->discount_amount ?? 0),
+                );
+
+                $subtotal += $calc['net'];
+                $lineTaxSum += $calc['tax_amount'];
             }
-            $data['subtotal'] = round($subtotal, 2);
-            $data['tax_amount'] = round($taxAmount, 2);
-            $data['total_amount'] = round($subtotal + $taxAmount, 2);
+
+            $subtotal = round($subtotal, 2);
+            $lineTaxSum = round($lineTaxSum, 2);
+
+            $docDiscount = 0.0;
+            if ($sourceInvoice
+                && (float) $sourceInvoice->discount_amount > 0
+                && (float) $sourceInvoice->subtotal > 0
+                && $subtotal > 0) {
+                $docDiscount = round(
+                    (float) $sourceInvoice->discount_amount * min(1.0, $subtotal / (float) $sourceInvoice->subtotal),
+                    2,
+                );
+            }
+
+            $taxAmount = ($docDiscount > 0 && $subtotal > 0)
+                ? round($lineTaxSum * (max($subtotal - $docDiscount, 0) / $subtotal), 2)
+                : $lineTaxSum;
+
+            $data['discount_amount'] = $docDiscount;
+            $data['subtotal'] = $subtotal;
+            $data['tax_amount'] = $taxAmount;
+            $data['total_amount'] = round($subtotal - $docDiscount + $taxAmount, 2);
 
             // Let the model's creating callback handle created_by attribution
             if (empty($data['created_by'])) {
@@ -94,10 +130,8 @@ class CustomerCreditNoteService
 
             $creditNote = CustomerCreditNote::create($data);
 
-            // Add lines — provenance carries over from the source invoice
-            // line when the payload does not supply it (FR-5.9).
-            $sourceLines = $sourceInvoice ? $sourceInvoice->lines()->get()->keyBy('id') : collect();
-
+            // Add lines — provenance (discount, tax mode, pricing) carries
+            // over from the source invoice line when the payload omits it.
             foreach ($lines as $lineData) {
                 $origin = ($lineData['invoice_line_id'] ?? null) ? $sourceLines->get($lineData['invoice_line_id']) : null;
 
@@ -113,6 +147,8 @@ class CustomerCreditNoteService
                             : round((float) $lineData['unit_price'] * (float) ($data['exchange_rate'] ?: 1), 4)),
                     'pricing_trace' => $lineData['pricing_trace'] ?? $origin?->pricing_trace,
                     'tax_rate' => $lineData['tax_rate'] ?? 0,
+                    'tax_inclusive' => (bool) ($lineData['tax_inclusive'] ?? $origin?->tax_inclusive ?? false),
+                    'discount_amount' => (float) ($lineData['discount_amount'] ?? $origin?->discount_amount ?? 0),
                     'account_id' => $lineData['account_id'] ?? null,
                 ]);
             }
@@ -186,16 +222,26 @@ class CustomerCreditNoteService
 
             $cnLines = [];
             foreach ($creditNote->lines as $line) {
-                $base = round((float) $line->quantity * (float) $line->unit_price, 2);
                 $rate = (float) ($line->tax_rate ?? 0);
                 $origin = $line->invoice_line_id !== null ? ($originalLines[$line->invoice_line_id] ?? null) : null;
+
+                // #512 (CN3): the shared line arithmetic — net base and tax
+                // honour the line's discount and tax mode (the old call
+                // forced exclusive, undiscounted tax on top).
+                $calc = \App\Models\InvoiceLine::computeLineTotals(
+                    (float) $line->quantity,
+                    (float) $line->unit_price,
+                    $rate,
+                    (bool) $line->tax_inclusive,
+                    (float) ($line->discount_amount ?? 0),
+                );
 
                 $cnLines[] = [
                     'source_line_id' => $line->id,
                     'product' => $line->product,
-                    'base' => $base,
+                    'base' => $calc['net'],
                     'rate' => $origin && (float) $origin['tax_rate'] > 0 ? (float) $origin['tax_rate'] : $rate,
-                    'tax' => \App\Services\TaxEngineService::calculate($base, $rate, false)['tax'],
+                    'tax' => $calc['tax_amount'],
                     'tax_code_override' => $origin['tax_code'] ?? null,
                     'treatment_override' => $origin['treatment'] ?? null,
                     'tax_id_override' => $origin['tax_id'] ?? null,

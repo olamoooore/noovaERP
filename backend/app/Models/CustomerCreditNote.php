@@ -23,6 +23,7 @@ class CustomerCreditNote extends Model
         'status',
         'subtotal',
         'tax_amount',
+        'discount_amount',
         'total_amount',
         'currency_code',
         'exchange_rate',
@@ -46,6 +47,7 @@ class CustomerCreditNote extends Model
         'subtotal' => 'decimal:2',
         'tax_amount' => 'decimal:2',
         'total_amount' => 'decimal:2',
+        'discount_amount' => 'decimal:2',
         'exchange_rate' => 'decimal:6',
     ];
 
@@ -144,12 +146,23 @@ class CustomerCreditNote extends Model
 
     public function calculateTotals(): void
     {
-        $this->subtotal = $this->lines->sum('line_total');
-        // MRD R3.1: single tax arithmetic via TaxEngineService::calculate().
-        $this->tax_amount = $this->lines->sum(function ($line) {
-            return \App\Services\TaxEngineService::calculate((float) $line->line_total, (float) $line->tax_rate, false)['tax'];
-        });
-        $this->total_amount = $this->subtotal + $this->tax_amount;
+        // #512 (CN3): mirrors Invoice::calculateTotals — nets of line
+        // discounts, document discount prorated into tax. Lines carry their
+        // own tax_amount via the shared line arithmetic, so no second
+        // formula remains.
+        $this->subtotal = round((float) $this->lines->sum(
+            fn ($line) => (float) $line->line_total - (float) $line->tax_amount
+        ), 2);
+        $lineTaxSum = round((float) $this->lines->sum('tax_amount'), 2);
+        $discount = (float) ($this->discount_amount ?? 0);
+
+        if ($discount > 0 && $this->subtotal > 0) {
+            $this->tax_amount = round($lineTaxSum * (max($this->subtotal - $discount, 0) / $this->subtotal), 2);
+        } else {
+            $this->tax_amount = $lineTaxSum;
+        }
+
+        $this->total_amount = round($this->subtotal - $discount + $this->tax_amount, 2);
         $this->save();
     }
 }

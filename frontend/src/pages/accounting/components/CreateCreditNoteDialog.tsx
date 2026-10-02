@@ -57,6 +57,8 @@ interface InvoiceLine {
   quantity: number;
   unit_price: number;
   tax_rate: number;
+  tax_inclusive: boolean;
+  discount_amount: number;
   line_total: number;
   account_id: number | null;
 }
@@ -93,6 +95,8 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
         quantity: line.quantity,
         unit_price: line.unit_price,
         tax_rate: line.tax_rate,
+        tax_inclusive: line.tax_inclusive ?? false,
+        discount_amount: line.discount_amount ?? 0,
         account_id: line.account_id,
       })),
     }));
@@ -119,6 +123,8 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
               quantity: line.quantity,
               unit_price: line.unit_price,
               tax_rate: line.tax_rate,
+              tax_inclusive: line.tax_inclusive ?? false,
+              discount_amount: line.discount_amount ?? 0,
               account_id: line.account_id,
             })),
           }));
@@ -204,9 +210,15 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
   };
 
   const calculateLineTotal = (line: any) => {
-    const subtotal = line.quantity * line.unit_price;
-    const tax = subtotal * (line.tax_rate / 100);
-    return subtotal + tax;
+    // #512 (CN3): mirrors the shared line arithmetic — discount applied
+    // first; tax extracted from the price when the line is tax-inclusive,
+    // added on top otherwise. Document-level discount is applied
+    // server-side when the credit note is created.
+    const amount = line.quantity * line.unit_price;
+    const base = Math.max(amount - (Number(line.discount_amount) || 0), 0);
+    const rate = Number(line.tax_rate) || 0;
+    if (line.tax_inclusive) return base;
+    return base + base * (rate / 100);
   };
 
   const calculateTotal = () => {
