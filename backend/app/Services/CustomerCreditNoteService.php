@@ -246,6 +246,16 @@ class CustomerCreditNoteService
         // tenancy context down before the post-commit dispatch below.
         $postingTenantId = tenancy()->tenant?->id;
 
+        // #517 (CN8): the audit actor is the user who POSTS, not the user who
+        // drafted. Previously the creator was passed as the preferred id, so
+        // whenever the acting user could not be resolved by email in the
+        // tenant user table the ledger silently attributed the posting to the
+        // creator. Non-interactive posts (scheduler, queue) have no acting
+        // user and fall back to the creator.
+        $actorId = Auth::id() !== null
+            ? TenantUserHelper::requireTenantUserId(Auth::id())
+            : TenantUserHelper::requireTenantUserId($creditNote->created_by);
+
         if ($creditNote->status !== 'draft') {
             throw new \Exception('Only draft credit notes can be posted');
         }
@@ -436,7 +446,7 @@ class CustomerCreditNoteService
                 exchangeRate: $cnForeign ? $cnRate : null,
                 lines: $lines,
                 reference: $creditNote->credit_note_number,
-                userId: TenantUserHelper::requireTenantUserId($creditNote->created_by),
+                userId: $actorId,
                 taxDeterminationResult: $taxDetermination,
             ));
 
@@ -447,7 +457,7 @@ class CustomerCreditNoteService
             $creditNote->update([
                 'status' => 'posted',
                 'posted_at' => now(),
-                'posted_by' => TenantUserHelper::requireTenantUserId($creditNote->created_by),
+                'posted_by' => $actorId,
                 'journal_entry_id' => $result->journalEntryId,
             ]);
 
