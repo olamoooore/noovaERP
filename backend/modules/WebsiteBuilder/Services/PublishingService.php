@@ -11,6 +11,8 @@ use Modules\WebsiteBuilder\Models\Website;
 
 class PublishingService
 {
+    public function __construct(private readonly \App\PublicSites\WebsitePublicationService $publications) {}
+
     /**
      * Publish a website: every page's CURRENT version becomes THE published
      * version (older published flags are demoted, so exactly one version per
@@ -93,8 +95,9 @@ class PublishingService
         ]);
 
         try {
-            // Update website status first — the public route serves from the
-            // database (the published PageVersion snapshot), not static files.
+            // Update the tenant website and its published page-version
+            // snapshot atomically. The public route reads this database state,
+            // not the optional static files generated below.
             $snapshot = DB::transaction(function () use ($website) {
                 $website->update([
                     'status' => 'published',
@@ -121,6 +124,7 @@ class PublishingService
             });
 
             $log->update(['page_versions' => $snapshot]);
+            $this->publications->sync($website->fresh());
 
             // Generate static files (optional — failure here should not
             // prevent the publish from succeeding, since the public route

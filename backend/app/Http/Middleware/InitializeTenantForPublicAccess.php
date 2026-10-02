@@ -47,6 +47,15 @@ class InitializeTenantForPublicAccess
             return $next($request);
         }
 
+        // A verified custom website hostname is authoritative and must win
+        // before the legacy global STOREFRONT_TENANT_ID fallback.
+        $publicSiteContext = app(\App\PublicSites\PublicSiteResolver::class)->fromHost($request);
+        if ($publicSiteContext) {
+            $request->attributes->set('public_site_context', $publicSiteContext);
+
+            return $next($request);
+        }
+
         if ($this->isDedicatedStorefrontRoute($request)) {
             $tenant = $this->resolveStorefrontTenant();
 
