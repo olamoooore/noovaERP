@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\BillPayment;
 use App\Services\BillPaymentService;
+use App\Services\DocumentWideSearchService;
 use App\Services\LockDateValidationService;
+use App\Services\VendorWideSearchService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -33,16 +35,12 @@ class BillPaymentsController extends Controller
             $query->where('bill_id', $request->bill_id);
         }
 
-        // Search
-        if ($request->has('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('payment_number', 'like', "%{$search}%")
-                    ->orWhere('reference', 'like', "%{$search}%")
-                    ->orWhereHas('vendor', function ($vq) use ($search) {
-                        $vq->where('name', 'like', "%{$search}%");
-                    });
-            });
+        // Search — wide: payment refs/memo, the vendor's full surface
+        // (identity, address book, tags) and the paid bill number.
+        $search = $request->filled('search') ? trim((string) $request->search) : '';
+        if ($search !== '') {
+            app(DocumentWideSearchService::class)->apply($query, $search, $this->wideSearchConfig());
+            $query->with(app(DocumentWideSearchService::class)->eagerLoads($this->wideSearchConfig()));
         }
 
         // Date range filter
@@ -58,7 +56,27 @@ class BillPaymentsController extends Controller
             ->orderBy('id', 'desc')
             ->paginate($perPage);
 
+        if ($search !== '') {
+            app(DocumentWideSearchService::class)->annotate($payments, $search, $this->wideSearchConfig());
+        }
+
         return response()->json($payments);
+    }
+
+    /**
+     * Wide-search configuration for the bill-payment list.
+     */
+    private function wideSearchConfig(): array
+    {
+        return [
+            'columns' => ['payment_number', 'reference', 'memo'],
+            'party' => [
+                'relation' => 'vendor',
+                'service' => VendorWideSearchService::class,
+                'addresses' => 'addresses',
+            ],
+            'related' => ['bill' => 'bill_number'],
+        ];
     }
 
     /**

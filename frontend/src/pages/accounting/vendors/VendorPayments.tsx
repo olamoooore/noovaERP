@@ -21,15 +21,21 @@ export const VendorPayments: React.FC = () => {
   const billIdParam = searchParams.get('bill_id') || '';
   const [showRecordPayment, setShowRecordPayment] = useState(!!billIdParam);
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
+  // Wide search hits the DB per term; debounce typing like the other lists do.
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(searchParams.get('search') || '');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchQuery(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   // Fetch vendor payments
   const { data: payments, isLoading } = useQuery({
-    queryKey: ['vendor-payments', searchQuery],
+    queryKey: ['vendor-payments', debouncedSearchQuery],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (searchQuery) params.append('search', searchQuery);
+      if (debouncedSearchQuery) params.append('search', debouncedSearchQuery);
       params.append('per_page', '1000'); // Get all payments
       
       const response = await api.get(`/accounting/bill-payments?${params.toString()}`);
@@ -85,7 +91,7 @@ export const VendorPayments: React.FC = () => {
               row on one input. */}
           <input
             type="text"
-            placeholder="Search by vendor, reference number..."
+            placeholder="Search payment, vendor, bill…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="h-8 w-full rounded-full border bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring sm:w-72"
@@ -168,7 +174,25 @@ export const VendorPayments: React.FC = () => {
                         {payment.payment_number || `PAY-${payment.id}`}
                       </TableCell>
                       <TableCell>{formatDate(payment.payment_date)}</TableCell>
-                      <TableCell>{payment.vendor?.name || payment.vendor_name || '-'}</TableCell>
+                      <TableCell>
+                        <div>{payment.vendor?.name || payment.vendor_name || '-'}</div>
+                        {/* Wide search can match a vendor address or the paid bill number. */}
+                        {(payment.matched_contacts?.length ?? 0) > 0 && (
+                          <div className="truncate text-xs text-primary" title={payment.matched_contacts.join(', ')}>
+                            Contact: {payment.matched_contacts.join(', ')}
+                          </div>
+                        )}
+                        {(payment.matched_lines?.length ?? 0) > 0 && (
+                          <div className="truncate text-xs text-muted-foreground" title={payment.matched_lines.join(' · ')}>
+                            Line: {payment.matched_lines.join(' · ')}
+                          </div>
+                        )}
+                        {(payment.matched_addresses?.length ?? 0) > 0 && (
+                          <div className="truncate text-xs text-muted-foreground" title={payment.matched_addresses.join(' · ')}>
+                            Address: {payment.matched_addresses.join(' · ')}
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell>{getPaymentMethodBadge(payment.payment_method)}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {payment.reference || '-'}

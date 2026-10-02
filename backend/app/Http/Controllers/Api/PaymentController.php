@@ -6,6 +6,8 @@ use App\Exports\PaymentsExport;
 use App\Http\Controllers\Controller;
 use App\Models\Invoice;
 use App\Models\Payment;
+use App\Services\CustomerWideSearchService;
+use App\Services\DocumentWideSearchService;
 use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
 use Illuminate\Http\Request;
@@ -67,19 +69,10 @@ class PaymentController extends Controller
             $query->whereDate('payment_date', '<=', $request->date_to);
         }
 
-        if ($request->filled('search')) {
-            $search = (string) $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('payment_number', 'ILIKE', "%{$search}%")
-                    ->orWhere('reference', 'ILIKE', "%{$search}%")
-                    ->orWhereHas('customer', function ($cq) use ($search) {
-                        $cq->where('name', 'ILIKE', "%{$search}%")
-                            ->orWhere('code', 'ILIKE', "%{$search}%");
-                    })
-                    ->orWhereHas('invoice', function ($iq) use ($search) {
-                        $iq->where('invoice_number', 'ILIKE', "%{$search}%");
-                    });
-            });
+        $search = $request->filled('search') ? trim((string) $request->search) : '';
+        if ($search !== '') {
+            app(DocumentWideSearchService::class)->apply($query, $search, $this->wideSearchConfig());
+            $query->with(app(DocumentWideSearchService::class)->eagerLoads($this->wideSearchConfig()));
         }
 
         if ($request->boolean('ids_only')) {
@@ -93,7 +86,31 @@ class PaymentController extends Controller
 
         $payments = $query->paginate($perPage);
 
+        if ($search !== '') {
+            app(DocumentWideSearchService::class)->annotate($payments, $search, $this->wideSearchConfig());
+        }
+
         return response()->json($payments);
+    }
+
+    /**
+     * Wide-search configuration for the payment list — matches the payment
+     * number/reference/notes, the customer's full surface (contacts,
+     * addresses, tags), the paid invoice number and the payment's tags.
+     */
+    private function wideSearchConfig(): array
+    {
+        return [
+            'columns' => ['payment_number', 'reference', 'notes'],
+            'party' => [
+                'relation' => 'customer',
+                'service' => CustomerWideSearchService::class,
+                'contacts' => 'customerContacts',
+                'addresses' => 'addresses',
+            ],
+            'related' => ['invoice' => 'invoice_number'],
+            'tagAlias' => 'payment',
+        ];
     }
 
     public function export(Request $request)
@@ -125,11 +142,11 @@ class PaymentController extends Controller
             $query->whereDate('payment_date', '<=', $request->date_to);
         }
         if ($request->filled('search')) {
-            $search = (string) $request->search;
-            $query->where(fn ($q) => $q->where('payment_number', 'ILIKE', "%{$search}%")
-                ->orWhere('reference', 'ILIKE', "%{$search}%")
-                ->orWhereHas('customer', fn ($cq) => $cq->where('name', 'ILIKE', "%{$search}%"))
-                ->orWhereHas('invoice', fn ($iq) => $iq->where('invoice_number', 'ILIKE', "%{$search}%")));
+            app(DocumentWideSearchService::class)->apply(
+                $query,
+                trim((string) $request->search),
+                $this->wideSearchConfig(),
+            );
         }
 
         $format = $validated['format'] ?? 'xlsx';

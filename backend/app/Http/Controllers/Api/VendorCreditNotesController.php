@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\VendorCreditNote;
+use App\Services\DocumentWideSearchService;
 use App\Services\VendorCreditNoteService;
+use App\Services\VendorWideSearchService;
 use Illuminate\Http\Request;
 
 class VendorCreditNotesController extends Controller
@@ -44,20 +46,38 @@ class VendorCreditNotesController extends Controller
             $query->where('credit_note_date', '<=', $request->end_date);
         }
 
-        // Search
-        if ($request->has('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('credit_note_number', 'ILIKE', "%{$search}%")
-                    ->orWhereHas('vendor', function ($vq) use ($search) {
-                        $vq->where('name', 'ILIKE', "%{$search}%");
-                    });
-            });
+        // Search — wide: document refs, vendor's full surface (identity,
+        // address book, tags), line contents and the billed bill number.
+        $search = $request->filled('search') ? trim((string) $request->search) : '';
+        if ($search !== '') {
+            app(DocumentWideSearchService::class)->apply($query, $search, $this->wideSearchConfig());
+            $query->with(app(DocumentWideSearchService::class)->eagerLoads($this->wideSearchConfig()));
         }
 
         $creditNotes = $query->paginate(20);
 
+        if ($search !== '') {
+            app(DocumentWideSearchService::class)->annotate($creditNotes, $search, $this->wideSearchConfig());
+        }
+
         return response()->json($creditNotes);
+    }
+
+    /**
+     * Wide-search configuration for the vendor credit-note list.
+     */
+    private function wideSearchConfig(): array
+    {
+        return [
+            'columns' => ['credit_note_number', 'reason', 'notes'],
+            'party' => [
+                'relation' => 'vendor',
+                'service' => VendorWideSearchService::class,
+                'addresses' => 'addresses',
+            ],
+            'lines' => ['relation' => 'lines', 'columns' => ['description']],
+            'related' => ['bill' => 'bill_number'],
+        ];
     }
 
     /**

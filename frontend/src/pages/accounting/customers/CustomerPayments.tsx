@@ -65,6 +65,10 @@ interface Payment {
   reversal_journal_entry_id?: number | null;
   unapplied_at?: string | null;
   refunded_at?: string | null;
+  // Wide-search hints set by the list endpoint when a search term is present.
+  matched_contacts?: string[];
+  matched_tags?: string[];
+  matched_addresses?: string[];
 }
 
 interface PaginatedPayments {
@@ -152,6 +156,12 @@ export const CustomerPayments: React.FC = () => {
     }
   }, [invoiceIdParam, showRecordPayment]);
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
+  // Wide search hits the DB per term; debounce typing like the other lists do.
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(searchParams.get('search') || '');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchQuery(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
   const [statusFilter, setStatusFilter] = useState(searchParams.get('payment_status') || '');
   const [methodFilter, setMethodFilter] = useState(searchParams.get('method') || '');
   const [customerFilter, setCustomerFilter] = useState(searchParams.get('customer_id') || '');
@@ -177,15 +187,15 @@ export const CustomerPayments: React.FC = () => {
 
   // Fetch payments (paginated, filtered)
   const queryKey = useMemo(
-    () => ['customer-payments', { searchQuery, statusFilter, methodFilter, customerFilter, dateFrom, dateTo, invoiceIdParam, page, perPage }],
-    [searchQuery, statusFilter, methodFilter, customerFilter, dateFrom, dateTo, invoiceIdParam, page, perPage],
+    () => ['customer-payments', { debouncedSearchQuery, statusFilter, methodFilter, customerFilter, dateFrom, dateTo, invoiceIdParam, page, perPage }],
+    [debouncedSearchQuery, statusFilter, methodFilter, customerFilter, dateFrom, dateTo, invoiceIdParam, page, perPage],
   );
 
   const { data: payments, isLoading } = useQuery({
     queryKey,
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (searchQuery) params.append('search', searchQuery);
+      if (debouncedSearchQuery) params.append('search', debouncedSearchQuery);
       if (statusFilter) params.append('payment_status', statusFilter);
       if (methodFilter) params.append('method', methodFilter);
       if (customerFilter) params.append('customer_id', customerFilter);
@@ -204,7 +214,7 @@ export const CustomerPayments: React.FC = () => {
   const { sorted: sortedPayments, sortKey, sortDir, toggle: toggleSort } = useSort<Payment>(paymentList, 'payment_date', 'desc');
   const totalPages = payments?.last_page || 1;
   const totalRecords = payments?.total || 0;
-  const paymentFilters = { search: searchQuery || undefined, payment_status: statusFilter || undefined, method: methodFilter || undefined, customer_id: customerFilter || undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, invoice_id: invoiceIdParam || undefined };
+  const paymentFilters = { search: debouncedSearchQuery || undefined, payment_status: statusFilter || undefined, method: methodFilter || undefined, customer_id: customerFilter || undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, invoice_id: invoiceIdParam || undefined };
   const {
     selectedIds, clearSelection, toggleSelect, togglePageSelection,
     selectAllMatching, allPageSelected, allMatchingSelected, isSelectingAll,
@@ -415,7 +425,7 @@ export const CustomerPayments: React.FC = () => {
       <div className="flex flex-wrap items-center gap-2">
         <Input
           id="search"
-          placeholder="Payment #, reference, customer, invoice..."
+          placeholder="Search payment, customer, contact…"
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value);
@@ -640,6 +650,22 @@ export const CustomerPayments: React.FC = () => {
                             <div className="break-words leading-snug" title={payment.customer?.name || undefined}>
                               {payment.customer?.name || '-'}
                             </div>
+                            {/* Wide search can match a customer contact/address or the paid invoice. */}
+                            {(payment.matched_contacts?.length ?? 0) > 0 && (
+                              <div className="truncate text-xs text-primary" title={payment.matched_contacts!.join(', ')}>
+                                Contact: {payment.matched_contacts!.join(', ')}
+                              </div>
+                            )}
+                            {(payment.matched_tags?.length ?? 0) > 0 && (
+                              <div className="truncate text-xs text-amber-600" title={payment.matched_tags!.join(', ')}>
+                                Tag: {payment.matched_tags!.join(', ')}
+                              </div>
+                            )}
+                            {(payment.matched_addresses?.length ?? 0) > 0 && (
+                              <div className="truncate text-xs text-muted-foreground" title={payment.matched_addresses!.join(' · ')}>
+                                Address: {payment.matched_addresses!.join(' · ')}
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell>{getPaymentMethodBadge(payment.method)}</TableCell>
                           <TableCell className="max-w-[8.5rem] text-sm text-muted-foreground">
