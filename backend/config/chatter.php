@@ -82,4 +82,39 @@ return [
         \Modules\Sales\Models\DeliveryOrder::class => 'sales.view',
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Subject write-permission map (issue #629, CH1)
+    |--------------------------------------------------------------------------
+    |
+    | Posting a message, scheduling/completing an activity, uploading an
+    | attachment and deleting an attachment all MUTATE the record's chatter.
+    | They require the module WRITE permission below — the same permission the
+    | record's own mutating routes use — not the view permission above.
+    |
+    | Kept as a separate map so `subject_permissions` keeps its existing shape
+    | (view permission per subject) for backward compatibility.
+    |
+    | Every subject in `allowed_models` must appear here: a missing write
+    | mapping fails closed (writes are refused), by design.
+    |
+    | Only real, seeded permissions are used (RolePermissionSeeder
+    | PERMISSION_MATRIX). There is no vendor-/bill-/payment-/journal-specific
+    | write permission, so those accounting records use `accounting.write`.
+    |
+    */
+    'subject_write_permissions' => [
+        \App\Models\Invoice::class => 'invoices.write',
+        \App\Models\Bill::class => 'accounting.write',
+        \App\Models\Payment::class => 'accounting.write',
+        \App\Models\JournalEntry::class => 'accounting.write',
+        \App\Models\Vendor::class => 'accounting.write',
+        \App\Models\Customer::class => 'customers.write',
+        // Quotations' own routes are gated by quotations.write (see
+        // modules/Core/routes/api.php), so mirror that for chatter writes.
+        \App\Models\Quotation::class => 'quotations.write',
+        \Modules\Sales\Models\SalesOrder::class => 'sales.write',
+        \Modules\Sales\Models\DeliveryOrder::class => 'sales.write',
+    ],
+
 ];
