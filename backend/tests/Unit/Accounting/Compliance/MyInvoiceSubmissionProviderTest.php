@@ -761,4 +761,25 @@ class MyInvoiceSubmissionProviderTest extends TestCase
         sort($codes);
         $this->assertSame(['01', '06', 'E'], $codes, 'Invoice-level TaxTotal must carry one TaxSubtotal per category.');
     }
+
+    public function test_submit_rejects_declared_business_buyer_without_tin(): void
+    {
+        $provider = $this->makeProviderWithResponses([]);
+
+        $payload = $this->validPayload();
+        unset($payload['buyer']['tin'], $payload['buyer']['company_registration']);
+        // Issue #664: a declared business buyer is never auto-classified as a
+        // consolidated general-public invoice, even without an explicit flag.
+        $payload['buyer']['buyer_type'] = 'business';
+
+        $result = $provider->submit($payload, [
+            'api_key' => 'sandbox-key',
+            'api_token' => 'sandbox-token',
+        ]);
+
+        $this->assertFalse($result['success']);
+        $this->assertSame('PAYLOAD_VALIDATION_FAILED', $result['error_code']);
+        $this->assertStringContainsString('has no TIN', $result['message']);
+        $this->assertStringContainsString('mark as individual', $result['message']);
+    }
 }

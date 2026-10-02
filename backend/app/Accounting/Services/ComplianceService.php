@@ -1448,6 +1448,17 @@ class ComplianceService
             return "Payload validation failed: supplier '{$supplierName}' has no Company Registration Number (BRN) and no identity document — add the vendor's registration number in vendor settings";
         }
 
+        // Issue #664: a business/government/foreign buyer without a TIN must not
+        // be submitted as a consolidated general-public invoice.
+        $buyer = is_array($payload['buyer'] ?? null) ? $payload['buyer'] : [];
+        $buyerType = strtolower(trim((string) ($buyer['buyer_type'] ?? '')));
+        $buyerTin = trim((string) ($buyer['tin'] ?? ''));
+        if ($buyerTin === '' && in_array($buyerType, ['business', 'government', 'foreign'], true)) {
+            $buyerName = $buyer['name'] ?? 'unknown';
+
+            return "Payload validation failed: customer '{$buyerName}' has no TIN — add it or mark as individual";
+        }
+
         if (! isset($payload['totals']['gross_amount']) || ! is_numeric($payload['totals']['gross_amount'])) {
             return 'Payload validation failed: totals.gross_amount is missing or not numeric';
         }

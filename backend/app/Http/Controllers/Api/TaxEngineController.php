@@ -61,6 +61,17 @@ class TaxEngineController extends Controller
     }
 
     /**
+     * #751 TU5: pack rate changes about to take effect, with the affected open
+     * quotations/sales orders (server-computed; the browser never rates).
+     */
+    public function upcomingChanges(Request $request): JsonResponse
+    {
+        $validated = $request->validate(['days' => 'nullable|integer|min:1|max:180']);
+
+        return response()->json(['data' => $this->engine->upcomingChanges((int) ($validated['days'] ?? 30))]);
+    }
+
+    /**
      * #746 T13 AC3: products pinned to a tax rule that can no longer resolve
      * (expired / inactive / deleted / missing), with successor status.
      */

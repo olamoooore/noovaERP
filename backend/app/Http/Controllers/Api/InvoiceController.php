@@ -17,6 +17,7 @@ use App\Services\CaseImportService;
 use App\Services\CustomerWideSearchService;
 use App\Services\InvoiceActivityService;
 use App\Services\InvoiceApprovalService;
+use App\Services\InvoiceCancellationService;
 use App\Services\InvoiceDeliveryService;
 use App\Services\InvoiceEvidenceService;
 use App\Services\InvoiceService;
@@ -47,6 +48,7 @@ class InvoiceController extends Controller
         private SalesApprovalGate $approvalGate,
         private DeliveryOrderService $deliveryOrderService,
         private EInvoiceLifecycleGuard $eInvoiceLifecycle,
+        private InvoiceCancellationService $cancellationService,
     ) {}
 
     public function index(Request $request)
@@ -2204,9 +2206,12 @@ class InvoiceController extends Controller
 
     /**
      * Cancel a posted/sent/partial/overdue invoice (→ cancelled).
+     *
+     * Issue #681: cancelling is an accounting release, not a status flip. The
+     * whole action (journal reversal, stock return, sales-order commitment,
+     * status) runs in InvoiceCancellationService inside one transaction, after
+     * the e-invoice lifecycle guard (#663) has cancelled the LHDN submission.
      * Blocks if payments exist — user must void/refund payments first.
-     * This is an accounting-safe cancel: the journal entry remains for audit
-     * but the invoice is marked as cancelled and excluded from reports.
      */
     public function cancel($id)
     {
@@ -2216,34 +2221,14 @@ class InvoiceController extends Controller
             return response()->json(['message' => 'Invoice not found'], 404);
         }
 
-        if (! in_array($invoice->status, ['posted', 'sent', 'partial', 'overdue'])) {
-            return response()->json(['message' => 'Only posted, sent, partial, or overdue invoices can be cancelled'], 403);
+        try {
+            $invoice = $this->cancellationService->cancel($invoice, auth()->user());
+        } catch (\App\Exceptions\InvoiceCancellationException $e) {
+            return response()->json(
+                $e->payload() !== [] ? $e->payload() : ['message' => $e->getMessage()],
+                $e->status(),
+            );
         }
-
-        if ($invoice->payments()->active()->exists()) {
-            return response()->json([
-                'message' => 'Cannot cancel an invoice with payments. Void or refund the payments first.',
-            ], 422);
-        }
-
-        // Issue #169: a posted credit note has its own journal entry; cancelling
-        // the invoice without voiding the credit note would leave that GL entry
-        // backing a cancelled document.
-        if ($invoice->creditNotes()->where('status', 'posted')->exists()) {
-            return response()->json([
-                'message' => 'Cannot cancel an invoice with posted credit notes. Void the credit notes first.',
-            ], 422);
-        }
-
-        if ($denied = $this->eInvoiceLifecycle->denial('invoice', $invoice->id, 'cancel')) {
-            return $denied;
-        }
-
-        $invoice->update(['status' => 'cancelled']);
-
-        // Cancelling removes the invoice from receivables and purchase totals.
-        $invoice->customer?->updateOutstanding();
-        $invoice->customer?->updatePurchaseStats();
 
         // A cancelled invoice must no longer be acceptable via its portal links.
         $this->evidenceService->revokeAcceptanceLinks($invoice);
@@ -2263,6 +2248,19 @@ class InvoiceController extends Controller
         return response()->json([
             'message' => 'Invoice cancelled',
             'data' => $invoice->fresh(['customer', 'lines']),
+        ]);
+    }
+
+    /**
+     * Issue #681 data check: cancelled invoices whose journal entry was never
+     * reversed, with the AR difference still carried per customer. The AR
+     * subledger has dropped these documents while the GL still has them, so
+     * every row is a GL AR ≠ AR subledger gap to reconcile.
+     */
+    public function cancelledWithoutReversalDataCheck(): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->cancellationService->cancelledInvoicesWithUnreversedJournals(),
         ]);
     }
 
@@ -2309,9 +2307,14 @@ class InvoiceController extends Controller
 
         try {
             DB::transaction(function () use ($invoice) {
-                // Reverse the journal entry if one exists
+                // Reverse the journal entry if one exists (idempotent — a
+                // cancel may already have reversed it, #681).
                 if ($invoice->journal_entry_id) {
-                    $this->reverseJournalEntry($invoice);
+                    $this->cancellationService->reverseJournalEntry(
+                        $invoice,
+                        "Reset to draft: Invoice #{$invoice->invoice_number}",
+                        'RESET_TO_DRAFT',
+                    );
                 }
 
                 $invoice->update([
@@ -2406,58 +2409,6 @@ class InvoiceController extends Controller
                 'error' => $e->getMessage(),
             ]);
         }
-    }
-
-    /**
-     * Reverse a journal entry by creating a compensating entry.
-     * Used when resetting a posted invoice to draft.
-     *
-     * The reversal is dated with the ORIGINAL journal entry's accounting date
-     * (not the current system date) so both movements fall in the same
-     * accounting period and net to zero in Revenue / AR / Tax.
-     *
-     * Routes through PostingEngine::reverse() (the single authoritative
-     * reversal path, ADR-005 §15.3) so JournalEntryLink + PostingAuditLog
-     * records are created and the reversal is idempotent.
-     */
-    private function reverseJournalEntry(Invoice $invoice): void
-    {
-        $journalEntry = \App\Models\JournalEntry::find($invoice->journal_entry_id);
-        if (! $journalEntry) {
-            return;
-        }
-
-        $originalDate = $journalEntry->entry_date instanceof \Carbon\Carbon
-            ? $journalEntry->entry_date->toDateString()
-            : (string) $journalEntry->entry_date;
-
-        $result = app(\App\Accounting\PostingEngine::class)->reverse(new \App\Accounting\DTOs\ReversalRequest(
-            journalEntryId: $journalEntry->id,
-            reversalDate: $originalDate,
-            reason: "Reset to draft: Invoice #{$invoice->invoice_number}",
-            reasonCode: 'RESET_TO_DRAFT',
-        ));
-
-        if (! $result->success) {
-            throw new \RuntimeException($result->error ?? 'Failed to create reversal journal entry');
-        }
-
-        // Update lifecycle on the original entry (status stays 'posted' — CHECK constraint)
-        $journalEntry->update([
-            'lifecycle_status' => 'reversed',
-            'correction_type' => 'reverse',
-            'is_active_version' => false,
-        ]);
-
-        // Release the (invoice, 'post') link so a fresh repost can create a new
-        // post link + journal entry. Without this, PostingEngine::post()'s
-        // idempotency guard would short-circuit the repost and re-link the
-        // invoice to the (now reversed) original entry — making the new
-        // posting invisible to the P&L.
-        \App\Models\JournalEntryLink::where('source_document_type', 'invoice')
-            ->where('source_document_id', $invoice->id)
-            ->where('relation_type', 'post')
-            ->delete();
     }
 
     /**

@@ -23,6 +23,7 @@ class TaxRegistration extends Model
         'effective_to',
         'status',
         'filing_start_month',
+        'filing_frequency',
         'notes',
     ];
 

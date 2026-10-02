@@ -71,9 +71,13 @@ class MFRSValidationService implements CountryValidationContract
         $customer = $invoice->customer;
         if (! $customer) {
             $errors[] = 'Customer/Buyer details are required';
-        } elseif ($this->isBusinessCustomer($customer)
-            && ! ($customer->registration_number ?? $customer->tax_number ?? null)) {
-            $errors[] = 'Buyer company registration is required if not individual';
+        } elseif ($this->isBusinessCustomer($customer) && $this->resolveBuyerTin($customer) === null) {
+            // Issue #664: LHDN requires a real buyer TIN for business buyers —
+            // the general-public TIN is only for individual/consolidated B2C
+            // invoices. Fail with an actionable message before any mapping or
+            // provider call.
+            $customerName = trim((string) ($customer->name ?? '')) ?: 'Customer';
+            $errors[] = "Customer '{$customerName}' has no TIN — add it or mark as individual";
         }
 
         $lines = $invoice->lineItems ?? $invoice->lines ?? collect();
@@ -140,12 +144,41 @@ class MFRSValidationService implements CountryValidationContract
 
     private function isBusinessCustomer(object $customer): bool
     {
+        $buyerType = strtolower(trim((string) ($customer->buyer_type ?? '')));
+        if (in_array($buyerType, ['business', 'government', 'foreign'], true)) {
+            return true;
+        }
+        if ($buyerType === 'individual') {
+            return false;
+        }
+
         $type = strtolower((string) ($customer->type ?? ''));
         if ($type === 'individual') {
             return false;
         }
 
         return $type === 'company' || ! empty($customer->company);
+    }
+
+    /**
+     * Resolve the buyer TIN from the customer record (the same field list the
+     * Malaysia mapper reads), returning null when none is captured.
+     */
+    private function resolveBuyerTin(object $customer): ?string
+    {
+        foreach (['tax_identification_number', 'tin', 'tax_number', 'tax_id'] as $attribute) {
+            $value = $customer->{$attribute} ?? null;
+            if ($value === null) {
+                continue;
+            }
+
+            $trimmed = trim((string) $value);
+            if ($trimmed !== '') {
+                return $trimmed;
+            }
+        }
+
+        return null;
     }
 
     private function validateCompanyId(string $id): bool

@@ -41,6 +41,22 @@ import type {
  * Report API Client
  * Provides methods to interact with all financial reporting, inventory, and analytics endpoints
  */
+/**
+ * #352 (S4): format the LOCAL calendar date as YYYY-MM-DD.
+ *
+ * `toISOString()` converts to UTC first, so a date built at local midnight in
+ * a UTC+ timezone (every MY/SG tenant) was serialised as the previous day —
+ * "this month" ran 2026-09-30 → 2026-10-30, including September's last day and
+ * dropping 31 October. Reading the local calendar fields is timezone-safe.
+ */
+export function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
 class ReportApiClient {
   // ==================== Financial Reports ====================
 
@@ -845,14 +861,13 @@ class ReportApiClient {
    * Format date for API requests (YYYY-MM-DD)
    */
   formatDate(date: Date): string {
-    return date.toISOString().split('T')[0];
+    return formatLocalDate(date);
   }
 
   /**
    * Get date range presets
    */
-  getDateRangePresets() {
-    const today = new Date();
+  getDateRangePresets(today: Date = new Date()) {
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
@@ -867,10 +882,14 @@ class ReportApiClient {
         end_date: this.formatDate(today),
       },
       thisWeek: {
+        // #353 (S5): build a new Date for the week start — today.setDate()
+        // mutated the shared `today`, so every later preset read the moved
+        // date (thisYear ended at the start of the current week, and
+        // thisQuarter could fall into the previous month/quarter).
         start_date: this.formatDate(
-          new Date(today.setDate(today.getDate() - today.getDay()))
+          new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay())
         ),
-        end_date: this.formatDate(new Date()),
+        end_date: this.formatDate(today),
       },
       thisMonth: {
         start_date: this.formatDate(startOfMonth),

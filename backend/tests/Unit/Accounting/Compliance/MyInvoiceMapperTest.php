@@ -386,4 +386,118 @@ class MyInvoiceMapperTest extends TestCase
         $this->assertSame('1.0', $typeCodeNode['listVersionID'] ?? null,
             'listVersionID must be "1.0" — "1.1" causes ERR237 from LHDN (regression guard)');
     }
+
+    // -------------------------------------------------------------------------
+    // Issue #664 — buyer type / general-public TIN rules
+    // -------------------------------------------------------------------------
+
+    public function test_business_customer_without_tin_is_not_given_the_general_public_tin(): void
+    {
+        $invoice = $this->makeInvoiceForBuyer((object) [
+            'name' => 'ABC Sdn Bhd',
+            'type' => 'company',
+            'company_registration_number' => '202401234567',
+        ]);
+
+        $mapper = new MyInvoiceMapper;
+        $payload = $mapper->mapInvoice($invoice);
+
+        $this->assertSame('business', $payload['buyer']['buyer_type']);
+        $this->assertTrue($payload['buyer']['is_business']);
+        $this->assertNull(
+            $payload['buyer']['tin'],
+            'A business buyer without a TIN must not be defaulted to the LHDN general-public TIN (issue #664).'
+        );
+        $this->assertFalse(
+            $payload['is_consolidated'],
+            'A sales invoice to a business buyer must be explicitly non-consolidated.'
+        );
+        $this->assertFalse(
+            $mapper->validatePayload($payload),
+            'A business buyer without a TIN must fail mapped-payload validation.'
+        );
+    }
+
+    public function test_individual_customer_without_tin_keeps_general_public_tin_and_is_consolidated(): void
+    {
+        $invoice = $this->makeInvoiceForBuyer((object) [
+            'name' => 'Walk-in Customer',
+            'type' => 'individual',
+        ]);
+
+        $mapper = new MyInvoiceMapper;
+        $payload = $mapper->mapInvoice($invoice);
+
+        $this->assertSame('individual', $payload['buyer']['buyer_type']);
+        $this->assertSame('EI00000000010', $payload['buyer']['tin']);
+        $this->assertTrue($payload['is_consolidated']);
+        $this->assertTrue($mapper->validatePayload($payload));
+    }
+
+    public function test_explicit_buyer_type_government_requires_a_real_tin(): void
+    {
+        $invoice = $this->makeInvoiceForBuyer((object) [
+            'name' => 'Jabatan Kerajaan',
+            'buyer_type' => 'government',
+        ]);
+
+        $mapper = new MyInvoiceMapper;
+        $payload = $mapper->mapInvoice($invoice);
+
+        $this->assertSame('government', $payload['buyer']['buyer_type']);
+        $this->assertNull($payload['buyer']['tin']);
+        $this->assertFalse($payload['is_consolidated']);
+        $this->assertFalse($mapper->validatePayload($payload));
+    }
+
+    public function test_explicit_buyer_type_foreign_with_tin_is_non_consolidated(): void
+    {
+        $invoice = $this->makeInvoiceForBuyer((object) [
+            'name' => 'Overseas Pte Ltd',
+            'buyer_type' => 'foreign',
+            'tax_number' => 'FOREIGN-TIN-123',
+        ]);
+
+        $mapper = new MyInvoiceMapper;
+        $payload = $mapper->mapInvoice($invoice);
+
+        $this->assertSame('foreign', $payload['buyer']['buyer_type']);
+        $this->assertSame('FOREIGN-TIN-123', $payload['buyer']['tin']);
+        $this->assertFalse($payload['is_consolidated']);
+        $this->assertTrue($mapper->validatePayload($payload));
+    }
+
+    private function makeInvoiceForBuyer(object $buyer): Invoice
+    {
+        $invoice = new Invoice;
+        $invoice->setRawAttributes([
+            'id' => 664,
+            'invoice_number' => 'INV-664-0001',
+            'invoice_date' => '2026-10-02',
+            'currency_code' => 'MYR',
+            'subtotal' => 100.00,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'total' => 100.00,
+            'paid_amount' => 0,
+        ], true);
+
+        $invoice->supplier = (object) [
+            'name' => 'NoovaERP Sdn Bhd',
+            'tax_identification_number' => 'C9999999990',
+            'company_registration' => '202400000001',
+            'country_code' => 'MY',
+        ];
+
+        $invoice->setRelation('customer', $buyer);
+        $invoice->setRelation('lines', new Collection([
+            tap(new InvoiceLine, fn ($l) => $l->setRawAttributes([
+                'id' => 664, 'description' => 'Item', 'quantity' => 1,
+                'unit_price' => 100.00, 'tax_rate' => 0, 'tax_amount' => 0,
+                'discount_amount' => 0, 'line_total' => 100.00,
+            ], true)),
+        ]));
+
+        return $invoice;
+    }
 }

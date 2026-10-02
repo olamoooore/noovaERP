@@ -13,7 +13,8 @@ import {
 import { LineChart } from '@/components/charts/LineChart';
 import { BarChart } from '@/components/charts/BarChart';
 import { PieChart } from '@/components/charts/PieChart';
-import reportApi from '@/lib/reportApi';
+import reportApi, { formatLocalDate } from '@/lib/reportApi';
+import { mapCategoryRevenueSlices, mapRevenueTrendPoints } from '@/lib/salesDashboardMapping';
 import type { SalesDashboardData } from '@/types/reports';
 
 /**
@@ -37,8 +38,8 @@ export const SalesDashboard: React.FC = () => {
       const startDate = new Date(selectedYear, selectedMonth, 1);
       const endDate = new Date(selectedYear, selectedMonth + 1, 0);
       return {
-        start_date: startDate.toISOString().split('T')[0],
-        end_date: endDate.toISOString().split('T')[0],
+        start_date: formatLocalDate(startDate),
+        end_date: formatLocalDate(endDate),
       };
     }
     
@@ -55,7 +56,7 @@ export const SalesDashboard: React.FC = () => {
   const currentFilters = getDateFilters();
 
   // Fetch all time period metrics for the summary cards
-  const { data: allMetrics } = useQuery({
+  const { data: allMetrics, isLoading: allMetricsLoading, refetch: refetchAllMetrics } = useQuery({
     queryKey: ['sales-metrics-all'],
     queryFn: async () => {
       const now = new Date();
@@ -85,7 +86,11 @@ export const SalesDashboard: React.FC = () => {
   });
 
   // Fetch dashboard data for selected period
-  const { data, isLoading, error, refetch } = useQuery<SalesDashboardData>({
+  // #351 (S3): the tile values come straight from the allMetrics query below.
+  // Embedding them in this query's cached result captured allMetrics as
+  // undefined when the two queries ran in parallel, so the tiles were stored
+  // as 0 and never recomputed when allMetrics arrived.
+  const { data, isLoading, error, refetch } = useQuery<Omit<SalesDashboardData, 'metrics'>>({
     queryKey: ['sales-dashboard', selectedPeriod, selectedMonth, selectedYear],
     queryFn: async () => {
       // Aggregate data from multiple endpoints
@@ -96,20 +101,7 @@ export const SalesDashboard: React.FC = () => {
         reportApi.getSalesByCategory(currentFilters),
       ]);
 
-      // Calculate metrics for selected period
-      const totalSales = (salesByProduct?.products ?? []).reduce(
-        (sum, p) => sum + (Number(p.total_revenue) || 0),
-        0
-      );
-
       return {
-        metrics: {
-          today: allMetrics?.today ?? 0,
-          week: allMetrics?.week ?? 0,
-          month: allMetrics?.month ?? 0,
-          year: allMetrics?.year ?? 0,
-          selected: totalSales,
-        },
         sales_by_product: (salesByProduct?.products ?? []).map((p) => ({
           product: p.name || 'Unknown',
           amount: Number(p.total_revenue) || 0,
@@ -118,26 +110,27 @@ export const SalesDashboard: React.FC = () => {
           customer: c.customer_name || 'Walk-in customer',
           amount: Number(c.total_revenue) || 0,
         })),
-        sales_trends: (salesTrends?.trends ?? []).map((t) => ({
-          period: t.period || '',
-          amount: Number(t.total_revenue) || 0,
-        })),
+        sales_trends: mapRevenueTrendPoints(salesTrends?.trends),
         top_selling_products: (salesByProduct?.products ?? [])
           .slice(0, 10)
           .map((p) => ({
             name: p.name || 'Unknown',
             quantity: Number(p.total_quantity) || 0,
           })),
-        sales_by_category: (salesByCategory?.categories ?? []).map((c) => ({
-          category: c.category_name || 'Uncategorised',
-          amount: Number(c.total_revenue) || 0,
-        })),
+        sales_by_category: mapCategoryRevenueSlices(salesByCategory?.categories),
       };
     },
   });
 
+  // #351 (S3): tiles are loading until BOTH queries have data — otherwise a
+  // not-yet-arrived metrics query would render 0.00.
+  const metricsLoading = isLoading || allMetricsLoading;
+
   const handleRefresh = () => {
+    // Refresh must re-run the metrics query too — it used to refresh only the
+    // dashboard query, leaving stale tiles in place.
     refetch();
+    refetchAllMetrics();
   };
 
   if (error) {
@@ -184,10 +177,10 @@ export const SalesDashboard: React.FC = () => {
   ];
 
   const KPIS = [
-    { label: "Today's sales", value: data?.metrics.today, icon: 'solar:calendar-bold-duotone', tile: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300', sub: 'Today' },
-    { label: 'This week', value: data?.metrics.week, icon: 'solar:calendar-mark-bold-duotone', tile: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300', sub: 'This week' },
-    { label: 'This month', value: data?.metrics.month, icon: 'solar:chart-2-bold-duotone', tile: 'bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300', sub: 'This month' },
-    { label: 'This year', value: data?.metrics.year, icon: 'solar:graph-up-bold-duotone', tile: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300', sub: 'This year' },
+    { label: "Today's sales", value: allMetrics?.today, icon: 'solar:calendar-bold-duotone', tile: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300', sub: 'Today' },
+    { label: 'This week', value: allMetrics?.week, icon: 'solar:calendar-mark-bold-duotone', tile: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300', sub: 'This week' },
+    { label: 'This month', value: allMetrics?.month, icon: 'solar:chart-2-bold-duotone', tile: 'bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300', sub: 'This month' },
+    { label: 'This year', value: allMetrics?.year, icon: 'solar:graph-up-bold-duotone', tile: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300', sub: 'This year' },
   ];
 
   return (
@@ -278,7 +271,7 @@ export const SalesDashboard: React.FC = () => {
                 {kpi.label}
               </p>
               <p className="mt-1 text-[26px] font-semibold leading-tight tracking-tight tabular-nums text-slate-900 dark:text-slate-100">
-                {isLoading ? '…' : formatCurrency(kpi.value)}
+                {metricsLoading ? '…' : formatCurrency(kpi.value ?? 0)}
               </p>
               <p className="mt-1 text-xs text-slate-500">{kpi.sub}</p>
             </CardContent>

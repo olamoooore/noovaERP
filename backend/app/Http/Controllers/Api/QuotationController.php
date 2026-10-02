@@ -534,6 +534,16 @@ class QuotationController extends Controller
         $quotation->refresh();
         $quotation->calculateTotals();
 
+        // Issue #646: an approved request only covers the document state it
+        // was raised for. If this edit changed that state (total, discount,
+        // currency, customer or line contents), invalidate the stale request
+        // — with a chatter entry — so the next gated action raises a fresh one.
+        $this->approvalGate->invalidateStaleApprovals(
+            $quotation,
+            SalesApprovalGate::REQUEST_TYPE_QUOTATION,
+            Auth::user(),
+        );
+
         $extra = $request->has('lines') ? ['lines' => 'line items replaced'] : [];
         if ($changedFields !== [] || $extra !== []) {
             $this->logQuotationChatter(
