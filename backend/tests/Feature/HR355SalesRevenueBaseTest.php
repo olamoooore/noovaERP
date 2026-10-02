@@ -205,8 +205,8 @@ class HR355SalesRevenueBaseTest extends TenantTestCase
             'unit_price' => abs($netAmount),
             'tax_rate' => $taxRate,
             'tax_amount' => $tax,
-            // POS line_total is tax-INCLUSIVE (gross).
-            'line_total' => (abs($netAmount) + $tax) * $sign,
+            // POS line_total is tax-INCLUSIVE (gross); a return writes it negative.
+            'line_total' => (abs($netAmount) + abs($tax)) * $sign,
         ]);
 
         return $order;
