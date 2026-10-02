@@ -129,6 +129,22 @@ class ComplianceController extends Controller
         $perPage = min($request->get('per_page', 20), 100);
         $documents = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
+        // #670 (EINV-UX1): list rows show the effective e-invoice status, which
+        // can live on the latest submission (an accepted document with an open
+        // buyer rejection request is not "valid"). One extra query for the
+        // whole page instead of one per row.
+        if ($request->boolean('with_latest_submission') && $documents->isNotEmpty()) {
+            $latest = ComplianceSubmission::whereIn('document_id', $documents->pluck('id'))
+                ->orderByDesc('id')
+                ->get()
+                ->groupBy('document_id')
+                ->map(fn ($group) => $group->first());
+
+            foreach ($documents as $document) {
+                $document->setAttribute('latest_submission', $latest->get($document->id));
+            }
+        }
+
         return response()->json([
             'success' => true,
             'data' => $documents->items(),

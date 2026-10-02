@@ -26,6 +26,10 @@ import api from '@/lib/api';
 import { getVisibleInvoiceNotes } from '@/lib/invoicePresentation';
 import InvoiceCreditNotes from '../components/InvoiceCreditNotes';
 import CreateCreditNoteDialog from '../components/CreateCreditNoteDialog';
+import EInvoicePanel from '../components/EInvoicePanel';
+import { EInvoiceStatusChip } from '../components/EInvoiceStatusChip';
+import { formatCountdown } from '../components/einvoiceStatus';
+import { useEInvoiceDocument } from '../components/useEInvoice';
 import { useAuthStore } from '@/store/authStore';
 import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow';
 import { SalesLineColumnVisibility, SalesLineColumnMenu } from '@/components/sales/DeliveryOrderColumnVisibility';
@@ -90,6 +94,11 @@ export const CustomerInvoiceDetail: React.FC = () => {
     },
     enabled: !!id,
   });
+
+  // #670 (EINV-UX1): e-invoice status chip in the header. The hook is disabled
+  // until the invoice is loaded and in a submittable state.
+  const eInvoiceEligible = !!invoice && ['posted', 'paid', 'partial', 'overdue'].includes(invoice.status);
+  const einvoice = useEInvoiceDocument('invoice', eInvoiceEligible ? invoice?.id : undefined);
 
   // Count payments linked to this invoice for the "Payments (N)" smart button.
   const { data: paymentsCount } = useQuery({
@@ -378,7 +387,18 @@ export const CustomerInvoiceDetail: React.FC = () => {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>{documentLabel} Information</span>
-            {getStatusBadge(invoice.status)}
+            <div className="flex items-center gap-2">
+              {eInvoiceEligible && (
+                <EInvoiceStatusChip
+                  status={einvoice.status}
+                  uuid={einvoice.latestSubmission?.external_document_uuid}
+                  validationLink={einvoice.latestSubmission?.validation_link}
+                  reason={einvoice.latestSubmission?.rejection_reason ?? einvoice.latestSubmission?.error_message}
+                  countdown={formatCountdown(einvoice.deadline)}
+                />
+              )}
+              {getStatusBadge(invoice.status)}
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -778,6 +798,9 @@ export const CustomerInvoiceDetail: React.FC = () => {
           </CardContent>
         </Card>
       )}
+
+      {/* #670: e-invoice panel — status, provider details, lifecycle actions. */}
+      {eInvoiceEligible && <EInvoicePanel type="invoice" documentId={invoice.id} />}
 
       {/* Journal Entry */}
       {invoice.journal_entry_id && (

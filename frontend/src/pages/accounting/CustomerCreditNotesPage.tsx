@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useCustomerCreditNotes, useDeleteCreditNote } from '@/hooks/useCustomerCreditNotes';
+import { EInvoiceStatusChip } from './components/EInvoiceStatusChip';
+import { useEInvoiceStatusMap } from './components/useEInvoice';
 import type { CreditNoteFilters } from '@/types/creditNote';
 import CreateCreditNoteDialog from './components/CreateCreditNoteDialog';
 import EditCreditNoteDialog from './components/EditCreditNoteDialog';
@@ -75,6 +77,9 @@ export default function CustomerCreditNotesPage() {
   };
 
   const creditNotes = data?.data || [];
+
+  // #670: one request per page for the e-invoice status of every row.
+  const einvoiceStatusMap = useEInvoiceStatusMap('credit_note', creditNotes.map((creditNote: any) => Number(creditNote.id)));
   const { sorted: sortedCreditNotes, sortKey, sortDir, toggle: toggleSort } = useSort<any>(creditNotes, 'credit_note_date', 'desc');
   const pagination = data?.meta || {};
 
@@ -192,6 +197,11 @@ export default function CustomerCreditNotesPage() {
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={creditNote.status} />
+                        {einvoiceStatusMap.get(Number(creditNote.id)) && (
+                          <div className="mt-1">
+                            <EInvoiceStatusChip status={einvoiceStatusMap.get(Number(creditNote.id))!.status} />
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex gap-1 justify-end">
