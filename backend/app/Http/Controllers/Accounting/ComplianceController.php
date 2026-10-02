@@ -469,6 +469,10 @@ class ComplianceController extends Controller
     {
         $this->authorizeWhenConfigured('submit', ComplianceDocument::class);
 
+        // #812 EP1: a bill is OUR purchase, not OUR sale — submitting it tells
+        // LHDN we sold to our own supplier. Disabled at the entry point.
+        return response()->json(['success' => false, 'message' => 'DISABLED_SOURCE_TYPE: a purchase bill is not an e-invoice source document and can no longer be submitted to LHDN (#812 EP1).'], 422);
+
         $validated = $request->validate([
             'country_code' => 'required|string|size:2|uppercase',
         ]);
@@ -521,6 +525,10 @@ class ComplianceController extends Controller
     public function submitVendorDebitNote(Request $request, int $debitNoteId)
     {
         $this->authorizeWhenConfigured('submit', ComplianceDocument::class);
+
+        // #812 EP1: a vendor debit note is raised BY us against a supplier, not
+        // BY us as a seller. Disabled at the entry point.
+        return response()->json(['success' => false, 'message' => 'DISABLED_SOURCE_TYPE: a vendor debit note is not an e-invoice source document and can no longer be submitted to LHDN (#812 EP1).'], 422);
 
         $validated = $request->validate([
             'country_code' => 'required|string|size:2|uppercase',
@@ -625,6 +633,15 @@ class ComplianceController extends Controller
         ]);
 
         $document = $this->findTenantComplianceDocument($id);
+
+        // #812 EP1: the generic submit path must not accept purchase-side
+        // source types either.
+        if (in_array($document->document_type, ['bill', 'vendor_debit_note'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'DISABLED_SOURCE_TYPE: '.$document->document_type.' is not an e-invoice source document (#812 EP1).',
+            ], 422);
+        }
 
         // For invoices, check the source exists here to return a proper 404.
         // For other document types (credit_note, etc.) the service resolves and handles them.

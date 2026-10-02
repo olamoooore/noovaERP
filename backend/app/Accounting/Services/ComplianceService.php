@@ -119,6 +119,16 @@ class ComplianceService
         $countryCode = $document->country_code;
         $docType = $document->document_type ?? 'invoice';
 
+        // #812 EP1: purchase-side source types are not e-invoices — guard every
+        // caller (routes, generic submit, any internal dispatch), not only the
+        // HTTP entry points.
+        if (in_array($docType, ['bill', 'vendor_debit_note'], true)) {
+            return [
+                'success' => false,
+                'message' => 'DISABLED_SOURCE_TYPE: '.$docType.' is not an e-invoice source document (#812 EP1).',
+            ];
+        }
+
         $sourceDocument = null;
         if ($docType === 'credit_note') {
             $sourceDocument = $document->document_id
@@ -682,6 +692,15 @@ class ComplianceService
     public function submitComplianceDocument(ComplianceDocument $document, string $countryCode, mixed $sourceDocument = null): array
     {
         $docType = $document->document_type ?? 'invoice';
+
+        // #812 EP1: purchase-side source types are not e-invoices — guard every
+        // caller (generic submit, bulk, internal dispatch).
+        if (in_array($docType, ['bill', 'vendor_debit_note'], true)) {
+            return [
+                'success' => false,
+                'message' => 'DISABLED_SOURCE_TYPE: '.$docType.' is not an e-invoice source document (#812 EP1).',
+            ];
+        }
 
         if ($sourceDocument === null) {
             if ($docType === 'credit_note') {
