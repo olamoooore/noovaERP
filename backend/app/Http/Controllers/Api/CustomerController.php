@@ -481,14 +481,35 @@ class CustomerController extends Controller
      *
      * @return string[]
      */
+    /**
+     * Issue #430 (CU2): every document that references the customer blocks
+     * deletion. Checking only invoices and quotations let sales orders, POS and
+     * web orders, payments, credit notes, delivery orders, medical cases and
+     * loyalty transactions keep pointing at a soft-deleted customer — the same
+     * crash class as #170 (AR aging resolving a null customer). Both the single
+     * and the bulk delete path use this list.
+     */
     private function customerDependencyBlockers(int $customerId): array
     {
+        $dependencies = [
+            'invoices' => \App\Models\Invoice::class,
+            'quotations' => \App\Models\Quotation::class,
+            'sales orders' => \Modules\Sales\Models\SalesOrder::class,
+            'POS orders' => \Modules\POS\Models\PosOrder::class,
+            'web orders' => \Modules\Ecommerce\Models\WebOrder::class,
+            'payments' => \App\Models\Payment::class,
+            'credit notes' => \App\Models\CustomerCreditNote::class,
+            'delivery orders' => \Modules\Sales\Models\DeliveryOrder::class,
+            'medical cases' => \App\Models\MedicalCase::class,
+            'loyalty transactions' => \App\Models\CustomerLoyaltyTransaction::class,
+        ];
+
         $blockers = [];
-        if (\App\Models\Invoice::where('customer_id', $customerId)->exists()) {
-            $blockers[] = 'invoices';
-        }
-        if (\App\Models\Quotation::where('customer_id', $customerId)->exists()) {
-            $blockers[] = 'quotations';
+
+        foreach ($dependencies as $label => $model) {
+            if ($model::query()->where('customer_id', $customerId)->exists()) {
+                $blockers[] = $label;
+            }
         }
 
         return $blockers;
