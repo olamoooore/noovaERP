@@ -9,6 +9,7 @@ use App\Models\Invoice;
 use App\Models\Product;
 use App\Models\Quotation;
 use App\Models\Warehouse;
+use App\Platform\Pagination\PaginationService;
 use App\Services\CaseImportService;
 use App\Services\CustomerWideSearchService;
 use App\Services\DocumentWideSearchService;
@@ -83,7 +84,7 @@ class QuotationController extends Controller
         }
         $query->with($with);
 
-        $quotations = $query->paginate($request->per_page ?? 20);
+        $quotations = $query->paginate(PaginationService::clampPerPage($request->per_page));
 
         if ($search !== '') {
             app(DocumentWideSearchService::class)->annotate($quotations, $search, $this->wideSearchConfig());

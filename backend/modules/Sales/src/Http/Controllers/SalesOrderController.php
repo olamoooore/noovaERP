@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Http\Controllers;
 
+use App\Platform\Pagination\PaginationService;
 use App\Services\CustomerCreditNoteService;
 use App\Services\CustomerWideSearchService;
 use App\Services\DocumentWideSearchService;
@@ -61,7 +62,7 @@ class SalesOrderController extends Controller
             $query->with(app(DocumentWideSearchService::class)->eagerLoads($this->wideSearchConfig()));
         }
 
-        $orders = $query->paginate($request->per_page ?? 20);
+        $orders = $query->paginate(PaginationService::clampPerPage($request->per_page));
 
         if ($search !== '') {
             app(DocumentWideSearchService::class)->annotate($orders, $search, $this->wideSearchConfig());
