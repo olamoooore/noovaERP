@@ -9,6 +9,7 @@ use App\Services\SalesApprovalGate;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\CreditCheckService;
 use Modules\Sales\Services\OrderLifecycleService;
@@ -425,26 +426,60 @@ class SalesOrderController extends Controller
             return response()->json(['message' => 'Only invoiced orders can be credited'], 422);
         }
 
-        $invoice = $order->invoices()->latest('invoices.id')->first();
+        $invoices = $order->invoices()->orderByDesc('invoices.id')->get();
 
-        if (! $invoice) {
+        if ($invoices->isEmpty()) {
             return response()->json(['message' => 'The order has no linked invoice to credit'], 422);
         }
 
-        $lines = $order->lines
-            ->filter(fn ($line) => ! in_array($line->line_type ?? 'product', ['note', 'section'], true))
+        // #372 (O3): the caller may choose which invoice to credit; the latest
+        // linked invoice stays the default.
+        $invoiceId = $request->input('invoice_id');
+
+        if ($invoiceId !== null) {
+            $invoice = $invoices->firstWhere('id', (int) $invoiceId);
+
+            if (! $invoice) {
+                return response()->json(['message' => 'The selected invoice does not belong to this order'], 422);
+            }
+        } else {
+            $invoice = $invoices->first();
+        }
+
+        // #372 (O3): build the credit note from the INVOICE's lines at their
+        // remaining creditable quantity — never from the order's ordered
+        // quantity, which over-credits every other invoice when the order was
+        // invoiced in parts. Discounts, tax-inclusive pricing and the tax rate
+        // come from the invoice line (the credit note service re-resolves the
+        // rate from the invoice's determination and rejects conflicts).
+        $creditedByLine = DB::table('customer_credit_note_lines as cnl')
+            ->join('customer_credit_notes as cn', 'cn.id', '=', 'cnl.credit_note_id')
+            ->where('cn.invoice_id', $invoice->id)
+            ->where('cn.status', 'posted')
+            ->whereNotNull('cnl.invoice_line_id')
+            ->groupBy('cnl.invoice_line_id')
+            ->selectRaw('cnl.invoice_line_id, SUM(cnl.quantity) as credited_qty')
+            ->pluck('credited_qty', 'invoice_line_id');
+
+        $lines = $invoice->lines()
+            ->get()
             ->map(fn ($line) => [
+                'invoice_line_id' => $line->id,
                 'description' => $line->description,
                 'product_id' => $line->product_id,
-                'quantity' => (float) $line->quantity,
+                'quantity' => round((float) $line->quantity - (float) ($creditedByLine[$line->id] ?? 0), 2),
                 'unit_price' => (float) $line->unit_price,
                 'tax_rate' => (float) ($line->tax_rate ?? 0),
+                'discount_amount' => (float) ($line->discount_amount ?? 0),
+                'tax_inclusive' => (bool) ($line->tax_inclusive ?? false),
+                'account_id' => $line->gl_account_id,
             ])
+            ->filter(fn (array $line) => $line['quantity'] > 0.00001)
             ->values()
             ->all();
 
         if (empty($lines)) {
-            return response()->json(['message' => 'The order has no creditable lines'], 422);
+            return response()->json(['message' => 'Every line of the selected invoice has already been credited'], 422);
         }
 
         try {
@@ -462,6 +497,13 @@ class SalesOrderController extends Controller
                 'message' => 'Credit note draft created',
                 'credit_note' => $creditNote,
             ], 201);
+        } catch (\RuntimeException $e) {
+            // Validation-style rejections (conflicting tax identity, cap
+            // breaches) are the caller's problem, not a server fault.
+            return response()->json([
+                'message' => 'Failed to create credit note',
+                'error' => $e->getMessage(),
+            ], 422);
         } catch (\Throwable $e) {
             return response()->json([
                 'message' => 'Failed to create credit note',
