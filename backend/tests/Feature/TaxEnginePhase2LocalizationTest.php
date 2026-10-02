@@ -93,8 +93,9 @@ class TaxEnginePhase2LocalizationTest extends TenantTestCase
 
         $this->assertSame('My GST 9 (custom)', Tax::where('code', 'SG-GST-9')->value('name'), 'activation must not clobber tenant edits');
 
-        // Home jurisdiction defaulted onto the tenant setting.
-        $this->assertSame('SG', Setting::getValue('tax', [])['jurisdiction'] ?? null);
+        // #740 T4 (test-semantic change, disclosed): activation no longer
+        // defaults the home jurisdiction — registrations define it (#740 AC4).
+        $this->assertNull(Setting::getValue('tax', [])['jurisdiction'] ?? null);
     }
 
     public function test_unknown_pack_is_rejected_and_status_reports_coverage(): void
@@ -123,7 +124,7 @@ class TaxEnginePhase2LocalizationTest extends TenantTestCase
         $this->assertSame(9.0, (float) $engine->resolve($product, 'SG', 'output', null, '2024-06-01')['rate']);
     }
 
-    public function test_my_pack_service_rate_moves_6_to_8_and_2026_regime_8_to_10_by_date(): void
+    public function test_my_pack_service_rate_moves_6_to_8_by_date_and_carries_no_fictional_2026_rows(): void
     {
         app(TaxCountryPackService::class)->activate('MY');
         $engine = app(\App\Services\TaxEngineService::class);
@@ -132,8 +133,15 @@ class TaxEnginePhase2LocalizationTest extends TenantTestCase
         // DoD proof: same code path, different dates, different correct rates.
         $this->assertSame(6.0, (float) $engine->resolve($product, 'MY', 'output', 'service', '2025-06-15')['rate']);
         $this->assertSame(8.0, (float) $engine->resolve($product, 'MY', 'output', 'service', '2025-08-15')['rate']);
-        $this->assertSame(8.0, (float) $engine->resolve($product, 'MY', 'output', null, '2026-03-01')['rate']);
-        $this->assertSame(10.0, (float) $engine->resolve($product, 'MY', 'output', null, '2026-07-15')['rate']);
+
+        // #734 T1 (decision reversal on #269): the fictional 2026 GST-model
+        // 8%/10% rows are gone. The 2026 MY service-tax timeline is under
+        // correction per #735 pending RMCD-verified data, so no 2026 rate is
+        // asserted here.
+        $this->assertFalse(Tax::withTrashed()->where('code', 'MY-SSTG-8')->exists());
+        $this->assertFalse(Tax::withTrashed()->where('code', 'MY-SSTG-10')->exists());
+        $this->assertFalse(Tax::withTrashed()->where('code', 'MY-SST-ZERO')->exists());
+        $this->assertFalse(Tax::withTrashed()->where('code', 'MY-SST-EXEMPT')->exists());
     }
 
     // ── SST-02 classification by rule taxonomy (D9) ───────────────────────

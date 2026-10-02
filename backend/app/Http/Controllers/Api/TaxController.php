@@ -141,106 +141,16 @@ class TaxController extends Controller
             $validated['jurisdiction'] = strtoupper(trim($validated['jurisdiction']));
         }
 
-        // MRD R1.2: a rule that is already live must never have its rate or
-        // identity rewritten in place — historical determinations, posted GL
-        // lines and filed returns reference this row. Identity changes on a
-        // live rule close the old row and spawn a new version row instead.
-        $identityFields = ['rate', 'jurisdiction', 'regime', 'scope', 'treatment', 'code'];
-        $identityChanged = false;
+        // #739 T6: the "never rewrite a live rule" rule now lives in
+        // TaxRuleMutationService so country-pack upgrades get the identical
+        // guarantee instead of a second, weaker implementation.
+        $effective = app(\App\Services\TaxRuleMutationService::class)->apply($tax, $validated, $request);
 
-        foreach ($identityFields as $field) {
-            if (! array_key_exists($field, $validated)) {
-                continue;
-            }
-
-            // G-03 (R07a): compare semantically — '9' vs '9.00' (decimal cast)
-            // and case/whitespace differences must not spawn a phantom version.
-            $incoming = $field === 'rate' ? (float) $validated[$field] : mb_strtolower(trim((string) $validated[$field]));
-            $current = $field === 'rate' ? (float) $tax->{$field} : mb_strtolower(trim((string) $tax->{$field}));
-
-            if ($incoming !== $current) {
-                $identityChanged = true;
-                break;
-            }
+        if ($effective->id === $tax->id) {
+            return response()->json($effective);
         }
 
-        $today = now()->toDateString();
-        $live = ($tax->effective_from === null || $tax->effective_from->toDateString() < $today)
-            && ($tax->effective_to === null || $tax->effective_to->toDateString() >= $today);
-
-        if (! $identityChanged || ! $live) {
-            if (! empty($validated['is_default'])) {
-                Tax::where('id', '!=', $tax->id)->where('is_default', true)->update(['is_default' => false]);
-            }
-
-            $before = $tax->attributesToArray();
-            $tax->update($validated);
-            $tax->increment('version');
-            $tax->refresh();
-
-            $this->audit('tax_rule_updated', $tax, $before, $tax->attributesToArray(), $request);
-
-            return response()->json($tax);
-        }
-
-        $requestedFrom = ! empty($validated['effective_from'])
-            ? \Carbon\Carbon::parse($validated['effective_from'])->toDateString()
-            : $today;
-
-        // G-03 (R07b): a client-supplied backdate must never rewrite history —
-        // a new version starts no earlier than the old window start and today.
-        $floor = max($today, $tax->effective_from ? $tax->effective_from->toDateString() : $today);
-        $newFrom = $requestedFrom < $floor ? $floor : $requestedFrom;
-
-        if ($tax->effective_from !== null && $tax->effective_from->toDateString() > $newFrom) {
-            // Not yet effective in the future either — safe to edit in place.
-            $before = $tax->attributesToArray();
-            $tax->update($validated);
-            $tax->increment('version');
-            $tax->refresh();
-
-            $this->audit('tax_rule_updated', $tax, $before, $tax->attributesToArray(), $request);
-
-            return response()->json($tax);
-        }
-
-        $closeTo = \Carbon\Carbon::parse($newFrom)->subDay()->toDateString();
-
-        $newTax = DB::transaction(function () use ($tax, $validated, $newFrom, $closeTo, $request) {
-            $oldBefore = $tax->attributesToArray();
-            $merged = array_merge($tax->only([
-                'name', 'code', 'jurisdiction', 'regime', 'scope', 'treatment',
-                'type', 'rate', 'is_active', 'is_default', 'is_inclusive',
-            ]), $validated);
-            $merged['effective_from'] = $newFrom;
-            $merged['effective_to'] = $validated['effective_to'] ?? null;
-
-            $fresh = Tax::create($merged);
-
-            $tax->update([
-                'effective_to' => $tax->effective_to !== null && $tax->effective_to->toDateString() < $closeTo
-                    ? $tax->effective_to->toDateString()
-                    : $closeTo,
-                'is_default' => false,
-            ]);
-            $tax->increment('version');
-            $tax->refresh();
-
-            // G-13 (#274): lineage for the versioned replacement.
-            $this->audit('tax_rule_versioned', $tax, $oldBefore, array_merge($tax->attributesToArray(), ['versioned_to' => $fresh->id]), $request);
-            $this->audit('tax_rule_created', $fresh, null, $fresh->attributesToArray(), $request);
-
-            // Re-point the tenant default so resolution keeps working forward.
-            $taxSetting = Setting::getValue('tax', []);
-            if (($taxSetting['default_tax_id'] ?? null) === $tax->id) {
-                $taxSetting['default_tax_id'] = $fresh->id;
-                Setting::setValue('tax', $taxSetting);
-            }
-
-            return $fresh;
-        });
-
-        $payload = $newTax->fresh()->toArray();
+        $payload = $effective->fresh()->toArray();
         $payload['versioned'] = true;
         $payload['versioned_from'] = $tax->id;
 

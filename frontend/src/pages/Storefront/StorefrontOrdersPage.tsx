@@ -1,25 +1,36 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { Icon } from '@iconify/react'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import api from '@/lib/api'
+import { money, prettyLabel, fmtDate } from './format'
 
 interface OrderRow {
   id: number
   order_number: string
-  email: string
+  email: string | null
   status: string
   payment_status: string
+  subtotal: string
   total: string
   currency: string | null
+  channel: string | null
   placed_at: string | null
   created_at: string | null
 }
 
-const STATUS_TONES: Record<string, string> = {
+interface OrdersResponse {
+  data: OrderRow[]
+  meta: { page: number; total: number; per_page: number; allowed_transitions: Record<string, string[]> }
+}
+
+const STATUS_TONE: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-800',
   paid: 'bg-blue-100 text-blue-800',
   processing: 'bg-indigo-100 text-indigo-800',
@@ -29,135 +40,145 @@ const STATUS_TONES: Record<string, string> = {
   cancelled: 'bg-neutral-200 text-neutral-700',
   refunded: 'bg-rose-100 text-rose-800',
 }
+const PAYMENT_TONE: Record<string, string> = {
+  pending_payment: 'bg-amber-100 text-amber-800',
+  paid: 'bg-green-100 text-green-800',
+  failed: 'bg-rose-100 text-rose-800',
+  partially_refunded: 'bg-orange-100 text-orange-800',
+  refunded: 'bg-rose-100 text-rose-800',
+}
+
+const ORDER_STATUSES = ['pending', 'paid', 'processing', 'shipped', 'delivered', 'completed', 'cancelled', 'refunded']
+const PAYMENT_STATUSES = ['pending_payment', 'paid', 'failed', 'partially_refunded', 'refunded']
 
 export function StorefrontOrdersPage() {
-  const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [page, setPage] = useState(1)
-  const [status, setStatus] = useState('')
+  const [status, setStatus] = useState('all')
+  const [paymentStatus, setPaymentStatus] = useState('all')
+  const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['storefront-orders', page, status, search],
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['storefront-orders', page, status, paymentStatus, search],
     queryFn: async () => {
       const params: Record<string, string | number> = { page, per_page: 20 }
-      if (status) params.status = status
+      if (status !== 'all') params.status = status
+      if (paymentStatus !== 'all') params.payment_status = paymentStatus
       if (search) params.search = search
       const { data: resp } = await api.get('/admin/storefront/orders', { params })
-      return resp as { data: OrderRow[]; meta: { page: number; total: number; allowed_transitions: Record<string, string[]> } }
+      return resp as OrdersResponse
     },
   })
 
-  const transition = useMutation({
-    mutationFn: async ({ id, to }: { id: number; to: string }) => {
-      const { data: resp } = await api.post(`/admin/storefront/orders/${id}/status`, { status: to })
-      return resp
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['storefront-orders'] }),
-    onError: (e: unknown) => {
-      const message = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
-      window.alert(message ?? 'That transition was rejected.')
-    },
-  })
-
-  if (isLoading) {
-    return (
-      <div className="flex h-[50vh] items-center justify-center">
-        <Icon icon="solar:loading-bold-duotone" className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
-
-  const orders = data?.data ?? []
-  const allowed = data?.meta?.allowed_transitions ?? {}
-  const total = data?.meta?.total ?? 0
-  const pages = Math.max(1, Math.ceil(total / 20))
+  const rows = data?.data ?? []
+  const total = data?.meta.total ?? 0
+  const perPage = data?.meta.per_page ?? 20
+  const lastPage = Math.max(1, Math.ceil(total / perPage))
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-3xl font-bold">Storefront Orders</h1>
-        <p className="text-muted-foreground">Status changes follow the shared order state machine — invalid moves are rejected.</p>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Orders</h1>
+          <p className="text-muted-foreground">Storefront orders — payments, fulfilment, refunds and the invoice they posted to.</p>
+        </div>
       </div>
 
       <Card>
-        <CardContent className="flex flex-wrap items-center gap-3 pt-6">
-          <Input
-            className="w-64"
-            placeholder="Search order number or email…"
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1) }}
-          />
-          <select
-            className="rounded-md border border-input bg-transparent px-3 py-2 text-sm"
-            value={status}
-            onChange={(e) => { setStatus(e.target.value); setPage(1) }}
-          >
-            <option value="">All statuses</option>
-            {Object.keys(STATUS_TONES).map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-          <span className="ml-auto text-sm text-muted-foreground">{total} orders</span>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="pt-6">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left">
-                <th className="py-2 pr-4 font-medium">Order</th>
-                <th className="py-2 pr-4 font-medium">Customer</th>
-                <th className="py-2 pr-4 font-medium">Status</th>
-                <th className="py-2 pr-4 font-medium">Payment</th>
-                <th className="py-2 pr-4 font-medium">Total</th>
-                <th className="py-2 pr-4 font-medium">Placed</th>
-                <th className="py-2 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.length === 0 && (
-                <tr><td colSpan={7} className="py-6 text-center text-muted-foreground">No orders match.</td></tr>
-              )}
-              {orders.map((o) => (
-                <tr key={o.id} className="border-b">
-                  <td className="py-2 pr-4">
-                    <Link className="font-medium hover:underline" to={`/storefront/orders/${o.id}`}>{o.order_number}</Link>
-                  </td>
-                  <td className="py-2 pr-4">{o.email}</td>
-                  <td className="py-2 pr-4">
-                    <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_TONES[o.status] ?? 'bg-muted'}`}>{o.status}</span>
-                  </td>
-                  <td className="py-2 pr-4 text-xs">{o.payment_status}</td>
-                  <td className="py-2 pr-4 whitespace-nowrap">{o.total} {o.currency}</td>
-                  <td className="py-2 pr-4 whitespace-nowrap text-xs">{(o.placed_at ?? o.created_at ?? '').slice(0, 10)}</td>
-                  <td className="py-2">
-                    <div className="flex flex-wrap gap-1">
-                      {(allowed[o.status] ?? []).map((next) => (
-                        <Button
-                          key={next}
-                          size="sm"
-                          variant="outline"
-                          disabled={transition.isPending}
-                          onClick={() => transition.mutate({ id: o.id, to: next })}
-                        >
-                          → {next}
-                        </Button>
-                      ))}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <div className="mt-4 flex items-center gap-2">
-            <Button size="sm" variant="ghost" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
-            <span className="text-sm text-muted-foreground">Page {page} / {pages}</span>
-            <Button size="sm" variant="ghost" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>Next</Button>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Filters</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="w-48">
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">Status</label>
+              <Select value={status} onValueChange={(v) => { setStatus(v); setPage(1) }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  {ORDER_STATUSES.map((s) => <SelectItem key={s} value={s}>{prettyLabel(s)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="w-48">
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">Payment</label>
+              <Select value={paymentStatus} onValueChange={(v) => { setPaymentStatus(v); setPage(1) }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All payments</SelectItem>
+                  {PAYMENT_STATUSES.map((s) => <SelectItem key={s} value={s}>{prettyLabel(s)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex-1 min-w-[220px]">
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">Search</label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Order number or email"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { setSearch(searchInput); setPage(1) } }}
+                />
+                <Button variant="outline" onClick={() => { setSearch(searchInput); setPage(1) }}>
+                  <Icon icon="solar:magnifer-linear" className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="flex h-48 items-center justify-center text-muted-foreground">
+              <Icon icon="solar:loading-bold-duotone" className="h-6 w-6 animate-spin" />
+            </div>
+          ) : isError ? (
+            <div className="p-6 text-sm text-destructive">Could not load orders.</div>
+          ) : rows.length === 0 ? (
+            <div className="p-10 text-center text-muted-foreground">
+              <Icon icon="solar:bag-cross-line-duotone" className="mx-auto mb-2 h-8 w-8" />
+              No orders match these filters.
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Order</TableHead>
+                  <TableHead>Placed</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Payment</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((o) => (
+                  <TableRow key={o.id} className="cursor-pointer" onClick={() => navigate(`/storefront/orders/${o.id}`)}>
+                    <TableCell className="font-medium">{o.order_number}</TableCell>
+                    <TableCell className="text-muted-foreground">{fmtDate(o.placed_at ?? o.created_at)}</TableCell>
+                    <TableCell>{o.email ?? '—'}</TableCell>
+                    <TableCell><Badge className={STATUS_TONE[o.status] ?? ''} variant="secondary">{prettyLabel(o.status)}</Badge></TableCell>
+                    <TableCell><Badge className={PAYMENT_TONE[o.payment_status] ?? ''} variant="secondary">{prettyLabel(o.payment_status)}</Badge></TableCell>
+                    <TableCell className="text-right font-medium">{money(o.total, o.currency)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <span>{total} order{total === 1 ? '' : 's'}</span>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
+          <span>Page {page} of {lastPage}</span>
+          <Button variant="outline" size="sm" disabled={page >= lastPage} onClick={() => setPage((p) => p + 1)}>Next</Button>
+        </div>
+      </div>
     </div>
   )
 }

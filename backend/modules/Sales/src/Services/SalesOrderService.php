@@ -422,6 +422,11 @@ class SalesOrderService
             //   DELIVERED_QTY: max(delivered - invoiced, 0)
             $lines = [];
             $totalInvoiceableQty = 0;
+            // #291: pro-rate the order's header discount by the invoiced share
+            // (net, before tax) so a partial invoice carries its fair slice and
+            // a full invoice carries all of it.
+            $orderNet = 0.0;
+            $invoicedNet = 0.0;
 
             foreach ($order->lines as $line) {
                 if (in_array($line->line_type ?? 'product', ['note', 'section'], true)) {
@@ -443,6 +448,10 @@ class SalesOrderService
                 $delivered = (float) $line->quantity_delivered;
                 $invoiced = (float) $line->quantity_invoiced;
 
+                // Net of the line's own discount, before tax and before the
+                // header discount — the base the header discount is shared over.
+                $orderNet += $ordered * (float) $line->unit_price - (float) $line->discount_amount;
+
                 $invoiceableQty = $policy === 'delivered_qty'
                     ? max($delivered - $invoiced, 0)
                     : max($ordered - $invoiced, 0);
@@ -452,6 +461,8 @@ class SalesOrderService
                 }
 
                 $totalInvoiceableQty += $invoiceableQty;
+                $lineDiscountShare = $ordered > 0 ? (float) $line->discount_amount * ($invoiceableQty / $ordered) : 0.0;
+                $invoicedNet += $invoiceableQty * (float) $line->unit_price - $lineDiscountShare;
 
                 [$invoiceQuantity, $invoiceUnitPrice, $description, $invoiceBaseUnitPrice] = $this->normalizeInvoiceLineWithQty(
                     $line,
@@ -488,6 +499,15 @@ class SalesOrderService
             }
 
             $invoiceData['lines'] = $lines;
+
+            // #291: attach the header discount for this invoice — the full
+            // amount for a full invoice, otherwise its share of the invoiced
+            // net. Invoice::calculateTotals then applies it before tax.
+            $orderDiscount = (float) ($order->discount_amount ?? 0);
+            if ($orderDiscount > 0 && $orderNet > 0) {
+                $ratio = min(max($invoicedNet / $orderNet, 0), 1);
+                $invoiceData['discount_amount'] = round($orderDiscount * $ratio, 2);
+            }
 
             // Merge overrides into creation data so the Invoice creating boot hook
             // respects imported values (especially invoice_number) instead of auto-generating.

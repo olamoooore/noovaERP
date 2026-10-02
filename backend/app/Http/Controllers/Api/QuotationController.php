@@ -643,6 +643,10 @@ class QuotationController extends Controller
                 // chain (SO → DO → invoice) stays traceable from any of them.
                 'customer_reference' => $quotation->customer_reference,
                 'internal_reference' => $quotation->internal_reference,
+                // #291: the header discount is part of the accepted price — it
+                // must travel onto the Sales Order (and from there the invoice),
+                // otherwise a quote accepted at 990 was ordered/billed at 1,100.
+                'discount_amount' => (float) ($quotation->discount_amount ?? 0),
                 'lines' => $salesLines,
                 'warehouse_id' => $warehouseId,
                 // FR-5.5: document currency + FX snapshot propagate verbatim.
@@ -858,8 +862,12 @@ class QuotationController extends Controller
             return response()->json(['message' => 'Only draft, sent or confirmed quotations can be delivered'], 403);
         }
 
-        // Same as invoicing: converting releases the quotation when needed.
-        if ($quotation->status !== 'confirmed') {
+        // Decision (#293): converting auto-releases the quotation — a draft/sent
+        // quote can be delivered (and the DO sent for approval) before the quote
+        // is completed. Release whenever there is no linked Sales Order yet, so
+        // the delivery order is always created FROM a real order and quantities
+        // reconcile (no unlinked, pre-delivered, repeatable DO).
+        if (! $quotation->sales_order_id) {
             if ($approval = $this->approvalGate->requestIfNeeded(
                 $quotation,
                 SalesApprovalGate::REQUEST_TYPE_QUOTATION,
@@ -892,34 +900,50 @@ class QuotationController extends Controller
             ], 202);
         }
 
-        $lines = $quotation->lines
-            ->map(fn ($line) => [
-                'line_type' => $line->line_type ?? 'product',
-                'sequence' => $line->sequence ?? 0,
-                'product_id' => $line->product_id,
-                'model_number' => $line->model_number,
-                'description' => $line->description,
-                'product_notes' => $line->product_notes,
-                'quantity' => (float) $line->quantity,
-                'quantity_delivered' => (float) $line->quantity,
-                'unit_price' => (float) $line->unit_price,
-            ])
-            ->values()
-            ->all();
-
-        if (empty($lines)) {
-            return response()->json(['message' => 'Quotation has no lines to deliver'], 422);
+        $salesOrder = $quotation->salesOrder;
+        if (! $salesOrder) {
+            return response()->json(['message' => 'Quotation has no linked Sales Order'], 422);
         }
+        $salesOrder->loadMissing('lines');
 
-        $warehouseId = Warehouse::getDefault()?->id ?? Warehouse::query()->value('id');
+        $warehouseId = $salesOrder->warehouse_id ?? Warehouse::getDefault()?->id ?? Warehouse::query()->value('id');
         if (! $warehouseId) {
             return response()->json(['message' => 'No warehouse configured. Create a warehouse before delivering.'], 422);
         }
 
+        // #293: deliver the REMAINING quantity per order line — net of what is
+        // already delivered (reconciled on a completed DO) AND what is already
+        // planned on an OPEN (draft/confirmed) DO. This is the repeat guard:
+        // a second click while an open DO still covers the remainder is refused
+        // instead of shipping the whole order again.
+        $plannedOpen = $this->plannedQuantitiesOnOpenDeliveryOrders((int) $salesOrder->id);
+        $doLines = [];
+        $hasDeliverable = false;
+        foreach ($salesOrder->lines as $soLine) {
+            $type = $soLine->line_type ?? 'product';
+            if ($type !== 'product') {
+                $doLines[] = ['sales_order_line_id' => $soLine->id, 'line_type' => $type];
+
+                continue;
+            }
+            $remaining = (float) $soLine->quantity
+                - (float) $soLine->quantity_delivered
+                - (float) $soLine->quantity_cancelled
+                - (float) ($plannedOpen[$soLine->id] ?? 0);
+            if ($remaining > 0.0001) {
+                $doLines[] = ['sales_order_line_id' => $soLine->id, 'quantity_delivered' => $remaining];
+                $hasDeliverable = true;
+            }
+        }
+
+        if (! $hasDeliverable) {
+            return response()->json([
+                'message' => 'An open delivery order already covers the remaining quantity for this quotation.',
+            ], 422);
+        }
+
         try {
-            $deliveryOrder = $this->deliveryService->createStandaloneDeliveryOrder([
-                'customer_id' => $quotation->customer_id,
-                'quotation_id' => $quotation->id,
+            $deliveryOrder = $this->deliveryService->createDeliveryOrder($salesOrder, [
                 'warehouse_id' => $warehouseId,
                 'delivery_date' => now()->toDateString(),
                 'po_number' => $quotation->customer_reference,
@@ -927,10 +951,8 @@ class QuotationController extends Controller
                 'internal_reference' => $quotation->internal_reference,
                 'attention_to' => $quotation->attention_to,
                 'payment_terms' => $quotation->credit_terms,
-                'source' => 'quotation',
-                // Goods may not be received yet — never block the conversion.
-                'allow_backorder' => true,
-                'lines' => $lines,
+                'quotation_id' => $quotation->id,
+                'lines' => $doLines,
             ]);
 
             $this->deliveryService->logChatter(
@@ -960,6 +982,37 @@ class QuotationController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * #293 repeat guard: quantity already planned, per Sales Order line, on
+     * OPEN delivery orders (draft/confirmed) — i.e. created but not yet
+     * completed (completion is what reconciles into the order line's
+     * quantity_delivered) and not cancelled/rejected/reversed. Used so a second
+     * quote→DO click doesn't ship the whole order again.
+     *
+     * @return array<int, float> keyed by sales_order_line_id
+     */
+    private function plannedQuantitiesOnOpenDeliveryOrders(int $salesOrderId): array
+    {
+        $planned = [];
+
+        $openDeliveryOrders = \Modules\Sales\Models\DeliveryOrder::query()
+            ->where('sales_order_id', $salesOrderId)
+            ->whereIn('status', ['draft', 'confirmed'])
+            ->with('lines:id,delivery_order_id,sales_order_line_id,quantity_delivered')
+            ->get();
+
+        foreach ($openDeliveryOrders as $deliveryOrder) {
+            foreach ($deliveryOrder->lines as $line) {
+                if ($line->sales_order_line_id) {
+                    $planned[$line->sales_order_line_id] = ($planned[$line->sales_order_line_id] ?? 0)
+                        + (float) $line->quantity_delivered;
+                }
+            }
+        }
+
+        return $planned;
     }
 
     /**

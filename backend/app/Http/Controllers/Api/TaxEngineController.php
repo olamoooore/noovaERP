@@ -27,7 +27,7 @@ class TaxEngineController extends Controller
             'data' => [
                 'jurisdiction' => $jurisdiction,
                 'date' => $date,
-                'country_defaults' => $this->engine->countryDefaults($jurisdiction),
+                'country_defaults' => $this->engine->countryDefaults($jurisdiction, $date),
                 'configured_rules' => Tax::query()
                     ->where('is_active', true)
                     ->where(function ($q) use ($jurisdiction) {
@@ -61,6 +61,37 @@ class TaxEngineController extends Controller
     }
 
     /**
+     * #746 T13 AC3: products pinned to a tax rule that can no longer resolve
+     * (expired / inactive / deleted / missing), with successor status.
+     */
+    public function expiredRuleProducts(): JsonResponse
+    {
+        return response()->json(['data' => $this->engine->expiredRuleProducts()]);
+    }
+
+    /**
+     * #739 T6: apply the pack changes the user picked. Each rule goes through
+     * the platform's own versioning path, so a rule a posted document already
+     * used is end-dated and replaced rather than rewritten, and a
+     * tenant-edited rule is skipped rather than silently overwritten.
+     */
+    public function upgradePack(Request $request, string $jurisdiction): JsonResponse
+    {
+        $validated = $request->validate([
+            'apply' => 'required|array|min:1',
+            'apply.*' => 'required|string|max:50',
+        ]);
+
+        try {
+            return response()->json([
+                'data' => $this->packs->upgrade($jurisdiction, $validated['apply'], $request),
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+    }
+
+    /**
      * MRD R5.3/R6.2: rolling-12-month taxable value vs registration
      * thresholds (monitoring flag only - registration is a human call).
      */
@@ -69,11 +100,13 @@ class TaxEngineController extends Controller
         $validated = $request->validate([
             'jurisdiction' => 'nullable|string|size:2',
             'entity_id' => 'nullable|integer|exists:legal_entities,id',
+            'forecast_next_12m' => 'nullable|numeric|min:0',
         ]);
 
         return response()->json(['data' => $this->packs->thresholds(
             isset($validated['jurisdiction']) ? strtoupper($validated['jurisdiction']) : null,
             isset($validated['entity_id']) ? (int) $validated['entity_id'] : null,
+            isset($validated['forecast_next_12m']) ? (float) $validated['forecast_next_12m'] : null,
         )]);
     }
 

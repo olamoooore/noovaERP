@@ -24,41 +24,10 @@ use Illuminate\Support\Str;
  */
 class TaxDeterminationService
 {
-    public function __construct(private readonly TaxEngineService $engine) {}
-
-    /**
-     * Country → jurisdiction code mapping.
-     */
-    private const COUNTRY_JURISDICTION = [
-        'SG' => 'SG',
-        'MY' => 'MY',
-        'AU' => 'AU',
-        'NZ' => 'NZ',
-        'GB' => 'GB',
-        'US' => 'US',
-        'ID' => 'ID',
-        'TH' => 'TH',
-        'PH' => 'PH',
-        'VN' => 'VN',
-        'IN' => 'IN',
-    ];
-
-    /**
-     * Country → default tax regime mapping.
-     */
-    private const COUNTRY_REGIME = [
-        'SG' => 'GST',
-        'MY' => 'SST',
-        'AU' => 'GST',
-        'NZ' => 'GST',
-        'GB' => 'VAT',
-        'US' => 'SALES_TAX',
-        'ID' => 'VAT',
-        'TH' => 'VAT',
-        'PH' => 'VAT',
-        'VN' => 'VAT',
-        'IN' => 'GST',
-    ];
+    public function __construct(
+        private readonly TaxEngineService $engine,
+        private readonly TaxPackRegistry $packs,
+    ) {}
 
     /**
      * Compute and persist a TaxDeterminationResult for the given invoice.
@@ -75,8 +44,43 @@ class TaxDeterminationService
     ): array {
         $invoice->loadMissing('lines.product', 'customer');
 
+        $transactionDate = $invoice->invoice_date instanceof \DateTimeInterface
+            ? $invoice->invoice_date->toDateString()
+            : (string) $invoice->invoice_date;
+
+        // #740 T4: the regime comes from the DOCUMENT's legal entity's active
+        // tax registration — jurisdiction, regime and cycle — never from the
+        // buyer's country or a tenant-wide fallback.
+        $legalEntityId = $this->legalEntityForInvoice($invoice);
+        $registration = $legalEntityId !== null
+            ? $this->activeRegistration($legalEntityId, $transactionDate)
+            : null;
+        $overrideJurisdiction = $overrides['jurisdiction'] ?? null;
+
+        // AC2: an entity without an active registration charges no tax — a
+        // clear warning status, never a fallback country. An explicit manual
+        // jurisdiction override is a human decision and still wins (#277).
+        if ($legalEntityId !== null && $registration === null && $overrideJurisdiction === null) {
+            [$resultId, $resultVersion] = $this->persistResult(
+                'invoice',
+                (int) $invoice->id,
+                '',
+                '',
+                [],
+                $transactionDate,
+                'NO_REGISTRATION',
+            );
+            $result = $this->buildResult($resultId, $resultVersion, '', '', [], []);
+            $result['result_status'] = 'NO_REGISTRATION';
+            $result['warning'] = "No active tax registration for legal entity {$legalEntityId} on {$transactionDate}; no tax was charged.";
+
+            return $result;
+        }
+
         // #277 F5: manual overrides are guarded + recorded (engine vs applied).
-        $engineJurisdiction = $this->resolveJurisdiction($invoice);
+        $engineJurisdiction = ($registration !== null && $registration->jurisdiction !== null && $registration->jurisdiction !== '')
+            ? strtoupper((string) $registration->jurisdiction)
+            : $this->resolveJurisdiction($invoice);
 
         if ($overrides !== null && $overrides !== []) {
             app(\App\Services\TaxOverrideService::class)->guardAndRecordDocumentOverride(
@@ -84,7 +88,7 @@ class TaxDeterminationService
                 (int) $invoice->id,
                 [
                     'jurisdiction' => $engineJurisdiction,
-                    'tax_regime' => self::COUNTRY_REGIME[$engineJurisdiction] ?? 'GST',
+                    'tax_regime' => $this->packs->regime($engineJurisdiction),
                 ],
                 $overrides,
                 round((float) $invoice->tax_amount, 2),
@@ -92,30 +96,52 @@ class TaxDeterminationService
             );
         }
 
-        $jurisdiction = $overrides['jurisdiction']
+        $jurisdiction = $overrideJurisdiction
             ?? $engineJurisdiction;
         $regime = $overrides['tax_regime']
-            ?? self::COUNTRY_REGIME[$jurisdiction] ?? 'GST';
-        $transactionDate = $invoice->invoice_date instanceof \DateTimeInterface
-            ? $invoice->invoice_date->toDateString()
-            : (string) $invoice->invoice_date;
+            ?? (($registration !== null && $registration->regime !== null && $registration->regime !== '')
+                ? strtoupper((string) $registration->regime)
+                : null)
+            ?? $this->packs->regime($jurisdiction);
+
+        // AC3: the buyer's location decides the TREATMENT (local vs export),
+        // not the regime. A foreign buyer means no local tax is charged;
+        // the regime identity stays the seller's registration. (#307 owns
+        // the full treatment matrix incl. reverse charge.)
+        $customerJurisdiction = $this->jurisdictionForCustomer($invoice->customer_id);
+        $isExport = $registration !== null
+            && $overrideJurisdiction === null
+            && $customerJurisdiction !== null
+            && strtoupper($customerJurisdiction) !== strtoupper($jurisdiction);
 
         $defaultTaxId = ! empty(\App\Models\Setting::getValue('tax', [])['default_tax_id']);
 
         // Build per-line tax determinations.
         $taxLines = [];
 
+        // #746 T13: any line whose product rule expired without a successor
+        // blocks the determination (and posting, via TaxGate) instead of
+        // silently charging a fallback rate.
+        $expiredRuleWarnings = [];
+
         foreach ($invoice->lines as $line) {
             $bookedRate = (float) ($line->tax_rate ?? 0);
-            $resolved = $line->product
+            $resolved = ($line->product && ! $isExport)
                 ? $this->engine->resolve(
                     $line->product,
                     $jurisdiction,
                     'output',
-                    ($line->product->type ?? null) === 'service' ? 'service' : null,
+                    app(\App\Services\TaxCountryPackService::class)->lineTaxType(
+                        $jurisdiction,
+                        $line->product->type ?? null,
+                    ),
                     $transactionDate,
                 )
                 : null;
+            if ($resolved !== null && ! empty($resolved['blocked'])) {
+                $expiredRuleWarnings[] = (string) ($resolved['warning'] ?? 'TAX_RULE_EXPIRED_NO_SUCCESSOR');
+            }
+
             // A non-zero line rate is a historical/document override: the
             // booked amounts stay authoritative and only identity is resolved.
             $usesLocalizedDefault = $line->product && (
@@ -186,9 +212,18 @@ class TaxDeterminationService
 
         $taxLines = $this->scaleRowsToBooked($taxLines, round((float) $invoice->tax_amount, 2));
         $aggregated = $this->aggregateTaxLines($taxLines);
-        [$id, $version] = $this->persistResult('invoice', (int) $invoice->id, $jurisdiction, $regime, $taxLines, $transactionDate);
 
-        return $this->buildResult($id, $version, $jurisdiction, $regime, $taxLines, $aggregated);
+        $resultStatus = $expiredRuleWarnings !== [] ? 'TAX_RULE_EXPIRED' : 'DETERMINED';
+        [$id, $version] = $this->persistResult('invoice', (int) $invoice->id, $jurisdiction, $regime, $taxLines, $transactionDate, $resultStatus);
+
+        $result = $this->buildResult($id, $version, $jurisdiction, $regime, $taxLines, $aggregated);
+        $result['result_status'] = $resultStatus;
+
+        if ($expiredRuleWarnings !== []) {
+            $result['warnings'] = $expiredRuleWarnings;
+        }
+
+        return $result;
     }
 
     /**
@@ -211,7 +246,7 @@ class TaxDeterminationService
                 (int) $bill->id,
                 [
                     'jurisdiction' => $billEngineJurisdiction,
-                    'tax_regime' => self::COUNTRY_REGIME[$billEngineJurisdiction] ?? 'GST',
+                    'tax_regime' => $this->packs->regime($billEngineJurisdiction),
                 ],
                 $overrides,
                 round((float) $bill->tax_amount, 2),
@@ -220,7 +255,7 @@ class TaxDeterminationService
         }
 
         $jurisdiction = $overrides['jurisdiction'] ?? $billEngineJurisdiction;
-        $regime = $overrides['tax_regime'] ?? self::COUNTRY_REGIME[$jurisdiction] ?? 'GST';
+        $regime = $overrides['tax_regime'] ?? $this->packs->regime($jurisdiction);
         $date = $bill->bill_date?->toDateString() ?? now()->toDateString();
         $taxLines = [];
 
@@ -298,7 +333,7 @@ class TaxDeterminationService
             ?? $this->jurisdictionForCustomer($customerId)
             ?? $this->jurisdictionForVendor($vendorId)
             ?? $this->engine->tenantJurisdiction());
-        $regime = self::COUNTRY_REGIME[$jurisdiction] ?? 'GST';
+        $regime = $this->packs->regime($jurisdiction);
 
         $taxLines = [];
 
@@ -566,13 +601,14 @@ class TaxDeterminationService
         string $regime,
         array $taxLines,
         string $transactionDate,
+        string $resultStatus = 'DETERMINED',
     ): array {
         $inputHash = hash('sha256', json_encode([$jurisdiction, $regime, $transactionDate, $taxLines]));
         $entityUuid = $this->resolveEntityUuid();
         $determinedBy = $this->resolveActorUuid();
         $ruleRefs = $this->buildRuleRefs($taxLines);
 
-        return DB::transaction(function () use ($transactionType, $sourceId, $jurisdiction, $taxLines, $transactionDate, $inputHash, $entityUuid, $determinedBy, $ruleRefs) {
+        return DB::transaction(function () use ($transactionType, $sourceId, $jurisdiction, $taxLines, $transactionDate, $inputHash, $entityUuid, $determinedBy, $ruleRefs, $resultStatus) {
             $determinationId = (string) Str::uuid();
             $resultVersion = 1;
 
@@ -606,7 +642,7 @@ class TaxDeterminationService
                 'input_hash' => $inputHash,
                 'rounding_method' => 'half_up',
                 'calculation_basis' => 'per_line',
-                'result_status' => 'DETERMINED',
+                'result_status' => $resultStatus,
                 'determined_at' => now(),
                 'determined_by' => $determinedBy,
                 'source_record_type' => $transactionType,
@@ -735,6 +771,48 @@ class TaxDeterminationService
     }
 
     /**
+     * #740 T4: the document's legal entity — the sales order's entity when
+     * the invoice was created from one, otherwise the request's entity
+     * context (ResolveEntityContext / X-Entity-Id).
+     */
+    private function legalEntityForInvoice(Invoice $invoice): ?int
+    {
+        if ($invoice->sales_order_id) {
+            $fromOrder = \Modules\Sales\Models\SalesOrder::query()
+                ->whereKey($invoice->sales_order_id)
+                ->value('legal_entity_id');
+
+            if ($fromOrder) {
+                return (int) $fromOrder;
+            }
+        }
+
+        $attribute = request()->attributes->get('legal_entity_id');
+
+        return $attribute !== null ? (int) $attribute : null;
+    }
+
+    /**
+     * #740 T4: the entity's tax registration active on the transaction date
+     * (status active, effective window, jurisdiction present). Latest
+     * effective_from wins when several match.
+     */
+    private function activeRegistration(int $legalEntityId, string $date): ?\App\Models\TaxRegistration
+    {
+        return \App\Models\TaxRegistration::query()
+            ->where('legal_entity_id', $legalEntityId)
+            ->where('status', 'active')
+            ->whereNotNull('jurisdiction')
+            ->where('jurisdiction', '!=', '')
+            ->where('effective_from', '<=', $date)
+            ->where(function ($query) use ($date) {
+                $query->whereNull('effective_to')->orWhere('effective_to', '>=', $date);
+            })
+            ->orderByDesc('effective_from')
+            ->first();
+    }
+
+    /**
      * Resolve the jurisdiction from the invoice's customer billing address.
      */
     private function resolveJurisdiction(Invoice $invoice): string
@@ -763,7 +841,7 @@ class TaxDeterminationService
         if ($billing && ! empty($billing->country)) {
             $code = strtoupper(trim($billing->country));
 
-            return self::COUNTRY_JURISDICTION[$code] ?? $code;
+            return $this->packs->jurisdictionForCountry($code);
         }
 
         return null;
@@ -786,7 +864,7 @@ class TaxDeterminationService
             return null;
         }
 
-        return self::COUNTRY_JURISDICTION[$code] ?? $code;
+        return $this->packs->jurisdictionForCountry($code);
     }
 
     /**
