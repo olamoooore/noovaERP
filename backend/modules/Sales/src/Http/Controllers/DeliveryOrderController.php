@@ -11,6 +11,8 @@ use App\Platform\BulkDelete\BulkDeleteService;
 use App\Platform\Import\ImportService;
 use App\Services\AccountingOriginInvoiceService;
 use App\Services\CaseImportService;
+use App\Services\CustomerWideSearchService;
+use App\Services\DocumentWideSearchService;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
@@ -43,9 +45,19 @@ class DeliveryOrderController extends Controller
             return response()->json(['data' => $ids, 'total' => $ids->count()]);
         }
 
-        $query->with(['customer', 'salesOrder', 'lines.product', 'invoice', 'quotation']);
+        $search = $request->filled('search') ? trim((string) $request->search) : '';
+
+        $with = ['customer', 'salesOrder', 'lines.product', 'invoice', 'quotation'];
+        if ($search !== '') {
+            $with = array_merge($with, app(DocumentWideSearchService::class)->eagerLoads($this->wideSearchConfig()));
+        }
+        $query->with($with);
 
         $paginator = $query->paginate($request->per_page ?? 20);
+
+        if ($search !== '') {
+            app(DocumentWideSearchService::class)->annotate($paginator, $search, $this->wideSearchConfig());
+        }
 
         // Tag each pending order with whose attention it needs, mirroring the
         // invoice list: 'to_approve' when the current user is a configured
@@ -85,6 +97,36 @@ class DeliveryOrderController extends Controller
                 $isReviewer && ! $isSubmitter ? 'to_approve' : 'submitted'
             );
         }
+    }
+
+    /**
+     * Wide-search configuration for the delivery-order list — matches the DO's
+     * identity/header references, its customer's full surface, line contents,
+     * upstream sales-order / quotation / invoice numbers and its tags. The
+     * delivery address snapshot is a json column (::text cast before ILIKE).
+     */
+    private function wideSearchConfig(): array
+    {
+        return [
+            'columns' => [
+                'delivery_order_number', 'customer_reference', 'internal_reference',
+                'po_number', 'attention_to', 'notes',
+            ],
+            'jsonColumns' => ['delivery_address_snapshot'],
+            'party' => [
+                'relation' => 'customer',
+                'service' => CustomerWideSearchService::class,
+                'contacts' => 'customerContacts',
+                'addresses' => 'addresses',
+            ],
+            'lines' => ['relation' => 'lines', 'columns' => ['description', 'model_number', 'product_notes', 'lot_number', 'serial_number']],
+            'related' => [
+                'salesOrder' => 'sales_order_number',
+                'quotation' => 'quotation_number',
+                'invoice' => 'invoice_number',
+            ],
+            'tagAlias' => 'delivery_order',
+        ];
     }
 
     public function export(Request $request)
@@ -166,16 +208,11 @@ class DeliveryOrderController extends Controller
         }
 
         if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('delivery_order_number', 'ILIKE', "%{$search}%")
-                    ->orWhereHas('customer', function ($cq) use ($search) {
-                        $cq->where('name', 'ILIKE', "%{$search}%");
-                    })
-                    ->orWhereHas('salesOrder', function ($sq) use ($search) {
-                        $sq->where('sales_order_number', 'ILIKE', "%{$search}%");
-                    });
-            });
+            app(DocumentWideSearchService::class)->apply(
+                $query,
+                trim((string) $request->search),
+                $this->wideSearchConfig(),
+            );
         }
 
         // Filter by document tag.

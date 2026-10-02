@@ -47,6 +47,13 @@ class DocumentWideSearchService
                 $q->orWhere($column, 'ilike', $like);
             }
 
+            // JSON columns (e.g. address snapshots) need a ::text cast before
+            // ILIKE — Postgres has no ~~* operator for the json type. Column
+            // names here are developer-controlled (never user input).
+            foreach ($config['jsonColumns'] ?? [] as $column) {
+                $q->orWhereRaw($column.'::text ilike ?', [$like]);
+            }
+
             // Related party (customer / supplier) full surface.
             if (! empty($config['party']['relation']) && ! empty($config['party']['service'])) {
                 $service = app($config['party']['service']);

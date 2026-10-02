@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuthStore } from '@/store/authStore'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Badge } from '@/components/ui/badge'
@@ -66,6 +66,12 @@ export function DeliveryOrdersPage() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState('')
+  // Wide search hits the DB per term; debounce typing like the other lists do.
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchQuery(searchQuery), 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
   const [typeFilter, setTypeFilter] = useState<string>('all')
   // MRD FR-8.1: currency filter + currency sort.
   const [currencyFilter, setCurrencyFilter] = useState('all')
@@ -83,13 +89,13 @@ export function DeliveryOrdersPage() {
   const filterCurrencyRows: any[] = (filterCurrencies as any)?.data ?? filterCurrencies ?? []
 
   const { data: response, isLoading } = useQuery({
-    queryKey: ['delivery-orders', page, perPage, typeFilter, currencyFilter, sortBy, tagFilter, searchQuery],
+    queryKey: ['delivery-orders', page, perPage, typeFilter, currencyFilter, sortBy, tagFilter, debouncedSearchQuery],
     queryFn: async () => {
       const params: any = { page, per_page: perPage }
       if (typeFilter !== 'all') params.type = typeFilter
       if (currencyFilter !== 'all') params.currency_code = currencyFilter
       if (sortBy === 'currency') params.sort_by = 'currency'
-      if (searchQuery.trim()) params.search = searchQuery.trim()
+      if (debouncedSearchQuery.trim()) params.search = debouncedSearchQuery.trim()
       if (tagFilter) params.tag = tagFilter
       const res = await api.get('/sales/delivery-orders', { params })
       return res.data
@@ -106,7 +112,7 @@ export function DeliveryOrdersPage() {
 
   const selectionFilters = {
     ...(typeFilter !== 'all' ? { type: typeFilter } : {}),
-    ...(searchQuery.trim() ? { search: searchQuery.trim() } : {}),
+    ...(debouncedSearchQuery.trim() ? { search: debouncedSearchQuery.trim() } : {}),
     ...(tagFilter ? { tag: tagFilter } : {}),
   }
   const {
@@ -203,7 +209,7 @@ export function DeliveryOrdersPage() {
             filenamePrefix="delivery_orders"
             columns={DELIVERY_ORDER_EXPORT_COLUMNS}
             filters={{
-              search: searchQuery.trim() || undefined,
+              search: debouncedSearchQuery.trim() || undefined,
               type: typeFilter !== 'all' ? typeFilter : undefined,
             }}
             selectedIds={selectedIds}
@@ -260,7 +266,7 @@ export function DeliveryOrdersPage() {
                 className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
               />
               <Input
-                placeholder="Search deliveries..."
+                placeholder="Search delivery, customer, contact…"
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value); setPage(1) }}
                 className="h-8 rounded-full pl-9 pr-3 text-xs"
@@ -372,7 +378,30 @@ export function DeliveryOrdersPage() {
                           {do_.sales_order_id ? 'Linked' : 'Standalone'}
                         </Badge>
                       </TableCell>
-                      <TableCell>{do_.customer?.name || '-'}</TableCell>
+                      <TableCell>
+                        <div>{do_.customer?.name || '-'}</div>
+                        {/* Wide search can match a contact/address/line/tag on the DO's customer. */}
+                        {(do_.matched_contacts?.length ?? 0) > 0 && (
+                          <div className="truncate text-xs text-primary" title={do_.matched_contacts.join(', ')}>
+                            Contact: {do_.matched_contacts.join(', ')}
+                          </div>
+                        )}
+                        {(do_.matched_tags?.length ?? 0) > 0 && (
+                          <div className="truncate text-xs text-amber-600" title={do_.matched_tags.join(', ')}>
+                            Tag: {do_.matched_tags.join(', ')}
+                          </div>
+                        )}
+                        {(do_.matched_lines?.length ?? 0) > 0 && (
+                          <div className="truncate text-xs text-muted-foreground" title={do_.matched_lines.join(' · ')}>
+                            Line: {do_.matched_lines.join(' · ')}
+                          </div>
+                        )}
+                        {(do_.matched_addresses?.length ?? 0) > 0 && (
+                          <div className="truncate text-xs text-muted-foreground" title={do_.matched_addresses.join(' · ')}>
+                            Address: {do_.matched_addresses.join(' · ')}
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell>{do_.delivery_date ? formatDate(do_.delivery_date) : '-'}</TableCell>
                       <TableCell>{formatDate(do_.created_at || do_.delivery_date)}</TableCell>
                       <TableCell>{do_.lines?.length || 0}</TableCell>
