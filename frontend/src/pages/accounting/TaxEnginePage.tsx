@@ -34,6 +34,13 @@ import {
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { SOURCE_LABELS } from '@/lib/taxDisplay';
+import {
+  packChangeRows,
+  packStatusChip,
+  selectableCodes,
+  formatPackValue,
+  type PackInfo,
+} from '@/lib/taxPacks';
 import { TreatmentBadge } from '@/components/tax/TaxDisplay';
 import { useTaxConfig, useUpdateSettings } from '@/hooks/queries/useSettings';
 import api from '@/lib/api';
@@ -201,7 +208,6 @@ export default function TaxEnginePage() {
     queryFn: async () => (await api.get('/accounting/tax-engine/rules', { params: { jurisdiction } })).data,
   });
 
-  type PackInfo = { label: string; currency: string | null; activated: boolean; partial: boolean; present: string[]; missing: string[]; total_pack_rules: number };
   type ThresholdLine = { key: string; label: string; amount: number; currency: string; note: string; trailing_value: number; percent_of_threshold: number | null; monitoring_flag: boolean };
 
   const { data: expenseAccounts } = useQuery<{ data: { id: number; code: string; name: string }[] }>({
@@ -239,6 +245,28 @@ export default function TaxEnginePage() {
     },
     onError: () => toast({ title: 'Could not activate pack', description: 'Requires settings.write permission.', variant: 'destructive' }),
   });
+  const [reviewCode, setReviewCode] = useState<string | null>(null);
+  const [selectedCodes, setSelectedCodes] = useState<Record<string, boolean>>({});
+  const upgradePack = useMutation({
+    mutationFn: async ({ j, apply }: { j: string; apply: string[] }) =>
+      (await api.post(`/accounting/tax-engine/packs/${j}/upgrade`, { apply })).data,
+    onSuccess: (data: { data?: { applied?: unknown[]; skipped?: { code: string }[] } }) => {
+      refetchPacks();
+      refetchRules();
+      const applied = data?.data?.applied?.length ?? 0;
+      const skipped = data?.data?.skipped ?? [];
+      toast({
+        title: `${applied} change${applied === 1 ? '' : 's'} applied`,
+        description: skipped.length
+          ? `${skipped.length} skipped (${skipped.map((s) => s.code).join(', ')}) — tenant-edited rules are never overwritten.`
+          : undefined,
+      });
+      setReviewCode(null);
+      setSelectedCodes({});
+    },
+    onError: () => toast({ title: 'Could not apply pack changes', description: 'Requires tax.manage permission.', variant: 'destructive' }),
+  });
+
   const addRegistration = useMutation({
     mutationFn: async () => (await api.post('/accounting/tax-registrations', {
       jurisdiction,
@@ -307,6 +335,10 @@ export default function TaxEnginePage() {
 
   const rules = rulesData?.data?.configured_rules ?? [];
   const countryDefaults = rulesData?.data?.country_defaults;
+
+  const reviewInfo = reviewCode ? packsData?.data?.[reviewCode] : undefined;
+  const reviewRows = reviewInfo ? packChangeRows(reviewInfo) : [];
+  const reviewSelectable = reviewInfo ? selectableCodes(reviewInfo) : [];
 
   return (
     <div className="space-y-6">
@@ -428,25 +460,51 @@ export default function TaxEnginePage() {
         </CardHeader>
         <CardContent className="space-y-4 p-4">
           <div className="grid gap-3 sm:grid-cols-2">
-            {Object.entries(packsData?.data ?? {}).map(([code, info]) => (
-              <div key={code} className="flex items-center justify-between gap-3 rounded-xl border p-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold">{info.label}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {info.activated ? `${info.total_pack_rules}/${info.total_pack_rules} rules active` : info.partial ? `partial — ${info.present.length}/${info.total_pack_rules} present` : 'not activated'}
-                  </p>
+            {Object.entries(packsData?.data ?? {}).map(([code, info]) => {
+              const chip = packStatusChip(info);
+              const hasChanges = (info.changed?.length ?? 0) + (info.new?.length ?? 0) + (info.removed_from_pack?.length ?? 0) + (info.tenant_modified?.length ?? 0) > 0;
+              return (
+                <div key={code} className="flex items-center justify-between gap-3 rounded-xl border p-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold">{info.label}</p>
+                      <Badge
+                        variant="outline"
+                        className={`whitespace-nowrap border-transparent text-xs ${chip.tone === 'ok' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400' : chip.tone === 'modified' ? 'bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400'}`}
+                      >
+                        {chip.label}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      v{info.version ?? 1}
+                      {info.installed_version != null ? ` · installed v${info.installed_version}` : ''} ·{' '}
+                      {info.activated ? `${info.total_pack_rules}/${info.total_pack_rules} rules active` : info.partial ? `partial — ${info.present.length}/${info.total_pack_rules} present` : 'not activated'}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                    {!info.up_to_date && hasChanges && (
+                      <HeaderActionButton
+                        size="sm"
+                        variant="outline"
+                        icon="solar:document-text-bold-duotone"
+                        onClick={() => { setReviewCode(code); setSelectedCodes({}); }}
+                      >
+                        Review changes
+                      </HeaderActionButton>
+                    )}
+                    <HeaderActionButton
+                      size="sm"
+                      variant={info.activated ? 'outline' : 'default'}
+                      icon={info.activated ? 'solar:check-circle-bold-duotone' : 'solar:download-bold-duotone'}
+                      disabled={info.activated || activatePack.isPending}
+                      onClick={() => activatePack.mutate(code)}
+                    >
+                      {info.activated ? 'Active' : 'Activate'}
+                    </HeaderActionButton>
+                  </div>
                 </div>
-                <HeaderActionButton
-                  size="sm"
-                  variant={info.activated ? 'outline' : 'default'}
-                  icon={info.activated ? 'solar:check-circle-bold-duotone' : 'solar:download-bold-duotone'}
-                  disabled={info.activated || activatePack.isPending}
-                  onClick={() => activatePack.mutate(code)}
-                >
-                  {info.activated ? 'Active' : 'Activate'}
-                </HeaderActionButton>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="space-y-2">
@@ -970,6 +1028,87 @@ export default function TaxEnginePage() {
               </HeaderActionButton>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* #747 TU1: pack review/upgrade — field-level diff from GET /packs, applied via POST /packs/{j}/upgrade */}
+      <Dialog open={reviewCode !== null} onOpenChange={(open) => { if (!open) setReviewCode(null); }}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Review {reviewCode} pack changes</DialogTitle>
+            <DialogDescription>
+              Applying a changed rule that documents already use end-dates it and creates a new version.
+              Tenant-edited rules are never overwritten and are excluded from the selection.
+            </DialogDescription>
+          </DialogHeader>
+
+          {reviewInfo && (
+            <div className="max-h-[55vh] space-y-3 overflow-y-auto">
+              {reviewRows.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No field-level changes to review.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-10">Apply</TableHead>
+                      <TableHead>Rule</TableHead>
+                      <TableHead>Field</TableHead>
+                      <TableHead>Tenant value</TableHead>
+                      <TableHead>Pack value</TableHead>
+                      <TableHead>Effect</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {reviewRows.map((row, i) => (
+                      <TableRow key={`${row.code}-${row.field}-${i}`}>
+                        <TableCell>
+                          {row.kind === 'pack' && reviewSelectable.includes(row.code) ? (
+                            <input
+                              type="checkbox"
+                              aria-label={`Apply ${row.code}`}
+                              checked={!!selectedCodes[row.code]}
+                              onChange={(e) => setSelectedCodes((prev) => ({ ...prev, [row.code]: e.target.checked }))}
+                            />
+                          ) : null}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{row.code}</TableCell>
+                        <TableCell>{row.field}</TableCell>
+                        <TableCell className={row.kind === 'tenant' ? 'font-medium text-sky-700 dark:text-sky-400' : ''}>{formatPackValue(row.from)}</TableCell>
+                        <TableCell>{formatPackValue(row.to)}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {row.kind === 'tenant' ? 'Tenant edit — not offered for upgrade' : 'End-date + new version where the rule is in use'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+              {(reviewInfo.tenant_modified ?? []).length > 0 && (
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  Tenant-edited rules are never overwritten: {(reviewInfo.tenant_modified ?? []).join(', ')}.
+                </p>
+              )}
+              {(reviewInfo.removed_from_pack ?? []).length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Rules the pack no longer ships (review manually): {(reviewInfo.removed_from_pack ?? []).join(', ')}.
+                </p>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <HeaderActionButton icon="solar:close-circle-bold-duotone" onClick={() => setReviewCode(null)}>
+              Cancel
+            </HeaderActionButton>
+            <HeaderActionButton
+              icon="solar:download-bold-duotone"
+              loading={upgradePack.isPending}
+              disabled={upgradePack.isPending || !reviewCode || reviewSelectable.filter((c) => selectedCodes[c]).length === 0}
+              onClick={() => reviewCode && upgradePack.mutate({ j: reviewCode, apply: reviewSelectable.filter((c) => selectedCodes[c]) })}
+            >
+              Apply selected
+            </HeaderActionButton>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
