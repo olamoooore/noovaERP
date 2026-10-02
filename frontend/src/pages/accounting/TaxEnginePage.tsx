@@ -41,6 +41,8 @@ import {
   formatPackValue,
   type PackInfo,
 } from '@/lib/taxPacks';
+import { buildGaugeRows, type ThresholdLine } from '@/lib/thresholdGauge';
+import { TaxThresholdGauge } from '@/components/tax/TaxThresholdGauge';
 import { TreatmentBadge } from '@/components/tax/TaxDisplay';
 import { useTaxConfig, useUpdateSettings } from '@/hooks/queries/useSettings';
 import api from '@/lib/api';
@@ -208,7 +210,6 @@ export default function TaxEnginePage() {
     queryFn: async () => (await api.get('/accounting/tax-engine/rules', { params: { jurisdiction } })).data,
   });
 
-  type ThresholdLine = { key: string; label: string; amount: number; currency: string; note: string; trailing_value: number; percent_of_threshold: number | null; monitoring_flag: boolean };
 
   const { data: expenseAccounts } = useQuery<{ data: { id: number; code: string; name: string }[] }>({
     queryKey: ['coa-expense-accounts'],
@@ -223,9 +224,13 @@ export default function TaxEnginePage() {
     queryFn: async () => (await api.get('/accounting/tax-engine/packs')).data,
   });
 
+  const [forecast, setForecast] = useState('');
+  const forecastValue = forecast.trim() === '' || !Number.isFinite(Number(forecast)) ? null : Number(forecast);
   const { data: thresholdsData } = useQuery<{ data: Record<string, { trailing_12m_taxable_value: number; thresholds: ThresholdLine[] }> }>({
-    queryKey: ['tax-engine-thresholds', jurisdiction],
-    queryFn: async () => (await api.get('/accounting/tax-engine/thresholds', { params: { jurisdiction } })).data,
+    queryKey: ['tax-engine-thresholds', jurisdiction, forecastValue],
+    queryFn: async () => (await api.get('/accounting/tax-engine/thresholds', {
+      params: { jurisdiction, ...(forecastValue != null ? { forecast_next_12m: forecastValue } : {}) },
+    })).data,
   });
 
   const { data: registrationsData, refetch: refetchRegistrations } = useQuery<{
@@ -508,20 +513,18 @@ export default function TaxEnginePage() {
           </div>
 
           <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Registration thresholds ({jurisdiction}, trailing 12 months)</p>
-            {(thresholdsData?.data?.[jurisdiction]?.thresholds ?? []).map((t) => (
-              <div key={t.key} className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3 text-sm ${t.monitoring_flag ? 'border-amber-300 bg-amber-50 dark:bg-amber-950/30' : ''}`}>
-                <div className="min-w-0">
-                  <p className="font-medium">{t.label}</p>
-                  <p className="text-xs text-muted-foreground">{t.note}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-mono tabular-nums">{Number(t.trailing_value).toLocaleString()} / {Number(t.amount).toLocaleString()} {t.currency}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {t.percent_of_threshold ?? 0}%{t.monitoring_flag ? ' — registration monitoring flagged' : ''}
-                  </p>
-                </div>
-              </div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Registration thresholds ({jurisdiction}, trailing 12 months)</p>
+              <Input
+                value={forecast}
+                onChange={(e) => setForecast(e.target.value)}
+                inputMode="decimal"
+                placeholder="Forward 12-month projection"
+                className="h-8 max-w-[16rem]"
+              />
+            </div>
+            {buildGaugeRows(thresholdsData?.data?.[jurisdiction]?.thresholds ?? [], forecastValue).map((row) => (
+              <TaxThresholdGauge key={row.key} row={row} />
             ))}
             {!thresholdsData?.data?.[jurisdiction] && (
               <p className="text-xs text-muted-foreground">No threshold definitions for {jurisdiction} — only SG and MY are localized so far.</p>
