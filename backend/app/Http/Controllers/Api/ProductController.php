@@ -262,7 +262,7 @@ class ProductController extends Controller
         $format = $validated['format'] ?? 'xlsx';
 
         return Excel::download(
-            new ProductsExport($query->orderBy('name'), $validated['columns']),
+            new ProductsExport($query->orderBy('name'), $validated['columns'], $format),
             'products_'.now()->format('Y-m-d').'.'.$format,
             $format === 'csv' ? \Maatwebsite\Excel\Excel::CSV : \Maatwebsite\Excel\Excel::XLSX
         );

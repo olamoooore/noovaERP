@@ -137,7 +137,7 @@ class QuotationController extends Controller
         $format = $validated['format'] ?? 'xlsx';
 
         return Excel::download(
-            new QuotationsExport($this->filteredQuotationQuery($request), $validated['columns']),
+            new QuotationsExport($this->filteredQuotationQuery($request), $validated['columns'], $format),
             'quotations_'.now()->format('Y-m-d').'.'.$format,
             $format === 'csv' ? \Maatwebsite\Excel\Excel::CSV : \Maatwebsite\Excel\Excel::XLSX
         );

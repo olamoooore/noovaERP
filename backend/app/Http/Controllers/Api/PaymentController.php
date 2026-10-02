@@ -152,7 +152,7 @@ class PaymentController extends Controller
         $format = $validated['format'] ?? 'xlsx';
 
         return Excel::download(
-            new PaymentsExport($query->orderByDesc('payment_date')->orderByDesc('id'), $validated['columns']),
+            new PaymentsExport($query->orderByDesc('payment_date')->orderByDesc('id'), $validated['columns'], $format),
             'payments_'.now()->format('Y-m-d').'.'.$format,
             $format === 'csv' ? \Maatwebsite\Excel\Excel::CSV : \Maatwebsite\Excel\Excel::XLSX
         );
