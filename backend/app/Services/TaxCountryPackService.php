@@ -25,10 +25,13 @@ use Illuminate\Support\Facades\DB;
 class TaxCountryPackService
 {
     /**
-     * Registration threshold monitoring (MRD R5.3 / R6.2): rolling 12-month
-     * taxable supply value from the posted tax trail vs the authority's
-     * registration thresholds. Advisory signal only — registration status is
-     * a human/legal determination.
+     * Registration threshold monitoring (MRD R5.3 / R6.2 + #737 T4): the
+     * authority's registration thresholds compared against sales-revenue
+     * turnover (posted invoices less posted credit notes, excluding exempt
+     * and out-of-scope supplies) over the last 12 COMPLETE months — forward
+     * (forecast input) checked separately. Advisory signal only; registration
+     * status is a human/legal determination. Threshold DEFINITIONS move to
+     * the pack with T10 (#743).
      */
     private const THRESHOLDS = [
         'SG' => [
@@ -141,17 +144,28 @@ class TaxCountryPackService
     }
 
     /**
+     * #737 T4: taxable value is SALES REVENUE per legal entity — posted
+     * invoices less posted credit notes, excluding exempt and out-of-scope
+     * supplies, whether or not tax was charged — over the last 12 COMPLETE
+     * months (the current partial month never counts). Backward
+     * (`monitoring_flag`) and forward (`forward_flag`, forecast input) are
+     * separate checks; the trailing value never adopts the forecast.
+     *
      * @return array<string, mixed>
      */
-    public function thresholds(?string $jurisdiction = null, ?int $legalEntityId = null): array
+    public function thresholds(?string $jurisdiction = null, ?int $legalEntityId = null, ?float $forecastNext12m = null): array
     {
         $months = [];
-        $cursor = now()->startOfMonth();
+        $cursor = now()->startOfMonth()->subMonthNoOverflow();
 
         for ($i = 0; $i < 12; $i++) {
             $months[] = $cursor->format('Y-m');
             $cursor = $cursor->subMonthNoOverflow();
         }
+
+        $window = [min($months), max($months)];
+        $start = $window[0].'-01';
+        $end = date('Y-m-t', strtotime($window[1].'-01'));
 
         $out = [];
 
@@ -160,32 +174,75 @@ class TaxCountryPackService
                 continue;
             }
 
-            $rows = DB::table('tax_transaction_details as ttd')
-                ->join('journal_entries as je', 'je.id', '=', 'ttd.journal_entry_id')
-                ->where('ttd.jurisdiction', $code)
-                ->whereIn('ttd.reporting_period', $months)
-                ->where('je.status', 'posted')
-                ->where(function ($q) {
-                    $q->whereNull('je.lifecycle_status')
-                        ->orWhereNotIn('je.lifecycle_status', ['reversed', 'voided', 'superseded']);
-                })
-                ->when($legalEntityId !== null, fn ($q) => $q->where('je.legal_entity_id', $legalEntityId))
-                ->selectRaw('coalesce(sum(ttd.taxable_amount), 0) as v')
-                ->value('v');
-
-            $trailing = round((float) ($v ?? 0), 2);
+            $trailing = $this->taxableTurnover($code, $start, $end, $legalEntityId);
 
             $out[$code] = [
                 'trailing_12m_taxable_value' => $trailing,
-                'months_window' => [min($months), max($months)],
+                'months_window' => $window,
+                'forecast_next_12m' => $forecastNext12m,
                 'thresholds' => array_map(fn (array $t) => $t + [
                     'trailing_value' => $trailing,
                     'percent_of_threshold' => $t['amount'] > 0 ? round($trailing / $t['amount'] * 100, 1) : null,
                     'monitoring_flag' => $trailing >= $t['amount'],
+                    'forward_flag' => $forecastNext12m === null ? null : $forecastNext12m >= $t['amount'],
                 ], $definitions),
             ];
         }
 
         return $out;
+    }
+
+    /**
+     * Posted sales revenue for a jurisdiction in [start, end]: invoices less
+     * posted credit notes. Untaxed invoices count (jurisdiction falls back to
+     * the tenant home jurisdiction); exempt/out-of-scope supplies and
+     * reversed/voided/superseded entries do not.
+     */
+    private function taxableTurnover(string $code, string $start, string $end, ?int $legalEntityId): float
+    {
+        $home = app(TaxEngineService::class)->tenantJurisdiction();
+
+        $scopeJurisdiction = function ($q) use ($code, $home) {
+            $q->where('inv.tax_jurisdiction', $code);
+
+            if (strtoupper($home) === $code) {
+                $q->orWhereNull('inv.tax_jurisdiction');
+            }
+        };
+
+        $scopeTreatment = function ($q) {
+            $q->whereNull('inv.tax_treatment')
+                ->orWhereNotIn('inv.tax_treatment', ['exempt', 'out_of_scope']);
+        };
+
+        $scopeEntry = function ($q) {
+            $q->where('je.status', 'posted')
+                ->where(function ($q) {
+                    $q->whereNull('je.lifecycle_status')
+                        ->orWhereNotIn('je.lifecycle_status', ['reversed', 'voided', 'superseded']);
+                });
+        };
+
+        $sales = DB::table('invoices as inv')
+            ->join('journal_entries as je', 'je.id', '=', 'inv.journal_entry_id')
+            ->whereBetween('inv.invoice_date', [$start, $end])
+            ->where($scopeJurisdiction)
+            ->where($scopeTreatment)
+            ->when($legalEntityId !== null, fn ($q) => $q->where('je.legal_entity_id', $legalEntityId))
+            ->where($scopeEntry)
+            ->sum('inv.subtotal');
+
+        $credits = DB::table('customer_credit_notes as cn')
+            ->join('invoices as inv', 'inv.id', '=', 'cn.invoice_id')
+            ->join('journal_entries as je', 'je.id', '=', 'cn.journal_entry_id')
+            ->whereNotNull('cn.posted_at')
+            ->whereBetween('cn.credit_note_date', [$start, $end])
+            ->where($scopeJurisdiction)
+            ->where($scopeTreatment)
+            ->when($legalEntityId !== null, fn ($q) => $q->where('je.legal_entity_id', $legalEntityId))
+            ->where($scopeEntry)
+            ->sum('cn.subtotal');
+
+        return round((float) $sales - (float) $credits, 2);
     }
 }

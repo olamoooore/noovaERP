@@ -69,11 +69,13 @@ class TaxEngineController extends Controller
         $validated = $request->validate([
             'jurisdiction' => 'nullable|string|size:2',
             'entity_id' => 'nullable|integer|exists:legal_entities,id',
+            'forecast_next_12m' => 'nullable|numeric|min:0',
         ]);
 
         return response()->json(['data' => $this->packs->thresholds(
             isset($validated['jurisdiction']) ? strtoupper($validated['jurisdiction']) : null,
             isset($validated['entity_id']) ? (int) $validated['entity_id'] : null,
+            isset($validated['forecast_next_12m']) ? (float) $validated['forecast_next_12m'] : null,
         )]);
     }
 
