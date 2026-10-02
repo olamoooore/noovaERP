@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Accounting;
 
 use App\Accounting\Services\ComplianceService;
+use App\Accounting\Services\EInvoiceLifecycleGuard;
 use App\Exports\ComplianceReportExport;
 use App\Http\Controllers\Controller;
 use App\Models\Accounting\ComplianceDocument;
@@ -30,6 +31,20 @@ class ComplianceController extends Controller
     {
         $this->complianceService = $complianceService;
         $this->middleware('auth:sanctum');
+    }
+
+    public function eInvoiceLifecycleMismatches(Request $request, EInvoiceLifecycleGuard $guard)
+    {
+        $documentType = $request->query('document_type', 'invoice');
+        if (! in_array($documentType, ['invoice', 'credit_note'], true)) {
+            return response()->json(['message' => 'document_type must be invoice or credit_note'], 422);
+        }
+
+        return response()->json([
+            'data' => [
+                'mismatches' => $guard->mismatches($documentType),
+            ],
+        ]);
     }
 
     private function currentTenantId(): ?string

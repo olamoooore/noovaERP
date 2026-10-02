@@ -57,6 +57,16 @@ class ComplianceService
             ]
         );
 
+        if ($this->documentAlreadyHeldByAuthority($document)) {
+            return [
+                'success' => false,
+                'document_id' => $document->id,
+                'message' => 'This invoice already has a Valid e-invoice. Cancel it at LHDN or issue a replacement; the changed invoice is not resubmitted over the existing document.',
+            ];
+        }
+
+        $this->stampOriginalComplianceReference($document, $invoice);
+
         return $this->submitComplianceDocument($document, $countryCode, $invoice);
     }
 
@@ -403,6 +413,43 @@ class ComplianceService
         ];
     }
 
+    public function isCancellationWindowOpen(ComplianceSubmission $submission): bool
+    {
+        return $this->isWithinCancellationWindow($submission);
+    }
+
+    /**
+     * A replacement is a new compliance document that points at the original
+     * where the source document records one (issue #663).
+     */
+    public function stampOriginalComplianceReference(ComplianceDocument $document, mixed $source): void
+    {
+        if ($document->original_compliance_document_id) {
+            return;
+        }
+
+        $originalId = is_object($source) ? ($source->original_document_id ?? null) : null;
+        if (! $originalId) {
+            return;
+        }
+
+        $original = ComplianceDocument::query()
+            ->where('tenant_id', $document->tenant_id ?: $this->currentTenantId())
+            ->where('document_type', 'invoice')
+            ->where('document_id', $originalId)
+            ->latest('id')
+            ->first();
+
+        if ($original) {
+            $document->update(['original_compliance_document_id' => $original->id]);
+        }
+    }
+
+    private function documentAlreadyHeldByAuthority(ComplianceDocument $document): bool
+    {
+        return in_array($document->compliance_status, ['accepted', 'valid', 'submitted'], true);
+    }
+
     private function isWithinCancellationWindow(ComplianceSubmission $submission): bool
     {
         $submittedAt = $submission->submitted_at ?? $submission->created_at;
@@ -628,6 +675,16 @@ class ComplianceService
 
         if (! $sourceDocument) {
             return ['success' => false, 'message' => "Associated {$docType} not found"];
+        }
+
+        $this->stampOriginalComplianceReference($document, $sourceDocument);
+
+        if ($this->documentAlreadyHeldByAuthority($document)) {
+            return [
+                'success' => false,
+                'document_id' => $document->id,
+                'message' => 'This document already has a Valid e-invoice and will not be resubmitted.',
+            ];
         }
 
         // Type-specific fields checked first to avoid appended accessor shadowing:
