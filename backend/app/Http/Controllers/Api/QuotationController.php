@@ -1526,10 +1526,33 @@ class QuotationController extends Controller
 
         $fromStatus = $quotation->status;
 
+        // #292: a confirmed quotation owns a LIVE Sales Order. Nulling the link
+        // without cancelling the order orphans it — re-confirming then creates a
+        // SECOND active order and the goods can be delivered/invoiced twice.
+        // Cancel the linked order through the lifecycle guards first, and refuse
+        // the reset when the order can no longer be cancelled (already invoiced).
+        if ($quotation->sales_order_id) {
+            $order = \Modules\Sales\Models\SalesOrder::find($quotation->sales_order_id);
+
+            if ($order && ! $order->isCancelled()) {
+                try {
+                    $this->salesOrderService->cancelOrder(
+                        $order,
+                        "Quotation {$quotation->quotation_number} reset to draft",
+                    );
+                } catch (\Throwable $e) {
+                    return response()->json([
+                        'message' => 'Cannot reset this quotation to draft: its linked Sales Order can no longer be cancelled. '
+                            .$e->getMessage(),
+                    ], 422);
+                }
+            }
+        }
+
         $quotation->update([
             'status' => 'draft',
-            // A cancelled Sales Order remains as audit history. Reconfirming
-            // the quotation must create and link a new active order.
+            // The Sales Order has been cancelled above and remains as audit
+            // history. Reconfirming the quotation creates and links a new order.
             'sales_order_id' => null,
         ]);
 
@@ -1557,7 +1580,10 @@ class QuotationController extends Controller
         ]);
 
         $ids = $validated['ids'];
-        $deletable = Quotation::whereIn('id', $ids)->whereIn('status', ['draft', 'sent', 'confirmed'])->get();
+        // #294: bulk delete must apply the SAME rule as single delete — draft
+        // only. Deleting sent/confirmed quotations (confirmed ones own a live
+        // Sales Order) orphaned orders and could ship/bill twice.
+        $deletable = Quotation::whereIn('id', $ids)->where('status', 'draft')->get();
         $deletedIds = [];
         $skipped = [];
 
@@ -1572,7 +1598,7 @@ class QuotationController extends Controller
 
         $notFoundIds = array_values(array_diff($ids, $deletable->pluck('id')->toArray()));
         foreach ($notFoundIds as $notFoundId) {
-            $skipped[] = ['id' => $notFoundId, 'reason' => 'Not found or not a draft/sent quotation'];
+            $skipped[] = ['id' => $notFoundId, 'reason' => 'Not found or not a draft quotation'];
         }
 
         return response()->json([
