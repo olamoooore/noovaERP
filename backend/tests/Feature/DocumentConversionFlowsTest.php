@@ -186,15 +186,36 @@ class DocumentConversionFlowsTest extends TenantTestCase
         ]);
     }
 
-    public function test_draft_quotation_cannot_create_delivery_order(): void
+    /**
+     * Decision (#293, product owner, 2026-10): converting AUTO-RELEASES the
+     * quotation — a draft quote can be delivered (and the DO sent for approval)
+     * before the quote is completed. The delivery order is created FROM the
+     * released Sales Order so quantities reconcile; nothing is marked delivered
+     * on the order until the DO is completed.
+     */
+    public function test_draft_quotation_auto_releases_and_creates_linked_delivery_order(): void
     {
         $quotation = $this->confirmedQuotation();
-        $quotation->update(['status' => 'draft']);
+        $quotation->update(['status' => 'draft', 'sales_order_id' => null]);
 
-        $this->withoutMiddleware()
+        $response = $this->withoutMiddleware()
             ->actingAs($this->user)
-            ->postJson("/api/v1/quotations/{$quotation->id}/create-delivery-order")
-            ->assertStatus(403);
+            ->postJson("/api/v1/quotations/{$quotation->id}/create-delivery-order");
+
+        $response->assertStatus(201);
+
+        // The quote was released and the DO is linked to the resulting order.
+        $quotation->refresh();
+        $this->assertNotNull($quotation->sales_order_id, 'Draft quote must be auto-released to a Sales Order.');
+        $this->assertDatabaseHas('delivery_orders', [
+            'id' => $response->json('data.id'),
+            'sales_order_id' => $quotation->sales_order_id,
+            'quotation_id' => $quotation->id,
+        ]);
+
+        // Nothing delivered on the order yet — only planned on the draft DO.
+        $soLine = SalesOrderLine::where('sales_order_id', $quotation->sales_order_id)->first();
+        $this->assertSame(0.0, (float) $soLine->quantity_delivered, 'DO creation must not pre-deliver the order line.');
     }
 
     public function test_invoice_creates_delivery_order(): void
