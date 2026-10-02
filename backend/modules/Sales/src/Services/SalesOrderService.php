@@ -304,8 +304,12 @@ class SalesOrderService
             // Reserve stock for stock-tracked lines that have a warehouse
             $this->reserveStockForOrder($order);
 
-            return $order->fresh(['customer', 'lines.product', 'statusHistory']);
+            // #377 (O8): log BEFORE returning — this call used to sit after
+            // the return inside the closure and never ran, so confirmed orders
+            // had no chatter entry.
             $this->logChatter($order, 'status_changed', "Confirmed sales order {$order->sales_order_number}", ['to_state' => 'confirmed']);
+
+            return $order->fresh(['customer', 'lines.product', 'statusHistory']);
 
         });
     }
@@ -331,8 +335,10 @@ class SalesOrderService
                 }
             }
 
-            return $order->fresh(['customer', 'lines.product', 'statusHistory']);
+            // #377 (O8): log before returning (see confirmOrder).
             $this->logChatter($order, 'status_changed', "Allocated stock for sales order {$order->sales_order_number}", ['to_state' => 'allocated']);
+
+            return $order->fresh(['customer', 'lines.product', 'statusHistory']);
 
         });
     }
@@ -354,8 +360,10 @@ class SalesOrderService
 
             $order = $this->lifecycleService->fulfil($order, 'Order fulfilled');
 
-            return $order->fresh(['customer', 'lines.product', 'statusHistory']);
+            // #377 (O8): log before returning (see confirmOrder).
             $this->logChatter($order, 'status_changed', "Fulfilled sales order {$order->sales_order_number}", ['to_state' => 'fulfilled']);
+
+            return $order->fresh(['customer', 'lines.product', 'statusHistory']);
 
         });
     }
