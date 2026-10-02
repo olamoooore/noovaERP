@@ -459,42 +459,18 @@ class Invoice extends Model
 
     public static function generateInvoiceNumber(): string
     {
-        $maxAttempts = 10;
-        for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
-            $number = static::generateInvoiceNumberRaw();
-            if (! static::withTrashed()->where('invoice_number', $number)->exists()) {
-                return $number;
-            }
-            \Illuminate\Support\Facades\Log::warning('Invoice number collision, retrying', [
-                'number' => $number,
-                'attempt' => $attempt + 1,
-            ]);
-        }
-
-        // Final fallback: use timestamp-based suffix
-        return 'INV-'.date('Y').'-'.date('is');
-    }
-
-    private static function generateInvoiceNumberRaw(): string
-    {
-        try {
-            return app(\App\Services\DocumentNumberingService::class)
-                ->generate('invoice', 'INV-{YYYY}-{SEQ:4}');
-        } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('DocumentNumberingService failed, using fallback', [
-                'error' => $e->getMessage(),
-            ]);
-        }
-
-        $year = date('Y');
-        $prefix = "INV-{$year}-";
-        $latest = static::withTrashed()
-            ->where('invoice_number', 'like', $prefix.'%')
-            ->orderBy('id', 'desc')
-            ->first();
-        $number = $latest ? (int) substr($latest->invoice_number, -4) + 1 : 1;
-
-        return $prefix.str_pad($number, 4, '0', STR_PAD_LEFT);
+        // #538 (ST1): the numbering service owns collision recovery — it
+        // advances the counter past the issued numbers inside its lock and
+        // fails loudly rather than ever issuing a timestamp-suffixed,
+        // out-of-sequence number.
+        return app(\App\Services\DocumentNumberingService::class)->generateUnique(
+            'invoice',
+            'INV-{YYYY}-{SEQ:4}',
+            fn (string $prefix): array => static::withTrashed()
+                ->where('invoice_number', 'like', $prefix.'%')
+                ->pluck('invoice_number')
+                ->all(),
+        );
     }
 
     public function calculateTotals(): void
