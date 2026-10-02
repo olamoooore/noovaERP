@@ -12,10 +12,11 @@ use Illuminate\Support\Facades\DB;
  *
  * Activation is idempotent by rule code and never overwrites a rule the tenant
  * has touched (existing code wins), so activating a pack can silently change
- * live taxation for nobody. Rate history (SG 7/8/9, MY service 6→8, MY 2026
- * regime 8→10) is rows with effective ranges — the DoD property "a 2025-06
- * document and a 2026-07 document derive different correct rates from the same
- * code path" holds because resolution is date-parameterized, not per-release.
+ * live taxation for nobody. Rate history (SG 7/8/9, MY service 6→8) is rows
+ * with effective ranges — the DoD property "documents dated either side of a
+ * rate change derive different correct rates from the same code path" holds
+ * because resolution is date-parameterized, not per-release (the fiction
+ * 2026 GST-model rows were removed per #734 T1).
  *
  * Pack CONTENT is a compliance deliverable pending verification against IRAS /
  * LHDN-RMCD notices (see config/tax_packs.php notes); this service makes that

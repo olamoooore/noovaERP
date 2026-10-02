@@ -13,33 +13,34 @@ use Tests\TestCase;
  */
 class TaxPackVerificationGuardTest extends TestCase
 {
-    public function test_verify_tagged_my_rows_warn_for_their_effective_periods(): void
+    public function test_corrected_my_pack_carries_no_verify_tagged_rows(): void
     {
-        $rows = TaxPackVerificationGuard::verifyTaggedRows('MY');
-        $this->assertNotEmpty($rows, 'The 2026 MY GST-model rows must remain VERIFY-tagged until sign-off.');
-
-        foreach ($rows as $row) {
-            $this->assertNotSame('', $row['code']);
-
-            if ($row['from'] === null) {
-                continue;
-            }
-
-            $month = substr($row['from'], 0, 7);
-            $warning = TaxPackVerificationGuard::warningFor('MY', $month);
-
-            $this->assertNotNull($warning, "VERIFY row {$row['code']} must warn for its effective month {$month}.");
-            $this->assertStringContainsString($row['code'], $warning);
-            $this->assertStringContainsString('VERIFY-tagged', $warning);
-        }
+        // #734 T1: the fictional 2026 GST-model rows were removed, so the
+        // corrected MY pack has nothing left carrying the VERIFY marker.
+        $this->assertSame([], TaxPackVerificationGuard::verifyTaggedRows('MY'));
+        $this->assertNull(TaxPackVerificationGuard::warningFor('MY', '2026-03'));
+        $this->assertNull(TaxPackVerificationGuard::warningFor('MY', '2026-Q3'));
     }
 
-    public function test_quarterly_periods_intersecting_verify_rows_warn(): void
+    public function test_verify_mechanism_warns_for_effective_periods(): void
     {
-        $warning = TaxPackVerificationGuard::warningFor('MY', '2026-Q3');
+        config(['tax_packs.MY.rules' => [[
+            'code' => 'TEST-SVC-VERIFY',
+            'name' => 'Test dashboard row — VERIFY before filing',
+            'effective_from' => '2026-01-01',
+            'effective_to' => '2026-06-30',
+        ]]]);
 
-        $this->assertNotNull($warning, 'H2 2026 intersects the VERIFY-tagged planned 10% row.');
-        $this->assertStringContainsString('MY-SSTG-10', $warning);
+        $monthly = TaxPackVerificationGuard::warningFor('MY', '2026-03');
+        $this->assertNotNull($monthly);
+        $this->assertStringContainsString('TEST-SVC-VERIFY', $monthly);
+        $this->assertStringContainsString('VERIFY-tagged', $monthly);
+
+        $quarterly = TaxPackVerificationGuard::warningFor('MY', '2026-Q2');
+        $this->assertNotNull($quarterly, 'Q2 months intersect the row effective window.');
+
+        $this->assertNull(TaxPackVerificationGuard::warningFor('MY', '2025-03'), 'Months before the window stay clean.');
+        $this->assertNull(TaxPackVerificationGuard::warningFor('MY', '2026-Q4'), 'Months after the window stay clean.');
     }
 
     public function test_verified_periods_and_countries_are_clean(): void

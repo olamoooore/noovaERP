@@ -12,9 +12,13 @@
 |
 | Every row maps to one `taxes` record, matched idempotently by `code`.
 | Effective-dated rows are what make regime changes (SG 7→8→9, MY service
-| 6→8, MY 2026 SST-GST 8% from 2026-01 and planned 10% from 2026-07, plus
-| historical rows so amended filings remain reproducible) configuration,
-| not code changes.
+| 6→8, plus historical rows so amended filings remain reproducible)
+| configuration, not code changes.
+|
+| #734 T1: the 2026 "SST (GST-model)" 8%/10% rows were removed — no such
+| regime was enacted (decision reversal recorded on #269). The MY service
+| timeline itself is under correction per #735 pending RMCD-verified data;
+| do not add 2026+ MY rates without a tax-agent-confirmed statutory source.
 */
 
 return [
@@ -106,6 +110,7 @@ return [
                 'is_inclusive' => false,
                 'effective_from' => '2018-09-01',
                 'effective_to' => null,
+                'creditable' => false,
             ],
             [
                 'code' => 'MY-SALES-5',
@@ -119,6 +124,7 @@ return [
                 'is_inclusive' => false,
                 'effective_from' => '2018-09-01',
                 'effective_to' => null,
+                'creditable' => false,
             ],
             [
                 'code' => 'MY-SVC-6',
@@ -132,6 +138,7 @@ return [
                 'is_inclusive' => false,
                 'effective_from' => '2018-09-01',
                 'effective_to' => '2025-06-30',
+                'creditable' => false,
             ],
             [
                 'code' => 'MY-SVC-8',
@@ -145,62 +152,7 @@ return [
                 'is_inclusive' => false,
                 'effective_from' => '2025-07-01',
                 'effective_to' => '2025-12-31',
-            ],
-            [
-                // Budget-2025-announced SST modelled on GST with input credit.
-                // Rate path (8% from 1 Jan 2026, planned 10% from 1 Jul 2026
-                // after review) MUST be confirmed against the enacted
-                // instruments before this pack is used for filing.
-                'code' => 'MY-SSTG-8',
-                'name' => 'SST (GST-model) 8% — VERIFY 2026 instruments before filing',
-                'type' => 'gst',
-                'regime' => 'SST',
-                'jurisdiction' => 'MY',
-                'scope' => 'both',
-                'treatment' => 'standard_rated',
-                'rate' => 8.00,
-                'is_inclusive' => false,
-                'effective_from' => '2026-01-01',
-                'effective_to' => '2026-06-30',
-            ],
-            [
-                'code' => 'MY-SSTG-10',
-                'name' => 'SST (GST-model) 10% planned — VERIFY enactment/date before filing',
-                'type' => 'gst',
-                'regime' => 'SST',
-                'jurisdiction' => 'MY',
-                'scope' => 'both',
-                'treatment' => 'standard_rated',
-                'rate' => 10.00,
-                'is_inclusive' => false,
-                'effective_from' => '2026-07-01',
-                'effective_to' => null,
-            ],
-            [
-                'code' => 'MY-SST-ZERO',
-                'name' => 'Zero-rated supplies (2026 regime essential basket — verify list)',
-                'type' => 'gst',
-                'regime' => 'SST',
-                'jurisdiction' => 'MY',
-                'scope' => 'output',
-                'treatment' => 'zero_rated',
-                'rate' => 0.00,
-                'is_inclusive' => false,
-                'effective_from' => '2026-01-01',
-                'effective_to' => null,
-            ],
-            [
-                'code' => 'MY-SST-EXEMPT',
-                'name' => 'Exempt supplies (2026 regime — verify schedule)',
-                'type' => 'gst',
-                'regime' => 'SST',
-                'jurisdiction' => 'MY',
-                'scope' => 'both',
-                'treatment' => 'exempt',
-                'rate' => 0.00,
-                'is_inclusive' => false,
-                'effective_from' => '2026-01-01',
-                'effective_to' => null,
+                'creditable' => false,
             ],
         ],
     ],
