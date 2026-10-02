@@ -158,42 +158,17 @@ class Quotation extends Model
 
     public static function generateQuotationNumber(): string
     {
-        $maxAttempts = 10;
-        for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
-            $number = static::generateQuotationNumberRaw();
-            if (! static::withTrashed()->where('quotation_number', $number)->exists()) {
-                return $number;
-            }
-            \Illuminate\Support\Facades\Log::warning('Quotation number collision, retrying', [
-                'number' => $number,
-                'attempt' => $attempt + 1,
-            ]);
-        }
-
-        // Final fallback: use timestamp-based suffix
-        return 'QUO-'.date('Y').'-'.date('is');
-    }
-
-    private static function generateQuotationNumberRaw(): string
-    {
-        try {
-            return app(\App\Services\DocumentNumberingService::class)
-                ->generate('quotation', 'QUO-{YYYY}-{SEQ:4}');
-        } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('DocumentNumberingService failed, using fallback', [
-                'error' => $e->getMessage(),
-            ]);
-        }
-
-        $year = date('Y');
-        $prefix = "QUO-{$year}-";
-        $latest = static::withTrashed()
-            ->where('quotation_number', 'like', $prefix.'%')
-            ->orderBy('id', 'desc')
-            ->first();
-        $number = $latest ? (int) substr($latest->quotation_number, -4) + 1 : 1;
-
-        return $prefix.str_pad($number, 4, '0', STR_PAD_LEFT);
+        // #538 (ST1): collision recovery lives in the numbering service, which
+        // advances the counter past issued numbers and never falls back to a
+        // timestamp suffix.
+        return app(\App\Services\DocumentNumberingService::class)->generateUnique(
+            'quotation',
+            'QUO-{YYYY}-{SEQ:4}',
+            fn (string $prefix): array => static::withTrashed()
+                ->where('quotation_number', 'like', $prefix.'%')
+                ->pluck('quotation_number')
+                ->all(),
+        );
     }
 
     public function calculateTotals(): void

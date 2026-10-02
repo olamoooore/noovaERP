@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Support\Facades\Log;
 
 class SalesOrder extends Model
 {
@@ -257,67 +256,17 @@ class SalesOrder extends Model
 
     public static function generateOrderNumber(): string
     {
-        $maxAttempts = 10;
-        for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
-            // On first attempt, use DocumentNumberingService for normal sequencing.
-            // On retries (collision), bypass it and use MAX-based to avoid
-            // counter-in-rollback loop where the incremented counter gets
-            // rolled back along with the failed INSERT, causing the same number
-            // to be generated again.
-            $number = $attempt === 0
-                ? static::generateOrderNumberRaw()
-                : static::generateNextAvailableNumber();
-
-            if (! static::withTrashed()->where('sales_order_number', $number)->exists()) {
-                return $number;
-            }
-
-            Log::warning('SalesOrder number collision, retrying', [
-                'number' => $number,
-                'attempt' => $attempt + 1,
-            ]);
-        }
-
-        // Final fallback: use timestamp-based suffix
-        return 'SO-'.date('Y').'-'.date('is');
-    }
-
-    private static function generateNextAvailableNumber(): string
-    {
-        $prefix = 'SO-'.date('Y').'-';
-
-        $latest = static::withTrashed()
-            ->where('sales_order_number', 'like', $prefix.'%')
-            ->orderByRaw("SUBSTRING(sales_order_number FROM '[0-9]+$')::int DESC")
-            ->first();
-
-        $nextSeq = $latest
-            ? (int) preg_replace('/[^0-9]/', '', substr($latest->sales_order_number, strlen($prefix))) + 1
-            : 1;
-
-        return $prefix.str_pad($nextSeq, 4, '0', STR_PAD_LEFT);
-    }
-
-    private static function generateOrderNumberRaw(): string
-    {
-        try {
-            return app(\App\Services\DocumentNumberingService::class)
-                ->generate('sales_order', 'SO-{YYYY}-{SEQ:4}');
-        } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('DocumentNumberingService failed for SO, using fallback', [
-                'error' => $e->getMessage(),
-            ]);
-        }
-
-        $latest = static::withTrashed()
-            ->where('sales_order_number', 'like', 'SO-'.date('Y').'-%')
-            ->orderBy('id', 'desc')
-            ->first();
-
-        $number = $latest
-            ? (int) substr($latest->sales_order_number, -4) + 1
-            : 1;
-
-        return 'SO-'.date('Y').'-'.str_pad($number, 4, '0', STR_PAD_LEFT);
+        // #538 (ST1): the numbering service advances its counter past the
+        // issued numbers inside the lock, so the counter-in-rollback loop this
+        // method used to work around can no longer happen — and there is no
+        // timestamp fallback.
+        return app(\App\Services\DocumentNumberingService::class)->generateUnique(
+            'sales_order',
+            'SO-{YYYY}-{SEQ:4}',
+            fn (string $prefix): array => static::withTrashed()
+                ->where('sales_order_number', 'like', $prefix.'%')
+                ->pluck('sales_order_number')
+                ->all(),
+        );
     }
 }

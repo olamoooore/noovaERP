@@ -40,11 +40,152 @@ class DocumentNumberingService
         // Handle {SEQ:n} — zero-padded sequence number with n digits
         if (preg_match('/\{SEQ:(\d+)\}/', $number, $m)) {
             $padLength = (int) $m[1];
-            $seq = $this->nextSequence($documentType, $now->format('Y'), $now->format('m'));
+            $seq = $this->nextSequenceFor($documentType, $format);
             $number = str_replace($m[0], str_pad($seq, $padLength, '0', STR_PAD_LEFT), $number);
         }
 
         return $number;
+    }
+
+    /**
+     * #538 (ST1): generate a number that is unique against the numbers already
+     * issued for the same counter scope.
+     *
+     * The stored counter can sit behind the issued numbers: after the scope
+     * change from per-month to per-year keys (existing tenants), after a
+     * format change, or after data was imported. Instead of retrying random
+     * counter values and finally issuing an unchecked timestamp-suffixed
+     * number (which broke the sequence), this method reads the issued numbers,
+     * moves the counter to max(existing sequence) inside the locked update and
+     * regenerates. It never returns a number it has seen and never falls back
+     * to a timestamp — if the store cannot be advanced, it fails loudly.
+     *
+     * @param  callable(string): array<int, string>  $existingNumbers  receives
+     *                                                                 the literal prefix rendered up to {SEQ:...} and returns every issued
+     *                                                                 number beginning with it (including trashed documents).
+     */
+    public function generateUnique(string $documentType, string $defaultFormat, callable $existingNumbers): string
+    {
+        $format = $this->getFormat($documentType, $defaultFormat);
+
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $prefix = $this->literalPrefix($format);
+            $existing = array_values((array) $existingNumbers($prefix));
+
+            $maxSequence = $this->maxSequenceIn($format, $existing);
+
+            if ($maxSequence !== null) {
+                $this->setSequenceAtLeast($documentType, $format, $maxSequence);
+            }
+
+            $number = $this->generate($documentType, $defaultFormat);
+
+            if (! in_array($number, $existing, true)) {
+                return $number;
+            }
+        }
+
+        throw new \RuntimeException(
+            "Unable to generate a unique {$documentType} number: the sequence store is out of step with the issued numbers."
+        );
+    }
+
+    /**
+     * The format rendered up to the {SEQ:...} token — the literal prefix every
+     * issued number for the current period shares.
+     */
+    private function literalPrefix(string $format): string
+    {
+        $rendered = strtr($format, [
+            '{YYYY}' => now()->format('Y'),
+            '{YY}' => now()->format('y'),
+            '{MM}' => now()->format('m'),
+        ]);
+
+        $cut = strpos($rendered, '{SEQ');
+
+        return $cut === false ? $rendered : substr($rendered, 0, $cut);
+    }
+
+    /**
+     * Build the regex for one rendered format so the sequence part of an
+     * issued number can be extracted.
+     */
+    private function sequenceRegex(string $format): ?string
+    {
+        if (! preg_match('/\{SEQ(?::(\d+))?\}/', $format, $m, PREG_OFFSET_CAPTURE)) {
+            return null;
+        }
+
+        $before = substr($format, 0, $m[0][1]);
+        $after = substr($format, $m[0][1] + strlen($m[0][0]));
+
+        $render = fn (string $part): string => preg_quote(strtr($part, [
+            '{YYYY}' => now()->format('Y'),
+            '{YY}' => now()->format('y'),
+            '{MM}' => now()->format('m'),
+        ]), '/');
+
+        return '/^'.$render($before).'(\d+)'.$render($after).'$/';
+    }
+
+    /**
+     * The highest sequence rendered by $format among the issued numbers, or
+     * null when none of them match the current format.
+     *
+     * @param  array<int, string>  $numbers
+     */
+    private function maxSequenceIn(string $format, array $numbers): ?int
+    {
+        $regex = $this->sequenceRegex($format);
+
+        if ($regex === null) {
+            return null;
+        }
+
+        $max = null;
+
+        foreach ($numbers as $candidate) {
+            if (is_string($candidate) && preg_match($regex, $candidate, $matches)) {
+                $value = (int) $matches[1];
+                $max = $max === null ? $value : max($max, $value);
+            }
+        }
+
+        return $max;
+    }
+
+    /**
+     * Move the counter for the format's scope up to $atLeast, if it is behind.
+     * The read-modify-write happens inside the row lock the counter updates use.
+     */
+    private function setSequenceAtLeast(string $documentType, string $format, int $atLeast): void
+    {
+        $seqKey = $this->sequenceKey($documentType, $format);
+        $settingTable = (new \App\Models\Setting)->getTable();
+
+        $existing = DB::table($settingTable)
+            ->where('key', $seqKey)
+            ->lockForUpdate()
+            ->first();
+
+        if ($existing) {
+            if ((int) $existing->value < $atLeast) {
+                DB::table($settingTable)->where('key', $seqKey)->update([
+                    'value' => (string) $atLeast,
+                    'updated_at' => now(),
+                ]);
+            }
+
+            return;
+        }
+
+        DB::table($settingTable)->insert([
+            'key' => $seqKey,
+            'value' => (string) $atLeast,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     /**
@@ -122,11 +263,37 @@ class DocumentNumberingService
     }
 
     /**
-     * Get the next sequence number for a document type in a given year/month.
+     * #538 (ST1): the counter scope follows the format.
+     *
+     *   {MM} present            → per month, {type}.seq.{YYYY}.{MM}
+     *   only {YYYY}/{YY}        → per year,  {type}.seq.{YYYY}
+     *   neither token           → never resets, {type}.seq
+     *
+     * Before this, every format used the monthly key, so a year-only format
+     * (the default INV-{YYYY}-{SEQ:4}) restarted at 0001 every month and
+     * collided with January's numbers.
      */
-    private function nextSequence(string $documentType, string $year, string $month): int
+    private function sequenceKey(string $documentType, string $format): string
     {
-        $seqKey = self::SETTING_PREFIX.$documentType.'.seq.'.$year.'.'.$month;
+        $base = self::SETTING_PREFIX.$documentType.'.seq.';
+
+        if (str_contains($format, '{MM}')) {
+            return $base.now()->format('Y').'.'.now()->format('m');
+        }
+
+        if (str_contains($format, '{YYYY}') || str_contains($format, '{YY}')) {
+            return $base.now()->format('Y');
+        }
+
+        return rtrim($base, '.');
+    }
+
+    /**
+     * Get the next sequence number for a document type in the format's scope.
+     */
+    private function nextSequenceFor(string $documentType, string $format): int
+    {
+        $seqKey = $this->sequenceKey($documentType, $format);
 
         // Atomic increment using DB
         $settingTable = (new \App\Models\Setting)->getTable();
