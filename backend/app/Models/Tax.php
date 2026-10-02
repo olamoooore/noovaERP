@@ -26,6 +26,8 @@ class Tax extends Model
         'creditable',
         'blocked_expense_account_id',
         'version',
+        'pack_version',
+        'pack_snapshot',
         'lifecycle_state',
         'submitted_by',
         'approved_by',
@@ -35,6 +37,8 @@ class Tax extends Model
     protected $casts = [
         'rate' => 'decimal:2',
         'version' => 'integer',
+        'pack_version' => 'integer',
+        'pack_snapshot' => 'array',
         'approved_at' => 'datetime',
         'creditable' => 'boolean',
         'is_active' => 'bool',

@@ -25,6 +25,10 @@ return [
     'SG' => [
         'label' => 'Singapore GST (IRAS)',
         'currency' => 'SGD',
+        // #739 T6: pack version. Bump whenever a rule below changes, so every
+        // tenant row records which pack revision it came from and status()
+        // can report drift instead of claiming a stale pack is "activated".
+        'version' => 1,
         // #741 T8: period shapes this pack can be filed under.
         'period_shapes' => ['monthly', 'quarterly'],
         'rules' => [
@@ -99,6 +103,7 @@ return [
     'MY' => [
         'label' => 'Malaysia SST (LHDN / RMCD)',
         'currency' => 'MYR',
+        'version' => 1,
         // #741 T8: SST-02 taxable periods are two months, aligned to each
         // registrant's cycle start month (tax_registrations.filing_start_month).
         // 'monthly' stays accepted for existing single-month reporting; a

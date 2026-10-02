@@ -61,6 +61,28 @@ class TaxEngineController extends Controller
     }
 
     /**
+     * #739 T6: apply the pack changes the user picked. Each rule goes through
+     * the platform's own versioning path, so a rule a posted document already
+     * used is end-dated and replaced rather than rewritten, and a
+     * tenant-edited rule is skipped rather than silently overwritten.
+     */
+    public function upgradePack(Request $request, string $jurisdiction): JsonResponse
+    {
+        $validated = $request->validate([
+            'apply' => 'required|array|min:1',
+            'apply.*' => 'required|string|max:50',
+        ]);
+
+        try {
+            return response()->json([
+                'data' => $this->packs->upgrade($jurisdiction, $validated['apply'], $request),
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+    }
+
+    /**
      * MRD R5.3/R6.2: rolling-12-month taxable value vs registration
      * thresholds (monitoring flag only - registration is a human call).
      */

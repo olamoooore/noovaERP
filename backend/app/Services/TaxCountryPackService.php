@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\AuditLog;
 use App\Models\Tax;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -72,8 +74,9 @@ class TaxCountryPackService
 
         $created = [];
         $existing = [];
+        $version = (int) ($pack['version'] ?? 1);
 
-        DB::transaction(function () use ($pack, &$created, &$existing) {
+        DB::transaction(function () use ($pack, &$created, &$existing, $version) {
             foreach ($pack['rules'] as $rule) {
                 if (Tax::withTrashed()->where('code', $rule['code'])->exists()) {
                     $existing[] = $rule['code'];
@@ -81,7 +84,10 @@ class TaxCountryPackService
                     continue;
                 }
 
-                Tax::create($rule + ['is_active' => true]);
+                // #739 T6: record which pack revision the row came from and the
+                // exact field values it was given, so later drift is detectable
+                // instead of being masked by "the code already exists".
+                Tax::create($rule + ['is_active' => true, 'pack_version' => $version, 'pack_snapshot' => $rule]);
                 $created[] = $rule['code'];
             }
         });
@@ -92,6 +98,8 @@ class TaxCountryPackService
             'jurisdiction' => $jurisdiction,
             'label' => $pack['label'],
             'activated' => true,
+            'version' => $version,
+            'installed_version' => $this->installedVersion($pack),
             'created' => $created,
             'existing' => $existing,
             'total_pack_rules' => count($pack['rules']),
@@ -99,7 +107,119 @@ class TaxCountryPackService
     }
 
     /**
-     * @return array<string, array{label:string, currency:string, activated:bool, present:array<int,string>, missing:array<int,string>, total_pack_rules:int}>
+     * #739 T6: the highest pack version this tenant actually has rows for.
+     * A pack whose upgrade was skipped stays below the pack's version, which
+     * is exactly what status() needs to report.
+     */
+    private function installedVersion(array $pack): ?int
+    {
+        $version = Tax::query()
+            ->whereNotNull('pack_version')
+            ->whereIn('code', array_column($pack['rules'], 'code'))
+            ->max('pack_version');
+
+        return $version === null ? null : (int) $version;
+    }
+
+    /**
+     * #739 T6 AC2: field-level diff between what the pack supplied and what
+     * the tenant row now holds. Null-safe and decimal-aware (a rate of '9'
+     * from JSON and 9.00 from the decimal column must not read as a change).
+     *
+     * @return array<string, array{from:mixed, to:mixed}>
+     */
+    private function diff(array $from, array $to, array $fields): array
+    {
+        $changes = [];
+
+        foreach ($fields as $field) {
+            $before = $from[$field] ?? null;
+            $after = $to[$field] ?? null;
+
+            if ($this->comparable($field, $before) !== $this->comparable($field, $after)) {
+                $changes[$field] = [
+                    'from' => $field === 'rate' ? (float) $before : $this->present($before, $field),
+                    'to' => $field === 'rate' ? (float) $after : $this->present($after, $field),
+                ];
+            }
+        }
+
+        return $changes;
+    }
+
+    /**
+     * Comparable form of a field value. A pack snapshot holds PHP types while
+     * the row is read back as raw column values, so `false` and `'0'` are the
+     * same setting and must not read as a tenant edit.
+     */
+    private function comparable(string $field, mixed $value): mixed
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if ($field === 'rate') {
+            return (float) $value;
+        }
+
+        if ($field === 'is_inclusive') {
+            // Postgres hands booleans back as 't'/'f' in raw attributes, PHP as
+            // true/false, the JSON snapshot as true/false. All one setting.
+            return in_array(mb_strtolower((string) $value), ['1', 't', 'true'], true) ? '1' : '0';
+        }
+
+        if (in_array($field, ['effective_from', 'effective_to'], true)) {
+            // Date columns round-trip with a time component; the pack writes a
+            // plain date. Same day, same setting.
+            return ($value === null || $value === '')
+                ? null
+                : \Carbon\Carbon::parse($value)->toDateString();
+        }
+
+        if (is_bool($value)) {
+            return $value ? '1' : '0';
+        }
+
+        return mb_strtolower(trim((string) $value));
+    }
+
+    private function present(mixed $value, string $field): mixed
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if ($field === 'is_inclusive') {
+            return in_array(mb_strtolower((string) $value), ['1', 't', 'true'], true) ? 1 : 0;
+        }
+
+        if (in_array($field, ['effective_from', 'effective_to'], true)) {
+            return \Carbon\Carbon::parse($value)->toDateString();
+        }
+
+        if (is_bool($value)) {
+            return $value ? 1 : 0;
+        }
+
+        return (string) $value;
+    }
+
+    /**
+     * The fields a pack rule owns (and the snapshot/diff surface).
+     *
+     * @return array<int, string>
+     */
+    private function packFields(): array
+    {
+        return ['name', 'rate', 'jurisdiction', 'regime', 'scope', 'treatment', 'type', 'is_inclusive', 'effective_from', 'effective_to'];
+    }
+
+    /**
+     * #739 T6 AC2: per-rule drift. Every pack rule is classified as
+     * new / changed (field-level diff) / tenant-modified / removed-from-pack,
+     * so `activated: true` can no longer hide a stale rate.
+     *
+     * @return array<string, array<string, mixed>>
      */
     public function status(): array
     {
@@ -107,14 +227,36 @@ class TaxCountryPackService
         // Taxes without a code (legacy rows) cannot match a pack rule, and a
         // NULL entry makes array_flip() raise (turned into a 500 by Laravel's
         // error handler). Only string/int codes participate.
-        $codes = array_flip(array_filter(
-            Tax::query()->whereNotNull('code')->pluck('code')->all(),
-            fn ($code) => is_string($code) || is_int($code),
-        ));
+        $rows = Tax::query()
+            ->whereNotNull('code')
+            ->where('is_active', true)
+            ->orderBy('id')
+            ->get(['id', 'code', 'name', 'rate', 'jurisdiction', 'regime', 'scope', 'treatment', 'type', 'is_inclusive', 'effective_from', 'effective_to', 'pack_version', 'pack_snapshot']);
+
+        $codes = array_flip($rows->pluck('code')->filter(fn ($code) => is_string($code) || is_int($code))->all());
+        $byCode = $rows->groupBy('code');
+        $fields = $this->packFields();
+
+        // Pack-origin rows the pack no longer ships (reported per jurisdiction
+        // via the removed_from_pack classification below).
+        $packOriginCodes = Tax::query()
+            ->whereNotNull('code')
+            ->whereNotNull('pack_version')
+            ->pluck('code')
+            ->filter(fn ($code) => is_string($code) || is_int($code))
+            ->unique()
+            ->values()
+            ->all();
 
         foreach (config('tax_packs', []) as $jurisdiction => $pack) {
+            $packVersion = (int) ($pack['version'] ?? 1);
             $present = [];
             $missing = [];
+            $rules = [];
+            $newCodes = [];
+            $changedCodes = [];
+            $modifiedCodes = [];
+            $removedCodes = [];
 
             foreach ($pack['rules'] as $rule) {
                 if (array_key_exists($rule['code'], $codes)) {
@@ -122,7 +264,55 @@ class TaxCountryPackService
                 } else {
                     $missing[] = $rule['code'];
                 }
+
+                $row = $byCode->get($rule['code'])?->first();
+                $entry = ['code' => $rule['code'], 'state' => 'new', 'changes' => [], 'tenant_changes' => []];
+
+                if ($row !== null) {
+                    $snapshot = is_array($row->pack_snapshot) ? $row->pack_snapshot : null;
+                    $current = $row->only(array_merge($fields, ['pack_version']));
+
+                    if ($snapshot === null) {
+                        // Row predates pack provenance (#739): compare against
+                        // the pack directly and flag it as untracked so the
+                        // tenant is never told a row is pristine when we
+                        // cannot prove it.
+                        $entry['state'] = 'changed';
+                        $entry['changes'] = $this->diff($current, $rule, $fields);
+                        $entry['untracked'] = true;
+                        $changedCodes[] = $rule['code'];
+                    } else {
+                        $tenantChanges = $this->diff($snapshot, $current, $fields);
+                        $packChanges = $this->diff($snapshot, $rule, $fields);
+
+                        if ($tenantChanges !== []) {
+                            $entry['state'] = 'tenant_modified';
+                            $entry['tenant_changes'] = $tenantChanges;
+                            $entry['changes'] = $packChanges;
+                            $modifiedCodes[] = $rule['code'];
+
+                            if ($packChanges !== []) {
+                                $changedCodes[] = $rule['code'];
+                            }
+                        } elseif ($packChanges !== []) {
+                            $entry['state'] = 'changed';
+                            $entry['changes'] = $packChanges;
+                            $changedCodes[] = $rule['code'];
+                        } else {
+                            $entry['state'] = 'ok';
+                        }
+                    }
+                } else {
+                    $newCodes[] = $rule['code'];
+                }
+
+                $rules[] = $entry;
             }
+
+            $shippedCodes = array_column($pack['rules'], 'code');
+            $removedCodes = array_values(array_diff($packOriginCodes, $shippedCodes));
+
+            $installedVersion = $this->installedVersion($pack);
 
             $out[(string) $jurisdiction] = [
                 'label' => $pack['label'],
@@ -132,10 +322,138 @@ class TaxCountryPackService
                 'present' => $present,
                 'missing' => $missing,
                 'total_pack_rules' => count($pack['rules']),
+                // #739 T6
+                'version' => $packVersion,
+                'installed_version' => $installedVersion,
+                'up_to_date' => $installedVersion === $packVersion
+                    && $newCodes === [] && $changedCodes === [] && $removedCodes === [],
+                'rules' => $rules,
+                'new' => $newCodes,
+                'changed' => array_values(array_unique($changedCodes)),
+                'tenant_modified' => $modifiedCodes,
+                'removed_from_pack' => $removedCodes,
             ];
         }
 
         return $out;
+    }
+
+    /**
+     * #739 T6 AC3: apply pack changes the user picked. Each selected rule is
+     * applied through the platform's own mutation path (G-03/G-13), so a rule
+     * a posted document already used is end-dated and versioned rather than
+     * rewritten, and a tenant-edited rule is skipped rather than overwritten.
+     *
+     * @param  array<int, string>  $codes
+     * @return array<string, mixed>
+     */
+    public function upgrade(string $jurisdiction, array $codes, ?Request $request = null): array
+    {
+        $jurisdiction = strtoupper($jurisdiction);
+        $pack = config("tax_packs.$jurisdiction");
+
+        if (! is_array($pack)) {
+            throw new \InvalidArgumentException("No tax country pack is defined for {$jurisdiction}.");
+        }
+
+        $packRules = collect($pack['rules'])->keyBy('code');
+        $packVersion = (int) ($pack['version'] ?? 1);
+        $fields = $this->packFields();
+        $mutation = app(TaxRuleMutationService::class);
+
+        $applied = [];
+        $skipped = [];
+
+        DB::transaction(function () use ($codes, $packRules, $packVersion, $fields, $mutation, $request, &$applied, &$skipped) {
+            foreach ($codes as $code) {
+                $rule = $packRules->get($code);
+
+                if ($rule === null) {
+                    throw new \InvalidArgumentException("Rule {$code} is not part of the {$packVersion} pack revision.");
+                }
+
+                $row = Tax::withTrashed()->where('code', $code)->where('is_active', true)->orderByDesc('id')->first();
+
+                if ($row === null) {
+                    // Missing rule the pack ships: create it with provenance.
+                    $fresh = Tax::create($rule + ['is_active' => true, 'pack_version' => $packVersion, 'pack_snapshot' => $rule]);
+                    $mutation->audit('tax_pack_upgrade_created', $fresh, null, $fresh->attributesToArray(), $request);
+                    $applied[] = ['code' => $code, 'mode' => 'created', 'rule_id' => $fresh->id];
+
+                    continue;
+                }
+
+                $snapshot = is_array($row->pack_snapshot) ? $row->pack_snapshot : null;
+
+                if ($snapshot !== null && $this->diff($snapshot, $row->only($fields), $fields) !== []) {
+                    $skipped[] = [
+                        'code' => $code,
+                        'reason' => 'tenant_modified',
+                        'message' => 'This rule was edited by the tenant; a pack upgrade never overwrites it silently.',
+                        'tenant_changes' => $this->diff($snapshot, $row->only($fields), $fields),
+                    ];
+
+                    continue;
+                }
+
+                $baseline = $snapshot ?? $row->only($fields);
+                $changes = $this->diff($baseline, $rule, $fields);
+
+                if ($changes === []) {
+                    $skipped[] = ['code' => $code, 'reason' => 'unchanged'];
+
+                    continue;
+                }
+
+                // Apply the pack's values (the diff is only for reporting).
+                $target = array_intersect_key($rule, array_flip($fields));
+                $before = $row->attributesToArray();
+                $effective = $mutation->apply($row, $target, $request);
+                $mode = $effective->id === $row->id
+                    ? (array_keys($changes) === ['effective_to'] ? 'end_dated' : 'updated')
+                    : 'versioned';
+
+                // Provenance follows the row that now carries the pack values.
+                $effective->update([
+                    'pack_version' => $packVersion,
+                    'pack_snapshot' => $rule,
+                ]);
+                $effective->refresh();
+
+                AuditLog::create([
+                    'operation' => 'tax_pack_upgrade',
+                    'reference_type' => 'tax_rule',
+                    'reference_id' => $effective->id,
+                    'actor_id' => $request?->user()?->id,
+                    'source_route' => $request?->path(),
+                    'before_state' => $before,
+                    'after_state' => $effective->attributesToArray(),
+                    'metadata' => [
+                        'jurisdiction' => $packRules->get($code)['jurisdiction'] ?? null,
+                        'code' => $code,
+                        'pack_version' => $packVersion,
+                        'mode' => $mode,
+                        'changes' => $changes,
+                    ],
+                ]);
+
+                $applied[] = [
+                    'code' => $code,
+                    'mode' => $mode,
+                    'rule_id' => $effective->id,
+                    'versioned_from' => $effective->id === $row->id ? null : $row->id,
+                    'changes' => $changes,
+                ];
+            }
+        });
+
+        return [
+            'jurisdiction' => $jurisdiction,
+            'version' => $packVersion,
+            'installed_version' => $this->installedVersion($pack),
+            'applied' => $applied,
+            'skipped' => $skipped,
+        ];
     }
 
     /**

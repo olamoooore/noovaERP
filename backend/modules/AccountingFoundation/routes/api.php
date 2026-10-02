@@ -66,6 +66,10 @@ Route::prefix('accounting/tax-engine')
             ->middleware('entitlement:ai');
         Route::post('/packs/{jurisdiction}/activate', [\App\Http\Controllers\Api\TaxEngineController::class, 'activatePack'])
             ->middleware(\App\Http\Middleware\RequirePermission::using('tax.manage'));
+        // #739 T6: apply a pack revision the user picked. Never overwrites a
+        // tenant-edited rule; never rewrites a rule a posted document used.
+        Route::post('/packs/{jurisdiction}/upgrade', [\App\Http\Controllers\Api\TaxEngineController::class, 'upgradePack'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('tax.manage'));
     });
 
 /*
