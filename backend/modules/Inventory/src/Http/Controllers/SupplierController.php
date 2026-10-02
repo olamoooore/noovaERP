@@ -3,6 +3,7 @@
 namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Services\SupplierWideSearchService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Modules\Inventory\Models\Supplier;
@@ -15,13 +16,8 @@ class SupplierController extends Controller
             ->orderBy('name');
 
         if ($request->filled('search')) {
-            $search = $request->input('search');
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('code', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%")
-                    ->orWhere('contact_name', 'like', "%{$search}%");
-            });
+            // Wide search: identity, contact person, address fields, tax id.
+            app(SupplierWideSearchService::class)->apply($query, trim((string) $request->input('search')));
         }
 
         if ($request->filled('is_active')) {

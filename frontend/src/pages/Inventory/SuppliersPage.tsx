@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
@@ -82,15 +82,21 @@ export function SuppliersPage() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
+  // Wide search hits the DB per term; debounce typing like the other lists do.
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(timer)
+  }, [search])
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [formData, setFormData] = useState(defaultFormData)
 
   const { data: suppliersData, isLoading } = useQuery({
-    queryKey: ['suppliers', search],
+    queryKey: ['suppliers', debouncedSearch],
     queryFn: async () => {
       const params: Record<string, any> = { per_page: 50 }
-      if (search) params.search = search
+      if (debouncedSearch) params.search = debouncedSearch
       const res = await api.get('/suppliers', { params })
       return res.data
     },
@@ -203,7 +209,7 @@ export function SuppliersPage() {
         <CardHeader>
           <div className="flex items-center gap-4">
             <Input
-              placeholder="Search suppliers..."
+              placeholder="Search supplier, contact, address…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="max-w-sm"

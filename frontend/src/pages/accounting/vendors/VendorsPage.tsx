@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
@@ -131,6 +131,12 @@ export default function VendorsPage() {
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
   const [formData, setFormData] = useState<VendorForm>(emptyForm);
   const [searchTerm, setSearchTerm] = useState('');
+  // Wide search hits the DB per term; debounce typing like the other lists do.
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
   const [addresses, setAddresses] = useState<VendorAddress[]>([]);
   const [addressOpen, setAddressOpen] = useState(false);
   const [editingAddressIndex, setEditingAddressIndex] = useState<number | null>(null);
@@ -138,10 +144,10 @@ export default function VendorsPage() {
   const [deletingVendor, setDeletingVendor] = useState<Vendor | null>(null);
 
   const { data: vendorsData, isLoading } = useQuery({
-    queryKey: ['vendors', searchTerm],
+    queryKey: ['vendors', debouncedSearchTerm],
     queryFn: async () => {
       const params = new URLSearchParams({ per_page: '100' });
-      if (searchTerm) params.set('search', searchTerm);
+      if (debouncedSearchTerm) params.set('search', debouncedSearchTerm);
       const response = await accountingApi.get(`/accounting/vendors?${params}`);
       return response.data;
     },
@@ -340,7 +346,7 @@ export default function VendorsPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Input
-            placeholder="Search vendors..."
+            placeholder="Search vendor, contact, address…"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="h-8 w-full rounded-full px-3 text-xs sm:w-64"
