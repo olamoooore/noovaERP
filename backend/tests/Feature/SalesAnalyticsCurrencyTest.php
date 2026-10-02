@@ -101,9 +101,16 @@ class SalesAnalyticsCurrencyTest extends TenantTestCase
         $this->assertSame(135.0, round((float) $response->json('data.summary.total_base_revenue'), 2));
 
         // The same filter applies to the trend series (one shared SQL union).
+        //
+        // Issue #355: the trend widget reports the tenant BASE currency, so a
+        // USD filter selects the documents but the series is still converted at
+        // each document's snapshot rate (100.00 USD × 1.35 = 135.00 SGD) —
+        // matching total_base_revenue above, which the previous 100.00
+        // expectation contradicted. Only /by-currency reports document-currency
+        // amounts; its USD bucket assertion above is unchanged.
         $trends = $this->actingAs($this->admin)->getJson('/api/v1/analytics/sales/trends?currency_code=USD&interval=day');
         $trends->assertOk();
         $total = collect($trends->json('data.trends'))->sum(fn ($row) => (float) ($row['revenue'] ?? $row['total_revenue'] ?? 0));
-        $this->assertSame(100.0, round($total, 2), 'trends respect the currency filter (USD document revenue only)');
+        $this->assertSame(135.0, round($total, 2), 'trends respect the currency filter and report the base-currency amount');
     }
 }
