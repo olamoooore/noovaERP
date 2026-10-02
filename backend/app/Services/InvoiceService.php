@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\DomainPostingLine;
 use App\Accounting\DTOs\DomainPostingRequest;
+use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\SettlementAuditLog;
@@ -837,6 +838,86 @@ class InvoiceService
         }
 
         return $invoice;
+    }
+
+    /**
+     * Issue #510 (CN1): a credit note reduces what the customer OWES — it is
+     * not a cash refund. Track it in credited_amount and derive
+     * balance = max(0, total − paid − credited); any excess beyond the open
+     * balance is parked as customer credit_balance (unapplied customer
+     * credit), never a negative balance.
+     */
+    public function applyCreditNoteToInvoice(Invoice $invoice, float $creditAmount): Invoice
+    {
+        return $this->adjustCreditNoteOnInvoice($invoice, $creditAmount);
+    }
+
+    /**
+     * Issue #510 (CN1): inverse of applyCreditNoteToInvoice — used when a
+     * posted credit note is voided. Releases the credited amount (and any
+     * customer credit it created) and rebuilds balance/status.
+     */
+    public function reverseCreditNoteFromInvoice(Invoice $invoice, float $creditAmount): Invoice
+    {
+        return $this->adjustCreditNoteOnInvoice($invoice, -$creditAmount);
+    }
+
+    private function adjustCreditNoteOnInvoice(Invoice $invoice, float $delta): Invoice
+    {
+        $invoice->refresh();
+
+        $credited = max(0.0, (float) $invoice->credited_amount + $delta);
+        $newBalance = max(0.0, (float) $invoice->total - (float) $invoice->paid_amount - $credited);
+
+        $lifecycleFinal = in_array($invoice->status, ['draft', 'void', 'cancelled'], true);
+
+        $status = $lifecycleFinal ? $invoice->status : match (true) {
+            $newBalance > 0 && (float) $invoice->paid_amount > 0 => 'partial',
+            $newBalance > 0 => $invoice->status === 'overdue' ? 'overdue' : 'sent',
+            default => 'paid',
+        };
+
+        Invoice::where('id', $invoice->id)->update([
+            'credited_amount' => $credited,
+            'balance' => $newBalance,
+            'status' => $status,
+        ]);
+
+        $invoice->refresh();
+
+        $this->refreshCustomerCreditBalance($invoice->customer);
+
+        if ($invoice->customer) {
+            $invoice->customer->updateOutstanding();
+        }
+
+        return $invoice;
+    }
+
+    /**
+     * Derive customers.credit_balance from live invoices: credited_amount the
+     * invoice's own remaining balance cannot absorb is unapplied customer
+     * credit. Always recomputed from scratch so post/void can never drift.
+     */
+    public function refreshCustomerCreditBalance(?Customer $customer): void
+    {
+        if (! $customer) {
+            return;
+        }
+
+        $rows = Invoice::where('customer_id', $customer->id)
+            ->notSuperseded()
+            ->whereNotIn('status', ['draft', 'void', 'cancelled'])
+            ->get(['id', 'total', 'paid_amount', 'credited_amount']);
+
+        $credit = 0.0;
+
+        foreach ($rows as $row) {
+            $remaining = max(0.0, (float) $row->total - (float) $row->paid_amount);
+            $credit += max(0.0, (float) $row->credited_amount - $remaining);
+        }
+
+        Customer::where('id', $customer->id)->update(['credit_balance' => round($credit, 2)]);
     }
 
     /**

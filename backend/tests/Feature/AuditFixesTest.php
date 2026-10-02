@@ -401,15 +401,11 @@ class AuditFixesTest extends TenantTestCase
         $this->assertStringContainsString("validate(['type' => 'string|in:", $source);
     }
 
-    // ── Credit notes call updateOutstanding ──────────────────────────────
-
-    public function test_credit_note_service_delegates_invoice_balance_to_invoice_service(): void
-    {
-        $source = file_get_contents(app_path('Services/CustomerCreditNoteService.php'));
-
-        $this->assertStringContainsString('applyRefundToInvoice', $source,
-            'CustomerCreditNoteService must delegate invoice balance updates to InvoiceService::applyRefundToInvoice.');
-    }
+    // ── Credit notes delegate invoice balance to InvoiceService ──────────
+    // Replaced (#510): the old source-string assertion pinned the WRONG
+    // helper (applyRefundToInvoice — a cash-refund path). The behavioural
+    // suite CreditNoteInvoiceBalanceTest now drives store → post → void
+    // through the router and asserts the resulting invoice/customer balances.
 
     // ── InvoiceService::postInvoice uses lockForUpdate ───────────────────
 

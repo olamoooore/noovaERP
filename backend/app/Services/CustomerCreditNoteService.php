@@ -308,8 +308,10 @@ class CustomerCreditNoteService
                 'journal_entry_id' => $result->journalEntryId,
             ]);
 
-            // Atomically reduce invoice balance and update status via canonical service.
-            app(InvoiceService::class)->applyRefundToInvoice($invoice, (float) $creditNote->total_amount);
+            // #510 (CN1): a credit note reduces what is OWED, it is not a cash
+            // refund — apply it through the credit path (credited_amount +
+            // balance = total − paid − credited), never via paid_amount.
+            app(InvoiceService::class)->applyCreditNoteToInvoice($invoice, (float) $creditNote->total_amount);
 
             DB::commit();
 
@@ -362,9 +364,9 @@ class CustomerCreditNoteService
                     ?? $reversal->journalEntry?->id;
             }
 
-            // Undo the invoice balance reduction performed at posting time.
+            // #510 (CN1): release the credit applied at posting time.
             if ($creditNote->invoice) {
-                app(InvoiceService::class)->restoreRefundToInvoice(
+                app(InvoiceService::class)->reverseCreditNoteFromInvoice(
                     $creditNote->invoice,
                     (float) $creditNote->total_amount,
                 );
