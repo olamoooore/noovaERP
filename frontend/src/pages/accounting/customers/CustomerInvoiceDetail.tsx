@@ -66,6 +66,8 @@ export const CustomerInvoiceDetail: React.FC = () => {
   const role = useAuthStore((state) => state.role);
   // Posting/confirming sell-side documents is accounting-only (server enforces accounting.post).
   const canPost = useAuthStore((state) => state.hasPermission('accounting.post'));
+  // #524: drafting a credit note requires accounting.write (server enforces it since #515).
+  const canWriteCreditNotes = useAuthStore((state) => state.hasPermission('accounting.write'));
   // Product Notes starts hidden, matching the previous default.
   const [hiddenLineColumns, setHiddenLineColumns] = useState<number[]>(
     () => INVOICE_LINE_COLUMNS.filter((c) => c.label.toLowerCase() === 'product notes').map((c) => c.index)
@@ -290,6 +292,16 @@ export const CustomerInvoiceDetail: React.FC = () => {
                   Delete
                 </HeaderActionButton>
               </>
+            )}
+
+            {!isQuoteMode && canWriteCreditNotes && ['posted', 'paid', 'partial', 'overdue'].includes(invoice.status) && (
+              <HeaderActionButton
+                variant="outline"
+                icon="solar:document-add-bold-duotone"
+                onClick={() => setShowCreditNoteDialog(true)}
+              >
+                Credit note
+              </HeaderActionButton>
             )}
 
             {['posted', 'sent', 'partial', 'overdue'].includes(invoice.status) && (
@@ -746,14 +758,16 @@ export const CustomerInvoiceDetail: React.FC = () => {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Credit Notes</CardTitle>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setShowCreditNoteDialog(true)}
-            >
-              <Icon icon="solar:document-add-bold-duotone" className="mr-1.5 h-4 w-4" />
-              Create Credit Note
-            </Button>
+            {canWriteCreditNotes && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowCreditNoteDialog(true)}
+              >
+                <Icon icon="solar:document-add-bold-duotone" className="mr-1.5 h-4 w-4" />
+                Create Credit Note
+              </Button>
+            )}
           </CardHeader>
           <CardContent>
             <InvoiceCreditNotes
