@@ -35,3 +35,31 @@ export function mapCategoryRevenueSlices(
     amount: Number(row.revenue) || 0,
   }));
 }
+
+export interface RevenueTrendApiPoint {
+  period?: string | null;
+  order_count?: number;
+  total_sales?: number | string | null;
+  revenue?: number | string | null;
+  average_order_value?: number;
+  growth_rate?: number | null;
+}
+
+export interface RevenueTrendPoint {
+  period: string;
+  amount: number;
+}
+
+/**
+ * #349 (S1): the trends endpoint returns `revenue` per point, not
+ * `total_revenue` — reading the latter made every point 0 and the trend line
+ * flat at zero.
+ */
+export function mapRevenueTrendPoints(
+  points: RevenueTrendApiPoint[] | null | undefined,
+): RevenueTrendPoint[] {
+  return (points ?? []).map((point) => ({
+    period: point.period || '',
+    amount: Number(point.revenue) || 0,
+  }));
+}

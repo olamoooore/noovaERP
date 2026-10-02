@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mapCategoryRevenueSlices } from './salesDashboardMapping';
+import { mapCategoryRevenueSlices, mapRevenueTrendPoints } from './salesDashboardMapping';
 
 /**
  * #350 (S2): fixture mirrors the real /analytics/sales/by-category payload —
@@ -55,5 +55,45 @@ describe('mapCategoryRevenueSlices', () => {
   it('handles an absent payload', () => {
     expect(mapCategoryRevenueSlices(undefined)).toEqual([]);
     expect(mapCategoryRevenueSlices(null)).toEqual([]);
+  });
+});
+
+/**
+ * #349 (S1): fixture mirrors the real /analytics/sales/trends payload (the
+ * controller wraps the service's `data` as `trends`); each point carries
+ * `revenue`, no `total_revenue`.
+ */
+describe('mapRevenueTrendPoints', () => {
+  it('reads revenue from the API points', () => {
+    const points = mapRevenueTrendPoints([
+      {
+        period: '2026-10-01',
+        order_count: 3,
+        total_sales: 750,
+        revenue: 750,
+        average_order_value: 250,
+        growth_rate: null,
+      },
+      {
+        period: '2026-10-02',
+        order_count: 1,
+        total_sales: '120.25',
+        revenue: '120.25',
+        average_order_value: 120.25,
+        growth_rate: -84,
+      },
+    ]);
+
+    expect(points).toEqual([
+      { period: '2026-10-01', amount: 750 },
+      { period: '2026-10-02', amount: 120.25 },
+    ]);
+  });
+
+  it('tolerates missing values and an absent payload', () => {
+    expect(mapRevenueTrendPoints([{ period: null, revenue: null }])).toEqual([
+      { period: '', amount: 0 },
+    ]);
+    expect(mapRevenueTrendPoints(undefined)).toEqual([]);
   });
 });

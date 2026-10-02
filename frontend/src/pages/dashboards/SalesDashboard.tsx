@@ -14,7 +14,7 @@ import { LineChart } from '@/components/charts/LineChart';
 import { BarChart } from '@/components/charts/BarChart';
 import { PieChart } from '@/components/charts/PieChart';
 import reportApi from '@/lib/reportApi';
-import { mapCategoryRevenueSlices } from '@/lib/salesDashboardMapping';
+import { mapCategoryRevenueSlices, mapRevenueTrendPoints } from '@/lib/salesDashboardMapping';
 import type { SalesDashboardData } from '@/types/reports';
 
 /**
@@ -119,10 +119,7 @@ export const SalesDashboard: React.FC = () => {
           customer: c.customer_name || 'Walk-in customer',
           amount: Number(c.total_revenue) || 0,
         })),
-        sales_trends: (salesTrends?.trends ?? []).map((t) => ({
-          period: t.period || '',
-          amount: Number(t.total_revenue) || 0,
-        })),
+        sales_trends: mapRevenueTrendPoints(salesTrends?.trends),
         top_selling_products: (salesByProduct?.products ?? [])
           .slice(0, 10)
           .map((p) => ({
