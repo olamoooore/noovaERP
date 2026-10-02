@@ -27,6 +27,8 @@ class SingaporeCountrySeeder extends Seeder
         $this->cleanupLegacySingaporeCountryAccounts();
         $this->seedChartOfAccounts();
         $this->seedTaxRates();
+        // #486: contribute SG payment rails (PayNow/GrabPay) to the master.
+        $this->callWith(PaymentMethodRailsSeeder::class, ['countryCode' => 'SG']);
     }
 
     /**

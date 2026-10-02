@@ -7,6 +7,7 @@ namespace Tests\Feature;
 use App\Models\Customer;
 use App\Models\CustomerCreditNote;
 use App\Models\Invoice;
+use App\Models\InvoiceLine;
 use App\Models\Product;
 use App\Models\Tenant;
 use App\Models\User;
@@ -87,8 +88,30 @@ class HR154SalesOrderCreditNoteHandoffTest extends TenantTestCase
         $invoice = Invoice::factory()->create([
             'customer_id' => $this->customer->id,
             'status' => 'posted',
+            'subtotal' => 0,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'total' => 0,
+            'paid_amount' => 0,
+            'balance' => 0,
             'created_by' => $this->user->id,
         ]);
+
+        // #372 (O3): the credit note is built from the invoice's lines, so the
+        // fixture must carry the line the order was invoiced with. The
+        // assertions below (quantity, total 110) stay exactly the same.
+        InvoiceLine::create([
+            'invoice_id' => $invoice->id,
+            'description' => 'HR154 line',
+            'product_id' => $this->product->id,
+            'quantity' => 2,
+            'unit_price' => 50,
+            'tax_rate' => 10,
+            'tax_inclusive' => false,
+            'discount_amount' => 0,
+        ]);
+
+        $invoice->calculateTotals();
 
         SalesInvoiceLink::create([
             'sales_order_id' => $order->id,

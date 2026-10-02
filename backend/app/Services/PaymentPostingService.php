@@ -7,6 +7,7 @@ use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\BankAccount;
 use App\Models\Payment;
+use App\Models\PaymentMethod;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
@@ -78,15 +79,19 @@ class PaymentPostingService
             // (production report 2026-09-24). Unclassified receipts post to
             // the default bank account, matching the platform's dominant
             // settlement path.
+            // #486: the tenant method master drives allowance + mapping; the
+            // hardcoded map stays as the fallback for unseeded tenants.
+            $master = PaymentMethod::query()->active()->where('code', $method)->first();
+
             $allowedMethods = ['bank_transfer', 'card', 'check', 'cash', 'gateway', 'other'];
-            if (! in_array($method, $allowedMethods, true)) {
+            if ($master === null && ! in_array($method, $allowedMethods, true)) {
                 throw new \RuntimeException(
                     "Unsupported payment method: '{$method}'. ".
-                    'Allowed: '.implode(', ', $allowedMethods)
+                    'Allowed: '.implode(', ', array_unique([...$allowedMethods, ...PaymentMethod::query()->active()->pluck('code')->all()]))
                 );
             }
 
-            $cashMappingKey = match ($method) {
+            $cashMappingKey = $master?->mapping_key ?? match ($method) {
                 'bank_transfer' => 'bank',
                 'card' => 'card_clearing',
                 'check' => 'cheque_clearing',
@@ -94,6 +99,12 @@ class PaymentPostingService
                 'gateway' => 'gateway_receivable',
                 'other' => 'bank',
             };
+
+            // Master may pin a default deposit journal for the method — used
+            // when the payment itself carries no explicit bank account.
+            if ($bankGlAccountId === null && $master?->default_bank_account_id) {
+                $bankGlAccountId = BankAccount::find($master->default_bank_account_id)?->gl_account_id;
+            }
 
             // ── MRD pricelist-multicurrency FR-7.2/7.3 / AC-4 ────────────
             // Realized FX: AR clears at the INVOICE snapshot rate, the bank
@@ -151,9 +162,17 @@ class PaymentPostingService
                 $invoiceRate = $payRate;
             }
 
+            // #478: a cash discount settles part of the invoice without cash —
+            // debit Sales discount and credit AR by amount + discount. Realized
+            // FX applies only to the cash leg, so its base stays
+            // bankBase − amount×invoiceRate; the discount is converted at the
+            // invoice snapshot rate (it reduces the receivable at that rate).
+            $discount = round((float) ($payment->discount_amount ?? 0), 2);
             $bankBase = round((float) $payment->amount * $payRate, 2);
-            $arBase = round((float) $payment->amount * $invoiceRate, 2);
-            $fx = round($bankBase - $arBase, 2);
+            $arCashBase = round((float) $payment->amount * $invoiceRate, 2);
+            $discountBase = round($discount * $invoiceRate, 2);
+            $arBase = round($arCashBase + $discountBase, 2);
+            $fx = round($bankBase - $arCashBase, 2);
 
             $lines = [
                 // DR Cash/Bank (at settlement rate)
@@ -167,20 +186,35 @@ class PaymentPostingService
                     originalAmount: $foreign ? (float) $payment->amount : null,
                     exchangeRate: $foreign ? $payRate : null,
                 ),
-                // CR Accounts Receivable (at the invoice snapshot rate) — for
-                // standalone payments this leaves a customer credit that
-                // nets against future invoices.
-                new PostingRequestLine(
-                    accountMappingKey: 'accounts_receivable',
-                    accountId: null,
-                    debit: 0,
-                    credit: $arBase,
-                    description: 'Payment received - '.$payment->payment_number,
-                    currencyCode: $foreign ? $baseCurrency : null,
-                    originalAmount: $foreign ? (float) $payment->amount : null,
-                    exchangeRate: $foreign ? $invoiceRate : null,
-                ),
             ];
+
+            if ($discount > 0) {
+                // DR Sales discount allowed (the non-cash part of the settlement)
+                $lines[] = new PostingRequestLine(
+                    accountMappingKey: 'sales_discount',
+                    accountId: null,
+                    debit: $discountBase,
+                    credit: 0,
+                    description: 'Sales discount - '.$payment->payment_number,
+                    currencyCode: $foreign ? $baseCurrency : null,
+                    originalAmount: $foreign ? $discount : null,
+                    exchangeRate: $foreign ? $invoiceRate : null,
+                );
+            }
+
+            // CR Accounts Receivable (at the invoice snapshot rate) — for
+            // standalone payments this leaves a customer credit that nets
+            // against future invoices. The AR cleared is amount + discount.
+            $lines[] = new PostingRequestLine(
+                accountMappingKey: 'accounts_receivable',
+                accountId: null,
+                debit: 0,
+                credit: $arBase,
+                description: 'Payment received - '.$payment->payment_number,
+                currencyCode: $foreign ? $baseCurrency : null,
+                originalAmount: $foreign ? round((float) $payment->amount + $discount, 2) : null,
+                exchangeRate: $foreign ? $invoiceRate : null,
+            );
 
             if ($fx > 0) {
                 // Received MORE in base than AR cleared → realized FX gain.
@@ -248,6 +282,11 @@ class PaymentPostingService
                 'journal_entry_id' => $result->journalEntryId,
                 'payment_status' => 'applied',
             ]);
+
+            // #477: settlement moves WITH the journal entry — posting is the one
+            // place the invoice's paid_amount/balance/status/AR are updated. A
+            // draft never touched the invoice; this is where it finally does.
+            app(\App\Services\InvoiceService::class)->settlePostedPayment($payment->fresh());
 
             Log::info('Payment posted to ledger', [
                 'payment_id' => $payment->id,

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\DomainPostingLine;
 use App\Accounting\DTOs\DomainPostingRequest;
+use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\SettlementAuditLog;
@@ -612,21 +613,20 @@ class InvoiceService
             $payment->save();
 
             if (! $postImmediately) {
-                // Draft payment: no journal entry yet. syncInvoicePaymentState
-                // below still reflects the allocation, exactly like an imported
-                // recorded payment; posting later creates the ledger entry.
-                $this->syncInvoicePaymentState($invoice, (float) $payment->amount, $payment);
+                // #477 (Decision 2026-10-02): a DRAFT payment must not touch the
+                // invoice. Paid amount, balance, status and AR move only when the
+                // payment is posted (which creates the journal entry). Posting
+                // later runs the settlement sync below via PaymentPostingService.
                 DB::commit();
 
                 return $payment->fresh();
             }
 
             // Post via the canonical PaymentPostingService — ONE realized-FX
-            // aware posting path for UI, channel and API flows (SOP §4).
+            // aware posting path for UI, channel and API flows (SOP §4). Posting
+            // now also runs the invoice settlement sync (#477), so the invoice
+            // and the ledger always move together.
             app(\App\Services\PaymentPostingService::class)->post($payment, $payment->received_by);
-
-            // Update invoice paid amount and balance — single canonical path
-            $this->syncInvoicePaymentState($invoice, (float) $payment->amount, $payment);
 
             DB::commit();
 
@@ -817,12 +817,176 @@ class InvoiceService
     }
 
     /**
+     * Issue #510 (CN1): a credit note reduces what the customer OWES — it is
+     * not a cash refund. Track it in credited_amount and derive
+     * balance = max(0, total − paid − credited); any excess beyond the open
+     * balance is parked as customer credit_balance (unapplied customer
+     * credit), never a negative balance.
+     */
+    public function applyCreditNoteToInvoice(Invoice $invoice, float $creditAmount): Invoice
+    {
+        return $this->adjustCreditNoteOnInvoice($invoice, $creditAmount);
+    }
+
+    /**
+     * Issue #510 (CN1): inverse of applyCreditNoteToInvoice — used when a
+     * posted credit note is voided. Releases the credited amount (and any
+     * customer credit it created) and rebuilds balance/status.
+     */
+    public function reverseCreditNoteFromInvoice(Invoice $invoice, float $creditAmount): Invoice
+    {
+        return $this->adjustCreditNoteOnInvoice($invoice, -$creditAmount);
+    }
+
+    private function adjustCreditNoteOnInvoice(Invoice $invoice, float $delta): Invoice
+    {
+        $invoice->refresh();
+
+        $credited = max(0.0, (float) $invoice->credited_amount + $delta);
+        $newBalance = max(0.0, (float) $invoice->total - (float) $invoice->paid_amount - $credited);
+
+        $lifecycleFinal = in_array($invoice->status, ['draft', 'void', 'cancelled'], true);
+
+        $status = $lifecycleFinal ? $invoice->status : match (true) {
+            $newBalance > 0 && (float) $invoice->paid_amount > 0 => 'partial',
+            $newBalance > 0 => $invoice->status === 'overdue' ? 'overdue' : 'sent',
+            default => 'paid',
+        };
+
+        Invoice::where('id', $invoice->id)->update([
+            'credited_amount' => $credited,
+            'balance' => $newBalance,
+            'status' => $status,
+        ]);
+
+        $invoice->refresh();
+
+        $this->refreshCustomerCreditBalance($invoice->customer);
+
+        if ($invoice->customer) {
+            $invoice->customer->updateOutstanding();
+        }
+
+        return $invoice;
+    }
+
+    /**
+     * Derive customers.credit_balance from live invoices: credited_amount the
+     * invoice's own remaining balance cannot absorb is unapplied customer
+     * credit. Always recomputed from scratch so post/void can never drift.
+     */
+    public function refreshCustomerCreditBalance(?Customer $customer): void
+    {
+        if (! $customer) {
+            return;
+        }
+
+        $rows = Invoice::where('customer_id', $customer->id)
+            ->notSuperseded()
+            ->whereNotIn('status', ['draft', 'void', 'cancelled'])
+            ->get(['id', 'total', 'paid_amount', 'credited_amount']);
+
+        $credit = 0.0;
+
+        foreach ($rows as $row) {
+            $remaining = max(0.0, (float) $row->total - (float) $row->paid_amount);
+            $credit += max(0.0, (float) $row->credited_amount - $remaining);
+        }
+
+        Customer::where('id', $customer->id)->update(['credit_balance' => round($credit, 2)]);
+    }
+
+    /**
      * Atomically sync invoice paid_amount / balance / status after a payment.
      *
      * This is the single canonical path for invoice balance reconciliation
      * — used by both recordPayment (which also posts GL) and
      * recordChannelPayment (which skips GL because the channel already posted).
      */
+    /**
+     * #477: settle a payment against its invoice at POST time. This is the
+     * single place a posted payment updates the invoice's paid_amount, balance,
+     * status and AR exposure — invoked by PaymentPostingService::post() so the
+     * subledger and the GL always move together. Standalone payments (no linked
+     * invoice) are a no-op (they leave a customer credit on the ledger).
+     */
+    public function settlePostedPayment(Payment $payment): void
+    {
+        if (! $payment->invoice_id) {
+            return;
+        }
+
+        $invoice = $payment->invoice()->first();
+        if (! $invoice) {
+            return;
+        }
+
+        // #478: a cash discount is part of what settles the invoice — the
+        // customer pays `amount` and the discount clears the rest.
+        $settled = round((float) $payment->amount + (float) ($payment->discount_amount ?? 0), 2);
+
+        $this->syncInvoicePaymentState($invoice, $settled, $payment);
+    }
+
+    /**
+     * Reverse an applied payment portion from its invoice (the mirror of
+     * syncInvoicePaymentState). Used by PaymentAllocationService when a posted
+     * payment's allocations are undone by a correction (reversal / refund /
+     * unapply). Decrements paid_amount, restores the balance, recomputes the
+     * status and writes the settlement audit log so the un-settlement is
+     * traceable.
+     */
+    public function reverseAllocatedPayment(Invoice $invoice, float $amount, ?Payment $payment = null): void
+    {
+        $amount = round($amount, 2);
+        if ($amount === 0.0) {
+            return;
+        }
+
+        $invoice = $invoice->fresh();
+
+        $beforeState = [
+            'paid_amount' => $invoice->paid_amount,
+            'balance' => $invoice->balance,
+            'status' => $invoice->status,
+        ];
+
+        $newPaid = max(0.0, round((float) $invoice->paid_amount - $amount, 2));
+        $newBalance = max(0.0, round((float) $invoice->total - $newPaid, 2));
+        $newStatus = match (true) {
+            $newBalance <= 0 => 'paid',
+            $newPaid > 0 => 'partial',
+            default => 'sent',
+        };
+
+        Invoice::where('id', $invoice->id)->update([
+            'paid_amount' => $newPaid,
+            'balance' => $newBalance,
+            'status' => $newStatus,
+        ]);
+
+        $invoice->refresh();
+
+        SettlementAuditLog::create([
+            'invoice_id' => $invoice->id,
+            'payment_id' => $payment?->id,
+            'payment_amount' => -$amount,
+            'before_paid_amount' => $beforeState['paid_amount'],
+            'after_paid_amount' => $invoice->paid_amount,
+            'before_balance' => $beforeState['balance'],
+            'after_balance' => $invoice->balance,
+            'before_status' => $beforeState['status'],
+            'after_status' => $invoice->status,
+            'actor_user_id' => TenantUserHelper::resolveTenantUserId(),
+            'settlement_method' => $payment?->payment_method ?? 'unknown',
+            'notes' => 'Payment allocation reversed',
+        ]);
+
+        if ($invoice->customer) {
+            $invoice->customer->updateOutstanding();
+        }
+    }
+
     private function syncInvoicePaymentState(Invoice $invoice, float $paymentAmount, ?Payment $payment = null): void
     {
         $beforeState = [

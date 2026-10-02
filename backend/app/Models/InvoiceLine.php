@@ -124,13 +124,43 @@ class InvoiceLine extends Model
         }
         // MRD R3.1: single tax arithmetic — all inclusive/exclusive and
         // line-discount handling lives in TaxEngineService::calculate().
-        $calc = \App\Services\TaxEngineService::calculate(
-            (float) ($this->quantity * $this->unit_price),
+        $calc = self::computeLineTotals(
+            (float) $this->quantity,
+            (float) $this->unit_price,
             (float) $this->tax_rate,
             (bool) $this->tax_inclusive,
             (float) ($this->discount_amount ?? 0),
         );
-        $this->tax_amount = $calc['tax'];
-        $this->line_total = $calc['gross'];
+        $this->tax_amount = $calc['tax_amount'];
+        $this->line_total = $calc['line_total'];
+    }
+
+    /**
+     * Issue #512 (CN3): THE line arithmetic — the one formula invoices and
+     * credit notes share. Wraps TaxEngineService::calculate (which owns all
+     * inclusive/exclusive/discount handling) so no second calculation can
+     * drift from the invoices'.
+     *
+     * @return array{net: float, tax_amount: float, line_total: float}
+     */
+    public static function computeLineTotals(
+        float $quantity,
+        float $unitPrice,
+        float $taxRate,
+        bool $taxInclusive,
+        float $discountAmount = 0.0,
+    ): array {
+        $calc = \App\Services\TaxEngineService::calculate(
+            $quantity * $unitPrice,
+            $taxRate,
+            $taxInclusive,
+            $discountAmount,
+        );
+
+        return [
+            'net' => $calc['net'],
+            'tax_amount' => $calc['tax'],
+            'line_total' => $calc['gross'],
+        ];
     }
 }

@@ -54,3 +54,19 @@ describe('issue #71 WRK-D — explicit quantity domain (HR71-08)', () => {
     expect(isValidProductQuantity(1.00001)).toBe(false);
   });
 });
+
+describe('#484 — payment date defaults use the LOCAL date (not UTC)', () => {
+  it('at 07:30 Asia/Kuala_Lumpur returns the local day, not the UTC day', () => {
+    const original = process.env.TZ;
+    // 07:30 MYT (UTC+8) === 23:30 UTC on the PREVIOUS calendar day.
+    const at0730Local = new Date('2026-10-02T23:30:00Z');
+    for (const [tz, expected] of [
+      ['Asia/Kuala_Lumpur', '2026-10-03'],
+      ['UTC', '2026-10-02'],
+    ] as const) {
+      process.env.TZ = tz;
+      expect(todayDateOnly(at0730Local)).toBe(expected);
+    }
+    if (original !== undefined) process.env.TZ = original;
+  });
+});

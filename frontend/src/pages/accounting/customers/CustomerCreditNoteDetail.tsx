@@ -8,6 +8,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
+import EInvoicePanel from '../components/EInvoicePanel';
+import { EInvoiceStatusChip } from '../components/EInvoiceStatusChip';
+import { formatCountdown } from '../components/einvoiceStatus';
+import { useEInvoiceDocument } from '../components/useEInvoice';
 
 const statusColors: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-800',
@@ -30,6 +34,12 @@ export const CustomerCreditNoteDetail: React.FC = () => {
     },
     enabled: !!id,
   });
+
+  // #670 (EINV-UX1): the header chip shares the shared e-invoice hook, which
+  // react-query dedupes with the panel's own query.
+  const creditNoteId = Number(id);
+  const isPosted = !!creditNote && ['posted', 'voided'].includes(creditNote.status);
+  const einvoice = useEInvoiceDocument('credit_note', isPosted ? creditNoteId : undefined);
 
   if (isLoading) {
     return (
@@ -64,9 +74,20 @@ export const CustomerCreditNoteDetail: React.FC = () => {
             </p>
           </div>
         </div>
-        <Badge className={statusColors[creditNote.status] || 'bg-gray-100 text-gray-800'}>
-          {creditNote.status?.charAt(0).toUpperCase() + creditNote.status?.slice(1)}
-        </Badge>
+        <div className="flex items-center gap-2">
+          {isPosted && (
+            <EInvoiceStatusChip
+              status={einvoice.status}
+              uuid={einvoice.latestSubmission?.external_document_uuid}
+              validationLink={einvoice.latestSubmission?.validation_link}
+              reason={einvoice.latestSubmission?.rejection_reason ?? einvoice.latestSubmission?.error_message}
+              countdown={formatCountdown(einvoice.deadline)}
+            />
+          )}
+          <Badge className={statusColors[creditNote.status] || 'bg-gray-100 text-gray-800'}>
+            {creditNote.status?.charAt(0).toUpperCase() + creditNote.status?.slice(1)}
+          </Badge>
+        </div>
       </div>
 
       {/* Details */}
@@ -172,6 +193,9 @@ export const CustomerCreditNoteDetail: React.FC = () => {
           </CardContent>
         </Card>
       )}
+
+      {/* #670: shared e-invoice panel — status, provider details, actions. */}
+      {isPosted && <EInvoicePanel type="credit_note" documentId={creditNoteId} />}
 
       {/* Metadata */}
       <Card>
