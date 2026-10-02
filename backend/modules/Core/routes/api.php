@@ -337,6 +337,11 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         // Invoice CRUD — explicit so per-method middleware is precise
         Route::get('/invoices', [InvoiceController::class, 'index'])
             ->middleware(RequirePermission::using('invoices.view'));
+        // #681 data check: cancelled invoices whose JE was never reversed, with
+        // the AR difference per customer. Registered before {invoice} so the
+        // literal path is not swallowed by the model binding.
+        Route::get('/invoices/data-checks/cancelled-without-reversal', [InvoiceController::class, 'cancelledWithoutReversalDataCheck'])
+            ->middleware(RequirePermission::using('accounting.view'));
         Route::post('/invoices', [InvoiceController::class, 'store'])
             ->middleware(RequirePermission::using('invoices.write'));
         Route::get('/invoices/{invoice}', [InvoiceController::class, 'show'])
@@ -409,7 +414,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             ->middleware(RequirePermission::using('invoices.view'));
 
         Route::post('/invoices/{invoice}/cancel', [InvoiceController::class, 'cancel'])
-            ->middleware(RequirePermission::using('invoices.write'));
+            ->middleware(RequirePermission::using('accounting.post'));
         // Reverses the ledger and restores stock — admin/owner only.
         Route::post('/invoices/{invoice}/reset-to-draft', [InvoiceController::class, 'resetToDraft'])
             ->middleware(RequirePermission::using('documents.reset_to_draft'));
