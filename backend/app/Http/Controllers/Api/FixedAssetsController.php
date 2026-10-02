@@ -138,7 +138,7 @@ class FixedAssetsController extends Controller
         $format = $validated['format'] ?? 'xlsx';
 
         return Excel::download(
-            new FixedAssetsExport($query->orderBy('asset_number'), $validated['columns']),
+            new FixedAssetsExport($query->orderBy('asset_number'), $validated['columns'], $format),
             'fixed_assets_'.now()->format('Y-m-d').'.'.$format,
             $format === 'csv' ? \Maatwebsite\Excel\Excel::CSV : \Maatwebsite\Excel\Excel::XLSX
         );

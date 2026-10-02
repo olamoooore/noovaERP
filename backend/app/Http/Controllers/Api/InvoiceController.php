@@ -231,7 +231,7 @@ class InvoiceController extends Controller
         $format = $validated['format'] ?? 'xlsx';
 
         return Excel::download(
-            new InvoicesExport($query, $validated['columns']),
+            new InvoicesExport($query, $validated['columns'], $format),
             'invoices_'.now()->format('Y-m-d').'.'.$format,
             $format === 'csv' ? \Maatwebsite\Excel\Excel::CSV : \Maatwebsite\Excel\Excel::XLSX
         );

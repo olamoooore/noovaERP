@@ -187,7 +187,7 @@ class JournalEntriesController extends Controller
         $format = $validated['format'] ?? 'xlsx';
 
         return Excel::download(
-            new JournalEntriesExport($query->orderByDesc('entry_date')->orderByDesc('id'), $validated['columns']),
+            new JournalEntriesExport($query->orderByDesc('entry_date')->orderByDesc('id'), $validated['columns'], $format),
             'journal_entries_'.now()->format('Y-m-d').'.'.$format,
             $format === 'csv' ? \Maatwebsite\Excel\Excel::CSV : \Maatwebsite\Excel\Excel::XLSX
         );
