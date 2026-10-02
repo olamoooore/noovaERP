@@ -1840,8 +1840,8 @@ class AccountingModuleEndToEndTest extends TenantTestCase
         $this->assertStringContainsString('Only draft bills can be approved', $response->json('message'));
     }
 
-    /** @test — NEG-006: Payment exceeding bank balance is rejected */
-    public function payment_exceeding_bank_balance_is_rejected(): void
+    /** @test — NEG-006 / #479: a customer receipt is not capped by the bank balance */
+    public function customer_receipt_is_not_capped_by_bank_balance(): void
     {
         $invoice = $this->createAndPostInvoice();
         $invoice->update(['balance' => $invoice->total, 'status' => 'posted']);
@@ -1855,8 +1855,8 @@ class AccountingModuleEndToEndTest extends TenantTestCase
                 'bank_account_id' => $this->bankAccountUSD->id,
             ]);
 
-        $response->assertStatus(422);
-        $this->assertStringContainsString('exceeds bank account balance', $response->json('message'));
+        // #479: receipts are not capped by the bank balance.
+        $response->assertCreated();
     }
 
     /** @test — TEST-VPAY-002: Early payment discount is applied */

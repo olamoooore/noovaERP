@@ -20,6 +20,7 @@ import { StatCard } from '@/components/ui/stat-card';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
 import { useAuthStore } from '@/store/authStore'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import CreateCreditNoteDialog from '../components/CreateCreditNoteDialog';
 import { Pagination } from '@/components/ui/Pagination';
 import { SortableHead } from '@/components/ui/SortableHead';
 import { useSort } from '@/hooks/useSort';
@@ -52,6 +53,7 @@ export const CustomerBills: React.FC = () => {
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkDeleteCount, setBulkDeleteCount] = useState(0);
   const [bulkPostOpen, setBulkPostOpen] = useState(false);
+  const [creditNoteInvoiceId, setCreditNoteInvoiceId] = useState<number | null>(null);
   const { toast } = useToast();
   const { data: allTags = [] } = useTags();
   const queryClient = useQueryClient();
@@ -184,6 +186,8 @@ export const CustomerBills: React.FC = () => {
   const { hasPermission } = useAuthStore()
   // Posting/confirming sell-side documents is accounting-only (server enforces accounting.post).
   const canPost = hasPermission('accounting.post')
+  // #524: drafting a credit note requires accounting.write (server enforces it since #515).
+  const canWriteCreditNotes = hasPermission('accounting.write')
 
 
   // Send invoice mutation
@@ -732,6 +736,20 @@ export const CustomerBills: React.FC = () => {
                           >
                             <Icon icon="solar:eye-bold-duotone" className="h-3.5 w-3.5" />
                           </Button>
+                          {canWriteCreditNotes && ['posted', 'paid', 'partial', 'overdue'].includes(invoice.status) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 w-7 p-0"
+                              title="Credit note"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCreditNoteInvoiceId(invoice.id);
+                              }}
+                            >
+                              <Icon icon="solar:document-add-bold-duotone" className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                           {invoice.status === 'draft' && (
                             <>
                               <Button
@@ -814,6 +832,19 @@ export const CustomerBills: React.FC = () => {
           bulkDeleteMutation.mutateAsync(selectedIds);
         }}
       />
+
+      {/* #524: credit note straight from the invoice row, invoice preselected. */}
+      {creditNoteInvoiceId !== null && (
+        <CreateCreditNoteDialog
+          invoiceId={creditNoteInvoiceId}
+          onClose={() => setCreditNoteInvoiceId(null)}
+          onSuccess={() => {
+            setCreditNoteInvoiceId(null);
+            queryClient.invalidateQueries({ queryKey: ['invoices'] });
+            queryClient.invalidateQueries({ queryKey: ['customer-credit-notes'] });
+          }}
+        />
+      )}
     </div>
   );
 };

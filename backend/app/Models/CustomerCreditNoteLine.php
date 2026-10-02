@@ -20,6 +20,9 @@ class CustomerCreditNoteLine extends Model
         'base_unit_price',
         'pricing_trace',
         'tax_rate',
+        'tax_inclusive',
+        'discount_amount',
+        'tax_amount',
         'line_total',
         'account_id',
     ];
@@ -30,6 +33,9 @@ class CustomerCreditNoteLine extends Model
         'base_unit_price' => 'decimal:4',
         'pricing_trace' => 'array',
         'tax_rate' => 'decimal:2',
+        'tax_inclusive' => 'boolean',
+        'discount_amount' => 'decimal:2',
+        'tax_amount' => 'decimal:2',
         'line_total' => 'decimal:2',
     ];
 
@@ -38,7 +44,17 @@ class CustomerCreditNoteLine extends Model
         parent::boot();
 
         static::saving(function ($line) {
-            $line->line_total = $line->quantity * $line->unit_price;
+            // #512 (CN3): the SAME line arithmetic as invoices — discount and
+            // tax mode included. The old qty × price overwrote the real total.
+            $calc = InvoiceLine::computeLineTotals(
+                (float) $line->quantity,
+                (float) $line->unit_price,
+                (float) $line->tax_rate,
+                (bool) $line->tax_inclusive,
+                (float) ($line->discount_amount ?? 0),
+            );
+            $line->tax_amount = $calc['tax_amount'];
+            $line->line_total = $calc['line_total'];
         });
     }
 

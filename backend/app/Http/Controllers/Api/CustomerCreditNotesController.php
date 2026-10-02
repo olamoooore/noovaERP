@@ -123,6 +123,8 @@ class CustomerCreditNotesController extends Controller
             'lines.*.quantity' => 'required|numeric|min:0.01',
             'lines.*.unit_price' => 'required|numeric|min:0',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            'lines.*.tax_inclusive' => 'nullable|boolean',
+            'lines.*.discount_amount' => 'nullable|numeric|min:0',
             'lines.*.account_id' => 'nullable|exists:chart_of_accounts,id',
         ]);
 
@@ -220,6 +222,11 @@ class CustomerCreditNotesController extends Controller
                 'credit_note' => $posted,
             ]);
 
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'message' => 'Failed to post credit note',
+                'error' => $e->getMessage(),
+            ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to post credit note',

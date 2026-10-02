@@ -16,6 +16,7 @@ class DatabaseSeeder extends Seeder
         ];
 
         if (function_exists('tenant') && tenant()) {
+            $seeders[] = PaymentMethodsSeeder::class; // #486 generic method master
             $seeders[] = DepartmentLocationSeeder::class;
             $seeders[] = HRMPermissionSeeder::class;
             $seeders[] = AccountingPermissionSeeder::class;

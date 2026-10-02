@@ -68,6 +68,9 @@ class PaymentCorrectionService
                 'invoice_id' => $payment->invoice_id ?? $payment->bill_id,
                 'payment_date' => now()->toDateString(),
                 'amount' => -$payment->amount,
+                // #478: mirror the discount leg too so the correction document
+                // reverses the full settlement.
+                'discount_amount' => -round((float) ($payment->discount_amount ?? 0), 2),
                 'method' => $payment->method,
                 'reference' => 'Reversal: '.$payment->payment_number,
                 'notes' => $request->reasonText,
@@ -97,7 +100,7 @@ class PaymentCorrectionService
                 app(PaymentAllocationService::class)->reverseAllocations($payment);
             } else {
                 if ($originalInvoice) {
-                    $this->lifecycleService->applyPaymentReversal($originalInvoice, $payment->amount);
+                    $this->lifecycleService->applyPaymentReversal($originalInvoice, $this->settledAmount($payment));
                 }
 
                 if ($originalBill) {
@@ -157,6 +160,9 @@ class PaymentCorrectionService
                 'invoice_id' => $payment->invoice_id ?? $payment->bill_id,
                 'payment_date' => now()->toDateString(),
                 'amount' => -$payment->amount,
+                // #478: mirror the discount leg too so the correction document
+                // reverses the full settlement.
+                'discount_amount' => -round((float) ($payment->discount_amount ?? 0), 2),
                 'method' => $payment->method,
                 'reference' => 'Refund: '.$payment->payment_number,
                 'notes' => $request->reasonText,
@@ -185,7 +191,7 @@ class PaymentCorrectionService
                 app(PaymentAllocationService::class)->reverseAllocations($payment);
             } else {
                 if ($originalInvoice) {
-                    $this->lifecycleService->applyPaymentRefund($originalInvoice, $payment->amount);
+                    $this->lifecycleService->applyPaymentRefund($originalInvoice, $this->settledAmount($payment));
                 }
 
                 if ($originalBill) {
@@ -256,7 +262,7 @@ class PaymentCorrectionService
                 app(PaymentAllocationService::class)->reverseAllocations($payment);
             } else {
                 if ($originalInvoice) {
-                    $this->lifecycleService->applyPaymentReversal($originalInvoice, $payment->amount);
+                    $this->lifecycleService->applyPaymentReversal($originalInvoice, $this->settledAmount($payment));
                 }
 
                 if ($originalBill) {
@@ -282,6 +288,15 @@ class PaymentCorrectionService
      * correction record (refund_payment_id) — must not be corrected again.
      * This is what prevents double refunds / double reversals.
      */
+    /**
+     * #478: the value a payment settled on its invoice — cash received plus any
+     * cash discount. Corrections must undo this full amount, not just cash.
+     */
+    private function settledAmount(Payment $payment): float
+    {
+        return round((float) $payment->amount + (float) ($payment->discount_amount ?? 0), 2);
+    }
+
     private function assertCorrectable(Payment $payment, string $targetStatus): void
     {
         // Canonical statuses (#73) have no `draft` label: a payment is posted —

@@ -6,8 +6,12 @@ use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\DTOs\ReversalRequest;
+use App\Accounting\Events\CreditNotePosted;
 use App\Models\CustomerCreditNote;
+use App\Models\CustomerCreditNoteLine;
 use App\Models\Invoice;
+use App\Models\InvoiceLine;
+use App\Models\Product;
 use App\Models\TaxDeterminationResult;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -41,6 +45,19 @@ class CustomerCreditNoteService
             // INVOICE currency and rate snapshot — never its own defaults.
             $sourceInvoice = ! empty($data['invoice_id']) ? Invoice::find($data['invoice_id']) : null;
 
+            // #511 (CN2): the credit note's customer must be the invoice's
+            // customer. Two independent `exists` rules let a credit note for
+            // customer A land on customer B's invoice — reject the pairing
+            // (store maps RuntimeException → 422) and derive the customer
+            // server-side when the caller omits it.
+            if ($sourceInvoice) {
+                if (empty($data['customer_id'])) {
+                    $data['customer_id'] = $sourceInvoice->customer_id;
+                } elseif ((int) $data['customer_id'] !== (int) $sourceInvoice->customer_id) {
+                    throw new \RuntimeException('The selected invoice belongs to a different customer.');
+                }
+            }
+
             if ($sourceInvoice) {
                 $data['currency_code'] = $data['currency_code'] ?? $sourceInvoice->currency_code;
                 $data['exchange_rate'] = $data['exchange_rate'] ?? $sourceInvoice->exchange_rate;
@@ -59,18 +76,121 @@ class CustomerCreditNoteService
                 $data['exchange_rate'] = 1.000000;
             }
 
-            // Calculate totals from lines BEFORE inserting (columns are NOT NULL)
-            $subtotal = 0;
-            $taxAmount = 0;
-            foreach ($lines as $lineData) {
-                $lineTotal = (float) $lineData['quantity'] * (float) $lineData['unit_price'];
-                $subtotal += $lineTotal;
-                // MRD R3.1: engine-owned arithmetic.
-                $taxAmount += \App\Services\TaxEngineService::calculate($lineTotal, (float) ($lineData['tax_rate'] ?? 0), false)['tax'];
+            // #512 (CN3): totals use the SAME line arithmetic as invoices
+            // (InvoiceLine::computeLineTotals → TaxEngineService::calculate)
+            // with the source line's discount and tax mode carried over, then
+            // the invoice's document-level discount is pro-rated by the
+            // credited share — a full credit of any invoice equals that
+            // invoice's total exactly, tax included.
+            $sourceLines = $sourceInvoice ? $sourceInvoice->lines()->get()->keyBy('id') : collect();
+
+            // #514 (CN5): the tax rate of a credit note line is inherited, never
+            // invented by the caller. With an invoice_line_id it comes from the
+            // original invoice line's determination (falling back to the rate
+            // the invoice line itself was invoiced at); without one it is
+            // resolved through TaxEngineService, which answers "no tax" for an
+            // unconfigured tenant instead of leaving a silent 0 behind a tax
+            // code. A client-supplied rate that disagrees with the source is
+            // rejected — the reversal must not re-rate the original invoice.
+            $sourceDeterminationLines = $sourceInvoice
+                ? app(TaxDeterminationService::class)->latestDeterminationLines('invoice', (int) $sourceInvoice->id)
+                : [];
+
+            $creditNoteDate = $data['credit_note_date'];
+            $creditNoteDateString = $creditNoteDate instanceof \DateTimeInterface
+                ? $creditNoteDate->toDateString()
+                : (string) $creditNoteDate;
+
+            $lineTaxRates = [];
+
+            foreach ($lines as $index => $lineData) {
+                $originLine = ($lineData['invoice_line_id'] ?? null)
+                    ? $sourceLines->get($lineData['invoice_line_id'])
+                    : null;
+
+                if ($originLine) {
+                    // Linked line: the original invoice line's determination
+                    // is the authority, and the caller may not re-rate it.
+                    $originDetermination = $sourceDeterminationLines[$lineData['invoice_line_id']] ?? null;
+
+                    $rate = $originDetermination && (float) ($originDetermination['tax_rate'] ?? 0) > 0
+                        ? (float) $originDetermination['tax_rate']
+                        : (float) ($originLine->tax_rate ?? 0);
+
+                    if (isset($lineData['tax_rate']) && $lineData['tax_rate'] !== null) {
+                        $supplied = (float) $lineData['tax_rate'];
+
+                        if (abs($supplied - $rate) > 0.00001) {
+                            throw new \RuntimeException(sprintf(
+                                'Credit note line %d tax rate %.2f%% conflicts with the tax rate of the source document (%.2f%%). A credit note reverses the invoiced rate.',
+                                $index + 1,
+                                $supplied,
+                                $rate
+                            ));
+                        }
+                    }
+                } elseif (isset($lineData['tax_rate']) && $lineData['tax_rate'] !== null) {
+                    // Unlinked line WITH an explicit rate: the caller has its
+                    // own provenance for it (e.g. the sales-order handoff
+                    // carries the order line's rate across), so honour it.
+                    $rate = (float) $lineData['tax_rate'];
+                } else {
+                    // Unlinked line WITHOUT a rate: resolve it through the tax
+                    // engine rather than leaving a silent 0 behind a tax code.
+                    // An unconfigured tenant still gets the engine's own
+                    // "no tax" answer.
+                    $resolved = app(TaxEngineService::class)->resolve(
+                        product: ! empty($lineData['product_id']) ? Product::find($lineData['product_id']) : null,
+                        direction: 'output',
+                        date: $creditNoteDateString,
+                    );
+
+                    $rate = (float) ($resolved['rate'] ?? 0);
+                }
+
+                $lineTaxRates[$index] = $rate;
             }
-            $data['subtotal'] = round($subtotal, 2);
-            $data['tax_amount'] = round($taxAmount, 2);
-            $data['total_amount'] = round($subtotal + $taxAmount, 2);
+
+            $subtotal = 0.0;
+            $lineTaxSum = 0.0;
+
+            foreach ($lines as $index => $lineData) {
+                $origin = ($lineData['invoice_line_id'] ?? null) ? $sourceLines->get($lineData['invoice_line_id']) : null;
+
+                $calc = InvoiceLine::computeLineTotals(
+                    (float) $lineData['quantity'],
+                    (float) $lineData['unit_price'],
+                    (float) $lineTaxRates[$index],
+                    (bool) ($lineData['tax_inclusive'] ?? $origin?->tax_inclusive ?? false),
+                    (float) ($lineData['discount_amount'] ?? $origin?->discount_amount ?? 0),
+                );
+
+                $subtotal += $calc['net'];
+                $lineTaxSum += $calc['tax_amount'];
+            }
+
+            $subtotal = round($subtotal, 2);
+            $lineTaxSum = round($lineTaxSum, 2);
+
+            $docDiscount = 0.0;
+            if ($sourceInvoice
+                && (float) $sourceInvoice->discount_amount > 0
+                && (float) $sourceInvoice->subtotal > 0
+                && $subtotal > 0) {
+                $docDiscount = round(
+                    (float) $sourceInvoice->discount_amount * min(1.0, $subtotal / (float) $sourceInvoice->subtotal),
+                    2,
+                );
+            }
+
+            $taxAmount = ($docDiscount > 0 && $subtotal > 0)
+                ? round($lineTaxSum * (max($subtotal - $docDiscount, 0) / $subtotal), 2)
+                : $lineTaxSum;
+
+            $data['discount_amount'] = $docDiscount;
+            $data['subtotal'] = $subtotal;
+            $data['tax_amount'] = $taxAmount;
+            $data['total_amount'] = round($subtotal - $docDiscount + $taxAmount, 2);
 
             // Let the model's creating callback handle created_by attribution
             if (empty($data['created_by'])) {
@@ -81,11 +201,9 @@ class CustomerCreditNoteService
 
             $creditNote = CustomerCreditNote::create($data);
 
-            // Add lines — provenance carries over from the source invoice
-            // line when the payload does not supply it (FR-5.9).
-            $sourceLines = $sourceInvoice ? $sourceInvoice->lines()->get()->keyBy('id') : collect();
-
-            foreach ($lines as $lineData) {
+            // Add lines — provenance (discount, tax mode, pricing) carries
+            // over from the source invoice line when the payload omits it.
+            foreach ($lines as $index => $lineData) {
                 $origin = ($lineData['invoice_line_id'] ?? null) ? $sourceLines->get($lineData['invoice_line_id']) : null;
 
                 $creditNote->lines()->create([
@@ -99,7 +217,9 @@ class CustomerCreditNoteService
                             ? (float) $origin->base_unit_price
                             : round((float) $lineData['unit_price'] * (float) ($data['exchange_rate'] ?: 1), 4)),
                     'pricing_trace' => $lineData['pricing_trace'] ?? $origin?->pricing_trace,
-                    'tax_rate' => $lineData['tax_rate'] ?? 0,
+                    'tax_rate' => $lineTaxRates[$index],
+                    'tax_inclusive' => (bool) ($lineData['tax_inclusive'] ?? $origin?->tax_inclusive ?? false),
+                    'discount_amount' => (float) ($lineData['discount_amount'] ?? $origin?->discount_amount ?? 0),
                     'account_id' => $lineData['account_id'] ?? null,
                 ]);
             }
@@ -122,30 +242,42 @@ class CustomerCreditNoteService
      */
     public function postCreditNote(CustomerCreditNote $creditNote): CustomerCreditNote
     {
+        // #516 (CN7): captured before the posting work, which tears the
+        // tenancy context down before the post-commit dispatch below.
+        $postingTenantId = tenancy()->tenant?->id;
+
+        // #517 (CN8): the audit actor is the user who POSTS, not the user who
+        // drafted. Previously the creator was passed as the preferred id, so
+        // whenever the acting user could not be resolved by email in the
+        // tenant user table the ledger silently attributed the posting to the
+        // creator. Non-interactive posts (scheduler, queue) have no acting
+        // user and fall back to the creator.
+        $actorId = Auth::id() !== null
+            ? TenantUserHelper::requireTenantUserId(Auth::id())
+            : TenantUserHelper::requireTenantUserId($creditNote->created_by);
+
         if ($creditNote->status !== 'draft') {
             throw new \Exception('Only draft credit notes can be posted');
         }
 
-        // Validate credit note amount doesn't exceed invoice amount
-        $invoice = $creditNote->invoice;
-        $existingCreditNotes = CustomerCreditNote::where('invoice_id', $invoice->id)
-            ->where('status', 'posted')
-            ->where('id', '!=', $creditNote->id)
-            ->sum('total_amount');
-
-        $totalCredited = $existingCreditNotes + $creditNote->total_amount;
-
-        if ($totalCredited > $invoice->total) {
-            throw new \Exception(
-                'Credit note amount exceeds invoice amount. '.
-                "Invoice: {$invoice->total}, Already credited: {$existingCreditNotes}, ".
-                "This credit note: {$creditNote->total_amount}"
-            );
+        // #511 (CN2): re-enforce the pairing at post time — legacy rows or
+        // direct model writes must not reach the ledger with a customer that
+        // does not own the invoice.
+        if ($creditNote->invoice && (int) $creditNote->invoice->customer_id !== (int) $creditNote->customer_id) {
+            throw new \RuntimeException('Credit note customer does not match the invoice customer.');
         }
 
         DB::beginTransaction();
 
         try {
+            // #513 (CN4): the credit caps are enforced HERE — inside the
+            // posting transaction, against the invoice row locked with
+            // lockForUpdate(). Checking before the transaction (and without a
+            // lock) let a line be credited beyond what was invoiced and let
+            // two concurrent posts both pass a stale snapshot.
+            $invoice = Invoice::whereKey($creditNote->invoice_id)->lockForUpdate()->firstOrFail();
+            $this->assertCreditWithinLimits($creditNote, $invoice);
+
             $lines = [];
 
             // MRD TAX-REQ-07 (D4): the credit note must reverse the ORIGINAL
@@ -166,16 +298,37 @@ class CustomerCreditNoteService
 
             $cnLines = [];
             foreach ($creditNote->lines as $line) {
-                $base = round((float) $line->quantity * (float) $line->unit_price, 2);
-                $rate = (float) ($line->tax_rate ?? 0);
                 $origin = $line->invoice_line_id !== null ? ($originalLines[$line->invoice_line_id] ?? null) : null;
+
+                // #514 (CN5): the reversal takes ONE rate — the original
+                // invoice line's determination rate when there is one, else the
+                // rate the credit note line was created with (itself resolved
+                // server-side at creation). The booked amount must be computed
+                // with that same rate: taking the rate from the determination
+                // while computing the amount from the credit note line's own
+                // rate is what made the tax code, the rate and the amount
+                // disagree.
+                $rate = $origin && (float) ($origin['tax_rate'] ?? 0) > 0
+                    ? (float) $origin['tax_rate']
+                    : (float) ($line->tax_rate ?? 0);
+
+                // #512 (CN3): the shared line arithmetic — net base and tax
+                // honour the line's discount and tax mode (the old call
+                // forced exclusive, undiscounted tax on top).
+                $calc = InvoiceLine::computeLineTotals(
+                    (float) $line->quantity,
+                    (float) $line->unit_price,
+                    $rate,
+                    (bool) $line->tax_inclusive,
+                    (float) ($line->discount_amount ?? 0),
+                );
 
                 $cnLines[] = [
                     'source_line_id' => $line->id,
                     'product' => $line->product,
-                    'base' => $base,
-                    'rate' => $origin && (float) $origin['tax_rate'] > 0 ? (float) $origin['tax_rate'] : $rate,
-                    'tax' => \App\Services\TaxEngineService::calculate($base, $rate, false)['tax'],
+                    'base' => $calc['net'],
+                    'rate' => $rate,
+                    'tax' => $calc['tax_amount'],
                     'tax_code_override' => $origin['tax_code'] ?? null,
                     'treatment_override' => $origin['treatment'] ?? null,
                     'tax_id_override' => $origin['tax_id'] ?? null,
@@ -315,7 +468,7 @@ class CustomerCreditNoteService
                 exchangeRate: $cnForeign ? $cnRate : null,
                 lines: $lines,
                 reference: $creditNote->credit_note_number,
-                userId: TenantUserHelper::requireTenantUserId($creditNote->created_by),
+                userId: $actorId,
                 taxDeterminationResult: $taxDetermination,
                 legalEntityId: $legalEntityId,
                 entityBookId: $entityBookId,
@@ -328,20 +481,116 @@ class CustomerCreditNoteService
             $creditNote->update([
                 'status' => 'posted',
                 'posted_at' => now(),
-                'posted_by' => TenantUserHelper::requireTenantUserId($creditNote->created_by),
+                'posted_by' => $actorId,
                 'journal_entry_id' => $result->journalEntryId,
             ]);
 
-            // Atomically reduce invoice balance and update status via canonical service.
-            app(InvoiceService::class)->applyRefundToInvoice($invoice, (float) $creditNote->total_amount);
+            // #510 (CN1): a credit note reduces what is OWED, it is not a cash
+            // refund — apply it through the credit path (credited_amount +
+            // balance = total − paid − credited), never via paid_amount.
+            app(InvoiceService::class)->applyCreditNoteToInvoice($invoice, (float) $creditNote->total_amount);
 
             DB::commit();
+
+            // #516 (CN7): after the commit, mirroring InvoicePosted — the
+            // e-invoicing listener must only ever see a credit note whose
+            // ledger effect is durable.
+            CreditNotePosted::dispatch(
+                $creditNote->fresh(['journalEntry', 'lines', 'customer', 'invoice']),
+                $postingTenantId
+            );
 
             return $creditNote->fresh(['journalEntry', 'lines', 'customer', 'invoice']);
 
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
+        }
+    }
+
+    /**
+     * #513 (CN4): the credit caps, enforced with the invoice row already
+     * locked inside the posting transaction.
+     *
+     *  - Document level: credits already posted + this note <= invoice total.
+     *  - Per linked invoice line: credited quantity <= invoiced quantity and
+     *    credited net <= invoiced net, counting earlier POSTED credit notes.
+     *
+     * Lines without an invoice_line_id have no invoiced quantity or price to
+     * compare against, so only the document cap above covers them.
+     *
+     * Throws RuntimeException — the API maps that to 422 (a validation error),
+     * not a 500.
+     */
+    private function assertCreditWithinLimits(CustomerCreditNote $creditNote, Invoice $invoice): void
+    {
+        $priorNoteIds = CustomerCreditNote::where('invoice_id', $invoice->id)
+            ->where('status', 'posted')
+            ->where('id', '!=', $creditNote->id)
+            ->pluck('id');
+
+        $alreadyCredited = $priorNoteIds->isEmpty()
+            ? 0.0
+            : (float) CustomerCreditNote::whereIn('id', $priorNoteIds)->sum('total_amount');
+
+        if ($alreadyCredited + (float) $creditNote->total_amount > (float) $invoice->total) {
+            throw new \RuntimeException(
+                'Credit note amount exceeds invoice amount. '.
+                "Invoice: {$invoice->total}, Already credited: {$alreadyCredited}, ".
+                "This credit note: {$creditNote->total_amount}"
+            );
+        }
+
+        $priorLines = $priorNoteIds->isEmpty()
+            ? collect()
+            : CustomerCreditNoteLine::whereIn('credit_note_id', $priorNoteIds)
+                ->whereNotNull('invoice_line_id')
+                ->get()
+                ->groupBy('invoice_line_id');
+
+        foreach ($creditNote->lines as $line) {
+            if ($line->invoice_line_id === null) {
+                continue;
+            }
+
+            $origin = InvoiceLine::find($line->invoice_line_id);
+
+            if (! $origin || (int) $origin->invoice_id !== (int) $invoice->id) {
+                throw new \RuntimeException(
+                    "Credit note line references invoice line {$line->invoice_line_id}, which does not belong to invoice {$invoice->id}."
+                );
+            }
+
+            $prior = $priorLines->get($line->invoice_line_id) ?? collect();
+
+            $creditedQuantity = (float) $line->quantity
+                + (float) $prior->sum(fn ($l) => (float) $l->quantity);
+
+            if ($creditedQuantity > (float) $origin->quantity + 0.00001) {
+                throw new \RuntimeException(sprintf(
+                    'Credit note line quantity %.2f exceeds invoiced quantity %.2f on invoice line %d (already credited %.2f).',
+                    $creditedQuantity,
+                    (float) $origin->quantity,
+                    (int) $origin->id,
+                    $creditedQuantity - (float) $line->quantity
+                ));
+            }
+
+            // line_total is gross of tax on both documents, so the comparable
+            // figure is the net (gross - tax).
+            $originNet = (float) $origin->line_total - (float) $origin->tax_amount;
+            $thisNet = (float) $line->line_total - (float) $line->tax_amount;
+            $priorNet = (float) $prior->sum(fn ($l) => (float) $l->line_total - (float) $l->tax_amount);
+
+            if ($thisNet + $priorNet > $originNet + 0.0001) {
+                throw new \RuntimeException(sprintf(
+                    'Credit note line amount %.2f exceeds invoiced line amount %.2f on invoice line %d (already credited %.2f).',
+                    $thisNet + $priorNet,
+                    $originNet,
+                    (int) $origin->id,
+                    $priorNet
+                ));
+            }
         }
     }
 
@@ -386,9 +635,9 @@ class CustomerCreditNoteService
                     ?? $reversal->journalEntry?->id;
             }
 
-            // Undo the invoice balance reduction performed at posting time.
+            // #510 (CN1): release the credit applied at posting time.
             if ($creditNote->invoice) {
-                app(InvoiceService::class)->restoreRefundToInvoice(
+                app(InvoiceService::class)->reverseCreditNoteFromInvoice(
                     $creditNote->invoice,
                     (float) $creditNote->total_amount,
                 );

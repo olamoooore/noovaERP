@@ -32,6 +32,8 @@ export interface CreateCreditNotePayload {
     quantity: number;
     unit_price: number;
     tax_rate: number;
+    tax_inclusive?: boolean;
+    discount_amount?: number;
     account_id: number | null;
   }>;
 }
