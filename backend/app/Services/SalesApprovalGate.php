@@ -111,18 +111,278 @@ class SalesApprovalGate
     }
 
     /**
-     * Whether this document already has an approved request of the given type.
+     * Whether this document already has an approved request of the given type
+     * that still describes the document's current approval-relevant state.
      * A downstream action (invoice/DO from a quotation) may proceed once the
-     * underlying document has been approved.
+     * underlying document has been approved — but only while the document
+     * still matches what was approved (issue #646). A document that grew past
+     * its approved total, changed its discount/currency/customer or its lines
+     * needs a fresh approval, even though an `approved` row exists.
      */
     public function hasApprovedRequest(Model $document, string $requestType): bool
     {
-        return ApprovalRequest::query()
+        $approved = ApprovalRequest::query()
             ->where('subject_type', $document::class)
             ->where('subject_id', $document->id)
             ->where('request_type', $requestType)
             ->where('status', 'approved')
-            ->exists();
+            ->orderByDesc('id')
+            ->get();
+
+        if ($approved->isEmpty()) {
+            return false;
+        }
+
+        $current = $this->snapshotFor($document);
+
+        return $approved->contains(fn (ApprovalRequest $request) => $this->requestMatchesSnapshot($request, $current));
+    }
+
+    /**
+     * Approval-relevant fingerprint of a document at request/approval time.
+     *
+     * Issue #646: an approval is only as good as the document it approved.
+     * The snapshot is stored on the request's `metadata` (the existing JSON
+     * payload column — no schema change) and re-checked against the live
+     * document before the gate trusts an approved request.
+     *
+     * @return array{total: float, discount: float, currency_code: ?string, customer_id: ?int, line_hash: string, document_class: string, document_id: int}
+     */
+    public function snapshotFor(Model $document): array
+    {
+        return [
+            'total' => (float) ($document->total ?? $document->amount ?? 0),
+            'discount' => (float) ($document->discount_amount ?? 0),
+            'currency_code' => $document->currency_code !== null
+                ? strtoupper((string) $document->currency_code)
+                : null,
+            'customer_id' => $document->customer_id !== null ? (int) $document->customer_id : null,
+            'line_hash' => $this->lineHash($document),
+            'document_class' => $document::class,
+            'document_id' => (int) $document->getKey(),
+        ];
+    }
+
+    /**
+     * Whether an approval request still describes the document it covers.
+     * Requests without a snapshot (pre-#646 or raised by a non-gate flow)
+     * cannot be verified and are treated conservatively as not matching.
+     */
+    public function requestMatchesDocument(ApprovalRequest $request, Model $document): bool
+    {
+        return $this->requestMatchesSnapshot($request, $this->snapshotFor($document));
+    }
+
+    /**
+     * @param  array<string, mixed>  $current
+     */
+    private function requestMatchesSnapshot(ApprovalRequest $request, array $current): bool
+    {
+        $metadata = $request->metadata;
+        $snapshot = is_array($metadata) ? ($metadata['subject_snapshot'] ?? null) : null;
+
+        if (! is_array($snapshot) || ! array_key_exists('line_hash', $snapshot)) {
+            return false;
+        }
+
+        if (($current['line_hash'] ?? null) !== ($snapshot['line_hash'] ?? null)) {
+            return false;
+        }
+
+        // The header discount is an approval-relevant term.
+        if (abs(((float) ($current['discount'] ?? 0)) - ((float) ($snapshot['discount'] ?? 0))) > 0.005) {
+            return false;
+        }
+
+        // Currency/FX and customer change what was actually approved.
+        if (($current['currency_code'] ?? null) !== ($snapshot['currency_code'] ?? null)) {
+            return false;
+        }
+
+        if (($current['customer_id'] ?? null) !== ($snapshot['customer_id'] ?? null)) {
+            return false;
+        }
+
+        // The document may only shrink in value: at or below the approved
+        // total with identical approval-relevant content stays covered.
+        return ((float) ($current['total'] ?? 0)) <= ((float) ($snapshot['total'] ?? 0)) + 0.005;
+    }
+
+    /**
+     * Line columns excluded from {@see lineHash()}: row identity, parent
+     * foreign keys and timestamps that do not change what was approved.
+     *
+     * @var string[]
+     */
+    private const LINE_HASH_IGNORED_COLUMNS = [
+        'id',
+        'quotation_id',
+        'sales_order_id',
+        'invoice_id',
+        'delivery_order_id',
+        'purchase_order_id',
+        'credit_note_id',
+        'debit_note_id',
+        'tenant_id',
+        'created_at',
+        'updated_at',
+        'deleted_at',
+    ];
+
+    /**
+     * Content hash of a document's lines. Line order and row identity are
+     * irrelevant — what matters is the approved content (product, quantity,
+     * price, tax, discount, totals). Structural columns (the row id, its
+     * parent FK, timestamps) are dropped so a delete/recreate of the same
+     * lines hashes identically.
+     */
+    private function lineHash(Model $document): string
+    {
+        if (! method_exists($document, 'lines')) {
+            return hash('sha256', '[]');
+        }
+
+        $lines = $document->lines()->get()->map(function ($line) {
+            $attributes = [];
+            foreach ($line->getAttributes() as $key => $value) {
+                if (in_array($key, self::LINE_HASH_IGNORED_COLUMNS, true)) {
+                    continue;
+                }
+                $attributes[$key] = $this->normalizeHashValue($value);
+            }
+            ksort($attributes);
+
+            return $attributes;
+        })->all();
+
+        // Order carries no approval meaning; sort by content so reordering
+        // lines does not invalidate an approval.
+        usort($lines, fn (array $a, array $b) => strcmp(
+            (string) json_encode($a),
+            (string) json_encode($b),
+        ));
+
+        return hash('sha256', (string) json_encode($lines));
+    }
+
+    private function normalizeHashValue(mixed $value): mixed
+    {
+        if ($value === null || is_bool($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            // 100 vs 100.00 (in-memory int vs DB decimal) must hash alike.
+            $formatted = rtrim(rtrim(number_format((float) $value, 6, '.', ''), '0'), '.');
+
+            return ($formatted === '' || $formatted === '-') ? '0' : $formatted;
+        }
+
+        return (string) $value;
+    }
+
+    /**
+     * Invalidate pending/approved requests whose snapshot no longer matches
+     * the document, logging a chatter entry on the document for each one.
+     *
+     * Issue #646 chose auto-invalidation over locking the document: a gated
+     * quotation/sales order stays `draft` (that is how the gate works), its
+     * edit route only accepts drafts, and there is no "request changes /
+     * unlock" action to reopen a locked one. Locking would make an approved
+     * draft permanently uneditable; invalidating instead keeps the normal edit
+     * flow and forces a fresh approval at the next gated action.
+     *
+     * @return int number of requests invalidated
+     */
+    public function invalidateStaleApprovals(
+        Model $document,
+        string $requestType,
+        ?User $actor = null,
+        ?string $reason = null,
+    ): int {
+        $requests = ApprovalRequest::query()
+            ->where('subject_type', $document::class)
+            ->where('subject_id', $document->id)
+            ->where('request_type', $requestType)
+            ->whereIn('status', ['pending', 'approved'])
+            ->get();
+
+        if ($requests->isEmpty()) {
+            return 0;
+        }
+
+        $current = $this->snapshotFor($document);
+        $invalidated = 0;
+
+        foreach ($requests as $request) {
+            if ($this->requestMatchesSnapshot($request, $current)) {
+                continue;
+            }
+
+            $previousStatus = $request->status;
+            $metadata = $request->metadata ?? [];
+            $snapshot = is_array($metadata['subject_snapshot'] ?? null) ? $metadata['subject_snapshot'] : [];
+            $metadata['invalidated'] = [
+                'at' => now()->toIso8601String(),
+                'by' => $actor?->id,
+                'reason' => $reason ?? 'The document changed after this approval request was raised.',
+                'previous_status' => $previousStatus,
+                'approved_total' => (float) ($snapshot['total'] ?? $request->amount ?? 0),
+                'current_total' => $current['total'],
+            ];
+
+            $request->update([
+                'status' => 'withdrawn',
+                'metadata' => $metadata,
+            ]);
+
+            $this->logApprovalInvalidated($request, $document, $previousStatus, $current, $actor, $reason);
+
+            $invalidated++;
+        }
+
+        return $invalidated;
+    }
+
+    /**
+     * @param  array<string, mixed>  $current
+     */
+    private function logApprovalInvalidated(
+        ApprovalRequest $request,
+        Model $document,
+        string $previousStatus,
+        array $current,
+        ?User $actor,
+        ?string $reason,
+    ): void {
+        try {
+            $metadata = $request->metadata;
+            $snapshot = is_array($metadata) ? ($metadata['subject_snapshot'] ?? []) : [];
+
+            app(\App\Services\Chatter\ChatterService::class)->logEvent(
+                $document::class,
+                (int) $document->getKey(),
+                'approval_invalidated',
+                "Approval request {$request->request_number} invalidated: the document changed from "
+                    .number_format((float) ($snapshot['total'] ?? 0), 2)
+                    .' to '.number_format((float) ($current['total'] ?? 0), 2).'.',
+                [
+                    'approval_request_id' => $request->id,
+                    'approval_request_number' => $request->request_number,
+                    'previous_status' => $previousStatus,
+                    'approved_total' => (float) ($snapshot['total'] ?? 0),
+                    'current_total' => (float) ($current['total'] ?? 0),
+                    'reason' => $reason,
+                ],
+                $actor?->id,
+                $actor !== null ? $actor::class : null,
+            );
+        } catch (\Throwable $e) {
+            Log::warning('SalesApprovalGate: failed to log approval invalidation', [
+                'approval_request_id' => $request->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -280,9 +540,11 @@ class SalesApprovalGate
      * Gate a downstream action on a document.
      *
      * Returns null when the action may proceed — either the gate is disabled
-     * or the document already carries an approved request. Otherwise returns
-     * the pending `ApprovalRequest` (an existing pending request is reused,
-     * never duplicated) and the caller must stop and return 202.
+     * or the document already carries an approved request that still matches
+     * the document. Otherwise returns the pending `ApprovalRequest` (an
+     * existing pending request is reused, never duplicated) and the caller
+     * must stop and return 202. A pending request raised against an older
+     * document state is invalidated first (issue #646).
      */
     public function requestIfNeeded(Model $document, string $requestType, float $amount, User $user): ?ApprovalRequest
     {
@@ -302,6 +564,16 @@ class SalesApprovalGate
             ->latest('id')
             ->first();
 
+        if ($pending !== null && ! $this->requestMatchesDocument($pending, $document)) {
+            // The document changed after this request was raised through a
+            // path that did not call invalidateStaleApprovals() (e.g. a direct
+            // model write). Reusing it would have the reviewer approve a
+            // document state that no longer exists — withdraw it and raise a
+            // fresh request for the current state.
+            $this->invalidateStaleApprovals($document, $requestType, $user);
+            $pending = null;
+        }
+
         return $pending ?? $this->createRequest($document, $user, $requestType);
     }
 
@@ -320,6 +592,10 @@ class SalesApprovalGate
                 'threshold' => $this->threshold(),
                 'document_class' => $document::class,
                 'document_id' => $document->id,
+                // Issue #646: the document state this request approves. Stored
+                // on the existing metadata JSON so no schema change is needed;
+                // a request without it (legacy) is treated conservatively.
+                'subject_snapshot' => $this->snapshotFor($document),
             ];
 
             if ($document instanceof SalesOrder) {
