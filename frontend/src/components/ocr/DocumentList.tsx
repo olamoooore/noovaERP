@@ -28,6 +28,10 @@ interface OcrDocument {
   currency_code: string
   status: string
   created_at: string
+  // Wide-search hints set by the list endpoint when a search term is present.
+  matched_contacts?: string[]
+  matched_tags?: string[]
+  matched_addresses?: string[]
 }
 
 interface DocumentListProps {
@@ -44,7 +48,7 @@ const formatDate = (value?: string | null) => {
   return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-export function DocumentList({ documents, onRefresh, searchTerm, statusFilter }: DocumentListProps) {
+export function DocumentList({ documents, onRefresh }: DocumentListProps) {
   const navigate = useNavigate()
   const { toast } = useToast()
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -54,16 +58,10 @@ export function DocumentList({ documents, onRefresh, searchTerm, statusFilter }:
   const [isDeleting, setIsDeleting] = useState(false)
   const [isUnposting, setIsUnposting] = useState(false)
 
-  const filteredDocuments = documents.filter((doc) => {
-    const matchesSearch =
-      doc.vendor_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      doc.file_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      doc.total_amount?.toString().includes(searchTerm)
-
-    const matchesStatus = statusFilter === 'all' || doc.status === statusFilter
-
-    return matchesSearch && matchesStatus
-  })
+  // The page now sends search/status to the API (wide search through the
+  // vendor's contacts/addresses/tags would be dropped by a client-side
+  // vendor_name-only filter), so render exactly what the server returned.
+  const filteredDocuments = documents
 
   const getStatusBadge = (status: string) => {
     const config = getOcrStatusStyle(status)
@@ -180,6 +178,21 @@ export function DocumentList({ documents, onRefresh, searchTerm, statusFilter }:
                       <p className="mt-1 truncate text-sm text-muted-foreground">
                         {doc.vendor_name || 'Unknown vendor'}
                       </p>
+                      {(doc.matched_contacts?.length ?? 0) > 0 && (
+                        <p className="truncate text-xs text-primary" title={doc.matched_contacts!.join(', ')}>
+                          Contact: {doc.matched_contacts!.join(', ')}
+                        </p>
+                      )}
+                      {(doc.matched_tags?.length ?? 0) > 0 && (
+                        <p className="truncate text-xs text-amber-600" title={doc.matched_tags!.join(', ')}>
+                          Tag: {doc.matched_tags!.join(', ')}
+                        </p>
+                      )}
+                      {(doc.matched_addresses?.length ?? 0) > 0 && (
+                        <p className="truncate text-xs text-muted-foreground" title={doc.matched_addresses!.join(' · ')}>
+                          Address: {doc.matched_addresses!.join(' · ')}
+                        </p>
+                      )}
                     </div>
                   </div>
 

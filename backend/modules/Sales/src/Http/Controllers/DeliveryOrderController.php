@@ -103,7 +103,7 @@ class DeliveryOrderController extends Controller
      * Wide-search configuration for the delivery-order list — matches the DO's
      * identity/header references, its customer's full surface, line contents,
      * upstream sales-order / quotation / invoice numbers and its tags. The
-     * delivery address snapshot is a json column (::text cast before ILIKE).
+     * delivery address snapshot is a json column (castColumns ::text before ILIKE).
      */
     private function wideSearchConfig(): array
     {
@@ -112,7 +112,7 @@ class DeliveryOrderController extends Controller
                 'delivery_order_number', 'customer_reference', 'internal_reference',
                 'po_number', 'attention_to', 'notes',
             ],
-            'jsonColumns' => ['delivery_address_snapshot'],
+            'castColumns' => ['delivery_address_snapshot'],
             'party' => [
                 'relation' => 'customer',
                 'service' => CustomerWideSearchService::class,

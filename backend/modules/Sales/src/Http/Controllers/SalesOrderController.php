@@ -74,7 +74,7 @@ class SalesOrderController extends Controller
      * Wide-search configuration for the sales-order list — matches the order's
      * identity/header references, its customer's full surface, line contents,
      * the originating quotation number and its tags. The address snapshots are
-     * json columns, so they go through jsonColumns (::text cast before ILIKE).
+     * json columns, so they go through castColumns (::text cast before ILIKE).
      */
     private function wideSearchConfig(): array
     {
@@ -83,7 +83,7 @@ class SalesOrderController extends Controller
                 'sales_order_number', 'customer_reference', 'internal_reference',
                 'po_number', 'notes', 'attention_to', 'contact_email', 'contact_phone',
             ],
-            'jsonColumns' => ['billing_address_snapshot', 'shipping_address_snapshot'],
+            'castColumns' => ['billing_address_snapshot', 'shipping_address_snapshot'],
             'party' => [
                 'relation' => 'customer',
                 'service' => CustomerWideSearchService::class,

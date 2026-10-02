@@ -11,6 +11,8 @@ use App\Models\Tax;
 use App\Models\User;
 use App\Notifications\AdminOrderAlert;
 use App\Notifications\CustomerOrderConfirmation;
+use App\Services\CustomerWideSearchService;
+use App\Services\DocumentWideSearchService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -37,9 +39,12 @@ class PosOrderController extends Controller
         $query = PosOrder::with(['items.product', 'items.variant', 'payments', 'createdBy'])
             ->orderBy('created_at', 'desc');
 
-        // Search by order number
-        if ($request->has('search') && $request->search) {
-            $query->where('order_number', 'like', '%'.$request->search.'%');
+        // Search — wide: order/receipt number, notes, the customer's full
+        // surface (contacts, addresses, tags) and the line item names/SKUs.
+        $search = $request->filled('search') ? trim((string) $request->search) : '';
+        if ($search !== '') {
+            app(DocumentWideSearchService::class)->apply($query, $search, $this->wideSearchConfig());
+            $query->with(app(DocumentWideSearchService::class)->eagerLoads($this->wideSearchConfig()));
         }
 
         // Filter by status
@@ -62,7 +67,30 @@ class PosOrderController extends Controller
 
         $perPage = $request->input('per_page', 20);
 
-        return $query->paginate($perPage);
+        $orders = $query->paginate($perPage);
+
+        if ($search !== '') {
+            app(DocumentWideSearchService::class)->annotate($orders, $search, $this->wideSearchConfig());
+        }
+
+        return $orders;
+    }
+
+    /**
+     * Wide-search configuration for the POS order list.
+     */
+    private function wideSearchConfig(): array
+    {
+        return [
+            'columns' => ['order_number', 'receipt_number', 'notes'],
+            'party' => [
+                'relation' => 'customer',
+                'service' => CustomerWideSearchService::class,
+                'contacts' => 'customerContacts',
+                'addresses' => 'addresses',
+            ],
+            'lines' => ['relation' => 'items', 'columns' => ['name', 'sku']],
+        ];
     }
 
     /**
