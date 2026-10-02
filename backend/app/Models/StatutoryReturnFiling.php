@@ -26,6 +26,9 @@ class StatutoryReturnFiling extends Model
         'state',
         'authority_reference',
         'state_updated_at',
+        'submitted_at',
+        'submitted_by',
+        'submission_reference',
     ];
 
     protected $casts = [

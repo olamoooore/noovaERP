@@ -47,7 +47,8 @@ class StatutoryFilingStateTest extends TenantTestCase
         $file->assertStatus(201);
 
         $filing = StatutoryReturnFiling::firstOrFail();
-        $this->assertSame('FILED', $filing->state, 'A freshly filed return starts in FILED.');
+        // #279 F13: prepared is not filed — the lifecycle starts at PREPARED.
+        $this->assertSame('PREPARED', $filing->state, 'A freshly filed return starts in PREPARED.');
 
         $this->assertTrue(
             DB::table('accounting_outbox_events')
@@ -84,5 +85,39 @@ class StatutoryFilingStateTest extends TenantTestCase
             DB::table('accounting_outbox_events')->where('event_type', 'RegulatorySubmissionRejected')->exists(),
             'Rejection must publish RegulatorySubmissionRejected.'
         );
+    }
+
+    public function test_submission_lifecycle_is_idempotent_and_unknown_blocks_resubmission(): void
+    {
+        $this->actingAs($this->user)->postJson("/api/v1/accounting/statutory-returns/SG/{$this->period}/file")->assertStatus(201);
+        $filing = StatutoryReturnFiling::firstOrFail();
+
+        $first = $this->actingAs($this->user)->postJson("/api/v1/accounting/statutory-returns/filings/{$filing->id}/submit", ['reference' => 'IRAS-SUB-1']);
+        $first->assertStatus(200);
+        $this->assertFalse((bool) $first->json('idempotent'));
+        $this->assertSame('SUBMITTED', $filing->refresh()->state);
+        $this->assertNotNull($filing->submitted_at);
+
+        // Idempotent: a second submit changes nothing.
+        $second = $this->actingAs($this->user)->postJson("/api/v1/accounting/statutory-returns/filings/{$filing->id}/submit");
+        $second->assertStatus(200);
+        $this->assertTrue((bool) $second->json('idempotent'));
+        $this->assertSame(1, DB::table('audit_logs')->where('operation', 'filing_state_submitted')->count());
+
+        // Timeout -> unknown delivery state blocks a blind duplicate.
+        $this->actingAs($this->user)->postJson("/api/v1/accounting/statutory-returns/filings/{$filing->id}/submission-unknown", ['note' => 'gateway timeout'])
+            ->assertStatus(200);
+        $this->assertSame('PENDING_AUTHORITY_RESPONSE', $filing->refresh()->state);
+        $this->actingAs($this->user)->postJson("/api/v1/accounting/statutory-returns/filings/{$filing->id}/submit")
+            ->assertStatus(409);
+
+        // Reconciled outcome resolves the unknown state.
+        $this->actingAs($this->user)->postJson("/api/v1/accounting/statutory-returns/filings/{$filing->id}/submission", ['outcome' => 'accepted', 'reference' => 'ACK-279'])
+            ->assertStatus(200);
+        $this->assertSame('ACCEPTED', $filing->refresh()->state);
+
+        // Accepted filings cannot be resubmitted.
+        $this->actingAs($this->user)->postJson("/api/v1/accounting/statutory-returns/filings/{$filing->id}/submit")
+            ->assertStatus(409);
     }
 }

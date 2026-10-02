@@ -25,6 +25,12 @@ Route::prefix('accounting/statutory-returns')
         // G-14 (#274): authority response recorded against a filing.
         Route::post('/filings/{filing}/submission', [StatutoryReturnController::class, 'recordSubmissionOutcome'])
             ->middleware(RequirePermission::using('tax.policy.manage|tax.manage'));
+
+        // #279 F13: lifecycle — submit (idempotent) + unknown-delivery state.
+        Route::post('/filings/{filing}/submit', [StatutoryReturnController::class, 'submit'])
+            ->middleware(RequirePermission::using('tax.policy.manage|tax.manage'));
+        Route::post('/filings/{filing}/submission-unknown', [StatutoryReturnController::class, 'submissionUnknown'])
+            ->middleware(RequirePermission::using('tax.policy.manage|tax.manage'));
     });
 
 // Issue #99: honest e-invoicing capability reporting.

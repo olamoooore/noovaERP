@@ -174,6 +174,9 @@ class StatutoryReturnController extends Controller
                 'boxes' => $boxes,
                 'filed_by' => $request->user()?->id,
                 'filed_at' => now(),
+                // #279 F13: prepared is not filed — the lifecycle starts here.
+                'state' => 'PREPARED',
+                'state_updated_at' => now(),
             ]);
 
             // G-12 (#274): TaxReturnPrepared on the shared accounting outbox.
@@ -257,10 +260,27 @@ class StatutoryReturnController extends Controller
 
         $state = strtoupper($validated['outcome']);
 
+        // #279 F13: outcomes resolve a submission (directly or from the
+        // indeterminate delivery state); voided/superseded baselines cannot
+        // receive outcomes.
+        if (in_array($filingModel->state, ['VOIDED'], true)) {
+            return response()->json(['message' => "Filing is {$filingModel->state} and cannot receive an outcome."], 409);
+        }
+
         $filingModel->update([
             'state' => $state,
             'authority_reference' => $validated['reference'] ?? null,
             'state_updated_at' => now(),
+        ]);
+
+        \App\Models\AuditLog::create([
+            'operation' => 'filing_state_'.strtolower($state),
+            'reference_type' => 'statutory_filing',
+            'reference_id' => $filingModel->id,
+            'actor_id' => $request->user()?->id,
+            'source_route' => $request->path(),
+            'before_state' => ['state' => 'SUBMITTED'],
+            'after_state' => ['state' => $state, 'reference' => $validated['reference'] ?? null],
         ]);
 
         app(\App\Services\TaxOutboxPublisher::class)->publish(
@@ -283,5 +303,103 @@ class StatutoryReturnController extends Controller
             'message' => "Submission recorded as {$state}.",
             'data' => $filingModel->fresh(),
         ]);
+    }
+
+    /**
+     * #279 F13: submit a PREPARED filing — idempotent for an existing
+     * submission; blocked while the delivery state is unknown (timeout) or
+     * once accepted/rejected (amendments only).
+     */
+    public function submit(Request $request, int $filing): JsonResponse
+    {
+        $validated = $request->validate([
+            'reference' => 'nullable|string|max:120',
+        ]);
+
+        $result = \DB::transaction(function () use ($filing, $validated, $request) {
+            $model = StatutoryReturnFiling::query()
+                ->whereNull('superseded_at')
+                ->lockForUpdate()
+                ->find($filing);
+
+            if (! $model) {
+                return ['code' => 404, 'message' => 'Current filing not found.'];
+            }
+
+            if ($model->state === 'SUBMITTED') {
+                return ['code' => 200, 'idempotent' => true, 'filing' => $model];
+            }
+
+            if ($model->state === 'PENDING_AUTHORITY_RESPONSE') {
+                return ['code' => 409, 'message' => 'Delivery state unknown — reconcile the prior submission before resubmitting.'];
+            }
+
+            if (in_array($model->state, ['ACCEPTED', 'REJECTED', 'VOIDED'], true)) {
+                return ['code' => 409, 'message' => "Filing is {$model->state}; file an amendment instead of resubmitting."];
+            }
+
+            $model->update([
+                'state' => 'SUBMITTED',
+                'submitted_at' => now(),
+                'submitted_by' => $request->user()?->id,
+                'submission_reference' => $validated['reference'] ?? $model->submission_reference,
+                'state_updated_at' => now(),
+            ]);
+
+            \App\Models\AuditLog::create([
+                'operation' => 'filing_state_submitted',
+                'reference_type' => 'statutory_filing',
+                'reference_id' => $model->id,
+                'actor_id' => $request->user()?->id,
+                'source_route' => $request->path(),
+                'before_state' => ['state' => 'PREPARED'],
+                'after_state' => ['state' => 'SUBMITTED', 'reference' => $validated['reference'] ?? null],
+            ]);
+
+            return ['code' => 200, 'idempotent' => false, 'filing' => $model];
+        });
+
+        if ($result['code'] !== 200) {
+            return response()->json(['message' => $result['message']], $result['code']);
+        }
+
+        return response()->json([
+            'message' => $result['idempotent'] ? 'Submission already recorded (idempotent).' : 'Filing submitted.',
+            'idempotent' => $result['idempotent'],
+            'data' => $result['filing']->fresh(),
+        ]);
+    }
+
+    /**
+     * #279 F13: record an UNKNOWN delivery state (submit timeout) — blocks a
+     * blind duplicate until the outcome is reconciled.
+     */
+    public function submissionUnknown(Request $request, int $filing): JsonResponse
+    {
+        $validated = $request->validate(['note' => 'nullable|string|max:500']);
+
+        $model = StatutoryReturnFiling::query()->whereNull('superseded_at')->find($filing);
+
+        if (! $model) {
+            return response()->json(['message' => 'Current filing not found.'], 404);
+        }
+
+        if ($model->state !== 'SUBMITTED') {
+            return response()->json(['message' => 'Only a submitted filing can enter the unknown delivery state.'], 409);
+        }
+
+        $model->update(['state' => 'PENDING_AUTHORITY_RESPONSE', 'state_updated_at' => now()]);
+
+        \App\Models\AuditLog::create([
+            'operation' => 'filing_state_unknown',
+            'reference_type' => 'statutory_filing',
+            'reference_id' => $model->id,
+            'actor_id' => $request->user()?->id,
+            'source_route' => $request->path(),
+            'before_state' => ['state' => 'SUBMITTED'],
+            'after_state' => ['state' => 'PENDING_AUTHORITY_RESPONSE', 'note' => $validated['note'] ?? null],
+        ]);
+
+        return response()->json(['message' => 'Delivery state recorded as unknown; resubmission blocked until reconciled.', 'data' => $model->fresh()]);
     }
 }
