@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\FinancialReporting\Services\Analytics;
 
+use App\Services\DocumentCurrencyResolver;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -18,18 +19,48 @@ use Modules\FinancialReporting\DTOs\ReportFilter;
  * also missed every invoice that has no backing Sales Order (direct /
  * accounting-origin invoices, quote→invoice, DO→invoice, imports).
  *
- * The revenue base is now:
- *   posted invoices (any origin, tax-excluded)
- *   − posted customer credit notes
- *   + posted POS sales net of returns (returns stay excluded, #236)
- *   + un-invoiced non-POS sales orders (bookings; an invoiced SO is dropped
- *     from the union so it counts exactly once — through its invoice).
+ * ── THE REVENUE DEFINITION (#355) ────────────────────────────────────────
+ * Every report in this class measures exactly one thing, and it is the same
+ * thing the ledger measures:
  *
- * POS-origin invoices are excluded: their revenue is already carried by
- * `pos_orders`, and a pos-channel sales order is skipped for the same reason
- * (#236). Response shapes are unchanged for the frontend; the
- * `channels_included` summary field surfaces coverage so a future channel
- * addition is obvious.
+ *   REVENUE (tax-excluded, in the tenant BASE currency, dated by DOCUMENT date)
+ *     = posted invoices      (any origin)      − header/document discount
+ *     − posted customer credit notes
+ *     + POS sales            (returns netted, not excluded)
+ *     + un-invoiced bookings (sales orders with no posted invoice)
+ *
+ *   - TAX EXCLUDED: line revenue is `line_total − tax_amount`. The invoice,
+ *     POS and credit-note postings credit `sales_revenue` with the pre-tax
+ *     amount and book the output tax on `sales_tax_payable`, so a tax-inclusive
+ *     base can never reconcile with the GL.
+ *   - DISCOUNTS: the document (header) discount is subtracted pro-rata over the
+ *     document's own lines, matching the posting (revenue = subtotal −
+ *     discount_amount).
+ *   - BASE CURRENCY: every arm carries its document snapshot rate, and all
+ *     widgets except the by-currency view sum the BASE amount. Only the
+ *     by-currency view reports document-currency amounts, next to the base
+ *     equivalent it converts them at.
+ *   - POS RETURNS are NETTED. A return order's lines are already written as
+ *     negatives (PosOrder::createReturn()), so including returns nets them.
+ *   - BOOKINGS are shown separately (`bookings_revenue`) because they are not
+ *     yet revenue: an invoiced sales order is dropped from the union so it
+ *     counts exactly once — through its invoice (#590).
+ *   - POS-origin invoices are excluded: their revenue is already carried by
+ *     `pos_orders`, and a pos-channel sales order is skipped for the same
+ *     reason (#236).
+ *   - Shipping is NOT included: it posts to its own `shipping_revenue` account
+ *     and belongs to no product, so it cannot be attributed to any row here.
+ *
+ * A period's revenue therefore equals the net movement of the mapped
+ * `sales_revenue` account for the same documents, apart from bookings (not yet
+ * posted) and per-line rounding of a document discount spread over many lines
+ * (bounded by 0.005 per line) — both documented in
+ * tests/Feature/HR355SalesRevenueBaseTest.php.
+ *
+ * Response shapes are unchanged for the frontend; `channels_included`,
+ * `revenue_basis`, `base_currency`, `bookings_revenue` and
+ * `invoiced_revenue` are additive summary fields so a consumer can always see
+ * what is being measured.
  */
 class SalesAnalyticsService
 {
@@ -37,6 +68,15 @@ class SalesAnalyticsService
      * Channels surfaced in every report below.
      */
     private const CHANNELS_INCLUDED = ['pos', 'admin', 'ecommerce'];
+
+    /**
+     * The human-readable definition of every "revenue" figure in this service.
+     * Surfaced in each summary so no caller has to guess (#355).
+     */
+    private const REVENUE_BASIS = 'Net revenue, tax excluded, document discounts subtracted, '
+        .'reported in the tenant base currency: posted invoices less posted customer '
+        .'credit notes, plus POS sales net of returns, plus un-invoiced bookings. '
+        .'Dated by document date; excludes shipping (posted to its own revenue account).';
 
     public function getSalesByProduct(ReportFilter $filter): array
     {
@@ -56,10 +96,12 @@ class SalesAnalyticsService
                     'p.cost',
                     'p.price',
                     DB::raw('SUM(li.quantity) as total_quantity'),
-                    DB::raw('SUM(li.line_total) as total_revenue'),
+                    DB::raw('SUM(li.base_revenue) as total_revenue'),
+                    DB::raw('SUM(CASE WHEN li.channel = \'booking\' THEN li.base_revenue ELSE 0 END) as bookings_revenue'),
+                    DB::raw('SUM(CASE WHEN li.channel <> \'booking\' THEN li.base_revenue ELSE 0 END) as invoiced_revenue'),
                     DB::raw('SUM(li.quantity * COALESCE(p.cost, 0)) as total_cost'),
-                    DB::raw('SUM(li.line_total - (li.quantity * COALESCE(p.cost, 0))) as total_profit'),
-                    DB::raw('CASE WHEN SUM(li.line_total) > 0 THEN (SUM(li.line_total - (li.quantity * COALESCE(p.cost, 0))) / SUM(li.line_total) * 100) ELSE 0 END as profit_margin'),
+                    DB::raw('SUM(li.base_revenue - (li.quantity * COALESCE(p.cost, 0))) as total_profit'),
+                    DB::raw('CASE WHEN SUM(li.base_revenue) > 0 THEN (SUM(li.base_revenue - (li.quantity * COALESCE(p.cost, 0))) / SUM(li.base_revenue) * 100) ELSE 0 END as profit_margin'),
                     DB::raw('COUNT(*) as order_count'),
                 ])
                 ->groupBy('p.id', 'p.name', 'p.sku', 'p.cost', 'p.price')
@@ -73,15 +115,17 @@ class SalesAnalyticsService
             return $this->errorEnvelope('Sales by Product', $e);
         }
 
-        $summary = [
+        $summary = $this->baseSummary([
             'total_products' => $sales->count(),
             'total_revenue' => round((float) $sales->sum('total_revenue'), 2),
+            'bookings_revenue' => round((float) $sales->sum('bookings_revenue'), 2),
+            'invoiced_revenue' => round((float) $sales->sum('invoiced_revenue'), 2),
             'total_cost' => round((float) $sales->sum('total_cost'), 2),
             'total_profit' => round((float) $sales->sum('total_profit'), 2),
             'average_profit_margin' => $sales->count() > 0 ? round((float) $sales->avg('profit_margin'), 2) : 0,
             'total_quantity_sold' => (int) $sales->sum('total_quantity'),
             'channels_included' => self::CHANNELS_INCLUDED,
-        ];
+        ]);
 
         return [
             'title' => 'Sales by Product',
@@ -115,9 +159,10 @@ class SalesAnalyticsService
         [$salesOrderIds, $invoiceIds] = $this->documentIdsForTag($filter->tag ?? null);
 
         try {
-            // Same line-item revenue base as the other widgets (#355/#590):
-            // posted invoices, posted credit notes and un-invoiced bookings,
-            // with walk-ins (POS customer_id null) in the same aggregate.
+            // Identical line-item revenue base as every other widget (#355/#590):
+            // posted invoices, posted credit notes, POS sales net of returns and
+            // un-invoiced bookings, all tax-excluded, discount-net and in the base
+            // currency, with walk-ins (POS customer_id null) in the same aggregate.
             $rows = DB::query()
                 ->fromSub($this->lineItemsUnion($startDate, $endDate, $salesOrderIds, $filter->currencyCode, $invoiceIds), 'li')
                 ->leftJoin('customers as c', 'c.id', '=', 'li.customer_id')
@@ -126,8 +171,10 @@ class SalesAnalyticsService
                     'c.name as customer_name',
                     'c.email as customer_email',
                     DB::raw('COUNT(DISTINCT li.order_ref) as order_count'),
-                    DB::raw('SUM(li.line_total) as total_revenue'),
-                    DB::raw('CASE WHEN COUNT(DISTINCT li.order_ref) > 0 THEN SUM(li.line_total) / COUNT(DISTINCT li.order_ref) ELSE 0 END as average_order_value'),
+                    DB::raw('SUM(li.base_revenue) as total_revenue'),
+                    DB::raw('SUM(CASE WHEN li.channel = \'booking\' THEN li.base_revenue ELSE 0 END) as bookings_revenue'),
+                    DB::raw('SUM(CASE WHEN li.channel <> \'booking\' THEN li.base_revenue ELSE 0 END) as invoiced_revenue'),
+                    DB::raw('CASE WHEN COUNT(DISTINCT li.order_ref) > 0 THEN SUM(li.base_revenue) / COUNT(DISTINCT li.order_ref) ELSE 0 END as average_order_value'),
                     DB::raw('MAX(li.revenue_date) as last_purchase_date'),
                 ])
                 ->groupBy('li.customer_id', 'c.name', 'c.email')
@@ -143,15 +190,17 @@ class SalesAnalyticsService
 
         $walkInRevenue = (float) $rows->where('customer_id', null)->sum('total_revenue');
 
-        $summary = [
+        $summary = $this->baseSummary([
             'total_customers' => $rows->where('customer_id', '!=', null)->count(),
             'walk_in_sales' => round($walkInRevenue, 2),
             'total_revenue' => round((float) $rows->sum('total_revenue'), 2),
+            'bookings_revenue' => round((float) $rows->sum('bookings_revenue'), 2),
+            'invoiced_revenue' => round((float) $rows->sum('invoiced_revenue'), 2),
             'average_revenue_per_customer' => $rows->count() > 0 ? round((float) $rows->avg('total_revenue'), 2) : 0,
             'average_order_value' => $rows->count() > 0 ? round((float) $rows->avg('average_order_value'), 2) : 0,
             'total_orders' => (int) $rows->sum('order_count'),
             'channels_included' => self::CHANNELS_INCLUDED,
-        ];
+        ]);
 
         return [
             'title' => 'Sales by Customer',
@@ -175,8 +224,11 @@ class SalesAnalyticsService
     }
 
     /**
-     * MRD pricelist-multicurrency FR-8.1 — revenue split by document
-     * currency with the snapshot-rate base equivalent per bucket.
+     * MRD pricelist-multicurrency FR-8.1 — revenue split by document currency,
+     * with the snapshot-rate base equivalent per bucket. This is the ONLY view
+     * that reports document-currency amounts; `total_revenue` here is
+     * tax-excluded and discount-net like every other view (#355), and
+     * `base_revenue` is the figure the other widgets total.
      */
     public function getSalesByCurrency(ReportFilter $filter): array
     {
@@ -190,8 +242,8 @@ class SalesAnalyticsService
                 ->fromSub($this->lineItemsUnion($startDate, $endDate, $salesOrderIds, $filter->currencyCode, $invoiceIds), 'li')
                 ->select([
                     'li.currency_code',
-                    DB::raw('SUM(li.line_total) as total_revenue'),
-                    DB::raw('SUM(li.line_total * li.exchange_rate) as base_revenue'),
+                    DB::raw('SUM(li.document_revenue) as total_revenue'),
+                    DB::raw('SUM(li.base_revenue) as base_revenue'),
                     DB::raw('SUM(li.quantity) as total_quantity'),
                     DB::raw('COUNT(DISTINCT li.order_ref) as order_count'),
                 ])
@@ -213,9 +265,10 @@ class SalesAnalyticsService
                 'total_quantity' => (float) $row->total_quantity,
                 'order_count' => (int) $row->order_count,
             ])->all(),
-            'summary' => [
+            'summary' => $this->baseSummary([
+                'total_document_revenue' => round((float) $rows->sum('total_revenue'), 2),
                 'total_base_revenue' => round((float) $rows->sum('base_revenue'), 2),
-            ],
+            ]),
         ];
     }
 
@@ -237,15 +290,16 @@ class SalesAnalyticsService
         try {
             // Same line-item base as getSalesByCategory() / getSalesByProduct(),
             // so the trend series, the category split and the product table all
-            // reconcile for the selected period (document totals include tax and
-            // shipping and would never match the line-based widgets).
+            // reconcile for the selected period (#355).
             $trends = DB::query()
                 ->fromSub($this->lineItemsUnion($startDate, $endDate, $salesOrderIds, $filter->currencyCode, $invoiceIds), 'li')
                 ->select([
                     DB::raw("TO_CHAR(li.revenue_date, '{$dateFormat}') as period"),
                     DB::raw('COUNT(DISTINCT li.order_ref) as order_count'),
-                    DB::raw('SUM(li.line_total) as total_revenue'),
-                    DB::raw('CASE WHEN COUNT(DISTINCT li.order_ref) > 0 THEN SUM(li.line_total) / COUNT(DISTINCT li.order_ref) ELSE 0 END as average_order_value'),
+                    DB::raw('SUM(li.base_revenue) as total_revenue'),
+                    DB::raw('SUM(CASE WHEN li.channel = \'booking\' THEN li.base_revenue ELSE 0 END) as bookings_revenue'),
+                    DB::raw('SUM(CASE WHEN li.channel <> \'booking\' THEN li.base_revenue ELSE 0 END) as invoiced_revenue'),
+                    DB::raw('CASE WHEN COUNT(DISTINCT li.order_ref) > 0 THEN SUM(li.base_revenue) / COUNT(DISTINCT li.order_ref) ELSE 0 END as average_order_value'),
                 ])
                 ->groupBy('period')
                 ->orderBy('period')
@@ -270,21 +324,25 @@ class SalesAnalyticsService
                 'order_count' => (int) $trend->order_count,
                 'total_sales' => round((float) $trend->total_revenue, 2),
                 'revenue' => round((float) $trend->total_revenue, 2),
+                'bookings_revenue' => round((float) $trend->bookings_revenue, 2),
+                'invoiced_revenue' => round((float) $trend->invoiced_revenue, 2),
                 'average_order_value' => round((float) $trend->average_order_value, 2),
                 'growth_rate' => $growthRate !== null ? round($growthRate, 2) : null,
             ];
             $previousRevenue = $trend->total_revenue;
         }
 
-        $summary = [
+        $summary = $this->baseSummary([
             'total_periods' => count($data),
             'total_revenue' => round((float) $trends->sum('total_revenue'), 2),
+            'bookings_revenue' => round((float) $trends->sum('bookings_revenue'), 2),
+            'invoiced_revenue' => round((float) $trends->sum('invoiced_revenue'), 2),
             'average_revenue_per_period' => count($data) > 0 ? round((float) $trends->avg('total_revenue'), 2) : 0,
             'highest_revenue_period' => $trends->sortByDesc('total_revenue')->first()?->period,
             'lowest_revenue_period' => $trends->sortBy('total_revenue')->first()?->period,
             'total_orders' => (int) $trends->sum('order_count'),
             'channels_included' => self::CHANNELS_INCLUDED,
-        ];
+        ]);
 
         return [
             'title' => 'Sales Trends',
@@ -316,10 +374,12 @@ class SalesAnalyticsService
                     'c.name as category_name',
                     DB::raw('COUNT(DISTINCT p.id) as product_count'),
                     DB::raw('SUM(li.quantity) as total_quantity'),
-                    DB::raw('SUM(li.line_total) as total_revenue'),
+                    DB::raw('SUM(li.base_revenue) as total_revenue'),
+                    DB::raw('SUM(CASE WHEN li.channel = \'booking\' THEN li.base_revenue ELSE 0 END) as bookings_revenue'),
+                    DB::raw('SUM(CASE WHEN li.channel <> \'booking\' THEN li.base_revenue ELSE 0 END) as invoiced_revenue'),
                     DB::raw('SUM(li.quantity * COALESCE(p.cost, 0)) as total_cost'),
-                    DB::raw('SUM(li.line_total - (li.quantity * COALESCE(p.cost, 0))) as total_profit'),
-                    DB::raw('CASE WHEN SUM(li.line_total) > 0 THEN (SUM(li.line_total - (li.quantity * COALESCE(p.cost, 0))) / SUM(li.line_total) * 100) ELSE 0 END as profit_margin'),
+                    DB::raw('SUM(li.base_revenue - (li.quantity * COALESCE(p.cost, 0))) as total_profit'),
+                    DB::raw('CASE WHEN SUM(li.base_revenue) > 0 THEN (SUM(li.base_revenue - (li.quantity * COALESCE(p.cost, 0))) / SUM(li.base_revenue) * 100) ELSE 0 END as profit_margin'),
                 ])
                 ->groupBy('c.id', 'c.name')
                 ->orderByDesc('total_revenue')
@@ -334,13 +394,15 @@ class SalesAnalyticsService
 
         $totalRevenue = (float) $sales->sum('total_revenue');
 
-        $summary = [
+        $summary = $this->baseSummary([
             'total_categories' => $sales->count(),
             'total_revenue' => round($totalRevenue, 2),
+            'bookings_revenue' => round((float) $sales->sum('bookings_revenue'), 2),
+            'invoiced_revenue' => round((float) $sales->sum('invoiced_revenue'), 2),
             'total_profit' => round((float) $sales->sum('total_profit'), 2),
             'average_profit_margin' => $sales->count() > 0 ? round((float) $sales->avg('profit_margin'), 2) : 0,
             'channels_included' => self::CHANNELS_INCLUDED,
-        ];
+        ]);
 
         return [
             'title' => 'Sales by Category',
@@ -423,21 +485,29 @@ class SalesAnalyticsService
     }
 
     /**
-     * UNION ALL of the four revenue streams:
-     *   - posted POS line items (paid, non-return; #236);
+     * UNION ALL of the four revenue streams, all on ONE definition (#355):
+     *   - posted POS sales, NET of POS returns. A return order's lines are
+     *     already written as negatives (PosOrder::createReturn()), so including
+     *     returns nets them instead of dropping them;
      *   - un-invoiced non-POS sales-order lines (bookings; an SO that has a
-     *     posted invoice — directly or through a delivery order — is dropped
+     *     posted invoice - directly or through a delivery order - is dropped
      *     here so it counts exactly once, through its invoice);
-     *   - posted invoice lines, tax-excluded (POS-origin invoices excluded to
-     *     avoid double counting with `pos_orders`);
+     *   - posted invoice lines (POS-origin invoices excluded to avoid double
+     *     counting with `pos_orders`);
      *   - posted customer-credit-note lines, negated.
      *
-     * Returned columns: product_id, customer_id, line_total, quantity,
-     * revenue_date, channel, order_ref, currency_code, exchange_rate.
+     * Every arm reports tax-excluded, header-discount-net amounts in its
+     * DOCUMENT currency (`document_revenue`); the outer wrapper converts to the
+     * tenant base currency at the document's own snapshot rate (`base_revenue`),
+     * which is the column every widget sums (#355).
+     *
+     * Returned columns: product_id, customer_id, quantity, revenue_date,
+     * channel ('pos' | 'booking' | 'invoice' | 'credit_note'), order_ref,
+     * currency_code, exchange_rate, document_revenue, base_revenue.
      *
      * Implemented as a raw SQL subquery rather than a query-builder union
      * because fromSub() with a QB union is fragile across PG versions.
-     * Values are inlined (all bound values are typed — Carbon date strings,
+     * Values are inlined (all bound values are typed - Carbon date strings,
      * intval'ed id lists, fixed string labels, booleans) so there is no
      * SQL-injection surface.
      */
@@ -452,8 +522,9 @@ class SalesAnalyticsService
         $end = $endDate->endOfDay()->format('Y-m-d H:i:s');
         $baseCurrency = '(SELECT base_currency FROM company_settings ORDER BY id LIMIT 1)';
 
-        // MRD FR-8.1: currency dimension. POS rows carry no document currency,
-        // so an active currency filter excludes them (their revenue is base).
+        // MRD FR-8.1: currency dimension. Every arm carries a document currency
+        // (POS orders snapshot theirs too), so an active filter keeps the
+        // documents denominated in it and drops the rest.
         $soCurrencyFilter = '';
         $invoiceCurrencyFilter = '';
         $creditNoteCurrencyFilter = '';
@@ -463,7 +534,7 @@ class SalesAnalyticsService
             $soCurrencyFilter = " AND so.currency_code = '{$safe}'";
             $invoiceCurrencyFilter = " AND i.currency_code = '{$safe}'";
             $creditNoteCurrencyFilter = " AND ccn.currency_code = '{$safe}'";
-            $posCurrencyFilter = ' AND 1 = 0';
+            $posCurrencyFilter = " AND COALESCE(po.currency, {$baseCurrency}, 'USD') = '{$safe}'";
         }
 
         // A tag filter only applies to documents that can carry tags. Credit
@@ -489,28 +560,57 @@ class SalesAnalyticsService
             $invoiceTagClause = $invoiceArms === [] ? ' AND 1 = 0' : ' AND ('.implode(' OR ', $invoiceArms).')';
         }
 
-        $sql = "(
+        // POS: line_total is tax-INCLUSIVE (PosPostingService reads it as
+        // gross), so the net is line_total - tax_amount; the order discount and
+        // loyalty discount are document discounts like any other.
+        $posNet = $this->netLineRevenueSql(
+            '(COALESCE(poi.line_total, 0) - COALESCE(poi.tax_amount, 0))',
+            '(COALESCE(po.discount_amount, 0) + COALESCE(po.loyalty_discount, 0))',
+            'po.id'
+        );
+
+        // Sales order: line_total is tax-INCLUSIVE too (SalesOrderLine's
+        // calculateLineTotal stores TaxEngineService's gross), the header
+        // carries a document discount, and the order snapshots its own rate.
+        $soNet = $this->netLineRevenueSql(
+            '(COALESCE(sol.line_total, 0) - COALESCE(sol.tax_amount, 0))',
+            'COALESCE(so.discount_amount, 0)',
+            'so.id'
+        );
+
+        // Invoice: line_total is tax-INCLUSIVE and already net of any LINE
+        // discount; the HEADER discount still has to come off, spread pro-rata
+        // (revenue = subtotal - discount_amount, exactly as InvoiceService posts).
+        $invoiceNet = $this->netLineRevenueSql(
+            '(COALESCE(il.line_total, 0) - COALESCE(il.tax_amount, 0))',
+            'COALESCE(i.discount_amount, 0)',
+            'i.id'
+        );
+
+        // Credit note: line_total is already tax-exclusive (CustomerCreditNoteLine
+        // computes quantity x unit_price) and a credit note carries no discount.
+        $arms = "(
             SELECT poi.product_id,
                    po.customer_id,
-                   poi.line_total,
-                   poi.quantity,
-                   po.paid_at AS revenue_date,
+                   {$posNet} AS document_revenue,
+                   COALESCE(poi.quantity, 0) AS quantity,
+                   COALESCE(po.paid_at, po.created_at) AS revenue_date,
                    'pos' AS channel,
                    'pos:' || po.id AS order_ref,
-                   COALESCE({$baseCurrency}, 'USD') AS currency_code,
-                   1.0 AS exchange_rate
+                   COALESCE(po.currency, {$baseCurrency}, 'USD') AS currency_code,
+                   COALESCE(po.exchange_rate, 1.0) AS exchange_rate
             FROM pos_order_items poi
             JOIN pos_orders po ON po.id = poi.pos_order_id
-            WHERE po.paid_at BETWEEN '{$start}' AND '{$end}'
+            WHERE COALESCE(po.paid_at, po.created_at) BETWEEN '{$start}' AND '{$end}'
               AND po.status = 'paid'
-              AND po.is_return = false{$posTagClause}{$posCurrencyFilter}
+              AND po.deleted_at IS NULL{$posTagClause}{$posCurrencyFilter}
         ) UNION ALL (
             SELECT sol.product_id,
                    so.customer_id,
-                   COALESCE(sol.line_total, 0) AS line_total,
+                   {$soNet} AS document_revenue,
                    COALESCE(sol.quantity, 0) AS quantity,
                    COALESCE(so.order_date, so.created_at) AS revenue_date,
-                   so.channel,
+                   'booking' AS channel,
                    'so:' || so.id AS order_ref,
                    COALESCE(so.currency_code, {$baseCurrency}, 'USD') AS currency_code,
                    COALESCE(so.exchange_rate, 1.0) AS exchange_rate
@@ -519,6 +619,7 @@ class SalesAnalyticsService
             WHERE so.status NOT IN ('draft', 'cancelled')
               AND so.accounting_status <> 'reversed'
               AND so.channel <> 'pos'
+              AND so.deleted_at IS NULL
               AND COALESCE(so.order_date, so.created_at) BETWEEN '{$start}' AND '{$end}'
               AND NOT EXISTS (
                   SELECT 1
@@ -540,7 +641,7 @@ class SalesAnalyticsService
         ) UNION ALL (
             SELECT il.product_id,
                    i.customer_id,
-                   (COALESCE(il.line_total, 0) - COALESCE(il.tax_amount, 0)) AS line_total,
+                   {$invoiceNet} AS document_revenue,
                    COALESCE(il.quantity, 0) AS quantity,
                    i.invoice_date AS revenue_date,
                    'invoice' AS channel,
@@ -564,7 +665,7 @@ class SalesAnalyticsService
         ) UNION ALL (
             SELECT cnl.product_id,
                    ccn.customer_id,
-                   (-1 * COALESCE(cnl.line_total, 0)) AS line_total,
+                   (-1 * COALESCE(cnl.line_total, 0)) AS document_revenue,
                    (-1 * COALESCE(cnl.quantity, 0)) AS quantity,
                    ccn.credit_note_date AS revenue_date,
                    'credit_note' AS channel,
@@ -578,7 +679,58 @@ class SalesAnalyticsService
               AND ccn.credit_note_date BETWEEN '{$start}' AND '{$end}'{$creditNoteTagClause}{$creditNoteCurrencyFilter}
         )";
 
+        // Outer wrapper: convert each document-currency amount to the base
+        // currency at the document's own snapshot rate. Every widget except the
+        // by-currency view sums this column (#355).
+        $sql = "SELECT product_id,
+                       customer_id,
+                       quantity,
+                       revenue_date,
+                       channel,
+                       order_ref,
+                       currency_code,
+                       exchange_rate,
+                       document_revenue,
+                       ROUND(document_revenue * exchange_rate, 2) AS base_revenue
+                FROM ({$arms}) AS li_doc";
+
         return DB::table(DB::raw('('.$sql.') AS li'));
+    }
+
+    /**
+     * Tax-excluded, header-discount-net line revenue for one arm.
+     *
+     * `$lineNet` is the arm's per-line pre-tax amount and `$docDiscount` the
+     * document's header discount, spread pro-rata over the document's own lines
+     * (a window sum partitioned by the document) so the parts add back up to the
+     * header amount - the same base the postings use (revenue = subtotal -
+     * discount_amount). A zero-net document allocates nothing (NULLIF).
+     */
+    private function netLineRevenueSql(string $lineNet, string $docDiscount, string $docKey): string
+    {
+        return "ROUND({$lineNet} - COALESCE({$docDiscount}, 0) * {$lineNet}"
+            ." / NULLIF(SUM({$lineNet}) OVER (PARTITION BY {$docKey}), 0), 2)";
+    }
+
+    /**
+     * Every summary carries what it measured and in which currency (#355), so a
+     * dashboard can label the figure instead of guessing.
+     */
+    private function baseSummary(array $summary): array
+    {
+        try {
+            $baseCurrency = DocumentCurrencyResolver::baseFor();
+        } catch (\Throwable) {
+            // A tenant whose company_settings table is not provisioned yet must
+            // still get a report, not an exception out of the summary builder.
+            $baseCurrency = 'USD';
+        }
+
+        return array_merge($summary, [
+            'revenue_basis' => self::REVENUE_BASIS,
+            'base_currency' => $baseCurrency,
+            'includes_tax' => false,
+        ]);
     }
 
     protected function tableExists(string $table): bool
