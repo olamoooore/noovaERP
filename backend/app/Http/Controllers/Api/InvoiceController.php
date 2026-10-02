@@ -11,6 +11,7 @@ use App\Models\InvoiceEvidence;
 use App\Models\Product;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Platform\Pagination\PaginationService;
 use App\Services\CaseImportService;
 use App\Services\CustomerWideSearchService;
 use App\Services\InvoiceActivityService;
@@ -74,7 +75,7 @@ class InvoiceController extends Controller
         }
         $query->with($with);
 
-        $invoices = $query->paginate($request->per_page ?? 20);
+        $invoices = $query->paginate(PaginationService::clampPerPage($request->per_page));
 
         $this->annotateApprovalView($invoices, $request->user());
 
