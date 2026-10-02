@@ -867,8 +867,7 @@ class ReportApiClient {
   /**
    * Get date range presets
    */
-  getDateRangePresets() {
-    const today = new Date();
+  getDateRangePresets(today: Date = new Date()) {
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
@@ -883,10 +882,14 @@ class ReportApiClient {
         end_date: this.formatDate(today),
       },
       thisWeek: {
+        // #353 (S5): build a new Date for the week start — today.setDate()
+        // mutated the shared `today`, so every later preset read the moved
+        // date (thisYear ended at the start of the current week, and
+        // thisQuarter could fall into the previous month/quarter).
         start_date: this.formatDate(
-          new Date(today.setDate(today.getDate() - today.getDay()))
+          new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay())
         ),
-        end_date: this.formatDate(new Date()),
+        end_date: this.formatDate(today),
       },
       thisMonth: {
         start_date: this.formatDate(startOfMonth),
