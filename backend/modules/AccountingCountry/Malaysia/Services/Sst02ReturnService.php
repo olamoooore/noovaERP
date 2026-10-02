@@ -23,7 +23,7 @@ class Sst02ReturnService
      */
     public function generate(string $period, ?int $legalEntityId = null): array
     {
-        $taxes = $this->aggregator->aggregate($period, $legalEntityId);
+        $taxes = $this->aggregator->aggregate($period, $legalEntityId, 'MY');
 
         // MY SST is a single-stage tax: output-side rows only (no input credit).
         //
@@ -96,6 +96,7 @@ class Sst02ReturnService
             'authority' => 'RMCD',
             'period' => $period,
             'currency' => 'MYR',
+            'unassigned' => $taxes['unassigned'] ?? ['rows' => 0],
             'sales_tax' => [
                 'taxable_value' => round(array_sum(array_column($salesTaxByRate, 'taxable_value')), 2),
                 'by_rate' => $salesTaxByRate,

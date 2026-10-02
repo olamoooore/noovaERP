@@ -111,17 +111,18 @@ class HR93StatutoryReturnScopeTest extends TenantTestCase
             'Only entity A output tax may appear when entity A is selected.');
     }
 
-    public function test_unspecified_entity_aggregates_all_entities(): void
+    public function test_unspecified_entity_is_rejected_when_multiple_entities_exist(): void
     {
         $this->taxRow($this->entityA, '2026-09', taxable: 1000, tax: 90);
         $this->taxRow($this->entityB, '2026-09', taxable: 5000, tax: 450);
 
-        $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/accounting/statutory-returns/SG/2026-09');
-
-        $response->assertOk();
-        $this->assertSame(540.0, (float) $response->json('data.boxes.box_6_output_tax_due'));
-        $this->assertNull($response->json('data.reporting_period.legal_entity_id'));
+        // #736 T3 (decision supersedes this suite's original expectation): a
+        // return is generated per tax registration, so a multi-entity tenant
+        // must select the entity — an unspecified entity no longer aggregates
+        // all entities into one unauditable filing baseline.
+        $this->actingAs($this->user)
+            ->getJson('/api/v1/accounting/statutory-returns/SG/2026-09')
+            ->assertStatus(422);
     }
 
     public function test_unknown_entity_is_rejected(): void
@@ -140,7 +141,7 @@ class HR93StatutoryReturnScopeTest extends TenantTestCase
         $this->taxRow($this->entityA, '2026-10', taxable: 9000, tax: 810);
 
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/accounting/statutory-returns/SG/2026-Q3');
+            ->getJson("/api/v1/accounting/statutory-returns/SG/2026-Q3?entity_id={$this->entityA}");
 
         $response->assertOk();
         $response->assertJsonPath('data.reporting_period.months', ['2026-07', '2026-08', '2026-09']);

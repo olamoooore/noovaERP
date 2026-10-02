@@ -48,7 +48,7 @@ class TaxReturnAggregator
         };
     }
 
-    public function aggregate(string|array $period, ?int $legalEntityId = null): array
+    public function aggregate(string|array $period, ?int $legalEntityId = null, ?string $jurisdiction = null): array
     {
         $keys = [
             'reporting_period', 'source_document_type', 'source_document_id', 'tax_code',
@@ -56,13 +56,40 @@ class TaxReturnAggregator
             'tax_amount', 'category',
         ];
 
-        $result = ['output' => [], 'input' => []];
+        $result = ['output' => [], 'input' => [], 'unassigned' => ['rows' => 0]];
 
-        foreach ($this->normalizedRows($period, $legalEntityId) as $row) {
+        foreach ($this->normalizedRows($period, $legalEntityId, $jurisdiction) as $row) {
             $result[$row['direction']][] = array_intersect_key($row, array_flip($keys));
         }
 
+        // #736 T3: rows with a NULL jurisdiction are never silently folded
+        // into a country return — they are reported as unassigned.
+        if ($jurisdiction !== null) {
+            $result['unassigned']['rows'] = $this->countUnassignedRows($period, $legalEntityId);
+        }
+
         return $result;
+    }
+
+    /**
+     * #736 T3: live trail rows in the window carrying no jurisdiction.
+     */
+    private function countUnassignedRows(string|array $period, ?int $legalEntityId): int
+    {
+        $periods = is_array($period) ? array_values($period) : [$period];
+        $periods = array_merge(...array_map(
+            fn (string $p) => self::periodMonths($p) ?? [$p],
+            $periods
+        ));
+
+        return DB::table('tax_transaction_details as ttd')
+            ->join('journal_entries as je', 'je.id', '=', 'ttd.journal_entry_id')
+            ->where('je.status', 'posted')
+            ->where($this->liveLifecycleFilter())
+            ->whereNull('ttd.jurisdiction')
+            ->whereIn('ttd.reporting_period', $periods)
+            ->when($legalEntityId !== null, fn ($query) => $query->where('je.legal_entity_id', $legalEntityId))
+            ->count();
     }
 
     /**
@@ -103,7 +130,7 @@ class TaxReturnAggregator
      *
      * @return array<int, array<string, mixed>>
      */
-    private function normalizedRows(string|array $period, ?int $legalEntityId): array
+    private function normalizedRows(string|array $period, ?int $legalEntityId, ?string $jurisdiction = null): array
     {
         $periods = is_array($period) ? array_values($period) : [$period];
 
@@ -123,6 +150,10 @@ class TaxReturnAggregator
             ->where('je.status', 'posted')
             ->where($this->liveLifecycleFilter())
             ->whereIn('ttd.reporting_period', $periods)
+            ->when(
+                $jurisdiction !== null,
+                fn ($query) => $query->whereRaw('upper(ttd.jurisdiction) = ?', [strtoupper($jurisdiction)])
+            )
             ->when(
                 $legalEntityId !== null,
                 fn ($query) => $query->where('je.legal_entity_id', $legalEntityId)

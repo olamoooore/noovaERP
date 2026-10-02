@@ -84,6 +84,13 @@ class StatutoryReturnController extends Controller
             }
         }
 
+        // #736 T3: a multi-entity tenant must generate per registration.
+        if ($entityId === null && $this->tenantHasMultipleEntities()) {
+            return response()->json([
+                'message' => 'entity_id is required for statutory returns in a multi-entity tenant.',
+            ], 422);
+        }
+
         $data = match ($country) {
             'SG' => app(GstF5ReturnService::class)->generate($period, $entityId),
             'MY' => app(Sst02ReturnService::class)->generate($period, $entityId),
@@ -127,6 +134,13 @@ class StatutoryReturnController extends Controller
 
         $validated = $request->validate(['entity_id' => 'nullable|integer|exists:legal_entities,id']);
         $legalEntityId = isset($validated['entity_id']) ? (int) $validated['entity_id'] : null;
+
+        // #736 T3: a multi-entity tenant must file per registration.
+        if ($legalEntityId === null && $this->tenantHasMultipleEntities()) {
+            return response()->json([
+                'message' => 'entity_id is required for statutory returns in a multi-entity tenant.',
+            ], 422);
+        }
 
         $return = $country === 'SG'
             ? app(GstF5ReturnService::class)->generate($period, $legalEntityId)
@@ -401,5 +415,13 @@ class StatutoryReturnController extends Controller
         ]);
 
         return response()->json(['message' => 'Delivery state recorded as unknown; resubmission blocked until reconciled.', 'data' => $model->fresh()]);
+    }
+
+    /**
+     * #736 T3: does this tenant hold more than one legal entity?
+     */
+    private function tenantHasMultipleEntities(): bool
+    {
+        return \Illuminate\Support\Facades\DB::table('legal_entities')->count() > 1;
     }
 }

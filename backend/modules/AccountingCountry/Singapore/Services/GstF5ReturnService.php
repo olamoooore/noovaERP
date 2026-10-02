@@ -23,7 +23,7 @@ class GstF5ReturnService
      */
     public function generate(string $period, ?int $legalEntityId = null): array
     {
-        $taxes = $this->aggregator->aggregate($period, $legalEntityId);
+        $taxes = $this->aggregator->aggregate($period, $legalEntityId, 'SG');
 
         $sumBy = function (array $rows, string $field, ?string $category = null): float {
             return round(array_sum(array_map(
@@ -55,6 +55,7 @@ class GstF5ReturnService
             'authority' => 'IRAS',
             'period' => $period,
             'currency' => 'SGD',
+            'unassigned' => $taxes['unassigned'] ?? ['rows' => 0],
             'boxes' => [
                 'box_1_standard_rated_supplies' => $standardRatedSupplies,
                 'box_2_zero_rated_supplies' => $zeroRatedSupplies,
