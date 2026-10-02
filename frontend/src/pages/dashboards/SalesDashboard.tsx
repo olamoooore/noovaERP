@@ -14,6 +14,7 @@ import { LineChart } from '@/components/charts/LineChart';
 import { BarChart } from '@/components/charts/BarChart';
 import { PieChart } from '@/components/charts/PieChart';
 import reportApi from '@/lib/reportApi';
+import { mapCategoryRevenueSlices } from '@/lib/salesDashboardMapping';
 import type { SalesDashboardData } from '@/types/reports';
 
 /**
@@ -128,10 +129,7 @@ export const SalesDashboard: React.FC = () => {
             name: p.name || 'Unknown',
             quantity: Number(p.total_quantity) || 0,
           })),
-        sales_by_category: (salesByCategory?.categories ?? []).map((c) => ({
-          category: c.category_name || 'Uncategorised',
-          amount: Number(c.total_revenue) || 0,
-        })),
+        sales_by_category: mapCategoryRevenueSlices(salesByCategory?.categories),
       };
     },
   });
