@@ -7,7 +7,9 @@ use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\DTOs\ReversalRequest;
 use App\Models\CustomerCreditNote;
+use App\Models\CustomerCreditNoteLine;
 use App\Models\Invoice;
+use App\Models\InvoiceLine;
 use App\Models\TaxDeterminationResult;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -182,26 +184,17 @@ class CustomerCreditNoteService
             throw new \RuntimeException('Credit note customer does not match the invoice customer.');
         }
 
-        // Validate credit note amount doesn't exceed invoice amount
-        $invoice = $creditNote->invoice;
-        $existingCreditNotes = CustomerCreditNote::where('invoice_id', $invoice->id)
-            ->where('status', 'posted')
-            ->where('id', '!=', $creditNote->id)
-            ->sum('total_amount');
-
-        $totalCredited = $existingCreditNotes + $creditNote->total_amount;
-
-        if ($totalCredited > $invoice->total) {
-            throw new \Exception(
-                'Credit note amount exceeds invoice amount. '.
-                "Invoice: {$invoice->total}, Already credited: {$existingCreditNotes}, ".
-                "This credit note: {$creditNote->total_amount}"
-            );
-        }
-
         DB::beginTransaction();
 
         try {
+            // #513 (CN4): the credit caps are enforced HERE — inside the
+            // posting transaction, against the invoice row locked with
+            // lockForUpdate(). Checking before the transaction (and without a
+            // lock) let a line be credited beyond what was invoiced and let
+            // two concurrent posts both pass a stale snapshot.
+            $invoice = Invoice::whereKey($creditNote->invoice_id)->lockForUpdate()->firstOrFail();
+            $this->assertCreditWithinLimits($creditNote, $invoice);
+
             $lines = [];
 
             // MRD TAX-REQ-07 (D4): the credit note must reverse the ORIGINAL
@@ -386,6 +379,92 @@ class CustomerCreditNoteService
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
+        }
+    }
+
+    /**
+     * #513 (CN4): the credit caps, enforced with the invoice row already
+     * locked inside the posting transaction.
+     *
+     *  - Document level: credits already posted + this note <= invoice total.
+     *  - Per linked invoice line: credited quantity <= invoiced quantity and
+     *    credited net <= invoiced net, counting earlier POSTED credit notes.
+     *
+     * Lines without an invoice_line_id have no invoiced quantity or price to
+     * compare against, so only the document cap above covers them.
+     *
+     * Throws RuntimeException — the API maps that to 422 (a validation error),
+     * not a 500.
+     */
+    private function assertCreditWithinLimits(CustomerCreditNote $creditNote, Invoice $invoice): void
+    {
+        $priorNoteIds = CustomerCreditNote::where('invoice_id', $invoice->id)
+            ->where('status', 'posted')
+            ->where('id', '!=', $creditNote->id)
+            ->pluck('id');
+
+        $alreadyCredited = $priorNoteIds->isEmpty()
+            ? 0.0
+            : (float) CustomerCreditNote::whereIn('id', $priorNoteIds)->sum('total_amount');
+
+        if ($alreadyCredited + (float) $creditNote->total_amount > (float) $invoice->total) {
+            throw new \RuntimeException(
+                'Credit note amount exceeds invoice amount. '.
+                "Invoice: {$invoice->total}, Already credited: {$alreadyCredited}, ".
+                "This credit note: {$creditNote->total_amount}"
+            );
+        }
+
+        $priorLines = $priorNoteIds->isEmpty()
+            ? collect()
+            : CustomerCreditNoteLine::whereIn('credit_note_id', $priorNoteIds)
+                ->whereNotNull('invoice_line_id')
+                ->get()
+                ->groupBy('invoice_line_id');
+
+        foreach ($creditNote->lines as $line) {
+            if ($line->invoice_line_id === null) {
+                continue;
+            }
+
+            $origin = InvoiceLine::find($line->invoice_line_id);
+
+            if (! $origin || (int) $origin->invoice_id !== (int) $invoice->id) {
+                throw new \RuntimeException(
+                    "Credit note line references invoice line {$line->invoice_line_id}, which does not belong to invoice {$invoice->id}."
+                );
+            }
+
+            $prior = $priorLines->get($line->invoice_line_id) ?? collect();
+
+            $creditedQuantity = (float) $line->quantity
+                + (float) $prior->sum(fn ($l) => (float) $l->quantity);
+
+            if ($creditedQuantity > (float) $origin->quantity + 0.00001) {
+                throw new \RuntimeException(sprintf(
+                    'Credit note line quantity %.2f exceeds invoiced quantity %.2f on invoice line %d (already credited %.2f).',
+                    $creditedQuantity,
+                    (float) $origin->quantity,
+                    (int) $origin->id,
+                    $creditedQuantity - (float) $line->quantity
+                ));
+            }
+
+            // line_total is gross of tax on both documents, so the comparable
+            // figure is the net (gross - tax).
+            $originNet = (float) $origin->line_total - (float) $origin->tax_amount;
+            $thisNet = (float) $line->line_total - (float) $line->tax_amount;
+            $priorNet = (float) $prior->sum(fn ($l) => (float) $l->line_total - (float) $l->tax_amount);
+
+            if ($thisNet + $priorNet > $originNet + 0.0001) {
+                throw new \RuntimeException(sprintf(
+                    'Credit note line amount %.2f exceeds invoiced line amount %.2f on invoice line %d (already credited %.2f).',
+                    $thisNet + $priorNet,
+                    $originNet,
+                    (int) $origin->id,
+                    $priorNet
+                ));
+            }
         }
     }
 
