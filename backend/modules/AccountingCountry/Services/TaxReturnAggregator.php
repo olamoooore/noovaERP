@@ -65,7 +65,7 @@ class TaxReturnAggregator
         // #736 T3: rows with a NULL jurisdiction are never silently folded
         // into a country return — they are reported as unassigned.
         if ($jurisdiction !== null) {
-            $result['unassigned']['rows'] = $this->countUnassignedRows($period, $legalEntityId);
+            $result['unassigned']['rows'] = $this->countUnassignedRows($period, $legalEntityId, $jurisdiction);
         }
 
         return $result;
@@ -74,11 +74,11 @@ class TaxReturnAggregator
     /**
      * #736 T3: live trail rows in the window carrying no jurisdiction.
      */
-    private function countUnassignedRows(string|array $period, ?int $legalEntityId): int
+    private function countUnassignedRows(string|array $period, ?int $legalEntityId, ?string $jurisdiction = null): int
     {
         $periods = is_array($period) ? array_values($period) : [$period];
         $periods = array_merge(...array_map(
-            fn (string $p) => self::periodMonths($p) ?? [$p],
+            fn (string $p) => self::periodMonths($p, $jurisdiction, $legalEntityId) ?? [$p],
             $periods
         ));
 
@@ -134,10 +134,10 @@ class TaxReturnAggregator
     {
         $periods = is_array($period) ? array_values($period) : [$period];
 
-        // Expand quarter periods (YYYY-Qn) into their months so a quarterly
-        // return aggregates exactly those three reporting periods.
+        // Expand compound periods (YYYY-Qn, YYYY-Bn) into their months so a
+        // quarterly/bimonthly return aggregates exactly those months.
         $periods = array_merge(...array_map(
-            fn (string $p) => self::periodMonths($p) ?? [$p],
+            fn (string $p) => self::periodMonths($p, $jurisdiction, $legalEntityId) ?? [$p],
             $periods
         ));
 
@@ -221,7 +221,12 @@ class TaxReturnAggregator
      *
      * @return array<int, string>|null null when the period is malformed.
      */
-    public static function periodMonths(string $period): ?array
+    /**
+     * #741 T8: YYYY-MM (month), YYYY-Qn (quarter), or YYYY-Bn (bimonthly
+     * block, 1-6). Bimonthly blocks start at the registrant's cycle start
+     * month (tax_registrations.filing_start_month, default January).
+     */
+    public static function periodMonths(string $period, ?string $jurisdiction = null, ?int $legalEntityId = null): ?array
     {
         if (preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $period) === 1) {
             return [$period];
@@ -237,7 +242,50 @@ class TaxReturnAggregator
             );
         }
 
+        if (preg_match('/^(\d{4})-B([1-6])$/', $period, $m) === 1) {
+            $year = (int) $m[1];
+            $block = (int) $m[2];
+            $cycleStart = self::registrationStartMonth($jurisdiction, $legalEntityId);
+
+            // Offset of the block within the registrant's 12-month cycle;
+            // wraps across the calendar year (a July cycle's B4 is Jan-Feb).
+            $offset = ($cycleStart - 1) + ($block - 1) * 2;
+
+            $months = [];
+            foreach ([0, 1] as $k) {
+                $position = $offset + $k;
+                $months[] = sprintf(
+                    '%04d-%02d',
+                    $year + intdiv($position, 12),
+                    ($position % 12) + 1,
+                );
+            }
+
+            return $months;
+        }
+
         return null;
+    }
+
+    /**
+     * #741 T8: the cycle start month of the active tax registration (latest
+     * effective_from wins). A null jurisdiction (e.g. drilldown callers with
+     * no country context) accepts any active registration — tenants run one
+     * filing cycle. No registration means the default January cycle; values
+     * outside 1-12 fall back to 1.
+     */
+    public static function registrationStartMonth(?string $jurisdiction, ?int $legalEntityId = null): int
+    {
+        $month = DB::table('tax_registrations')
+            ->when($jurisdiction !== null, fn ($q) => $q->where('jurisdiction', strtoupper($jurisdiction)))
+            ->where('status', 'active')
+            ->when($legalEntityId !== null, fn ($q) => $q->where('legal_entity_id', $legalEntityId))
+            ->orderByDesc('effective_from')
+            ->value('filing_start_month');
+
+        $month = (int) ($month ?? 1);
+
+        return $month >= 1 && $month <= 12 ? $month : 1;
     }
 
     /**

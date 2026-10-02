@@ -62,6 +62,8 @@ class TaxRegistrationController extends Controller
             'effective_from' => array_merge($sometimes, ['required', 'date']),
             'effective_to' => array_merge($sometimes, ['nullable', 'date', 'after_or_equal:effective_from']),
             'status' => array_merge($sometimes, ['in:active,inactive,cancelled']),
+            // #741 T8: cycle start month for bimonthly SST-02 periods.
+            'filing_start_month' => array_merge($sometimes, ['nullable', 'integer', 'min:1', 'max:12']),
             'notes' => array_merge($sometimes, ['nullable', 'string', 'max:255']),
         ]);
 

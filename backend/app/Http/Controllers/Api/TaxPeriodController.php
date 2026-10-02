@@ -71,7 +71,7 @@ class TaxPeriodController extends Controller
         $flagged = 0;
 
         foreach (\App\Models\StatutoryReturnFiling::whereNull('superseded_at')->get() as $filing) {
-            $filingMonths = \Modules\AccountingCountry\Services\TaxReportingService::expandFilingPeriod((string) $filing->period) ?: [(string) $filing->period];
+            $filingMonths = \Modules\AccountingCountry\Services\TaxReportingService::expandFilingPeriod((string) $filing->period, (string) $filing->country) ?: [(string) $filing->period];
 
             if (array_intersect($months, $filingMonths)) {
                 $filing->update(['state' => 'AMENDMENT_REQUIRED', 'state_updated_at' => now()]);

@@ -18,7 +18,7 @@ class Sst02ReturnService
     ) {}
 
     /**
-     * @param  string  $period  YYYY-MM or YYYY-Qn.
+     * @param  string  $period  YYYY-MM, YYYY-Qn or YYYY-Bn.
      * @param  int|null  $legalEntityId  Scope the return to one legal entity.
      */
     public function generate(string $period, ?int $legalEntityId = null): array
@@ -41,23 +41,29 @@ class Sst02ReturnService
 
         $salesTaxRows = [];
         $serviceTaxRows = [];
+        // #741 T8: EXPLICIT classification — sales -> sales tax, service ->
+        // service tax, anything else (gst, tax, withholding, ...) is
+        // unclassified and blocks filing; it is never guessed into a bucket.
+        // Rows with no rule reference keep the legacy heuristic (#308 owns
+        // the matched-rule gap) and are counted separately.
         $unclassifiedRows = 0;
+        $unclassifiedLegacyRows = 0;
 
         foreach ($taxes['output'] as $row) {
             $ruleType = $row['tax_rule_id'] !== null ? strtolower((string) ($ruleTypes[$row['tax_rule_id']] ?? '')) : '';
 
             if ($ruleType !== '') {
-                if ($ruleType === 'service') {
-                    $serviceTaxRows[] = $row;
-                } else {
-                    $salesTaxRows[] = $row;
-                }
+                match ($ruleType) {
+                    'service' => $serviceTaxRows[] = $row,
+                    'sales' => $salesTaxRows[] = $row,
+                    default => $unclassifiedRows++,
+                };
 
                 continue;
             }
 
             // Legacy fallback: no rule reference on the trail row.
-            $unclassifiedRows++;
+            $unclassifiedLegacyRows++;
             $regime = strtolower((string) ($row['tax_regime'] ?? '').' '.(string) ($row['tax_code'] ?? ''));
 
             if (str_contains($regime, 'service') || str_contains($regime, 'svc')) {
@@ -110,7 +116,8 @@ class Sst02ReturnService
             'total_tax_payable' => round($salesTaxDue + $serviceTaxDue, 2),
             'classification' => [
                 'method' => 'rule_taxonomy',
-                'unclassified_legacy_rows' => $unclassifiedRows,
+                'unclassified_rows' => $unclassifiedRows,
+                'unclassified_legacy_rows' => $unclassifiedLegacyRows,
             ],
         ];
     }

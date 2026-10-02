@@ -25,6 +25,8 @@ return [
     'SG' => [
         'label' => 'Singapore GST (IRAS)',
         'currency' => 'SGD',
+        // #741 T8: period shapes this pack can be filed under.
+        'period_shapes' => ['monthly', 'quarterly'],
         'rules' => [
             [
                 'code' => 'SG-GST-9',
@@ -97,6 +99,11 @@ return [
     'MY' => [
         'label' => 'Malaysia SST (LHDN / RMCD)',
         'currency' => 'MYR',
+        // #741 T8: SST-02 taxable periods are two months, aligned to each
+        // registrant's cycle start month (tax_registrations.filing_start_month).
+        // 'monthly' stays accepted for existing single-month reporting; a
+        // quarterly SST-02 is not a real RMCD period and is rejected.
+        'period_shapes' => ['bimonthly', 'monthly'],
         // #738 T5: MY classifies lines as service vs sales; SG has a single
         // GST type and must not be filtered by a MY-specific 'service' type.
         'line_type_map' => ['service' => 'service'],
