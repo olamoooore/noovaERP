@@ -93,8 +93,9 @@ class TaxEnginePhase2LocalizationTest extends TenantTestCase
 
         $this->assertSame('My GST 9 (custom)', Tax::where('code', 'SG-GST-9')->value('name'), 'activation must not clobber tenant edits');
 
-        // Home jurisdiction defaulted onto the tenant setting.
-        $this->assertSame('SG', Setting::getValue('tax', [])['jurisdiction'] ?? null);
+        // #740 T4 (test-semantic change, disclosed): activation no longer
+        // defaults the home jurisdiction — registrations define it (#740 AC4).
+        $this->assertNull(Setting::getValue('tax', [])['jurisdiction'] ?? null);
     }
 
     public function test_unknown_pack_is_rejected_and_status_reports_coverage(): void

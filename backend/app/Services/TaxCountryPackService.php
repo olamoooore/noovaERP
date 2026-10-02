@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\Setting;
 use App\Models\Tax;
 use Illuminate\Support\Facades\DB;
 
@@ -87,12 +86,8 @@ class TaxCountryPackService
             }
         });
 
-        $taxSetting = Setting::getValue('tax', []);
-        if (empty($taxSetting['jurisdiction'])) {
-            $taxSetting['jurisdiction'] = $jurisdiction;
-            Setting::setValue('tax', $taxSetting);
-        }
-
+        // #740 T4 (AC): activation never changes the tenant's home
+        // jurisdiction — registrations define it, not rule data.
         return [
             'jurisdiction' => $jurisdiction,
             'label' => $pack['label'],

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Setting;
 use App\Models\TaxRegistration;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -30,6 +31,12 @@ class TaxRegistrationController extends Controller
         $validated = $this->validatePayload($request);
 
         $registration = TaxRegistration::create($validated);
+
+        // #740 T4 (AC): registrations — never pack activation — define the
+        // tenant's home jurisdiction. The registration just created wins.
+        $taxSetting = Setting::getValue('tax', []);
+        $taxSetting['jurisdiction'] = $registration->jurisdiction;
+        Setting::setValue('tax', $taxSetting);
 
         return response()->json(['data' => $registration->load('legalEntity:id,name,code')], 201);
     }
