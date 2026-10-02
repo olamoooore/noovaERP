@@ -89,7 +89,7 @@ class TaxEngineService
         }
 
         $explicitTax = $product?->tax_id
-            ? Tax::query()->whereKey($product->tax_id)->where('is_active', true)->first()
+            ? Tax::query()->whereKey($product->tax_id)->where('is_active', true)->where('lifecycle_state', 'ACTIVE')->first()
             : null;
 
         // G-23: a directly linked rule still honors its scope — an
@@ -100,7 +100,7 @@ class TaxEngineService
 
         $setting = Setting::getValue('tax', []);
         $defaultTax = ! empty($setting['default_tax_id'])
-            ? Tax::query()->whereKey($setting['default_tax_id'])->where('is_active', true)->first()
+            ? Tax::query()->whereKey($setting['default_tax_id'])->where('is_active', true)->where('lifecycle_state', 'ACTIVE')->first()
             : null;
         // MRD R2.2: a default is direction-aware — an output (sales) default
         // must never auto-apply to purchase-side documents, and vice versa.
@@ -109,7 +109,7 @@ class TaxEngineService
         }
 
         $tax = Tax::query()
-            ->where('is_active', true)
+            ->where('is_active', true)->where('lifecycle_state', 'ACTIVE')
             ->where(function ($query) use ($jurisdiction) {
                 $query->where('jurisdiction', $jurisdiction)->orWhereNull('jurisdiction');
             })
@@ -220,7 +220,7 @@ class TaxEngineService
         }
 
         $fromRules = Tax::query()
-            ->where('is_active', true)
+            ->where('is_active', true)->where('lifecycle_state', 'ACTIVE')
             ->whereNotNull('jurisdiction')
             ->orderByDesc('is_default')
             ->value('jurisdiction');

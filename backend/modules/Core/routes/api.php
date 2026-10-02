@@ -140,6 +140,16 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
     Route::get('/taxes/{tax}/audit-trail', [TaxController::class, 'auditTrail'])
         ->middleware(RequirePermission::using('tax.policy.view|tax.view'));
 
+    // #276 F2: rule lifecycle transitions.
+    Route::post('/taxes/{tax}/submit', [TaxController::class, 'submitForApproval'])
+        ->middleware(RequirePermission::using('tax.policy.manage|tax.manage'));
+    Route::post('/taxes/{tax}/approve', [TaxController::class, 'approveRule'])
+        ->middleware(RequirePermission::using('tax.policy.manage'));
+    Route::post('/taxes/{tax}/activate', [TaxController::class, 'activateRule'])
+        ->middleware(RequirePermission::using('tax.policy.manage'));
+    Route::post('/taxes/{tax}/reject', [TaxController::class, 'rejectRule'])
+        ->middleware(RequirePermission::using('tax.policy.manage'));
+
     // Features
     Route::get('/features', [FeatureController::class, 'index']);
 

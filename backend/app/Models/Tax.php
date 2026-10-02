@@ -26,11 +26,16 @@ class Tax extends Model
         'creditable',
         'blocked_expense_account_id',
         'version',
+        'lifecycle_state',
+        'submitted_by',
+        'approved_by',
+        'approved_at',
     ];
 
     protected $casts = [
         'rate' => 'decimal:2',
         'version' => 'integer',
+        'approved_at' => 'datetime',
         'creditable' => 'boolean',
         'is_active' => 'bool',
         'is_default' => 'bool',
