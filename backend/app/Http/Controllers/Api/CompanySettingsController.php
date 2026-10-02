@@ -650,8 +650,25 @@ class CompanySettingsController extends Controller
                     'cc_internal_email' => \App\Models\Setting::getValue('sales.delivery.cc_internal_email', ''),
                     'document_type_on_send' => \App\Models\Setting::getValue('sales.delivery.document_type_on_send', 'final_invoice'),
                 ],
+                // Issue #645: per-request-type reviewer lists. Each type falls
+                // back to the invoice pool when nothing is configured here, so
+                // existing tenants keep working unchanged.
+                'quotation' => [
+                    'reviewer_user_ids' => array_values(array_map('intval', (array) \App\Models\Setting::getValue('sales.quotation.reviewer_user_ids', []))),
+                    'reviewer_roles' => array_values((array) \App\Models\Setting::getValue('sales.quotation.reviewer_roles', [])),
+                ],
+                'sales_order' => [
+                    'reviewer_user_ids' => array_values(array_map('intval', (array) \App\Models\Setting::getValue('sales.sales_order.reviewer_user_ids', []))),
+                    'reviewer_roles' => array_values((array) \App\Models\Setting::getValue('sales.sales_order.reviewer_roles', [])),
+                ],
+                'invoice_threshold' => [
+                    'reviewer_user_ids' => array_values(array_map('intval', (array) \App\Models\Setting::getValue('sales.invoice_threshold.reviewer_user_ids', []))),
+                    'reviewer_roles' => array_values((array) \App\Models\Setting::getValue('sales.invoice_threshold.reviewer_roles', [])),
+                ],
                 'delivery_order' => [
                     'default_requires_approval' => (bool) \App\Models\Setting::getValue('sales.delivery_order.default_requires_approval', false),
+                    'reviewer_user_ids' => array_values(array_map('intval', (array) \App\Models\Setting::getValue('sales.delivery_order.reviewer_user_ids', []))),
+                    'reviewer_roles' => array_values((array) \App\Models\Setting::getValue('sales.delivery_order.reviewer_roles', [])),
                 ],
             ],
         ]);
@@ -684,6 +701,24 @@ class CompanySettingsController extends Controller
             'delivery.cc_internal_email' => 'nullable|email|max:255',
             'delivery.document_type_on_send' => 'nullable|string|in:final_invoice,acceptance_copy',
             'delivery_order.default_requires_approval' => 'nullable|boolean',
+            // Issue #645: per-request-type reviewer lists (quotation, sales
+            // order, invoice threshold, delivery order).
+            'quotation.reviewer_user_ids' => 'nullable|array',
+            'quotation.reviewer_user_ids.*' => 'integer|exists:users,id',
+            'quotation.reviewer_roles' => 'nullable|array',
+            'quotation.reviewer_roles.*' => 'string|in:owner,admin,manager,sales,accountant,cashier,viewer',
+            'sales_order.reviewer_user_ids' => 'nullable|array',
+            'sales_order.reviewer_user_ids.*' => 'integer|exists:users,id',
+            'sales_order.reviewer_roles' => 'nullable|array',
+            'sales_order.reviewer_roles.*' => 'string|in:owner,admin,manager,sales,accountant,cashier,viewer',
+            'invoice_threshold.reviewer_user_ids' => 'nullable|array',
+            'invoice_threshold.reviewer_user_ids.*' => 'integer|exists:users,id',
+            'invoice_threshold.reviewer_roles' => 'nullable|array',
+            'invoice_threshold.reviewer_roles.*' => 'string|in:owner,admin,manager,sales,accountant,cashier,viewer',
+            'delivery_order.reviewer_user_ids' => 'nullable|array',
+            'delivery_order.reviewer_user_ids.*' => 'integer|exists:users,id',
+            'delivery_order.reviewer_roles' => 'nullable|array',
+            'delivery_order.reviewer_roles.*' => 'string|in:owner,admin,manager,sales,accountant,cashier,viewer',
         ]);
 
         $map = [
@@ -706,6 +741,14 @@ class CompanySettingsController extends Controller
             'delivery.cc_internal_email' => 'sales.delivery.cc_internal_email',
             'delivery.document_type_on_send' => 'sales.delivery.document_type_on_send',
             'delivery_order.default_requires_approval' => 'sales.delivery_order.default_requires_approval',
+            'quotation.reviewer_user_ids' => 'sales.quotation.reviewer_user_ids',
+            'quotation.reviewer_roles' => 'sales.quotation.reviewer_roles',
+            'sales_order.reviewer_user_ids' => 'sales.sales_order.reviewer_user_ids',
+            'sales_order.reviewer_roles' => 'sales.sales_order.reviewer_roles',
+            'invoice_threshold.reviewer_user_ids' => 'sales.invoice_threshold.reviewer_user_ids',
+            'invoice_threshold.reviewer_roles' => 'sales.invoice_threshold.reviewer_roles',
+            'delivery_order.reviewer_user_ids' => 'sales.delivery_order.reviewer_user_ids',
+            'delivery_order.reviewer_roles' => 'sales.delivery_order.reviewer_roles',
         ];
 
         // MRD R10.3: tax writes go to the ONE canonical Setting tax block

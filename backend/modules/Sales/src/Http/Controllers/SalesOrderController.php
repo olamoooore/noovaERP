@@ -229,18 +229,20 @@ class SalesOrderController extends Controller
         // Issue #180: config-driven approval gate. If the tenant's threshold is
         // set and the order's total meets or exceeds it, create an ApprovalRequest
         // and return 202 instead of advancing the order to 'confirmed'.
-        if ($this->approvalGate->requiresApproval(SalesOrder::class, (float) $order->total)) {
-            $request = $this->approvalGate->createRequest(
-                $order,
-                Auth::user(),
-                SalesApprovalGate::REQUEST_TYPE_SALES_ORDER,
-                "Sales order total {$order->total} meets the tenant approval threshold."
-            );
-
+        // Issue #645: requestIfNeeded also lets a re-run proceed once the
+        // request is approved (and reuses a pending request instead of creating
+        // duplicates), matching the quotation confirm path — previously a gated
+        // sales order could never be confirmed even after approval.
+        if ($approval = $this->approvalGate->requestIfNeeded(
+            $order,
+            SalesApprovalGate::REQUEST_TYPE_SALES_ORDER,
+            (float) $order->total,
+            Auth::user(),
+        )) {
             return response()->json([
                 'message' => 'Approval required',
                 'requires_approval' => true,
-                'approval_request' => $request,
+                'approval_request' => $approval,
                 'threshold' => $this->approvalGate->threshold(),
                 'order' => $order->fresh(),
             ], 202);

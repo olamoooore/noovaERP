@@ -1338,39 +1338,20 @@ class DeliveryOrderService
     /**
      * Users who can approve a delivery order.
      *
-     * Reuses the invoice approval reviewer pool (Sales Settings → Approval
-     * Workflow) so one set of reviewers covers invoices and delivery orders.
-     * Falls back to the sales.write permission holder if nothing is configured.
+     * Issue #645: delegates to the one sales reviewer resolver
+     * (SalesApprovalGate::resolveReviewers). A tenant may configure a
+     * delivery-order-specific list (`sales.delivery_order.reviewer_user_ids` /
+     * `_roles`); when nothing is configured the legacy invoice reviewer pool
+     * (Sales Settings → Approval Workflow) still applies, as before.
      */
     public function resolveReviewers(?int $submitterId = null): \Illuminate\Support\Collection
     {
-        $users = collect();
+        $submitter = $submitterId !== null
+            ? \App\Models\User::find($submitterId)
+            : null;
 
-        $configuredIds = \App\Models\Setting::getValue('sales.invoice.reviewer_user_ids', []);
-        $configuredRoles = \App\Models\Setting::getValue('sales.invoice.reviewer_roles', []);
-
-        if (is_array($configuredIds) && $configuredIds !== []) {
-            $users = $users->merge(\App\Models\User::whereIn('id', array_map('intval', $configuredIds))->get());
-        }
-
-        if (is_array($configuredRoles) && $configuredRoles !== []) {
-            $spatieNames = collect($configuredRoles)
-                ->map(fn ($role) => \App\Enums\UserRole::tryFrom(strtolower((string) $role))?->spatieName())
-                ->filter()
-                ->values()
-                ->all();
-
-            if ($spatieNames !== []) {
-                $users = $users->merge(\App\Models\User::role($spatieNames)->get());
-            }
-        }
-
-        $users = $users
-            ->unique('id')
-            ->reject(fn ($u) => $submitterId !== null && (int) $u->id === (int) $submitterId)
-            ->values();
-
-        return $users;
+        return app(\App\Services\SalesApprovalGate::class)
+            ->resolveReviewers(\App\Services\SalesApprovalGate::REQUEST_TYPE_DELIVERY_ORDER, $submitter);
     }
 
     public function approveDeliveryOrder(DeliveryOrder $deliveryOrder, \App\Models\User $user): DeliveryOrder

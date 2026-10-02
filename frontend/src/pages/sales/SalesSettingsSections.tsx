@@ -19,6 +19,11 @@ import {
   SettingsSectionHeader,
 } from '@/components/settings/settings-ui'
 
+export interface ReviewerConfig {
+  reviewer_user_ids?: number[]
+  reviewer_roles?: string[]
+}
+
 export interface SalesSettings {
   invoice: {
     allow_custom_number: boolean
@@ -52,7 +57,12 @@ export interface SalesSettings {
   }
   delivery_order: {
     default_requires_approval: boolean
-  }
+  } & ReviewerConfig
+  // Issue #645: per-request-type reviewer lists. Each falls back to the
+  // invoice reviewers when left empty.
+  quotation: ReviewerConfig
+  sales_order: ReviewerConfig
+  invoice_threshold: ReviewerConfig
 }
 
 export const emptySalesSettings: SalesSettings = {
@@ -85,6 +95,18 @@ export const emptySalesSettings: SalesSettings = {
   },
   delivery_order: {
     default_requires_approval: false,
+  },
+  quotation: {
+    reviewer_user_ids: [],
+    reviewer_roles: [],
+  },
+  sales_order: {
+    reviewer_user_ids: [],
+    reviewer_roles: [],
+  },
+  invoice_threshold: {
+    reviewer_user_ids: [],
+    reviewer_roles: [],
   },
 }
 
@@ -321,16 +343,93 @@ const REVIEWER_ROLES = [
   { value: 'sales', label: 'Sales', icon: 'solar:medal-star-bold-duotone' },
 ]
 
+type ReviewerDocType = 'invoice' | 'quotation' | 'sales_order' | 'invoice_threshold' | 'delivery_order'
+
+const REVIEWER_DOC_TYPES: Array<{ value: ReviewerDocType; label: string; description: string }> = [
+  { value: 'invoice', label: 'Invoices', description: 'Invoices flagged “requires approval” before posting.' },
+  { value: 'quotation', label: 'Quotations', description: 'Quotations over the approval threshold.' },
+  { value: 'sales_order', label: 'Sales orders', description: 'Sales orders over the approval threshold.' },
+  { value: 'invoice_threshold', label: 'Invoice threshold', description: 'Invoices auto-flagged by the approval threshold.' },
+  { value: 'delivery_order', label: 'Delivery orders', description: 'Delivery orders that require approval.' },
+]
+
+type ApprovalPatch = ReviewerConfig & {
+  default_requires_approval?: boolean
+  approval_expiry_days?: number
+}
+
 export function ApprovalSettings() {
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
   const { data, isLoading } = useSalesSettings()
-  const [local, setLocal] = useState<Partial<SalesSettings['invoice']>>({})
-  const mutation = useSalesSettingsMutation('invoice', 'Approval settings saved', () => setLocal({}))
-  const doMutation = useSalesSettingsMutation('delivery_order', 'Delivery-order approval saved', () => setLocal({}))
+  const [reviewerType, setReviewerType] = useState<ReviewerDocType>('invoice')
+  // Dirty approval fields per request type — saved together by the save bar.
+  const [dirty, setDirty] = useState<Partial<Record<ReviewerDocType, ApprovalPatch>>>({})
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      for (const [group, patch] of Object.entries(dirty)) {
+        if (patch && Object.keys(patch).length > 0) {
+          await api.put('/settings/sales', { [group]: patch })
+        }
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales-settings'] })
+      toast({ title: 'Approval settings saved' })
+      setDirty({})
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Save failed',
+        description: error.response?.data?.message || 'Please try again.',
+      })
+    },
+  })
 
   if (isLoading || !data) return <SettingsLoadingCard />
 
-  const invoice = { ...data.invoice, ...local }
-  const deliveryOrder = data.delivery_order ?? { default_requires_approval: false }
+  const patchGroup = (group: ReviewerDocType, patch: ApprovalPatch) => {
+    setDirty((current) => ({
+      ...current,
+      [group]: { ...(current[group] ?? {}), ...patch },
+    }))
+  }
+
+  const groups: Record<ReviewerDocType, ApprovalPatch> = {
+    invoice: { ...data.invoice, ...(dirty.invoice ?? {}) },
+    quotation: { ...(data.quotation ?? {}), ...(dirty.quotation ?? {}) },
+    sales_order: { ...(data.sales_order ?? {}), ...(dirty.sales_order ?? {}) },
+    invoice_threshold: { ...(data.invoice_threshold ?? {}), ...(dirty.invoice_threshold ?? {}) },
+    delivery_order: {
+      ...(data.delivery_order ?? { default_requires_approval: false }),
+      ...(dirty.delivery_order ?? {}),
+    },
+  }
+
+  const invoice = groups.invoice
+  const deliveryOrder = groups.delivery_order
+  const reviewerGroup = groups[reviewerType]
+  const availableReviewers = data.invoice.available_reviewers ?? []
+  const reviewerCount = (reviewerGroup.reviewer_user_ids ?? []).length + (reviewerGroup.reviewer_roles ?? []).length
+  const reviewerTypeMeta = REVIEWER_DOC_TYPES.find((t) => t.value === reviewerType) ?? REVIEWER_DOC_TYPES[0]
+
+  const toggleReviewerRole = (role: string) => {
+    const current = reviewerGroup.reviewer_roles ?? []
+    const active = current.includes(role)
+    patchGroup(reviewerType, {
+      reviewer_roles: active ? current.filter((r) => r !== role) : [...current, role],
+    })
+  }
+
+  const toggleReviewerPerson = (personId: number) => {
+    const current = reviewerGroup.reviewer_user_ids ?? []
+    const active = current.includes(personId)
+    patchGroup(reviewerType, {
+      reviewer_user_ids: active ? current.filter((id) => id !== personId) : [...current, personId],
+    })
+  }
 
   return (
     <Card className="overflow-hidden">
@@ -346,7 +445,7 @@ export function ApprovalSettings() {
         >
           <Switch
             checked={invoice.default_requires_approval}
-            onCheckedChange={(v) => setLocal({ ...local, default_requires_approval: v })}
+            onCheckedChange={(v) => patchGroup('invoice', { default_requires_approval: v })}
           />
         </SettingsRow>
 
@@ -361,7 +460,7 @@ export function ApprovalSettings() {
               max={90}
               value={invoice.approval_expiry_days}
               onChange={(e) =>
-                setLocal({ ...local, approval_expiry_days: parseInt(e.target.value, 10) || 7 })
+                patchGroup('invoice', { approval_expiry_days: parseInt(e.target.value, 10) || 7 })
               }
               className="w-20 text-center"
             />
@@ -385,7 +484,7 @@ export function ApprovalSettings() {
         >
           <Switch
             checked={deliveryOrder.default_requires_approval}
-            onCheckedChange={(v) => doMutation.mutate({ default_requires_approval: v } as any)}
+            onCheckedChange={(v) => patchGroup('delivery_order', { default_requires_approval: v })}
           />
         </SettingsRow>
 
@@ -394,9 +493,28 @@ export function ApprovalSettings() {
           <div className="space-y-1">
             <div className="text-sm font-medium leading-none">Approval reviewers</div>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              Who gets notified and can approve invoices and delivery orders. Pick specific people, roles, or both.
-              When nothing is selected, everyone with the invoice-approval permission is used.
+              Who gets notified and can approve each document type. Pick specific people, roles, or both. A type
+              with no reviewers of its own falls back to the invoice list.
             </p>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Document type</div>
+              <p className="text-xs text-muted-foreground">{reviewerTypeMeta.description}</p>
+            </div>
+            <Select value={reviewerType} onValueChange={(v) => setReviewerType(v as ReviewerDocType)}>
+              <SelectTrigger className="w-56">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {REVIEWER_DOC_TYPES.map((type) => (
+                  <SelectItem key={type.value} value={type.value}>
+                    {type.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Roles */}
@@ -404,20 +522,12 @@ export function ApprovalSettings() {
             <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">By role</div>
             <div className="flex flex-wrap gap-2">
               {REVIEWER_ROLES.map((role) => {
-                const active = (invoice.reviewer_roles ?? []).includes(role.value)
+                const active = (reviewerGroup.reviewer_roles ?? []).includes(role.value)
                 return (
                   <button
                     key={role.value}
                     type="button"
-                    onClick={() => {
-                      const current = invoice.reviewer_roles ?? []
-                      setLocal({
-                        ...local,
-                        reviewer_roles: active
-                          ? current.filter((r) => r !== role.value)
-                          : [...current, role.value],
-                      })
-                    }}
+                    onClick={() => toggleReviewerRole(role.value)}
                     className={cn(
                       'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all',
                       active
@@ -439,25 +549,17 @@ export function ApprovalSettings() {
             <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Specific people
             </div>
-            {(invoice.available_reviewers ?? []).length === 0 ? (
+            {availableReviewers.length === 0 ? (
               <p className="text-xs text-muted-foreground">No team members found.</p>
             ) : (
               <div className="grid max-h-60 gap-1 overflow-y-auto rounded-lg border p-2 sm:grid-cols-2">
-                {(invoice.available_reviewers ?? []).map((person) => {
-                  const active = (invoice.reviewer_user_ids ?? []).includes(person.id)
+                {availableReviewers.map((person) => {
+                  const active = (reviewerGroup.reviewer_user_ids ?? []).includes(person.id)
                   return (
                     <button
                       key={person.id}
                       type="button"
-                      onClick={() => {
-                        const current = invoice.reviewer_user_ids ?? []
-                        setLocal({
-                          ...local,
-                          reviewer_user_ids: active
-                            ? current.filter((id) => id !== person.id)
-                            : [...current, person.id],
-                        })
-                      }}
+                      onClick={() => toggleReviewerPerson(person.id)}
                       className={cn(
                         'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors',
                         active ? 'bg-primary/10' : 'hover:bg-muted/60',
@@ -492,21 +594,27 @@ export function ApprovalSettings() {
             )}
           </div>
 
-          {((invoice.reviewer_user_ids ?? []).length > 0 || (invoice.reviewer_roles ?? []).length > 0) && (
+          {reviewerCount > 0 ? (
             <div className="flex items-center gap-2 rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
               <Icon icon="solar:info-circle-bold-duotone" className="h-3.5 w-3.5 shrink-0 text-primary" />
-              {(invoice.reviewer_user_ids ?? []).length + (invoice.reviewer_roles ?? []).length} reviewer
-              source{(invoice.reviewer_user_ids ?? []).length + (invoice.reviewer_roles ?? []).length === 1 ? '' : 's'} selected.
-              The submitter is always excluded from approving their own document.
+              {reviewerCount} reviewer source{reviewerCount === 1 ? '' : 's'} selected for{' '}
+              {reviewerTypeMeta.label.toLowerCase()}. The submitter is always excluded from approving their own
+              document.
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              <Icon icon="solar:info-circle-bold-duotone" className="h-3.5 w-3.5 shrink-0 text-primary" />
+              No reviewers configured for {reviewerTypeMeta.label.toLowerCase()} — the invoice reviewer list is
+              used, or the invoice-approval permission for invoices.
             </div>
           )}
         </div>
       </CardContent>
       <SettingsSaveBar
-        hasChanges={Object.keys(local).length > 0}
+        hasChanges={Object.keys(dirty).length > 0}
         isPending={mutation.isPending}
-        onSave={() => mutation.mutate(local)}
-        onCancel={() => setLocal({})}
+        onSave={() => mutation.mutate()}
+        onCancel={() => setDirty({})}
         label="Save approval settings"
       />
     </Card>
