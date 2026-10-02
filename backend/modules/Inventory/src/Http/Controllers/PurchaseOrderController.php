@@ -3,8 +3,10 @@
 namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Services\GoodsReceiptService;
 use App\Models\ProductSupplier;
+use App\Services\DocumentWideSearchService;
+use App\Services\GoodsReceiptService;
+use App\Services\SupplierWideSearchService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -24,12 +26,13 @@ class PurchaseOrderController extends Controller
         $query = PurchaseOrder::with(['supplier', 'warehouse', 'createdBy'])
             ->orderBy('created_at', 'desc');
 
-        if ($request->filled('search')) {
-            $search = $request->input('search');
-            $query->where(function ($q) use ($search) {
-                $q->where('po_number', 'like', "%{$search}%")
-                    ->orWhereHas('supplier', fn ($sq) => $sq->where('name', 'like', "%{$search}%"));
-            });
+        $search = $request->filled('search') ? trim((string) $request->input('search')) : '';
+        if ($search !== '') {
+            app(DocumentWideSearchService::class)->apply($query, $search, $this->wideSearchConfig());
+            $query->with(array_merge(
+                ['items'],
+                app(DocumentWideSearchService::class)->eagerLoads($this->wideSearchConfig()),
+            ));
         }
 
         if ($request->filled('status')) {
@@ -54,7 +57,32 @@ class PurchaseOrderController extends Controller
 
         $perPage = min(100, max(1, (int) $request->input('per_page', 20)));
 
-        return response()->json($query->paginate($perPage));
+        $orders = $query->paginate($perPage);
+
+        if ($search !== '') {
+            app(DocumentWideSearchService::class)->annotate($orders, $search, $this->wideSearchConfig());
+        }
+
+        return response()->json($orders);
+    }
+
+    /**
+     * Wide-search configuration for the purchase-order list — matches the PO
+     * number, notes/internal notes, invoice number, its supplier's full
+     * surface (identity + address fields) and the line descriptions, plus the
+     * PO's own tags.
+     */
+    private function wideSearchConfig(): array
+    {
+        return [
+            'columns' => ['po_number', 'invoice_number', 'notes', 'internal_notes'],
+            'party' => [
+                'relation' => 'supplier',
+                'service' => SupplierWideSearchService::class,
+            ],
+            'lines' => ['relation' => 'items', 'columns' => ['description']],
+            'tagAlias' => 'purchase_order',
+        ];
     }
 
     public function store(Request $request)

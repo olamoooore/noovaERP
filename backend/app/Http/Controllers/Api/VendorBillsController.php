@@ -7,9 +7,11 @@ use App\Models\Bill;
 use App\Models\BillLine;
 use App\Models\GoodsReceipt;
 use App\Services\BillService;
+use App\Services\DocumentWideSearchService;
 use App\Services\LockDateValidationService;
 use App\Services\ThreeWayMatchService;
 use App\Services\VendorBillService;
+use App\Services\VendorWideSearchService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -76,15 +78,12 @@ class VendorBillsController extends Controller
                 $query->whereIn('id', $taggedIds !== [] ? $taggedIds : [-1]);
             }
 
-            // Search filter
-            if ($request->has('search')) {
-                $search = $request->get('search');
-                $query->where(function ($q) use ($search) {
-                    $q->where('bill_number', 'ILIKE', "%{$search}%")
-                        ->orWhereHas('vendor', function ($vq) use ($search) {
-                            $vq->where('name', 'ILIKE', "%{$search}%");
-                        });
-                });
+            // Search filter — Odoo-style wide search (document refs, vendor
+            // contacts/addresses/tags, line contents, upstream PO number).
+            $search = $request->filled('search') ? trim((string) $request->get('search')) : '';
+            if ($search !== '') {
+                app(DocumentWideSearchService::class)->apply($query, $search, $this->wideSearchConfig());
+                $query->with(app(DocumentWideSearchService::class)->eagerLoads($this->wideSearchConfig()));
             }
 
             // Get total count
@@ -95,6 +94,10 @@ class VendorBillsController extends Controller
                 ->skip(($page - 1) * $perPage)
                 ->take($perPage)
                 ->get();
+
+            if ($search !== '') {
+                app(DocumentWideSearchService::class)->annotate($bills, $search, $this->wideSearchConfig());
+            }
 
             return response()->json([
                 'data' => $bills,
@@ -114,6 +117,32 @@ class VendorBillsController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Wide-search configuration for the vendor-bill list — matches the bill's
+     * identity/header references, its vendor's full surface (identity,
+     * addresses, tags), line contents, the upstream purchase-order number and
+     * the bill's own tags.
+     */
+    private function wideSearchConfig(): array
+    {
+        return [
+            'columns' => [
+                'bill_number', 'vendor_reference', 'internal_reference',
+                'attention_to', 'contact_email', 'contact_phone',
+                'company_registration_number', 'tax_registration_number',
+                'notes', 'terms', 'vendor_address_snapshot', 'remittance_address_snapshot',
+            ],
+            'party' => [
+                'relation' => 'vendor',
+                'service' => VendorWideSearchService::class,
+                'addresses' => 'addresses',
+            ],
+            'lines' => ['relation' => 'lines', 'columns' => ['description', 'model_number', 'product_notes', 'lot_number', 'serial_number']],
+            'related' => ['purchaseOrder' => 'po_number'],
+            'tagAlias' => 'bill',
+        ];
     }
 
     /**

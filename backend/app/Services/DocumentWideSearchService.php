@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use Illuminate\Contracts\Pagination\Paginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
@@ -130,19 +129,23 @@ class DocumentWideSearchService
     }
 
     /**
-     * Annotate each paginated row with matched_contacts / matched_tags /
+     * Annotate each row with matched_contacts / matched_tags /
      * matched_addresses / matched_lines, mirroring the customer picker hints.
+     * Accepts a paginator, a collection or an array of models.
      */
-    public function annotate(Paginator $rows, string $search, array $config): void
+    public function annotate($rows, string $search, array $config): void
     {
         $needle = mb_strtolower($search);
         $contains = fn (?string $value) => $value !== null && $value !== ''
             && str_contains(mb_strtolower($value), $needle);
 
+        // Accept both a paginator (->items()) and a plain collection/array.
+        $items = method_exists($rows, 'items') ? $rows->items() : $rows;
+
         $tagMatches = [];
         if (! empty($config['tagAlias'])) {
             $tagMatches = app(TagService::class)->matchingTagNames(
-                collect($rows->items())->pluck('id')->map('intval')->all(),
+                collect($items)->pluck('id')->map('intval')->all(),
                 $config['tagAlias'],
                 $search,
             );

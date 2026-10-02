@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
@@ -33,13 +33,19 @@ export function PurchaseOrdersPage() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
+  // Wide search hits the DB per term; debounce typing like the other lists do.
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(timer)
+  }, [search])
   const [status, setStatus] = useState('all')
 
   const { data: ordersData, isLoading } = useQuery({
-    queryKey: ['purchase-orders', search, status],
+    queryKey: ['purchase-orders', debouncedSearch, status],
     queryFn: async () => {
       const params: Record<string, any> = { per_page: 50 }
-      if (search) params.search = search
+      if (debouncedSearch) params.search = debouncedSearch
       if (status !== 'all') params.status = status
       const res = await api.get('/purchase-orders', { params })
       return res.data
@@ -71,7 +77,7 @@ export function PurchaseOrdersPage() {
         <CardHeader>
           <div className="flex items-center gap-4">
             <Input
-              placeholder="Search PO number, supplier..."
+              placeholder="Search PO, supplier, contact…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="max-w-sm"
@@ -128,7 +134,30 @@ export function PurchaseOrdersPage() {
                         {order.po_number}
                       </Link>
                     </TableCell>
-                    <TableCell>{order.supplier?.name}</TableCell>
+                    <TableCell>
+                      <div>{order.supplier?.name}</div>
+                      {/* Wide search can match a supplier contact/address/line/tag. */}
+                      {(order.matched_contacts?.length ?? 0) > 0 && (
+                        <div className="truncate text-xs text-primary" title={order.matched_contacts.join(', ')}>
+                          Contact: {order.matched_contacts.join(', ')}
+                        </div>
+                      )}
+                      {(order.matched_tags?.length ?? 0) > 0 && (
+                        <div className="truncate text-xs text-amber-600" title={order.matched_tags.join(', ')}>
+                          Tag: {order.matched_tags.join(', ')}
+                        </div>
+                      )}
+                      {(order.matched_lines?.length ?? 0) > 0 && (
+                        <div className="truncate text-xs text-muted-foreground" title={order.matched_lines.join(' · ')}>
+                          Line: {order.matched_lines.join(' · ')}
+                        </div>
+                      )}
+                      {(order.matched_addresses?.length ?? 0) > 0 && (
+                        <div className="truncate text-xs text-muted-foreground" title={order.matched_addresses.join(' · ')}>
+                          Address: {order.matched_addresses.join(' · ')}
+                        </div>
+                      )}
+                    </TableCell>
                     <TableCell>{order.warehouse?.name}</TableCell>
                     <TableCell>{new Date(order.order_date).toLocaleDateString()}</TableCell>
                     <TableCell>{formatDate(order.created_at)}</TableCell>
