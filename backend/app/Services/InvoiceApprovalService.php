@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Accounting\Events\ApprovalDecisionEvent;
 use App\Models\ApprovalRequest;
 use App\Models\Invoice;
-use App\Models\Setting;
 use App\Models\User;
 use App\Platform\Notifications\NotificationService;
 use Illuminate\Support\Facades\DB;
@@ -436,90 +435,19 @@ class InvoiceApprovalService
     /**
      * Users who should review invoice approvals.
      *
-     * Prefers the reviewers configured in Sales Settings → Approval Workflow
-     * (specific people first, then everyone holding one of the chosen roles).
-     * Falls back to the `invoices.approve` permission when nothing is
-     * configured, so existing tenants keep working unchanged. The submitter is
-     * always excluded (no self-approval).
+     * Issue #645: delegates to the one sales reviewer resolver
+     * (SalesApprovalGate::resolveReviewers) so invoice, quotation, sales-order
+     * and delivery-order approvals all share a single source of truth. That
+     * resolver prefers the reviewers configured in Sales Settings → Approval
+     * Workflow (specific people first, then everyone holding one of the chosen
+     * roles), falls back to the `invoices.approve` permission when nothing is
+     * configured, and always excludes the submitter (no self-approval).
      *
      * @return \Illuminate\Support\Collection<int, User>
      */
     public function resolveReviewers(?User $submitter = null): \Illuminate\Support\Collection
     {
-        $submitterId = $submitter?->id;
-
-        $users = collect();
-
-        // ── Explicit users ────────────────────────────────────────────────
-        try {
-            $configuredIds = Setting::getValue('sales.invoice.reviewer_user_ids', []);
-
-            if (is_array($configuredIds) && $configuredIds !== []) {
-                $users = $users->merge(
-                    User::whereIn('id', array_map('intval', $configuredIds))->get()
-                );
-            }
-        } catch (\Throwable $e) {
-            Log::warning('InvoiceApprovalService: failed to resolve explicit reviewers', [
-                'error' => $e->getMessage(),
-            ]);
-        }
-
-        // ── Role-based reviewers ──────────────────────────────────────────
-        // Settings store lowercase role slugs (owner, admin, sales, …) but the
-        // Spatie role names are Title Case ("Owner", "Sales", …). Passing the
-        // slug straight into User::role() throws RoleDoesNotExist and aborted
-        // the whole resolution — which silently dropped the *configured*
-        // approvers and fell back to the invoices.approve permission instead.
-        try {
-            $configuredRoles = Setting::getValue('sales.invoice.reviewer_roles', []);
-
-            if (is_array($configuredRoles) && $configuredRoles !== []) {
-                $spatieNames = collect($configuredRoles)
-                    ->map(fn ($role) => \App\Enums\UserRole::tryFrom(strtolower((string) $role))?->spatieName())
-                    ->filter()
-                    ->values()
-                    ->all();
-
-                if ($spatieNames !== []) {
-                    $users = $users->merge(
-                        User::role($spatieNames)->get()
-                    );
-                }
-            }
-        } catch (\Throwable $e) {
-            Log::warning('InvoiceApprovalService: failed to resolve role reviewers', [
-                'error' => $e->getMessage(),
-            ]);
-        }
-
-        $users = $users
-            ->unique('id')
-            ->reject(fn (User $u) => $submitterId !== null && $u->id === $submitterId)
-            ->values();
-
-        if ($users->isNotEmpty()) {
-            return $users;
-        }
-
-        // Fallback: role/permission based approvers. Guarded because the
-        // permission may not be seeded in a given tenant's schema — a missing
-        // permission must not break invoice creation.
-        try {
-            $query = User::permission('invoices.approve');
-
-            if ($submitterId !== null) {
-                $query->where('id', '!=', $submitterId);
-            }
-
-            return $query->get();
-        } catch (\Throwable $e) {
-            Log::warning('InvoiceApprovalService: no reviewers resolved (permission fallback failed)', [
-                'error' => $e->getMessage(),
-            ]);
-
-            return collect();
-        }
+        return app(SalesApprovalGate::class)->resolveReviewers(self::REQUEST_TYPE, $submitter);
     }
 
     private function notifyRequester(ApprovalRequest $approvalRequest, string $event, array $data): void
