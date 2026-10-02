@@ -413,6 +413,12 @@ class PaymentImportTest extends TenantTestCase
     {
         $customer = $this->makeCustomer();
         $invoice = $this->makeInvoice($customer, 1000.00);
+        // The invoice already carries settlement from a POSTED payment (#477
+        // follow-up: this test previously asserted that editing a draft SET
+        // paid_amount to the draft's amount — the pre-#477 behaviour that the
+        // decided change removed). Seed an existing settlement so we prove the
+        // edit leaves it untouched, not merely that it stays zero.
+        $invoice->update(['paid_amount' => 100.00, 'balance' => 900.00]);
 
         $user = User::factory()->create();
         $payment = Payment::create([
@@ -438,7 +444,10 @@ class PaymentImportTest extends TenantTestCase
         $invoice->refresh();
         $this->assertSame(250.00, (float) $payment->amount);
         $this->assertSame('EDITED-REF', $payment->reference);
-        $this->assertSame(250.00, (float) $invoice->paid_amount);
+        // #477 (Decision 2026-10-02): drafts settle only when POSTED — editing
+        // one must not mutate invoice settlement/AR.
+        $this->assertSame(100.00, (float) $invoice->paid_amount, 'editing a draft must not touch invoice paid_amount');
+        $this->assertSame(900.00, (float) $invoice->balance, 'editing a draft must not touch invoice balance');
     }
 
     public function test_posted_payment_cannot_be_edited_via_controller(): void
