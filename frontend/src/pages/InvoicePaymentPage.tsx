@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { todayDateOnly } from '@/lib/dateOnly' // #484
+import DepositAccountSelect from '@/components/payment/DepositAccountSelect'
+import { defaultDepositAccountId, readDepositMemory, rememberDeposit, type DepositAccountOption } from '@/lib/paymentDepositAccount'
+import { useAuthStore } from '@/store/authStore'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
@@ -37,7 +40,28 @@ export function InvoicePaymentPage() {
     method: 'bank_transfer',
     reference: '',
     notes: '',
+    bank_account_id: '',
   })
+
+  const { user: authUser } = useAuthStore()
+  const { data: depositOptions, isLoading: depositLoading } = useQuery<DepositAccountOption[]>({
+    queryKey: ['bank-accounts'],
+    queryFn: async () => {
+      const response = await api.get('/accounting/bank-accounts')
+      return response.data.data as DepositAccountOption[]
+    },
+  })
+
+  // #485: default the deposit account per method, remembered per user.
+  useEffect(() => {
+    if (formData.bank_account_id || !depositOptions?.length) return
+    const next = defaultDepositAccountId(
+      formData.method,
+      depositOptions,
+      authUser ? readDepositMemory(authUser.id) : {},
+    )
+    if (next != null) setFormData((prev) => ({ ...prev, bank_account_id: String(next) }))
+  }, [formData.bank_account_id, formData.method, depositOptions, authUser])
 
   const { data: invoice, isLoading } = useQuery({
     queryKey: ['invoice', id],
@@ -82,9 +106,28 @@ export function InvoicePaymentPage() {
     },
   })
 
+  const handleMethodChange = (value: string) => {
+    const next = defaultDepositAccountId(
+      value,
+      depositOptions ?? [],
+      authUser ? readDepositMemory(authUser.id) : {},
+    )
+    setFormData({
+      ...formData,
+      method: value,
+      bank_account_id: next != null ? String(next) : '',
+    })
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    recordPaymentMutation.mutate(formData)
+    if (authUser && formData.bank_account_id) {
+      rememberDeposit(authUser.id, formData.method, Number(formData.bank_account_id))
+    }
+    recordPaymentMutation.mutate({
+      ...formData,
+      bank_account_id: formData.bank_account_id ? Number(formData.bank_account_id) : null,
+    })
   }
 
   if (isLoading) {
@@ -196,7 +239,7 @@ export function InvoicePaymentPage() {
                 <Label htmlFor="method">Payment Method</Label>
                 <Select
                   value={formData.method}
-                  onValueChange={(value) => setFormData({ ...formData, method: value })}
+                  onValueChange={handleMethodChange}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -221,6 +264,17 @@ export function InvoicePaymentPage() {
                 />
               </div>
             </div>
+
+            <DepositAccountSelect
+              id="deposit_account_id"
+              value={formData.bank_account_id}
+              onChange={(value) => {
+                if (authUser && value) rememberDeposit(authUser.id, formData.method, Number(value))
+                setFormData({ ...formData, bank_account_id: value })
+              }}
+              options={depositOptions}
+              isLoading={depositLoading}
+            />
 
             <div className="space-y-2">
               <Label htmlFor="notes">Notes (Optional)</Label>

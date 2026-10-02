@@ -260,7 +260,18 @@ class PaymentController extends Controller
     {
         $payment = Payment::findOrFail($payment);
 
-        return response()->json($payment->load(['customer', 'invoice', 'journalEntry', 'receivedBy']));
+        $payment->load(['customer', 'invoice', 'journalEntry', 'receivedBy', 'bankAccount.glAccount']);
+
+        // #485: the detail view labels the receiving account by name AND GL
+        // code — the join the list endpoint does, done explicitly here.
+        // NOTE: relations live in $payment->relations under the CAMEL key, so
+        // read via $payment->bankAccount; the JSON key is snake_cased on
+        // serialization by Laravel.
+        if ($payment->bankAccount) {
+            $payment->bankAccount->setAttribute('gl_account_code', $payment->bankAccount->glAccount?->code);
+        }
+
+        return response()->json($payment);
     }
 
     /**
@@ -356,6 +367,8 @@ class PaymentController extends Controller
             'method' => 'nullable|in:cash,card,bank_transfer,check,other',
             'reference' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
+            // #485: the edit dialog must be able to move the deposit account.
+            'bank_account_id' => 'nullable|exists:bank_accounts,id',
         ]);
 
         if (array_key_exists('payment_date', $validated)) {
@@ -379,6 +392,9 @@ class PaymentController extends Controller
                 }
                 if (array_key_exists('method', $validated)) {
                     $payment->method = $validated['method'];
+                }
+                if (array_key_exists('bank_account_id', $validated)) {
+                    $payment->bank_account_id = $validated['bank_account_id'];
                 }
                 if (array_key_exists('reference', $validated)) {
                     $payment->reference = $validated['reference'];

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { todayDateOnly } from '@/lib/dateOnly'; // #484
+import DepositAccountSelect from '@/components/payment/DepositAccountSelect';
+import { defaultDepositAccountId, readDepositMemory, rememberDeposit, type DepositAccountOption } from '@/lib/paymentDepositAccount';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
@@ -66,6 +68,8 @@ interface Payment {
   reversal_journal_entry_id?: number | null;
   unapplied_at?: string | null;
   refunded_at?: string | null;
+  bank_account_id?: number | string | null;
+  bank_account?: { id: number; account_name: string; gl_account_code?: string | null } | null;
 }
 
 interface PaginatedPayments {
@@ -992,6 +996,16 @@ const ViewPaymentDialog: React.FC<{
               <p className="font-medium capitalize">{detail.method?.replace(/_/g, ' ')}</p>
             </div>
             <div>
+              <p className="text-xs text-muted-foreground">Deposit To</p>
+              <p className="font-medium">
+                {detail.bank_account
+                  ? `${detail.bank_account.account_name}${detail.bank_account.gl_account_code ? ` · ${detail.bank_account.gl_account_code}` : ''}`
+                  : detail.bank_account_id
+                    ? `Account #${detail.bank_account_id}`
+                    : 'Default bank mapping'}
+              </p>
+            </div>
+            <div>
               <p className="text-xs text-muted-foreground">Reference</p>
               <p className="font-medium">{detail.reference || '-'}</p>
             </div>
@@ -1109,7 +1123,28 @@ const RecordPaymentForm: React.FC<{
     method: 'bank_transfer',
     reference: '',
     notes: '',
+    bank_account_id: '',
   });
+
+  const { user: authUser } = useAuthStore();
+  const { data: depositOptions, isLoading: depositLoading } = useQuery<DepositAccountOption[]>({
+    queryKey: ['bank-accounts'],
+    queryFn: async () => {
+      const response = await api.get('/accounting/bank-accounts');
+      return response.data.data as DepositAccountOption[];
+    },
+  });
+
+  // #485: default the deposit account per method, remembered per user.
+  useEffect(() => {
+    if (formData.bank_account_id || !depositOptions?.length) return;
+    const next = defaultDepositAccountId(
+      formData.method,
+      depositOptions,
+      authUser ? readDepositMemory(authUser.id) : {},
+    );
+    if (next != null) setFormData((prev) => ({ ...prev, bank_account_id: String(next) }));
+  }, [formData.bank_account_id, formData.method, depositOptions, authUser]);
 
   // When deep-linked from an invoice, fetch that invoice and pre-fill
   // customer + amount. Works regardless of whether the unpaid-invoices list
@@ -1158,9 +1193,28 @@ const RecordPaymentForm: React.FC<{
     },
   });
 
+  const handleRecordMethodChange = (value: string) => {
+    const next = defaultDepositAccountId(
+      value,
+      depositOptions ?? [],
+      authUser ? readDepositMemory(authUser.id) : {},
+    );
+    setFormData({
+      ...formData,
+      method: value,
+      bank_account_id: next != null ? String(next) : '',
+    });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    recordPaymentMutation.mutate(formData);
+    if (authUser && formData.bank_account_id) {
+      rememberDeposit(authUser.id, formData.method, Number(formData.bank_account_id));
+    }
+    recordPaymentMutation.mutate({
+      ...formData,
+      bank_account_id: formData.bank_account_id ? Number(formData.bank_account_id) : null,
+    });
   };
 
   const handleInvoiceChange = (value: string, invoice?: InvoiceSearchItem) => {
@@ -1219,7 +1273,7 @@ const RecordPaymentForm: React.FC<{
         </div>
         <div className="space-y-2">
           <Label htmlFor="method">Payment Method</Label>
-          <Select value={formData.method} onValueChange={(value) => setFormData({ ...formData, method: value })}>
+          <Select value={formData.method} onValueChange={handleRecordMethodChange}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               {METHOD_OPTIONS.map((m) => (
@@ -1246,6 +1300,17 @@ const RecordPaymentForm: React.FC<{
           onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
         />
       </div>
+      <DepositAccountSelect
+        id="deposit_account_id"
+        value={formData.bank_account_id}
+        onChange={(value) => {
+          if (authUser && value) rememberDeposit(authUser.id, formData.method, Number(value));
+          setFormData({ ...formData, bank_account_id: value });
+        }}
+        options={depositOptions}
+        isLoading={depositLoading}
+      />
+
       <div className="flex justify-end gap-2 pt-4">
         <Button type="submit" disabled={recordPaymentMutation.isPending}>
           {recordPaymentMutation.isPending ? 'Recording...' : 'Record Payment'}
@@ -1267,6 +1332,17 @@ const EditPaymentForm: React.FC<{
     method: payment.method,
     reference: payment.reference || '',
     notes: payment.notes || '',
+    // #485: prefill from the stored deposit account; no silent auto-fill for
+    // legacy drafts (saving must not change the posting target unasked).
+    bank_account_id: payment.bank_account_id ? String(payment.bank_account_id) : '',
+  });
+  const { user: authUser } = useAuthStore();
+  const { data: depositOptions, isLoading: depositLoading } = useQuery<DepositAccountOption[]>({
+    queryKey: ['bank-accounts'],
+    queryFn: async () => {
+      const response = await api.get('/accounting/bank-accounts');
+      return response.data.data as DepositAccountOption[];
+    },
   });
   const { toast } = useToast();
 
@@ -1276,6 +1352,7 @@ const EditPaymentForm: React.FC<{
         ...formData,
         invoice_id: formData.invoice_id ? Number(formData.invoice_id) : null,
         amount: Number(formData.amount),
+        bank_account_id: formData.bank_account_id ? Number(formData.bank_account_id) : null,
       });
       return response.data;
     },
@@ -1340,6 +1417,17 @@ const EditPaymentForm: React.FC<{
         <Input id="edit_notes" value={formData.notes}
           onChange={(event) => setFormData((current) => ({ ...current, notes: event.target.value }))} />
       </div>
+      <DepositAccountSelect
+        id="edit_deposit_account_id"
+        value={formData.bank_account_id}
+        onChange={(value) => {
+          if (authUser && value) rememberDeposit(authUser.id, formData.method, Number(value));
+          setFormData((current) => ({ ...current, bank_account_id: value }));
+        }}
+        options={depositOptions}
+        isLoading={depositLoading}
+      />
+
       <div className="flex justify-end pt-4">
         <Button type="submit" disabled={updatePaymentMutation.isPending}>
           {updatePaymentMutation.isPending ? 'Saving...' : 'Save Changes'}
