@@ -216,6 +216,47 @@ class HR590SalesReportDirectInvoiceTest extends TenantTestCase
     }
 
     /**
+     * Acceptance: the revenue base is posted invoices minus posted customer
+     * credit notes. Real credit-note routes: create against the invoice, then
+     * post it.
+     */
+    public function test_posted_credit_note_reduces_reported_revenue(): void
+    {
+        $invoice = $this->createAndPostDirectInvoice(1000);
+
+        // Draft credit note fixture against the invoice; posted through the
+        // real credit-note endpoint (the create-from-invoice correction route
+        // is separately broken on this branch and is not part of #590).
+        $creditNote = \App\Models\CustomerCreditNote::create([
+            'customer_id' => $this->customer->id,
+            'invoice_id' => $invoice->id,
+            'credit_note_date' => now()->toDateString(),
+            'status' => 'draft',
+            'subtotal' => 400,
+            'tax_amount' => 0,
+            'total_amount' => 400,
+            'reason' => 'HR590 partial credit',
+        ]);
+        $creditNote->lines()->create([
+            'product_id' => $this->product->id,
+            'description' => 'HR590 credit line',
+            'quantity' => 1,
+            'unit_price' => 400,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson("/api/v1/accounting/customers/credit-notes/{$creditNote->id}/post")
+            ->assertOk();
+
+        $this->assertSame('posted', $creditNote->fresh()->status, 'Credit note must be posted');
+
+        $this->assertSame(600.0, $this->productRevenue(), 'Posted credit note must reduce product revenue');
+        $this->assertSame(600.0, $this->customerRevenue(), 'Posted credit note must reduce customer revenue');
+        $this->assertSame(600.0, $this->trendRevenue(), 'Posted credit note must reduce trend revenue');
+        $this->assertSame(600.0, $this->categoryRevenue(), 'Posted credit note must reduce category revenue');
+    }
+
+    /**
      * Acceptance: no double counting. An SO that is invoiced counts once
      * (through its invoice); a POS-synced SO is still excluded (#236).
      */
