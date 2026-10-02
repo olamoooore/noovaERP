@@ -230,6 +230,7 @@ Route::prefix('v1/accounting')->middleware([
             Route::get('/config/{country_code}', [\App\Http\Controllers\Accounting\ComplianceController::class, 'getConfig']);
             Route::get('/reports/{country_code}/{report_type}', [\App\Http\Controllers\Accounting\ComplianceController::class, 'exportReport']);
             Route::get('/reports/{country_code}/{report_type}/download', [\App\Http\Controllers\Accounting\ComplianceController::class, 'downloadReport']);
+            Route::get('/data-checks/einvoice-lifecycle', [\App\Http\Controllers\Accounting\ComplianceController::class, 'eInvoiceLifecycleMismatches']);
         });
 
         // Submission lifecycle mutations — posting-privilege operations.

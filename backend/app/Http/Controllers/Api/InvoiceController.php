@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Accounting\Services\EInvoiceLifecycleGuard;
 use App\Exports\InvoicesExport;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
@@ -45,6 +46,7 @@ class InvoiceController extends Controller
         private InvoiceEvidenceService $evidenceService,
         private SalesApprovalGate $approvalGate,
         private DeliveryOrderService $deliveryOrderService,
+        private EInvoiceLifecycleGuard $eInvoiceLifecycle,
     ) {}
 
     public function index(Request $request)
@@ -2153,6 +2155,10 @@ class InvoiceController extends Controller
             ], 422);
         }
 
+        if ($denied = $this->eInvoiceLifecycle->denial('invoice', $invoice->id, 'cancel')) {
+            return $denied;
+        }
+
         $invoice->update(['status' => 'cancelled']);
 
         // Cancelling removes the invoice from receivables and purchase totals.
@@ -2215,6 +2221,10 @@ class InvoiceController extends Controller
             return response()->json([
                 'message' => 'Cannot reset an invoice that has posted credit notes. Void the credit notes first.',
             ], 422);
+        }
+
+        if ($denied = $this->eInvoiceLifecycle->denial('invoice', $invoice->id, 'reset')) {
+            return $denied;
         }
 
         try {

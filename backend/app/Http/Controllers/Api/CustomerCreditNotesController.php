@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Accounting\Services\EInvoiceLifecycleGuard;
 use App\Http\Controllers\Controller;
 use App\Models\CustomerCreditNote;
 use App\Services\CustomerCreditNoteService;
@@ -12,7 +13,8 @@ use Illuminate\Http\Request;
 class CustomerCreditNotesController extends Controller
 {
     public function __construct(
-        private CustomerCreditNoteService $creditNoteService
+        private CustomerCreditNoteService $creditNoteService,
+        private EInvoiceLifecycleGuard $eInvoiceLifecycle,
     ) {}
 
     /**
@@ -238,6 +240,10 @@ class CustomerCreditNotesController extends Controller
             return response()->json([
                 'message' => 'Only posted credit notes can be voided',
             ], 403);
+        }
+
+        if ($denied = $this->eInvoiceLifecycle->denial('credit_note', $creditNote->id, 'void')) {
+            return $denied;
         }
 
         try {

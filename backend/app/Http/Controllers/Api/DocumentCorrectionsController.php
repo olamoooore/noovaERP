@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Accounting\Services\EInvoiceLifecycleGuard;
 use App\Http\Controllers\Controller;
 use App\Models\Bill;
 use App\Models\Invoice;
@@ -16,6 +17,7 @@ class DocumentCorrectionsController extends Controller
 {
     public function __construct(
         private DocumentCorrectionService $correctionService,
+        private EInvoiceLifecycleGuard $eInvoiceLifecycle,
     ) {}
 
     public function voidInvoice(Request $request, int $id): JsonResponse
@@ -26,6 +28,10 @@ class DocumentCorrectionsController extends Controller
             'reason_code' => 'required|string|max:50',
             'reason_text' => 'nullable|string|max:500',
         ]);
+
+        if ($denied = $this->eInvoiceLifecycle->denial('invoice', $invoice->id, 'void')) {
+            return $denied;
+        }
 
         try {
             $correctionRequest = CorrectionRequest::fromRequest($validated);
@@ -115,6 +121,10 @@ class DocumentCorrectionsController extends Controller
             'reason_code' => 'required|string|max:50',
             'reason_text' => 'nullable|string|max:500',
         ]);
+
+        if ($denied = $this->eInvoiceLifecycle->denial('invoice', $invoice->id, 'replacement')) {
+            return $denied;
+        }
 
         try {
             $correctionRequest = CorrectionRequest::fromRequest($validated);
