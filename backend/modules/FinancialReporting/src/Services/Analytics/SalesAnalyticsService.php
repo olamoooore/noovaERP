@@ -14,14 +14,22 @@ use Modules\FinancialReporting\DTOs\ReportFilter;
  *
  * Issue #158: every report in this service used to query only `pos_orders` /
  * `pos_order_items`, silently under-reporting revenue from Sales-module orders
- * (admin / ecommerce channels). The four report methods now UNION ALL
- * `pos_orders` (paid, non-return) with `sales_orders` whose channel is not
- * `pos` and whose status is one of the posted lifecycle stages. The two sets
- * are independent — a POS sale creates a `pos_orders` row; a non-POS sales
- * order creates a `sales_orders` row — so the union does not double count.
+ * (admin / ecommerce channels). Issue #590 (RP1, with #355/#395): the union
+ * also missed every invoice that has no backing Sales Order (direct /
+ * accounting-origin invoices, quote→invoice, DO→invoice, imports).
  *
- * Response shapes are unchanged for the frontend; the `channels_included`
- * summary field surfaces coverage so a future channel addition is obvious.
+ * The revenue base is now:
+ *   posted invoices (any origin, tax-excluded)
+ *   − posted customer credit notes
+ *   + posted POS sales net of returns (returns stay excluded, #236)
+ *   + un-invoiced non-POS sales orders (bookings; an invoiced SO is dropped
+ *     from the union so it counts exactly once — through its invoice).
+ *
+ * POS-origin invoices are excluded: their revenue is already carried by
+ * `pos_orders`, and a pos-channel sales order is skipped for the same reason
+ * (#236). Response shapes are unchanged for the frontend; the
+ * `channels_included` summary field surfaces coverage so a future channel
+ * addition is obvious.
  */
 class SalesAnalyticsService
 {
@@ -35,9 +43,11 @@ class SalesAnalyticsService
         $startDate = $filter->startDate ?? Carbon::now()->startOfMonth();
         $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
 
+        [$salesOrderIds, $invoiceIds] = $this->documentIdsForTag($filter->tag ?? null);
+
         try {
             $sales = DB::query()
-                ->fromSub($this->lineItemsUnion($startDate, $endDate, $this->salesOrderIdsForTag($filter->tag ?? null), $filter->currencyCode), 'li')
+                ->fromSub($this->lineItemsUnion($startDate, $endDate, $salesOrderIds, $filter->currencyCode, $invoiceIds), 'li')
                 ->leftJoin('products as p', 'p.id', '=', 'li.product_id')
                 ->select([
                     'p.id',
@@ -102,56 +112,25 @@ class SalesAnalyticsService
         $startDate = $filter->startDate ?? Carbon::now()->startOfMonth();
         $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
 
-        $salesOrderIds = $this->salesOrderIdsForTag($filter->tag ?? null);
+        [$salesOrderIds, $invoiceIds] = $this->documentIdsForTag($filter->tag ?? null);
 
         try {
-            // Order-level union: walk-ins (POS customer_id null) and non-POS
-            // Sales-module orders both feed into customer aggregates.
-            $posOrders = DB::table('pos_orders as po')
-                ->select([
-                    'po.customer_id',
-                    'po.total as revenue',
-                    DB::raw("'pos' as channel"),
-                    DB::raw('po.paid_at as revenue_date'),
-                ])
-                ->whereBetween('po.paid_at', [$startDate, $endDate->endOfDay()])
-                ->where('po.status', 'paid')
-                ->where('po.is_return', false);
-
-            $salesOrders = DB::table('sales_orders as so')
-                ->select([
-                    'so.customer_id',
-                    DB::raw('COALESCE(so.total, 0) as revenue'),
-                    'so.channel',
-                    DB::raw('COALESCE(so.order_date, so.created_at) as revenue_date'),
-                ])
-                ->whereNotIn('so.status', ['draft', 'cancelled'])
-                ->where('so.accounting_status', '!=', 'reversed')
-                // Issue #236: exclude channel='pos' — POS revenue already comes
-                // from pos_orders; its synced sales_orders row would double-count.
-                ->where('so.channel', '!=', 'pos')
-                ->whereBetween(DB::raw('COALESCE(so.order_date, so.created_at)'), [$startDate, $endDate->endOfDay()]);
-
-            if ($salesOrderIds !== null) {
-                // Tags live on sales orders; POS orders cannot carry one, so an
-                // active tag filter excludes them instead of including them.
-                $posOrders->whereRaw('1 = 0');
-                $salesOrders->whereIn('so.id', $salesOrderIds !== [] ? $salesOrderIds : [-1]);
-            }
-
+            // Same line-item revenue base as the other widgets (#355/#590):
+            // posted invoices, posted credit notes and un-invoiced bookings,
+            // with walk-ins (POS customer_id null) in the same aggregate.
             $rows = DB::query()
-                ->fromSub($posOrders->unionAll($salesOrders), 'o')
-                ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
+                ->fromSub($this->lineItemsUnion($startDate, $endDate, $salesOrderIds, $filter->currencyCode, $invoiceIds), 'li')
+                ->leftJoin('customers as c', 'c.id', '=', 'li.customer_id')
                 ->select([
-                    'o.customer_id',
+                    'li.customer_id',
                     'c.name as customer_name',
                     'c.email as customer_email',
-                    DB::raw('COUNT(*) as order_count'),
-                    DB::raw('SUM(o.revenue) as total_revenue'),
-                    DB::raw('AVG(o.revenue) as average_order_value'),
-                    DB::raw('MAX(o.revenue_date) as last_purchase_date'),
+                    DB::raw('COUNT(DISTINCT li.order_ref) as order_count'),
+                    DB::raw('SUM(li.line_total) as total_revenue'),
+                    DB::raw('CASE WHEN COUNT(DISTINCT li.order_ref) > 0 THEN SUM(li.line_total) / COUNT(DISTINCT li.order_ref) ELSE 0 END as average_order_value'),
+                    DB::raw('MAX(li.revenue_date) as last_purchase_date'),
                 ])
-                ->groupBy('o.customer_id', 'c.name', 'c.email')
+                ->groupBy('li.customer_id', 'c.name', 'c.email')
                 ->orderByDesc('total_revenue')
                 ->get();
         } catch (\Throwable $e) {
@@ -204,9 +183,11 @@ class SalesAnalyticsService
         $startDate = $filter->startDate ?? Carbon::now()->startOfMonth();
         $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
 
+        [$salesOrderIds, $invoiceIds] = $this->documentIdsForTag($filter->tag ?? null);
+
         try {
             $rows = DB::query()
-                ->fromSub($this->lineItemsUnion($startDate, $endDate, $this->salesOrderIdsForTag($filter->tag ?? null), $filter->currencyCode), 'li')
+                ->fromSub($this->lineItemsUnion($startDate, $endDate, $salesOrderIds, $filter->currencyCode, $invoiceIds), 'li')
                 ->select([
                     'li.currency_code',
                     DB::raw('SUM(li.line_total) as total_revenue'),
@@ -251,7 +232,7 @@ class SalesAnalyticsService
             default => 'YYYY-MM-DD',
         };
 
-        $salesOrderIds = $this->salesOrderIdsForTag($filter->tag ?? null);
+        [$salesOrderIds, $invoiceIds] = $this->documentIdsForTag($filter->tag ?? null);
 
         try {
             // Same line-item base as getSalesByCategory() / getSalesByProduct(),
@@ -259,7 +240,7 @@ class SalesAnalyticsService
             // reconcile for the selected period (document totals include tax and
             // shipping and would never match the line-based widgets).
             $trends = DB::query()
-                ->fromSub($this->lineItemsUnion($startDate, $endDate, $salesOrderIds, $filter->currencyCode), 'li')
+                ->fromSub($this->lineItemsUnion($startDate, $endDate, $salesOrderIds, $filter->currencyCode, $invoiceIds), 'li')
                 ->select([
                     DB::raw("TO_CHAR(li.revenue_date, '{$dateFormat}') as period"),
                     DB::raw('COUNT(DISTINCT li.order_ref) as order_count'),
@@ -323,9 +304,11 @@ class SalesAnalyticsService
         $startDate = $filter->startDate ?? Carbon::now()->startOfMonth();
         $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
 
+        [$salesOrderIds, $invoiceIds] = $this->documentIdsForTag($filter->tag ?? null);
+
         try {
             $sales = DB::query()
-                ->fromSub($this->lineItemsUnion($startDate, $endDate, $this->salesOrderIdsForTag($filter->tag ?? null), $filter->currencyCode), 'li')
+                ->fromSub($this->lineItemsUnion($startDate, $endDate, $salesOrderIds, $filter->currencyCode, $invoiceIds), 'li')
                 ->leftJoin('products as p', 'p.id', '=', 'li.product_id')
                 ->leftJoin('product_categories as c', 'c.id', '=', 'p.category_id')
                 ->select([
@@ -416,55 +399,94 @@ class SalesAnalyticsService
     }
 
     /**
-     * UNION ALL of posted POS line items and posted Sales-module (admin /
-     * ecommerce) line items. The two sets are independent so the union
-     * does not double count. Excludes voided / cancelled / draft documents.
+     * Document ids carrying the requested tag: [sales-order ids, invoice ids].
+     *
+     * Both are null when no tag filter is active. An empty array means "the tag
+     * exists but nothing carries it" and must produce an empty report, never an
+     * unfiltered one. Credit notes and POS orders cannot carry tags, so an
+     * active filter excludes them.
+     *
+     * @return array{0: ?array<int>, 1: ?array<int>}
+     */
+    private function documentIdsForTag(?string $tag): array
+    {
+        if (! $tag) {
+            return [null, null];
+        }
+
+        $tagService = app(\App\Services\TagService::class);
+
+        return [
+            $tagService->subjectIdsForTagSlugs([$tag], 'sales_order'),
+            $tagService->subjectIdsForTagSlugs([$tag], 'invoice'),
+        ];
+    }
+
+    /**
+     * UNION ALL of the four revenue streams:
+     *   - posted POS line items (paid, non-return; #236);
+     *   - un-invoiced non-POS sales-order lines (bookings; an SO that has a
+     *     posted invoice — directly or through a delivery order — is dropped
+     *     here so it counts exactly once, through its invoice);
+     *   - posted invoice lines, tax-excluded (POS-origin invoices excluded to
+     *     avoid double counting with `pos_orders`);
+     *   - posted customer-credit-note lines, negated.
      *
      * Returned columns: product_id, customer_id, line_total, quantity,
-     * revenue_date, channel.
+     * revenue_date, channel, order_ref, currency_code, exchange_rate.
      *
      * Implemented as a raw SQL subquery rather than a query-builder union
      * because fromSub() with a QB union is fragile across PG versions.
      * Values are inlined (all bound values are typed — Carbon date strings,
-     * fixed string labels, booleans) so there is no SQL-injection surface.
+     * intval'ed id lists, fixed string labels, booleans) so there is no
+     * SQL-injection surface.
      */
-    /**
-     * Sales-order ids carrying the requested tag, or null when no tag filter is
-     * active. An empty array means "the tag exists but nothing carries it" and
-     * must produce an empty report, never an unfiltered one.
-     */
-    private function salesOrderIdsForTag(?string $tag): ?array
-    {
-        if (! $tag) {
-            return null;
-        }
-
-        return app(\App\Services\TagService::class)->subjectIdsForTagSlugs([$tag], 'sales_order');
-    }
-
-    private function lineItemsUnion(Carbon $startDate, Carbon $endDate, ?array $salesOrderIds = null, ?string $currencyCode = null)
-    {
+    private function lineItemsUnion(
+        Carbon $startDate,
+        Carbon $endDate,
+        ?array $salesOrderIds = null,
+        ?string $currencyCode = null,
+        ?array $invoiceIds = null,
+    ) {
         $start = $startDate->format('Y-m-d H:i:s');
         $end = $endDate->endOfDay()->format('Y-m-d H:i:s');
+        $baseCurrency = '(SELECT base_currency FROM company_settings ORDER BY id LIMIT 1)';
 
         // MRD FR-8.1: currency dimension. POS rows carry no document currency,
         // so an active currency filter excludes them (their revenue is base).
-        $currencyFilter = '';
+        $soCurrencyFilter = '';
+        $invoiceCurrencyFilter = '';
+        $creditNoteCurrencyFilter = '';
         $posCurrencyFilter = '';
         if ($currencyCode !== null && $currencyCode !== '') {
             $safe = preg_replace('/[^A-Za-z]/', '', $currencyCode);
-            $currencyFilter = " AND so.currency_code = '{$safe}'";
+            $soCurrencyFilter = " AND so.currency_code = '{$safe}'";
+            $invoiceCurrencyFilter = " AND i.currency_code = '{$safe}'";
+            $creditNoteCurrencyFilter = " AND ccn.currency_code = '{$safe}'";
             $posCurrencyFilter = ' AND 1 = 0';
         }
 
-        // A tag filter only applies to documents that can carry tags. Sales
-        // orders can; POS orders cannot, so an active tag filter excludes them
-        // rather than silently including untagged revenue.
+        // A tag filter only applies to documents that can carry tags. Credit
+        // notes and POS orders cannot, so an active tag filter excludes them
+        // rather than silently including untagged revenue. Invoices are kept
+        // when the invoice itself is tagged or when it invoices a tagged SO.
         $posTagClause = $salesOrderIds === null ? '' : ' AND 1 = 0';
+        $creditNoteTagClause = $salesOrderIds === null ? '' : ' AND 1 = 0';
         $soTagClause = '';
+        $invoiceTagClause = '';
         if ($salesOrderIds !== null) {
-            $ids = array_map('intval', $salesOrderIds);
-            $soTagClause = $ids === [] ? ' AND 1 = 0' : ' AND so.id IN ('.implode(',', $ids).')';
+            $soIds = array_map('intval', $salesOrderIds);
+            $soTagClause = $soIds === [] ? ' AND 1 = 0' : ' AND so.id IN ('.implode(',', $soIds).')';
+
+            $invIds = array_map('intval', (array) $invoiceIds);
+            $invoiceArms = [];
+            if ($invIds !== []) {
+                $invoiceArms[] = 'i.id IN ('.implode(',', $invIds).')';
+            }
+            if ($soIds !== []) {
+                $invoiceArms[] = 'i.sales_order_id IN ('.implode(',', $soIds).')';
+            }
+            $invoiceTagClause = $invoiceArms === [] ? ' AND 1 = 0' : ' AND ('.implode(' OR ', $invoiceArms).')';
         }
 
         $sql = "(
@@ -475,7 +497,7 @@ class SalesAnalyticsService
                    po.paid_at AS revenue_date,
                    'pos' AS channel,
                    'pos:' || po.id AS order_ref,
-                   COALESCE((SELECT base_currency FROM company_settings ORDER BY id LIMIT 1), 'USD') AS currency_code,
+                   COALESCE({$baseCurrency}, 'USD') AS currency_code,
                    1.0 AS exchange_rate
             FROM pos_order_items poi
             JOIN pos_orders po ON po.id = poi.pos_order_id
@@ -490,14 +512,70 @@ class SalesAnalyticsService
                    COALESCE(so.order_date, so.created_at) AS revenue_date,
                    so.channel,
                    'so:' || so.id AS order_ref,
-                   COALESCE(so.currency_code, (SELECT base_currency FROM company_settings ORDER BY id LIMIT 1), 'USD') AS currency_code,
+                   COALESCE(so.currency_code, {$baseCurrency}, 'USD') AS currency_code,
                    COALESCE(so.exchange_rate, 1.0) AS exchange_rate
             FROM sales_order_lines sol
             JOIN sales_orders so ON so.id = sol.sales_order_id
             WHERE so.status NOT IN ('draft', 'cancelled')
               AND so.accounting_status <> 'reversed'
               AND so.channel <> 'pos'
-              AND COALESCE(so.order_date, so.created_at) BETWEEN '{$start}' AND '{$end}'{$soTagClause}{$currencyFilter}
+              AND COALESCE(so.order_date, so.created_at) BETWEEN '{$start}' AND '{$end}'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM invoices si
+                  WHERE si.deleted_at IS NULL
+                    AND si.status <> 'cancelled'
+                    AND si.lifecycle_status IN ('posted', 'credited')
+                    AND (
+                        si.sales_order_id = so.id
+                        OR EXISTS (
+                            SELECT 1
+                            FROM invoice_delivery_orders ido
+                            JOIN delivery_orders d ON d.id = ido.delivery_order_id
+                            WHERE ido.invoice_id = si.id
+                              AND d.sales_order_id = so.id
+                        )
+                    )
+              ){$soTagClause}{$soCurrencyFilter}
+        ) UNION ALL (
+            SELECT il.product_id,
+                   i.customer_id,
+                   (COALESCE(il.line_total, 0) - COALESCE(il.tax_amount, 0)) AS line_total,
+                   COALESCE(il.quantity, 0) AS quantity,
+                   i.invoice_date AS revenue_date,
+                   'invoice' AS channel,
+                   'inv:' || i.id AS order_ref,
+                   COALESCE(i.currency_code, {$baseCurrency}, 'USD') AS currency_code,
+                   COALESCE(i.exchange_rate, 1.0) AS exchange_rate
+            FROM invoice_lines il
+            JOIN invoices i ON i.id = il.invoice_id
+            WHERE i.lifecycle_status IN ('posted', 'credited')
+              AND i.status <> 'cancelled'
+              AND i.deleted_at IS NULL
+              AND i.invoice_date BETWEEN '{$start}' AND '{$end}'
+              AND i.pos_order_id IS NULL
+              AND (
+                  i.sales_order_id IS NULL
+                  OR NOT EXISTS (
+                      SELECT 1 FROM sales_orders poso
+                      WHERE poso.id = i.sales_order_id AND poso.channel = 'pos'
+                  )
+              ){$invoiceTagClause}{$invoiceCurrencyFilter}
+        ) UNION ALL (
+            SELECT cnl.product_id,
+                   ccn.customer_id,
+                   (-1 * COALESCE(cnl.line_total, 0)) AS line_total,
+                   (-1 * COALESCE(cnl.quantity, 0)) AS quantity,
+                   ccn.credit_note_date AS revenue_date,
+                   'credit_note' AS channel,
+                   'cn:' || ccn.id AS order_ref,
+                   COALESCE(ccn.currency_code, {$baseCurrency}, 'USD') AS currency_code,
+                   COALESCE(ccn.exchange_rate, 1.0) AS exchange_rate
+            FROM customer_credit_note_lines cnl
+            JOIN customer_credit_notes ccn ON ccn.id = cnl.credit_note_id
+            WHERE ccn.status = 'posted'
+              AND ccn.voided_at IS NULL
+              AND ccn.credit_note_date BETWEEN '{$start}' AND '{$end}'{$creditNoteTagClause}{$creditNoteCurrencyFilter}
         )";
 
         return DB::table(DB::raw('('.$sql.') AS li'));
