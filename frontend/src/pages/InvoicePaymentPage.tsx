@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { todayDateOnly } from '@/lib/dateOnly' // #484
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
@@ -32,7 +33,7 @@ export function InvoicePaymentPage() {
 
   const [formData, setFormData] = useState({
     amount: '',
-    payment_date: new Date().toISOString().split('T')[0],
+    payment_date: todayDateOnly(), // #484: local business date, never UTC
     method: 'bank_transfer',
     reference: '',
     notes: '',

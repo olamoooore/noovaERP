@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { todayDateOnly } from '@/lib/dateOnly'; // #484
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
@@ -1104,7 +1105,7 @@ const RecordPaymentForm: React.FC<{
     customer_id: '',
     invoice_id: pinnedInvoiceId,
     amount: '',
-    payment_date: new Date().toISOString().split('T')[0],
+    payment_date: todayDateOnly(), // #484: local business date, never UTC
     method: 'bank_transfer',
     reference: '',
     notes: '',
