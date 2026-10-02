@@ -231,9 +231,27 @@ class SalesOrder extends Model
 
     public function calculateTotals(): void
     {
-        $this->subtotal = $this->lines->sum('line_total');
-        $this->tax_amount = $this->lines->sum('tax_amount');
-        $this->total = $this->subtotal + $this->tax_amount - $this->discount_amount;
+        // #291: subtotal is NET of tax — line_total is gross (incl. tax), so
+        // subtract the line tax. This matches Invoice::calculateTotals and
+        // Quotation::calculateTotals; summing the gross line_total and then
+        // ADDING tax again double-counted tax whenever a line carried a rate.
+        $this->subtotal = round($this->lines->sum(fn ($line) => (float) $line->line_total - (float) $line->tax_amount), 2);
+        $lineTax = round($this->lines->sum('tax_amount'), 2);
+
+        $discount = min((float) ($this->discount_amount ?? 0), (float) $this->subtotal);
+        $this->discount_amount = round(max($discount, 0), 2);
+
+        // A header discount reduces the taxable base BEFORE tax; pro-rate the
+        // line tax by (subtotal - discount) / subtotal so mixed rates keep
+        // their relative share (same rule as Invoice/Quotation).
+        if ($discount > 0 && $this->subtotal > 0) {
+            $taxable = max($this->subtotal - $discount, 0);
+            $this->tax_amount = round($lineTax * ($taxable / $this->subtotal), 2);
+        } else {
+            $this->tax_amount = $lineTax;
+        }
+
+        $this->total = round(max($this->subtotal - $discount, 0) + $this->tax_amount, 2);
         $this->save();
     }
 
