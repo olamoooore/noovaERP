@@ -28,26 +28,34 @@ use Modules\TemplateBuilder\Http\Controllers\TemplateEditorController;
 $perm = static fn (string $p): string => \App\Http\Middleware\RequirePermission::class.':'.$p;
 
 // ─── Consumer render endpoints (existing detail-page buttons) ──────────────
-Route::get('/invoices/{id}/pdf', [DocumentRenderController::class, 'invoicePdf'])
-    ->middleware($perm('document.view'));
-Route::get('/invoices/{id}/html', [DocumentRenderController::class, 'invoiceHtml'])
-    ->middleware($perm('document.view'));
-Route::get('/purchase-orders/{id}/pdf', [DocumentRenderController::class, 'purchaseOrderPdf'])
-    ->middleware($perm('document.view'));
-Route::get('/purchase-orders/{id}/html', [DocumentRenderController::class, 'purchaseOrderHtml'])
-    ->middleware($perm('document.view'));
-Route::get('/payments/{id}/pdf', [DocumentRenderController::class, 'paymentReceiptPdf'])
-    ->middleware($perm('document.view'));
-Route::get('/delivery-orders/{id}/pdf', [DocumentRenderController::class, 'deliveryOrderPdf'])
-    ->middleware($perm('document.view'));
-Route::get('/delivery-orders/pdf-templates', [DocumentRenderController::class, 'deliveryOrderTemplates'])
-    ->middleware($perm('document.view'));
-Route::get('/invoices/pdf-templates', [DocumentRenderController::class, 'invoiceTemplates'])
-    ->middleware($perm('document.view'));
-Route::get('/quotations/{id}/pdf', [DocumentRenderController::class, 'quotationPdf'])
-    ->middleware($perm('document.view'));
-Route::get('/customer-statements/{id}/pdf', [DocumentRenderController::class, 'customerStatementPdf'])
-    ->middleware($perm('document.view'));
+// Issue #611: resolve + validate the caller's legal-entity context so the
+// controller can compare it with the source document's own entity before
+// rendering (document.view alone is not sufficient).
+Route::middleware([
+    \App\Http\Middleware\ResolveEntityContext::class,
+    \App\Http\Middleware\EnsureEntityAccess::class,
+])->group(function () use ($perm) {
+    Route::get('/invoices/{id}/pdf', [DocumentRenderController::class, 'invoicePdf'])
+        ->middleware($perm('document.view'));
+    Route::get('/invoices/{id}/html', [DocumentRenderController::class, 'invoiceHtml'])
+        ->middleware($perm('document.view'));
+    Route::get('/purchase-orders/{id}/pdf', [DocumentRenderController::class, 'purchaseOrderPdf'])
+        ->middleware($perm('document.view'));
+    Route::get('/purchase-orders/{id}/html', [DocumentRenderController::class, 'purchaseOrderHtml'])
+        ->middleware($perm('document.view'));
+    Route::get('/payments/{id}/pdf', [DocumentRenderController::class, 'paymentReceiptPdf'])
+        ->middleware($perm('document.view'));
+    Route::get('/delivery-orders/{id}/pdf', [DocumentRenderController::class, 'deliveryOrderPdf'])
+        ->middleware($perm('document.view'));
+    Route::get('/delivery-orders/pdf-templates', [DocumentRenderController::class, 'deliveryOrderTemplates'])
+        ->middleware($perm('document.view'));
+    Route::get('/invoices/pdf-templates', [DocumentRenderController::class, 'invoiceTemplates'])
+        ->middleware($perm('document.view'));
+    Route::get('/quotations/{id}/pdf', [DocumentRenderController::class, 'quotationPdf'])
+        ->middleware($perm('document.view'));
+    Route::get('/customer-statements/{id}/pdf', [DocumentRenderController::class, 'customerStatementPdf'])
+        ->middleware($perm('document.view'));
+});
 
 // ─── Template management (ADR-004 §14) ─────────────────────────────────────
 Route::prefix('template-builder')->group(function () use ($perm) {

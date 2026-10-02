@@ -23,6 +23,19 @@ final class QuotationDataSource implements DataSourceContract
         return 'quotation';
     }
 
+    public function permission(): string
+    {
+        return 'quotations.view';
+    }
+
+    public function legalEntityId(): ?int
+    {
+        $quotation = $this->quotation ?? throw new \RuntimeException('Quotation not loaded.');
+        $entityId = $quotation->customer?->legal_entity_id;
+
+        return $entityId !== null ? (int) $entityId : null;
+    }
+
     public function load(string $documentId): self
     {
         $this->quotation = Quotation::with(['customer', 'lines.product', 'billingContact', 'shippingContact'])->findOrFail($documentId);
