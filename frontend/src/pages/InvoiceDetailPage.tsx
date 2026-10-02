@@ -905,7 +905,7 @@ export function InvoiceDetailPage() {
                     </p>
                   )}
                   {(invoice.billing_address_snapshot || invoice.customer.billing_address) && (
-                    <p className="text-sm text-muted-foreground mt-2 whitespace-pre-line">
+                    <p className="text-sm text-muted-foreground mt-2 whitespace-pre-line break-words">
                       {formatAddress(invoice.billing_address_snapshot || invoice.customer.billing_address)}
                     </p>
                   )}
@@ -1390,13 +1390,13 @@ export function InvoiceDetailPage() {
                 {invoice.billing_contact && (
                   <div>
                     <span className="text-xs text-muted-foreground">Billing Contact</span>
-                    <p className="text-sm font-medium">{invoice.billing_contact.display_name || '-'}</p>
+                    <p className="text-sm font-medium break-words">{invoice.billing_contact.display_name || '-'}</p>
                   </div>
                 )}
                 {invoice.shipping_contact && (
                   <div>
                     <span className="text-xs text-muted-foreground">Shipping Contact</span>
-                    <p className="text-sm font-medium">{invoice.shipping_contact.display_name || '-'}</p>
+                    <p className="text-sm font-medium break-words">{invoice.shipping_contact.display_name || '-'}</p>
                   </div>
                 )}
                 {invoice.company_registration_number && (
@@ -1417,13 +1417,13 @@ export function InvoiceDetailPage() {
                   {invoice.billing_address_snapshot && (
                     <div className="rounded-lg border p-4 bg-muted/20">
                       <p className="text-xs text-muted-foreground mb-1">Billing Address</p>
-                      <p className="text-sm whitespace-pre-wrap">{formatAddress(invoice.billing_address_snapshot)}</p>
+                      <p className="text-sm whitespace-pre-wrap break-words">{formatAddress(invoice.billing_address_snapshot)}</p>
                     </div>
                   )}
                   {invoice.shipping_address_snapshot && (
                     <div className="rounded-lg border p-4 bg-muted/20">
                       <p className="text-xs text-muted-foreground mb-1">Delivery Address</p>
-                      <p className="text-sm whitespace-pre-wrap">{formatAddress(invoice.shipping_address_snapshot)}</p>
+                      <p className="text-sm whitespace-pre-wrap break-words">{formatAddress(invoice.shipping_address_snapshot)}</p>
                     </div>
                   )}
                 </div>
