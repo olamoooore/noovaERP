@@ -460,8 +460,11 @@ class DeliveryOrderService
             postingRequestId: \App\Accounting\DTOs\DomainPostingRequest::generateRequestId(),
             idempotencyKey: "delivery_order:{$deliveryOrder->id}:cogs",
             tenantId: (string) (function_exists('tenant') && tenant() ? tenant('id') : ''),
-            entityId: '',
-            accountingBookId: '',
+            // Issue #875: DO COGS carries the delivery order's legal entity,
+            // resolved from its sales order (or the request entity context /
+            // the tenant's only entity for legacy orders).
+            entityId: (string) $this->resolveLegalEntityId($deliveryOrder),
+            accountingBookId: (string) ($this->resolveEntityBookId($deliveryOrder) ?? ''),
             sourceCapability: 'ACC-012',
             sourceRecordType: 'delivery_order',
             sourceRecordId: (string) $deliveryOrder->id,
@@ -523,6 +526,27 @@ class DeliveryOrderService
                 "Delivery order COGS reversal posting failed for {$deliveryOrder->delivery_order_number}: ".($result->error ?? 'unknown error')
             );
         }
+    }
+
+    /**
+     * Issue #875: the legal entity for a delivery order posting, resolved
+     * from its sales order / customer / request entity context, or the
+     * tenant's only entity.
+     */
+    private function resolveLegalEntityId(DeliveryOrder $deliveryOrder): ?int
+    {
+        return app(\App\Services\LegalEntityContextResolver::class)->resolveEntity(
+            explicit: null,
+            salesOrderId: $deliveryOrder->sales_order_id ? (int) $deliveryOrder->sales_order_id : null,
+            customerId: $deliveryOrder->customer_id ? (int) $deliveryOrder->customer_id : null,
+            required: true,
+        );
+    }
+
+    private function resolveEntityBookId(DeliveryOrder $deliveryOrder): ?int
+    {
+        return app(\App\Services\LegalEntityContextResolver::class)
+            ->resolveBookId($this->resolveLegalEntityId($deliveryOrder));
     }
 
     /**

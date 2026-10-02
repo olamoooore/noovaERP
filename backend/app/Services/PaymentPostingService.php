@@ -202,6 +202,27 @@ class PaymentPostingService
                 );
             }
 
+            // Issue #875: bind the posting to the payment's legal entity. Standalone
+            // payments resolve through the invoice (when present), the customer,
+            // the request entity context, or the tenant's only entity.
+            $entityResolver = app(\App\Services\LegalEntityContextResolver::class);
+            $legalEntityId = $entityResolver->resolveEntity(
+                explicit: $payment->legal_entity_id ? (int) $payment->legal_entity_id : null,
+                invoiceId: $payment->invoice_id ? (int) $payment->invoice_id : null,
+                customerId: $payment->customer_id ? (int) $payment->customer_id : null,
+                required: true,
+            );
+            $entityBookId = $payment->entity_book_id
+                ? (int) $payment->entity_book_id
+                : $entityResolver->resolveBookId($legalEntityId);
+
+            if ($legalEntityId && (int) $payment->legal_entity_id !== $legalEntityId) {
+                $payment->forceFill([
+                    'legal_entity_id' => $legalEntityId,
+                    'entity_book_id' => $entityBookId,
+                ])->save();
+            }
+
             $result = $this->postingEngine->post(new PostingRequest(
                 documentType: 'payment',
                 documentId: $payment->id,
@@ -215,6 +236,8 @@ class PaymentPostingService
                 currencyCode: $foreign ? $docCurrency : null,
                 exchangeRate: $foreign ? $payRate : null,
                 userId: TenantUserHelper::requireTenantUserId($resolvedUserId),
+                legalEntityId: $legalEntityId,
+                entityBookId: $entityBookId,
             ));
 
             if (! $result->success) {

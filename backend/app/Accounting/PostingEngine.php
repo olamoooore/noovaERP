@@ -480,7 +480,33 @@ class PostingEngine implements PostingEngineInterface
             );
         }
 
-        // ── 4. Build PostingRequest from resolved lines ───────
+        // ── 4. Resolve the legal entity / book (Issue #875) ───
+        // A domain posting that cannot be bound to an entity in a tenant
+        // that HAS entities would write journal_entries.legal_entity_id =
+        // NULL: invisible to entity-filtered reports and to entity-scoped
+        // users (scopeAccessibleBy fails closed on NULL). Reject it.
+        /** @var \App\Services\LegalEntityContextResolver $entityResolver */
+        $entityResolver = app(\App\Services\LegalEntityContextResolver::class);
+
+        $legalEntityId = ($request->entityId !== null && $request->entityId !== '' && is_numeric($request->entityId))
+            ? (int) $request->entityId
+            : null;
+
+        if (! $legalEntityId) {
+            $legalEntityId = $entityResolver->fromRequestContext() ?? $entityResolver->singleActiveEntityId();
+        }
+
+        if (! $legalEntityId && $entityResolver->entityExists()) {
+            return PostingResult::failure(
+                'Posting blocked: '.ReasonCode::MISSING_ENTITY_CONTEXT->value
+            );
+        }
+
+        $entityBookId = ($request->accountingBookId !== null && $request->accountingBookId !== '' && is_numeric($request->accountingBookId))
+            ? (int) $request->accountingBookId
+            : $entityResolver->resolveBookId($legalEntityId);
+
+        // ── 5. Build PostingRequest from resolved lines ───────
         $postingRequestLines = [];
         foreach ($resolution->ledgerLines as $line) {
             $postingRequestLines[] = new PostingRequestLine(
@@ -511,9 +537,11 @@ class PostingEngine implements PostingEngineInterface
             tenantId: null, // tenancy resolved by middleware
             sourceCapability: $request->sourceCapability,
             taxDeterminationResult: $request->taxDeterminationResult,
+            legalEntityId: $legalEntityId,
+            entityBookId: $entityBookId,
         );
 
-        // ── 5. Delegate to canonical post() path ──────────────
+        // ── 6. Delegate to canonical post() path ──────────────
         return $this->post($postingRequest);
     }
 

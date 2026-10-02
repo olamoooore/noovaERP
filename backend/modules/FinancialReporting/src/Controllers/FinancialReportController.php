@@ -38,6 +38,11 @@ class FinancialReportController extends Controller
             'project_id' => 'nullable|integer|exists:projects,id',
             'location_id' => 'nullable|integer|exists:locations,id',
             'interval' => 'nullable|in:day,week,month,quarter,year',
+            // Issue #875: ReportFilter already supports the entity/book
+            // filters and ProfitLossService applies them; the validation
+            // whitelist was silently dropping them.
+            'legal_entity_id' => 'nullable|integer',
+            'entity_book_id' => 'nullable|integer',
         ]);
 
         try {

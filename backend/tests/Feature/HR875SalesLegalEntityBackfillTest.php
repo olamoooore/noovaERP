@@ -263,7 +263,7 @@ class HR875SalesLegalEntityBackfillTest extends TenantTestCase
     public function test_mapping_report_proposes_entities_with_reasons_and_lists_unmatched_rows(): void
     {
         // Invoice with a sales order entity: the strongest provenance.
-        $invoiceFromOrder = $this->legacyInvoice(customerEntityId: null, withSalesOrderEntity: true);
+        $invoiceFromOrder = $this->legacyInvoice(customerEntityId: $this->entityA, withSalesOrderEntity: true);
         // Invoice with only a customer entity.
         $invoiceFromCustomer = $this->legacyInvoice(customerEntityId: $this->entityB);
         // Invoice with no provenance at all: unmatched, stays blank.

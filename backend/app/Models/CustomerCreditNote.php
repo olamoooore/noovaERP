@@ -10,6 +10,7 @@ use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class CustomerCreditNote extends Model
 {
+    use \App\Models\Concerns\ResolvesLegalEntityContext;
     use HasFactory;
 
     protected $fillable = [
@@ -37,6 +38,9 @@ class CustomerCreditNote extends Model
         'voided_at',
         'voided_by',
         'reversal_journal_entry_id',
+        // Issue #875: Sales documents carry their legal entity + book.
+        'legal_entity_id',
+        'entity_book_id',
     ];
 
     protected $casts = [

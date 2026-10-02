@@ -19,8 +19,14 @@ class DomainPostingRequest
         public readonly string $postingRequestId,
         public readonly string $idempotencyKey,
         public readonly string $tenantId,
-        public readonly string $entityId,
-        public readonly string $accountingBookId,
+        /**
+         * Issue #875: entity/book are nullable so a caller without an entity
+         * (single-entity tenant that has not provisioned one) can say so
+         * explicitly. domainPosting() rejects null/'' when the tenant HAS
+         * legal entities.
+         */
+        public readonly ?string $entityId,
+        public readonly ?string $accountingBookId,
         public readonly string $sourceCapability,
         public readonly string $sourceRecordType,
         public readonly string $sourceRecordId,

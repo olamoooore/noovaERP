@@ -10,13 +10,22 @@ use App\Accounting\PostingEngine;
 use App\Models\AccountMapping;
 use App\Models\ChartOfAccount;
 use App\Models\Customer;
+use App\Models\FiscalPeriod;
 use App\Models\Invoice;
 use App\Models\JournalEntry;
+use App\Models\JournalEntryLink;
 use App\Models\Payment;
+use App\Models\Product;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Models\Warehouse;
+use App\Services\PaymentRefundService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Inventory\Models\StockLevel;
+use Modules\PaymentGateway\Models\PaymentGateway;
+use Modules\PaymentGateway\Models\PaymentTransaction;
+use Modules\Sales\Services\DeliveryOrderService;
 use Spatie\Permission\Models\Role;
 use Tests\TenantTestCase;
 
@@ -124,10 +133,15 @@ class HR875SalesPostingLegalEntityTest extends TenantTestCase
         $cash = ChartOfAccount::factory()->create(['code' => "1000-{$suffix}", 'type' => 'asset', 'is_active' => true]);
         $ar = ChartOfAccount::factory()->create(['code' => "1100-{$suffix}", 'type' => 'asset', 'is_active' => true]);
         $revenue = ChartOfAccount::factory()->create(['code' => "4000-{$suffix}", 'type' => 'revenue', 'is_active' => true]);
+        $cogs = ChartOfAccount::factory()->create(['code' => "5100-{$suffix}", 'type' => 'expense', 'is_active' => true]);
+        $inventory = ChartOfAccount::factory()->create(['code' => "1200-{$suffix}", 'type' => 'asset', 'is_active' => true]);
 
         AccountMapping::create(['mapping_key' => 'cash', 'account_id' => $cash->id]);
         AccountMapping::create(['mapping_key' => 'accounts_receivable', 'account_id' => $ar->id]);
         AccountMapping::create(['mapping_key' => 'sales_revenue', 'account_id' => $revenue->id]);
+        AccountMapping::create(['mapping_key' => 'revenue', 'account_id' => $revenue->id]);
+        AccountMapping::create(['mapping_key' => 'cogs', 'account_id' => $cogs->id]);
+        AccountMapping::create(['mapping_key' => 'inventory', 'account_id' => $inventory->id]);
     }
 
     private function makeUser(string $role, ?int $defaultEntityId): User
@@ -316,11 +330,133 @@ class HR875SalesPostingLegalEntityTest extends TenantTestCase
             ->postJson("/api/v1/accounting/customers/credit-notes/{$creditNoteId}/post");
         $postResponse->assertOk($postResponse->getContent());
 
+        $creditNote = DB::table('customer_credit_notes')->where('id', $creditNoteId)->first();
         $entry = JournalEntry::findOrFail($creditNote->journal_entry_id);
         $this->assertSame(
             $this->entityA,
             (int) $entry->legal_entity_id,
             'Credit note journal entry must carry the entity'
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Delivery order COGS: journal entry carries the entity
+    // ─────────────────────────────────────────────────────────────────────
+
+    public function test_delivery_order_cogs_posting_writes_journal_entry_with_the_entity(): void
+    {
+        FiscalPeriod::firstOrCreate(
+            ['code' => now()->format('Y-m')],
+            [
+                'name' => now()->format('F Y'),
+                'period_start' => now()->startOfMonth()->toDateString(),
+                'period_end' => now()->endOfMonth()->toDateString(),
+                'period_type' => 'monthly',
+                'fiscal_year' => (int) now()->format('Y'),
+                'is_locked' => false,
+                'status' => 'open',
+                'created_by' => $this->accountant->id,
+            ]
+        );
+
+        $warehouse = Warehouse::create([
+            'name' => 'HR875 Warehouse',
+            'code' => '875-WH-'.uniqid(),
+            'is_active' => true,
+            'is_default' => true,
+        ]);
+
+        $product = Product::factory()->create([
+            'track_inventory' => true,
+            'price' => 20,
+            'cost' => 5.00,
+        ]);
+
+        StockLevel::create([
+            'product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'quantity' => 10,
+            'reserved_quantity' => 0,
+            'min_quantity' => 0,
+        ]);
+
+        $customer = Customer::factory()->create([
+            'legal_entity_id' => $this->entityA,
+            'is_active' => true,
+        ]);
+
+        // DO COGS is a sales.write operation (PostingEngine document-type map).
+        $admin = $this->makeUser('admin', $this->entityA);
+        $this->actingAs($admin);
+
+        $service = app(DeliveryOrderService::class);
+        $deliveryOrder = $service->createStandaloneDeliveryOrder([
+            'customer_id' => $customer->id,
+            'warehouse_id' => $warehouse->id,
+            'created_by' => $this->accountant->id,
+            'lines' => [[
+                'product_id' => $product->id,
+                'description' => 'HR875 COGS line',
+                'quantity_delivered' => 2,
+                'unit' => 'pcs',
+            ]],
+        ]);
+        $service->completeDeliveryOrder($deliveryOrder);
+
+        $link = JournalEntryLink::where('source_document_type', 'delivery_order')
+            ->where('source_document_id', $deliveryOrder->id)
+            ->first();
+
+        $this->assertNotNull($link, 'DO completion must post a COGS journal entry');
+
+        $entry = JournalEntry::findOrFail($link->journal_entry_id);
+        $this->assertSame(
+            $this->entityA,
+            (int) $entry->legal_entity_id,
+            'Delivery order COGS journal entry must carry the entity'
+        );
+        $this->assertSame(
+            $this->bookA,
+            (int) $entry->entity_book_id,
+            'Delivery order COGS journal entry must carry the entity book'
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Standalone refund: journal entry + refund payment carry the entity
+    // ─────────────────────────────────────────────────────────────────────
+
+    public function test_refund_posting_writes_journal_entry_with_the_entity(): void
+    {
+        $invoice = $this->createInvoiceViaApi($this->entityA);
+
+        $gateway = PaymentGateway::factory()->create(['gateway_name' => 'hitpay']);
+
+        $transaction = PaymentTransaction::factory()->completed()->create([
+            'payment_gateway_id' => $gateway->id,
+            'invoice_id' => $invoice->id,
+            'customer_id' => $invoice->customer_id,
+            'amount' => 100,
+            'refunded_amount' => 0,
+        ]);
+
+        $result = app(PaymentRefundService::class)->processRefund(
+            $transaction,
+            100.0,
+            'HR875 refund',
+            $this->accountant->id,
+        );
+
+        $this->assertNotNull($result['refundEntry'], 'Refund must post a journal entry');
+        $this->assertSame(
+            $this->entityA,
+            (int) $result['refundEntry']->legal_entity_id,
+            'Refund journal entry must carry the invoice entity'
+        );
+        $this->assertSame(
+            $this->entityA,
+            (int) $result['refundPayment']->legal_entity_id,
+            'Refund payment must carry the invoice entity'
         );
     }
 
