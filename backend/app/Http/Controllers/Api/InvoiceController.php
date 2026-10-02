@@ -2264,6 +2264,19 @@ class InvoiceController extends Controller
     }
 
     /**
+     * Issue #630 data check: evidence rows whose stored file is missing from
+     * disk (destroyed through chatter before the #630 delete guard, or
+     * otherwise). Every row is invoice evidence that can no longer be
+     * retrieved — a gap in the "evidence before posting" trail.
+     */
+    public function missingEvidenceFilesDataCheck(): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->evidenceService->missingEvidenceFiles(),
+        ]);
+    }
+
+    /**
      * Reset a cancelled invoice back to draft.
      * Reverses the associated journal entry (if any) and clears the link.
      * Returns the invoice to draft state for re-editing and re-posting.

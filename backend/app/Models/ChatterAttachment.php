@@ -24,6 +24,14 @@ class ChatterAttachment extends Model
         'storage_disk',
         'storage_path',
         'checksum',
+        // Issue #630: attachments registered from an evidence source carry the
+        // reference to that record so deletion cannot destroy the evidence.
+        'evidence_type',
+        'evidence_id',
+    ];
+
+    protected $casts = [
+        'evidence_id' => 'integer',
     ];
 
     public function subject(): MorphTo
