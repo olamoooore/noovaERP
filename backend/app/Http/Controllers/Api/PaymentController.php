@@ -477,10 +477,15 @@ class PaymentController extends Controller
             }
 
             try {
-                // #477: only draft (unposted) payments are deletable, and a
-                // draft never touched the invoice — so deleting one must NOT
-                // decrement the invoice's paid_amount/balance.
-                $payment->delete();
+                // #477/#482: new drafts never touched the invoice. A LEGACY
+                // draft may still carry live applications (it settled before
+                // #477) — reverse them through the canonical allocation path
+                // (restores each invoice + writes the settlement audit rows)
+                // before removing the payment.
+                DB::transaction(function () use ($payment) {
+                    $this->reverseLiveApplications($payment);
+                    $payment->delete();
+                });
 
                 $deletedIds[] = $id;
             } catch (\Throwable $e) {
@@ -507,9 +512,13 @@ class PaymentController extends Controller
             ], 403);
         }
 
-        // #477: only draft (unposted) payments are deletable, and a draft never
-        // touched the invoice — deleting one must NOT decrement its balance.
-        $payment->delete();
+        // #477/#482: a new draft never touched the invoice, but a LEGACY draft
+        // may still carry live applications — reverse them canonically before
+        // deleting so the invoices (and their audit trail) are restored.
+        DB::transaction(function () use ($payment) {
+            $this->reverseLiveApplications($payment);
+            $payment->delete();
+        });
 
         return response()->json(['message' => 'Payment deleted successfully']);
     }
@@ -616,6 +625,20 @@ class PaymentController extends Controller
      * Compute the invoice status string based on the canonical balance math
      * (single source of truth for "Partially Paid" vs "Paid").
      */
+    /**
+     * #482: reverse any live payment_applications before a draft is removed.
+     * Legacy drafts (created before #477) settled their invoices directly and
+     * still carry applications; deleting them without reversing left the
+     * invoices marked paid. Runs through PaymentAllocationService (canonical)
+     * so every invoice is restored and a settlement audit row is written.
+     */
+    private function reverseLiveApplications(Payment $payment): void
+    {
+        if ($payment->applications()->whereNull('reversed_at')->exists()) {
+            app(\App\Services\PaymentAllocationService::class)->reverseAllocations($payment);
+        }
+    }
+
     private function resolveInvoiceStatus(Invoice $invoice): string
     {
         $paid = (float) $invoice->paid_amount;
