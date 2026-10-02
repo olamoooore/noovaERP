@@ -6,10 +6,12 @@ use App\Exports\PaymentsExport;
 use App\Http\Controllers\Controller;
 use App\Models\Invoice;
 use App\Models\Payment;
+use App\Models\PaymentMethod;
 use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Maatwebsite\Excel\Facades\Excel;
 
 class PaymentController extends Controller
@@ -198,11 +200,20 @@ class PaymentController extends Controller
             'payment_date' => 'nullable|date',
             'amount' => 'required|numeric|min:0',
             'discount_amount' => 'nullable|numeric|min:0',
-            'method' => 'required|in:cash,card,bank_transfer,check,other',
+            'method' => ['required', 'string', Rule::in($this->methodCodes())],
             'reference' => 'nullable|string',
             'notes' => 'nullable|string',
             'bank_account_id' => 'nullable|exists:bank_accounts,id',
         ]);
+
+        // #486: field requirements come from the method master, not a
+        // hardcoded guess (e.g. Cheque requires a reference).
+        $methodRow = PaymentMethod::query()->active()->where('code', $validated['method'])->first();
+        if ($methodRow?->requires_reference && blank($validated['reference'] ?? null)) {
+            return response()->json([
+                'message' => "A reference number is required for {$methodRow->label} payments.",
+            ], 422);
+        }
 
         try {
             $invoice = Invoice::findOrFail($validated['invoice_id']);
@@ -254,6 +265,18 @@ class PaymentController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Active payment-method codes from the tenant master (#486).
+     * Falls back to the historical hardcoded list when the master has not
+     * been seeded yet, so behaviour is unchanged for unseeded tenants.
+     */
+    private function methodCodes(): array
+    {
+        $codes = PaymentMethod::query()->active()->pluck('code')->all();
+
+        return $codes ?: ['cash', 'card', 'bank_transfer', 'check', 'other'];
     }
 
     public function show($payment)
@@ -364,7 +387,7 @@ class PaymentController extends Controller
             'payment_date' => 'nullable|date',
             'invoice_id' => 'nullable|integer|exists:invoices,id',
             'amount' => 'nullable|numeric|min:0.01',
-            'method' => 'nullable|in:cash,card,bank_transfer,check,other',
+            'method' => ['nullable', 'string', Rule::in($this->methodCodes())],
             'reference' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
             // #485: the edit dialog must be able to move the deposit account.

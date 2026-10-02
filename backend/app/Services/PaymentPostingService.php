@@ -7,6 +7,7 @@ use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\BankAccount;
 use App\Models\Payment;
+use App\Models\PaymentMethod;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
@@ -78,15 +79,19 @@ class PaymentPostingService
             // (production report 2026-09-24). Unclassified receipts post to
             // the default bank account, matching the platform's dominant
             // settlement path.
+            // #486: the tenant method master drives allowance + mapping; the
+            // hardcoded map stays as the fallback for unseeded tenants.
+            $master = PaymentMethod::query()->active()->where('code', $method)->first();
+
             $allowedMethods = ['bank_transfer', 'card', 'check', 'cash', 'gateway', 'other'];
-            if (! in_array($method, $allowedMethods, true)) {
+            if ($master === null && ! in_array($method, $allowedMethods, true)) {
                 throw new \RuntimeException(
                     "Unsupported payment method: '{$method}'. ".
-                    'Allowed: '.implode(', ', $allowedMethods)
+                    'Allowed: '.implode(', ', array_unique([...$allowedMethods, ...PaymentMethod::query()->active()->pluck('code')->all()]))
                 );
             }
 
-            $cashMappingKey = match ($method) {
+            $cashMappingKey = $master?->mapping_key ?? match ($method) {
                 'bank_transfer' => 'bank',
                 'card' => 'card_clearing',
                 'check' => 'cheque_clearing',
@@ -94,6 +99,12 @@ class PaymentPostingService
                 'gateway' => 'gateway_receivable',
                 'other' => 'bank',
             };
+
+            // Master may pin a default deposit journal for the method — used
+            // when the payment itself carries no explicit bank account.
+            if ($bankGlAccountId === null && $master?->default_bank_account_id) {
+                $bankGlAccountId = BankAccount::find($master->default_bank_account_id)?->gl_account_id;
+            }
 
             // ── MRD pricelist-multicurrency FR-7.2/7.3 / AC-4 ────────────
             // Realized FX: AR clears at the INVOICE snapshot rate, the bank

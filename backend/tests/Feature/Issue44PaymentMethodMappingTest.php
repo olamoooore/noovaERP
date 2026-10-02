@@ -221,11 +221,22 @@ class Issue44PaymentMethodMappingTest extends TenantTestCase
      * depth via the DB CHECK constraint), so it can never reach the posting
      * path at all.
      */
-    public function test_completely_unknown_method_cannot_be_persisted(): void
+    public function test_completely_unknown_method_cannot_reach_the_ledger(): void
     {
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        // #486 (behaviour change, disclosed): the DB CHECK that used to block
+        // unknown codes at INSERT time is replaced by the tenant method
+        // master — a hardcoded CHECK would need a migration for every new
+        // rail, which is exactly the divergence the issue removes. The
+        // business rule is now enforced twice: the API rejects codes outside
+        // the master (see PaymentMethodMasterTest), and — even for a row
+        // written directly — the posting engine refuses it, so an unknown
+        // method can never produce a journal entry.
+        $payment = $this->makePayment('cryptocurrency');
 
-        $this->makePayment('cryptocurrency');
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/Unsupported payment method/');
+
+        app(PaymentPostingService::class)->post($payment);
     }
 
     /**

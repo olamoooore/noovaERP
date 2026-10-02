@@ -4,6 +4,7 @@ import { todayDateOnly } from '@/lib/dateOnly' // #484
 import DepositAccountSelect from '@/components/payment/DepositAccountSelect'
 import { defaultDepositAccountId, readDepositMemory, rememberDeposit, type DepositAccountOption } from '@/lib/paymentDepositAccount'
 import { useAuthStore } from '@/store/authStore'
+import { buildMethodOptions, type PaymentMethodRow } from '@/lib/paymentMethods' // #486
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
@@ -51,6 +52,14 @@ export function InvoicePaymentPage() {
       return response.data.data as DepositAccountOption[]
     },
   })
+  const { data: methodRows } = useQuery<PaymentMethodRow[]>({
+    queryKey: ['payment-methods'],
+    queryFn: async () => {
+      const response = await api.get('/accounting/payment-methods')
+      return response.data.data as PaymentMethodRow[]
+    },
+  })
+  const methodOptions = buildMethodOptions(methodRows)
 
   // #485: default the deposit account per method, remembered per user.
   useEffect(() => {
@@ -245,11 +254,9 @@ export function InvoicePaymentPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="cash">Cash</SelectItem>
-                    <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                    <SelectItem value="card">Credit/Debit Card</SelectItem>
-                    <SelectItem value="check">Check</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
+                    {methodOptions.map((m) => (
+                      <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -261,6 +268,7 @@ export function InvoicePaymentPage() {
                   value={formData.reference}
                   onChange={(e) => setFormData({ ...formData, reference: e.target.value })}
                   placeholder="Transaction ID, check number, etc."
+                  required={methodOptions.find((o) => o.value === formData.method)?.requiresReference || false}
                 />
               </div>
             </div>

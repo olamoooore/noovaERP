@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { todayDateOnly } from '@/lib/dateOnly'; // #484
 import DepositAccountSelect from '@/components/payment/DepositAccountSelect';
 import { defaultDepositAccountId, readDepositMemory, rememberDeposit, type DepositAccountOption } from '@/lib/paymentDepositAccount';
+import { buildMethodOptions, type PaymentMethodRow } from '@/lib/paymentMethods'; // #486
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
@@ -114,14 +115,6 @@ const isCorrectable = (payment: Payment): boolean =>
   && !TERMINAL_PAYMENT_STATUSES.includes(payment.payment_status)
   && !payment.refund_payment_id;
 
-const METHOD_OPTIONS = [
-  { value: 'cash', label: 'Cash', icon: 'solar:wallet-bold-duotone' },
-  { value: 'bank_transfer', label: 'Bank Transfer', icon: 'solar:banknote-bold-duotone' },
-  { value: 'card', label: 'Card', icon: 'solar:card-2-bold-duotone' },
-  { value: 'check', label: 'Check', icon: 'solar:document-bold-duotone' },
-  { value: 'other', label: 'Other', icon: 'solar:question-circle-bold-duotone' },
-];
-
 const PAYMENT_EXPORT_COLUMNS = [
   { key: 'payment_number', label: 'Payment No', group: 'Payment', default: true }, { key: 'payment_date', label: 'Date', group: 'Payment', default: true },
   { key: 'customer_name', label: 'Customer', group: 'Payment', default: true }, { key: 'invoice_number', label: 'Invoice No', group: 'Payment', default: true },
@@ -177,6 +170,16 @@ export const CustomerPayments: React.FC = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { hasPermission } = useAuthStore();
+
+  // #486: method dropdowns (rows, filters, dialogs) read the master.
+  const { data: methodRows } = useQuery<PaymentMethodRow[]>({
+    queryKey: ['payment-methods'],
+    queryFn: async () => {
+      const response = await api.get('/accounting/payment-methods');
+      return response.data.data as PaymentMethodRow[];
+    },
+  });
+  const methodOptions = buildMethodOptions(methodRows);
   // Correction endpoints (POST /corrections/payments/…) require accounting.post
   const canCorrect = hasPermission('accounting.post');
 
@@ -235,7 +238,7 @@ export const CustomerPayments: React.FC = () => {
   });
 
   const getPaymentMethodBadge = (method: string) => {
-    const cfg = METHOD_OPTIONS.find((m) => m.value === method);
+    const cfg = methodOptions.find((m) => m.value === method);
     return (
       <Badge variant="outline" className="gap-1 whitespace-nowrap px-1.5 py-0 text-[10px] leading-4">
         <Icon icon={cfg?.icon || 'solar:wallet-bold-duotone'} className="h-3 w-3" />
@@ -456,7 +459,7 @@ export const CustomerPayments: React.FC = () => {
           <SelectTrigger className="h-8 w-40 rounded-full text-xs"><SelectValue placeholder="All methods" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All methods</SelectItem>
-            {METHOD_OPTIONS.map((m) => (
+            {methodOptions.map((m) => (
               <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
             ))}
           </SelectContent>
@@ -1134,6 +1137,14 @@ const RecordPaymentForm: React.FC<{
       return response.data.data as DepositAccountOption[];
     },
   });
+  const { data: methodRows } = useQuery<PaymentMethodRow[]>({
+    queryKey: ['payment-methods'],
+    queryFn: async () => {
+      const response = await api.get('/accounting/payment-methods');
+      return response.data.data as PaymentMethodRow[];
+    },
+  });
+  const methodOptions = buildMethodOptions(methodRows);
 
   // #485: default the deposit account per method, remembered per user.
   useEffect(() => {
@@ -1276,7 +1287,7 @@ const RecordPaymentForm: React.FC<{
           <Select value={formData.method} onValueChange={handleRecordMethodChange}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              {METHOD_OPTIONS.map((m) => (
+              {methodOptions.map((m) => (
                 <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
               ))}
             </SelectContent>
@@ -1290,6 +1301,7 @@ const RecordPaymentForm: React.FC<{
           value={formData.reference}
           onChange={(e) => setFormData({ ...formData, reference: e.target.value })}
           placeholder="Transaction ID, check number, etc."
+          required={methodOptions.find((o) => o.value === formData.method)?.requiresReference || false}
         />
       </div>
       <div className="space-y-2">
@@ -1344,6 +1356,14 @@ const EditPaymentForm: React.FC<{
       return response.data.data as DepositAccountOption[];
     },
   });
+  const { data: methodRows } = useQuery<PaymentMethodRow[]>({
+    queryKey: ['payment-methods'],
+    queryFn: async () => {
+      const response = await api.get('/accounting/payment-methods');
+      return response.data.data as PaymentMethodRow[];
+    },
+  });
+  const methodOptions = buildMethodOptions(methodRows);
   const { toast } = useToast();
 
   const updatePaymentMutation = useMutation({
@@ -1402,7 +1422,7 @@ const EditPaymentForm: React.FC<{
           <Select value={formData.method} onValueChange={(value) => setFormData((current) => ({ ...current, method: value }))}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              {METHOD_OPTIONS.map((method) => <SelectItem key={method.value} value={method.value}>{method.label}</SelectItem>)}
+              {methodOptions.map((method) => <SelectItem key={method.value} value={method.value}>{method.label}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>

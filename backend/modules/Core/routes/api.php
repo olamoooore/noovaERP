@@ -45,6 +45,7 @@ use App\Http\Controllers\Api\MedicalCaseController;
 use App\Http\Controllers\Api\OnboardingSessionsController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PaymentImportController;
+use App\Http\Controllers\Api\PaymentMethodsController;
 use App\Http\Controllers\Api\PaymentTermsController;
 use App\Http\Controllers\Api\PriceListController;
 use App\Http\Controllers\Api\PricingController;
@@ -879,6 +880,9 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::post('/payment-terms', [PaymentTermsController::class, 'store']);
         Route::put('/payment-terms/{id}', [PaymentTermsController::class, 'update']);
         Route::delete('/payment-terms/{id}', [PaymentTermsController::class, 'destroy']);
+
+        // Payment Methods (#486 method master)
+        Route::get('/payment-methods', [PaymentMethodsController::class, 'index']);
 
         // Bank Accounts
         Route::get('/bank-accounts', [BankAccountsController::class, 'index']);
