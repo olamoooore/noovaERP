@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Icon } from '@iconify/react';
@@ -8,6 +8,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
+import EInvoicePanel from '../components/EInvoicePanel';
+import { EInvoiceStatusChip } from '../components/EInvoiceStatusChip';
+import { formatCountdown } from '../components/einvoiceStatus';
+import { useEInvoiceDocument } from '../components/useEInvoice';
 
 const statusColors: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-800',
@@ -18,23 +22,9 @@ const statusColors: Record<string, string> = {
 const formatDate = (date: string) =>
   date ? new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '-';
 
-const complianceStatusColors: Record<string, string> = {
-  accepted: 'bg-green-100 text-green-800',
-  ack: 'bg-blue-100 text-blue-800',
-  submitted: 'bg-blue-100 text-blue-800',
-  pending: 'bg-gray-100 text-gray-800',
-  failed: 'bg-red-100 text-red-800',
-  rejected: 'bg-red-100 text-red-800',
-  cancelled: 'bg-gray-100 text-gray-800',
-};
-
-const RETRYABLE_SUBMISSION_STATUSES = ['failed', 'rejected', 'cancelled'];
-
 export const CustomerCreditNoteDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [countryCode, setCountryCode] = useState('MY');
 
   const { data: creditNote, isLoading } = useQuery({
     queryKey: ['customer-credit-note', id],
@@ -45,62 +35,11 @@ export const CustomerCreditNoteDetail: React.FC = () => {
     enabled: !!id,
   });
 
-  // #516 (CN7): a posted credit note is its own statutory document
-  // (MyInvois type 02) and must be submitted, so the page surfaces the
-  // e-invoice status and offers Submit / Retry.
+  // #670 (EINV-UX1): the header chip shares the shared e-invoice hook, which
+  // react-query dedupes with the panel's own query.
   const creditNoteId = Number(id);
   const isPosted = !!creditNote && ['posted', 'voided'].includes(creditNote.status);
-
-  const { data: complianceData } = useQuery({
-    queryKey: ['credit-note-compliance', creditNoteId],
-    queryFn: async () => {
-      const response = await api.get(
-        `/accounting/compliance/documents?document_type=credit_note&per_page=100`
-      );
-      return response.data?.data ?? [];
-    },
-    enabled: isPosted && Number.isFinite(creditNoteId),
-  });
-
-  const complianceDocument = (complianceData ?? []).find(
-    (doc: any) => Number(doc.document_id) === creditNoteId
-  );
-
-  const { data: submissionsData } = useQuery({
-    queryKey: ['credit-note-compliance-submissions', complianceDocument?.id],
-    queryFn: async () => {
-      const response = await api.get(
-        `/accounting/compliance/documents/${complianceDocument.id}/submissions`
-      );
-      return response.data?.data ?? [];
-    },
-    enabled: !!complianceDocument?.id,
-  });
-
-  const latestSubmission = (submissionsData ?? [])[0] ?? null;
-
-  const refreshCompliance = () => {
-    queryClient.invalidateQueries({ queryKey: ['credit-note-compliance', creditNoteId] });
-    queryClient.invalidateQueries({ queryKey: ['credit-note-compliance-submissions', complianceDocument?.id] });
-  };
-
-  const submitMutation = useMutation({
-    mutationFn: async () => {
-      const response = await api.post(`/accounting/compliance/credit-notes/${creditNoteId}/submit`, {
-        country_code: countryCode,
-      });
-      return response.data;
-    },
-    onSuccess: refreshCompliance,
-  });
-
-  const retryMutation = useMutation({
-    mutationFn: async () => {
-      const response = await api.post(`/accounting/compliance/submissions/${latestSubmission.id}/retry`, {});
-      return response.data;
-    },
-    onSuccess: refreshCompliance,
-  });
+  const einvoice = useEInvoiceDocument('credit_note', isPosted ? creditNoteId : undefined);
 
   if (isLoading) {
     return (
@@ -135,9 +74,20 @@ export const CustomerCreditNoteDetail: React.FC = () => {
             </p>
           </div>
         </div>
-        <Badge className={statusColors[creditNote.status] || 'bg-gray-100 text-gray-800'}>
-          {creditNote.status?.charAt(0).toUpperCase() + creditNote.status?.slice(1)}
-        </Badge>
+        <div className="flex items-center gap-2">
+          {isPosted && (
+            <EInvoiceStatusChip
+              status={einvoice.status}
+              uuid={einvoice.latestSubmission?.external_document_uuid}
+              validationLink={einvoice.latestSubmission?.validation_link}
+              reason={einvoice.latestSubmission?.rejection_reason ?? einvoice.latestSubmission?.error_message}
+              countdown={formatCountdown(einvoice.deadline)}
+            />
+          )}
+          <Badge className={statusColors[creditNote.status] || 'bg-gray-100 text-gray-800'}>
+            {creditNote.status?.charAt(0).toUpperCase() + creditNote.status?.slice(1)}
+          </Badge>
+        </div>
       </div>
 
       {/* Details */}
@@ -244,97 +194,8 @@ export const CustomerCreditNoteDetail: React.FC = () => {
         </Card>
       )}
 
-      {/* E-Invoice (compliance submission) — #516 */}
-      {isPosted && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-sm text-muted-foreground">E-Invoice Submission</CardTitle>
-            {complianceDocument && (
-              <Badge className={complianceStatusColors[complianceDocument.compliance_status] || 'bg-gray-100 text-gray-800'}>
-                {complianceDocument.compliance_status}
-              </Badge>
-            )}
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {submitMutation.isError && (
-              <p className="text-sm text-red-600">
-                {(submitMutation.error as any)?.response?.data?.message ?? 'Submission failed.'}
-              </p>
-            )}
-            {retryMutation.isError && (
-              <p className="text-sm text-red-600">
-                {(retryMutation.error as any)?.response?.data?.message ?? 'Retry failed.'}
-              </p>
-            )}
-
-            {complianceDocument ? (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div>
-                  <p className="text-muted-foreground">Country</p>
-                  <p className="font-medium">{complianceDocument.country_code}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Submission</p>
-                  <p className="font-medium">{latestSubmission?.submission_status ?? '-'}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Provider Reference</p>
-                  <p className="font-medium">{latestSubmission?.provider_reference ?? '-'}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Document UUID</p>
-                  <p className="font-medium break-all">{latestSubmission?.external_document_uuid ?? '-'}</p>
-                </div>
-                {complianceDocument.compliance_notes && (
-                  <div className="col-span-2 md:col-span-4">
-                    <p className="text-muted-foreground">Notes</p>
-                    <p className="font-medium">{complianceDocument.compliance_notes}</p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                This credit note has not been submitted to an e-invoicing authority yet.
-              </p>
-            )}
-
-            <div className="flex items-end gap-2">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-muted-foreground" htmlFor="credit-note-country">
-                  Country
-                </label>
-                <select
-                  id="credit-note-country"
-                  className="border rounded-md px-2 py-1 text-sm bg-background"
-                  value={countryCode}
-                  onChange={(event) => setCountryCode(event.target.value)}
-                >
-                  <option value="MY">MY — MyInvois</option>
-                  <option value="SG">SG — InvoiceNow</option>
-                </select>
-              </div>
-
-              <Button
-                onClick={() => submitMutation.mutate()}
-                disabled={submitMutation.isPending}
-                variant="outline"
-              >
-                {submitMutation.isPending ? 'Submitting...' : complianceDocument ? 'Resubmit' : 'Submit'}
-              </Button>
-
-              {latestSubmission && RETRYABLE_SUBMISSION_STATUSES.includes(latestSubmission.submission_status) && (
-                <Button
-                  onClick={() => retryMutation.mutate()}
-                  disabled={retryMutation.isPending}
-                  variant="outline"
-                >
-                  {retryMutation.isPending ? 'Retrying...' : 'Retry'}
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* #670: shared e-invoice panel — status, provider details, actions. */}
+      {isPosted && <EInvoicePanel type="credit_note" documentId={creditNoteId} />}
 
       {/* Metadata */}
       <Card>

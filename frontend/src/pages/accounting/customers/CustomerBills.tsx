@@ -21,6 +21,8 @@ import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
 import { useAuthStore } from '@/store/authStore'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import CreateCreditNoteDialog from '../components/CreateCreditNoteDialog';
+import { EInvoiceStatusChip } from '../components/EInvoiceStatusChip';
+import { useEInvoiceStatusMap } from '../components/useEInvoice';
 import { Pagination } from '@/components/ui/Pagination';
 import { SortableHead } from '@/components/ui/SortableHead';
 import { useSort } from '@/hooks/useSort';
@@ -54,6 +56,8 @@ export const CustomerBills: React.FC = () => {
   const [bulkDeleteCount, setBulkDeleteCount] = useState(0);
   const [bulkPostOpen, setBulkPostOpen] = useState(false);
   const [creditNoteInvoiceId, setCreditNoteInvoiceId] = useState<number | null>(null);
+  // #670: filter by e-invoice status (server-side; see InvoiceController).
+  const [einvoiceStatusFilter, setEinvoiceStatusFilter] = useState('all');
   const { toast } = useToast();
   const { data: allTags = [] } = useTags();
   const queryClient = useQueryClient();
@@ -99,7 +103,7 @@ export const CustomerBills: React.FC = () => {
 
   // Fetch invoices
   const { data: invoicesData, isLoading, refetch } = useQuery({
-    queryKey: ['customer-bills', statusFilter, searchQuery, customerFilter, tagFilter, agingBucketFilter, dateFilter, selectedYear, selectedMonth, customStartDate, customEndDate, page, perPage],
+    queryKey: ['customer-bills', statusFilter, einvoiceStatusFilter, searchQuery, customerFilter, tagFilter, agingBucketFilter, dateFilter, selectedYear, selectedMonth, customStartDate, customEndDate, page, perPage],
     queryFn: async () => {
       if (isAgingDrilldown) {
         const response = await api.get('/accounting/reports/aged-receivables/details', {
@@ -130,6 +134,7 @@ export const CustomerBills: React.FC = () => {
       params.set('per_page', String(perPage));
       params.set('page', String(page));
       if (statusFilter !== 'all') params.append('status', statusFilter);
+      if (einvoiceStatusFilter !== 'all') params.append('einvoice_status', einvoiceStatusFilter);
       if (searchQuery) params.append('search', searchQuery);
       if (customerFilter) params.append('customer_id', customerFilter);
       if (tagFilter) params.append('tag', tagFilter);
@@ -156,6 +161,9 @@ export const CustomerBills: React.FC = () => {
   });
 
   const invoices = invoicesData?.data || [];
+
+  // #670: one request per page for the e-invoice status of every row.
+  const einvoiceStatusMap = useEInvoiceStatusMap('invoice', invoices.map((invoice: any) => Number(invoice.id)));
   const { sorted: sortedInvoices, sortKey, sortDir, toggle: toggleSort } = useSort<any>(invoices, 'created_at', 'desc');
   const lastPage = invoicesData?.last_page || 1;
   const totalRecords = invoicesData?.total || 0;
@@ -402,6 +410,21 @@ export const CustomerBills: React.FC = () => {
           <option value="paid">Paid</option>
           <option value="partial">Partially Paid</option>
           <option value="overdue">Overdue</option>
+        </select>
+        <select
+          value={einvoiceStatusFilter}
+          onChange={(e) => { setEinvoiceStatusFilter(e.target.value); setPage(1); }}
+          className="h-8 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+          aria-label="Filter by e-invoice status"
+        >
+          <option value="all">All E-Invoice Statuses</option>
+          <option value="not_submitted">Not submitted</option>
+          <option value="queued">Queued</option>
+          <option value="submitted">Submitted</option>
+          <option value="valid">Valid</option>
+          <option value="invalid">Invalid</option>
+          <option value="cancelled">Cancelled</option>
+          <option value="buyer_rejection_requested">Buyer rejection requested</option>
         </select>
         <input
           type="text"
@@ -720,6 +743,11 @@ export const CustomerBills: React.FC = () => {
                             <Icon icon="solar:pen-bold-duotone" className="h-3 w-3" />
                             Manual
                           </Badge>
+                        )}
+                        {einvoiceStatusMap.get(Number(invoice.id)) && (
+                          <div className="mt-1">
+                            <EInvoiceStatusChip status={einvoiceStatusMap.get(Number(invoice.id))!.status} />
+                          </div>
                         )}
                       </TableCell>
                       <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
