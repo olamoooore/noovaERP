@@ -405,47 +405,20 @@ class PaymentController extends Controller
                     ? (float) $validated['amount']
                     : $previousAmount;
 
-                // When invoice or amount changes we re-allocate so both
-                // invoices stay balanced. Validate the new allocation fits.
-                $invoiceChanged = (int) $newInvoiceId !== (int) $previousInvoiceId;
-                $amountChanged = abs($newAmount - $previousAmount) > 0.005;
-
-                if ($invoiceChanged || $amountChanged) {
-                    // Remove the existing allocation first. This makes the
-                    // payment's current amount available when editing it on
-                    // the same invoice and prevents double-counting.
-                    if ($previousInvoiceId !== null) {
-                        $previous = Invoice::lockForUpdate()->find($previousInvoiceId);
-                        if ($previous) {
-                            $previous->paid_amount = max(0, (float) $previous->paid_amount - $previousAmount);
-                            $previous->balance = max(0, (float) $previous->total - (float) $previous->paid_amount);
-                            $previous->status = $this->resolveInvoiceStatus($previous);
-                            $previous->settlement_status = $previous->paid_amount <= 0 ? 'unpaid' : 'partially_paid';
-                            $previous->save();
-                        }
-                    }
-
-                    if ($newInvoiceId !== null) {
-                        $target = Invoice::lockForUpdate()->findOrFail($newInvoiceId);
-
-                        if ($newAmount > (float) $target->balance) {
-                            throw new \RuntimeException(
-                                "Payment amount ({$newAmount}) exceeds invoice {$target->invoice_number} balance (".(float) $target->balance.')'
-                            );
-                        }
-
-                        $target->paid_amount = (float) $target->paid_amount + $newAmount;
-                        $target->balance = max(0, (float) $target->total - (float) $target->paid_amount);
-                        $target->status = $this->resolveInvoiceStatus($target);
-                        $target->settlement_status = $target->paid_amount <= 0 ? 'unpaid' : ($target->balance <= 0 ? 'paid' : 'partially_paid');
-                        $target->save();
-
+                // #477 (Decision 2026-10-02): a draft payment does not touch any
+                // invoice, so editing it (amount or linked invoice) must NOT
+                // mutate invoice balances either. Settlement — paid_amount,
+                // balance, status, AR — happens only when the payment is posted.
+                // Only drafts reach here (posted payments are locked above).
+                if ((int) $newInvoiceId !== (int) $previousInvoiceId && $newInvoiceId !== null) {
+                    $target = Invoice::find($newInvoiceId);
+                    if ($target) {
                         $payment->customer_id = $target->customer_id;
                     }
-
-                    $payment->invoice_id = $newInvoiceId;
-                    $payment->amount = $newAmount;
                 }
+
+                $payment->invoice_id = $newInvoiceId;
+                $payment->amount = $newAmount;
 
                 $payment->save();
             });
@@ -504,24 +477,10 @@ class PaymentController extends Controller
             }
 
             try {
-                DB::transaction(function () use ($payment) {
-                    if ($payment->invoice_id) {
-                        $invoice = Invoice::find($payment->invoice_id);
-                        if ($invoice) {
-                            $invoice->paid_amount = max(0, (float) $invoice->paid_amount - (float) $payment->amount);
-                            $invoice->balance = $invoice->total - $invoice->paid_amount;
-                            $invoice->status = $this->resolveInvoiceStatus($invoice);
-                            $invoice->settlement_status = $invoice->paid_amount <= 0 ? 'unpaid' : 'partially_paid';
-                            $invoice->save();
-
-                            if ($invoice->customer) {
-                                $invoice->customer->updateOutstanding();
-                            }
-                        }
-                    }
-
-                    $payment->delete();
-                });
+                // #477: only draft (unposted) payments are deletable, and a
+                // draft never touched the invoice — so deleting one must NOT
+                // decrement the invoice's paid_amount/balance.
+                $payment->delete();
 
                 $deletedIds[] = $id;
             } catch (\Throwable $e) {
@@ -548,19 +507,9 @@ class PaymentController extends Controller
             ], 403);
         }
 
-        DB::transaction(function () use ($payment) {
-            if ($payment->invoice_id) {
-                $invoice = Invoice::find($payment->invoice_id);
-                if ($invoice) {
-                    $invoice->paid_amount = max(0, (float) $invoice->paid_amount - (float) $payment->amount);
-                    $invoice->balance = $invoice->total - $invoice->paid_amount;
-                    $invoice->status = $this->resolveInvoiceStatus($invoice);
-                    $invoice->settlement_status = $invoice->paid_amount <= 0 ? 'unpaid' : 'partially_paid';
-                    $invoice->save();
-                }
-            }
-            $payment->delete();
-        });
+        // #477: only draft (unposted) payments are deletable, and a draft never
+        // touched the invoice — deleting one must NOT decrement its balance.
+        $payment->delete();
 
         return response()->json(['message' => 'Payment deleted successfully']);
     }

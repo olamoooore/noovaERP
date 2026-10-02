@@ -585,21 +585,20 @@ class InvoiceService
             $payment->save();
 
             if (! $postImmediately) {
-                // Draft payment: no journal entry yet. syncInvoicePaymentState
-                // below still reflects the allocation, exactly like an imported
-                // recorded payment; posting later creates the ledger entry.
-                $this->syncInvoicePaymentState($invoice, (float) $payment->amount, $payment);
+                // #477 (Decision 2026-10-02): a DRAFT payment must not touch the
+                // invoice. Paid amount, balance, status and AR move only when the
+                // payment is posted (which creates the journal entry). Posting
+                // later runs the settlement sync below via PaymentPostingService.
                 DB::commit();
 
                 return $payment->fresh();
             }
 
             // Post via the canonical PaymentPostingService — ONE realized-FX
-            // aware posting path for UI, channel and API flows (SOP §4).
+            // aware posting path for UI, channel and API flows (SOP §4). Posting
+            // now also runs the invoice settlement sync (#477), so the invoice
+            // and the ledger always move together.
             app(\App\Services\PaymentPostingService::class)->post($payment, $payment->received_by);
-
-            // Update invoice paid amount and balance — single canonical path
-            $this->syncInvoicePaymentState($invoice, (float) $payment->amount, $payment);
 
             DB::commit();
 
@@ -847,6 +846,27 @@ class InvoiceService
      * — used by both recordPayment (which also posts GL) and
      * recordChannelPayment (which skips GL because the channel already posted).
      */
+    /**
+     * #477: settle a payment against its invoice at POST time. This is the
+     * single place a posted payment updates the invoice's paid_amount, balance,
+     * status and AR exposure — invoked by PaymentPostingService::post() so the
+     * subledger and the GL always move together. Standalone payments (no linked
+     * invoice) are a no-op (they leave a customer credit on the ledger).
+     */
+    public function settlePostedPayment(Payment $payment): void
+    {
+        if (! $payment->invoice_id) {
+            return;
+        }
+
+        $invoice = $payment->invoice()->first();
+        if (! $invoice) {
+            return;
+        }
+
+        $this->syncInvoicePaymentState($invoice, (float) $payment->amount, $payment);
+    }
+
     private function syncInvoicePaymentState(Invoice $invoice, float $paymentAmount, ?Payment $payment = null): void
     {
         $beforeState = [

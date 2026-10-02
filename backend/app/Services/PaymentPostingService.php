@@ -226,6 +226,11 @@ class PaymentPostingService
                 'payment_status' => 'applied',
             ]);
 
+            // #477: settlement moves WITH the journal entry — posting is the one
+            // place the invoice's paid_amount/balance/status/AR are updated. A
+            // draft never touched the invoice; this is where it finally does.
+            app(\App\Services\InvoiceService::class)->settlePostedPayment($payment->fresh());
+
             Log::info('Payment posted to ledger', [
                 'payment_id' => $payment->id,
                 'payment_number' => $payment->payment_number,
