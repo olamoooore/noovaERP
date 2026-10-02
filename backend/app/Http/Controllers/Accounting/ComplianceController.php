@@ -419,6 +419,9 @@ class ComplianceController extends Controller
     {
         $this->authorizeWhenConfigured('submit', ComplianceDocument::class);
 
+        // #813 EP2: a journal entry is not an e-invoice source document.
+        return response()->json(['success' => false, 'message' => 'DISABLED_SOURCE_TYPE: a journal entry is not an e-invoice source document and can no longer be submitted to LHDN (#813 EP2).'], 422);
+
         $validated = $request->validate([
             'country_code' => 'required|string|size:2|uppercase',
         ]);
