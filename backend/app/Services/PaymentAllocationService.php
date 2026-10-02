@@ -119,7 +119,11 @@ class PaymentAllocationService
     {
         $applied = (float) $payment->applications()->whereNull('reversed_at')->sum('applied_amount');
 
-        return round((float) $payment->amount - $applied, 2);
+        // #478: a cash discount is part of the payment's settlement capacity,
+        // so it must count when computing what is still unapplied.
+        $capacity = (float) $payment->amount + (float) ($payment->discount_amount ?? 0);
+
+        return round($capacity - $applied, 2);
     }
 
     /**
@@ -137,7 +141,14 @@ class PaymentAllocationService
             $invoice = $application->invoice;
 
             if ($invoice) {
-                $this->invoiceService->restoreRefundToInvoice($invoice, (float) $application->applied_amount);
+                // Decrement the invoice (mirror of applying the allocation).
+                // Using restoreRefundToInvoice here added the amount back —
+                // reversing a receipt INCREASED paid_amount.
+                $this->invoiceService->reverseAllocatedPayment(
+                    $invoice,
+                    (float) $application->applied_amount,
+                    $payment,
+                );
             }
 
             $application->update(['reversed_at' => now()]);

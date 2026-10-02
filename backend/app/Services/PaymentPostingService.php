@@ -151,9 +151,17 @@ class PaymentPostingService
                 $invoiceRate = $payRate;
             }
 
+            // #478: a cash discount settles part of the invoice without cash —
+            // debit Sales discount and credit AR by amount + discount. Realized
+            // FX applies only to the cash leg, so its base stays
+            // bankBase − amount×invoiceRate; the discount is converted at the
+            // invoice snapshot rate (it reduces the receivable at that rate).
+            $discount = round((float) ($payment->discount_amount ?? 0), 2);
             $bankBase = round((float) $payment->amount * $payRate, 2);
-            $arBase = round((float) $payment->amount * $invoiceRate, 2);
-            $fx = round($bankBase - $arBase, 2);
+            $arCashBase = round((float) $payment->amount * $invoiceRate, 2);
+            $discountBase = round($discount * $invoiceRate, 2);
+            $arBase = round($arCashBase + $discountBase, 2);
+            $fx = round($bankBase - $arCashBase, 2);
 
             $lines = [
                 // DR Cash/Bank (at settlement rate)
@@ -167,20 +175,35 @@ class PaymentPostingService
                     originalAmount: $foreign ? (float) $payment->amount : null,
                     exchangeRate: $foreign ? $payRate : null,
                 ),
-                // CR Accounts Receivable (at the invoice snapshot rate) — for
-                // standalone payments this leaves a customer credit that
-                // nets against future invoices.
-                new PostingRequestLine(
-                    accountMappingKey: 'accounts_receivable',
-                    accountId: null,
-                    debit: 0,
-                    credit: $arBase,
-                    description: 'Payment received - '.$payment->payment_number,
-                    currencyCode: $foreign ? $baseCurrency : null,
-                    originalAmount: $foreign ? (float) $payment->amount : null,
-                    exchangeRate: $foreign ? $invoiceRate : null,
-                ),
             ];
+
+            if ($discount > 0) {
+                // DR Sales discount allowed (the non-cash part of the settlement)
+                $lines[] = new PostingRequestLine(
+                    accountMappingKey: 'sales_discount',
+                    accountId: null,
+                    debit: $discountBase,
+                    credit: 0,
+                    description: 'Sales discount - '.$payment->payment_number,
+                    currencyCode: $foreign ? $baseCurrency : null,
+                    originalAmount: $foreign ? $discount : null,
+                    exchangeRate: $foreign ? $invoiceRate : null,
+                );
+            }
+
+            // CR Accounts Receivable (at the invoice snapshot rate) — for
+            // standalone payments this leaves a customer credit that nets
+            // against future invoices. The AR cleared is amount + discount.
+            $lines[] = new PostingRequestLine(
+                accountMappingKey: 'accounts_receivable',
+                accountId: null,
+                debit: 0,
+                credit: $arBase,
+                description: 'Payment received - '.$payment->payment_number,
+                currencyCode: $foreign ? $baseCurrency : null,
+                originalAmount: $foreign ? round((float) $payment->amount + $discount, 2) : null,
+                exchangeRate: $foreign ? $invoiceRate : null,
+            );
 
             if ($fx > 0) {
                 // Received MORE in base than AR cleared → realized FX gain.

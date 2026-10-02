@@ -864,7 +864,70 @@ class InvoiceService
             return;
         }
 
-        $this->syncInvoicePaymentState($invoice, (float) $payment->amount, $payment);
+        // #478: a cash discount is part of what settles the invoice — the
+        // customer pays `amount` and the discount clears the rest.
+        $settled = round((float) $payment->amount + (float) ($payment->discount_amount ?? 0), 2);
+
+        $this->syncInvoicePaymentState($invoice, $settled, $payment);
+    }
+
+    /**
+     * Reverse an applied payment portion from its invoice (the mirror of
+     * syncInvoicePaymentState). Used by PaymentAllocationService when a posted
+     * payment's allocations are undone by a correction (reversal / refund /
+     * unapply). Decrements paid_amount, restores the balance, recomputes the
+     * status and writes the settlement audit log so the un-settlement is
+     * traceable.
+     */
+    public function reverseAllocatedPayment(Invoice $invoice, float $amount, ?Payment $payment = null): void
+    {
+        $amount = round($amount, 2);
+        if ($amount === 0.0) {
+            return;
+        }
+
+        $invoice = $invoice->fresh();
+
+        $beforeState = [
+            'paid_amount' => $invoice->paid_amount,
+            'balance' => $invoice->balance,
+            'status' => $invoice->status,
+        ];
+
+        $newPaid = max(0.0, round((float) $invoice->paid_amount - $amount, 2));
+        $newBalance = max(0.0, round((float) $invoice->total - $newPaid, 2));
+        $newStatus = match (true) {
+            $newBalance <= 0 => 'paid',
+            $newPaid > 0 => 'partial',
+            default => 'sent',
+        };
+
+        Invoice::where('id', $invoice->id)->update([
+            'paid_amount' => $newPaid,
+            'balance' => $newBalance,
+            'status' => $newStatus,
+        ]);
+
+        $invoice->refresh();
+
+        SettlementAuditLog::create([
+            'invoice_id' => $invoice->id,
+            'payment_id' => $payment?->id,
+            'payment_amount' => -$amount,
+            'before_paid_amount' => $beforeState['paid_amount'],
+            'after_paid_amount' => $invoice->paid_amount,
+            'before_balance' => $beforeState['balance'],
+            'after_balance' => $invoice->balance,
+            'before_status' => $beforeState['status'],
+            'after_status' => $invoice->status,
+            'actor_user_id' => TenantUserHelper::resolveTenantUserId(),
+            'settlement_method' => $payment?->payment_method ?? 'unknown',
+            'notes' => 'Payment allocation reversed',
+        ]);
+
+        if ($invoice->customer) {
+            $invoice->customer->updateOutstanding();
+        }
     }
 
     private function syncInvoicePaymentState(Invoice $invoice, float $paymentAmount, ?Payment $payment = null): void
