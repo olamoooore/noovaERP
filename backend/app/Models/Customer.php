@@ -25,6 +25,7 @@ class Customer extends Model
 
         // Basic Info
         'type',
+        'buyer_type',
         'code',
         'name',
         'email',
