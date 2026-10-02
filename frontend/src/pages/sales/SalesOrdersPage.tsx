@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -39,14 +39,20 @@ export function SalesOrdersPage() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const [searchQuery, setSearchQuery] = useState('')
+  // Wide search hits the DB per term; debounce typing like the other lists do.
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchQuery(searchQuery), 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
   const [statusFilter, setStatusFilter] = useState('all')
   const [channelFilter, setChannelFilter] = useState('all')
 
   const { data, isLoading } = useQuery({
-    queryKey: ['sales-orders', { page, pageSize, searchQuery, statusFilter, channelFilter }],
+    queryKey: ['sales-orders', { page, pageSize, debouncedSearchQuery, statusFilter, channelFilter }],
     queryFn: async () => {
       const params: any = { per_page: pageSize, page }
-      if (searchQuery.trim()) params.search = searchQuery.trim()
+      if (debouncedSearchQuery.trim()) params.search = debouncedSearchQuery.trim()
       if (statusFilter !== 'all') params.status = statusFilter
       if (channelFilter !== 'all') params.channel = channelFilter
       const response = await api.get('/sales/orders', { params })
@@ -122,7 +128,7 @@ export function SalesOrdersPage() {
         <div className="flex gap-3">
           <input
             type="text"
-            placeholder="Search orders..."
+            placeholder="Search order, customer, contact…"
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); setPage(1) }}
             className="px-3 py-2 border rounded-md text-sm w-56"
@@ -207,7 +213,30 @@ export function SalesOrdersPage() {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>{order.customer?.name || '-'}</TableCell>
+                      <TableCell>
+                        <div>{order.customer?.name || '-'}</div>
+                        {/* Wide search can match a contact/address/line/tag on the order's customer. */}
+                        {(order.matched_contacts?.length ?? 0) > 0 && (
+                          <div className="truncate text-xs text-primary" title={order.matched_contacts.join(', ')}>
+                            Contact: {order.matched_contacts.join(', ')}
+                          </div>
+                        )}
+                        {(order.matched_tags?.length ?? 0) > 0 && (
+                          <div className="truncate text-xs text-amber-600" title={order.matched_tags.join(', ')}>
+                            Tag: {order.matched_tags.join(', ')}
+                          </div>
+                        )}
+                        {(order.matched_lines?.length ?? 0) > 0 && (
+                          <div className="truncate text-xs text-muted-foreground" title={order.matched_lines.join(' · ')}>
+                            Line: {order.matched_lines.join(' · ')}
+                          </div>
+                        )}
+                        {(order.matched_addresses?.length ?? 0) > 0 && (
+                          <div className="truncate text-xs text-muted-foreground" title={order.matched_addresses.join(' · ')}>
+                            Address: {order.matched_addresses.join(' · ')}
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="capitalize">{order.channel || 'admin'}</Badge>
                       </TableCell>

@@ -3,6 +3,8 @@
 namespace Modules\Sales\Http\Controllers;
 
 use App\Services\CustomerCreditNoteService;
+use App\Services\CustomerWideSearchService;
+use App\Services\DocumentWideSearchService;
 use App\Services\SalesApprovalGate;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -42,14 +44,9 @@ class SalesOrderController extends Controller
             $query->where('customer_id', $request->customer_id);
         }
 
-        if ($request->has('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('sales_order_number', 'ILIKE', "%{$search}%")
-                    ->orWhereHas('customer', function ($cq) use ($search) {
-                        $cq->where('name', 'ILIKE', "%{$search}%");
-                    });
-            });
+        $search = $request->filled('search') ? trim((string) $request->search) : '';
+        if ($search !== '') {
+            app(DocumentWideSearchService::class)->apply($query, $search, $this->wideSearchConfig());
         }
 
         if ($request->has('date_from')) {
@@ -60,9 +57,43 @@ class SalesOrderController extends Controller
             $query->where('order_date', '<=', $request->date_to);
         }
 
-        return response()->json(
-            $query->paginate($request->per_page ?? 20)
-        );
+        if ($search !== '') {
+            $query->with(app(DocumentWideSearchService::class)->eagerLoads($this->wideSearchConfig()));
+        }
+
+        $orders = $query->paginate($request->per_page ?? 20);
+
+        if ($search !== '') {
+            app(DocumentWideSearchService::class)->annotate($orders, $search, $this->wideSearchConfig());
+        }
+
+        return response()->json($orders);
+    }
+
+    /**
+     * Wide-search configuration for the sales-order list — matches the order's
+     * identity/header references, its customer's full surface, line contents,
+     * the originating quotation number and its tags. The address snapshots are
+     * json columns, so they go through jsonColumns (::text cast before ILIKE).
+     */
+    private function wideSearchConfig(): array
+    {
+        return [
+            'columns' => [
+                'sales_order_number', 'customer_reference', 'internal_reference',
+                'po_number', 'notes', 'attention_to', 'contact_email', 'contact_phone',
+            ],
+            'jsonColumns' => ['billing_address_snapshot', 'shipping_address_snapshot'],
+            'party' => [
+                'relation' => 'customer',
+                'service' => CustomerWideSearchService::class,
+                'contacts' => 'customerContacts',
+                'addresses' => 'addresses',
+            ],
+            'lines' => ['relation' => 'lines', 'columns' => ['description', 'model_number', 'product_notes', 'sku']],
+            'related' => ['quotation' => 'quotation_number'],
+            'tagAlias' => 'sales_order',
+        ];
     }
 
     public function store(Request $request)
