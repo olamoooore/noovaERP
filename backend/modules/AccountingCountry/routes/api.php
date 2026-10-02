@@ -52,6 +52,10 @@ Route::prefix('accounting/tax-report')
             ->middleware(RequirePermission::using('reports.view'));
         Route::get('/filings', [TaxReportController::class, 'filings']);
 
+        // #281 F18: exception catalogue + close-blocking status.
+        Route::get('/exceptions', [TaxReportController::class, 'exceptions'])
+            ->middleware(RequirePermission::using('reports.view'));
+
         // #277 F5: override report (reports.view per acceptance).
         Route::get('/overrides', [TaxReportController::class, 'overrides'])
             ->middleware(RequirePermission::using('reports.view'));

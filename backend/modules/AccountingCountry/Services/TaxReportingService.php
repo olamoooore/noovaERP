@@ -28,6 +28,85 @@ class TaxReportingService
      * @return array{months: array<int,string>, rows: array<int, array<string, mixed>>, by_tax_code: array<int, array<string, mixed>>, totals: array{output_tax: float, input_tax: float, net: float}}
      */
     /**
+     * F18 (#281): deterministic exception catalogue for a period — variance,
+     * uncoded control-account movement (reversal-excluded), unfiled activity
+     * and trail rows missing a determination. Blocking exceptions feed the
+     * readiness fact (ACC-011 close gate).
+     *
+     * @return array<int, array{code: string, severity: string, blocking: bool, count: int, message: string}>
+     */
+    public function exceptions(string $period, ?int $legalEntityId = null): array
+    {
+        $months = self::expandFilingPeriod($period) ?: [$period];
+        $exceptions = [];
+
+        $recon = $this->reconciliation($period);
+
+        if (($recon['balanced'] ?? true) === false) {
+            $exceptions[] = [
+                'code' => 'RECONCILIATION_VARIANCE',
+                'severity' => 'high',
+                'blocking' => true,
+                'count' => 1,
+                'message' => 'Tax trail does not reconcile to GL for '.$period.'.',
+            ];
+        }
+
+        $uncoded = self::uncodedTaxAccountMovement($months, $legalEntityId);
+
+        if (($uncoded['count'] ?? 0) > 0) {
+            $exceptions[] = [
+                'code' => 'UNCODED_TAX_ACCOUNT_MOVEMENT',
+                'severity' => 'medium',
+                'blocking' => true,
+                'count' => (int) $uncoded['count'],
+                'message' => 'GL lines on tax control accounts without a tax_code.',
+            ];
+        }
+
+        $activity = DB::table('tax_transaction_details as ttd')
+            ->join('journal_entries as je', 'je.id', '=', 'ttd.journal_entry_id')
+            ->whereIn('ttd.reporting_period', $months)
+            ->where('je.status', 'posted')
+            ->count();
+
+        $filed = DB::table('statutory_return_filings')
+            ->whereNull('superseded_at')
+            ->whereIn('period', array_merge($months, [$period]))
+            ->when($legalEntityId !== null, fn ($q) => $q->where('entity_key', $legalEntityId), fn ($q) => $q->where('entity_key', 0))
+            ->exists();
+
+        if ($activity > 0 && ! $filed) {
+            $exceptions[] = [
+                'code' => 'UNFILED_PERIOD',
+                'severity' => 'high',
+                'blocking' => true,
+                'count' => $activity,
+                'message' => 'Tax activity exists but the period has no current filing.',
+            ];
+        }
+
+        $missingDetermination = DB::table('tax_transaction_details as ttd')
+            ->join('journal_entries as je', 'je.id', '=', 'ttd.journal_entry_id')
+            ->whereIn('ttd.reporting_period', $months)
+            ->where('je.status', 'posted')
+            ->whereNull('ttd.tax_determination_id')
+            ->count();
+
+        if ($missingDetermination > 0) {
+            $exceptions[] = [
+                'code' => 'MISSING_DETERMINATION',
+                'severity' => 'medium',
+                'blocking' => true,
+                'count' => $missingDetermination,
+                'message' => 'Trail rows without a determination reference (legacy/imported data).',
+            ];
+        }
+
+        return $exceptions;
+    }
+
+    /**
      * #278 F4: versioned tax-readiness fact for ACC-011 Financial Close
      * (locked / filed / unfiled + reconciliation state + deterministic
      * version hash). Financial Close consumes this instead of guessing.
@@ -59,9 +138,17 @@ class TaxReportingService
             'reconciliation' => $reconciliation,
         ];
 
+        // F18 (#281): close-blocking exceptions gate ACC-011.
+        $exceptions = $this->exceptions($period, $legalEntityId);
+        $fact['blocking_exceptions'] = array_values(array_map(
+            fn ($e) => $e['code'],
+            array_filter($exceptions, fn ($e) => $e['blocking']),
+        ));
+        $fact['close_blocking'] = $fact['blocking_exceptions'] !== [];
+
         $fact['version'] = sha1(json_encode([
             $fact['period'], $fact['locked'], $fact['filed'], $fact['filing_state'],
-            $fact['filing_version'], $reconciliation,
+            $fact['filing_version'], $reconciliation, $fact['blocking_exceptions'],
         ]));
 
         return $fact;

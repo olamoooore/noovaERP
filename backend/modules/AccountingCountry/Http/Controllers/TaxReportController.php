@@ -130,6 +130,31 @@ class TaxReportController extends Controller
     }
 
     /**
+     * F18 (#281): exception catalogue + close-blocking status for a period.
+     */
+    public function exceptions(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate([
+            'period' => ['required', 'string', 'regex:/^\d{4}-(\d{2}|Q[1-4])$/'],
+            'entity_id' => ['nullable', 'integer', 'exists:legal_entities,id'],
+        ]);
+
+        $exceptions = $this->reporting->exceptions(
+            $validated['period'],
+            isset($validated['entity_id']) ? (int) $validated['entity_id'] : null,
+        );
+
+        return response()->json([
+            'data' => [
+                'period' => $validated['period'],
+                'status' => $exceptions === [] ? 'reconciled' : 'exceptions',
+                'close_blocking' => collect($exceptions)->contains(fn ($e) => $e['blocking']),
+                'exceptions' => $exceptions,
+            ],
+        ]);
+    }
+
+    /**
      * #277 F5: override report — overridden documents only, with reason,
      * actor, delta and approval state.
      */
