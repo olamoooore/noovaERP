@@ -21,6 +21,7 @@ import { useToast } from '@/hooks/use-toast';
 import { cn, formatCurrency, formatDate, getApiErrorMessage } from '@/lib/utils';
 import api from '@/lib/api'
 import { resolveLineTaxRate } from '@/lib/lineTax';
+import { computeDocumentTotals } from '@/lib/documentTotals';
 import pricingApi from '@/lib/pricingApi'
 import { useAuthStore } from '@/store/authStore';
 import { ContactSearchCombobox } from '@/components/ui/ContactSearchCombobox';
@@ -190,6 +191,15 @@ const emptyLine = (): InvoiceLine => ({
   tax_rate: '',
   discount_amount: '',
 });
+
+// A fully-empty, untouched product row. These placeholder rows must be ignored
+// consistently by every validation + the payload filter (issue #290) — they
+// used to block saving after catalogue adds while the starter row lingered.
+const isBlankPlaceholderLine = (line: InvoiceLine): boolean =>
+  (line.line_type ?? 'product') === 'product'
+  && !line.product_id
+  && !line.description.trim()
+  && !line.sku.trim();
 
 const initialCustomerForm: CustomerFormState = {
   type: 'company',
@@ -1129,24 +1139,33 @@ export const CreateInvoicePage: React.FC = () => {
   const addLine = () => setLines([...lines, { ...emptyLine(), tax_rate: defaultTaxRate || '' }]);
   const addTextLine = (line_type: 'note' | 'section') => setLines([...lines, { ...emptyLine(), line_type, quantity: 0, unit_price: 0, tax_rate: 0, discount_amount: 0 }]);
   const addCatalogProducts = (selected: Array<{ product: any; quantity: number }>) => {
-    const next = [...lines];
+    // F4/#290: when the grid is just the lone untouched starter row, REPLACE it
+    // instead of appending — otherwise the empty row lingers and blocks saving.
+    const next: InvoiceLine[] = lines.length === 1 && isBlankPlaceholderLine(lines[0])
+      ? []
+      : [...lines];
     selected.forEach(({ product, quantity }) => {
-      const existing = next.find((line) => line.line_type === 'product' && line.product_id === String(product.id));
-      if (existing) {
-        const cur = existing.quantity === '' ? 0 : existing.quantity;
-        existing.quantity = cur + quantity;
+      const existingIndex = next.findIndex(
+        (line) => line.line_type === 'product' && line.product_id === String(product.id),
+      );
+      if (existingIndex >= 0) {
+        // #288(d): build a new object — never mutate React state in place.
+        const cur = next[existingIndex].quantity === '' ? 0 : Number(next[existingIndex].quantity);
+        next[existingIndex] = { ...next[existingIndex], quantity: cur + quantity };
       } else {
         next.push({
           ...emptyLine(),
           product_id: String(product.id),
           sku: product.sku || '',
-          description: product.name || '',
+          // #288(c): use the shared description helper, not the bare name.
+          description: getProductLineDescription(product),
           unit_price: Number(product.price || 0),
           quantity,
+          // #288(a): same pricing path as a row pick — mark 'auto' and resolve.
           price_mode: 'auto',
-          // F2: catalogue additions must follow the same tax resolution as a
-          // line-row pick (product tax → linked tax → tenant default) — they
-          // were silently saved as 0% tax.
+          // F2/#288(b): catalogue additions must follow the same tax resolution
+          // as a line-row pick (product tax → linked tax → tenant default) —
+          // they were silently saved as 0% tax.
           tax_rate: resolveLineTaxRate(product, defaultTaxRate),
         });
       }
@@ -1499,35 +1518,12 @@ export const CreateInvoicePage: React.FC = () => {
     setCustomerDialogOpen(true);
   };
 
-  const grossSubtotal = lines.reduce((sum, line) => {
-    const qty = line.quantity === '' ? 0 : line.quantity;
-    const unitPrice = line.unit_price === '' ? 0 : line.unit_price;
-    return sum + qty * unitPrice;
-  }, 0);
-  const lineDiscounts = lines.reduce((sum, line) => sum + (line.discount_amount === '' ? 0 : line.discount_amount), 0);
-  // Mirrors Invoice::calculateTotals(): the stored subtotal is net of line
-  // discounts, the document discount is applied BEFORE tax and scales the
-  // total tax by (subtotal − discount) / subtotal.
-  const subtotal = grossSubtotal - lineDiscounts;
-  const lineTaxSum = lines.reduce((sum, line) => {
-    const qty = line.quantity === '' ? 0 : line.quantity;
-    const unitPrice = line.unit_price === '' ? 0 : line.unit_price;
-    const taxRate = line.tax_rate === '' ? 0 : line.tax_rate;
-    const discount = line.discount_amount === '' ? 0 : line.discount_amount;
-    return sum + (qty * unitPrice - discount) * (taxRate / 100);
-  }, 0);
-  const discountAmt = discountAmount === '' ? 0 : discountAmount;
-  const documentDiscountAmount = Math.min(
-    discountMode === 'percentage' ? subtotal * (discountAmt / 100) : discountAmt,
-    Math.max(subtotal, 0),
-  );
-  const taxableRatio = documentDiscountAmount > 0 && subtotal > 0
-    ? Math.max(subtotal - documentDiscountAmount, 0) / subtotal
-    : 0;
-  const taxTotal = documentDiscountAmount > 0
-    ? Math.round(lineTaxSum * taxableRatio * 100) / 100
-    : lineTaxSum;
-  const total = subtotal - documentDiscountAmount + taxTotal;
+  // Mirrors Invoice::calculateTotals() via the shared helper so the on-screen
+  // figure always matches what the server persists (issue #289): the document
+  // discount is applied BEFORE tax and the line tax is pro-rated by
+  // (subtotal − discount) / subtotal, rounded to 2dp.
+  const { subtotal, lineDiscounts, documentDiscountAmount, taxTotal, total } =
+    computeDocumentTotals(lines, { mode: discountMode, amount: discountAmount });
 
   const handleCustomerFormSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -1628,8 +1624,7 @@ export const CreateInvoicePage: React.FC = () => {
         requestor_contact_id: row.requestor_contact_id ? String(row.requestor_contact_id) : '',
         buyer_contact_id: row.buyer_contact_id ? String(row.buyer_contact_id) : '',
       })),
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+         );
   }, [existingInvoice, invoiceLoaded]);
 
   // Existing invoices often carry only a free-text case number. When it
@@ -1648,20 +1643,14 @@ export const CreateInvoicePage: React.FC = () => {
       }
     })();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditMode, caseNumber, customerId, primaryMedicalCaseId]);
 
   const handleSubmit = (event: React.FormEvent, linesOverride?: InvoiceLine[]) => {
     event.preventDefault();
-    // F4: untouched placeholder rows are ignored everywhere — they used to
+    // F4/#290: untouched placeholder rows are ignored everywhere — they used to
     // block saving ("Product required on line 1") after catalogue adds while
     // an empty starting row remained.
-    const isBlankPlaceholder = (line: InvoiceLine) =>
-      (line.line_type ?? 'product') === 'product'
-      && !line.product_id
-      && !line.description.trim()
-      && !line.sku.trim();
-    const submissionLines = (linesOverride ?? lines).filter((line) => !isBlankPlaceholder(line));
+    const submissionLines = (linesOverride ?? lines).filter((line) => !isBlankPlaceholderLine(line));
 
     if (!customerId) {
       toast({ variant: 'destructive', title: 'Please select a customer' });
@@ -2860,8 +2849,15 @@ export const CreateInvoicePage: React.FC = () => {
                                 updated[index].sku = (product as any).sku || '';
                                 updated[index].tracking_method = (product as any).tracking_method || 'none';
                                 updated[index].tax_rate = resolveLineTaxRate(product, defaultTaxRate);
+                                // #287: a row product-pick must take the SAME pricing
+                                // path as updateLine() — mark the line 'auto' and run
+                                // the price-list resolver so the customer list price +
+                                // floor/minimum check apply (not the raw product price).
+                                updated[index].price_mode = 'auto';
+                                updated[index].pricing_source = null;
                               }
                               setLines(updated);
+                              if (product) void resolvePricingForLines(customerId, updated);
                               // D6(e): picking on the last row advances to a new one.
                               if (product) appendLineIfLast(index);
                             }}

@@ -131,7 +131,9 @@ export function QuotesPage() {
     allMatchingSelected,
     isSelectingAll,
   } = useBulkSelection({
-    pageIds: quotes.filter((quote: any) => ['draft', 'sent', 'confirmed'].includes(quote.status)).map((quote: any) => quote.id),
+    // #294: only draft quotations are deletable (backend single-delete rule is
+    // draft-only), so only drafts are selectable for bulk operations.
+    pageIds: quotes.filter((quote: any) => quote.status === 'draft').map((quote: any) => quote.id),
     scopeKey: JSON.stringify(selectionFilters),
     fetchAllIds: async () => {
       const response = await api.get('/quotations', { params: { ...selectionFilters, ids_only: 1 } })
@@ -376,7 +378,7 @@ export function QuotesPage() {
             <>
               {selectedIds.length > 0 && (
                 <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-4 py-2">
-                  <BulkSelectionNotice pageSize={quotes.filter((quote: any) => ['draft', 'sent', 'confirmed'].includes(quote.status)).length} allPageSelected={allPageSelected} selectedCount={selectedIds.length} allMatchingSelected={allMatchingSelected} isSelectingAll={isSelectingAll} onSelectAllMatching={selectAllMatching} noun="quotations" />
+                  <BulkSelectionNotice pageSize={quotes.filter((quote: any) => quote.status === 'draft').length} allPageSelected={allPageSelected} selectedCount={selectedIds.length} allMatchingSelected={allMatchingSelected} isSelectingAll={isSelectingAll} onSelectAllMatching={selectAllMatching} noun="quotations" />
                   <Button size="sm" variant="destructive" onClick={handleBulkDelete} disabled={bulkDeleteMutation.isPending}>
                     <Icon icon="solar:trash-bin-trash-bold" className="mr-2 h-4 w-4" />
                     Delete Selected
@@ -422,7 +424,7 @@ export function QuotesPage() {
                         onClick={() => navigate(`/quotations/${quote.id}`)}
                       >
                         <TableCell onClick={(event) => event.stopPropagation()}>
-                          {['draft', 'sent', 'confirmed'].includes(quote.status) && (
+                          {quote.status === 'draft' && (
                             <input
                               type="checkbox"
                               checked={selectedIds.includes(quote.id)}
@@ -513,7 +515,7 @@ export function QuotesPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {selectedIds.length} quotation(s)?</AlertDialogTitle>
             <AlertDialogDescription>
-              Only draft, sent, and confirmed quotations will be deleted. Quotations that have already been converted to invoices cannot be deleted and will be skipped.
+              Only draft quotations can be deleted. Sent, confirmed or converted quotations cannot be deleted and will be skipped.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

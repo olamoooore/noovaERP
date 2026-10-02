@@ -58,6 +58,13 @@ const emptyLine = (): QuotationLine => ({
   discount_amount: '',
 });
 
+// A fully-empty, untouched product row — ignored by validation and replaced
+// (not appended to) by catalogue adds (#290).
+const isBlankPlaceholderLine = (line: QuotationLine): boolean =>
+  (line.line_type ?? 'product') === 'product'
+  && !line.product_id
+  && !line.description.trim();
+
 export const QuotationEditPage: React.FC = () => {
   const [hiddenLineColumns, setHiddenLineColumns] = useState<number[]>([5])
   const [draggedLineIndex, setDraggedLineIndex] = useState<number | null>(null)
@@ -198,11 +205,30 @@ export const QuotationEditPage: React.FC = () => {
   const addNote = () => setLines([...lines, { ...emptyLine(), line_type: 'note', description: '', quantity: 0, unit_price: 0, tax_rate: 0, discount_amount: 0 }]);
   const addSection = () => setLines([...lines, { ...emptyLine(), line_type: 'section', description: '', quantity: 0, unit_price: 0, tax_rate: 0, discount_amount: 0 }]);
   const addCatalogProducts = (items: Array<{ product: any; quantity: number }>) => {
-    const updated = [...lines];
+    // #290: replace the lone untouched starter row instead of appending.
+    const updated: QuotationLine[] = lines.length === 1 && isBlankPlaceholderLine(lines[0])
+      ? []
+      : [...lines];
     items.forEach(({ product, quantity }) => {
-      const existing = updated.find((line) => line.line_type !== 'note' && line.product_id === String(product.id));
-      if (existing) existing.quantity += quantity;
-      else updated.push({ ...emptyLine(), product_id: String(product.id), description: product.name || '', unit_price: Number(product.price || product.selling_price || 0), quantity, tax_rate: resolveLineTaxRate(product) });
+      const existingIndex = updated.findIndex(
+        (line) => line.line_type !== 'note' && line.product_id === String(product.id),
+      );
+      if (existingIndex >= 0) {
+        // #288(d): never mutate state in place — build a new object.
+        updated[existingIndex] = { ...updated[existingIndex], quantity: updated[existingIndex].quantity + quantity };
+      } else {
+        updated.push({
+          ...emptyLine(),
+          product_id: String(product.id),
+          // #288(c): shared description helper, not the bare name.
+          description: getProductLineDescription(product),
+          model_number: product.manufacturer_part_number || '',
+          unit_price: Number(product.price || product.selling_price || 0),
+          quantity,
+          // #288(b): tax from the same resolver the row pick uses, not hard 0.
+          tax_rate: resolveLineTaxRate(product),
+        });
+      }
     });
     setLines(updated);
   };
@@ -273,7 +299,11 @@ export const QuotationEditPage: React.FC = () => {
       return;
     }
 
-    const missingProductIndex = lines.findIndex((line) =>
+    // #290: ignore fully-empty untouched rows consistently (same as the payload
+    // filter below) so a lingering starter row never blocks saving.
+    const submissionLines = lines.filter((line) => !isBlankPlaceholderLine(line));
+
+    const missingProductIndex = submissionLines.findIndex((line) =>
       (line.line_type ?? 'product') === 'product' && !line.product_id
     );
     if (missingProductIndex >= 0) {
@@ -313,7 +343,7 @@ export const QuotationEditPage: React.FC = () => {
       discount_amount: documentDiscountAmount || 0,
       discount_type: discountMode,
       discount_value: discountValue,
-  lines: lines
+  lines: submissionLines
     .filter((line) => line.description || line.product_id)
     .map((line, index) => ({
       line_type: line.line_type || 'product',

@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { formatCurrency, getApiErrorMessage } from '@/lib/utils';
 import api from '@/lib/api'
 import { resolveLineTaxRate } from '@/lib/lineTax';
+import { computeDocumentTotals } from '@/lib/documentTotals';
 import pricingApi from '@/lib/pricingApi'
 import { useAuthStore } from '@/store/authStore';
 import { getProductLineDescription, ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
@@ -91,6 +92,14 @@ const emptyLine = (): QuotationLine => ({
   tax_rate: '',
   discount_amount: '',
 });
+
+// A fully-empty, untouched product row — ignored consistently by validation and
+// the payload filter, and replaced (not appended to) by catalogue adds (#290).
+const isBlankPlaceholderLine = (line: QuotationLine): boolean =>
+  (line.line_type ?? 'product') === 'product'
+  && !line.product_id
+  && !line.description.trim()
+  && !(line.sku ?? '').trim();
 
 export const QuotationCreatePage: React.FC = () => {
   const [hiddenLineColumns, setHiddenLineColumns] = useState<number[]>([6])
@@ -354,7 +363,38 @@ export const QuotationCreatePage: React.FC = () => {
 
   const addLine = () => setLines([...lines, emptyLine()]);
   const addTextLine = (line_type: 'note' | 'section') => setLines([...lines, { ...emptyLine(), line_type, quantity: 0, unit_price: 0, tax_rate: 0, discount_amount: 0 }]);
-  const addCatalogProducts = (selected: Array<{ product: any; quantity: number }>) => { const next = [...lines]; selected.forEach(({ product, quantity }) => { const existing = next.find((line) => line.line_type === 'product' && line.product_id === String(product.id)); if (existing) existing.quantity += quantity; else next.push({ ...emptyLine(), product_id: String(product.id), sku: product.sku || '', description: product.name || '', unit_price: Number(product.price || 0), quantity }); }); setLines(next); };
+  const addCatalogProducts = (selected: Array<{ product: any; quantity: number }>) => {
+    // #290: replace the lone untouched starter row instead of appending after it.
+    const next: QuotationLine[] = lines.length === 1 && isBlankPlaceholderLine(lines[0])
+      ? []
+      : [...lines];
+    selected.forEach(({ product, quantity }) => {
+      const existingIndex = next.findIndex(
+        (line) => line.line_type === 'product' && line.product_id === String(product.id),
+      );
+      if (existingIndex >= 0) {
+        // #288(d): never mutate state in place — build a new object.
+        next[existingIndex] = { ...next[existingIndex], quantity: next[existingIndex].quantity + quantity };
+      } else {
+        next.push({
+          ...emptyLine(),
+          product_id: String(product.id),
+          sku: product.sku || '',
+          // #288(c): shared description helper, not the bare name.
+          description: getProductLineDescription(product),
+          unit_price: Number(product.price || 0),
+          quantity,
+          // #288(a): same pricing path as a row pick.
+          price_mode: 'auto',
+          // #288(b): tax from the same resolver the row pick uses, not hard 0.
+          tax_rate: resolveLineTaxRate(product),
+        });
+      }
+    });
+    setLines(next);
+    // #288(a): catalogue additions must price through the engine too.
+    void resolvePricingForLines(next);
+  };
 
   const duplicateLine = (index: number) => {
     const targetLine = lines[index];
@@ -393,25 +433,16 @@ export const QuotationCreatePage: React.FC = () => {
     return discounted + tax;
   };
 
-  const subtotal = lines.reduce((sum, line) => {
-    const unitPrice = line.unit_price === '' ? 0 : line.unit_price;
-    return sum + line.quantity * unitPrice;
-  }, 0);
-  const taxTotal = lines.reduce((sum, line) => {
-    const unitPrice = line.unit_price === '' ? 0 : line.unit_price;
-    const taxRate = line.tax_rate === '' ? 0 : line.tax_rate;
-    const discount = line.discount_amount === '' ? 0 : line.discount_amount;
-    const base = line.quantity * unitPrice;
-    return sum + (base - discount) * (taxRate / 100);
-  }, 0);
-  const lineDiscounts = lines.reduce((sum, line) => sum + (line.discount_amount === '' ? 0 : line.discount_amount), 0);
+  // Mirrors Invoice::calculateTotals() via the shared helper so the quotation
+  // screen agrees with the invoice screen and the server (issue #289).
+  const documentTotals = computeDocumentTotals(lines, { mode: discountMode, amount: discountAmount });
+  // The totals card shows the gross subtotal + line discounts separately.
+  const subtotal = documentTotals.grossSubtotal;
+  const lineDiscounts = documentTotals.lineDiscounts;
+  const documentDiscountAmount = documentTotals.documentDiscountAmount;
+  const taxAfterDocumentDiscount = documentTotals.taxTotal;
+  const total = documentTotals.total;
   const discountValue = discountAmount === '' ? 0 : discountAmount;
-  const subtotalAfterLineDiscounts = Math.max(subtotal - lineDiscounts, 0);
-  const requestedDocumentDiscount = discountMode === 'percentage' ? subtotal * (discountValue / 100) : discountValue;
-  const documentDiscountAmount = Math.min(requestedDocumentDiscount, subtotalAfterLineDiscounts);
-  const taxableAmount = Math.max(subtotalAfterLineDiscounts - documentDiscountAmount, 0);
-  const taxAfterDocumentDiscount = subtotalAfterLineDiscounts > 0 ? taxTotal * (taxableAmount / subtotalAfterLineDiscounts) : 0;
-  const total = taxableAmount + taxAfterDocumentDiscount;
   const [customQuoteNumber, setCustomQuoteNumber] = useState('');
   const quoteNumberPreview = `QUO-${new Date(quotationDate).getFullYear()}-XXXX`;
 
@@ -423,12 +454,16 @@ export const QuotationCreatePage: React.FC = () => {
       return;
     }
 
-    if (lines.length === 0 || lines.every((line) => !line.description && !line.product_id)) {
+    // #290: ignore fully-empty untouched rows consistently (same as the payload
+    // filter below) so a lingering starter row never blocks saving.
+    const submissionLines = lines.filter((line) => !isBlankPlaceholderLine(line));
+
+    if (submissionLines.length === 0 || submissionLines.every((line) => !line.description && !line.product_id)) {
       toast({ variant: 'destructive', title: 'Please add at least one line item' });
       return;
     }
 
-    const missingProductIndex = lines.findIndex((line) =>
+    const missingProductIndex = submissionLines.findIndex((line) =>
       (line.line_type ?? 'product') === 'product' && !line.product_id
     );
     if (missingProductIndex >= 0) {
