@@ -61,6 +61,15 @@ class TaxEngineController extends Controller
     }
 
     /**
+     * #746 T13 AC3: products pinned to a tax rule that can no longer resolve
+     * (expired / inactive / deleted / missing), with successor status.
+     */
+    public function expiredRuleProducts(): JsonResponse
+    {
+        return response()->json(['data' => $this->engine->expiredRuleProducts()]);
+    }
+
+    /**
      * #739 T6: apply the pack changes the user picked. Each rule goes through
      * the platform's own versioning path, so a rule a posted document already
      * used is end-dated and replaced rather than rewritten, and a

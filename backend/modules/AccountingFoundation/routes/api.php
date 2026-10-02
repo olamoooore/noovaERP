@@ -62,6 +62,8 @@ Route::prefix('accounting/tax-engine')
         Route::get('/packs', [\App\Http\Controllers\Api\TaxEngineController::class, 'packStatus']);
         Route::get('/thresholds', [\App\Http\Controllers\Api\TaxEngineController::class, 'thresholds']);
         Route::get('/advisory', [\App\Http\Controllers\Api\TaxEngineController::class, 'advisory']);
+        // #746 T13: products whose pinned tax rule can no longer resolve.
+        Route::get('/expired-rule-products', [\App\Http\Controllers\Api\TaxEngineController::class, 'expiredRuleProducts']);
         Route::get('/ai-advisory', [\App\Http\Controllers\Api\TaxEngineController::class, 'aiAdvisory'])
             ->middleware('entitlement:ai');
         Route::post('/packs/{jurisdiction}/activate', [\App\Http\Controllers\Api\TaxEngineController::class, 'activatePack'])

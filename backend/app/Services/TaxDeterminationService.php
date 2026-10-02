@@ -150,6 +150,11 @@ class TaxDeterminationService
         // Build per-line tax determinations.
         $taxLines = [];
 
+        // #746 T13: any line whose product rule expired without a successor
+        // blocks the determination (and posting, via TaxGate) instead of
+        // silently charging a fallback rate.
+        $expiredRuleWarnings = [];
+
         foreach ($invoice->lines as $line) {
             $bookedRate = (float) ($line->tax_rate ?? 0);
             $resolved = ($line->product && ! $isExport)
@@ -164,6 +169,10 @@ class TaxDeterminationService
                     $transactionDate,
                 )
                 : null;
+            if ($resolved !== null && ! empty($resolved['blocked'])) {
+                $expiredRuleWarnings[] = (string) ($resolved['warning'] ?? 'TAX_RULE_EXPIRED_NO_SUCCESSOR');
+            }
+
             // A non-zero line rate is a historical/document override: the
             // booked amounts stay authoritative and only identity is resolved.
             $usesLocalizedDefault = $line->product && (
@@ -234,9 +243,18 @@ class TaxDeterminationService
 
         $taxLines = $this->scaleRowsToBooked($taxLines, round((float) $invoice->tax_amount, 2));
         $aggregated = $this->aggregateTaxLines($taxLines);
-        [$id, $version] = $this->persistResult('invoice', (int) $invoice->id, $jurisdiction, $regime, $taxLines, $transactionDate);
 
-        return $this->buildResult($id, $version, $jurisdiction, $regime, $taxLines, $aggregated);
+        $resultStatus = $expiredRuleWarnings !== [] ? 'TAX_RULE_EXPIRED' : 'DETERMINED';
+        [$id, $version] = $this->persistResult('invoice', (int) $invoice->id, $jurisdiction, $regime, $taxLines, $transactionDate, $resultStatus);
+
+        $result = $this->buildResult($id, $version, $jurisdiction, $regime, $taxLines, $aggregated);
+        $result['result_status'] = $resultStatus;
+
+        if ($expiredRuleWarnings !== []) {
+            $result['warnings'] = $expiredRuleWarnings;
+        }
+
+        return $result;
     }
 
     /**

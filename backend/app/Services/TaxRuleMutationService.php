@@ -128,6 +128,8 @@ class TaxRuleMutationService
                 ? $tax->effective_to->toDateString()
                 : $closeTo,
             'is_default' => false,
+            // #746 T13: products still pinned to the closed row follow this.
+            'superseded_by_id' => $fresh->id,
         ]);
         $tax->increment('version');
         $tax->refresh();
