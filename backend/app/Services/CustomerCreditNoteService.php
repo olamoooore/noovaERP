@@ -10,6 +10,7 @@ use App\Models\CustomerCreditNote;
 use App\Models\CustomerCreditNoteLine;
 use App\Models\Invoice;
 use App\Models\InvoiceLine;
+use App\Models\Product;
 use App\Models\TaxDeterminationResult;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -82,16 +83,83 @@ class CustomerCreditNoteService
             // invoice's total exactly, tax included.
             $sourceLines = $sourceInvoice ? $sourceInvoice->lines()->get()->keyBy('id') : collect();
 
+            // #514 (CN5): the tax rate of a credit note line is inherited, never
+            // invented by the caller. With an invoice_line_id it comes from the
+            // original invoice line's determination (falling back to the rate
+            // the invoice line itself was invoiced at); without one it is
+            // resolved through TaxEngineService, which answers "no tax" for an
+            // unconfigured tenant instead of leaving a silent 0 behind a tax
+            // code. A client-supplied rate that disagrees with the source is
+            // rejected — the reversal must not re-rate the original invoice.
+            $sourceDeterminationLines = $sourceInvoice
+                ? app(TaxDeterminationService::class)->latestDeterminationLines('invoice', (int) $sourceInvoice->id)
+                : [];
+
+            $creditNoteDate = $data['credit_note_date'];
+            $creditNoteDateString = $creditNoteDate instanceof \DateTimeInterface
+                ? $creditNoteDate->toDateString()
+                : (string) $creditNoteDate;
+
+            $lineTaxRates = [];
+
+            foreach ($lines as $index => $lineData) {
+                $originLine = ($lineData['invoice_line_id'] ?? null)
+                    ? $sourceLines->get($lineData['invoice_line_id'])
+                    : null;
+
+                if ($originLine) {
+                    // Linked line: the original invoice line's determination
+                    // is the authority, and the caller may not re-rate it.
+                    $originDetermination = $sourceDeterminationLines[$lineData['invoice_line_id']] ?? null;
+
+                    $rate = $originDetermination && (float) ($originDetermination['tax_rate'] ?? 0) > 0
+                        ? (float) $originDetermination['tax_rate']
+                        : (float) ($originLine->tax_rate ?? 0);
+
+                    if (isset($lineData['tax_rate']) && $lineData['tax_rate'] !== null) {
+                        $supplied = (float) $lineData['tax_rate'];
+
+                        if (abs($supplied - $rate) > 0.00001) {
+                            throw new \RuntimeException(sprintf(
+                                'Credit note line %d tax rate %.2f%% conflicts with the tax rate of the source document (%.2f%%). A credit note reverses the invoiced rate.',
+                                $index + 1,
+                                $supplied,
+                                $rate
+                            ));
+                        }
+                    }
+                } elseif (isset($lineData['tax_rate']) && $lineData['tax_rate'] !== null) {
+                    // Unlinked line WITH an explicit rate: the caller has its
+                    // own provenance for it (e.g. the sales-order handoff
+                    // carries the order line's rate across), so honour it.
+                    $rate = (float) $lineData['tax_rate'];
+                } else {
+                    // Unlinked line WITHOUT a rate: resolve it through the tax
+                    // engine rather than leaving a silent 0 behind a tax code.
+                    // An unconfigured tenant still gets the engine's own
+                    // "no tax" answer.
+                    $resolved = app(TaxEngineService::class)->resolve(
+                        product: ! empty($lineData['product_id']) ? Product::find($lineData['product_id']) : null,
+                        direction: 'output',
+                        date: $creditNoteDateString,
+                    );
+
+                    $rate = (float) ($resolved['rate'] ?? 0);
+                }
+
+                $lineTaxRates[$index] = $rate;
+            }
+
             $subtotal = 0.0;
             $lineTaxSum = 0.0;
 
-            foreach ($lines as $lineData) {
+            foreach ($lines as $index => $lineData) {
                 $origin = ($lineData['invoice_line_id'] ?? null) ? $sourceLines->get($lineData['invoice_line_id']) : null;
 
-                $calc = \App\Models\InvoiceLine::computeLineTotals(
+                $calc = InvoiceLine::computeLineTotals(
                     (float) $lineData['quantity'],
                     (float) $lineData['unit_price'],
-                    (float) ($lineData['tax_rate'] ?? 0),
+                    (float) $lineTaxRates[$index],
                     (bool) ($lineData['tax_inclusive'] ?? $origin?->tax_inclusive ?? false),
                     (float) ($lineData['discount_amount'] ?? $origin?->discount_amount ?? 0),
                 );
@@ -134,7 +202,7 @@ class CustomerCreditNoteService
 
             // Add lines — provenance (discount, tax mode, pricing) carries
             // over from the source invoice line when the payload omits it.
-            foreach ($lines as $lineData) {
+            foreach ($lines as $index => $lineData) {
                 $origin = ($lineData['invoice_line_id'] ?? null) ? $sourceLines->get($lineData['invoice_line_id']) : null;
 
                 $creditNote->lines()->create([
@@ -148,7 +216,7 @@ class CustomerCreditNoteService
                             ? (float) $origin->base_unit_price
                             : round((float) $lineData['unit_price'] * (float) ($data['exchange_rate'] ?: 1), 4)),
                     'pricing_trace' => $lineData['pricing_trace'] ?? $origin?->pricing_trace,
-                    'tax_rate' => $lineData['tax_rate'] ?? 0,
+                    'tax_rate' => $lineTaxRates[$index],
                     'tax_inclusive' => (bool) ($lineData['tax_inclusive'] ?? $origin?->tax_inclusive ?? false),
                     'discount_amount' => (float) ($lineData['discount_amount'] ?? $origin?->discount_amount ?? 0),
                     'account_id' => $lineData['account_id'] ?? null,
@@ -215,13 +283,24 @@ class CustomerCreditNoteService
 
             $cnLines = [];
             foreach ($creditNote->lines as $line) {
-                $rate = (float) ($line->tax_rate ?? 0);
                 $origin = $line->invoice_line_id !== null ? ($originalLines[$line->invoice_line_id] ?? null) : null;
+
+                // #514 (CN5): the reversal takes ONE rate — the original
+                // invoice line's determination rate when there is one, else the
+                // rate the credit note line was created with (itself resolved
+                // server-side at creation). The booked amount must be computed
+                // with that same rate: taking the rate from the determination
+                // while computing the amount from the credit note line's own
+                // rate is what made the tax code, the rate and the amount
+                // disagree.
+                $rate = $origin && (float) ($origin['tax_rate'] ?? 0) > 0
+                    ? (float) $origin['tax_rate']
+                    : (float) ($line->tax_rate ?? 0);
 
                 // #512 (CN3): the shared line arithmetic — net base and tax
                 // honour the line's discount and tax mode (the old call
                 // forced exclusive, undiscounted tax on top).
-                $calc = \App\Models\InvoiceLine::computeLineTotals(
+                $calc = InvoiceLine::computeLineTotals(
                     (float) $line->quantity,
                     (float) $line->unit_price,
                     $rate,
@@ -233,7 +312,7 @@ class CustomerCreditNoteService
                     'source_line_id' => $line->id,
                     'product' => $line->product,
                     'base' => $calc['net'],
-                    'rate' => $origin && (float) $origin['tax_rate'] > 0 ? (float) $origin['tax_rate'] : $rate,
+                    'rate' => $rate,
                     'tax' => $calc['tax_amount'],
                     'tax_code_override' => $origin['tax_code'] ?? null,
                     'treatment_override' => $origin['treatment'] ?? null,
