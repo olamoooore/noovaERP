@@ -530,13 +530,13 @@ export const CustomerInvoiceDetail: React.FC = () => {
                   {invoice.billing_contact && (
                     <div>
                       <p className="text-sm text-muted-foreground mb-1">Billing Contact</p>
-                      <p className="font-medium">{invoice.billing_contact.display_name || '-'}</p>
+                      <p className="font-medium break-words">{invoice.billing_contact.display_name || '-'}</p>
                     </div>
                   )}
                   {invoice.shipping_contact && (
                     <div>
                       <p className="text-sm text-muted-foreground mb-1">Shipping Contact</p>
-                      <p className="font-medium">{invoice.shipping_contact.display_name || '-'}</p>
+                      <p className="font-medium break-words">{invoice.shipping_contact.display_name || '-'}</p>
                     </div>
                   )}
                   {invoice.company_registration_number && (
@@ -558,13 +558,13 @@ export const CustomerInvoiceDetail: React.FC = () => {
                   {invoice.billing_address_snapshot && (
                     <div className="rounded-lg border p-4 bg-muted/20">
                       <p className="text-sm text-muted-foreground mb-2">Billing Address</p>
-                      <p className="text-sm whitespace-pre-wrap">{formatSnapshotAddress(invoice.billing_address_snapshot)}</p>
+                      <p className="text-sm whitespace-pre-wrap break-words">{formatSnapshotAddress(invoice.billing_address_snapshot)}</p>
                     </div>
                   )}
                   {invoice.shipping_address_snapshot && (
                     <div className="rounded-lg border p-4 bg-muted/20">
                       <p className="text-sm text-muted-foreground mb-2">Delivery Address</p>
-                      <p className="text-sm whitespace-pre-wrap">{formatSnapshotAddress(invoice.shipping_address_snapshot)}</p>
+                      <p className="text-sm whitespace-pre-wrap break-words">{formatSnapshotAddress(invoice.shipping_address_snapshot)}</p>
                     </div>
                   )}
                 </div>
