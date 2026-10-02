@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
@@ -31,6 +31,7 @@ export function InvoicesPage() {
   const navigate = useNavigate()
 
   const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
   const [hiddenInvoiceColumns, setHiddenInvoiceColumns] = useState<number[]>([])
   const [bulkAction, setBulkAction] = useState<'post' | 'delete' | null>(null)
   const [statusFilter, setStatusFilter] = useState('all')
@@ -53,12 +54,21 @@ export function InvoicesPage() {
   })
   const filterCurrencyRows: any[] = (filterCurrencies as any)?.data ?? filterCurrencies ?? []
 
+  // Wide search hits the DB per term; debounce typing like the pickers do.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery)
+      setPage(1)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
   const activeFilterParams = () => {
     const params: Record<string, string> = {}
     if (statusFilter !== 'all') params.status = statusFilter
     if (currencyFilter !== 'all') params.currency_code = currencyFilter
     if (sortBy === 'currency') params.sort_by = 'currency'
-    if (searchQuery.trim()) params.search = searchQuery.trim()
+    if (debouncedSearchQuery.trim()) params.search = debouncedSearchQuery.trim()
     if (customerFilter) params.customer_id = customerFilter
     if (tagFilter) params.tag = tagFilter
     if (dateFilter === 'yearly') {
@@ -76,7 +86,7 @@ export function InvoicesPage() {
   }
 
   const { data: response, isLoading } = useQuery({
-    queryKey: ['invoices', page, perPage, statusFilter, currencyFilter, sortBy, searchQuery, customerFilter, tagFilter, dateFilter, selectedYear, selectedMonth, customStartDate, customEndDate],
+    queryKey: ['invoices', page, perPage, statusFilter, currencyFilter, sortBy, debouncedSearchQuery, customerFilter, tagFilter, dateFilter, selectedYear, selectedMonth, customStartDate, customEndDate],
     queryFn: async () => {
       const params = { page, per_page: perPage, ...activeFilterParams() }
       const res = await api.get('/invoices', { params })
@@ -258,14 +268,14 @@ export function InvoicesPage() {
           {/* Compact single-row filter bar — filters left, column picker right */}
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <div className="flex flex-wrap items-center gap-1.5 sm:flex-nowrap sm:overflow-x-auto">
-            <div className="relative w-full sm:w-44">
+            <div className="relative w-full sm:w-56">
               <Icon
                 icon="solar:magnifer-bold-duotone"
                 className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
               />
               <Input
                 type="text"
-                placeholder="Search invoices…"
+                placeholder="Search invoice, customer, contact…"
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value); setPage(1) }}
                 className="h-8 rounded-full pl-8 pr-2 text-xs"

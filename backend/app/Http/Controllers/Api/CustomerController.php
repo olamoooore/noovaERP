@@ -8,6 +8,7 @@ use App\Models\Customer;
 use App\Models\CustomerCategory;
 use App\Models\CustomerLoyaltyProgram;
 use App\Services\CustomerContactSyncService;
+use App\Services\CustomerWideSearchService;
 use App\Services\TagService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -33,10 +34,10 @@ class CustomerController extends Controller
                 'customerLoyalty.program',
             ]);
 
-        // Filters — Odoo-style wide search (see applyWideSearch).
+        // Filters — Odoo-style wide search (see CustomerWideSearchService).
         $search = $request->filled('search') ? (string) $request->search : null;
         if ($search !== null) {
-            $this->applyWideSearch($query, $search);
+            app(CustomerWideSearchService::class)->apply($query, $search);
 
             $query->with([
                 'customerContacts' => fn ($contact) => $contact->select('id', 'customer_id', 'name', 'job_title', 'contact_category', 'contact_type', 'is_primary'),
@@ -931,64 +932,12 @@ class CustomerController extends Controller
     // SEARCH & LOOKUP
     // ==========================================
 
-    /**
-     * Odoo-style wide customer search.
-     *
-     * Mirrors res.partner name_search behaviour: the record's own identity
-     * (name, email, phone/mobile, code, website, tax/registration numbers),
-     * its company field, its linked CONTACT PEOPLE (name, job title, direct
-     * details), its ADDRESSES (building/label, street, city, state, ZIP,
-     * country), its parent/company hierarchy, and its TAGS (categories).
-     */
-    private function applyWideSearch($query, string $search): void
-    {
-        $like = "%{$search}%";
-
-        $query->where(function ($q) use ($search, $like) {
-            $q->where('name', 'ilike', $like)
-                ->orWhere('email', 'ilike', $like)
-                ->orWhere('phone', 'ilike', $like)
-                ->orWhere('mobile', 'ilike', $like)
-                ->orWhere('company', 'ilike', $like)
-                ->orWhere('code', 'ilike', $like)
-                ->orWhere('website', 'ilike', $like)
-                ->orWhere('tax_number', 'ilike', $like)
-                ->orWhere('company_registration_number', 'ilike', $like)
-                // Contact people.
-                ->orWhereHas('customerContacts', function ($contact) use ($like) {
-                    $contact->where('name', 'ilike', $like)
-                        ->orWhere('job_title', 'ilike', $like)
-                        ->orWhere('email', 'ilike', $like)
-                        ->orWhere('phone', 'ilike', $like)
-                        ->orWhere('mobile', 'ilike', $like);
-                })
-                // Addresses — includes the building/label name.
-                ->orWhereHas('addresses', function ($address) use ($like) {
-                    $address->where('label', 'ilike', $like)
-                        ->orWhere('street', 'ilike', $like)
-                        ->orWhere('street2', 'ilike', $like)
-                        ->orWhere('city', 'ilike', $like)
-                        ->orWhere('state', 'ilike', $like)
-                        ->orWhere('zip', 'ilike', $like)
-                        ->orWhere('country', 'ilike', $like);
-                })
-                // Child accounts match their parent company too (Odoo's
-                // complete_name behaviour).
-                ->orWhereHas('parent', fn ($parent) => $parent->where('name', 'ilike', $like)->orWhere('company', 'ilike', $like));
-
-            $taggedIds = app(\App\Services\TagService::class)->subjectIdsForTagNameSearch($search, 'customer');
-            if ($taggedIds !== []) {
-                $q->orWhereIn('id', $taggedIds);
-            }
-        });
-    }
-
     public function search(Request $request): JsonResponse
     {
         $search = $request->q;
 
         $customers = Customer::query();
-        $this->applyWideSearch($customers, (string) $search);
+        app(CustomerWideSearchService::class)->apply($customers, (string) $search);
 
         $customers = $customers
             ->where('is_active', true)

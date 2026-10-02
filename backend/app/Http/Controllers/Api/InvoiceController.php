@@ -12,6 +12,7 @@ use App\Models\Product;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\CaseImportService;
+use App\Services\CustomerWideSearchService;
 use App\Services\InvoiceActivityService;
 use App\Services\InvoiceApprovalService;
 use App\Services\InvoiceDeliveryService;
@@ -164,14 +165,7 @@ class InvoiceController extends Controller
         }
 
         if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('invoice_number', 'ILIKE', "%{$search}%")
-                    ->orWhereHas('customer', function ($cq) use ($search) {
-                        $cq->where('name', 'ILIKE', "%{$search}%")
-                            ->orWhere('code', 'ILIKE', "%{$search}%");
-                    });
-            });
+            $this->applyWideSearch($query, trim((string) $request->search));
         }
 
         // Filter by document tag.
@@ -183,6 +177,76 @@ class InvoiceController extends Controller
         }
 
         return $query;
+    }
+
+    /**
+     * Wide invoice list search — the list-page counterpart of the customer
+     * picker's Odoo-style search. Matches:
+     *  - the document's own identity and header references (invoice number,
+     *    PO/customer/internal references, case/PR/contract/plant/company, etc.)
+     *  - the invoice's header contact people (doctor / requestor / buyer /
+     *    billing / shipping)
+     *  - the full customer surface via CustomerWideSearchService (identity,
+     *    contact people, addresses, parent and tags)
+     *  - the line contents (description, model, lot, serial)
+     *  - upstream document references (sales order / quotation number)
+     *  - the invoice's own tags
+     */
+    private function applyWideSearch($query, string $search): void
+    {
+        $like = "%{$search}%";
+
+        $contactMatches = function ($contact) use ($like) {
+            $contact->where('display_name', 'ilike', $like)
+                ->orWhere('first_name', 'ilike', $like)
+                ->orWhere('last_name', 'ilike', $like)
+                ->orWhere('company_name', 'ilike', $like)
+                ->orWhere('email', 'ilike', $like)
+                ->orWhere('phone', 'ilike', $like)
+                ->orWhere('mobile', 'ilike', $like);
+        };
+
+        $query->where(function ($q) use ($search, $like, $contactMatches) {
+            $q->where('invoice_number', 'ilike', $like)
+                ->orWhere('customer_reference', 'ilike', $like)
+                ->orWhere('internal_reference', 'ilike', $like)
+                ->orWhere('po_number', 'ilike', $like)
+                ->orWhere('case_number', 'ilike', $like)
+                ->orWhere('pr_no', 'ilike', $like)
+                ->orWhere('contract_no', 'ilike', $like)
+                ->orWhere('plant_code', 'ilike', $like)
+                ->orWhere('company_code', 'ilike', $like)
+                ->orWhere('attention_to', 'ilike', $like)
+                ->orWhere('contact_email', 'ilike', $like)
+                ->orWhere('contact_phone', 'ilike', $like)
+                ->orWhere('billing_address_snapshot', 'ilike', $like)
+                ->orWhere('shipping_address_snapshot', 'ilike', $like)
+                ->orWhere('delivery_address_snapshot', 'ilike', $like)
+                ->orWhereHas('doctor', $contactMatches)
+                ->orWhereHas('requestor', $contactMatches)
+                ->orWhereHas('buyer', $contactMatches)
+                ->orWhereHas('billingContact', $contactMatches)
+                ->orWhereHas('shippingContact', $contactMatches)
+                ->orWhereHas(
+                    'customer',
+                    fn ($customer) => app(CustomerWideSearchService::class)->apply($customer, $search)
+                )
+                ->orWhereHas('lines', function ($line) use ($like) {
+                    $line->where('description', 'ilike', $like)
+                        ->orWhere('model_number', 'ilike', $like)
+                        ->orWhere('product_notes', 'ilike', $like)
+                        ->orWhere('lot_number', 'ilike', $like)
+                        ->orWhere('serial_number', 'ilike', $like);
+                })
+                ->orWhereHas('salesOrder', fn ($order) => $order->where('sales_order_number', 'ilike', $like))
+                ->orWhereHas('quotation', fn ($quotation) => $quotation->where('quotation_number', 'ilike', $like));
+
+            // Tag names ("vip" finds every invoice tagged VIP).
+            $taggedIds = app(\App\Services\TagService::class)->subjectIdsForTagNameSearch($search, 'invoice');
+            if ($taggedIds !== []) {
+                $q->orWhereIn('id', $taggedIds);
+            }
+        });
     }
 
     public function store(Request $request)
