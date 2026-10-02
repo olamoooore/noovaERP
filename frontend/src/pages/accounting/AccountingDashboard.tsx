@@ -13,6 +13,7 @@ import { PieChart } from '@/components/charts/PieChart';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
 import { StatCard } from '@/components/ui/stat-card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { TaxRateChangeBanner } from '@/components/tax/TaxRateChangeBanner';
 
 interface DashboardMetrics {
   outstanding_receivables: {
@@ -298,6 +299,8 @@ export const AccountingDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-10">
+      {/* #751 TU5: upcoming pack rate changes + affected open documents. */}
+      <TaxRateChangeBanner />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-3xl font-bold tracking-tight">Accounting Dashboard</h1>
