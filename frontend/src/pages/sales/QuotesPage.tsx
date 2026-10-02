@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuthStore } from '@/store/authStore'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Badge } from '@/components/ui/badge'
@@ -78,6 +78,12 @@ export function QuotesPage() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState('')
+  // Wide search hits the DB per term; debounce typing like the other lists do.
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchQuery(searchQuery), 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
   const [statusFilter, setStatusFilter] = useState('all')
   // MRD FR-8.1: currency filter + currency sort.
   const [currencyFilter, setCurrencyFilter] = useState('all')
@@ -90,14 +96,14 @@ export function QuotesPage() {
   const queryParams = new URLSearchParams()
   queryParams.set('per_page', String(pageSize))
   queryParams.set('page', String(page))
-  if (searchQuery.trim()) queryParams.set('search', searchQuery.trim())
+  if (debouncedSearchQuery.trim()) queryParams.set('search', debouncedSearchQuery.trim())
   if (statusFilter !== 'all') queryParams.set('status', statusFilter)
   if (currencyFilter !== 'all') queryParams.set('currency_code', currencyFilter)
   if (sortBy === 'currency') queryParams.set('sort_by', 'currency')
   if (tagFilter) queryParams.set('tag', tagFilter)
 
   const { data: quotesResponse, isLoading } = useQuery({
-    queryKey: ['quotations', searchQuery, statusFilter, currencyFilter, sortBy, tagFilter, page, pageSize],
+    queryKey: ['quotations', debouncedSearchQuery, statusFilter, currencyFilter, sortBy, tagFilter, page, pageSize],
     queryFn: async () => {
       const response = await api.get(`/quotations?${queryParams.toString()}`)
       return response.data
@@ -116,7 +122,7 @@ export function QuotesPage() {
   const filterCurrencyRows: any[] = (filterCurrencies as any)?.data ?? filterCurrencies ?? []
 
   const selectionFilters = {
-    ...(searchQuery.trim() ? { search: searchQuery.trim() } : {}),
+    ...(debouncedSearchQuery.trim() ? { search: debouncedSearchQuery.trim() } : {}),
     ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
     ...(currencyFilter !== 'all' ? { currency_code: currencyFilter } : {}),
     ...(tagFilter ? { tag: tagFilter } : {}),
@@ -261,7 +267,7 @@ export function QuotesPage() {
             filenamePrefix="quotations"
             columns={QUOTATION_EXPORT_COLUMNS}
             filters={{
-              search: searchQuery.trim() || undefined,
+              search: debouncedSearchQuery.trim() || undefined,
               status: statusFilter !== 'all' ? statusFilter : undefined,
             }}
             selectedIds={selectedIds}
@@ -303,7 +309,7 @@ export function QuotesPage() {
               <Input
                 value={searchQuery}
                 onChange={(event) => handleSearchChange(event.target.value)}
-                placeholder="Search quotation number or customer"
+                placeholder="Search quote, customer, contact…"
                 className="h-8 rounded-full pl-9 pr-3 text-xs"
               />
             </div>
@@ -440,6 +446,28 @@ export function QuotesPage() {
                               <span className="text-xs font-mono text-muted-foreground">{quote.customer.code}</span>
                             )}
                             <div>{quote.customer?.name || 'Unknown'}</div>
+                            {/* Wide search can match a contact person, address, line or tag
+                                on the quotation's customer — show which so the row is explicable. */}
+                            {(quote.matched_contacts?.length ?? 0) > 0 && (
+                              <div className="truncate text-xs text-primary" title={quote.matched_contacts.join(', ')}>
+                                Contact: {quote.matched_contacts.join(', ')}
+                              </div>
+                            )}
+                            {(quote.matched_tags?.length ?? 0) > 0 && (
+                              <div className="truncate text-xs text-amber-600" title={quote.matched_tags.join(', ')}>
+                                Tag: {quote.matched_tags.join(', ')}
+                              </div>
+                            )}
+                            {(quote.matched_lines?.length ?? 0) > 0 && (
+                              <div className="truncate text-xs text-muted-foreground" title={quote.matched_lines.join(' · ')}>
+                                Line: {quote.matched_lines.join(' · ')}
+                              </div>
+                            )}
+                            {(quote.matched_addresses?.length ?? 0) > 0 && (
+                              <div className="truncate text-xs text-muted-foreground" title={quote.matched_addresses.join(' · ')}>
+                                Address: {quote.matched_addresses.join(' · ')}
+                              </div>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>{formatDate(quote.quotation_date || quote.created_at)}</TableCell>

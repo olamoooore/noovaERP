@@ -10,6 +10,8 @@ use App\Models\Product;
 use App\Models\Quotation;
 use App\Models\Warehouse;
 use App\Services\CaseImportService;
+use App\Services\CustomerWideSearchService;
+use App\Services\DocumentWideSearchService;
 use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
 use App\Services\SalesApprovalGate;
@@ -73,9 +75,48 @@ class QuotationController extends Controller
             return response()->json(['data' => $ids, 'total' => $ids->count()]);
         }
 
-        $query->with(['customer', 'lines']);
+        $search = $request->filled('search') ? trim((string) $request->search) : '';
 
-        return response()->json($query->paginate($request->per_page ?? 20));
+        $with = ['customer', 'lines'];
+        if ($search !== '') {
+            $with = array_merge($with, app(DocumentWideSearchService::class)->eagerLoads($this->wideSearchConfig()));
+        }
+        $query->with($with);
+
+        $quotations = $query->paginate($request->per_page ?? 20);
+
+        if ($search !== '') {
+            app(DocumentWideSearchService::class)->annotate($quotations, $search, $this->wideSearchConfig());
+        }
+
+        return response()->json($quotations);
+    }
+
+    /**
+     * Wide-search configuration for the quotation list — matches the document's
+     * identity/header references, its customer's full surface, its header
+     * contacts, line contents, upstream sales-order number and its tags.
+     */
+    private function wideSearchConfig(): array
+    {
+        return [
+            'columns' => [
+                'quotation_number', 'customer_reference', 'internal_reference',
+                'case_number', 'pr_no', 'contract_no', 'plant_code', 'company_code',
+                'attention_to', 'contact_email', 'contact_phone',
+                'billing_address_snapshot', 'shipping_address_snapshot',
+            ],
+            'party' => [
+                'relation' => 'customer',
+                'service' => CustomerWideSearchService::class,
+                'contacts' => 'customerContacts',
+                'addresses' => 'addresses',
+            ],
+            'headerContacts' => ['billingContact', 'shippingContact'],
+            'lines' => ['relation' => 'lines', 'columns' => ['description', 'model_number', 'product_notes']],
+            'related' => ['salesOrder' => 'sales_order_number'],
+            'tagAlias' => 'quotation',
+        ];
     }
 
     public function export(Request $request)
@@ -137,13 +178,11 @@ class QuotationController extends Controller
         }
 
         if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('quotation_number', 'ILIKE', "%{$search}%")
-                    ->orWhereHas('customer', function ($cq) use ($search) {
-                        $cq->where('name', 'ILIKE', "%{$search}%");
-                    });
-            });
+            app(DocumentWideSearchService::class)->apply(
+                $query,
+                trim((string) $request->search),
+                $this->wideSearchConfig(),
+            );
         }
 
         // Filter by document tag.
