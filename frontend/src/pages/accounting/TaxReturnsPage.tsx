@@ -153,6 +153,26 @@ export default function TaxReturnsPage() {
       (await api.get('/accounting/statutory-returns/periods', { params: entityId.trim() ? { entity_id: entityId.trim() } : {} })).data,
   });
 
+  // #750 TU4: the registration's actual filing periods (frequency + cycle
+  // start month), with status; replaces free-typed periods when available.
+  const { data: regPeriods } = useQuery<{ data: { period: string; label: string; status: string }[] }>({
+    queryKey: ['statutory-registration-periods', country, entityId],
+    queryFn: async () => (await api.get('/accounting/statutory-returns/periods', {
+      params: { country, ...(entityId.trim() ? { entity_id: entityId.trim() } : {}) },
+    })).data,
+  });
+
+  const regPeriodList = regPeriods?.data ?? [];
+  const selectedPeriodStatus = regPeriodList.find((p) => p.period === period)?.status;
+
+  useEffect(() => {
+    if (regPeriodList.length > 0 && !regPeriodList.some((p) => p.period === period)) {
+      setPeriodMode('month');
+      setPeriod(regPeriodList[0].period);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [regPeriods]);
+
   // Default the picker to the most recent period that actually has tax data.
   const [autoPicked, setAutoPicked] = useState(false);
   useEffect(() => {
@@ -268,6 +288,30 @@ export default function TaxReturnsPage() {
             </Select>
           </div>
 
+          {regPeriodList.length > 0 ? (
+            <div className="space-y-2">
+              <Label>Filing period</Label>
+              <Select value={period} onValueChange={(value) => { setPeriodMode('month'); setPeriod(value); setShowF7(false); }}>
+                <SelectTrigger className="h-8 w-56 rounded-full text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {regPeriodList.map((p) => (
+                    <SelectItem key={p.period} value={p.period}>{p.label} · {p.status}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedPeriodStatus && selectedPeriodStatus !== 'Open' && (
+                <p className="text-xs text-muted-foreground">
+                  {selectedPeriodStatus} — a filed period is read-only.
+                  {country === 'SG' && (
+                    <button type="button" className="ml-2 underline" onClick={() => setShowF7(true)}>
+                      Amend (F7)
+                    </button>
+                  )}
+                </p>
+              )}
+            </div>
+          ) : (
+            <>
           <div className="space-y-2">
             <Label>Period basis</Label>
             <Select value={periodMode} onValueChange={(value) => setPeriodMode(value as 'month' | 'quarter')}>
@@ -311,6 +355,9 @@ export default function TaxReturnsPage() {
                 </Select>
               </div>
             </div>
+          )}
+
+            </>
           )}
 
           <HeaderActionButton

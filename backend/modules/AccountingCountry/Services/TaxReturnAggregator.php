@@ -289,6 +289,103 @@ class TaxReturnAggregator
     }
 
     /**
+     * #750 TU4: the periods the registration actually files, derived from its
+     * filing_frequency and cycle start month (#741) — not free-typed. Newest
+     * first, each with its filing status.
+     *
+     * @return array<int, array{period:string,label:string,status:string,filing_version:?int}>
+     */
+    public function registrationPeriods(string $country, ?int $legalEntityId = null, int $count = 8): array
+    {
+        $country = strtoupper($country);
+
+        $frequency = (string) (DB::table('tax_registrations')
+            ->where('jurisdiction', $country)
+            ->where('status', 'active')
+            ->when($legalEntityId !== null, fn ($q) => $q->where('legal_entity_id', $legalEntityId))
+            ->orderByDesc('effective_from')
+            ->value('filing_frequency') ?: 'monthly');
+
+        if (! in_array($frequency, ['monthly', 'quarterly', 'bimonthly'], true)) {
+            $frequency = 'monthly';
+        }
+
+        $cycleStart = self::registrationStartMonth($country, $legalEntityId);
+        $cursor = now()->startOfMonth();
+
+        // Align a two-monthly cursor to the registrant's block start.
+        if ($frequency === 'bimonthly') {
+            $position = ((int) $cursor->month - $cycleStart + 12) % 12;
+            $cursor = $cursor->copy()->subMonths($position % 2);
+        }
+
+        $periods = [];
+        for ($i = 0; $i < $count; $i++) {
+            $periods[$this->encodePeriod($frequency, $cursor, $cycleStart)] = $cursor->copy();
+
+            $cursor = match ($frequency) {
+                'quarterly' => $cursor->copy()->subMonths(3),
+                'bimonthly' => $cursor->copy()->subMonths(2),
+                default => $cursor->copy()->subMonthNoOverflow(),
+            };
+        }
+
+        $entityKey = \App\Models\StatutoryReturnFiling::entityKey($legalEntityId);
+        $filings = DB::table('statutory_return_filings')
+            ->where('country', $country)
+            ->where('entity_key', $entityKey)
+            ->whereNull('superseded_at')
+            ->whereIn('period', array_keys($periods))
+            ->get(['period', 'filing_version'])
+            ->keyBy('period');
+
+        $out = [];
+        foreach ($periods as $period => $start) {
+            $filing = $filings->get($period);
+
+            $out[] = [
+                'period' => $period,
+                'label' => $this->periodLabel($frequency, $start, $cycleStart),
+                'status' => $filing === null ? 'Open' : ((int) $filing->filing_version > 1 ? 'Amended' : 'Filed'),
+                'filing_version' => $filing?->filing_version,
+            ];
+        }
+
+        return $out;
+    }
+
+    private function encodePeriod(string $frequency, \Carbon\Carbon $start, int $cycleStart): string
+    {
+        if ($frequency === 'quarterly') {
+            return sprintf('%04d-Q%d', $start->year, intdiv($start->month - 1, 3) + 1);
+        }
+
+        if ($frequency === 'bimonthly') {
+            $position = ((int) $start->month - $cycleStart + 12) % 12;
+            $block = intdiv($position, 2) + 1;
+            // periodMonths() decodes a block against the year its cycle began.
+            $cycleYear = $start->month >= $cycleStart ? $start->year : $start->year - 1;
+
+            return sprintf('%04d-B%d', $cycleYear, $block);
+        }
+
+        return $start->format('Y-m');
+    }
+
+    private function periodLabel(string $frequency, \Carbon\Carbon $start, int $cycleStart): string
+    {
+        if ($frequency === 'quarterly') {
+            return 'Q'.(intdiv($start->month - 1, 3) + 1).' '.$start->year;
+        }
+
+        if ($frequency === 'bimonthly') {
+            return $start->format('M').'–'.$start->copy()->addMonth()->format('M Y');
+        }
+
+        return $start->format('M Y');
+    }
+
+    /**
      * Periods that actually contain live tax activity, newest first. Returns
      * reporting periods from tax_transaction_details joined to the same live
      * journal-entry filter used by aggregate(), with signed output/input tax

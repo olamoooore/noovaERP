@@ -48,9 +48,15 @@ class StatutoryReturnController extends Controller
     public function periods(Request $request): JsonResponse
     {
         $entityId = $request->filled('entity_id') ? (int) $request->query('entity_id') : null;
+        $country = $request->filled('country') ? strtoupper((string) $request->query('country')) : null;
+        $aggregator = app(\Modules\AccountingCountry\Services\TaxReturnAggregator::class);
 
+        // #750 TU4: with a country, list the registration's actual periods
+        // (frequency + cycle start month); without, the legacy activity list.
         return response()->json([
-            'data' => app(\Modules\AccountingCountry\Services\TaxReturnAggregator::class)->availablePeriods($entityId),
+            'data' => $country !== null && in_array($country, ['SG', 'MY'], true)
+                ? $aggregator->registrationPeriods($country, $entityId)
+                : $aggregator->availablePeriods($entityId),
         ]);
     }
 
