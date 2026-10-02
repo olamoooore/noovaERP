@@ -232,20 +232,9 @@ class PaymentController extends Controller
                 ], 422);
             }
 
-            // Validate bank balance if paying from a bank account
-            if (! empty($validated['bank_account_id'])) {
-                $bankAccount = \App\Models\BankAccount::find($validated['bank_account_id']);
-                if ($bankAccount) {
-                    $currentBalance = $bankAccount->getCurrentBalance();
-                    if ($validated['amount'] > $currentBalance) {
-                        return response()->json([
-                            'message' => 'Payment amount exceeds bank account balance',
-                            'bank_balance' => $currentBalance,
-                            'requested_amount' => $validated['amount'],
-                        ], 422);
-                    }
-                }
-            }
+            // #479: NO bank-balance ceiling on an incoming receipt. That guard
+            // is an OUTFLOW rule (vendor payments/refunds) — applying it here
+            // rejected exactly the deposits that fund a new/low-balance account.
 
             // Manual recording creates a DRAFT payment (no journal entry). The
             // operator reviews and posts it from the Payments page — creating
