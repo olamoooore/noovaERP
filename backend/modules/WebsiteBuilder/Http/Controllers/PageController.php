@@ -9,6 +9,7 @@ use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Modules\WebsiteBuilder\Http\Resources\PageResource;
 use Modules\WebsiteBuilder\Models\Page;
 use Modules\WebsiteBuilder\Models\Website;
+use App\Rules\AllowedWebsitePageSlug;
 
 class PageController extends Controller
 {
@@ -34,7 +35,7 @@ class PageController extends Controller
         $website = Website::findOrFail($website);
         $validated = $request->validate([
             'title' => 'required|string|max:255',
-            'slug' => 'nullable|string|max:100',
+            'slug' => ['nullable', 'string', 'max:100', new AllowedWebsitePageSlug],
             'is_home' => 'nullable|boolean',
             'seo_title' => 'nullable|string|max:255',
             'seo_description' => 'nullable|string',
@@ -43,6 +44,7 @@ class PageController extends Controller
 
         // Generate slug if not provided
         $slug = $validated['slug'] ?? \Str::slug($validated['title']);
+        validator(['slug' => $slug], ['slug' => [new AllowedWebsitePageSlug]])->validate();
 
         // Check if a soft-deleted page with this slug exists and restore it
         $existingPage = $website->pages()->withTrashed()->where('slug', $slug)->first();
@@ -136,7 +138,7 @@ class PageController extends Controller
 
         $validated = $request->validate([
             'title' => 'sometimes|string|max:255',
-            'slug' => 'sometimes|string|max:100',
+            'slug' => ['sometimes', 'string', 'max:100', new AllowedWebsitePageSlug],
             'is_home' => 'sometimes|boolean',
             'seo_title' => 'nullable|string|max:255',
             'seo_description' => 'nullable|string',

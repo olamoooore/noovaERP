@@ -181,6 +181,13 @@ class RolePermissionSeeder extends Seeder
         'storefront.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
         'storefront.settings' => [UserRole::OWNER, UserRole::ADMIN],
 
+        // Website custom-domain ownership and routing are tenant-structural settings.
+        'website.domains.view' => [UserRole::OWNER, UserRole::ADMIN],
+        'website.domains.create' => [UserRole::OWNER, UserRole::ADMIN],
+        'website.domains.verify' => [UserRole::OWNER, UserRole::ADMIN],
+        'website.domains.manage' => [UserRole::OWNER, UserRole::ADMIN],
+        'website.domains.delete' => [UserRole::OWNER, UserRole::ADMIN],
+
         // Reports
         'reports.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::VIEWER],
         // Issue #103: reporting configuration/mutations (schedules, exports

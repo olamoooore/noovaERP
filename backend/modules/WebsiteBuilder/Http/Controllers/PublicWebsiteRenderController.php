@@ -17,6 +17,22 @@ use Modules\WebsiteBuilder\Models\Website;
  */
 class PublicWebsiteRenderController extends Controller
 {
+    public function renderByUuid(Request $request, string $websiteUuid, ?string $pageSlug = null): Response
+    {
+        $website = Website::where('uuid', $websiteUuid)->firstOrFail();
+
+        return $this->render($request, $website->slug, $pageSlug);
+    }
+
+    public function renderCustomDomain(Request $request, ?string $pageSlug = null): Response
+    {
+        $context = $request->attributes->get('public_site_context');
+        abort_unless($context instanceof \App\PublicSites\PublicSiteContext, 404);
+        $website = Website::where('uuid', $context->websiteUuid)->firstOrFail();
+
+        return $this->render($request, $website->slug, $pageSlug);
+    }
+
     /**
      * Serve a published website page as a complete HTML document.
      */
@@ -106,7 +122,10 @@ class PublicWebsiteRenderController extends Controller
         $shopSettings = $website->settings['shop'] ?? null;
 
         // API base URL for e-commerce (relative so it works through any proxy/port)
-        $apiBaseUrl = '/api/v1/website-public';
+        $publicSiteContext = $request->attributes->get('public_site_context');
+        $apiBaseUrl = $publicSiteContext instanceof \App\PublicSites\PublicSiteContext
+            ? '/api/v1/public-sites/'.$website->uuid.'/website-public'
+            : '/api/v1/website-public';
 
         // Generate navigation for multi-page sites
         $pages = $website->pages()->orderBy('sort_order')->get();

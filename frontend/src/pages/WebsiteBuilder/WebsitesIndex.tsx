@@ -28,6 +28,19 @@ interface Website {
   pages_count?: number
 }
 
+interface WebsiteDomain {
+  id: number
+  hostname: string
+  primary_requested: boolean
+  primary_effective: boolean
+  ownership_status: string
+  routing_status: string
+  tls_status: string
+  serving_status: string
+  failure_message?: string | null
+  dns_instructions?: Array<{ type: string; name: string; value: string }>
+}
+
 export function WebsitesIndex() {
   const { toast } = useToast()
   const navigate = useNavigate()
@@ -35,6 +48,53 @@ export function WebsitesIndex() {
   const [search, setSearch] = useState('')
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [newWebsiteName, setNewWebsiteName] = useState('')
+  const [domainWebsite, setDomainWebsite] = useState<Website | null>(null)
+  const [newDomain, setNewDomain] = useState('')
+
+  const domainsQuery = useQuery({
+    queryKey: ['website-domains', domainWebsite?.id],
+    enabled: domainWebsite !== null,
+    queryFn: async () => {
+      const response = await api.get(`/website-builder/websites/${domainWebsite!.id}/domains`)
+      return response.data.data as WebsiteDomain[]
+    },
+  })
+
+  const addDomainMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/website-builder/websites/${domainWebsite!.id}/domains`, {
+        hostname: newDomain,
+        primary_requested: true,
+      })
+      return response.data.data as WebsiteDomain
+    },
+    onSuccess: () => {
+      setNewDomain('')
+      domainsQuery.refetch()
+      toast({ title: 'Domain added', description: 'Add the displayed DNS records, then verify the domain.' })
+    },
+    onError: (error: any) => toast({
+      title: 'Unable to add domain',
+      description: error?.response?.data?.errors?.hostname?.[0] || error?.response?.data?.message || 'Check the hostname and try again.',
+      variant: 'destructive',
+    }),
+  })
+
+  const verifyDomainMutation = useMutation({
+    mutationFn: async (domainId: number) => api.post(`/website-builder/websites/${domainWebsite!.id}/domains/${domainId}/verify`),
+    onSuccess: () => {
+      domainsQuery.refetch()
+      toast({ title: 'Verification queued', description: 'DNS status will update after the verification worker runs.' })
+    },
+  })
+
+  const removeDomainMutation = useMutation({
+    mutationFn: async (domainId: number) => api.delete(`/website-builder/websites/${domainWebsite!.id}/domains/${domainId}`),
+    onSuccess: () => {
+      domainsQuery.refetch()
+      toast({ title: 'Domain disabled', description: 'The hostname has entered the controlled release process.' })
+    },
+  })
 
   const { data, isLoading } = useQuery({
     queryKey: ['websites', search],
@@ -170,6 +230,18 @@ export function WebsitesIndex() {
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7"
+                          title="Manage domains"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setDomainWebsite(website)
+                          }}
+                        >
+                          <Icon icon="solar:global-bold" className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
                           title="View Live Site"
                           onClick={(e) => {
                             e.stopPropagation()
@@ -243,6 +315,75 @@ export function WebsitesIndex() {
               )}
               Create
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={domainWebsite !== null} onOpenChange={(open) => !open && setDomainWebsite(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Domains — {domainWebsite?.name}</DialogTitle>
+          </DialogHeader>
+          {domainWebsite?.status !== 'published' ? (
+            <p className="text-sm text-amber-600">Publish this website before connecting a custom domain.</p>
+          ) : (
+            <div className="flex gap-2">
+              <Input
+                placeholder="shop.example.com"
+                value={newDomain}
+                onChange={(event) => setNewDomain(event.target.value)}
+              />
+              <Button
+                disabled={!newDomain.trim() || addDomainMutation.isPending}
+                onClick={() => addDomainMutation.mutate()}
+              >
+                Add domain
+              </Button>
+            </div>
+          )}
+
+          <div className="space-y-3 max-h-[55vh] overflow-y-auto">
+            {domainsQuery.isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading domains…</p>
+            ) : domainsQuery.data?.length ? domainsQuery.data.map((domain) => (
+              <div key={domain.id} className="rounded-lg border p-3 space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="font-medium">{domain.hostname}</div>
+                    <div className="text-xs text-muted-foreground">
+                      Ownership: {domain.ownership_status} · Routing: {domain.routing_status} · HTTPS: {domain.tls_status} · Serving: {domain.serving_status}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    {domain.serving_status === 'pending' && (
+                      <Button size="sm" variant="outline" onClick={() => verifyDomainMutation.mutate(domain.id)}>Verify now</Button>
+                    )}
+                    {!['release_requested', 'quarantined', 'released'].includes(domain.serving_status) && (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => confirm(`Remove ${domain.hostname}?`) && removeDomainMutation.mutate(domain.id)}
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                {domain.failure_message && <p className="text-xs text-destructive">{domain.failure_message}</p>}
+                {domain.dns_instructions?.length ? (
+                  <div className="rounded bg-muted p-2 text-xs font-mono space-y-1">
+                    {domain.dns_instructions.map((record, index) => (
+                      <div key={`${record.type}-${index}`} className="break-all">
+                        {record.type} {record.name} → {record.value}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            )) : <p className="text-sm text-muted-foreground">No custom domains configured.</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDomainWebsite(null)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

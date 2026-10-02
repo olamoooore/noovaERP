@@ -8,6 +8,8 @@ use Modules\WebsiteBuilder\Models\Website;
 
 class PublishingService
 {
+    public function __construct(private readonly \App\PublicSites\WebsitePublicationService $publications) {}
+
     /**
      * Publish a website to static HTML.
      */
@@ -30,6 +32,7 @@ class PublishingService
                 'status' => 'published',
                 'published_at' => now(),
             ]);
+            $this->publications->sync($website->fresh());
 
             // Mark all page versions as published AND update page status
             foreach ($website->pages as $page) {

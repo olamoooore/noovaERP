@@ -20,6 +20,32 @@ use Illuminate\Support\Facades\Route;
 Route::middleware([
     'api',
     \App\Http\Middleware\EnsurePublicSchemaForAuth::class,
+    \App\Http\Middleware\ResolvePublicSiteContext::class,
+    \Illuminate\Routing\Middleware\SubstituteBindings::class,
+])->prefix('api/v1/public-sites/{websiteUuid}')->whereUuid('websiteUuid')->group(function () {
+    Route::prefix('website-public')->group(function () {
+        Route::get('/products', [\Modules\WebsiteBuilder\Http\Controllers\WebsiteProductController::class, 'index']);
+        Route::get('/products/{id}', [\Modules\WebsiteBuilder\Http\Controllers\WebsiteProductController::class, 'show']);
+        Route::get('/categories', [\Modules\WebsiteBuilder\Http\Controllers\WebsiteProductController::class, 'categories']);
+        Route::get('/tags', [\Modules\WebsiteBuilder\Http\Controllers\WebsiteProductController::class, 'tags']);
+        Route::get('/events', [\Modules\EventManagement\Http\Controllers\PublicEventController::class, 'index']);
+        Route::get('/events/{id}', [\Modules\EventManagement\Http\Controllers\PublicEventController::class, 'show']);
+    });
+
+    Route::middleware(['entitlement:storefront'])->prefix('storefront')->group(function () {
+        Route::get('/catalog/products', [\Modules\Storefront\Http\Controllers\Public\CatalogController::class, 'products'])->middleware('throttle:120,1,sf-site-catalog');
+        Route::get('/cart', [\Modules\Storefront\Http\Controllers\Public\CartController::class, 'show'])->middleware('throttle:120,1,sf-site-cart');
+        Route::post('/cart/items', [\Modules\Storefront\Http\Controllers\Public\CartController::class, 'storeItem'])->middleware('throttle:60,1,sf-site-cart');
+        Route::put('/cart/items/{item}', [\Modules\Storefront\Http\Controllers\Public\CartController::class, 'updateItem'])->whereNumber('item')->middleware('throttle:60,1,sf-site-cart');
+        Route::delete('/cart/items/{item}', [\Modules\Storefront\Http\Controllers\Public\CartController::class, 'destroyItem'])->whereNumber('item')->middleware('throttle:60,1,sf-site-cart');
+        Route::post('/checkout', [\Modules\Storefront\Http\Controllers\Public\CheckoutController::class, 'store'])->middleware('throttle:10,1,sf-site-checkout');
+        Route::get('/payment-methods', [\Modules\Storefront\Http\Controllers\Public\PayController::class, 'methods'])->middleware('throttle:30,1,sf-site-pay');
+    });
+});
+
+Route::middleware([
+    'api',
+    \App\Http\Middleware\EnsurePublicSchemaForAuth::class,
     \App\Http\Middleware\InitializeTenantForPublicAccess::class,
     \Illuminate\Routing\Middleware\SubstituteBindings::class,
 ])->prefix('api/v1')->group(function () {
