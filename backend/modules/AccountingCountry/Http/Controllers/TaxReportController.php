@@ -130,6 +130,31 @@ class TaxReportController extends Controller
     }
 
     /**
+     * #277 F5: override report — overridden documents only, with reason,
+     * actor, delta and approval state.
+     */
+    public function overrides(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate([
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date'],
+            'actor_id' => ['nullable', 'integer'],
+            'reason_code' => ['nullable', 'string', 'max:50'],
+            'document_type' => ['nullable', 'string', 'max:50'],
+        ]);
+
+        return response()->json([
+            'data' => app(\App\Services\TaxOverrideService::class)->report(
+                $validated['from'] ?? null,
+                $validated['to'] ?? null,
+                isset($validated['actor_id']) ? (int) $validated['actor_id'] : null,
+                $validated['reason_code'] ?? null,
+                $validated['document_type'] ?? null,
+            ),
+        ]);
+    }
+
+    /**
      * #278 F4: tax-readiness fact (locked/filed/unfiled + reconciliation +
      * version) for Financial Close consumption.
      */

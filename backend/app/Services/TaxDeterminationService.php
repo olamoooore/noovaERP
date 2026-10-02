@@ -75,8 +75,25 @@ class TaxDeterminationService
     ): array {
         $invoice->loadMissing('lines.product', 'customer');
 
+        // #277 F5: manual overrides are guarded + recorded (engine vs applied).
+        $engineJurisdiction = $this->resolveJurisdiction($invoice);
+
+        if ($overrides !== null && $overrides !== []) {
+            app(\App\Services\TaxOverrideService::class)->guardAndRecordDocumentOverride(
+                'invoice',
+                (int) $invoice->id,
+                [
+                    'jurisdiction' => $engineJurisdiction,
+                    'tax_regime' => self::COUNTRY_REGIME[$engineJurisdiction] ?? 'GST',
+                ],
+                $overrides,
+                round((float) $invoice->tax_amount, 2),
+                round((float) $invoice->tax_amount, 2),
+            );
+        }
+
         $jurisdiction = $overrides['jurisdiction']
-            ?? $this->resolveJurisdiction($invoice);
+            ?? $engineJurisdiction;
         $regime = $overrides['tax_regime']
             ?? self::COUNTRY_REGIME[$jurisdiction] ?? 'GST';
         $transactionDate = $invoice->invoice_date instanceof \DateTimeInterface
@@ -186,7 +203,23 @@ class TaxDeterminationService
     public function determineForBill(\App\Models\Bill $bill, ?array $overrides = null): array
     {
         $bill->loadMissing('lines.product', 'vendor.addresses');
-        $jurisdiction = $overrides['jurisdiction'] ?? $this->resolveVendorJurisdiction($bill);
+        $billEngineJurisdiction = $this->resolveVendorJurisdiction($bill);
+
+        if ($overrides !== null && $overrides !== []) {
+            app(\App\Services\TaxOverrideService::class)->guardAndRecordDocumentOverride(
+                'bill',
+                (int) $bill->id,
+                [
+                    'jurisdiction' => $billEngineJurisdiction,
+                    'tax_regime' => self::COUNTRY_REGIME[$billEngineJurisdiction] ?? 'GST',
+                ],
+                $overrides,
+                round((float) $bill->tax_amount, 2),
+                round((float) $bill->tax_amount, 2),
+            );
+        }
+
+        $jurisdiction = $overrides['jurisdiction'] ?? $billEngineJurisdiction;
         $regime = $overrides['tax_regime'] ?? self::COUNTRY_REGIME[$jurisdiction] ?? 'GST';
         $date = $bill->bill_date?->toDateString() ?? now()->toDateString();
         $taxLines = [];

@@ -52,6 +52,10 @@ Route::prefix('accounting/tax-report')
             ->middleware(RequirePermission::using('reports.view'));
         Route::get('/filings', [TaxReportController::class, 'filings']);
 
+        // #277 F5: override report (reports.view per acceptance).
+        Route::get('/overrides', [TaxReportController::class, 'overrides'])
+            ->middleware(RequirePermission::using('reports.view'));
+
         // #278 F4: tax-readiness fact for Financial Close.
         Route::get('/readiness', [TaxReportController::class, 'readiness']);
         Route::get('/periods', [\App\Http\Controllers\Api\TaxPeriodController::class, 'lockStates']);
