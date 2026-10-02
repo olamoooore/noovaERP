@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Product;
 use App\Models\Setting;
 use App\Models\Tax;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Single runtime tax engine for sales, purchases, POS and commerce.
@@ -358,6 +359,62 @@ class TaxEngineService
                 $expired,
             ),
         ];
+    }
+
+    /**
+     * #751 TU5: rate changes about to take effect (a pack rule with a future
+     * effective_from inside $days), each with the rate in force today for the
+     * same jurisdiction/type and the count of OPEN quotations and sales orders
+     * dated before the change — so a dashboard banner never computes a rate in
+     * the browser. Selection matches the pack the engine resolves from.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function upcomingChanges(int $days = 30): array
+    {
+        $today = now()->toDateString();
+        $until = now()->addDays($days)->toDateString();
+        $registry = $this->packs();
+        $changes = [];
+
+        foreach ((array) config('tax_packs', []) as $jurisdiction => $pack) {
+            $rules = $pack['rules'] ?? [];
+            $currentRates = $registry->defaultsFor((string) $jurisdiction, $today)['rates'];
+
+            foreach ($rules as $rule) {
+                $from = $rule['effective_from'] ?? null;
+
+                if ($from === null || $from <= $today || $from > $until) {
+                    continue;
+                }
+
+                $type = strtolower((string) ($rule['type'] ?? 'other'));
+
+                $changes[] = [
+                    'jurisdiction' => strtoupper((string) $jurisdiction),
+                    'type' => $type,
+                    'code' => $rule['code'] ?? null,
+                    'label' => $rule['name'] ?? null,
+                    'treatment' => $rule['treatment'] ?? null,
+                    'new_rate' => (float) ($rule['rate'] ?? 0),
+                    'current_rate' => isset($currentRates[$type]) ? (float) $currentRates[$type] : null,
+                    'effective_from' => $from,
+                    'days_until' => (int) abs(now()->startOfDay()->diffInDays(\Carbon\Carbon::parse($from)->startOfDay())),
+                    'affected' => [
+                        'quotations' => DB::table('quotations')
+                            ->whereNotIn('status', ['cancelled'])
+                            ->where('quotation_date', '<', $from)
+                            ->count(),
+                        'sales_orders' => DB::table('sales_orders')
+                            ->whereNotIn('status', ['cancelled', 'fulfilled', 'invoiced'])
+                            ->where('order_date', '<', $from)
+                            ->count(),
+                    ],
+                ];
+            }
+        }
+
+        return $changes;
     }
 
     /**
