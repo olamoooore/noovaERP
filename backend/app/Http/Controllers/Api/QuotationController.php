@@ -9,6 +9,7 @@ use App\Models\Invoice;
 use App\Models\Product;
 use App\Models\Quotation;
 use App\Models\Warehouse;
+use App\Platform\Pagination\PaginationService;
 use App\Services\CaseImportService;
 use App\Services\CustomerWideSearchService;
 use App\Services\DocumentWideSearchService;
@@ -83,7 +84,7 @@ class QuotationController extends Controller
         }
         $query->with($with);
 
-        $quotations = $query->paginate($request->per_page ?? 20);
+        $quotations = $query->paginate(PaginationService::clampPerPage($request->per_page));
 
         if ($search !== '') {
             app(DocumentWideSearchService::class)->annotate($quotations, $search, $this->wideSearchConfig());
@@ -137,7 +138,7 @@ class QuotationController extends Controller
         $format = $validated['format'] ?? 'xlsx';
 
         return Excel::download(
-            new QuotationsExport($this->filteredQuotationQuery($request), $validated['columns']),
+            new QuotationsExport($this->filteredQuotationQuery($request), $validated['columns'], $format),
             'quotations_'.now()->format('Y-m-d').'.'.$format,
             $format === 'csv' ? \Maatwebsite\Excel\Excel::CSV : \Maatwebsite\Excel\Excel::XLSX
         );

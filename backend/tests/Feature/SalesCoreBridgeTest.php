@@ -136,12 +136,16 @@ class SalesCoreBridgeTest extends TenantTestCase
 
     public function test_invoice_service_skips_inventory_for_work_order_source(): void
     {
-        $source = file_get_contents(base_path('app/Services/InvoiceService.php'));
+        // Issue #682: the "has this document already had its goods issued?"
+        // decision moved out of InvoiceService into the shared goods-issue
+        // ledger, which both the invoice and the delivery-order path read.
+        // The rule itself is unchanged — a WorkOrder-sourced document is never
+        // the goods-issue event (FieldService deducts the parts itself) — so
+        // both the stock movement and the COGS entry are suppressed for it.
+        $source = file_get_contents(base_path('app/Services/GoodsIssueLedger.php'));
 
-        $this->assertStringContainsString('shouldSkipInventoryAdjustment', $source,
-            'InvoiceService must check shouldSkipInventoryAdjustment before deducting stock.');
         $this->assertStringContainsString("'WorkOrder'", $source,
-            'shouldSkipInventoryAdjustment must return true for WorkOrder source documents.');
+            'GoodsIssueLedger must suppress inventory for WorkOrder source documents.');
     }
 
     public function test_field_service_invoice_generation_uses_sales_order_bridge(): void

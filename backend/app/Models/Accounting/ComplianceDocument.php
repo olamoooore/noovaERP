@@ -47,6 +47,7 @@ class ComplianceDocument extends Model
         'created_by',
         'submitted_by',
         'submitted_at',
+        'original_compliance_document_id',
     ];
 
     protected $casts = [

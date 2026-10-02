@@ -197,7 +197,8 @@ export const SalesDashboard: React.FC = () => {
         <div className="min-w-0">
           <h1 className="text-3xl font-bold tracking-tight">Sales Dashboard</h1>
           <p className="text-sm text-muted-foreground">
-            Comprehensive sales analytics and performance metrics.
+            Net revenue, tax excluded, in the base currency: posted invoices less posted credit
+            notes, plus POS sales net of returns, plus not-yet-invoiced orders (bookings).
           </p>
         </div>
 
@@ -290,7 +291,10 @@ export const SalesDashboard: React.FC = () => {
         <Card className="overflow-hidden">
           <CardHeader className="border-b bg-muted/20">
             <CardTitle className="text-base">Sales trends</CardTitle>
-            <CardDescription>Amount invoiced across the selected window.</CardDescription>
+            <CardDescription>
+              Net revenue per day — tax excluded, document discounts subtracted, credit notes
+              netted, in the base currency. Includes un-invoiced orders.
+            </CardDescription>
           </CardHeader>
           <CardContent className="pt-6">
             {isLoading ? (
@@ -313,7 +317,7 @@ export const SalesDashboard: React.FC = () => {
         <Card className="overflow-hidden">
           <CardHeader className="border-b bg-muted/20">
             <CardTitle className="text-base">Sales by category</CardTitle>
-            <CardDescription>Revenue split across product categories.</CardDescription>
+            <CardDescription>Net revenue split across product categories (tax excluded, base currency).</CardDescription>
           </CardHeader>
           <CardContent className="pt-6">
             {isLoading ? (
@@ -338,7 +342,7 @@ export const SalesDashboard: React.FC = () => {
         <Card className="overflow-hidden">
           <CardHeader className="border-b bg-muted/20">
             <CardTitle className="text-base">Sales by product (top 10)</CardTitle>
-            <CardDescription>Best performing products by invoiced amount.</CardDescription>
+            <CardDescription>Best performing products by net revenue (tax excluded, base currency).</CardDescription>
           </CardHeader>
           <CardContent className="pt-6">
             {isLoading ? (
@@ -362,7 +366,7 @@ export const SalesDashboard: React.FC = () => {
         <Card className="overflow-hidden">
           <CardHeader className="border-b bg-muted/20">
             <CardTitle className="text-base">Top customers</CardTitle>
-            <CardDescription>Highest value accounts in the selected window.</CardDescription>
+            <CardDescription>Highest value accounts by net revenue in the selected window.</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             {isLoading ? (

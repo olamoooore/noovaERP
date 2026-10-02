@@ -88,10 +88,25 @@ class PaginationService
      */
     private function resolvePerPage(Request $request, array $config): int
     {
-        $per_page = (int) $request->get('per_page', $config['default_per_page'] ?? 20);
-        $max = $config['max_per_page'] ?? 100;
+        return self::clampPerPage(
+            $request->get('per_page'),
+            $config['default_per_page'] ?? 20,
+            $config['max_per_page'] ?? 100,
+        );
+    }
 
-        return max(1, min($per_page, $max));
+    /**
+     * Clamp a caller-supplied per_page into the platform's supported range.
+     *
+     * List endpoints that paginate directly (instead of through paginate())
+     * must share this cap so an unbounded per_page can never load more than
+     * max_per_page rows — memory/DoS and bulk-extraction guard.
+     */
+    public static function clampPerPage(mixed $perPage, int $default = 20, int $max = 100): int
+    {
+        $requested = $perPage === null ? $default : (int) $perPage;
+
+        return max(1, min($requested, $max));
     }
 
     /**

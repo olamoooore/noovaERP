@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Accounting\Events\ApprovalDecisionEvent;
+use App\Enums\UserRole;
 use App\Models\ApprovalRequest;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -180,22 +181,24 @@ class ApprovalService
      */
     public function userCanApprove(User $user, string $requestType, float $amount): bool
     {
-        // Invoice AND delivery-order approval are reviewer-driven (Sales
-        // Settings → Approval Workflow), not entitlement-driven. A configured
-        // reviewer may always decide — that list is the operator's intent and
-        // must not be second-guessed by the entitlement/role heuristic below.
-        // This must run BEFORE the entitlement map lookup, which has no key for
-        // either request type.
-        if ($requestType === \App\Services\InvoiceApprovalService::REQUEST_TYPE) {
-            return app(\App\Services\InvoiceApprovalService::class)
-                ->resolveReviewers(null)
-                ->contains('id', $user->id);
+        // Owner/Admin implicitly bypass fine-grained checks, per
+        // UserRole::superRoles(). Segregation of duties is enforced separately
+        // in approveRequest() — the requester still cannot approve their own
+        // request, whatever their role.
+        if ($this->hasSuperRole($user)) {
+            return true;
         }
 
-        if ($requestType === \App\Services\SalesApprovalGate::REQUEST_TYPE_DELIVERY_ORDER) {
-            return app(\Modules\Sales\Services\DeliveryOrderService::class)
-                ->resolveReviewers(null)
-                ->contains('id', $user->id);
+        // Sales approvals are reviewer-driven (Sales Settings → Approval
+        // Workflow), not entitlement-driven. Issue #645: this branch covers
+        // quotation, sales-order and invoice-threshold requests too — before
+        // it, only invoice/DO were special-cased and every other sales type
+        // fell into ENTITLEMENT_MAP, logged "Unknown request type", and
+        // returned false, so nobody could approve them.
+        $gate = app(SalesApprovalGate::class);
+
+        if ($gate->isSalesRequestType($requestType)) {
+            return $gate->resolveReviewers($requestType)->contains('id', $user->id);
         }
 
         // Get required entitlement
@@ -220,6 +223,62 @@ class ApprovalService
         }
 
         return true;
+    }
+
+    /**
+     * Whether the user holds a tenant role that implicitly bypasses
+     * fine-grained permission checks (Owner/Admin).
+     *
+     * The role lives on public.user_company_access and is resolved through the
+     * platform TenantRoleService — the same bridge the RequirePermission
+     * middleware uses — rather than by hand-reading role strings or relying on
+     * the Spatie role table alone.
+     */
+    private function hasSuperRole(User $user): bool
+    {
+        try {
+            if (! function_exists('tenant') || ! tenant()) {
+                return false;
+            }
+
+            $tenantId = (string) tenant('id');
+
+            if ($tenantId === '') {
+                return false;
+            }
+
+            $centralUserId = \App\Http\Middleware\RequirePermission::resolveCentralUserId($user);
+            $role = app(TenantRoleService::class)->getRole($centralUserId, $tenantId);
+
+            return $role !== null && in_array($role->value, UserRole::superRoles(), true);
+        } catch (\Throwable $e) {
+            Log::warning('ApprovalService: failed to resolve super-role bypass', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    /**
+     * Pending sales approval requests that are already past their expiry —
+     * the requests that sat in the inbox beyond their window and, before
+     * issue #645, nobody could action. Diagnostic only: expireOldRequests()
+     * is what mutates them.
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, ApprovalRequest>
+     */
+    public function pendingSalesRequestsPastExpiry(): \Illuminate\Database\Eloquent\Collection
+    {
+        return ApprovalRequest::query()
+            ->whereIn('request_type', SalesApprovalGate::SALES_REQUEST_TYPES)
+            ->where('status', 'pending')
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '<', now())
+            ->with(['requestedBy', 'subject'])
+            ->orderBy('expires_at')
+            ->get();
     }
 
     /**

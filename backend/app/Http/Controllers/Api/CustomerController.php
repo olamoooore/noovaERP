@@ -180,7 +180,7 @@ class CustomerController extends Controller
         $format = $validated['format'] ?? 'xlsx';
 
         return Excel::download(
-            new CustomersExport($query->orderBy('name'), $validated['columns']),
+            new CustomersExport($query->orderBy('name'), $validated['columns'], $format),
             'customers_'.now()->format('Y-m-d').'.'.$format,
             $format === 'csv' ? \Maatwebsite\Excel\Excel::CSV : \Maatwebsite\Excel\Excel::XLSX
         );

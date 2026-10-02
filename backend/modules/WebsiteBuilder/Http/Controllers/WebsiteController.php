@@ -8,9 +8,13 @@ use Illuminate\Http\Request;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Modules\WebsiteBuilder\Http\Resources\WebsiteResource;
 use Modules\WebsiteBuilder\Models\Website;
+use App\Models\Hostname;
+use App\PublicSites\WebsitePublicationService;
 
 class WebsiteController extends Controller
 {
+    public function __construct(private readonly WebsitePublicationService $publications) {}
+
     /**
      * List all websites for the authenticated user.
      */
@@ -48,6 +52,7 @@ class WebsiteController extends Controller
         $validated['created_by'] = TenantUserHelper::resolveTenantUserId();
 
         $website = Website::create($validated);
+        $this->publications->sync($website);
 
         return response()->json(new WebsiteResource($website->load('createdBy')), 201);
     }
@@ -79,6 +84,7 @@ class WebsiteController extends Controller
         ]);
 
         $website->update($validated);
+        $this->publications->sync($website->fresh());
 
         return response()->json(new WebsiteResource($website->fresh(['pages', 'createdBy'])));
     }
@@ -90,6 +96,19 @@ class WebsiteController extends Controller
     {
         $website = Website::findOrFail($website);
         $website->delete();
+        $this->publications->sync($website, 'deleted');
+        Hostname::query()
+            ->where('tenant_id', (string) tenant('id'))
+            ->where('website_uuid', $website->uuid)
+            ->where('purpose', 'website')
+            ->whereIn('serving_status', ['pending', 'active', 'suspended'])
+            ->update([
+                'serving_status' => 'suspended',
+                'primary_effective' => false,
+                'failure_code' => 'website_deleted',
+                'failure_message' => 'The linked website was deleted.',
+                'updated_at' => now(),
+            ]);
 
         return response()->json(['message' => 'Website deleted successfully']);
     }

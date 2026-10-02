@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Payment extends Model
 {
     use \App\Models\Concerns\GuardsJournalEntryLinks;
+    use \App\Models\Concerns\ResolvesLegalEntityContext;
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
@@ -42,6 +43,9 @@ class Payment extends Model
         'unapplied_at',
         'refunded_at',
         'reversal_journal_entry_id',
+        // Issue #875: Sales documents carry their legal entity + book.
+        'legal_entity_id',
+        'entity_book_id',
     ];
 
     protected $casts = [

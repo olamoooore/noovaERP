@@ -8,11 +8,14 @@ use App\Features\ActivityLogging\Models\ActivityLogEntry;
 use App\Models\ChatterActivity;
 use App\Models\ChatterAttachment;
 use App\Models\ChatterMessage;
+use App\Models\EsignRequest;
+use App\Models\InvoiceEvidence;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Modules\Sales\Models\DeliveryOrder;
 
 class ChatterService
 {
@@ -333,16 +336,65 @@ class ChatterService
     }
 
     /**
+     * Resolve an attachment that belongs to the given chatter subject.
+     *
+     * Shared by the download and delete paths (and by the controller's
+     * deletion guard) so subject scoping cannot drift between them — the
+     * subject_id is always normalized to int-cast string, mirroring upload.
+     */
+    public function findAttachment(string $subjectType, int|string $subjectId, int $attachmentId): ChatterAttachment
+    {
+        return ChatterAttachment::query()
+            ->where('subject_type', $subjectType)
+            ->where('subject_id', (string) (int) $subjectId)
+            ->where('id', $attachmentId)
+            ->firstOrFail();
+    }
+
+    /**
+     * Issue #629 (CH2 / #630): is this chatter attachment the same stored file
+     * as an evidence artifact? Evidence services register their files as
+     * chatter attachments pointing at the SAME disk path as the evidence row
+     * (invoice evidence, e-sign signed copies, signed delivery orders), so the
+     * path is the link. A true result means deleting through chatter would
+     * destroy evidence and must be refused.
+     */
+    public function isEvidenceLinked(ChatterAttachment $attachment): bool
+    {
+        $path = (string) $attachment->storage_path;
+        if ($path === '') {
+            return false;
+        }
+
+        // Invoice evidence (uploads, customer portal acceptance, e-sign).
+        // Include soft-deleted rows: revoked evidence is still an audit
+        // artifact whose file must not disappear through chatter.
+        if (InvoiceEvidence::query()->withTrashed()->where('file_path', $path)->exists()) {
+            return true;
+        }
+
+        // Built-in e-signature signed copies (invoice / delivery order /
+        // quotation) recorded on the e-sign request.
+        if (EsignRequest::query()->withTrashed()->where('signed_document_path', $path)->exists()) {
+            return true;
+        }
+
+        // Signed delivery orders stored on the order itself (the public
+        // acceptance portal path, which creates no e-sign request).
+        if (DeliveryOrder::query()->where('signed_document_path', $path)->exists()) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * Issue #78: stream an attachment through the authenticated API instead of
      * exposing the underlying storage path/URL structure.
      */
     public function downloadAttachment(string $subjectType, int|string $subjectId, int $attachmentId): \Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $attachment = ChatterAttachment::query()
-            ->where('subject_type', $subjectType)
-            ->where('subject_id', (string) (int) $subjectId)
-            ->where('id', $attachmentId)
-            ->firstOrFail();
+        $attachment = $this->findAttachment($subjectType, $subjectId, $attachmentId);
 
         $disk = $attachment->storage_disk ?: 'public';
 
@@ -353,11 +405,7 @@ class ChatterService
 
     public function deleteAttachment(string $subjectType, int|string $subjectId, int $attachmentId): void
     {
-        $attachment = ChatterAttachment::query()
-            ->where('subject_type', $subjectType)
-            ->where('subject_id', (string) (int) $subjectId)
-            ->where('id', $attachmentId)
-            ->firstOrFail();
+        $attachment = $this->findAttachment($subjectType, $subjectId, $attachmentId);
 
         Storage::disk($attachment->storage_disk ?: 'local')->delete($attachment->storage_path);
         $attachment->delete();

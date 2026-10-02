@@ -37,6 +37,10 @@ class RolePermissionSeeder extends Seeder
         // #161/#186). Reads follow inventory.view; writes follow inventory.write.
         'medical_cases.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::SALES, UserRole::VIEWER],
         'medical_cases.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
+        // PHI (patient name) on rendered documents — issues #567/#611.
+        // Mirrors the medical_cases.view audience: roles that may already
+        // see medical cases. CASHIER is deliberately not included.
+        'medical_cases.phi.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::SALES, UserRole::VIEWER],
 
         // Bonus schemes — pricing/reward configuration (issues #161/#186).
         // Writes are deliberately Manager+; Sales can read schemes but not
@@ -196,6 +200,13 @@ class RolePermissionSeeder extends Seeder
         'storefront.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::VIEWER],
         'storefront.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
         'storefront.settings' => [UserRole::OWNER, UserRole::ADMIN],
+
+        // Website custom-domain ownership and routing are tenant-structural settings.
+        'website.domains.view' => [UserRole::OWNER, UserRole::ADMIN],
+        'website.domains.create' => [UserRole::OWNER, UserRole::ADMIN],
+        'website.domains.verify' => [UserRole::OWNER, UserRole::ADMIN],
+        'website.domains.manage' => [UserRole::OWNER, UserRole::ADMIN],
+        'website.domains.delete' => [UserRole::OWNER, UserRole::ADMIN],
 
         // Reports
         'reports.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::VIEWER],

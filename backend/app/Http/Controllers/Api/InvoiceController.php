@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Accounting\Services\EInvoiceLifecycleGuard;
 use App\Exports\InvoicesExport;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
@@ -11,6 +12,7 @@ use App\Models\InvoiceEvidence;
 use App\Models\Product;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Platform\Pagination\PaginationService;
 use App\Services\CaseImportService;
 use App\Services\CustomerWideSearchService;
 use App\Services\InvoiceActivityService;
@@ -44,6 +46,7 @@ class InvoiceController extends Controller
         private InvoiceEvidenceService $evidenceService,
         private SalesApprovalGate $approvalGate,
         private DeliveryOrderService $deliveryOrderService,
+        private EInvoiceLifecycleGuard $eInvoiceLifecycle,
     ) {}
 
     public function index(Request $request)
@@ -74,7 +77,7 @@ class InvoiceController extends Controller
         }
         $query->with($with);
 
-        $invoices = $query->paginate($request->per_page ?? 20);
+        $invoices = $query->paginate(PaginationService::clampPerPage($request->per_page));
 
         $this->annotateApprovalView($invoices, $request->user());
 
@@ -230,7 +233,7 @@ class InvoiceController extends Controller
         $format = $validated['format'] ?? 'xlsx';
 
         return Excel::download(
-            new InvoicesExport($query, $validated['columns']),
+            new InvoicesExport($query, $validated['columns'], $format),
             'invoices_'.now()->format('Y-m-d').'.'.$format,
             $format === 'csv' ? \Maatwebsite\Excel\Excel::CSV : \Maatwebsite\Excel\Excel::XLSX
         );
@@ -2152,6 +2155,10 @@ class InvoiceController extends Controller
             ], 422);
         }
 
+        if ($denied = $this->eInvoiceLifecycle->denial('invoice', $invoice->id, 'cancel')) {
+            return $denied;
+        }
+
         $invoice->update(['status' => 'cancelled']);
 
         // Cancelling removes the invoice from receivables and purchase totals.
@@ -2214,6 +2221,10 @@ class InvoiceController extends Controller
             return response()->json([
                 'message' => 'Cannot reset an invoice that has posted credit notes. Void the credit notes first.',
             ], 422);
+        }
+
+        if ($denied = $this->eInvoiceLifecycle->denial('invoice', $invoice->id, 'reset')) {
+            return $denied;
         }
 
         try {

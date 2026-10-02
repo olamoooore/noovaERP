@@ -20,7 +20,12 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 abstract class SalesDocumentExport extends DefaultValueBinder implements FromQuery, ShouldAutoSize, WithColumnFormatting, WithCustomChunkSize, WithCustomValueBinder, WithHeadings, WithMapping, WithStyles
 {
-    public function __construct(protected Builder $documentQuery, protected array $columns) {}
+    protected string $format;
+
+    public function __construct(protected Builder $documentQuery, protected array $columns, string $format = 'xlsx')
+    {
+        $this->format = strtolower($format);
+    }
 
     abstract protected function definitions(): array;
 
@@ -64,7 +69,11 @@ abstract class SalesDocumentExport extends DefaultValueBinder implements FromQue
                 'date' => 'yyyy-mm-dd',
                 'amount' => NumberFormat::FORMAT_NUMBER_COMMA_SEPARATED2,
                 'number' => NumberFormat::FORMAT_NUMBER_00,
-                default => NumberFormat::FORMAT_TEXT,
+                // Issue #898: the CSV writer exports formatted cell values, and
+                // the '@' (text) format drops embedded double quotes. CSV text
+                // columns therefore stay General; the explicit-string value
+                // binding already keeps them as text. XLSX keeps '@'.
+                default => $this->format === 'csv' ? NumberFormat::FORMAT_GENERAL : NumberFormat::FORMAT_TEXT,
             };
         }
 
@@ -87,12 +96,27 @@ abstract class SalesDocumentExport extends DefaultValueBinder implements FromQue
     public function bindValue(Cell $cell, $value): bool
     {
         if (is_string($value)) {
-            $cell->setValueExplicit($value, DataType::TYPE_STRING);
+            $cell->setValueExplicit($this->neutraliseForSpreadsheet($value), DataType::TYPE_STRING);
 
             return true;
         }
 
         return parent::bindValue($cell, $value);
+    }
+
+    /**
+     * Issue #898: CSV writes the stored cell value verbatim, so a string that
+     * starts with a formula trigger is prefixed with an apostrophe (the OWASP
+     * recommendation) to keep it inert in Excel/Sheets. XLSX is already
+     * protected by the explicit-string binding above and keeps the raw value.
+     */
+    private function neutraliseForSpreadsheet(string $value): string
+    {
+        if ($this->format !== 'csv') {
+            return $value;
+        }
+
+        return preg_match('/^[=+\-@\t\r]/', $value) === 1 ? "'".$value : $value;
     }
 
     private function mapRow($document, $line): array

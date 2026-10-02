@@ -149,7 +149,7 @@ class DeliveryOrderController extends Controller
         $format = $validated['format'] ?? 'xlsx';
 
         return Excel::download(
-            new DeliveryOrdersExport($this->filteredDeliveryOrderQuery($request), $validated['columns']),
+            new DeliveryOrdersExport($this->filteredDeliveryOrderQuery($request), $validated['columns'], $format),
             'delivery_orders_'.now()->format('Y-m-d').'.'.$format,
             $format === 'csv' ? \Maatwebsite\Excel\Excel::CSV : \Maatwebsite\Excel\Excel::XLSX
         );

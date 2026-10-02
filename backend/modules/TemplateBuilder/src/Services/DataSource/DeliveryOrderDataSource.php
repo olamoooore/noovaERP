@@ -16,6 +16,20 @@ final class DeliveryOrderDataSource implements DataSourceContract
         return 'delivery_order';
     }
 
+    public function permission(): string
+    {
+        return 'sales.view';
+    }
+
+    public function legalEntityId(): ?int
+    {
+        $do = $this->do ?? throw new \RuntimeException('Delivery order not loaded.');
+        $entityId = $do->customer?->legal_entity_id
+            ?? $do->salesOrder?->legal_entity_id;
+
+        return $entityId !== null ? (int) $entityId : null;
+    }
+
     public function load(string $documentId): self
     {
         $this->do = DeliveryOrder::with(['customer', 'warehouse', 'lines.product', 'salesOrder', 'invoice', 'quotation'])->findOrFail($documentId);

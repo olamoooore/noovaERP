@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
+use App\Models\ChatterAttachment;
 use App\Services\Chatter\ChatterService;
 use App\Services\TenantRoleService;
 use Illuminate\Http\JsonResponse;
@@ -44,6 +46,7 @@ class ChatterController extends Controller
             ->get()
             ->map(function (CommunicationMessage $m) {
                 $author = $m->author;
+
                 return [
                     'id' => $m->id,
                     'body' => $m->body,
@@ -131,6 +134,7 @@ class ChatterController extends Controller
         $messages = $query->get()
             ->map(function (CommunicationMessage $m) {
                 $author = $m->author;
+
                 return [
                     'id' => $m->id,
                     'body' => $m->body,
@@ -159,7 +163,7 @@ class ChatterController extends Controller
     public function addMessage(Request $request, string $subjectType, int|string $subjectId): JsonResponse
     {
         $this->validateSubject($subjectType, $subjectId);
-        $this->authorizeSubjectAccess($request, $subjectType, $subjectId);
+        $this->authorizeSubjectAccess($request, $subjectType, $subjectId, 'write');
         $data = $request->validate([
             'body' => 'required|string|min:1|max:10000',
         ]);
@@ -208,7 +212,7 @@ class ChatterController extends Controller
     public function addActivity(Request $request, string $subjectType, int|string $subjectId): JsonResponse
     {
         $this->validateSubject($subjectType, $subjectId);
-        $this->authorizeSubjectAccess($request, $subjectType, $subjectId);
+        $this->authorizeSubjectAccess($request, $subjectType, $subjectId, 'write');
         $data = $request->validate([
             'activity_type' => ['required', Rule::in(['follow_up', 'call', 'meeting', 'todo', 'reminder'])],
             'summary' => 'required|string|min:1|max:255',
@@ -253,7 +257,7 @@ class ChatterController extends Controller
     public function markActivityDone(Request $request, string $subjectType, int|string $subjectId, int $activityId): JsonResponse
     {
         $this->validateSubject($subjectType, $subjectId);
-        $this->authorizeSubjectAccess($request, $subjectType, $subjectId);
+        $this->authorizeSubjectAccess($request, $subjectType, $subjectId, 'write');
 
         $activity = $this->chatter->markActivityDone($subjectType, $subjectId, $activityId);
 
@@ -263,7 +267,7 @@ class ChatterController extends Controller
     public function uploadAttachment(Request $request, string $subjectType, int|string $subjectId): JsonResponse
     {
         $this->validateSubject($subjectType, $subjectId);
-        $this->authorizeSubjectAccess($request, $subjectType, $subjectId);
+        $this->authorizeSubjectAccess($request, $subjectType, $subjectId, 'write');
         $request->validate([
             'file' => 'required|file|max:25600', // 25 MB
         ]);
@@ -300,7 +304,13 @@ class ChatterController extends Controller
     public function deleteAttachment(Request $request, string $subjectType, int|string $subjectId, int $attachmentId): JsonResponse
     {
         $this->validateSubject($subjectType, $subjectId);
-        $this->authorizeSubjectAccess($request, $subjectType, $subjectId);
+        $this->authorizeSubjectAccess($request, $subjectType, $subjectId, 'write');
+
+        // Issue #629: deleting is not just "write on the subject" — it must be
+        // your own upload (or a manager's decision), and it must never destroy
+        // a file an evidence record still points at.
+        $attachment = $this->chatter->findAttachment($subjectType, $subjectId, $attachmentId);
+        $this->authorizeAttachmentDeletion($request, $attachment);
 
         $this->chatter->deleteAttachment($subjectType, $subjectId, $attachmentId);
 
@@ -367,26 +377,30 @@ class ChatterController extends Controller
      * model + id.
      *
      * Enforcement, in order:
-     *  1. Resolve the subject record — 404 if it does not exist (also stops
-     *     blind id enumeration returning empty-but-200 bundles).
-     *  2. Look up the module view-permission that gates the record itself
-     *     (config/chatter.php subject_permissions). No mapping => fail closed 403.
-     *  3. Check the caller holds that permission via TenantRoleService (the same
+     *  1. Resolve the permission that gates this record for the requested
+     *     ability: `subject_permissions` (view) for reads, or
+     *     `subject_write_permissions` (issue #629) for mutations. No mapping
+     *     => fail closed 403.
+     *  2. Check the caller holds that permission via TenantRoleService (the same
      *     central-role -> Spatie mechanism RequirePermission uses). Super-admins
      *     bypass, matching the platform convention.
+     *  3. Resolve the subject record — 404 if it does not exist (also stops
+     *     blind id enumeration returning empty-but-200 bundles).
      *
      * NOTE: this is record-TYPE-level authorization. Row-level legal-entity
      * scoping is not possible on these models yet (no legal_entity_id column) —
      * that residual gap is tracked separately in #97/#140.
      */
-    private function authorizeSubjectAccess(Request $request, string $subjectType, int|string $subjectId): void
+    private function authorizeSubjectAccess(Request $request, string $subjectType, int|string $subjectId, string $ability = 'view'): void
     {
-        // 1. Resolve the permission that gates this record type; fail closed if
-        //    the subject has no mapping (defence in depth alongside the #75
-        //    whitelist).
-        $permission = config('chatter.subject_permissions')[$subjectType] ?? null;
+        // 1. Resolve the permission that gates this record type for the ability;
+        //    fail closed if the subject has no mapping (defence in depth
+        //    alongside the #75 whitelist).
+        $permission = $this->subjectPermission($subjectType, $ability);
         if (! $permission) {
-            abort(403, 'Chatter access is not permitted for this subject type.');
+            abort(403, $ability === 'write'
+                ? 'Chatter cannot be modified for this subject type.'
+                : 'Chatter access is not permitted for this subject type.');
         }
 
         // 2. Check the caller's permission BEFORE resolving the record, so an
@@ -409,7 +423,9 @@ class ChatterController extends Controller
             $centralUserId = (int) (DB::table('public.users')->where('email', $user->email)->value('id') ?? $user->id);
 
             if (! $this->roleService->hasPermission($centralUserId, $tenantId, $permission)) {
-                abort(403, 'You do not have permission to view this record\'s chatter.');
+                abort(403, $ability === 'write'
+                    ? 'You do not have permission to modify this record\'s chatter.'
+                    : 'You do not have permission to view this record\'s chatter.');
             }
         }
 
@@ -417,6 +433,64 @@ class ChatterController extends Controller
         $record = $subjectType::find($subjectId);
         if (! $record) {
             abort(404, 'Subject record not found.');
+        }
+    }
+
+    /**
+     * Resolve the permission that gates a chatter subject for an ability.
+     *
+     * `subject_permissions` (existing view map) is kept untouched for backward
+     * compatibility; writes use the separate `subject_write_permissions` map
+     * added in issue #629. A subject without a write mapping fails closed.
+     */
+    private function subjectPermission(string $subjectType, string $ability): ?string
+    {
+        $map = $ability === 'write'
+            ? config('chatter.subject_write_permissions', [])
+            : config('chatter.subject_permissions', []);
+
+        return $map[$subjectType] ?? null;
+    }
+
+    /**
+     * Issue #629: chatter attachment deletion is destructive and evidence may
+     * point at the same stored file. Refuse evidence-linked files outright,
+     * then require the caller to be the uploader or a manager.
+     */
+    private function authorizeAttachmentDeletion(Request $request, ChatterAttachment $attachment): void
+    {
+        if ($this->chatter->isEvidenceLinked($attachment)) {
+            abort(403, 'This attachment is evidence for a document and cannot be deleted through chatter.');
+        }
+
+        $user = $request->user();
+        if (! $user) {
+            abort(401, 'Unauthenticated.');
+        }
+
+        // The uploader may remove their own attachment.
+        if ($attachment->uploaded_by_id !== null && (int) $attachment->uploaded_by_id === (int) $user->id) {
+            return;
+        }
+
+        $isSuperAdmin = ($user->is_super_admin ?? false) || ($user->role ?? null) === 'platform_super_admin';
+        if ($isSuperAdmin) {
+            return;
+        }
+
+        // Managers (and the implicit super roles) may moderate any attachment.
+        $tenantId = (function_exists('tenant') && tenant())
+            ? (string) tenant('id')
+            : (string) $request->header('X-Tenant-ID', '');
+        if ($tenantId === '') {
+            abort(403, 'Tenant context required.');
+        }
+
+        $centralUserId = (int) (DB::table('public.users')->where('email', $user->email)->value('id') ?? $user->id);
+        $role = $this->roleService->getRole($centralUserId, $tenantId);
+
+        if (! $role || ! in_array($role, [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER], true)) {
+            abort(403, 'Only the uploader or a manager may delete this chatter attachment.');
         }
     }
 

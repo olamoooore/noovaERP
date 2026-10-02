@@ -284,6 +284,28 @@ class CustomerCreditNoteService
                 exchangeRate: $cnForeign ? $cnRate : null,
             );
 
+            // Issue #875: bind the credit note posting to the source invoice's legal
+            // entity (and entity book), stamping the note when it predates the
+            // entity columns.
+            $entityResolver = app(\App\Services\LegalEntityContextResolver::class);
+            $legalEntityId = $entityResolver->resolveEntity(
+                explicit: $creditNote->legal_entity_id ? (int) $creditNote->legal_entity_id : null,
+                salesOrderId: $creditNote->sales_order_id ? (int) $creditNote->sales_order_id : null,
+                invoiceId: $creditNote->invoice_id ? (int) $creditNote->invoice_id : null,
+                customerId: $creditNote->customer_id ? (int) $creditNote->customer_id : null,
+                required: true,
+            );
+            $entityBookId = $creditNote->entity_book_id
+                ? (int) $creditNote->entity_book_id
+                : $entityResolver->resolveBookId($legalEntityId);
+
+            if ($legalEntityId && (int) $creditNote->legal_entity_id !== $legalEntityId) {
+                $creditNote->forceFill([
+                    'legal_entity_id' => $legalEntityId,
+                    'entity_book_id' => $entityBookId,
+                ])->save();
+            }
+
             $result = $this->postingEngine->post(new PostingRequest(
                 documentType: 'credit_note',
                 documentId: $creditNote->id,
@@ -295,6 +317,8 @@ class CustomerCreditNoteService
                 reference: $creditNote->credit_note_number,
                 userId: TenantUserHelper::requireTenantUserId($creditNote->created_by),
                 taxDeterminationResult: $taxDetermination,
+                legalEntityId: $legalEntityId,
+                entityBookId: $entityBookId,
             ));
 
             if (! $result->success) {
