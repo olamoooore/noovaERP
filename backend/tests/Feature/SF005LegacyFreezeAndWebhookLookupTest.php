@@ -68,6 +68,59 @@ class SF005LegacyFreezeAndWebhookLookupTest extends TenantTestCase
         $this->assertFalse($storefront->isDeprecated());
     }
 
+    // ─── 1b. P6 close: archived module removed from the entitlement catalog ──
+
+    public function test_archived_module_is_not_in_the_entitlement_catalog(): void
+    {
+        // Re-run the sync explicitly — deterministic regardless of setUp order.
+        app(\App\SuperAdmin\Application\ModuleCatalogSyncService::class)->sync();
+
+        // Not grantable/purchasable anymore (P6 close)…
+        $this->assertNull(
+            \App\SuperAdmin\Domain\CatalogItem::where('key', 'ecommerce')->first(),
+            'the archived module must not exist in the entitlement catalog'
+        );
+        $this->assertNull(
+            \App\SuperAdmin\Domain\ModuleCatalogEntry::where('module_key', 'ecommerce')->first(),
+            'the archived module must not exist in the legacy module registry'
+        );
+
+        // …while disk discovery stays (read surface intact — FR-ARC-03):
+        $this->assertNotNull(
+            collect(app(ModuleManager::class)->all())->firstWhere('key', 'ecommerce'),
+            'P6 close must not remove the module from discovery'
+        );
+    }
+
+    public function test_legacy_order_csv_export_is_retained_fr_arc_04(): void
+    {
+        $sales = $this->makeTenantUser($this->tenantId, 'sales', 'Sales');
+
+        DB::table('web_orders')->insert([
+            'order_number' => 'LEGACY-CSV-1',
+            'email' => 'csv-shopper@example.test',
+            'first_name' => 'Csv',
+            'last_name' => 'Shopper, with comma',
+            'subtotal' => 10.00,
+            'total' => 10.00,
+            'currency' => 'USD',
+            'status' => 'confirmed',
+            'payment_status' => 'paid',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $res = $this->actingAs($sales)->get('/api/v1/admin/ecommerce/orders?format=csv');
+
+        $res->assertStatus(200);
+        $this->assertStringContainsString('text/csv', strtolower((string) $res->headers->get('Content-Type')));
+
+        $body = $res->getContent();
+        $this->assertStringContainsString('order_number,status,payment_status', $body);
+        $this->assertStringContainsString('LEGACY-CSV-1', $body);
+        $this->assertStringContainsString('"Shopper, with comma"', $body, 'CSV quoting must protect embedded commas');
+    }
+
     // ─── 2/3. Legacy admin: read gated, write frozen ────────────────────
 
     public function test_legacy_admin_order_read_now_requires_sales_view(): void

@@ -217,10 +217,11 @@ class InitializeTenantForPublicAccess
     {
         $path = ltrim($request->path(), '/');
 
-        if (str_starts_with($path, 'api/v1/web-shop/')) {
-            return true;
-        }
-
+        // P6 close (FR-ARC-06): the retired legacy `api/v1/web-shop/*` prefix
+        // was removed — its routes are gone (canonical 410 catch-all) and it
+        // no longer triggers the configured-storefront fallback. Retired
+        // paths on hosts that resolve get the 410; on unmapped hosts the
+        // middleware's fail-closed 404 applies (disclosed).
         return str_starts_with($path, 'api/v1/website-public/products')
             || str_starts_with($path, 'api/v1/website-public/categories')
             || str_starts_with($path, 'api/v1/website-public/tags')

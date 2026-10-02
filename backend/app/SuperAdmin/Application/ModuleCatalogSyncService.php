@@ -31,6 +31,14 @@ class ModuleCatalogSyncService
 
         DB::transaction(function () use ($modules, &$keys): void {
             foreach ($modules as $module) {
+                // FR-ARC-06 (P6 close): archived modules never (re)enter the
+                // entitlement catalog. ModuleManager discovery is untouched —
+                // the archived module stays loadable for its retained read
+                // surface; it just is not grantable/purchasable anymore.
+                if (($module->deprecated ?? false) === true) {
+                    continue;
+                }
+
                 ModuleCatalogEntry::upsert(
                     [[
                         'module_key' => $module->key,

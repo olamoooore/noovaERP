@@ -211,24 +211,6 @@ class AuditFixesTest extends TenantTestCase
         $this->assertStringNotContainsString("Route::post('/goods-receipts/{goodsReceipt}/confirm'", $source);
     }
 
-    public function test_web_checkout_posts_paid_orders_inline(): void
-    {
-        $source = file_get_contents(base_path('modules/Ecommerce/src/Http/Controllers/WebCheckoutController.php'));
-
-        $this->assertStringContainsString('PaymentTransactionCompletionService', $source);
-        $this->assertStringContainsString('completionService->complete(', $source);
-        $this->assertStringContainsString('PaymentTransaction::where', $source);
-        $this->assertStringContainsString("'status' => 'completed'", $source);
-    }
-
-    public function test_web_checkout_requires_successful_invoice_posting_after_payment_confirmation(): void
-    {
-        $source = file_get_contents(base_path('modules/Ecommerce/src/Http/Controllers/WebCheckoutController.php'));
-
-        $this->assertStringContainsString('Payment transaction not found for confirmed web order payment.', $source);
-        $this->assertStringContainsString('completionService->complete(', $source);
-    }
-
     public function test_fix_stuck_web_orders_delegates_to_canonical_completion_service(): void
     {
         $source = file_get_contents(base_path('modules/PaymentGateway/Console/Commands/FixStuckWebOrders.php'));
@@ -237,25 +219,6 @@ class AuditFixesTest extends TenantTestCase
         $this->assertStringContainsString('completionService->complete(', $source);
         $this->assertStringNotContainsString('recordChannelPayment($invoice', $source);
         $this->assertStringNotContainsString('postToAccounting(', $source);
-    }
-
-    public function test_process_all_web_orders_delegates_transaction_repair_to_canonical_completion_service(): void
-    {
-        $source = file_get_contents(base_path('modules/Ecommerce/Console/Commands/ProcessAllWebOrders.php'));
-
-        $this->assertStringContainsString('PaymentTransactionCompletionService', $source);
-        $this->assertStringContainsString('completionService->complete(', $source);
-        $this->assertStringNotContainsString('convertToInvoice()', $source);
-        $this->assertStringNotContainsString('postPaidOrder(', $source);
-    }
-
-    public function test_web_checkout_persists_fulfillment_warehouse_context(): void
-    {
-        $source = file_get_contents(base_path('modules/Ecommerce/src/Http/Controllers/WebCheckoutController.php'));
-
-        $this->assertStringContainsString('fulfillment_warehouse_id', $source);
-        $this->assertStringContainsString('No single warehouse can fulfill all requested items', $source);
-        $this->assertStringContainsString('No active warehouse can fulfill all requested items', $source);
     }
 
     public function test_web_order_posting_service_requires_explicit_warehouse_context(): void

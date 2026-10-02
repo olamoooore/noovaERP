@@ -10,7 +10,6 @@
 namespace Modules\Ecommerce\Providers;
 
 use Illuminate\Support\ServiceProvider;
-use Modules\Ecommerce\Console\Commands\ProcessAllWebOrders;
 
 class EcommerceServiceProvider extends ServiceProvider
 {
@@ -19,11 +18,10 @@ class EcommerceServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Register commands
-        if ($this->app->runningInConsole()) {
-            $this->commands([
-                ProcessAllWebOrders::class,
-            ]);
-        }
+        // P5 code deletion (FR-ARC-06): the legacy ProcessAllWebOrders
+        // repair command (and the whole checkout surface) is gone. The
+        // module now carries ONLY the retained read surface — admin
+        // order reads, the guest order lookup, and the read-only
+        // customer order history — plus migrations kept as history.
     }
 }

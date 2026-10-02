@@ -29,7 +29,6 @@ class ModuleContractConformanceTest extends TestCase
         \Modules\AccountingCountry\Contracts\AccountingCountryModuleContract::class,
         \Modules\Communication\Contracts\CommunicationModuleContract::class,
         \Modules\CRM\Contracts\CRMModuleContract::class,
-        \Modules\Ecommerce\Contracts\EcommerceModuleContract::class,
         \Modules\EventManagement\Contracts\EventManagementModuleContract::class,
         \Modules\FieldService\Contracts\FieldServiceModuleContract::class,
         \Modules\FinancialClose\Contracts\FinancialCloseModuleContract::class,
@@ -171,9 +170,12 @@ class ModuleContractConformanceTest extends TestCase
         $this->assertIsArray($result['reasons']);
     }
 
-    public function test_six_module_contracts_are_registered(): void
+    public function test_module_contracts_are_registered(): void
     {
-        $this->assertCount(22, self::CONTRACTS, 'All 22 module contracts must be registered');
+        // 21 since the legacy Ecommerce contract was deleted in P5 slice 22
+        // (FR-ARC-06 code deletion — the module keeps only its read surface,
+        // no contract; test-semantic change disclosed in the retirement report).
+        $this->assertCount(21, self::CONTRACTS, 'All 21 live module contracts must be registered');
     }
 
     public static function contractProvider(): array

@@ -232,23 +232,9 @@ const CRMLeadForm = lazy(() => import('@/pages/CRM').then(m => ({ default: m.Lea
 const CRMLeadDetailPage = lazy(() => import('@/pages/CRM').then(m => ({ default: m.LeadDetailPage })))
 
 // Web Shop Pages
-const WebShopCheckoutPage = lazy(() => import('@/pages/WebShop').then(m => ({ default: m.WebShopCheckoutPage })))
-const WebShopCartPage = lazy(() => import('@/pages/WebShop').then(m => ({ default: m.WebShopCartPage })))
-const OrderSuccessPage = lazy(() => import('@/pages/WebShop').then(m => ({ default: m.OrderSuccessPage })))
-const WebShopWaitingRoomPage = lazy(() => import('@/pages/WebShop').then(m => ({ default: m.WebShopWaitingRoomPage })))
 const PaymentCallbackPage = lazy(() => import('@/pages/PaymentCallbackPage'))
 
 // Web Shop Customer Portal
-const PortalLayout = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.PortalLayout })))
-const CustomerPortalDashboardPage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.DashboardPage })))
-const TicketsPage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.TicketsPage })))
-const OrdersListPage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.OrdersListPage })))
-const OrderDetailPage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.OrderDetailPage })))
-const ProfilePage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.ProfilePage })))
-const AddressesPage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.AddressesPage })))
-const LoyaltyPage = lazy(() => import('@/pages/WebShop/CustomerPortal').then(m => ({ default: m.LoyaltyPage })))
-const WebShopLoginPage = lazy(() => import('@/pages/WebShop/Auth/LoginPage').then(m => ({ default: m.LoginPage })))
-const WebShopRegisterPage = lazy(() => import('@/pages/WebShop/Auth/RegisterPage').then(m => ({ default: m.RegisterPage })))
 
 // Website Builder Pages
 const WebsitesIndex = lazy(() => import('@/pages/WebsiteBuilder/WebsitesIndex').then(m => ({ default: m.WebsitesIndex })))
@@ -259,7 +245,6 @@ const PageManagement = lazy(() => import('@/pages/WebsiteBuilder/PageManagement'
 const PublicSiteViewer = lazy(() => import('@/pages/PublicSite').then(m => ({ default: m.PublicSiteViewer })))
 
 // Ecommerce Shop Pages (public-facing)
-const EcommerceShopPage = lazy(() => import('@/pages/WebShop/EcommerceStorefront').then(m => ({ default: m.EcommerceStorefront })))
 
 // Legacy /store SPA retired (FR-ARC-06 P2) — client-side 410 notice.
 const LegacyStoreRetiredPage = lazy(() =>
@@ -693,37 +678,12 @@ function App() {
 
             <Route path="/manuals" element={<ManualsLibraryPage />} />
 
-            {/* Web Shop Cart & Checkout - public, accessible from storefront */}
-            <Route path="/web-shop/cart" element={<WebShopCartPage />} />
-            <Route path="/web-shop/checkout" element={<WebShopCheckoutPage />} />
-            <Route path="/web-shop/waiting-room" element={<WebShopWaitingRoomPage />} />
-            <Route path="/web-shop/order/success" element={<OrderSuccessPage />} />
-
-            {/* Web Shop Auth - No layout, no admin auth required */}
-            <Route path="/web-shop/login" element={<WebShopLoginPage />} />
-            <Route path="/web-shop/register" element={<WebShopRegisterPage />} />
-
-            {/* Web Shop Customer Portal - uses its own WebCustomerAuth, NOT admin auth */}
-            <Route path="/web-shop/account" element={<PortalLayout />}>
-              <Route index element={<CustomerPortalDashboardPage />} />
-              <Route path="tickets" element={<TicketsPage />} />
-              <Route path="orders" element={<OrdersListPage />} />
-              <Route path="orders/:id" element={<OrderDetailPage />} />
-              <Route path="profile" element={<ProfilePage />} />
-              <Route path="addresses" element={<AddressesPage />} />
-              <Route path="loyalty" element={<LoyaltyPage />} />
-            </Route>
-
             {/* Public Website Viewer Routes - No auth required */}
             <Route path="/sites/:websiteSlug" element={<PublicSiteViewer />} />
             <Route path="/sites/:websiteSlug/:pageSlug" element={<PublicSiteViewer />} />
             
             {/* Payment callback for popup-based gateways (HitPay etc) */}
             <Route path="/payment/callback" element={<PaymentCallbackPage />} />
-
-            {/* Public E-commerce Storefront */}
-            <Route path="/shop" element={<EcommerceShopPage />} />
-            <Route path="/shop/:pageType" element={<EcommerceShopPage />} />
 
             {/* Legacy /store SPA retired (FR-ARC-06 P2 stop-serving) */}
             <Route path="/store/*" element={<LegacyStoreRetiredPage />} />

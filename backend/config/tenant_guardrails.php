@@ -9,7 +9,6 @@ return [
                 'ai',
                 'communication',
                 'core',
-                'ecommerce',
                 'event_management',
                 'inventory',
                 'iot',

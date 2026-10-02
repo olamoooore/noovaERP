@@ -286,7 +286,6 @@ class WS06ChannelRuntimeConvergenceTest extends TenantTestCase
         $paths = [
             base_path('modules/PaymentGateway/src/Controllers/PaymentController.php'),
             base_path('modules/PaymentGateway/src/Controllers/PaymentWebhookController.php'),
-            base_path('modules/Ecommerce/src/Http/Controllers/WebCheckoutController.php'),
         ];
 
         foreach ($paths as $file) {
@@ -494,35 +493,6 @@ class WS06ChannelRuntimeConvergenceTest extends TenantTestCase
             'lockForUpdate()',
             $src,
             'PaymentTransactionCompletionService must use lockForUpdate() for concurrent idempotency'
-        );
-    }
-
-    /** @test */
-    public function test_process_all_web_orders_repair_path_does_not_call_deduct_stock_directly(): void
-    {
-        $src = file_get_contents(
-            base_path('modules/Ecommerce/Console/Commands/ProcessAllWebOrders.php')
-        );
-
-        // The bypass has been fixed — deductStock() must no longer be called directly
-        $this->assertStringNotContainsString(
-            'deductStock(',
-            $src,
-            'ProcessAllWebOrders must not call deductStock() directly — use InventoryService via CompletionService'
-        );
-
-        // It must have a canonical path via PaymentTransactionCompletionService
-        $this->assertStringContainsString(
-            'PaymentTransactionCompletionService',
-            $src,
-            'ProcessAllWebOrders must use PaymentTransactionCompletionService::complete()'
-        );
-
-        // Must delegate to CompletionService for stock operations
-        $this->assertStringContainsString(
-            'completionService->complete(',
-            $src,
-            'ProcessAllWebOrders must delegate to CompletionService for stock operations'
         );
     }
 }

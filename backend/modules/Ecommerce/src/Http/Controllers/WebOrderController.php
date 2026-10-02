@@ -12,6 +12,7 @@ namespace Modules\Ecommerce\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Modules\Ecommerce\Models\WebOrder;
@@ -106,7 +107,7 @@ class WebOrderController extends Controller
     /**
      * Admin: List all web orders with filters
      */
-    public function adminIndex(Request $request): JsonResponse
+    public function adminIndex(Request $request): JsonResponse|Response
     {
         $query = WebOrder::with('items', 'customer');
 
@@ -139,6 +140,13 @@ class WebOrderController extends Controller
             $query->whereDate('created_at', '<=', $request->input('to_date'));
         }
 
+        // FR-ARC-04 (retained export): the legacy orders CAN be exported to
+        // CSV from the same filtered, read-only, tenant-scoped query — the
+        // export required before `web_*` table disposal. Bounded at 10k rows.
+        if ($request->string('format')->toString() === 'csv') {
+            return $this->exportOrdersCsv($query);
+        }
+
         $orders = $query->orderBy('created_at', 'desc')
             ->paginate($request->input('per_page', 20));
 
@@ -157,6 +165,51 @@ class WebOrderController extends Controller
                 'shipped' => WebOrder::where('status', 'shipped')->count(),
                 'total_revenue' => (float) WebOrder::where('payment_status', 'paid')->sum('total'),
             ],
+        ]);
+    }
+
+    /**
+     * Tenanted CSV export of legacy web orders (FR-ARC-04). Read-only; the
+     * same filters as the JSON listing apply.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<WebOrder>  $query
+     */
+    private function exportOrdersCsv($query): Response
+    {
+        $rows = $query->orderBy('created_at', 'desc')->limit(10000)->get([
+            'order_number', 'status', 'payment_status', 'email', 'first_name',
+            'last_name', 'subtotal', 'tax_amount', 'total', 'currency', 'created_at',
+        ]);
+
+        $csv = static function (?string $value): string {
+            $value = (string) ($value ?? '');
+
+            return str_contains($value, ',') || str_contains($value, '"') || str_contains($value, "\n")
+                ? '"'.str_replace('"', '""', $value).'"'
+                : $value;
+        };
+
+        $lines = ['order_number,status,payment_status,email,first_name,last_name,subtotal,tax_amount,total,currency,created_at'];
+
+        foreach ($rows as $order) {
+            $lines[] = implode(',', [
+                $csv($order->order_number),
+                $csv($order->status),
+                $csv($order->payment_status),
+                $csv($order->email),
+                $csv($order->first_name),
+                $csv($order->last_name),
+                $csv((string) $order->subtotal),
+                $csv((string) $order->tax_amount),
+                $csv((string) $order->total),
+                $csv($order->currency),
+                $csv($order->created_at?->toDateTimeString()),
+            ]);
+        }
+
+        return response(implode("\n", $lines), 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="legacy-web-orders-'.date('Ymd').'.csv"',
         ]);
     }
 
