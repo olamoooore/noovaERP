@@ -52,6 +52,9 @@ Route::prefix('accounting/tax-report')
             ->middleware(RequirePermission::using('reports.view'));
         Route::get('/filings', [TaxReportController::class, 'filings']);
 
+        // #275: filing calendar + registration/threshold status.
+        Route::get('/compliance-calendar', [TaxReportController::class, 'complianceCalendar']);
+
         // #281 F18: exception catalogue + close-blocking status.
         Route::get('/exceptions', [TaxReportController::class, 'exceptions'])
             ->middleware(RequirePermission::using('reports.view'));

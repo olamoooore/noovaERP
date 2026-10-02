@@ -130,6 +130,28 @@ class TaxReportController extends Controller
     }
 
     /**
+     * #275: filing calendar + registration/threshold status.
+     */
+    public function complianceCalendar(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate([
+            'country' => ['required', 'in:SG,MY'],
+            'year' => ['required', 'integer', 'min:2020', 'max:2100'],
+            'entity_id' => ['nullable', 'integer', 'exists:legal_entities,id'],
+        ]);
+
+        return response()->json([
+            'data' => [
+                'calendar' => $this->reporting->filingCalendar($validated['country'], (int) $validated['year']),
+                'registration' => $this->reporting->registrationStatus(
+                    $validated['country'],
+                    isset($validated['entity_id']) ? (int) $validated['entity_id'] : null,
+                ),
+            ],
+        ]);
+    }
+
+    /**
      * F18 (#281): exception catalogue + close-blocking status for a period.
      */
     public function exceptions(Request $request): \Illuminate\Http\JsonResponse

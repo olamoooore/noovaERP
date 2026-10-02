@@ -28,6 +28,99 @@ class TaxReportingService
      * @return array{months: array<int,string>, rows: array<int, array<string, mixed>>, by_tax_code: array<int, array<string, mixed>>, totals: array{output_tax: float, input_tax: float, net: float}}
      */
     /**
+     * #275: statutory filing calendar with due dates and status (filed /
+     * overdue / open) for SG (quarterly GST F5) and MY (bi-monthly SST-02).
+     *
+     * @return array<int, array{period: string, months: array<int,string>, due_date: string, status: string}>
+     */
+    public function filingCalendar(string $country, int $year): array
+    {
+        $country = strtoupper($country);
+        $windows = [];
+
+        if ($country === 'SG') {
+            $windows = [
+                ['period' => "{$year}-Q1", 'months' => ["{$year}-01", "{$year}-02", "{$year}-03"], 'due' => date('Y-m-t', strtotime("{$year}-04-01"))],
+                ['period' => "{$year}-Q2", 'months' => ["{$year}-04", "{$year}-05", "{$year}-06"], 'due' => date('Y-m-t', strtotime("{$year}-07-01"))],
+                ['period' => "{$year}-Q3", 'months' => ["{$year}-07", "{$year}-08", "{$year}-09"], 'due' => date('Y-m-t', strtotime("{$year}-10-01"))],
+                ['period' => "{$year}-Q4", 'months' => ["{$year}-10", "{$year}-11", "{$year}-12"], 'due' => date('Y-m-t', strtotime(($year + 1).'-01-01'))],
+            ];
+        } elseif ($country === 'MY') {
+            $spans = [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12]];
+
+            foreach ($spans as [$start, $end]) {
+                $months = [sprintf('%d-%02d', $year, $start), sprintf('%d-%02d', $year, $end)];
+                $dueMonth = $end === 12 ? ($year + 1).'-01' : sprintf('%d-%02d', $year, $end + 1);
+                $windows[] = [
+                    'period' => $months[0].'~'.$months[1],
+                    'months' => $months,
+                    'due' => date('Y-m-t', strtotime($dueMonth.'-01')),
+                ];
+            }
+        }
+
+        $calendar = [];
+
+        foreach ($windows as $window) {
+            $filed = DB::table('statutory_return_filings')
+                ->whereNull('superseded_at')
+                ->where('country', $country)
+                ->where(function ($q) use ($window) {
+                    $q->whereIn('period', $window['months'])
+                        ->orWhere('period', $window['period']);
+                })
+                ->exists();
+
+            $duetoday = now()->toDateString();
+
+            $calendar[] = [
+                'period' => $window['period'],
+                'months' => $window['months'],
+                'due_date' => $window['due'],
+                'status' => $filed ? 'filed' : ($window['due'] < $duetoday ? 'overdue' : 'open'),
+            ];
+        }
+
+        return $calendar;
+    }
+
+    /**
+     * #275: registration + turnover-threshold status. Thresholds: SG SGD
+     * 1,000,000; MY MYR 500,000.
+     *
+     * @return array{registered: bool, ytd_taxable: float, threshold: float, threshold_exceeded: bool, country: string}
+     */
+    public function registrationStatus(string $country, ?int $legalEntityId = null): array
+    {
+        $country = strtoupper($country);
+        $threshold = $country === 'SG' ? 1000000.0 : 500000.0;
+
+        $registered = DB::table('tax_registrations')
+            ->where('status', 'active')
+            ->when($legalEntityId !== null, fn ($q) => $q->where('legal_entity_id', $legalEntityId))
+            ->where('effective_from', '<=', now()->toDateString())
+            ->where(function ($q) {
+                $q->whereNull('effective_to')->orWhere('effective_to', '>=', now()->toDateString());
+            })
+            ->exists();
+
+        $ytd = round((float) DB::table('tax_transaction_details as ttd')
+            ->join('journal_entries as je', 'je.id', '=', 'ttd.journal_entry_id')
+            ->where('je.status', 'posted')
+            ->whereRaw('ttd.reporting_period LIKE ?', [now()->format('Y').'-%'])
+            ->whereRaw("upper(coalesce(ttd.jurisdiction, '')) = ?", [$country])
+            ->sum('ttd.taxable_amount'), 2);
+
+        return [
+            'country' => $country,
+            'registered' => $registered,
+            'ytd_taxable' => $ytd,
+            'threshold' => $threshold,
+            'threshold_exceeded' => $ytd > $threshold,
+        ];
+    }
+
+    /**
      * F18 (#281): deterministic exception catalogue for a period — variance,
      * uncoded control-account movement (reversal-excluded), unfiled activity
      * and trail rows missing a determination. Blocking exceptions feed the
@@ -101,6 +194,20 @@ class TaxReportingService
                 'count' => $missingDetermination,
                 'message' => 'Trail rows without a determination reference (legacy/imported data).',
             ];
+        }
+
+        foreach (['SG', 'MY'] as $country) {
+            $registration = $this->registrationStatus($country, $legalEntityId);
+
+            if ($registration['threshold_exceeded'] && ! $registration['registered']) {
+                $exceptions[] = [
+                    'code' => 'REGISTRATION_REQUIRED',
+                    'severity' => 'high',
+                    'blocking' => true,
+                    'count' => 1,
+                    'message' => "Taxable turnover exceeds the {$country} registration threshold without an active registration.",
+                ];
+            }
         }
 
         return $exceptions;
