@@ -122,7 +122,7 @@ class ComplianceService
         // #812 EP1: purchase-side source types are not e-invoices — guard every
         // caller (routes, generic submit, any internal dispatch), not only the
         // HTTP entry points.
-        if (in_array($docType, ['bill', 'vendor_debit_note'], true)) {
+        if (in_array($docType, ['bill', 'vendor_debit_note', 'journal_entry'], true)) {
             return [
                 'success' => false,
                 'message' => 'DISABLED_SOURCE_TYPE: '.$docType.' is not an e-invoice source document (#812 EP1).',
@@ -695,7 +695,7 @@ class ComplianceService
 
         // #812 EP1: purchase-side source types are not e-invoices — guard every
         // caller (generic submit, bulk, internal dispatch).
-        if (in_array($docType, ['bill', 'vendor_debit_note'], true)) {
+        if (in_array($docType, ['bill', 'vendor_debit_note', 'journal_entry'], true)) {
             return [
                 'success' => false,
                 'message' => 'DISABLED_SOURCE_TYPE: '.$docType.' is not an e-invoice source document (#812 EP1).',
@@ -1402,33 +1402,11 @@ class ComplianceService
 
         $payload['supplier'] = $supplier;
 
-        // When the mapper signals that buyer = same entity as supplier (e.g. journal entries
-        // where no distinct vendor exists), copy the supplier's registered identity to the buyer
-        // so the document uses the real company TIN rather than the EI00000000010 fallback.
-        // This applies to both regular invoices (type 01) and self-billed (type 11).
-        $selfBilledTypes = ['self_billed_invoice', 'self_billed_credit_note', 'self_billed_debit_note', 'self_billed_refund_note'];
-        $buyerSameAsSupplier = ! empty($payload['_buyer_same_as_supplier'])
-            || in_array($payload['document_type'] ?? '', $selfBilledTypes, true);
-
-        if ($buyerSameAsSupplier) {
-            $buyer = is_array($payload['buyer'] ?? null) ? $payload['buyer'] : [];
-            $buyer['tin'] = $supplier['tin'] ?? null;
-            $buyer['name'] = ($buyer['name'] === 'Unknown Party' || empty($buyer['name']))
-                                             ? ($supplier['name'] ?? $buyer['name'])
-                                             : $buyer['name'];
-            $buyer['company_registration'] = $buyer['company_registration'] ?? $supplier['company_registration'] ?? null;
-            $buyer['identity_type'] = $buyer['identity_type'] ?? $supplier['identity_type'] ?? null;
-            $buyer['identity_number'] = $buyer['identity_number'] ?? $supplier['identity_number'] ?? null;
-            // Copy supplier address so buyer doesn't have a blank postal address
-            $buyerAddress = is_array($buyer['address'] ?? null) ? $buyer['address'] : [];
-            $supplierAddress = is_array($supplier['address'] ?? null) ? $supplier['address'] : [];
-            foreach (['street', 'city', 'state', 'postal_code', 'country'] as $addrField) {
-                $buyerAddress[$addrField] = $buyerAddress[$addrField] ?? $supplierAddress[$addrField] ?? null;
-            }
-            $buyer['address'] = $buyerAddress;
-            unset($payload['_buyer_same_as_supplier']);
-            $payload['buyer'] = $buyer;
-        }
+        // #813 EP2: self-billing does NOT mean buyer = supplier. The defaulting
+        // that copied the supplier's identity onto the buyer for self-billed
+        // types (and the journal-entry mapper's flag) is removed: in self-billing
+        // the supplier is the counterparty and the buyer is the tenant entity.
+        // The mapper is responsible for a correct buyer.
 
         return $payload;
     }
