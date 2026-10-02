@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DocumentUpload } from '@/components/ocr/DocumentUpload'
@@ -14,12 +14,21 @@ export function OCRDocumentsPage() {
   const [showUpload, setShowUpload] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  // Wide search hits the DB per term; debounce typing like the other lists do.
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 300)
+    return () => clearTimeout(timer)
+  }, [searchTerm])
   const queryClient = useQueryClient()
 
   const { data: documents, refetch } = useQuery({
-    queryKey: ['ocr-documents'],
+    queryKey: ['ocr-documents', debouncedSearchTerm, statusFilter],
     queryFn: async () => {
-      const response = await api.get('/ocr/documents')
+      const params: Record<string, string> = {}
+      if (debouncedSearchTerm.trim()) params.search = debouncedSearchTerm.trim()
+      if (statusFilter !== 'all') params.status = statusFilter
+      const response = await api.get('/ocr/documents', { params })
       return response.data.data
     },
   })
@@ -46,7 +55,7 @@ export function OCRDocumentsPage() {
       {/* Toolbar — search, status filter, upload and refresh on one row. */}
       <div className="flex flex-wrap items-center gap-2">
         <Input
-          placeholder="Search by vendor, filename, or amount..."
+          placeholder="Search vendor, contact, address, file…"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="h-8 w-full max-w-xs rounded-full px-3 text-xs"

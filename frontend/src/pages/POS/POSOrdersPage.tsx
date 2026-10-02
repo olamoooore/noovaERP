@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { Icon } from '@iconify/react'
@@ -62,6 +62,10 @@ interface SalesOrder {
   paid_at?: string
   shipped_at?: string
   delivered_at?: string
+  // Wide-search hints set by the list endpoint when a search term is present.
+  matched_contacts?: string[]
+  matched_lines?: string[]
+  matched_addresses?: string[]
 }
 
 interface SalesOrderDetail extends SalesOrder {
@@ -153,6 +157,12 @@ interface SalesOrderDetail extends SalesOrder {
 export function POSOrdersPage() {
   const { toast } = useToast()
   const [search, setSearch] = useState('')
+  // Wide search hits the DB per term; debounce typing like the other lists do.
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(timer)
+  }, [search])
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [sourceFilter, setSourceFilter] = useState<string>('all')
   const [dateFilter, setDateFilter] = useState<string>('')
@@ -162,10 +172,10 @@ export function POSOrdersPage() {
   const [pageSize, setPageSize] = useState(20)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['sales-orders', search, statusFilter, sourceFilter, dateFilter, page, pageSize],
+    queryKey: ['sales-orders', debouncedSearch, statusFilter, sourceFilter, dateFilter, page, pageSize],
     queryFn: async () => {
       const params: Record<string, any> = { page, per_page: pageSize }
-      if (search) params.search = search
+      if (debouncedSearch) params.search = debouncedSearch
       if (statusFilter !== 'all') params.status = statusFilter
       if (sourceFilter !== 'all') params.source = sourceFilter
       if (dateFilter) params.date = dateFilter
@@ -307,7 +317,7 @@ export function POSOrdersPage() {
         <div className="relative w-full sm:w-72">
           <Icon icon="solar:magnifer-bold-duotone" className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search order number, customer..."
+            placeholder="Search order, customer, contact…"
             className="h-8 rounded-full pl-9 pr-3 text-xs"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -440,6 +450,22 @@ export function POSOrdersPage() {
                             <div className="min-w-0">
                               <div className="truncate font-medium">{order.customer.name}</div>
                               <div className="truncate text-xs text-muted-foreground">{order.customer.email}</div>
+                              {/* Wide search can match a customer contact/address or line item. */}
+                              {(order.matched_contacts?.length ?? 0) > 0 && (
+                                <div className="truncate text-xs text-primary" title={order.matched_contacts!.join(', ')}>
+                                  Contact: {order.matched_contacts!.join(', ')}
+                                </div>
+                              )}
+                              {(order.matched_lines?.length ?? 0) > 0 && (
+                                <div className="truncate text-xs text-muted-foreground" title={order.matched_lines!.join(' · ')}>
+                                  Line: {order.matched_lines!.join(' · ')}
+                                </div>
+                              )}
+                              {(order.matched_addresses?.length ?? 0) > 0 && (
+                                <div className="truncate text-xs text-muted-foreground" title={order.matched_addresses!.join(' · ')}>
+                                  Address: {order.matched_addresses!.join(' · ')}
+                                </div>
+                              )}
                             </div>
                           ) : order.cashier ? (
                             <span className="text-muted-foreground">via {order.cashier}</span>
