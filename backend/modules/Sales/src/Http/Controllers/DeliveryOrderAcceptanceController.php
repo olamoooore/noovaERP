@@ -178,6 +178,10 @@ class DeliveryOrderAcceptanceController extends Controller
                     $path,
                     null,
                     $signerLabel,
+                    // Issue #630: these uploads are the customer's acceptance
+                    // evidence — chatter must never be able to destroy them.
+                    DeliveryOrder::class,
+                    (int) $deliveryOrder->id,
                 );
 
                 $stored[] = [
@@ -201,6 +205,9 @@ class DeliveryOrderAcceptanceController extends Controller
                     $signature['path'],
                     null,
                     $signerLabel,
+                    // Issue #630: the drawn signature is the signed copy itself.
+                    DeliveryOrder::class,
+                    (int) $deliveryOrder->id,
                 );
 
                 $signedPath = $signature['path'];

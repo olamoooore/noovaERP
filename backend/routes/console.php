@@ -4,7 +4,6 @@ use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
-use Modules\Inventory\Services\StockReservationService;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -45,6 +44,13 @@ Schedule::command('pos:reconciliation-report --fail-on-exceptions')
 // POS Recovery - Check for stuck orders every 15 minutes
 Schedule::command('pos:recover-stuck --fix-syncing')
     ->everyFifteenMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// #666 EI4: poll e-invoice status so Invalid results and buyer rejection
+// requests are noticed instead of lapsing while submissions sit "submitted".
+Schedule::command('compliance:sync-einvoice-status')
+    ->everyTenMinutes()
     ->withoutOverlapping()
     ->runInBackground();
 

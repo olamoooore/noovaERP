@@ -814,6 +814,16 @@ class QuotationController extends Controller
 
                 // Creates an invoice for whatever is still invoiceable on the
                 // order; throws when nothing remains.
+                //
+                // Issue #647: the invoice is flagged by
+                // InvoiceService::applyApprovalThreshold() when its total meets
+                // the tenant threshold. No invoice approval request is raised
+                // here on purpose — this conversion only runs when
+                // requestIfNeeded() above found the quotation's own gate
+                // request approved (or the gate disabled), so a second request
+                // would duplicate a decision the reviewer just made. Ungated
+                // interactive creates (direct create, SO→invoice) submit the
+                // invoice approval themselves.
                 $invoice = $this->salesOrderService->createInvoice($salesOrder);
 
                 // Link the invoice back to the quotation

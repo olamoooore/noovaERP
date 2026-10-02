@@ -318,9 +318,56 @@ class SalesOrderController extends Controller
         try {
             $invoice = $this->orderService->createInvoice($order);
 
+            // Issue #647: InvoiceService::applyApprovalThreshold() flags an
+            // invoice whose total meets the tenant threshold on every creation
+            // path. Here — the SO→invoice action — submit it through the same
+            // approval channel the invoice form uses, so the operator does not
+            // need a second button.
+            $invoice = $this->submitForApprovalIfRequired($invoice);
+
             return response()->json(['message' => 'Invoice created', 'invoice' => $invoice], 201);
         } catch (\Exception $e) {
             return response()->json(['message' => $e->getMessage()], 422);
+        }
+    }
+
+    /**
+     * Submit a freshly created invoice for approval when the threshold (or the
+     * tenant policy) flagged it. Mirrors InvoiceController::autoSubmitForApproval:
+     * failures are logged, never allowed to lose the created invoice.
+     */
+    private function submitForApprovalIfRequired(\App\Models\Invoice $invoice): \App\Models\Invoice
+    {
+        try {
+            $invoice->refresh();
+
+            if (! $invoice->requires_approval || $invoice->status !== 'draft') {
+                return $invoice;
+            }
+
+            if ($invoice->approval_status === \App\Models\Invoice::APPROVAL_PENDING) {
+                return $invoice;
+            }
+
+            $actor = Auth::user();
+            if (! $actor) {
+                return $invoice;
+            }
+
+            app(\App\Services\InvoiceApprovalService::class)->submit(
+                $invoice,
+                $actor,
+                'Automatically submitted when the invoice met the approval threshold.',
+            );
+
+            return $invoice->fresh();
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Sales order invoice auto-submit for approval failed', [
+                'invoice_id' => $invoice->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $invoice;
         }
     }
 

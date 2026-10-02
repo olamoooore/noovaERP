@@ -277,6 +277,54 @@ class SalesApprovalReviewerResolutionTest extends TenantTestCase
         $this->assertSame('confirmed', $order->fresh()->status);
     }
 
+    /**
+     * #370 (O1): every confirm click on a gated order used to create another
+     * pending approval request, and approving one never confirmed the order.
+     * The gate must reuse the pending request and proceed once approved.
+     */
+    public function test_sales_order_repeated_confirm_clicks_reuse_the_pending_request(): void
+    {
+        Setting::setValue(SalesApprovalGate::SETTING_KEY, 1000);
+        Setting::setValue('sales.sales_order.reviewer_user_ids', [$this->reviewer->id]);
+        Setting::setValue('sales.sales_order.reviewer_roles', []);
+
+        $order = $this->makeDraftSalesOrder(2500);
+
+        $first = $this->actingAs($this->sales)
+            ->postJson("/api/v1/sales/orders/{$order->id}/confirm");
+        $first->assertStatus(202);
+
+        $second = $this->actingAs($this->sales)
+            ->postJson("/api/v1/sales/orders/{$order->id}/confirm");
+        $second->assertStatus(202);
+
+        $this->assertSame(
+            $first->json('approval_request.id'),
+            $second->json('approval_request.id'),
+            'a repeated click must return the same pending request',
+        );
+
+        $requestCount = fn (): int => ApprovalRequest::query()
+            ->where('request_type', SalesApprovalGate::REQUEST_TYPE_SALES_ORDER)
+            ->where('subject_id', $order->id)
+            ->count();
+
+        $this->assertSame(1, $requestCount(), 'repeated clicks must not create duplicate requests');
+
+        $approval = ApprovalRequest::query()->findOrFail($second->json('approval_request.id'));
+
+        $this->actingAs($this->reviewer)
+            ->postJson("/api/v1/approvals/{$approval->id}/approve")
+            ->assertOk();
+
+        $this->actingAs($this->sales)
+            ->postJson("/api/v1/sales/orders/{$order->id}/confirm")
+            ->assertOk();
+
+        $this->assertSame('confirmed', $order->fresh()->status, 'an approved order must confirm');
+        $this->assertSame(1, $requestCount(), 'confirming after approval must not raise another request');
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // Separation of duties
     // ─────────────────────────────────────────────────────────────────────

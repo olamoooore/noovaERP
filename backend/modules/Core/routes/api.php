@@ -342,6 +342,10 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         // literal path is not swallowed by the model binding.
         Route::get('/invoices/data-checks/cancelled-without-reversal', [InvoiceController::class, 'cancelledWithoutReversalDataCheck'])
             ->middleware(RequirePermission::using('accounting.view'));
+        // #630 data check: evidence rows whose stored file no longer exists.
+        // Same accounting.view read gate as the #681 data check.
+        Route::get('/invoices/data-checks/missing-evidence-files', [InvoiceController::class, 'missingEvidenceFilesDataCheck'])
+            ->middleware(RequirePermission::using('accounting.view'));
         Route::post('/invoices', [InvoiceController::class, 'store'])
             ->middleware(RequirePermission::using('invoices.write'));
         Route::get('/invoices/{invoice}', [InvoiceController::class, 'show'])
