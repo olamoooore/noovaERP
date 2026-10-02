@@ -149,6 +149,7 @@ class DeliveryOrderService
         private StockReservationService $reservationService,
         private \App\Services\BundleDecompositionService $bundleDecomposition,
         private \App\Accounting\PostingEngine $postingEngine,
+        private \App\Services\GoodsIssueLedger $goodsIssueLedger,
     ) {}
 
     // ════════════════════════════════════════════════════════════════════════
@@ -447,10 +448,17 @@ class DeliveryOrderService
      * Issue #176: DO completion issues inventory from the ledger's perspective
      * too — post Dr COGS / Cr Inventory at completion, independent of invoice
      * posting (the documented no-enforced-DO/Invoice sequencing policy).
+     *
+     * Issue #682: $issuedQuantities holds, per delivery line, the quantity this
+     * completion actually issued. Costing exactly that keeps COGS and stock on
+     * one rule — a line whose goods an invoice already issued contributes
+     * nothing here, and postDeliveryCogs() posts no entry at all.
+     *
+     * @param  array<int, float>  $issuedQuantities  keyed by delivery-order line id
      */
-    private function postDeliveryCogs(DeliveryOrder $deliveryOrder, int $warehouseId, int $actorId): void
+    private function postDeliveryCogs(DeliveryOrder $deliveryOrder, int $warehouseId, int $actorId, array $issuedQuantities = []): void
     {
-        $totalCogs = $this->deliveryCogsTotal($deliveryOrder, $warehouseId);
+        $totalCogs = $this->deliveryCogsTotal($deliveryOrder, $warehouseId, $issuedQuantities);
 
         if ($totalCogs <= 0) {
             return;
@@ -527,8 +535,10 @@ class DeliveryOrderService
 
     /**
      * FEFO layer cost when available, bundle component cost otherwise.
+     *
+     * @param  array<int, float>  $issuedQuantities  quantity actually issued per line (defaults to the delivered quantity)
      */
-    private function deliveryCogsTotal(DeliveryOrder $deliveryOrder, int $warehouseId): float
+    private function deliveryCogsTotal(DeliveryOrder $deliveryOrder, int $warehouseId, array $issuedQuantities = []): float
     {
         $batchConsumption = app(\App\Services\BatchSerialConsumptionService::class);
         $total = 0.0;
@@ -538,7 +548,9 @@ class DeliveryOrderService
                 continue;
             }
 
-            $qty = (float) $line->quantity_delivered;
+            $qty = array_key_exists($line->id, $issuedQuantities)
+                ? (float) $issuedQuantities[$line->id]
+                : (float) $line->quantity_delivered;
             if ($qty <= 0) {
                 continue;
             }
@@ -948,6 +960,13 @@ class DeliveryOrderService
             // Deduct stock for each stock-tracked line. Issue #130: a bundle
             // sale consumes its components — decompose before mutating stock so
             // component inventory actually moves.
+            //
+            // Issue #682: only the quantity no document has issued yet leaves
+            // the warehouse here, and postDeliveryCogs() below recognises COGS
+            // on that SAME quantity — so completion can no longer issue goods
+            // (or their cost) that an invoice already issued.
+            $issuedQuantities = [];
+
             foreach ($deliveryOrder->lines as $line) {
                 if (! $line->product_id) {
                     continue;
@@ -965,7 +984,10 @@ class DeliveryOrderService
 
                 $components = $this->bundleDecomposition->stockConsumingComponents($product, $qty);
 
-                foreach ($components as $component) {
+                $unissuedQty = $this->goodsIssueLedger->remainingForDeliveryOrderLine($line, (float) $qty);
+                $issuedQuantities[$line->id] = $unissuedQty > 0 ? $unissuedQty : 0.0;
+
+                foreach ($this->bundleDecomposition->stockConsumingComponents($product, $unissuedQty) as $component) {
                     $componentQty = (int) round($component['quantity']);
                     if ($componentQty <= 0) {
                         continue;
@@ -1027,7 +1049,7 @@ class DeliveryOrderService
             }
 
             // Issue #176: recognise COGS at completion time.
-            $this->postDeliveryCogs($deliveryOrder, $warehouseId, $actorId);
+            $this->postDeliveryCogs($deliveryOrder, $warehouseId, $actorId, $issuedQuantities);
 
             $deliveryOrder->update([
                 'status' => 'done',
@@ -1050,6 +1072,11 @@ class DeliveryOrderService
      * DONE → CANCELLED (Reversal)
      * Posts compensating inbound stock movements, subtracts delivered quantities
      * from linked Sales Order lines. Never deletes the original.
+     *
+     * Issue #682: the restock is exactly what this delivery order issued at
+     * completion. A delivery whose goods an invoice had already issued restocks
+     * nothing — putting the delivered quantity back would conjure stock nobody
+     * ever received.
      */
     public function reverseDeliveryOrder(DeliveryOrder $deliveryOrder, string $reason): DeliveryOrder
     {
@@ -1073,22 +1100,30 @@ class DeliveryOrderService
 
                 if ($isStockTracked) {
                     $qty = (int) round((float) $line->quantity_delivered);
-                    if ($qty <= 0) {
-                        continue;
-                    }
 
-                    // Compensating inbound movement (restock)
-                    $this->inventoryService->adjustStock(
-                        productId: $line->product_id,
-                        warehouseId: $warehouseId,
-                        quantity: $qty,
-                        type: 'return',
-                        reference: "REVERSAL-{$deliveryOrder->delivery_order_number}",
-                        referenceType: 'DeliveryOrder',
-                        referenceId: $deliveryOrder->id,
-                        notes: "Reversal: {$reason}",
-                        idempotencyKey: "do-reverse-{$deliveryOrder->id}-line-{$line->id}",
-                    );
+                    foreach ($this->bundleDecomposition->stockConsumingComponents($product, $qty) as $component) {
+                        $issuedQty = (int) round(
+                            $this->goodsIssueLedger->issuedByDeliveryOrder($deliveryOrder, (int) $component['product']->id)
+                        );
+
+                        if ($issuedQty <= 0) {
+                            continue;
+                        }
+
+                        // Compensating inbound movement (restock)
+                        $this->inventoryService->adjustStock(
+                            productId: $component['product']->id,
+                            warehouseId: $warehouseId,
+                            quantity: $issuedQty,
+                            type: 'return',
+                            reference: "REVERSAL-{$deliveryOrder->delivery_order_number}",
+                            referenceType: 'DeliveryOrder',
+                            referenceId: $deliveryOrder->id,
+                            notes: "Reversal: {$reason}",
+                            idempotencyKey: "do-reverse-{$deliveryOrder->id}-line-{$line->id}".
+                                ($product->is_bundle ? "-component-{$component['product']->id}" : ''),
+                        );
+                    }
                 }
 
                 // Subtract from SO line delivered_qty (always, regardless of stock tracking)
