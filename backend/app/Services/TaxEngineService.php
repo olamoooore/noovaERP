@@ -14,18 +14,15 @@ use App\Models\Tax;
  */
 class TaxEngineService
 {
-    private const COUNTRY_DEFAULTS = [
-        'SG' => [
-            'regime' => 'GST',
-            'currency' => 'SGD',
-            'rates' => ['gst' => 9.0],
-        ],
-        'MY' => [
-            'regime' => 'SST',
-            'currency' => 'MYR',
-            'rates' => ['sales' => 10.0, 'service' => 8.0],
-        ],
-    ];
+    public function __construct(private ?TaxPackRegistry $registry = null) {}
+
+    /**
+     * #744 T11: country facts come from the pack registry, never a constant.
+     */
+    private function packs(): TaxPackRegistry
+    {
+        return $this->registry ??= app(TaxPackRegistry::class);
+    }
 
     /**
      * Resolve the effective tax for a product/document context.
@@ -81,7 +78,7 @@ class TaxEngineService
                 'tax_id' => null,
                 'tax_name' => 'Product custom tax',
                 'jurisdiction' => $jurisdiction,
-                'regime' => self::COUNTRY_DEFAULTS[$jurisdiction]['regime'] ?? 'GST',
+                'regime' => $this->packs()->regime($jurisdiction),
                 'scope' => $direction,
                 'treatment' => $rate > 0 ? 'standard_rated' : 'out_of_scope',
                 'source' => 'product_custom',
@@ -167,7 +164,7 @@ class TaxEngineService
                 'tax_id' => null,
                 'tax_name' => 'Product tax',
                 'jurisdiction' => $jurisdiction,
-                'regime' => self::COUNTRY_DEFAULTS[$jurisdiction]['regime'] ?? 'GST',
+                'regime' => $this->packs()->regime($jurisdiction),
                 'scope' => $direction,
                 'treatment' => 'standard_rated',
                 'source' => 'product',
@@ -213,11 +210,9 @@ class TaxEngineService
         return ['net' => $grossOrNet, 'tax' => $tax, 'gross' => round($grossOrNet + $tax, 2)];
     }
 
-    public function countryDefaults(string $jurisdiction): array
+    public function countryDefaults(string $jurisdiction, ?string $date = null): array
     {
-        return self::COUNTRY_DEFAULTS[strtoupper($jurisdiction)] ?? [
-            'regime' => 'GST', 'currency' => null, 'rates' => [],
-        ];
+        return $this->packs()->defaultsFor($jurisdiction, $date);
     }
 
     /**
@@ -269,7 +264,7 @@ class TaxEngineService
     private function fromTax(Tax $tax, string $jurisdiction, string $direction, string $source): array
     {
         $effectiveJurisdiction = strtoupper((string) ($tax->jurisdiction ?: $jurisdiction));
-        $regime = strtoupper((string) ($tax->regime ?: $this->countryDefaults($effectiveJurisdiction)['regime']));
+        $regime = strtoupper((string) ($tax->regime ?: $this->packs()->regime($effectiveJurisdiction)));
 
         return [
             'rate' => (float) $tax->rate,
@@ -294,7 +289,7 @@ class TaxEngineService
         return [
             'rate' => 0.0, 'is_inclusive' => false, 'tax_code' => 'NO-TAX',
             'tax_id' => null, 'tax_name' => 'No Tax', 'jurisdiction' => $jurisdiction,
-            'regime' => self::COUNTRY_DEFAULTS[$jurisdiction]['regime'] ?? 'GST',
+            'regime' => $this->packs()->regime($jurisdiction),
             'scope' => 'both', 'treatment' => 'out_of_scope', 'source' => 'none', 'reason' => $reason,
         ];
     }
@@ -352,7 +347,7 @@ class TaxEngineService
             'tax_id' => null,
             'tax_name' => 'Expired tax rule',
             'jurisdiction' => strtoupper((string) ($tax->jurisdiction ?: $jurisdiction)),
-            'regime' => strtoupper((string) ($tax->regime ?: $this->countryDefaults($jurisdiction)['regime'])),
+            'regime' => strtoupper((string) ($tax->regime ?: $this->packs()->regime($jurisdiction))),
             'scope' => $direction,
             'treatment' => 'unresolved',
             'source' => 'expired_rule_no_successor',

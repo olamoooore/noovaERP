@@ -24,41 +24,10 @@ use Illuminate\Support\Str;
  */
 class TaxDeterminationService
 {
-    public function __construct(private readonly TaxEngineService $engine) {}
-
-    /**
-     * Country → jurisdiction code mapping.
-     */
-    private const COUNTRY_JURISDICTION = [
-        'SG' => 'SG',
-        'MY' => 'MY',
-        'AU' => 'AU',
-        'NZ' => 'NZ',
-        'GB' => 'GB',
-        'US' => 'US',
-        'ID' => 'ID',
-        'TH' => 'TH',
-        'PH' => 'PH',
-        'VN' => 'VN',
-        'IN' => 'IN',
-    ];
-
-    /**
-     * Country → default tax regime mapping.
-     */
-    private const COUNTRY_REGIME = [
-        'SG' => 'GST',
-        'MY' => 'SST',
-        'AU' => 'GST',
-        'NZ' => 'GST',
-        'GB' => 'VAT',
-        'US' => 'SALES_TAX',
-        'ID' => 'VAT',
-        'TH' => 'VAT',
-        'PH' => 'VAT',
-        'VN' => 'VAT',
-        'IN' => 'GST',
-    ];
+    public function __construct(
+        private readonly TaxEngineService $engine,
+        private readonly TaxPackRegistry $packs,
+    ) {}
 
     /**
      * Compute and persist a TaxDeterminationResult for the given invoice.
@@ -119,7 +88,7 @@ class TaxDeterminationService
                 (int) $invoice->id,
                 [
                     'jurisdiction' => $engineJurisdiction,
-                    'tax_regime' => self::COUNTRY_REGIME[$engineJurisdiction] ?? 'GST',
+                    'tax_regime' => $this->packs->regime($engineJurisdiction),
                 ],
                 $overrides,
                 round((float) $invoice->tax_amount, 2),
@@ -133,7 +102,7 @@ class TaxDeterminationService
             ?? (($registration !== null && $registration->regime !== null && $registration->regime !== '')
                 ? strtoupper((string) $registration->regime)
                 : null)
-            ?? self::COUNTRY_REGIME[$jurisdiction] ?? 'GST';
+            ?? $this->packs->regime($jurisdiction);
 
         // AC3: the buyer's location decides the TREATMENT (local vs export),
         // not the regime. A foreign buyer means no local tax is charged;
@@ -277,7 +246,7 @@ class TaxDeterminationService
                 (int) $bill->id,
                 [
                     'jurisdiction' => $billEngineJurisdiction,
-                    'tax_regime' => self::COUNTRY_REGIME[$billEngineJurisdiction] ?? 'GST',
+                    'tax_regime' => $this->packs->regime($billEngineJurisdiction),
                 ],
                 $overrides,
                 round((float) $bill->tax_amount, 2),
@@ -286,7 +255,7 @@ class TaxDeterminationService
         }
 
         $jurisdiction = $overrides['jurisdiction'] ?? $billEngineJurisdiction;
-        $regime = $overrides['tax_regime'] ?? self::COUNTRY_REGIME[$jurisdiction] ?? 'GST';
+        $regime = $overrides['tax_regime'] ?? $this->packs->regime($jurisdiction);
         $date = $bill->bill_date?->toDateString() ?? now()->toDateString();
         $taxLines = [];
 
@@ -364,7 +333,7 @@ class TaxDeterminationService
             ?? $this->jurisdictionForCustomer($customerId)
             ?? $this->jurisdictionForVendor($vendorId)
             ?? $this->engine->tenantJurisdiction());
-        $regime = self::COUNTRY_REGIME[$jurisdiction] ?? 'GST';
+        $regime = $this->packs->regime($jurisdiction);
 
         $taxLines = [];
 
@@ -872,7 +841,7 @@ class TaxDeterminationService
         if ($billing && ! empty($billing->country)) {
             $code = strtoupper(trim($billing->country));
 
-            return self::COUNTRY_JURISDICTION[$code] ?? $code;
+            return $this->packs->jurisdictionForCountry($code);
         }
 
         return null;
@@ -895,7 +864,7 @@ class TaxDeterminationService
             return null;
         }
 
-        return self::COUNTRY_JURISDICTION[$code] ?? $code;
+        return $this->packs->jurisdictionForCountry($code);
     }
 
     /**

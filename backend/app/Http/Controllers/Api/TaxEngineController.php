@@ -27,7 +27,7 @@ class TaxEngineController extends Controller
             'data' => [
                 'jurisdiction' => $jurisdiction,
                 'date' => $date,
-                'country_defaults' => $this->engine->countryDefaults($jurisdiction),
+                'country_defaults' => $this->engine->countryDefaults($jurisdiction, $date),
                 'configured_rules' => Tax::query()
                     ->where('is_active', true)
                     ->where(function ($q) use ($jurisdiction) {
