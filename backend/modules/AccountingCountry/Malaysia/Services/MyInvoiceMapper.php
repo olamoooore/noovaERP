@@ -19,6 +19,32 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
      */
     private const LHDN_GENERAL_PUBLIC_TIN = 'EI00000000010';
 
+    /** Buyer types the Malaysia pack recognises (stored on customers.buyer_type). */
+    private const BUYER_TYPE_BUSINESS = 'business';
+
+    private const BUYER_TYPE_INDIVIDUAL = 'individual';
+
+    private const BUYER_TYPE_GOVERNMENT = 'government';
+
+    private const BUYER_TYPE_FOREIGN = 'foreign';
+
+    private const BUYER_TYPES = [
+        self::BUYER_TYPE_BUSINESS,
+        self::BUYER_TYPE_INDIVIDUAL,
+        self::BUYER_TYPE_GOVERNMENT,
+        self::BUYER_TYPE_FOREIGN,
+    ];
+
+    /**
+     * Buyer types that must carry a real TIN — the general-public TIN
+     * (EI00000000010) is only valid for individual buyers / consolidated B2C.
+     */
+    private const NON_INDIVIDUAL_BUYER_TYPES = [
+        self::BUYER_TYPE_BUSINESS,
+        self::BUYER_TYPE_GOVERNMENT,
+        self::BUYER_TYPE_FOREIGN,
+    ];
+
     /**
      * Map internal-expense JournalEntry as a MyInvois document.
      *
@@ -167,6 +193,9 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
         $supplier = $this->resolveSupplier($invoice);
         $buyer = $invoice->customer;
 
+        $supplierParty = $this->mapParty($supplier, true);
+        $buyerParty = $this->mapParty($buyer, false);
+
         $mapped = [
             'document_type' => 'invoice',
             'profile_version' => 'myinvoice-v1',
@@ -176,8 +205,13 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
             'issue_datetime' => $issuedDate->format('c'),
             'due_date' => $invoice->due_date?->format('Y-m-d') ?? null,
             'currency_code' => $currency,
-            'supplier' => $this->mapParty($supplier, true),
-            'buyer' => $this->mapParty($buyer, false),
+            'supplier' => $supplierParty,
+            'buyer' => $buyerParty,
+            // Issue #664: an invoice to a business buyer must say so explicitly
+            // so the provider never auto-classifies it as a consolidated
+            // general-public document. Only an individual buyer without a real
+            // TIN (general-public TIN) is a consolidated B2C invoice.
+            'is_consolidated' => $this->isGeneralPublicBuyerParty($buyerParty),
             'line_items' => $lineItems,
             'totals' => $this->mapTotals($invoice, $lineCollection),
             'tax_summary' => $this->mapTaxDetails($invoice),
@@ -608,6 +642,23 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
             return false;
         }
 
+        // Issue #664: a business/government/foreign buyer must have a real TIN —
+        // the general-public TIN is reserved for individuals and consolidated
+        // B2C invoices. This runs before the provider is called so the service
+        // can return an actionable message and no submission is made.
+        $buyerType = strtolower(trim((string) ($payload['buyer']['buyer_type'] ?? '')));
+        $buyerTin = trim((string) ($payload['buyer']['tin'] ?? ''));
+        if ($buyerTin === '' && in_array($buyerType, self::NON_INDIVIDUAL_BUYER_TYPES, true)) {
+            Log::warning('myinvois:validatePayload — business buyer has no TIN', [
+                'document_type' => $docType,
+                'invoice_id' => $payload['invoice_id'] ?? null,
+                'buyer_name' => $payload['buyer']['name'] ?? null,
+                'buyer_type' => $buyerType,
+            ]);
+
+            return false;
+        }
+
         if (! isset($payload['totals']['gross_amount']) || ! is_numeric($payload['totals']['gross_amount'])) {
             Log::warning('myinvois:validatePayload — totals.gross_amount missing or non-numeric', [
                 'document_type' => $docType,
@@ -639,14 +690,19 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
             ?? null;
 
         // TIN: Customer model stores it as tax_number ("TIN / Tax Number" in the UI).
-        $tin = $party->tax_identification_number
-            ?? $party->tin
-            ?? $party->tax_number                    // Customer model field
-            ?? $party->tax_id
-            ?? null;
+        $tin = $this->firstNonEmptyString(
+            $party->tax_identification_number ?? null,
+            $party->tin ?? null,
+            $party->tax_number ?? null,
+            $party->tax_id ?? null,
+        ) ?: null;
 
-        if ($tin === null && ! $isSupplier) {
+        $buyerType = $isSupplier ? null : $this->resolveBuyerType($party);
+
+        if ($tin === null && $buyerType === self::BUYER_TYPE_INDIVIDUAL) {
             // LHDN general-public TIN for consolidated/end-consumer invoices (LHDN constant).
+            // Issue #664: never fall back to it for a business/government/foreign
+            // buyer — those must carry a real TIN and be rejected otherwise.
             $tin = self::LHDN_GENERAL_PUBLIC_TIN;
         }
 
@@ -664,6 +720,7 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
             'sst_registration' => $party->sst_registration_number ?? null,
             'identity_type' => $identityType,
             'identity_number' => $party->identity_number ?? $registration,
+            'buyer_type' => $buyerType,
             'address' => [
                 'street' => $this->firstNonEmptyString(
                     $party->address_line_1 ?? null,
@@ -696,8 +753,50 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
                 ),
                 'email' => $party->email ?? null,
             ],
-            'is_business' => ! ($party->is_individual ?? false),
+            'is_business' => $isSupplier
+                ? ! ($party->is_individual ?? false)
+                : $buyerType !== self::BUYER_TYPE_INDIVIDUAL,
         ];
+    }
+
+    /**
+     * Resolve the Malaysia buyer type from the customer record.
+     *
+     * Prefers the explicit customers.buyer_type column (business / individual /
+     * government / foreign), then the legacy customers.type enum
+     * ('company' → business, 'individual' → individual), then an explicit
+     * is_individual flag on ad-hoc party objects. Unknown parties (walk-in
+     * customers, POS callers, vendors) keep the historic end-consumer
+     * treatment so they remain eligible for consolidated B2C invoices.
+     */
+    private function resolveBuyerType(object $party): string
+    {
+        $explicit = strtolower(trim((string) ($party->buyer_type ?? '')));
+        if (in_array($explicit, self::BUYER_TYPES, true)) {
+            return $explicit;
+        }
+
+        $type = strtolower(trim((string) ($party->type ?? '')));
+        if ($type === 'company') {
+            return self::BUYER_TYPE_BUSINESS;
+        }
+        if ($type === 'individual') {
+            return self::BUYER_TYPE_INDIVIDUAL;
+        }
+        if (in_array($type, self::BUYER_TYPES, true)) {
+            return $type;
+        }
+
+        if (($party->is_individual ?? null) === false) {
+            return self::BUYER_TYPE_BUSINESS;
+        }
+
+        return self::BUYER_TYPE_INDIVIDUAL;
+    }
+
+    private function isGeneralPublicBuyerParty(array $buyerParty): bool
+    {
+        return strtoupper((string) ($buyerParty['tin'] ?? '')) === self::LHDN_GENERAL_PUBLIC_TIN;
     }
 
     private function extractLegacyAddress(object $party): array

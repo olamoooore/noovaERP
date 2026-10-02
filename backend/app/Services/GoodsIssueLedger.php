@@ -121,6 +121,32 @@ class GoodsIssueLedger
             ->sum('quantity');
     }
 
+    /**
+     * What this invoice itself issued: every `sale` movement referenced by the
+     * invoice, with the warehouse it left from. A cancellation must put back
+     * exactly this much — goods issued by a completed delivery order belong to
+     * the delivery and must not be conjured back by cancelling its invoice.
+     *
+     * @return array<int, array{product_id: int, warehouse_id: int, quantity: float}>
+     */
+    public function issuedByInvoice(Invoice $invoice): array
+    {
+        $this->lock([(int) $invoice->id]);
+
+        return StockMovement::where('type', self::ISSUE_MOVEMENT_TYPE)
+            ->where('reference_type', 'Invoice')
+            ->where('reference_id', $invoice->id)
+            ->get()
+            ->groupBy('product_id')
+            ->map(fn ($movements) => [
+                'product_id' => (int) $movements->first()->product_id,
+                'warehouse_id' => (int) $movements->first()->warehouse_id,
+                'quantity' => (float) $movements->sum('quantity'),
+            ])
+            ->values()
+            ->all();
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // The one rule
     // ─────────────────────────────────────────────────────────────────────

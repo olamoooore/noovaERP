@@ -500,6 +500,17 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         $buyerHasIdentityDocument = ! empty($buyer['identity_type'])
             && ! empty($buyer['identity_number']);
 
+        // Issue #664: a business/government/foreign buyer must carry a real TIN
+        // (the general-public TIN is for individuals / consolidated B2C only).
+        // Reject before the auto-consolidation rule below can upgrade it.
+        $buyerType = strtolower(trim((string) ($buyer['buyer_type'] ?? '')));
+        $nonIndividualBuyerTypes = ['business', 'government', 'foreign'];
+        if ($buyerTin === '' && in_array($buyerType, $nonIndividualBuyerTypes, true)) {
+            $buyerName = trim((string) ($buyer['name'] ?? '')) ?: 'Customer';
+
+            return "Customer '{$buyerName}' has no TIN — add it or mark as individual";
+        }
+
         // LHDN rule: EI00000000010 is the end-consumer TIN and is only valid for
         // consolidated invoices (type 004). Auto-classify as consolidated when the
         // buyer has no real TIN so submission proceeds correctly.
@@ -1016,8 +1027,12 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         $buyerTaxId = $this->resolveTaxTypeCode($buyer['identity_type'] ?? null, ! empty($buyer['company_registration'] ?? null));
         $buyerTinValue = strtoupper((string) ($buyer['tin'] ?? ''));
         $isGeneralBuyerTin = $buyerTinValue === '' || $buyerTinValue === 'EI00000000010';
+        // Issue #664: never auto-classify a declared business/government/foreign
+        // buyer as a consolidated general-public invoice.
+        $buyerTypeValue = strtolower(trim((string) ($buyer['buyer_type'] ?? '')));
+        $isNonIndividualBuyer = in_array($buyerTypeValue, ['business', 'government', 'foreign'], true);
         $explicitlyNonConsolidated = array_key_exists('is_consolidated', $payload) && $payload['is_consolidated'] === false;
-        if ($isGeneralBuyerTin && ! $explicitlyNonConsolidated) {
+        if ($isGeneralBuyerTin && ! $explicitlyNonConsolidated && ! $isNonIndividualBuyer) {
             $isConsolidatedInvoice = true;
             // LHDN's consolidated/general-public identity is TIN
             // EI00000000010 with BRN "NA". A fabricated NRIC is rejected by

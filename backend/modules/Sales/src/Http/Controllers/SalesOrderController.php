@@ -216,6 +216,15 @@ class SalesOrderController extends Controller
         $order->update($validated);
         $order->calculateTotals();
 
+        // Issue #646: same rule as quotations — an edit that changes
+        // approval-relevant content (total, discount, currency, customer)
+        // invalidates the covering request so confirm raises a fresh one.
+        $this->approvalGate->invalidateStaleApprovals(
+            $order,
+            SalesApprovalGate::REQUEST_TYPE_SALES_ORDER,
+            Auth::user(),
+        );
+
         return response()->json($order->fresh(['customer', 'lines.product']));
     }
 
