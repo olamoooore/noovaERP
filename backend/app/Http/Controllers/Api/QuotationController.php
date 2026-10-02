@@ -643,6 +643,10 @@ class QuotationController extends Controller
                 // chain (SO → DO → invoice) stays traceable from any of them.
                 'customer_reference' => $quotation->customer_reference,
                 'internal_reference' => $quotation->internal_reference,
+                // #291: the header discount is part of the accepted price — it
+                // must travel onto the Sales Order (and from there the invoice),
+                // otherwise a quote accepted at 990 was ordered/billed at 1,100.
+                'discount_amount' => (float) ($quotation->discount_amount ?? 0),
                 'lines' => $salesLines,
                 'warehouse_id' => $warehouseId,
                 // FR-5.5: document currency + FX snapshot propagate verbatim.
