@@ -2,6 +2,7 @@
 
 namespace Modules\AccountingCountry\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Models\StatutoryReturnFiling;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -146,8 +147,13 @@ class StatutoryReturnController extends Controller
             return $shapeError;
         }
 
-        $validated = $request->validate(['entity_id' => 'nullable|integer|exists:legal_entities,id']);
+        $validated = $request->validate([
+            'entity_id' => 'nullable|integer|exists:legal_entities,id',
+            // #745 T12: operator inputs for the manual/declaration F5 boxes.
+            'box_inputs' => 'nullable|array',
+        ]);
         $legalEntityId = isset($validated['entity_id']) ? (int) $validated['entity_id'] : null;
+        $boxInputs = (array) ($validated['box_inputs'] ?? []);
 
         // #736 T3: a multi-entity tenant must file per registration.
         if ($legalEntityId === null && $this->tenantHasMultipleEntities()) {
@@ -156,8 +162,9 @@ class StatutoryReturnController extends Controller
             ], 422);
         }
 
+        // The F5 has manual/declaration boxes; SST-02 does not accept inputs.
         $return = $country === 'SG'
-            ? app(GstF5ReturnService::class)->generate($period, $legalEntityId)
+            ? app(GstF5ReturnService::class)->generate($period, $legalEntityId, $boxInputs)
             : app(\Modules\AccountingCountry\Malaysia\Services\Sst02ReturnService::class)->generate($period, $legalEntityId);
 
         // #741 T8: a rule type that is neither sales nor service cannot be
@@ -182,7 +189,7 @@ class StatutoryReturnController extends Controller
         // G-35: filings are immutable evidence. Re-filing APPENDS a new
         // version and supersedes the previous current row; the original
         // snapshot (F7 baseline) survives untouched.
-        $filing = \DB::transaction(function () use ($country, $return, $period, $legalEntityId, $boxes, $request) {
+        $filing = \DB::transaction(function () use ($country, $return, $period, $legalEntityId, $boxes, $boxInputs, $request) {
             $entityKey = StatutoryReturnFiling::entityKey($legalEntityId);
 
             $current = StatutoryReturnFiling::query()
@@ -219,6 +226,26 @@ class StatutoryReturnController extends Controller
                 'state' => 'PREPARED',
                 'state_updated_at' => now(),
             ]);
+
+            // #745 T12 AC2: manual box inputs are recorded and audited before
+            // filing — the F5 baseline must be explainable line by line.
+            if ($boxInputs !== []) {
+                AuditLog::create([
+                    'operation' => 'statutory_return_box_inputs',
+                    'reference_type' => 'statutory_return_filing',
+                    'reference_id' => $filing->id,
+                    'actor_id' => $request->user()?->id,
+                    'source_route' => $request->path(),
+                    'before_state' => null,
+                    'after_state' => $boxInputs,
+                    'metadata' => [
+                        'country' => $country,
+                        'form' => $return['form'],
+                        'period' => $period,
+                        'entity_key' => $entityKey,
+                    ],
+                ]);
+            }
 
             // G-12 (#274): TaxReturnPrepared on the shared accounting outbox.
             app(\App\Services\TaxOutboxPublisher::class)->publish(

@@ -50,6 +50,28 @@ return [
                 'note' => 'Backward-looking trailing-twelve-month taxable supplies; forward figures are a separate input. Effective date not asserted — pending tax-agent confirmation.',
             ],
         ],
+        // #745 T12: the full IRAS GST F5 box set as DATA. 'computed' boxes are
+        // derived from posted tax/revenue data; 'manual' boxes need operator
+        // input (recorded and audited at filing); 'declaration' boxes are
+        // yes/no. Box numbering and wording are marked verified:false pending
+        // confirmation against the current IRAS F5 form (verified per release).
+        'f5_boxes' => [
+            ['box' => 1, 'key' => 'box_1_standard_rated_supplies', 'label' => 'Standard-rated supplies', 'kind' => 'computed', 'source' => 'output_supplies:standard_rated', 'verified' => false],
+            ['box' => 2, 'key' => 'box_2_zero_rated_supplies', 'label' => 'Zero-rated supplies', 'kind' => 'computed', 'source' => 'output_supplies:zero_rated', 'verified' => false],
+            ['box' => 3, 'key' => 'box_3_exempt_supplies', 'label' => 'Exempt supplies', 'kind' => 'computed', 'source' => 'output_supplies:exempt', 'verified' => false],
+            ['box' => 4, 'key' => 'box_4_total_supplies', 'label' => 'Total supplies (1)+(2)+(3)', 'kind' => 'computed', 'source' => 'sum:1,2,3', 'verified' => false],
+            ['box' => 5, 'key' => 'box_5_taxable_purchases', 'label' => 'Taxable purchases', 'kind' => 'computed', 'source' => 'input_tax:taxable', 'verified' => false],
+            ['box' => 6, 'key' => 'box_6_output_tax_due', 'label' => 'Output tax due', 'kind' => 'computed', 'source' => 'output_tax', 'verified' => false],
+            ['box' => 7, 'key' => 'box_7_input_tax_and_refunds', 'label' => 'Input tax and refunds claimed', 'kind' => 'computed', 'source' => 'input_tax', 'verified' => false],
+            ['box' => 8, 'key' => 'box_8_net_gst_payable', 'label' => 'Net GST payable', 'kind' => 'computed', 'source' => 'difference:6,7', 'verified' => false],
+            ['box' => 9, 'key' => 'box_9_imports_under_schemes', 'label' => 'Imports under MES / 3PL / other approved schemes', 'kind' => 'manual', 'source' => 'manual', 'verified' => false],
+            ['box' => 10, 'key' => 'box_10_tourist_refund_claimed', 'label' => 'Tourist refund claimed', 'kind' => 'manual', 'source' => 'manual', 'verified' => false],
+            ['box' => 11, 'key' => 'box_11_bad_debt_relief', 'label' => 'Bad-debt relief claims and reverse-charge refund claims', 'kind' => 'manual', 'source' => 'manual', 'verified' => false],
+            ['box' => 12, 'key' => 'box_12_pre_registration_claims', 'label' => 'Pre-registration claims', 'kind' => 'manual', 'source' => 'manual', 'verified' => false],
+            ['box' => 13, 'key' => 'box_13_revenue', 'label' => 'Revenue for the accounting period', 'kind' => 'computed', 'source' => 'revenue', 'verified' => false],
+            ['box' => 14, 'key' => 'box_14_imported_services_reverse_charge', 'label' => 'Imported services / LVG subject to reverse charge', 'kind' => 'manual', 'source' => 'manual', 'verified' => false],
+            ['box' => 15, 'key' => 'box_15_electronic_marketplace', 'label' => 'Made electronic marketplace / redeliverer supplies?', 'kind' => 'declaration', 'source' => 'manual', 'verified' => false],
+        ],
         'rules' => [
             [
                 'code' => 'SG-GST-9',

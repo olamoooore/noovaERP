@@ -162,6 +162,19 @@ class TaxPackRegistry
     }
 
     /**
+     * #745 T12: a form's box definitions from the pack (data), so a form
+     * revision is a pack edit, not a deploy.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function formBoxes(string $jurisdiction, string $key = 'f5_boxes'): array
+    {
+        $boxes = $this->pack($jurisdiction)[$key] ?? [];
+
+        return is_array($boxes) ? array_values($boxes) : [];
+    }
+
+    /**
      * Country → jurisdiction code from the geography map. Unknown codes pass
      * through unchanged (they stay their own jurisdiction).
      */
