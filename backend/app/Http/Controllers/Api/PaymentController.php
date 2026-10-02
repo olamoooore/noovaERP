@@ -597,11 +597,27 @@ class PaymentController extends Controller
             return response()->json(['message' => 'Only recorded payments can be cancelled'], 403);
         }
 
+        // #483: a draft has no journal entry — there is nothing for the posted
+        // payment correction flow to unapply. Cancel it through the delete path
+        // (reversing any legacy allocation); no reversal JE is created.
+        if ($payment->journal_entry_id === null) {
+            DB::transaction(function () use ($payment) {
+                $this->reverseLiveApplications($payment);
+                $payment->delete();
+            });
+
+            return response()->json(['message' => 'Draft payment cancelled']);
+        }
+
         try {
+            // #483: the actor is the TENANT user — auth()->id() is the central
+            // public.users id and must not be recorded on corrections.
+            $actorId = \Modules\OCRBookkeeping\Helpers\TenantUserHelper::requireTenantUserId();
+
             $correctionRequest = new \App\Services\CorrectionRequest(
                 reasonCode: 'PAYMENT_CANCELLATION',
-                reasonText: 'Payment cancelled by user '.auth()->id(),
-                userId: auth()->id(),
+                reasonText: 'Payment cancelled by user '.$actorId,
+                userId: $actorId,
             );
 
             $result = app(\App\Services\PaymentCorrectionService::class)
