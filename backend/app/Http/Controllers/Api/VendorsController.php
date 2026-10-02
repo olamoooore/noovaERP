@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Vendor;
+use App\Services\DocumentWideSearchService;
+use App\Services\VendorWideSearchService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -47,15 +49,10 @@ class VendorsController extends Controller
                 ])
                 ->orderBy('name', 'asc');
 
+            // Odoo-style wide search: identity + flat address fields + the
+            // linked address book + tags.
             if ($search !== '') {
-                $query->where(function ($builder) use ($search) {
-                    $builder->where('code', 'ILIKE', "%{$search}%")
-                        ->orWhere('name', 'ILIKE', "%{$search}%")
-                        ->orWhere('email', 'ILIKE', "%{$search}%")
-                        ->orWhere('company', 'ILIKE', "%{$search}%")
-                        ->orWhere('contact_person', 'ILIKE', "%{$search}%")
-                        ->orWhere('tax_number', 'ILIKE', "%{$search}%");
-                });
+                app(VendorWideSearchService::class)->apply($query, $search);
             }
 
             // Get total count
@@ -66,6 +63,14 @@ class VendorsController extends Controller
                 ->skip(($page - 1) * $perPage)
                 ->take($perPage)
                 ->get();
+
+            if ($search !== '') {
+                // The rows are the vendors themselves; only tag matches need
+                // explaining ("VIP" finds every vendor tagged VIP).
+                app(DocumentWideSearchService::class)->annotate($vendors, $search, [
+                    'tagAlias' => 'vendor',
+                ]);
+            }
 
             return response()->json([
                 'data' => $vendors,

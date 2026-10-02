@@ -96,26 +96,7 @@ class ProductController extends Controller
         }
 
         if ($request->filled('search')) {
-            $search = strtolower((string) $request->input('search'));
-            $like = '%'.$search.'%';
-            // Site-wide product search: name, SKU, barcode and manufacturer
-            // part, plus the tracked identifiers (lot, batch, serial) so an
-            // operator can find a product from any code printed on the item.
-            $query->where(function ($q) use ($like) {
-                $q->whereRaw('LOWER(name) LIKE ?', [$like])
-                    ->orWhereRaw('LOWER(secondary_name) LIKE ?', [$like])
-                    ->orWhereRaw('LOWER(sku) LIKE ?', [$like])
-                    ->orWhereRaw('LOWER(barcode) LIKE ?', [$like])
-                    ->orWhereRaw('LOWER(manufacturer_part_number) LIKE ?', [$like])
-                    ->orWhereRaw('LOWER(lot_number) LIKE ?', [$like])
-                    ->orWhereHas('batches', function ($batch) use ($like) {
-                        $batch->whereRaw('LOWER(batch_number) LIKE ?', [$like])
-                            ->orWhereRaw('LOWER(lot_number) LIKE ?', [$like]);
-                    })
-                    ->orWhereHas('serials', function ($serial) use ($like) {
-                        $serial->whereRaw('LOWER(serial_number) LIKE ?', [$like]);
-                    });
-            });
+            $this->applyWideProductSearch($query, (string) $request->input('search'));
         }
 
         if ($request->filled('category_id')) {
@@ -251,8 +232,7 @@ class ProductController extends Controller
             $query->whereIn('id', $request->input('document_ids'));
         }
         if ($request->filled('search')) {
-            $search = strtolower((string) $request->search);
-            $query->where(fn ($q) => $q->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"])->orWhereRaw('LOWER(sku) LIKE ?', ["%{$search}%"])->orWhereRaw('LOWER(barcode) LIKE ?', ["%{$search}%"]));
+            $this->applyWideProductSearch($query, (string) $request->search);
         }
         if ($request->filled('category_id')) {
             $query->where('category_id', (int) $request->category_id);
@@ -286,6 +266,36 @@ class ProductController extends Controller
             'products_'.now()->format('Y-m-d').'.'.$format,
             $format === 'csv' ? \Maatwebsite\Excel\Excel::CSV : \Maatwebsite\Excel\Excel::XLSX
         );
+    }
+
+    /**
+     * Wide product search: name, secondary name, SKU, barcode, manufacturer
+     * part, description, the brand/category names, plus the tracked
+     * identifiers (lot, batch, serial) so an operator can find a product from
+     * any code printed on the item.
+     */
+    private function applyWideProductSearch($query, string $search): void
+    {
+        $like = '%'.strtolower($search).'%';
+
+        $query->where(function ($q) use ($like) {
+            $q->whereRaw('LOWER(name) LIKE ?', [$like])
+                ->orWhereRaw('LOWER(secondary_name) LIKE ?', [$like])
+                ->orWhereRaw('LOWER(sku) LIKE ?', [$like])
+                ->orWhereRaw('LOWER(barcode) LIKE ?', [$like])
+                ->orWhereRaw('LOWER(manufacturer_part_number) LIKE ?', [$like])
+                ->orWhereRaw('LOWER(description) LIKE ?', [$like])
+                ->orWhereRaw('LOWER(lot_number) LIKE ?', [$like])
+                ->orWhereHas('brand', fn ($brand) => $brand->whereRaw('LOWER(name) LIKE ?', [$like]))
+                ->orWhereHas('category', fn ($category) => $category->whereRaw('LOWER(name) LIKE ?', [$like]))
+                ->orWhereHas('batches', function ($batch) use ($like) {
+                    $batch->whereRaw('LOWER(batch_number) LIKE ?', [$like])
+                        ->orWhereRaw('LOWER(lot_number) LIKE ?', [$like]);
+                })
+                ->orWhereHas('serials', function ($serial) use ($like) {
+                    $serial->whereRaw('LOWER(serial_number) LIKE ?', [$like]);
+                });
+        });
     }
 
     public function store(Request $request)
