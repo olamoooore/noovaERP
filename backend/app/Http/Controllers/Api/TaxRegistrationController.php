@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Setting;
 use App\Models\TaxRegistration;
+use App\Services\TaxRegistrationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -30,13 +30,8 @@ class TaxRegistrationController extends Controller
     {
         $validated = $this->validatePayload($request);
 
-        $registration = TaxRegistration::create($validated);
-
-        // #740 T4 (AC): registrations — never pack activation — define the
-        // tenant's home jurisdiction. The registration just created wins.
-        $taxSetting = Setting::getValue('tax', []);
-        $taxSetting['jurisdiction'] = $registration->jurisdiction;
-        Setting::setValue('tax', $taxSetting);
+        // #748 TU2: shared writer — pack-driven frequency + home-jurisdiction.
+        $registration = app(TaxRegistrationService::class)->upsert($validated);
 
         return response()->json(['data' => $registration->load('legalEntity:id,name,code')], 201);
     }
@@ -71,6 +66,9 @@ class TaxRegistrationController extends Controller
             'status' => array_merge($sometimes, ['in:active,inactive,cancelled']),
             // #741 T8: cycle start month for bimonthly SST-02 periods.
             'filing_start_month' => array_merge($sometimes, ['nullable', 'integer', 'min:1', 'max:12']),
+            // #748 TU2: the entity's filing frequency; validated against the
+            // jurisdiction's pack shapes below.
+            'filing_frequency' => array_merge($sometimes, ['nullable', 'string', 'max:20']),
             'notes' => array_merge($sometimes, ['nullable', 'string', 'max:255']),
         ]);
 

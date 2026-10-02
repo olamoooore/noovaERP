@@ -26,6 +26,11 @@ return [
             'description' => 'Configure tax regimes, fiscal year settings, and regulatory compliance rules for each entity.',
             'prerequisites' => ['entity_selection'],
         ],
+        'tax_registration' => [
+            'label' => 'Tax Registration',
+            'description' => 'Record each entity\'s tax registration (GST/SST number, filing frequency) or confirm it is not yet registered.',
+            'prerequisites' => ['country_compliance'],
+        ],
         'coa_import' => [
             'label' => 'Chart of Accounts',
             'description' => 'Import or create your chart of accounts — the backbone of your general ledger.',

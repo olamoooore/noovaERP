@@ -16,6 +16,21 @@ use Illuminate\Support\Facades\Log;
 class CountryPluginRegistry
 {
     /**
+     * Issue #698 (EC1): the contract each plugin slot must satisfy. A country
+     * plugin that registers a missing or wrong-typed class used to fail only
+     * when a submission resolved it (every Singapore submission crashed at
+     * submit time because its validator class did not exist). Registrations are
+     * now validated as they are made, so a broken plugin fails loudly at boot.
+     */
+    private const SLOT_CONTRACTS = [
+        'validator' => CountryValidationContract::class,
+        'mapper' => InvoiceSchemaMapperContract::class,
+        'provider' => SubmissionProviderContract::class,
+        'sync' => SubmissionStatusSyncContract::class,
+        'exporter' => StatutoryReportExporterContract::class,
+    ];
+
+    /**
      * Registered plugins by country code
      */
     protected array $plugins = [];
@@ -39,10 +54,51 @@ class CountryPluginRegistry
      */
     public function register(string $countryCode, array $implementations): void
     {
-        $this->plugins[strtoupper($countryCode)] = $implementations;
-        Log::info("Registered country plugin: {$countryCode}", [
-            'interfaces' => array_keys($implementations),
-        ]);
+        $countryCode = strtoupper($countryCode);
+
+        foreach ($implementations as $slot => $implementation) {
+            $expectedContract = self::SLOT_CONTRACTS[$slot] ?? null;
+
+            if ($expectedContract === null) {
+                throw new \InvalidArgumentException(
+                    "Unknown plugin slot '{$slot}' for country {$countryCode}; expected one of: "
+                    .implode(', ', array_keys(self::SLOT_CONTRACTS)).'.'
+                );
+            }
+
+            if (is_object($implementation)) {
+                if (! $implementation instanceof $expectedContract) {
+                    throw new \InvalidArgumentException(
+                        "Plugin '{$slot}' for {$countryCode} must implement {$expectedContract}, got ".get_class($implementation).'.'
+                    );
+                }
+
+                continue;
+            }
+
+            if (! is_string($implementation) || ! class_exists($implementation)) {
+                throw new \InvalidArgumentException(
+                    "Plugin '{$slot}' for {$countryCode} points at a class that does not exist: "
+                    .(is_string($implementation) ? $implementation : gettype($implementation)).'.'
+                );
+            }
+
+            if (! is_subclass_of($implementation, $expectedContract)) {
+                throw new \InvalidArgumentException(
+                    "Plugin '{$slot}' for {$countryCode} must implement {$expectedContract}, got {$implementation}."
+                );
+            }
+        }
+
+        $this->plugins[$countryCode] = $implementations;
+
+        // The registry is also exercised by plain PHPUnit tests that boot no
+        // application; only log when a logger is actually available.
+        if (function_exists('app') && app()->bound('log')) {
+            Log::info("Registered country plugin: {$countryCode}", [
+                'interfaces' => array_keys($implementations),
+            ]);
+        }
     }
 
     /**
