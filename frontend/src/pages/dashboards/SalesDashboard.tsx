@@ -13,7 +13,8 @@ import {
 import { LineChart } from '@/components/charts/LineChart';
 import { BarChart } from '@/components/charts/BarChart';
 import { PieChart } from '@/components/charts/PieChart';
-import reportApi from '@/lib/reportApi';
+import reportApi, { formatLocalDate } from '@/lib/reportApi';
+import { mapCategoryRevenueSlices, mapRevenueTrendPoints } from '@/lib/salesDashboardMapping';
 import type { SalesDashboardData } from '@/types/reports';
 
 /**
@@ -37,8 +38,8 @@ export const SalesDashboard: React.FC = () => {
       const startDate = new Date(selectedYear, selectedMonth, 1);
       const endDate = new Date(selectedYear, selectedMonth + 1, 0);
       return {
-        start_date: startDate.toISOString().split('T')[0],
-        end_date: endDate.toISOString().split('T')[0],
+        start_date: formatLocalDate(startDate),
+        end_date: formatLocalDate(endDate),
       };
     }
     
@@ -118,20 +119,14 @@ export const SalesDashboard: React.FC = () => {
           customer: c.customer_name || 'Walk-in customer',
           amount: Number(c.total_revenue) || 0,
         })),
-        sales_trends: (salesTrends?.trends ?? []).map((t) => ({
-          period: t.period || '',
-          amount: Number(t.total_revenue) || 0,
-        })),
+        sales_trends: mapRevenueTrendPoints(salesTrends?.trends),
         top_selling_products: (salesByProduct?.products ?? [])
           .slice(0, 10)
           .map((p) => ({
             name: p.name || 'Unknown',
             quantity: Number(p.total_quantity) || 0,
           })),
-        sales_by_category: (salesByCategory?.categories ?? []).map((c) => ({
-          category: c.category_name || 'Uncategorised',
-          amount: Number(c.total_revenue) || 0,
-        })),
+        sales_by_category: mapCategoryRevenueSlices(salesByCategory?.categories),
       };
     },
   });
