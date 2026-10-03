@@ -1010,6 +1010,16 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
     {
         ['invoice_date' => $invoiceDate, 'issue_time' => $issueTime] = $this->resolveIssueDateTime($payload);
         $currency = (string) ($payload['currency_code'] ?? 'MYR');
+        // #820 EP9: a non-MYR document must declare MYR as the tax currency and
+        // carry the exchange rate from the invoice's own snapshot.
+        $isForeignCurrency = strtoupper($currency) !== 'MYR';
+        $exchangeRate = $payload['exchange_rate'] ?? null;
+
+        if ($isForeignCurrency && empty($exchangeRate)) {
+            throw new \InvalidArgumentException(
+                'EINVOICE_EXCHANGE_RATE_REQUIRED: a non-MYR document needs the invoice exchange-rate snapshot.'
+            );
+        }
         $isConsolidatedInvoice = $this->isConsolidatedInvoicePayload($payload);
 
         $supplier = is_array($payload['supplier'] ?? null) ? $payload['supplier'] : [];
@@ -1192,7 +1202,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             'IssueTime' => [['_' => $formattedIssueTime]],
             'InvoiceTypeCode' => [['_' => $docTypeCode, 'listVersionID' => '1.0']],
             'DocumentCurrencyCode' => [['_' => $currency]],
-            'TaxCurrencyCode' => [['_' => $currency]],
+            'TaxCurrencyCode' => [['_' => $isForeignCurrency ? 'MYR' : $currency]],
             'AccountingSupplierParty' => [[
                 'Party' => [[
                     'IndustryClassificationCode' => [[
@@ -1282,6 +1292,16 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
                 ]],
             ]],
         ];
+
+        // #820 EP9: declare the MYR conversion so a foreign-currency document
+        // is tax-complete. The rate is the invoice's own snapshot.
+        if ($isForeignCurrency) {
+            $invoice['TaxExchangeRate'] = [[
+                'SourceCurrencyCode' => [['_' => $currency]],
+                'TargetCurrencyCode' => [['_' => 'MYR']],
+                'CalculationRate' => [['_' => (float) $exchangeRate]],
+            ]];
+        }
 
         if ($shouldIncludeSignature) {
             $invoice['UBLExtensions'] = [[

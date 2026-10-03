@@ -205,6 +205,8 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
             'issue_datetime' => $issuedDate->format('c'),
             'due_date' => $invoice->due_date?->format('Y-m-d') ?? null,
             'currency_code' => $currency,
+            // #820 EP9: the document's OWN rate snapshot (never today's rate).
+            'exchange_rate' => $invoice->exchange_rate,
             'supplier' => $supplierParty,
             'buyer' => $buyerParty,
             // Issue #664: an invoice to a business buyer must say so explicitly
