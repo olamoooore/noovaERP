@@ -109,6 +109,7 @@ abstract class SalesDocumentExport extends DefaultValueBinder implements FromQue
      * starts with a formula trigger is prefixed with an apostrophe (the OWASP
      * recommendation) to keep it inert in Excel/Sheets. XLSX is already
      * protected by the explicit-string binding above and keeps the raw value.
+     * Issue #583: the guard is shared with other CSV writers.
      */
     private function neutraliseForSpreadsheet(string $value): string
     {
@@ -116,7 +117,7 @@ abstract class SalesDocumentExport extends DefaultValueBinder implements FromQue
             return $value;
         }
 
-        return preg_match('/^[=+\-@\t\r]/', $value) === 1 ? "'".$value : $value;
+        return SpreadsheetFormulaGuard::neutralise($value);
     }
 
     private function mapRow($document, $line): array
