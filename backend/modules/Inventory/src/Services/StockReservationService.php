@@ -32,7 +32,7 @@ class StockReservationService
     public function reserve(
         int $productId,
         int $warehouseId,
-        int $quantity,
+        float $quantity,
         string $sourceDocumentType,
         int $sourceDocumentId,
         ?int $sourceDocumentLineId = null,
@@ -165,7 +165,7 @@ class StockReservationService
      * The actual on-hand deduction must be done separately via InventoryService::adjustStock().
      * This method only updates the reservation document and the counter.
      */
-    public function fulfil(StockReservation $reservation, int $quantityFulfilled): StockReservation
+    public function fulfil(StockReservation $reservation, float $quantityFulfilled): StockReservation
     {
         return DB::transaction(function () use ($reservation, $quantityFulfilled) {
             if (! $reservation->isActive()) {

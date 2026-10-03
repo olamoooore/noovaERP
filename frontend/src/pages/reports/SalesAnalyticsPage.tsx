@@ -24,7 +24,7 @@ import { BarChart } from '@/components/charts/BarChart';
 import { LineChart } from '@/components/charts/LineChart';
 import { PieChart } from '@/components/charts/PieChart';
 import { useReportAutoRefresh } from '@/hooks/useReportAutoRefresh';
-import reportApi from '@/lib/reportApi';
+import reportApi, { formatLocalDate } from '@/lib/reportApi';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import type { ReportFilters as ReportFiltersType } from '@/types/reports';
 import {
@@ -41,13 +41,11 @@ interface SalesAnalyticsPageProps {
   productOnly?: boolean;
 }
 
-const isoDate = (date: Date) => date.toISOString().split('T')[0];
-
-const defaultFilters = (): ReportFiltersType => {
+export const defaultFilters = (): ReportFiltersType => {
   const now = new Date();
   return {
-    start_date: isoDate(new Date(now.getFullYear(), now.getMonth(), 1)),
-    end_date: isoDate(now),
+    start_date: formatLocalDate(new Date(now.getFullYear(), now.getMonth(), 1)),
+    end_date: formatLocalDate(now),
     interval: 'day',
   };
 };

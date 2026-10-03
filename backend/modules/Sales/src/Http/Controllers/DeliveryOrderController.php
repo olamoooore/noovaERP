@@ -262,6 +262,8 @@ class DeliveryOrderController extends Controller
                 'lines.*.quantity_delivered' => 'nullable|numeric|min:0',
                 'lines.*.quantity' => 'nullable|numeric|min:0',
                 'lines.*.unit' => 'nullable|string|max:20',
+                // Issue #685: optional sales UoM for the line.
+                'lines.*.uom_id' => 'nullable|integer|exists:product_uoms,id',
                 'lines.*.unit_price' => 'nullable|numeric|min:0',
                 'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
                 'lines.*.override_reason' => 'nullable|string|max:500',
@@ -649,6 +651,24 @@ class DeliveryOrderController extends Controller
                 foreach ($validated['lines'] as $lineData) {
                     $qty = (float) ($lineData['quantity_delivered'] ?? 0);
                     $unitPrice = isset($lineData['unit_price']) ? (float) $lineData['unit_price'] : null;
+
+                    // Issue #685: a sales-UoM edit is converted to stock units
+                    // (and the price to its per-stock-unit equivalent) so the
+                    // stored line and its total stay in one unit.
+                    $lineUom = (($lineData['uom_id'] ?? null) && ! empty($lineData['product_id']))
+                        ? app(\App\Services\ProductUomConverter::class)->resolveOrNull(
+                            (int) $lineData['product_id'],
+                            (int) $lineData['uom_id'],
+                        )
+                        : null;
+
+                    if ($lineUom && ! $lineUom->isStockUnit() && $qty > 0) {
+                        $qty = app(\App\Services\ProductUomConverter::class)->toStock($lineUom, $qty);
+                        if ($unitPrice !== null) {
+                            $unitPrice = app(\App\Services\ProductUomConverter::class)->salesPriceToBase($lineUom, $unitPrice);
+                        }
+                    }
+
                     \Modules\Sales\Models\DeliveryOrderLine::create([
                         'line_type' => $lineData['line_type'] ?? 'product',
                         'sequence' => $lineData['sequence'] ?? 0,
@@ -661,6 +681,7 @@ class DeliveryOrderController extends Controller
                         'quantity_ordered' => $qty,
                         'quantity_delivered' => $qty,
                         'unit' => $lineData['unit'] ?? 'pcs',
+                        'uom_id' => $lineUom?->id,
                         'unit_price' => $unitPrice,
                         'line_total' => $unitPrice ? $unitPrice * $qty : null,
                         'lot_number' => $lineData['lot_number'] ?? null,

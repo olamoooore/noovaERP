@@ -379,6 +379,22 @@ class DeliveryOrderService
             }
 
             $quantityDelivered = (float) ($lineData['quantity_delivered'] ?? 0);
+
+            // Issue #685: a delivery quantity entered in a sales UoM (2 Box)
+            // is converted to stock units (24 pieces) before it is checked
+            // against the order's base quantities and stored; every ledger,
+            // reservation and COGS comparison below is in stock units.
+            $lineUom = (($lineData['uom_id'] ?? null) && $soLine->product_id)
+                ? app(\App\Services\ProductUomConverter::class)->resolveOrNull(
+                    (int) $soLine->product_id,
+                    (int) $lineData['uom_id'],
+                )
+                : null;
+
+            if ($lineUom && ! $lineUom->isStockUnit()) {
+                $quantityDelivered = app(\App\Services\ProductUomConverter::class)->toStock($lineUom, $quantityDelivered);
+            }
+
             if ($lineType === 'product' && $quantityDelivered <= 0) {
                 throw new \Exception("Delivery quantity must be greater than zero for sales order line #{$soLineId}.");
             }
@@ -426,6 +442,9 @@ class DeliveryOrderService
                 'quantity_ordered' => $lineType === 'product' ? (float) $soLine->quantity : 0,
                 'quantity_delivered' => $lineType === 'product' ? $quantityDelivered : 0,
                 'unit' => $lineData['unit'] ?? $soLine->unit,
+                // Issue #685: provenance for the sales UoM the operator
+                // entered; quantity_delivered above is stock units.
+                'uom_id' => $lineUom?->id,
                 'unit_price' => $lineType === 'product' ? (float) ($lineData['unit_price'] ?? $soLine->unit_price ?? 0) : null,
                 'base_unit_price' => $lineType === 'product'
                     ? (float) ($lineData['base_unit_price'] ?? ($soLine->base_unit_price ?? $soLine->unit_price) ?? 0)
@@ -795,6 +814,22 @@ class DeliveryOrderService
 
                 // Check available stock for stock-tracked products
                 $productId = $lineData['product_id'] ?? null;
+
+                // Issue #685: a line entered in a sales UoM (2 Box) is
+                // converted to stock units (24 pieces) before the availability
+                // check, serial resolution and storage — the ledger stays in
+                // one unit.
+                $lineUom = (($lineData['uom_id'] ?? null) && $productId)
+                    ? app(\App\Services\ProductUomConverter::class)->resolveOrNull(
+                        (int) $productId,
+                        (int) $lineData['uom_id'],
+                    )
+                    : null;
+
+                if ($lineUom && ! $lineUom->isStockUnit()) {
+                    $quantityDelivered = app(\App\Services\ProductUomConverter::class)->toStock($lineUom, $quantityDelivered);
+                }
+
                 if ($productId) {
                     $product = \App\Models\Product::find($productId);
                     if ($product && (bool) ($product->track_inventory ?? false)) {
@@ -834,6 +869,13 @@ class DeliveryOrderService
 
                 $unitPrice = $priced['unit_price'] ?? $lineData['unit_price'] ?? null;
 
+                // Issue #685: an explicitly supplied price is per sales UoM
+                // (300 per Box); store the per-stock-unit equivalent so the
+                // base-quantity line total stays qty × price.
+                if ($lineUom && ! $lineUom->isStockUnit() && $unitPrice !== null && $mode === 'legacy') {
+                    $unitPrice = app(\App\Services\ProductUomConverter::class)->salesPriceToBase($lineUom, (float) $unitPrice);
+                }
+
                 DeliveryOrderLine::create(array_merge([
                     'line_type' => $lineType,
                     'sequence' => $lineData['sequence'] ?? 0,
@@ -847,6 +889,9 @@ class DeliveryOrderService
                     'quantity_ordered' => $quantityDelivered,
                     'quantity_delivered' => $quantityDelivered,
                     'unit' => $lineData['unit'] ?? 'pcs',
+                    // Issue #685: provenance for the sales UoM entered;
+                    // quantity_delivered is stock units.
+                    'uom_id' => $lineUom?->id,
                     'unit_price' => $unitPrice,
                     'line_total' => $unitPrice !== null ? round($unitPrice * $quantityDelivered, 2) : null,
                     'lot_number' => $lineData['lot_number'] ?? null,
@@ -1065,7 +1110,10 @@ class DeliveryOrderService
                     continue;
                 }
 
-                $qty = (int) round((float) $line->quantity_delivered);
+                // #457 (DO5): stock must move the same fractional base-UOM
+                // quantity the COGS recognises — (int) round() moved 0 for
+                // 0.4 and 3 for 2.5 while the GL posted the float.
+                $qty = (float) $line->quantity_delivered;
                 if ($qty <= 0) {
                     continue;
                 }
@@ -1076,7 +1124,7 @@ class DeliveryOrderService
                 $issuedQuantities[$line->id] = $unissuedQty > 0 ? $unissuedQty : 0.0;
 
                 foreach ($this->bundleDecomposition->stockConsumingComponents($product, $unissuedQty) as $component) {
-                    $componentQty = (int) round($component['quantity']);
+                    $componentQty = (float) $component['quantity'];
                     if ($componentQty <= 0) {
                         continue;
                     }
@@ -1192,12 +1240,11 @@ class DeliveryOrderService
                 $isStockTracked = $product && (bool) ($product->track_inventory ?? false);
 
                 if ($isStockTracked) {
-                    $qty = (int) round((float) $line->quantity_delivered);
+                    // #457 (DO5): reverse exactly what was issued, fraction included.
+                    $qty = (float) $line->quantity_delivered;
 
                     foreach ($this->bundleDecomposition->stockConsumingComponents($product, $qty) as $component) {
-                        $issuedQty = (int) round(
-                            $this->goodsIssueLedger->issuedByDeliveryOrder($deliveryOrder, (int) $component['product']->id)
-                        );
+                        $issuedQty = (float) $this->goodsIssueLedger->issuedByDeliveryOrder($deliveryOrder, (int) $component['product']->id);
 
                         if ($issuedQty <= 0) {
                             continue;
@@ -1371,7 +1418,7 @@ class DeliveryOrderService
     //  HELPERS
     // ════════════════════════════════════════════════════════════════════════
 
-    private function fulfilReservationForLine(int $productId, int $warehouseId, int $qty, int $salesOrderId, int $salesOrderLineId): void
+    private function fulfilReservationForLine(int $productId, int $warehouseId, float $qty, int $salesOrderId, int $salesOrderLineId): void
     {
         $reservation = StockReservation::where([
             'source_document_type' => 'SalesOrder',

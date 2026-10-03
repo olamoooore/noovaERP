@@ -135,6 +135,10 @@ class InvoiceService
                     'product_serial_id' => $lineData['product_serial_id'] ?? null,
                     'expiry_date' => $lineData['expiry_date'] ?? null,
                     'quantity' => $lineData['quantity'] ?? 0,
+                    // Issue #685: the sales UoM (and its display abbreviation)
+                    // travel onto the invoice line; null keeps stock units.
+                    'uom_id' => $lineData['uom_id'] ?? null,
+                    'unit' => $lineData['unit'] ?? null,
                     'unit_price' => $lineData['unit_price'] ?? 0,
                     // MRD pricelist-multicurrency FR-5.3: provenance columns
                     // propagate from the SO line through the creation token.
@@ -227,7 +231,7 @@ class InvoiceService
 
         try {
             // Re-fetch with lock to prevent concurrent posting
-            $invoice = Invoice::with(['customer', 'lines.product'])
+            $invoice = Invoice::with(['customer', 'lines.product', 'lines.uom'])
                 ->where('id', $invoice->id)
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -432,7 +436,16 @@ class InvoiceService
                     continue;
                 }
 
-                $qty = $goodsIssueLedger->remainingForInvoiceLine($line, (float) $line->quantity);
+                // Issue #685: a line entered in a sales UoM (2 Box) keeps that
+                // quantity and per-sales-UoM price on the document, but every
+                // stock/COGS number below is in the product's STOCK UoM. The
+                // conversion goes through the shared ProductUomConverter.
+                $lineStockQty = (float) $line->quantity;
+                if ($line->uom_id && $line->uom && ! $line->uom->isStockUnit()) {
+                    $lineStockQty = app(ProductUomConverter::class)->toStock($line->uom, $lineStockQty);
+                }
+
+                $qty = $goodsIssueLedger->remainingForInvoiceLine($line, $lineStockQty);
 
                 if ($qty <= 0) {
                     continue;

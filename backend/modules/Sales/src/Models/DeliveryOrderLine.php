@@ -28,6 +28,9 @@ class DeliveryOrderLine extends Model
         'pricing_trace',
         'line_total',
         'unit',
+        // Issue #685: the sales UoM the line was entered in (quantity_delivered
+        // is always persisted in stock units — see DeliveryOrderService).
+        'uom_id',
         'lot_number',
         'batch_number',
         'serial_number',
@@ -63,6 +66,14 @@ class DeliveryOrderLine extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(\App\Models\Product::class);
+    }
+
+    /**
+     * Issue #685: the sales unit the operator entered for this line.
+     */
+    public function uom(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\ProductUom::class, 'uom_id');
     }
 
     public function batch(): BelongsTo

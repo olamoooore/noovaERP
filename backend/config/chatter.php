@@ -49,6 +49,12 @@ return [
         // Sales module documents
         \Modules\Sales\Models\SalesOrder::class,
         \Modules\Sales\Models\DeliveryOrder::class,
+        // Accounting documents (issue #632, CH4) — credit notes and the
+        // persisted customer statements must be discussable like invoices.
+        \App\Models\CustomerCreditNote::class,
+        \App\Models\CustomerStatement::class,
+        // Medical vertical documents (issue #632, CH4).
+        \App\Models\MedicalCase::class,
     ],
 
     /*
@@ -77,9 +83,26 @@ return [
         \App\Models\JournalEntry::class => 'accounting.view',
         \App\Models\Vendor::class => 'accounting.view',
         \App\Models\Customer::class => 'customers.view',
-        \App\Models\Quotation::class => 'sales.view',
+        // Issue #632 (CH4): the quotation READ routes are gated by
+        // `quotations.view` (modules/Core/routes/api.php: GET /quotations,
+        // GET /quotations/{quotation}), which also includes ACCOUNTANT and
+        // CASHIER. Mapping chatter to `sales.view` locked those roles out of
+        // a quotation they can open.
+        \App\Models\Quotation::class => 'quotations.view',
         \Modules\Sales\Models\SalesOrder::class => 'sales.view',
         \Modules\Sales\Models\DeliveryOrder::class => 'sales.view',
+        // Issue #632 (CH4): new subjects — each mirrors the permission on the
+        // route that opens the record (asserted against the router in
+        // Sales632ChatterCoverageTest):
+        //  - credit notes: GET /accounting/customers/credit-notes/{creditNote}
+        //    requires accounting.view;
+        //  - statements: GET /accounting/customers/{customer}/statement
+        //    requires customers.view;
+        //  - medical cases: GET /medical-cases/{medical_case} requires
+        //    medical_cases.view.
+        \App\Models\CustomerCreditNote::class => 'accounting.view',
+        \App\Models\CustomerStatement::class => 'customers.view',
+        \App\Models\MedicalCase::class => 'medical_cases.view',
     ],
 
     /*
@@ -115,6 +138,17 @@ return [
         \App\Models\Quotation::class => 'quotations.write',
         \Modules\Sales\Models\SalesOrder::class => 'sales.write',
         \Modules\Sales\Models\DeliveryOrder::class => 'sales.write',
+        // Issue #632 (CH4): credit notes are drafted/editable under
+        // accounting.write (POST/PUT/DELETE credit-notes); posting/voiding the
+        // document itself stays accounting.post and is not what chatter
+        // writes require.
+        \App\Models\CustomerCreditNote::class => 'accounting.write',
+        // Statements have no update/delete route; the only mutation is
+        // generation (POST /accounting/customers/{customer}/statement), which
+        // the accounting group gates via EnsureAccountingWriteAccess =
+        // accounting.write.
+        \App\Models\CustomerStatement::class => 'accounting.write',
+        \App\Models\MedicalCase::class => 'medical_cases.write',
     ],
 
 ];

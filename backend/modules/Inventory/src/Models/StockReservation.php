@@ -45,7 +45,8 @@ class StockReservation extends Model
     protected $casts = [
         // Issue #250: keep fractional base quantities (see StockLevel).
         'quantity' => 'decimal:4',
-        'quantity_fulfilled' => 'integer',
+        // #457 (DO5): fractional base-UOM deliveries must not truncate.
+        'quantity_fulfilled' => 'decimal:4',
         'expires_at' => 'datetime',
         'released_at' => 'datetime',
     ];
