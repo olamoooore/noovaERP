@@ -2,6 +2,7 @@
 
 namespace App\Accounting\Services;
 
+use App\Accounting\BuyerTypeResolver;
 use App\Accounting\Plugin\CountryPluginRegistry;
 use App\Enums\UserRole;
 use App\Models\Accounting\ComplianceDocument;
@@ -896,6 +897,74 @@ class ComplianceService
         return CountryConfiguration::create(array_merge($identity, $values));
     }
 
+    /**
+     * #815 (EP4) AC1 — per-entity setting: B2C documents without a buyer TIN
+     * are excluded from individual submission and held for the monthly
+     * consolidated e-invoice instead of going out one receipt at a time.
+     *
+     * Only fires when the entity's country configuration has
+     * settings.b2c_consolidation on; with the setting off (the default) every
+     * document behaves exactly as before. A party with a stored TIN is not
+     * B2C, and a non-individual without a TIN is #664's error case, not a
+     * receipt — both fall through to normal submission.
+     *
+     * @return array<string, mixed>|null the queued response, or null to submit normally
+     */
+    private function queueB2CConsolidationIfNeeded(ComplianceDocument $document, mixed $sourceDocument): ?array
+    {
+        $settings = $this->getCountryConfig((string) $document->country_code)?->settings ?? [];
+        if (! ($settings['b2c_consolidation'] ?? false)) {
+            return null;
+        }
+
+        $buyer = $this->b2CConsolidationBuyer($sourceDocument);
+        if (! $buyer) {
+            return null;
+        }
+
+        if (trim((string) ($buyer->tax_number ?? '')) !== '') {
+            return null;
+        }
+
+        if (BuyerTypeResolver::resolve($buyer) !== BuyerTypeResolver::INDIVIDUAL) {
+            return null;
+        }
+
+        $document->update([
+            'compliance_status' => 'queued_for_consolidation',
+            'compliance_notes' => 'B2C document without a buyer TIN — held for the monthly consolidated e-invoice (#815).',
+        ]);
+
+        Log::info('E-invoice held for B2C consolidation', [
+            'document_id' => $document->id,
+            'document_type' => $document->document_type,
+            'country_code' => $document->country_code,
+        ]);
+
+        return [
+            'success' => true,
+            'queued_for_consolidation' => true,
+            'document_id' => $document->id,
+            'message' => 'Held for the monthly consolidated e-invoice (no buyer TIN, B2C consolidation enabled).',
+        ];
+    }
+
+    /**
+     * The buying party a source document is issued to, for the consolidation
+     * gate: invoice and credit note carry their own customer, a refund note's
+     * party is the refunded invoice's customer.
+     */
+    private function b2CConsolidationBuyer(mixed $sourceDocument): ?object
+    {
+        return match (true) {
+            $sourceDocument instanceof Invoice => $sourceDocument->customer,
+            $sourceDocument instanceof CustomerCreditNote => $sourceDocument->customer
+                ?? $sourceDocument->invoice?->customer,
+            $sourceDocument instanceof Payment => $sourceDocument->invoice?->customer,
+            default => null,
+        };
+    }
+
     public function submitComplianceDocument(ComplianceDocument $document, string $countryCode, mixed $sourceDocument = null): array
     {
         $docType = $document->document_type ?? 'invoice';
@@ -938,6 +1007,11 @@ class ComplianceService
 
         if (! $sourceDocument) {
             return ['success' => false, 'message' => "Associated {$docType} not found"];
+        }
+
+        $queued = $this->queueB2CConsolidationIfNeeded($document, $sourceDocument);
+        if ($queued !== null) {
+            return $queued;
         }
 
         $this->stampOriginalComplianceReference($document, $sourceDocument);
