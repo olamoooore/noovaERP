@@ -26,6 +26,17 @@ final class WebsiteHostnameService
 
         try {
             return DB::transaction(function () use ($website, $hostname, $tenantId, $token, $primary, $actorId) {
+                $existing = Hostname::query()->where('hostname', $hostname)->lockForUpdate()->first();
+
+                if ($existing) {
+                    if ((string) $existing->tenant_id !== $tenantId
+                        || ! in_array($existing->serving_status, ['release_requested', 'quarantined', 'released'], true)) {
+                        throw ValidationException::withMessages(['hostname' => 'This hostname is already claimed.']);
+                    }
+
+                    return $this->restoreReleasedHostname($existing, $website, $token, $primary, $actorId);
+                }
+
                 if ($primary) {
                     Hostname::query()->where('tenant_id', $tenantId)->where('website_uuid', $website->uuid)
                         ->where('primary_requested', true)->update(['primary_requested' => false]);
@@ -49,6 +60,7 @@ final class WebsiteHostnameService
                 ]);
 
                 $this->audit($record, 'hostname.created', null, $record->toArray(), $actorId);
+
                 return $record;
             });
         } catch (QueryException $e) {
@@ -76,6 +88,7 @@ final class WebsiteHostnameService
             'name' => '_noovaerp-verification.'.$hostname->hostname,
             'value' => 'noovaerp-domain-verification='.$token,
         ];
+
         return $routing;
     }
 
@@ -95,6 +108,56 @@ final class WebsiteHostnameService
             $this->queueProvisioning($hostname->fresh(), 'disabled');
             $this->audit($hostname, 'hostname.release_requested', $previous, $hostname->fresh()->toArray(), $actorId);
         });
+    }
+
+    private function restoreReleasedHostname(Hostname $hostname, Website $website, string $token, bool $primary, ?int $actorId): Hostname
+    {
+        if ($primary) {
+            Hostname::query()
+                ->where('tenant_id', $hostname->tenant_id)
+                ->where('website_uuid', $website->uuid)
+                ->where('id', '<>', $hostname->id)
+                ->where('primary_requested', true)
+                ->update(['primary_requested' => false]);
+        }
+
+        $previous = $hostname->toArray();
+        $hostname->update([
+            'purpose' => 'website',
+            'website_uuid' => $website->uuid,
+            'primary_requested' => $primary,
+            'primary_effective' => false,
+            'ownership_status' => 'pending',
+            'routing_status' => 'pending',
+            'tls_status' => 'pending',
+            'serving_status' => 'pending',
+            'challenge_version' => $hostname->challenge_version + 1,
+            'challenge_token_ciphertext' => Crypt::encryptString($token),
+            'challenge_token_hash' => hash('sha256', $token),
+            'challenge_expires_at' => now()->addHours(config('website_domains.challenge_ttl_hours', 72)),
+            'verified_at' => null,
+            'last_ownership_check_at' => null,
+            'last_routing_check_at' => null,
+            'next_retry_at' => null,
+            'retry_count' => 0,
+            'certificate_provider' => null,
+            'certificate_order_id' => null,
+            'certificate_expires_at' => null,
+            'failure_code' => null,
+            'failure_message' => null,
+            'disabled_at' => null,
+            'release_requested_at' => null,
+            'quarantined_until' => null,
+            'released_at' => null,
+            'lock_version' => $hostname->lock_version + 1,
+            'ingress_revision' => (string) Str::uuid(),
+            'created_by' => $actorId,
+        ]);
+
+        $restored = $hostname->fresh();
+        $this->audit($restored, 'hostname.restored_by_owner', $previous, $restored->toArray(), $actorId);
+
+        return $restored;
     }
 
     public function queueVerification(Hostname $hostname): void

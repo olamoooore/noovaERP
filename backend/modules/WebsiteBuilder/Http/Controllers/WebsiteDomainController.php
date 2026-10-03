@@ -22,6 +22,7 @@ final class WebsiteDomainController extends Controller
 
         return response()->json([
             'data' => $this->query($site)
+                ->whereNotIn('serving_status', ['release_requested', 'quarantined', 'released'])
                 ->orderByDesc('created_at')
                 ->get()
                 ->map(fn (Hostname $hostname) => $this->resource($hostname, true)),
