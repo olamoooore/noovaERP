@@ -106,6 +106,47 @@ class ComplianceService
     }
 
     /**
+     * #816 (EP5): create (or reuse) the compliance document for a refund note
+     * and submit it under the same auto-submit / retry rules as an invoice or
+     * credit note. The source document is the refund Payment — the mapper
+     * resolves the original invoice through Payment::invoice.
+     *
+     * @param  string  $countryCode  ISO country code (e.g. MY, SG)
+     * @return array ['success' => bool, 'submission_id' => int|null, 'message' => string]
+     */
+    public function submitRefundNote(\App\Models\Payment $refundPayment, string $countryCode): array
+    {
+        $invoice = $refundPayment->invoice;
+        if (! $invoice) {
+            return ['success' => false, 'message' => 'Original invoice not found for refund payment '.$refundPayment->payment_number];
+        }
+
+        $mapper = $this->pluginRegistry->resolve($countryCode, 'mapper');
+        if (! $mapper || ! method_exists($mapper, 'mapRefundNote')) {
+            return ['success' => false, 'message' => 'Refund notes are not supported by the '.strtoupper($countryCode).' e-invoicing plugin (#816).'];
+        }
+
+        $document = ComplianceDocument::firstOrCreate(
+            [
+                'tenant_id' => $this->currentTenantId(),
+                'country_code' => strtoupper($countryCode),
+                'document_type' => 'refund_note',
+                'document_id' => $refundPayment->id,
+            ],
+            [
+                'document_number' => $refundPayment->payment_number,
+                'issued_date' => $refundPayment->payment_date,
+                'total_amount' => abs((float) $refundPayment->amount),
+                'currency_code' => $invoice->currency_code ?? 'MYR',
+                'compliance_status' => 'pending',
+                'created_by' => \Auth::id(),
+            ]
+        );
+
+        return $this->submitComplianceDocument($document, $countryCode, $refundPayment);
+    }
+
+    /**
      * Retry a failed submission
      */
     public function retrySubmission(int $submissionId): array
@@ -136,6 +177,10 @@ class ComplianceService
             $sourceDocument = $document->document_id
                 ? \App\Models\CustomerCreditNote::with(['customer', 'invoice', 'lines'])->find($document->document_id)
                 : null;
+        } elseif ($docType === 'refund_note') {
+            $sourceDocument = $document->document_id
+                ? \App\Models\Payment::with(['invoice', 'customer'])->find($document->document_id)
+                : null;
         } elseif ($docType === 'bill') {
             $sourceDocument = $document->document_id
                 ? \App\Models\Bill::with(['vendor', 'lines'])->find($document->document_id)
@@ -157,7 +202,7 @@ class ComplianceService
             $context = $config?->getProviderContext() ?? [];
 
             if ($sourceDocument) {
-                $nonInvoiceTypes = ['credit_note', 'bill', 'vendor_debit_note'];
+                $nonInvoiceTypes = ['credit_note', 'refund_note', 'bill', 'vendor_debit_note'];
                 if (! in_array($docType, $nonInvoiceTypes, true)) {
                     $validator = $this->pluginRegistry->resolve($countryCode, 'validator');
                     if (! $validator) {
@@ -173,6 +218,8 @@ class ComplianceService
                 $mapper = $this->pluginRegistry->resolve($countryCode, 'mapper');
                 if ($docType === 'credit_note') {
                     $payload = $mapper->mapCreditNote($sourceDocument);
+                } elseif ($docType === 'refund_note') {
+                    $payload = $mapper->mapRefundNote($sourceDocument);
                 } elseif ($docType === 'bill') {
                     $payload = $mapper->mapBill($sourceDocument);
                 } elseif ($docType === 'vendor_debit_note') {
@@ -709,6 +756,10 @@ class ComplianceService
                 $sourceDocument = $document->document_id
                     ? \App\Models\CustomerCreditNote::with(['customer', 'invoice', 'lines'])->find($document->document_id)
                     : null;
+            } elseif ($docType === 'refund_note') {
+                $sourceDocument = $document->document_id
+                    ? \App\Models\Payment::with(['invoice', 'customer'])->find($document->document_id)
+                    : null;
             } elseif ($docType === 'bill') {
                 $sourceDocument = $document->document_id
                     ? \App\Models\Bill::with(['vendor', 'lines'])->find($document->document_id)
@@ -748,17 +799,21 @@ class ComplianceService
             ?? $sourceDocument->bill_number
             ?? $sourceDocument->entry_number
             ?? $sourceDocument->invoice_number
+            ?? $sourceDocument->payment_number
             ?? '';
         $docDate = $sourceDocument->credit_note_date
             ?? $sourceDocument->debit_note_date
             ?? $sourceDocument->bill_date
             ?? $sourceDocument->entry_date
             ?? $sourceDocument->invoice_date
+            ?? $sourceDocument->payment_date
             ?? $sourceDocument->issued_date
             ?? null;
         $docTotal = $sourceDocument->total
             ?? $sourceDocument->total_amount
-            ?? (method_exists($sourceDocument, 'getTotalDebit') ? $sourceDocument->getTotalDebit() : null);
+            ?? (method_exists($sourceDocument, 'getTotalDebit') ? $sourceDocument->getTotalDebit() : null)
+            // #816: a refund Payment carries a signed amount, not a total.
+            ?? (isset($sourceDocument->amount) ? abs((float) $sourceDocument->amount) : null);
         $docCurrency = $sourceDocument->currency_code ?? 'MYR';
 
         try {
@@ -778,7 +833,7 @@ class ComplianceService
                 return ['success' => false, 'message' => "No plugin available for {$countryCode}"];
             }
 
-            $nonInvoiceTypes = ['credit_note', 'bill', 'vendor_debit_note', 'journal_entry'];
+            $nonInvoiceTypes = ['credit_note', 'refund_note', 'bill', 'vendor_debit_note', 'journal_entry'];
             if (! in_array($docType, $nonInvoiceTypes, true)) {
                 $validation = strtoupper($countryCode) === 'MY'
                     ? $validator->validateInvoice($sourceDocument, $context)
@@ -801,6 +856,8 @@ class ComplianceService
 
             if ($docType === 'credit_note') {
                 $payload = $mapper->mapCreditNote($sourceDocument);
+            } elseif ($docType === 'refund_note') {
+                $payload = $mapper->mapRefundNote($sourceDocument);
             } elseif ($docType === 'bill') {
                 $payload = $mapper->mapBill($sourceDocument);
             } elseif ($docType === 'vendor_debit_note') {
@@ -1011,6 +1068,10 @@ class ComplianceService
                 $invoice = $document->document_id
                     ? \App\Models\CustomerCreditNote::with(['customer', 'invoice', 'lines'])->find($document->document_id)
                     : null;
+            } elseif ($docType === 'refund_note') {
+                $invoice = $document->document_id
+                    ? \App\Models\Payment::with(['invoice', 'customer'])->find($document->document_id)
+                    : null;
             } elseif ($docType === 'bill') {
                 $invoice = $document->document_id
                     ? \App\Models\Bill::with(['vendor', 'lines'])->find($document->document_id)
@@ -1039,6 +1100,8 @@ class ComplianceService
 
         if ($docType === 'credit_note') {
             $payload = $mapper->mapCreditNote($invoice);
+        } elseif ($docType === 'refund_note') {
+            $payload = $mapper->mapRefundNote($invoice);
         } elseif ($docType === 'bill') {
             $payload = $mapper->mapBill($invoice);
         } elseif ($docType === 'vendor_debit_note') {

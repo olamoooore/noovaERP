@@ -132,7 +132,12 @@ class PaymentCorrectionService
     {
         $this->assertCorrectable($payment, 'refunded');
 
-        return DB::transaction(function () use ($payment, $request) {
+        // #816 (EP5): captured before the refund work runs — the e-invoicing
+        // listener needs the tenant id even if the posting path tears the
+        // tenancy context down before the post-commit dispatch.
+        $refundTenantId = tenancy()->tenant?->id;
+
+        $result = DB::transaction(function () use ($payment, $request) {
             $originalInvoice = $payment->invoice;
             $originalBill = $payment->bill ?? null;
 
@@ -215,6 +220,21 @@ class PaymentCorrectionService
                 originalBill: $originalBill,
             );
         });
+
+        // #816 (EP5): money returned to a customer must reach the e-invoicing
+        // workflow as a refund note (MyInvois type 04) referencing the original
+        // invoice's UUID. Bill refunds carry no invoice — they are the
+        // self-billed refund note (type 14), tracked with #814 / #816 AC3 — so
+        // they are not dispatched here.
+        if ($result->originalInvoice instanceof \App\Models\Invoice) {
+            \App\Accounting\Events\RefundPosted::dispatch(
+                $result->payment,
+                $result->originalInvoice,
+                $refundTenantId
+            );
+        }
+
+        return $result;
     }
 
     public function unapplyPayment(Payment $payment, CorrectionRequest $request): PaymentCorrectionResult
