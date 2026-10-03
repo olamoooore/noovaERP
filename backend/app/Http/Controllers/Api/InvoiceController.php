@@ -1265,6 +1265,12 @@ class InvoiceController extends Controller
         // actually changed. Before this, an edit was invisible in the feed —
         // only status transitions were recorded.
         $beforeHeader = $invoice->getOriginal();
+        // Issue #895: the draft edit replaces lines (delete + recreate), which
+        // bypasses model events — snapshot them here for the audit trail.
+        $beforeLines = $invoice->lines()->get()
+            ->map(fn ($line) => $this->auditLineSnapshot($line))
+            ->values()
+            ->all();
 
         try {
             DB::transaction(function () use ($request, $invoice, $validated) {
@@ -1388,6 +1394,26 @@ class InvoiceController extends Controller
                 InvoiceActivityLog::EVENT_UPDATED,
                 $metadata,
             );
+
+            // Issue #895: field-level, append-only audit of what the edit
+            // changed — old and new value for every touched field and line.
+            $this->writeAuditLog(
+                'invoice_updated',
+                'invoice',
+                (int) $invoice->id,
+                [
+                    'fields' => array_intersect_key($beforeHeader, array_flip($changedFields)),
+                    'lines' => $beforeLines,
+                ],
+                [
+                    'fields' => array_intersect_key($invoice->fresh()->getAttributes(), array_flip($changedFields)),
+                    'lines' => $invoice->lines()->get()
+                        ->map(fn ($line) => $this->auditLineSnapshot($line))
+                        ->values()
+                        ->all(),
+                ],
+                ['invoice_number' => $invoice->invoice_number],
+            );
         }
 
         if ($numberChanged) {
@@ -1445,6 +1471,19 @@ class InvoiceController extends Controller
 
         try {
             $posted = $this->invoiceService->postInvoice($invoice);
+
+            $this->writeAuditLog(
+                'invoice_posted',
+                'invoice',
+                (int) $posted->id,
+                ['status' => $invoice->status],
+                [
+                    'status' => $posted->status,
+                    'journal_entry_id' => $posted->journal_entry_id,
+                    'total' => (float) $posted->total,
+                ],
+                ['invoice_number' => $posted->invoice_number],
+            );
 
             return response()->json([
                 'message' => 'Invoice posted successfully',
@@ -2148,6 +2187,19 @@ class InvoiceController extends Controller
         try {
             $posted = $this->invoiceService->postInvoice($invoice);
 
+            $this->writeAuditLog(
+                'invoice_posted',
+                'invoice',
+                (int) $posted->id,
+                ['status' => $invoice->status],
+                [
+                    'status' => $posted->status,
+                    'journal_entry_id' => $posted->journal_entry_id,
+                    'total' => (float) $posted->total,
+                ],
+                ['invoice_number' => $posted->invoice_number],
+            );
+
             $this->activityService->log(
                 $invoice,
                 \App\Models\InvoiceActivityLog::EVENT_POSTED,
@@ -2217,7 +2269,22 @@ class InvoiceController extends Controller
             return response()->json(['message' => 'Only draft invoices can be deleted'], 403);
         }
 
+        $beforeState = [
+            'status' => $invoice->status,
+            'invoice_number' => $invoice->invoice_number,
+            'total' => (float) $invoice->total,
+        ];
+
         $invoice->delete();
+
+        $this->writeAuditLog(
+            'invoice_deleted',
+            'invoice',
+            (int) $invoice->id,
+            $beforeState,
+            ['deleted' => true],
+            ['invoice_number' => $beforeState['invoice_number']],
+        );
 
         return response()->json(['message' => 'Invoice deleted successfully']);
     }
@@ -2239,6 +2306,8 @@ class InvoiceController extends Controller
             return response()->json(['message' => 'Invoice not found'], 404);
         }
 
+        $beforeStatus = $invoice->status;
+
         try {
             $invoice = $this->cancellationService->cancel($invoice, auth()->user());
         } catch (\App\Exceptions\InvoiceCancellationException $e) {
@@ -2250,6 +2319,19 @@ class InvoiceController extends Controller
 
         // A cancelled invoice must no longer be acceptable via its portal links.
         $this->evidenceService->revokeAcceptanceLinks($invoice);
+
+        $this->writeAuditLog(
+            'invoice_cancelled',
+            'invoice',
+            (int) $invoice->id,
+            ['status' => $beforeStatus, 'lifecycle_status' => $beforeStatus],
+            [
+                'status' => $invoice->status,
+                'lifecycle_status' => $invoice->lifecycle_status,
+                'total' => (float) $invoice->total,
+            ],
+            ['invoice_number' => $invoice->invoice_number],
+        );
 
         $this->activityService->log(
             $invoice,
@@ -2336,6 +2418,9 @@ class InvoiceController extends Controller
             return $denied;
         }
 
+        $beforeStatus = $invoice->status;
+        $beforeJournalEntryId = $invoice->journal_entry_id;
+
         try {
             DB::transaction(function () use ($invoice) {
                 // Reverse the journal entry if one exists (idempotent — a
@@ -2382,6 +2467,15 @@ class InvoiceController extends Controller
                 'draft',
                 \App\Models\InvoiceActivityLog::ACTOR_USER,
                 auth()->id(),
+            );
+
+            $this->writeAuditLog(
+                'invoice_reset_to_draft',
+                'invoice',
+                (int) $invoice->id,
+                ['status' => $beforeStatus, 'journal_entry_id' => $beforeJournalEntryId],
+                ['status' => $invoice->status, 'journal_entry_id' => $invoice->journal_entry_id],
+                ['invoice_number' => $invoice->invoice_number],
             );
 
             $this->notifyCustomerOfStatusChange($invoice, 'withdrawn');
@@ -2470,7 +2564,23 @@ class InvoiceController extends Controller
 
         foreach ($deletable as $invoice) {
             try {
+                $beforeState = [
+                    'status' => $invoice->status,
+                    'invoice_number' => $invoice->invoice_number,
+                    'total' => (float) $invoice->total,
+                ];
+
                 $invoice->delete();
+
+                $this->writeAuditLog(
+                    'invoice_deleted',
+                    'invoice',
+                    (int) $invoice->id,
+                    $beforeState,
+                    ['deleted' => true],
+                    ['invoice_number' => $beforeState['invoice_number']],
+                );
+
                 $deletedIds[] = $invoice->id;
             } catch (\Throwable $e) {
                 $skipped[] = ['id' => $invoice->id, 'reason' => $e->getMessage()];
@@ -2538,7 +2648,21 @@ class InvoiceController extends Controller
             }
 
             try {
-                $this->invoiceService->postInvoice($invoice);
+                $postedInvoice = $this->invoiceService->postInvoice($invoice);
+
+                $this->writeAuditLog(
+                    'invoice_posted',
+                    'invoice',
+                    (int) $postedInvoice->id,
+                    ['status' => 'draft'],
+                    [
+                        'status' => $postedInvoice->status,
+                        'journal_entry_id' => $postedInvoice->journal_entry_id,
+                        'total' => (float) $postedInvoice->total,
+                    ],
+                    ['invoice_number' => $postedInvoice->invoice_number, 'bulk' => true],
+                );
+
                 $posted[] = $invoice->id;
             } catch (\Throwable $e) {
                 $message = $e->getMessage();
@@ -3146,5 +3270,47 @@ class InvoiceController extends Controller
         } catch (\Throwable $e) {
             return null;
         }
+    }
+
+    /**
+     * Issue #895 (SALES-PLAT / PC1): append a tamper-evident audit row for an
+     * invoice field change or lifecycle transition. Deliberately uncaught — an
+     * audit failure surfaces as an error instead of silently succeeding.
+     */
+    private function writeAuditLog(
+        string $operation,
+        string $referenceType,
+        int $referenceId,
+        ?array $beforeState = null,
+        ?array $afterState = null,
+        array $metadata = [],
+    ): void {
+        app(\App\Services\AuditLogger::class)->log(
+            operation: $operation,
+            referenceType: $referenceType,
+            referenceId: $referenceId,
+            beforeState: $beforeState,
+            afterState: $afterState,
+            metadata: $metadata + [
+                'request_id' => request()?->header(\App\Http\Middleware\CorrelationIdMiddleware::HEADER),
+            ],
+        );
+    }
+
+    /**
+     * Issue #895: a compact, field-level snapshot of an invoice line for the
+     * audit trail (ids alone cannot show what price/discount was changed).
+     */
+    private function auditLineSnapshot($line): array
+    {
+        return [
+            'id' => $line->id !== null ? (int) $line->id : null,
+            'product_id' => $line->product_id !== null ? (int) $line->product_id : null,
+            'description' => $line->description,
+            'quantity' => (float) $line->quantity,
+            'unit_price' => (float) $line->unit_price,
+            'tax_rate' => (float) ($line->tax_rate ?? 0),
+            'discount_amount' => (float) ($line->discount_amount ?? 0),
+        ];
     }
 }

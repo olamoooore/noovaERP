@@ -328,8 +328,33 @@ class PaymentController extends Controller
             'ids.*' => 'integer',
         ]);
 
+        // Issue #895: snapshot the pre-post state so each audit row can carry
+        // the old payment status next to the new one.
+        $beforeStates = Payment::whereIn('id', $validated['ids'])->get()
+            ->keyBy('id')
+            ->map(fn (Payment $payment) => [
+                'payment_status' => $payment->payment_status,
+                'journal_entry_id' => $payment->journal_entry_id,
+            ]);
+
         try {
             $result = $this->paymentPostingService->postMany($validated['ids']);
+
+            foreach ($result['posted'] as $postedId) {
+                $payment = Payment::findOrFail($postedId);
+
+                $this->writeAuditLog(
+                    'payment_posted',
+                    (int) $payment->id,
+                    $beforeStates->get($payment->id) ?? ['payment_status' => null, 'journal_entry_id' => null],
+                    [
+                        'payment_status' => $payment->payment_status,
+                        'journal_entry_id' => $payment->journal_entry_id,
+                        'amount' => (float) $payment->amount,
+                    ],
+                    ['customer_id' => $payment->customer_id, 'bulk' => true],
+                );
+            }
 
             return response()->json([
                 'message' => count($result['posted']).' payment(s) posted.',
@@ -351,9 +376,23 @@ class PaymentController extends Controller
     public function post(Request $request, $paymentId)
     {
         $payment = Payment::findOrFail($paymentId);
+        $beforeStatus = $payment->payment_status;
+        $hadJournalEntry = $payment->journal_entry_id;
 
         try {
             $posted = $this->paymentPostingService->post($payment);
+
+            $this->writeAuditLog(
+                'payment_posted',
+                (int) $posted->id,
+                ['payment_status' => $beforeStatus, 'journal_entry_id' => $hadJournalEntry],
+                [
+                    'payment_status' => $posted->payment_status,
+                    'journal_entry_id' => $posted->journal_entry_id,
+                    'amount' => (float) $posted->amount,
+                ],
+                ['customer_id' => $posted->customer_id],
+            );
 
             return response()->json([
                 'message' => 'Payment posted successfully',
@@ -522,6 +561,12 @@ class PaymentController extends Controller
             }
 
             try {
+                $beforeState = [
+                    'payment_status' => $payment->payment_status,
+                    'amount' => (float) $payment->amount,
+                    'journal_entry_id' => $payment->journal_entry_id,
+                ];
+
                 // #477/#482: new drafts never touched the invoice. A LEGACY
                 // draft may still carry live applications (it settled before
                 // #477) — reverse them through the canonical allocation path
@@ -531,6 +576,14 @@ class PaymentController extends Controller
                     $this->reverseLiveApplications($payment);
                     $payment->delete();
                 });
+
+                $this->writeAuditLog(
+                    'payment_deleted',
+                    (int) $payment->id,
+                    $beforeState,
+                    ['deleted' => true],
+                    ['customer_id' => $payment->customer_id, 'bulk' => true],
+                );
 
                 $deletedIds[] = $id;
             } catch (\Throwable $e) {
@@ -560,10 +613,24 @@ class PaymentController extends Controller
         // #477/#482: a new draft never touched the invoice, but a LEGACY draft
         // may still carry live applications — reverse them canonically before
         // deleting so the invoices (and their audit trail) are restored.
+        $beforeState = [
+            'payment_status' => $payment->payment_status,
+            'amount' => (float) $payment->amount,
+            'journal_entry_id' => $payment->journal_entry_id,
+        ];
+
         DB::transaction(function () use ($payment) {
             $this->reverseLiveApplications($payment);
             $payment->delete();
         });
+
+        $this->writeAuditLog(
+            'payment_deleted',
+            (int) $payment->id,
+            $beforeState,
+            ['deleted' => true],
+            ['customer_id' => $payment->customer_id],
+        );
 
         return response()->json(['message' => 'Payment deleted successfully']);
     }
@@ -642,14 +709,30 @@ class PaymentController extends Controller
             return response()->json(['message' => 'Only recorded payments can be cancelled'], 403);
         }
 
+        $beforeStatus = $payment->payment_status;
+
         // #483: a draft has no journal entry — there is nothing for the posted
         // payment correction flow to unapply. Cancel it through the delete path
         // (reversing any legacy allocation); no reversal JE is created.
         if ($payment->journal_entry_id === null) {
+            $beforeState = [
+                'payment_status' => $beforeStatus,
+                'amount' => (float) $payment->amount,
+                'journal_entry_id' => null,
+            ];
+
             DB::transaction(function () use ($payment) {
                 $this->reverseLiveApplications($payment);
                 $payment->delete();
             });
+
+            $this->writeAuditLog(
+                'payment_cancelled',
+                (int) $payment->id,
+                $beforeState,
+                ['payment_status' => 'cancelled', 'deleted' => true],
+                ['customer_id' => $payment->customer_id],
+            );
 
             return response()->json(['message' => 'Draft payment cancelled']);
         }
@@ -667,6 +750,17 @@ class PaymentController extends Controller
 
             $result = app(\App\Services\PaymentCorrectionService::class)
                 ->unapplyPayment($payment, $correctionRequest);
+
+            $this->writeAuditLog(
+                'payment_cancelled',
+                (int) $payment->id,
+                ['payment_status' => $beforeStatus, 'journal_entry_id' => $payment->journal_entry_id],
+                [
+                    'payment_status' => $result->payment->payment_status,
+                    'reversal_journal_entry_id' => $result->reversalJournalEntry?->id,
+                ],
+                ['customer_id' => $payment->customer_id, 'reason_code' => 'PAYMENT_CANCELLATION'],
+            );
 
             return response()->json([
                 'message' => 'Payment cancelled and unapplied from invoice',
@@ -715,5 +809,29 @@ class PaymentController extends Controller
         }
 
         return 'partial';
+    }
+
+    /**
+     * Issue #895 (SALES-PLAT / PC1): append a tamper-evident audit row for a
+     * payment lifecycle transition. Deliberately uncaught — an audit failure
+     * surfaces as an error instead of silently succeeding.
+     */
+    private function writeAuditLog(
+        string $operation,
+        int $paymentId,
+        ?array $beforeState = null,
+        ?array $afterState = null,
+        array $metadata = [],
+    ): void {
+        app(\App\Services\AuditLogger::class)->log(
+            operation: $operation,
+            referenceType: 'payment',
+            referenceId: $paymentId,
+            beforeState: $beforeState,
+            afterState: $afterState,
+            metadata: $metadata + [
+                'request_id' => request()?->header(\App\Http\Middleware\CorrelationIdMiddleware::HEADER),
+            ],
+        );
     }
 }
