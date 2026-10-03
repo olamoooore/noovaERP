@@ -36,6 +36,20 @@ final class QuotationDataSource implements DataSourceContract
         return $entityId !== null ? (int) $entityId : null;
     }
 
+    public function resolutionContext(string $documentId): array
+    {
+        $quotation = $this->load($documentId)->quotation;
+
+        return DocumentResolutionContext::build([
+            'entity_id' => $this->legalEntityId(),
+            'branch_id' => $quotation->getAttribute('branch_id'),
+            'currency' => $quotation->currency_code,
+            'language' => $quotation->customer?->language,
+            'customer_group' => $quotation->customer?->customer_group,
+            'channel' => $quotation->getAttribute('channel'),
+        ]);
+    }
+
     public function load(string $documentId): self
     {
         $this->quotation = Quotation::with(['customer', 'lines.product', 'billingContact', 'shippingContact'])->findOrFail($documentId);
@@ -46,7 +60,7 @@ final class QuotationDataSource implements DataSourceContract
     public function toArray(): array
     {
         $q = $this->quotation ?? throw new \RuntimeException('Quotation not loaded.');
-        $company = CompanyDataSource::forCurrentTenant();
+        $company = CompanyDataSource::forDocument($q);
         // MRD FR-8.5: document currency primary; base equivalent secondary.
         $companyCurrency = $company['currency_code'] ?? 'MYR';
         $currencyCode = $q->currency_code ?: $companyCurrency;

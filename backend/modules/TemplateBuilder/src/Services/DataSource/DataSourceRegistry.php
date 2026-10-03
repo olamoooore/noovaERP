@@ -76,6 +76,19 @@ final class DataSourceRegistry
     }
 
     /**
+     * Template resolution dimensions exposed by the document's data source
+     * (issue #612). Callers that render/write should pass this to
+     * DocumentTemplateService::resolveFor() so entity/language/currency/
+     * customer-group assignments actually apply.
+     *
+     * @return array<string,mixed>
+     */
+    public function resolutionContextFor(string $documentType, string $documentId): array
+    {
+        return $this->make($documentType)->resolutionContext($documentId);
+    }
+
+    /**
      * Recursively mask PHI fields when the current request's user does not
      * hold medical_cases.phi.view. Uses the platform FieldMaskingService.
      *

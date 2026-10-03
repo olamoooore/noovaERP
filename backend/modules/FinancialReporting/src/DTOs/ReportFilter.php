@@ -34,6 +34,12 @@ class ReportFilter
         public ?int $salespersonId = null,
         /** Issue #593: sales channel — pos | admin | ecommerce. */
         public ?string $channel = null,
+        /**
+         * Issue #595: comparison mode — previous_period | same_period_last_year
+         * | custom. Null means no comparison; explicit compareStartDate/
+         * compareEndDate imply `custom`.
+         */
+        public ?string $comparisonMode = null,
     ) {}
 
     /**
@@ -41,6 +47,16 @@ class ReportFilter
      */
     public static function fromRequest(array $data): self
     {
+        // Issue #595: `comparison` selects a derived window; supplying the two
+        // compare dates without a mode is still an explicit custom range.
+        $comparisonMode = isset($data['comparison']) && $data['comparison'] !== ''
+            ? strtolower((string) $data['comparison'])
+            : null;
+        if ($comparisonMode === null
+            && (isset($data['compare_start_date']) || isset($data['compare_end_date']))) {
+            $comparisonMode = 'custom';
+        }
+
         return new self(
             startDate: isset($data['start_date']) ? Carbon::parse($data['start_date']) : null,
             endDate: isset($data['end_date']) ? Carbon::parse($data['end_date']) : null,
@@ -71,7 +87,25 @@ class ReportFilter
             channel: isset($data['channel']) && $data['channel'] !== ''
                 ? strtolower((string) $data['channel'])
                 : null,
+            comparisonMode: $comparisonMode,
         );
+    }
+
+    /**
+     * Issue #595: the same filter narrowed to another window, with every
+     * comparison setting cleared so a derived report cannot recursively ask
+     * for a comparison of its own.
+     */
+    public function forRange(Carbon $startDate, Carbon $endDate): self
+    {
+        $copy = clone $this;
+        $copy->startDate = $startDate;
+        $copy->endDate = $endDate;
+        $copy->compareStartDate = null;
+        $copy->compareEndDate = null;
+        $copy->comparisonMode = null;
+
+        return $copy;
     }
 
     /**

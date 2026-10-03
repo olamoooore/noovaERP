@@ -10,7 +10,17 @@
 
 import { addDays, format, isValid, parse, startOfISOWeek } from 'date-fns';
 
-export interface ProductRow {
+/**
+ * Issue #595: flat comparison fields the API adds to a row when a comparison
+ * period was requested — `${metric}_previous`, `${metric}_delta` and
+ * `${metric}_delta_percent` (null when the previous value is 0). Kept flat
+ * because ReportTable looks cell values up by column key.
+ */
+export interface ComparisonFields {
+  [key: string]: unknown;
+}
+
+export interface ProductRow extends ComparisonFields {
   /** Kept for traceability links (product detail page). */
   id: number | null;
   name: string;
@@ -22,7 +32,7 @@ export interface ProductRow {
   profit_margin: number;
 }
 
-export interface CustomerRow {
+export interface CustomerRow extends ComparisonFields {
   /** Kept for traceability links (customer detail page). */
   id: number | null;
   name: string;
@@ -32,14 +42,14 @@ export interface CustomerRow {
   last_purchase_date: string | null;
 }
 
-export interface TrendRow {
+export interface TrendRow extends ComparisonFields {
   period: string;
   invoice_count: number;
   total_revenue: number;
   avg_order_value: number;
 }
 
-export interface CategoryRow {
+export interface CategoryRow extends ComparisonFields {
   /** Kept for traceability links (products filtered by category). */
   category_id: number | null;
   category_name: string;
@@ -68,6 +78,26 @@ export const pick = (row: any, ...keys: string[]): unknown => {
 
 const asArray = (value: unknown): any[] => (Array.isArray(value) ? value : []);
 
+/**
+ * Issue #595: copy every `${metric}_previous|_delta|_delta_percent` triple the
+ * API sent into flat row fields, so a delta column can key straight into the
+ * row. A missing triple leaves the row untouched (columns render '-'), which
+ * is what keeps responses without a comparison unchanged.
+ */
+export const comparisonFields = (raw: any): Record<string, number | null> => {
+  const fields: Record<string, number | null> = {};
+  for (const key of Object.keys(raw ?? {})) {
+    if (!key.endsWith('_delta')) continue;
+    const metric = key.slice(0, -'_delta'.length);
+    const percent = raw[`${metric}_delta_percent`];
+    fields[`${metric}_previous`] = num(raw[`${metric}_previous`]);
+    fields[`${metric}_delta`] = num(raw[key]);
+    fields[`${metric}_delta_percent`] =
+      percent === null || percent === undefined ? null : num(percent);
+  }
+  return fields;
+};
+
 export const normalizeProducts = (payload: any): ProductRow[] =>
   asArray(payload?.products).map((p: any) => ({
     id: num(pick(p, 'id', 'product_id')) || null,
@@ -78,6 +108,7 @@ export const normalizeProducts = (payload: any): ProductRow[] =>
     total_cost: num(pick(p, 'total_cost', 'cost')),
     total_profit: num(pick(p, 'total_profit', 'profit')),
     profit_margin: num(p.profit_margin),
+    ...comparisonFields(p),
   }));
 
 export const normalizeCustomers = (payload: any): CustomerRow[] =>
@@ -88,6 +119,7 @@ export const normalizeCustomers = (payload: any): CustomerRow[] =>
     total_revenue: num(pick(c, 'total_revenue', 'total_sales', 'revenue')),
     average_order_value: num(pick(c, 'average_order_value', 'avg_order_value')),
     last_purchase_date: c.last_purchase_date ?? null,
+    ...comparisonFields(c),
   }));
 
 export const normalizeTrends = (payload: any): TrendRow[] =>
@@ -96,6 +128,7 @@ export const normalizeTrends = (payload: any): TrendRow[] =>
     invoice_count: num(pick(t, 'invoice_count', 'order_count')),
     total_revenue: num(pick(t, 'total_revenue', 'total_sales', 'revenue')),
     avg_order_value: num(pick(t, 'avg_order_value', 'average_order_value')),
+    ...comparisonFields(t),
   }));
 
 export const normalizeCategories = (payload: any): CategoryRow[] =>
@@ -108,6 +141,7 @@ export const normalizeCategories = (payload: any): CategoryRow[] =>
     total_profit: num(pick(c, 'total_profit', 'profit')),
     profit_margin: num(c.profit_margin),
     percentage: num(pick(c, 'percentage', 'revenue_percentage')),
+    ...comparisonFields(c),
   }));
 
 /** Sum of a numeric field across rows — never NaN. */
