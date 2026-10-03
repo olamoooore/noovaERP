@@ -12,6 +12,8 @@ use App\Models\InvoiceEvidence;
 use App\Models\Product;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Platform\Locking\RecordVersionConflictException;
+use App\Platform\Locking\RecordVersionGuard;
 use App\Platform\Pagination\PaginationService;
 use App\Services\CaseImportService;
 use App\Services\CustomerWideSearchService;
@@ -47,6 +49,7 @@ class InvoiceController extends Controller
         private DeliveryOrderService $deliveryOrderService,
         private EInvoiceLifecycleGuard $eInvoiceLifecycle,
         private InvoiceCancellationService $cancellationService,
+        private RecordVersionGuard $versionGuard,
     ) {}
 
     public function index(Request $request)
@@ -1263,76 +1266,92 @@ class InvoiceController extends Controller
         // only status transitions were recorded.
         $beforeHeader = $invoice->getOriginal();
 
-        DB::transaction(function () use ($invoice, $validated) {
-            $lines = $validated['lines'] ?? null;
-            unset($validated['lines']);
+        try {
+            DB::transaction(function () use ($request, $invoice, $validated) {
+                // Issue #896: the row lock + version check must cover the write.
+                $this->versionGuard->assertFresh($request, $invoice, 'invoice');
 
-            // `payment_terms` arrives as a day count; the document stores the
-            // immutable snapshot column.
-            if (array_key_exists('payment_terms', $validated)) {
-                $validated['payment_terms_snapshot'] = $validated['payment_terms'] !== null
-                    ? (string) $validated['payment_terms']
-                    : null;
-                unset($validated['payment_terms']);
-            }
+                $lines = $validated['lines'] ?? null;
+                unset($validated['lines']);
 
-            if (array_key_exists('cases', $validated)) {
-                $validated['case_information'] = $validated['cases'];
-                unset($validated['cases']);
-            }
-
-            $invoice->update($validated);
-
-            if ($lines !== null) {
-                // Draft edit: price against the document's own currency +
-                // rate snapshot (FR-1.7 — the snapshot is never re-derived;
-                // only auto/new lines change price).
-                $pricing = app(\App\Services\PricingService::class);
-                $pricingContext = $pricing->documentContext([
-                    'customer_id' => $invoice->customer_id,
-                    'date' => $invoice->invoice_date?->toDateString(),
-                    'currency_code' => $invoice->currency_code,
-                    'exchange_rate' => $invoice->exchange_rate,
-                    'base_currency_code' => $invoice->base_currency_code,
-                ]);
-
-                $invoice->lines()->delete();
-                foreach ($lines as $line) {
-                    $lineProduct = ($line['line_type'] ?? 'product') === 'product' && ! empty($line['product_id'])
-                        ? \App\Models\Product::find($line['product_id'])
+                // `payment_terms` arrives as a day count; the document stores the
+                // immutable snapshot column.
+                if (array_key_exists('payment_terms', $validated)) {
+                    $validated['payment_terms_snapshot'] = $validated['payment_terms'] !== null
+                        ? (string) $validated['payment_terms']
                         : null;
-                    $mode = $line['price_mode'] ?? (((float) ($line['unit_price'] ?? 0) > 0) ? 'legacy' : 'auto');
-                    $priced = $pricing->priceLineArray($lineProduct, $line, $pricingContext, $mode);
-
-                    $invoice->lines()->create(array_merge([
-                        'line_type' => $line['line_type'] ?? 'product',
-                        'sequence' => $line['sequence'] ?? 0,
-                        'product_id' => $line['product_id'] ?? null,
-                        'model_number' => $line['model_number'] ?? null,
-                        'description' => $line['description'],
-                        'product_notes' => $line['product_notes'] ?? null,
-                        'lot_number' => $line['lot_number'] ?? null,
-                        'serial_number' => $line['serial_number'] ?? null,
-                        'product_batch_id' => $line['product_batch_id'] ?? null,
-                        'product_serial_id' => $line['product_serial_id'] ?? null,
-                        'expiry_date' => $line['expiry_date'] ?? null,
-                        'quantity' => $line['quantity'],
-                        'unit_price' => $line['unit_price'] ?? 0,
-                        'tax_rate' => $line['tax_rate'] ?? 0,
-                        'discount_amount' => $line['discount_amount'] ?? 0,
-                    ], array_filter($priced, fn ($v) => $v !== null)));
+                    unset($validated['payment_terms']);
                 }
-            }
 
-            $invoice->refresh();
-            $invoice->calculateTotals();
+                if (array_key_exists('cases', $validated)) {
+                    $validated['case_information'] = $validated['cases'];
+                    unset($validated['cases']);
+                }
 
-            // Issue #180/#647: auto-promote `requires_approval` when the
-            // tenant's threshold is set and the invoice total meets or exceeds
-            // it. The rule itself lives in InvoiceService so create and every
-            // total-changing update share one implementation.
-            $this->invoiceService->applyApprovalThreshold($invoice);
-        });
+                $invoice->update($validated);
+
+                if ($lines !== null) {
+                    // Draft edit: price against the document's own currency +
+                    // rate snapshot (FR-1.7 — the snapshot is never re-derived;
+                    // only auto/new lines change price).
+                    $pricing = app(\App\Services\PricingService::class);
+                    $pricingContext = $pricing->documentContext([
+                        'customer_id' => $invoice->customer_id,
+                        'date' => $invoice->invoice_date?->toDateString(),
+                        'currency_code' => $invoice->currency_code,
+                        'exchange_rate' => $invoice->exchange_rate,
+                        'base_currency_code' => $invoice->base_currency_code,
+                    ]);
+
+                    $invoice->lines()->delete();
+                    foreach ($lines as $line) {
+                        $lineProduct = ($line['line_type'] ?? 'product') === 'product' && ! empty($line['product_id'])
+                            ? \App\Models\Product::find($line['product_id'])
+                            : null;
+                        $mode = $line['price_mode'] ?? (((float) ($line['unit_price'] ?? 0) > 0) ? 'legacy' : 'auto');
+                        $priced = $pricing->priceLineArray($lineProduct, $line, $pricingContext, $mode);
+
+                        $invoice->lines()->create(array_merge([
+                            'line_type' => $line['line_type'] ?? 'product',
+                            'sequence' => $line['sequence'] ?? 0,
+                            'product_id' => $line['product_id'] ?? null,
+                            'model_number' => $line['model_number'] ?? null,
+                            'description' => $line['description'],
+                            'product_notes' => $line['product_notes'] ?? null,
+                            'lot_number' => $line['lot_number'] ?? null,
+                            'serial_number' => $line['serial_number'] ?? null,
+                            'product_batch_id' => $line['product_batch_id'] ?? null,
+                            'product_serial_id' => $line['product_serial_id'] ?? null,
+                            'expiry_date' => $line['expiry_date'] ?? null,
+                            'quantity' => $line['quantity'],
+                            'unit_price' => $line['unit_price'] ?? 0,
+                            'tax_rate' => $line['tax_rate'] ?? 0,
+                            'discount_amount' => $line['discount_amount'] ?? 0,
+                        ], array_filter($priced, fn ($v) => $v !== null)));
+                    }
+                }
+
+                $invoice->refresh();
+                $invoice->calculateTotals();
+
+                // Issue #180/#647: auto-promote `requires_approval` when the
+                // tenant's threshold is set and the invoice total meets or exceeds
+                // it. The rule itself lives in InvoiceService so create and every
+                // total-changing update share one implementation.
+                $this->invoiceService->applyApprovalThreshold($invoice);
+
+                // Issue #896: the write succeeded — advance the concurrency token.
+                $this->versionGuard->advance($invoice);
+            });
+        } catch (RecordVersionConflictException $e) {
+            return $this->versionGuard->conflictResponse($e, [
+                'customer', 'lines', 'doctor', 'requestor', 'buyer', 'billingContact', 'shippingContact',
+            ]);
+        }
+
+        // Optional soft lock: record who last saved so a later conflicting
+        // editor is told "being edited by …" (advisory only).
+        $this->versionGuard->recordEditing($request, $invoice, 'invoice');
 
         $changedFields = [];
         foreach (array_keys($validated) as $field) {
@@ -2328,6 +2347,15 @@ class InvoiceController extends Controller
                         'RESET_TO_DRAFT',
                     );
                 }
+
+                // Issue #684: posting deducted this invoice's stock; the
+                // reversal above released its COGS, so the goods go back on
+                // the shelf in the SAME transaction. Otherwise a draft that is
+                // deleted or re-edited loses the stock for good. Only stock
+                // this invoice itself issued moves — a completed delivery
+                // order owns whatever it shipped. Idempotent, so a
+                // reset → repost → reset cycle never double-returns.
+                $this->cancellationService->returnIssuedStockOnReset($invoice);
 
                 $invoice->update([
                     'status' => 'draft',

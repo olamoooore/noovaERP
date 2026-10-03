@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard';
 import { Icon } from '@iconify/react';
+import { addCalendarDays, todayDateOnly } from '@/lib/dateOnly'
+import { DEFAULT_QUOTE_VALIDITY_DAYS, followValidUntil } from '@/lib/quotationDates'
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency, getApiErrorMessage } from '@/lib/utils';
 import api from '@/lib/api'
@@ -123,10 +125,13 @@ export const QuotationCreatePage: React.FC = () => {
     price_list_currency?: string | null;
   } | null>(null);
   const [pricingError, setPricingError] = useState<string | null>(null);
-  const [quotationDate, setQuotationDate] = useState(new Date().toISOString().split('T')[0]);
+  // #297 (Q11): date-only business values use the local calendar day, not the
+  // UTC day — before 08:00 in MY/SG the old defaults were yesterday.
+  const [quotationDate, setQuotationDate] = useState(todayDateOnly());
   const [validUntil, setValidUntil] = useState(
-    new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    addCalendarDays(todayDateOnly(), DEFAULT_QUOTE_VALIDITY_DAYS)
   );
+  const [validUntilManuallyEdited, setValidUntilManuallyEdited] = useState(false);
   const [notes, setNotes] = useState('');
   const [discountAmount, setDiscountAmount] = useState<number | ''>('');
   const [discountMode, setDiscountMode] = useState<'fixed' | 'percentage'>('fixed');
@@ -444,6 +449,22 @@ export const QuotationCreatePage: React.FC = () => {
   const total = documentTotals.total;
   const discountValue = discountAmount === '' ? 0 : discountAmount;
   const [customQuoteNumber, setCustomQuoteNumber] = useState('');
+  // #297 (Q11): changing the quote date moves Valid Until with it (unless the
+  // operator edited Valid Until themselves) and re-runs auto pricing against
+  // the new date.
+  const handleQuotationDateChange = (value: string) => {
+    setQuotationDate(value);
+
+    setValidUntil(followValidUntil(value, validUntil, validUntilManuallyEdited));
+
+    void resolvePricingForLines(lines);
+  };
+
+  const handleValidUntilChange = (value: string) => {
+    setValidUntil(value);
+    setValidUntilManuallyEdited(true);
+  };
+
   const quoteNumberPreview = `QUO-${new Date(quotationDate).getFullYear()}-XXXX`;
 
   const handleSubmit = (event: React.FormEvent) => {
@@ -590,7 +611,7 @@ export const QuotationCreatePage: React.FC = () => {
                 <input
                   type="date"
                   value={quotationDate}
-                  onChange={(event) => setQuotationDate(event.target.value)}
+                  onChange={(event) => handleQuotationDateChange(event.target.value)}
                   className="h-9 w-full min-w-0 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
@@ -599,7 +620,7 @@ export const QuotationCreatePage: React.FC = () => {
                 <input
                   type="date"
                   value={validUntil}
-                  onChange={(event) => setValidUntil(event.target.value)}
+                  onChange={(event) => handleValidUntilChange(event.target.value)}
                   className="h-9 w-full min-w-0 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>

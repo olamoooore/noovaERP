@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard';
 import { TagEditor } from '@/components/tags/TagEditor'
 import { Icon } from '@iconify/react';
+import { addCalendarDays, todayDateOnly } from '@/lib/dateOnly'
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency, getApiErrorMessage } from '@/lib/utils';
 import api from '@/lib/api';
@@ -74,10 +75,9 @@ export const QuotationEditPage: React.FC = () => {
   const { toast } = useToast();
 
   const [customerId, setCustomerId] = useState('');
-  const [quotationDate, setQuotationDate] = useState(new Date().toISOString().split('T')[0]);
-  const [validUntil, setValidUntil] = useState(
-    new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-  );
+  // #297 (Q11): local calendar defaults, never the UTC day.
+  const [quotationDate, setQuotationDate] = useState(todayDateOnly());
+  const [validUntil, setValidUntil] = useState(addCalendarDays(todayDateOnly(), 30));
   const [notes, setNotes] = useState('');
   const [terms, setTerms] = useState('');
   const [discountAmount, setDiscountAmount] = useState<number | ''>('');
@@ -119,7 +119,7 @@ export const QuotationEditPage: React.FC = () => {
   useEffect(() => {
     if (!quotation) return;
     setCustomerId(quotation.customer_id ? String(quotation.customer_id) : '');
-    setQuotationDate(quotation.quotation_date ? String(quotation.quotation_date).split('T')[0] : new Date().toISOString().split('T')[0]);
+    setQuotationDate(quotation.quotation_date ? String(quotation.quotation_date).split('T')[0] : todayDateOnly());
     setValidUntil(quotation.valid_until ? String(quotation.valid_until).split('T')[0] : '');
     setNotes(quotation.notes || '');
     setTerms(quotation.terms || '');

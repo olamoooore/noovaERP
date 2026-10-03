@@ -93,4 +93,15 @@ class RecordLockingService implements RecordLockingServiceContract
 
         return $count > 0;
     }
+
+    public function activeLock(string $resourceType, int $resourceId): ?LockRecord
+    {
+        return LockRecord::where('tenant_id', tenant()->id)
+            ->where('resource_type', $resourceType)
+            ->where('resource_id', $resourceId)
+            ->whereNull('released_at')
+            ->where('expires_at', '>', now())
+            ->latest('acquired_at')
+            ->first();
+    }
 }

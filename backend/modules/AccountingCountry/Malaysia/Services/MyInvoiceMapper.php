@@ -205,6 +205,8 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
             'issue_datetime' => $issuedDate->format('c'),
             'due_date' => $invoice->due_date?->format('Y-m-d') ?? null,
             'currency_code' => $currency,
+            // #820 EP9: the document's OWN rate snapshot (never today's rate).
+            'exchange_rate' => $invoice->exchange_rate,
             'supplier' => $supplierParty,
             'buyer' => $buyerParty,
             // Issue #664: an invoice to a business buyer must say so explicitly
@@ -917,12 +919,32 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
 
         $isExemptOrZero = in_array($taxTypeCode, ['E', '06'], true);
 
+        // #665 EI3: per-line LHDN classification + UN/ECE unit. A product's own
+        // code wins; otherwise the pack's declared default. A truly missing
+        // classification is a validation error, never a silent '001'.
+        $product = $line->product ?? null;
+        $classificationCode = $line->classification_code
+            ?? $product?->einvoice_classification_code
+            ?? config('tax_packs.MY.einvoice.default_classification');
+
+        if (empty($classificationCode)) {
+            throw new \InvalidArgumentException(
+                'EINVOICE_CLASSIFICATION_REQUIRED: line '.$lineNumber
+                .' has no LHDN classification code (set it on the product or the pack default).'
+            );
+        }
+
+        $unitCode = $line->unit_code
+            ?? $product?->einvoice_unit_code
+            ?? config('tax_packs.MY.einvoice.default_unit', 'C62');
+
         return [
             'line_number' => $lineNumber,
             'item_id' => (string) $line->id,
             'description' => $line->description ?? 'Line Item',
+            'classification_code' => $classificationCode,
             'quantity' => $quantity,
-            'unit_code' => $line->unit_code ?? 'C62',
+            'unit_code' => $unitCode,
             'unit_price' => round($unitPrice, 2),
             'line_amount' => $lineSubtotal,
             'discount_amount' => round($discountAmount, 2),

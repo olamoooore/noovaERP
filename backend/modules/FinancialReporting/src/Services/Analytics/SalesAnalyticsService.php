@@ -112,7 +112,7 @@ class SalesAnalyticsService
                 'error' => $e->getMessage(),
             ]);
 
-            return $this->errorEnvelope('Sales by Product', $e);
+            throw $e;
         }
 
         $summary = $this->baseSummary([
@@ -185,7 +185,7 @@ class SalesAnalyticsService
                 'error' => $e->getMessage(),
             ]);
 
-            return $this->errorEnvelope('Sales by Customer', $e);
+            throw $e;
         }
 
         $walkInRevenue = (float) $rows->where('customer_id', null)->sum('total_revenue');
@@ -253,7 +253,7 @@ class SalesAnalyticsService
         } catch (\Throwable $e) {
             Log::error('SalesAnalyticsService getSalesByCurrency error', ['error' => $e->getMessage()]);
 
-            return $this->errorEnvelope('Sales by Currency', $e);
+            throw $e;
         }
 
         return [
@@ -309,7 +309,7 @@ class SalesAnalyticsService
                 'error' => $e->getMessage(),
             ]);
 
-            return $this->errorEnvelope('Sales Trends', $e);
+            throw $e;
         }
 
         $data = [];
@@ -389,7 +389,7 @@ class SalesAnalyticsService
                 'error' => $e->getMessage(),
             ]);
 
-            return $this->errorEnvelope('Sales by Category', $e);
+            throw $e;
         }
 
         $totalRevenue = (float) $sales->sum('total_revenue');
@@ -753,14 +753,5 @@ class SalesAnalyticsService
         } catch (\Exception $e) {
             return false;
         }
-    }
-
-    private function errorEnvelope(string $title, \Throwable $e): array
-    {
-        return [
-            'title' => $title,
-            'data' => [],
-            'message' => 'Error retrieving sales data: '.$e->getMessage(),
-        ];
     }
 }

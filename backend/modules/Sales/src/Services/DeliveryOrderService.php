@@ -1163,6 +1163,10 @@ class DeliveryOrderService
 
             $deliveryOrder->update([
                 'status' => 'cancelled',
+                // #463 (DO11): track the reversal explicitly; the note stays
+                // for continuity but no longer carries the only evidence.
+                'reversed_at' => now(),
+                'reversal_reason' => $reason,
                 'notes' => $deliveryOrder->notes
                     ? $deliveryOrder->notes."\n[REVERSED] {$reason}"
                     : "[REVERSED] {$reason}",
@@ -1177,9 +1181,9 @@ class DeliveryOrderService
 
             $this->logChatter(
                 $deliveryOrder,
-                'cancelled',
-                "Cancelled delivery order {$deliveryOrder->delivery_order_number}",
-                ['reason' => $reason],
+                'reversed',
+                "Reversed delivery order {$deliveryOrder->delivery_order_number}",
+                ['to_state' => 'cancelled', 'reason' => $reason],
             );
 
             return $deliveryOrder->fresh(['lines.salesOrderLine', 'lines.product', 'customer', 'salesOrder']);
@@ -1206,11 +1210,13 @@ class DeliveryOrderService
                 : $deliveryOrder->notes,
         ]);
 
+        // #463 (DO11): the log used to say "Reset ... to draft" with
+        // to_state 'draft' although the order was cancelled.
         $this->logChatter(
             $deliveryOrder,
             'status_changed',
-            "Reset delivery order {$deliveryOrder->delivery_order_number} to draft",
-            ['to_state' => 'draft'],
+            "Cancelled delivery order {$deliveryOrder->delivery_order_number}",
+            ['to_state' => 'cancelled', 'reason' => $reason],
         );
 
         return $deliveryOrder->fresh(['lines.salesOrderLine', 'customer', 'salesOrder']);

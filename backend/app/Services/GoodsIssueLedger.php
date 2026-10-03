@@ -56,6 +56,11 @@ class GoodsIssueLedger
     private const ISSUE_MOVEMENT_TYPE = 'sale';
 
     /**
+     * Movement type that puts issued goods back on the shelf.
+     */
+    private const RETURN_MOVEMENT_TYPE = 'return';
+
+    /**
      * How much of a delivery-order line still has to leave the warehouse.
      */
     public function remainingForDeliveryOrderLine(DeliveryOrderLine $line, float $quantity): float
@@ -122,10 +127,13 @@ class GoodsIssueLedger
     }
 
     /**
-     * What this invoice itself issued: every `sale` movement referenced by the
-     * invoice, with the warehouse it left from. A cancellation must put back
+     * What this invoice still owns: every `sale` movement referenced by the
+     * invoice, net of any `return` movement already linked to it, with the
+     * warehouse it left from. A cancellation or a reset-to-draft must put back
      * exactly this much — goods issued by a completed delivery order belong to
-     * the delivery and must not be conjured back by cancelling its invoice.
+     * the delivery and must not be conjured back by cancelling its invoice, and
+     * goods already returned for this invoice (a cancel's restock followed by a
+     * reset, #684) must not be returned a second time.
      *
      * @return array<int, array{product_id: int, warehouse_id: int, quantity: float}>
      */
@@ -133,16 +141,25 @@ class GoodsIssueLedger
     {
         $this->lock([(int) $invoice->id]);
 
-        return StockMovement::where('type', self::ISSUE_MOVEMENT_TYPE)
+        return StockMovement::whereIn('type', [self::ISSUE_MOVEMENT_TYPE, self::RETURN_MOVEMENT_TYPE])
             ->where('reference_type', 'Invoice')
             ->where('reference_id', $invoice->id)
+            // Ascending id keeps `first()` on the original sale movement, whose
+            // warehouse is the one the goods must go back to.
+            ->orderBy('id')
             ->get()
             ->groupBy('product_id')
-            ->map(fn ($movements) => [
-                'product_id' => (int) $movements->first()->product_id,
-                'warehouse_id' => (int) $movements->first()->warehouse_id,
-                'quantity' => (float) $movements->sum('quantity'),
-            ])
+            ->map(function ($movements) {
+                $issued = (float) $movements->where('type', self::ISSUE_MOVEMENT_TYPE)->sum('quantity');
+                $returned = (float) $movements->where('type', self::RETURN_MOVEMENT_TYPE)->sum('quantity');
+
+                return [
+                    'product_id' => (int) $movements->first()->product_id,
+                    'warehouse_id' => (int) $movements->first()->warehouse_id,
+                    'quantity' => $issued - $returned,
+                ];
+            })
+            ->filter(fn (array $issue) => $issue['quantity'] > 0)
             ->values()
             ->all();
     }
