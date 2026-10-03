@@ -1453,13 +1453,46 @@ class DeliveryOrderService
             ->resolveReviewers(\App\Services\SalesApprovalGate::REQUEST_TYPE_DELIVERY_ORDER, $submitter);
     }
 
+    /**
+     * #454 (DO2): the reviewer action must go through the canonical
+     * ApprovalService — reviewer pool (Sales Settings → Approval Workflow),
+     * pending-only and no self-approval — instead of flipping the flag
+     * directly. The decision event mirrors the outcome back through
+     * applyApprovedDecision() (DeliveryOrderApprovalDecisionListener).
+     */
     public function approveDeliveryOrder(DeliveryOrder $deliveryOrder, \App\Models\User $user): DeliveryOrder
     {
-        if ($deliveryOrder->approval_status === 'approved') {
-            return $deliveryOrder;
+        $request = $this->pendingApprovalRequest($deliveryOrder);
+
+        $this->assertMayDecideApproval($request, $user, 'approval');
+
+        app(\App\Services\ApprovalService::class)->approveRequest((int) $request->id, (int) $user->id);
+
+        return $this->applyApprovedDecision($deliveryOrder->fresh(), $user);
+    }
+
+    public function rejectDeliveryOrder(DeliveryOrder $deliveryOrder, \App\Models\User $user, string $reason): DeliveryOrder
+    {
+        $request = $this->pendingApprovalRequest($deliveryOrder);
+
+        $this->assertMayDecideApproval($request, $user, 'rejection');
+
+        app(\App\Services\ApprovalService::class)->rejectRequest((int) $request->id, (int) $user->id, $reason);
+
+        return $this->applyRejectedDecision($deliveryOrder->fresh(), $user, $reason);
+    }
+
+    /**
+     * State application for a decision already authorised by ApprovalService
+     * (also the callback for inbox decisions via
+     * DeliveryOrderApprovalDecisionListener). Idempotent.
+     */
+    public function applyApprovedDecision(DeliveryOrder $deliveryOrder, \App\Models\User $user): DeliveryOrder
+    {
+        if ($deliveryOrder->approval_status !== 'approved') {
+            $deliveryOrder->update(['approval_status' => 'approved']);
         }
 
-        $deliveryOrder->update(['approval_status' => 'approved']);
         $this->settleApprovalRequest($deliveryOrder, 'approved', (int) $user->id);
 
         $this->logChatter($deliveryOrder, 'status_changed', "Approved {$deliveryOrder->delivery_order_number}", [
@@ -1469,7 +1502,7 @@ class DeliveryOrderService
         return $deliveryOrder->fresh();
     }
 
-    public function rejectDeliveryOrder(DeliveryOrder $deliveryOrder, \App\Models\User $user, string $reason): DeliveryOrder
+    public function applyRejectedDecision(DeliveryOrder $deliveryOrder, \App\Models\User $user, string $reason): DeliveryOrder
     {
         $deliveryOrder->update([
             'approval_status' => 'rejected',
@@ -1483,6 +1516,42 @@ class DeliveryOrderService
         ]);
 
         return $deliveryOrder->fresh();
+    }
+
+    private function pendingApprovalRequest(DeliveryOrder $deliveryOrder): \App\Models\ApprovalRequest
+    {
+        if ($deliveryOrder->approval_status !== 'pending') {
+            throw new \Exception(
+                'This delivery order is not pending approval (current: '.($deliveryOrder->approval_status ?? 'none').').'
+            );
+        }
+
+        $request = \App\Models\ApprovalRequest::query()
+            ->where('subject_type', DeliveryOrder::class)
+            ->where('subject_id', $deliveryOrder->id)
+            ->where('request_type', 'delivery_order_approval')
+            ->where('status', 'pending')
+            ->latest('id')
+            ->first();
+
+        if (! $request) {
+            throw new \Exception('This delivery order has no pending approval request.');
+        }
+
+        return $request;
+    }
+
+    private function assertMayDecideApproval(\App\Models\ApprovalRequest $request, \App\Models\User $user, string $action): void
+    {
+        if ((int) $request->requested_by === (int) $user->id) {
+            throw new \Illuminate\Auth\Access\AuthorizationException("Self-{$action} is not permitted.");
+        }
+
+        if (! app(\App\Services\ApprovalService::class)->userCanApprove($user, $request->request_type, (float) $request->amount)) {
+            throw new \Illuminate\Auth\Access\AuthorizationException(
+                'You are not a reviewer for delivery order approvals.'
+            );
+        }
     }
 
     /**
