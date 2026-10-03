@@ -282,7 +282,12 @@ class ApprovalService
     }
 
     /**
-     * Get pending approval requests
+     * Get pending approval requests.
+     *
+     * Does NOT eager-load `subject`: the morph loader does `new <subject_type>`,
+     * which 500s on the POS alias 'PosOrder' and would instantiate arbitrary
+     * classes for legacy rows. Callers attach subjects with
+     * ApprovalRequest::loadSubjects() (issue #651) after applying visibility.
      */
     public function getPendingRequests(?string $requestType = null): \Illuminate\Database\Eloquent\Collection
     {
@@ -291,7 +296,7 @@ class ApprovalService
                 $q->whereNull('expires_at')
                     ->orWhere('expires_at', '>', now());
             })
-            ->with(['requestedBy', 'subject'])
+            ->with(['requestedBy'])
             ->orderBy('requested_at', 'asc');
 
         if ($requestType) {
