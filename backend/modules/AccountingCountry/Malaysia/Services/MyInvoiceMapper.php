@@ -877,27 +877,9 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
      */
     private function resolveBuyerType(object $party): string
     {
-        $explicit = strtolower(trim((string) ($party->buyer_type ?? '')));
-        if (in_array($explicit, self::BUYER_TYPES, true)) {
-            return $explicit;
-        }
-
-        $type = strtolower(trim((string) ($party->type ?? '')));
-        if ($type === 'company') {
-            return self::BUYER_TYPE_BUSINESS;
-        }
-        if ($type === 'individual') {
-            return self::BUYER_TYPE_INDIVIDUAL;
-        }
-        if (in_array($type, self::BUYER_TYPES, true)) {
-            return $type;
-        }
-
-        if (($party->is_individual ?? null) === false) {
-            return self::BUYER_TYPE_BUSINESS;
-        }
-
-        return self::BUYER_TYPE_INDIVIDUAL;
+        // #815 EP4: the precedence lives in the shared resolver so the B2C
+        // consolidation gate answers "individual?" identically to the mapper.
+        return \App\Accounting\BuyerTypeResolver::resolve($party);
     }
 
     private function isGeneralPublicBuyerParty(array $buyerParty): bool
