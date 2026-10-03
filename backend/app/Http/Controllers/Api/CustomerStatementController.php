@@ -79,6 +79,20 @@ class CustomerStatementController extends Controller
             'generated_by' => Auth::id(),
         ]);
 
+        // Issue #632 (CH4): the statement is persisted before rendering, so
+        // the generation step leaves a chatter trail even when the caller only
+        // asks for the JSON payload (the SPA's export path).
+        $this->logStatementChatter(
+            $statement,
+            'generated',
+            "Generated statement of account for {$customer->name}",
+            [
+                'period_type' => $statement->period_type,
+                'start_date' => optional($statement->start_date)->toDateString(),
+                'end_date' => optional($statement->end_date)->toDateString(),
+            ],
+        );
+
         $filenameBase = sprintf('SOA_%s_%s', $customer->code ?? 'UNKNOWN', $asOf->format('Ymd'));
 
         if (($validated['format'] ?? 'pdf') === 'json') {
@@ -159,6 +173,19 @@ class CustomerStatementController extends Controller
             'pdf_path' => $pdfRelativePath,
         ])->save();
 
+        // Issue #632 (CH4): the generation step must leave a chatter trail on
+        // the persisted CustomerStatement record.
+        $this->logStatementChatter(
+            $statement,
+            'generated',
+            "Generated statement of account for {$customer->name}",
+            [
+                'period_type' => $statement->period_type,
+                'start_date' => optional($statement->start_date)->toDateString(),
+                'end_date' => optional($statement->end_date)->toDateString(),
+            ],
+        );
+
         if (! empty($validated['send_email']) && ! empty($customer->email)) {
             Mail::to($customer->email)->send(new CustomerStatementMail($statement->fresh()));
             $statement->forceFill([
@@ -166,6 +193,14 @@ class CustomerStatementController extends Controller
                 'email_sent_at' => now(),
                 'recipient_email' => $customer->email,
             ])->save();
+
+            // Issue #632 (CH4): the send step is part of the same trail.
+            $this->logStatementChatter(
+                $statement,
+                'sent',
+                "Sent statement of account to {$customer->email}",
+                ['recipient_email' => $customer->email],
+            );
         }
 
         return response()->json($this->formatStatementResponse($statement->fresh(['customer', 'generatedBy'])));
@@ -520,6 +555,37 @@ class CustomerStatementController extends Controller
         Storage::disk('public')->put($relativePath, $pdf->output());
 
         return $relativePath;
+    }
+
+    /**
+     * Issue #632 (CH4): mirror a statement's generate/send step into the
+     * shared chatter History feed. Chatter failures must never break statement
+     * delivery (the shared ChatterService logs its own errors; this is the
+     * same guard the invoice and quotation controllers use).
+     */
+    private function logStatementChatter(
+        CustomerStatement $statement,
+        string $event,
+        string $description,
+        array $properties = [],
+    ): void {
+        try {
+            app(\App\Services\Chatter\ChatterService::class)->logEvent(
+                CustomerStatement::class,
+                (int) $statement->id,
+                $event,
+                $description,
+                $properties,
+                Auth::id(),
+                Auth::check() ? get_class(Auth::user()) : null,
+            );
+        } catch (\Throwable $e) {
+            Log::warning('CustomerStatementController: chatter mirror failed', [
+                'statement_id' => $statement->id,
+                'event' => $event,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     protected function formatStatementResponse(CustomerStatement $statement, bool $includePayload = false): array

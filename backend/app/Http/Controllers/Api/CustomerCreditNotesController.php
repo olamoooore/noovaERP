@@ -243,6 +243,20 @@ class CustomerCreditNotesController extends Controller
                 ['credit_note_number' => $posted->credit_note_number, 'invoice_id' => $posted->invoice_id],
             );
 
+            // Issue #632 (CH4): the posting step must leave a trail in the
+            // credit note's chatter History feed, like invoice posting does.
+            $this->logChatter(
+                $posted,
+                'status_changed',
+                "Posted credit note {$posted->credit_note_number} to GL",
+                [
+                    'from_state' => 'draft',
+                    'to_state' => 'posted',
+                    'total' => (float) $posted->total_amount,
+                    'journal_entry_id' => $posted->journal_entry_id,
+                ],
+            );
+
             return response()->json([
                 'message' => 'Credit note posted successfully',
                 'credit_note' => $posted,
@@ -290,6 +304,19 @@ class CustomerCreditNotesController extends Controller
                 ['credit_note_number' => $voided->credit_note_number, 'invoice_id' => $voided->invoice_id],
             );
 
+            // Issue #632 (CH4): the void/reversal step must leave a trail in
+            // the credit note's chatter History feed.
+            $this->logChatter(
+                $voided,
+                'status_changed',
+                "Voided credit note {$voided->credit_note_number}",
+                [
+                    'from_state' => 'posted',
+                    'to_state' => 'voided',
+                    'reversal_journal_entry_id' => $voided->reversal_journal_entry_id,
+                ],
+            );
+
             return response()->json([
                 'message' => 'Credit note voided successfully',
                 'credit_note' => $voided,
@@ -332,6 +359,38 @@ class CustomerCreditNotesController extends Controller
         );
 
         return response()->json($validation);
+    }
+
+    /**
+     * Issue #632 (CH4): mirror a credit-note lifecycle transition into the
+     * shared chatter History feed. Chatter failures must never break the
+     * transition itself (the shared ChatterService already swallows/logs its
+     * own errors; this is the same guard the invoice and quotation
+     * controllers use).
+     */
+    private function logChatter(
+        CustomerCreditNote $creditNote,
+        string $event,
+        string $description,
+        array $properties = [],
+    ): void {
+        try {
+            app(\App\Services\Chatter\ChatterService::class)->logEvent(
+                CustomerCreditNote::class,
+                (int) $creditNote->id,
+                $event,
+                $description,
+                $properties,
+                \Illuminate\Support\Facades\Auth::id(),
+                \Illuminate\Support\Facades\Auth::check() ? get_class(\Illuminate\Support\Facades\Auth::user()) : null,
+            );
+        } catch (\Throwable $e) {
+            \Log::warning('CustomerCreditNotesController: chatter mirror failed', [
+                'credit_note_id' => $creditNote->id,
+                'event' => $event,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
