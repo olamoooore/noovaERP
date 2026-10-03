@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Features\ActivityLogging\Models\ActivityLogEntry;
 use App\Models\Customer;
 use App\Models\Product;
 use App\Models\User;
@@ -315,6 +316,62 @@ class DeliveryOrderTest extends TenantTestCase
 
         $soLine->refresh();
         $this->assertEquals(0, (float) $soLine->quantity_delivered, 'Reversal should subtract delivered qty');
+    }
+
+    /**
+     * #463 (DO11): a reversal is tracked distinctly from a never-shipped
+     * cancellation, and the cancel log no longer claims "Reset ... to draft".
+     */
+    public function test_ac15_reversal_is_tracked_distinctly_from_cancellation(): void
+    {
+        $order = $this->createSalesOrder(1);
+        $soLineId = $order->lines->first()->id;
+
+        [$do, $service] = $this->createAndCompleteDO($order, [$soLineId => 5]);
+
+        $reversed = $service->reverseDeliveryOrder($do, 'Wrong delivery');
+
+        $this->assertSame('cancelled', $reversed->status);
+        $this->assertNotNull($reversed->reversed_at, 'the reversal must be tracked with reversed_at');
+        $this->assertSame('Wrong delivery', $reversed->reversal_reason);
+        $this->assertTrue($reversed->isReversed());
+
+        $reversalEntry = ActivityLogEntry::query()
+            ->where('subject_type', DeliveryOrder::class)
+            ->where('subject_id', $do->id)
+            ->where('event', 'reversed')
+            ->first();
+
+        $this->assertNotNull($reversalEntry, 'the reversal must be logged as reversed');
+        $this->assertStringContainsString('Reversed delivery order', $reversalEntry->description);
+        $this->assertSame('cancelled', $reversalEntry->properties['to_state'] ?? null);
+
+        $standalone = $service->createStandaloneDeliveryOrder([
+            'customer_id' => $this->customer->id,
+            'warehouse_id' => $this->warehouse->id,
+            'created_by' => $this->user->id,
+            'lines' => [
+                ['product_id' => $this->productA->id, 'description' => 'Widget A', 'quantity_delivered' => 1, 'unit' => 'pcs'],
+            ],
+        ]);
+
+        $cancelled = $service->cancelDeliveryOrder($standalone, 'Customer changed mind');
+
+        $this->assertSame('cancelled', $cancelled->status);
+        $this->assertNull($cancelled->reversed_at);
+        $this->assertFalse($cancelled->isReversed(), 'a cancellation is not a reversal');
+
+        $cancelEntry = ActivityLogEntry::query()
+            ->where('subject_type', DeliveryOrder::class)
+            ->where('subject_id', $standalone->id)
+            ->where('event', 'status_changed')
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($cancelEntry);
+        $this->assertStringContainsString('Cancelled delivery order', $cancelEntry->description);
+        $this->assertStringNotContainsString('Reset delivery order', $cancelEntry->description);
+        $this->assertSame('cancelled', $cancelEntry->properties['to_state'] ?? null);
     }
 
     // ════════════════════════════════════════════════════════════════════════

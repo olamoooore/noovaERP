@@ -385,8 +385,12 @@ export function DeliveryOrderDetailPage() {
                   Approval Rejected
                 </Badge>
               ) : (
-                <Badge variant="secondary" className={getStatusBadge(deliveryOrder.status)}>
-                  {deliveryOrder.status}
+                <Badge
+                  variant="secondary"
+                  className={deliveryOrder.reversed_at ? 'bg-purple-100 text-purple-800' : getStatusBadge(deliveryOrder.status)}
+                  title={deliveryOrder.reversed_at && deliveryOrder.reversal_reason ? `Reversed: ${deliveryOrder.reversal_reason}` : undefined}
+                >
+                  {deliveryOrder.reversed_at ? 'reversed' : deliveryOrder.status}
                 </Badge>
               )}
             </div>
