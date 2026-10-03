@@ -343,6 +343,12 @@ class SalesOrderService
         });
     }
 
+    /**
+     * #373 (O4): no production HTTP route or automated flow may call this —
+     * fulfilment is derived from delivery-order completion (see
+     * DeliveryOrderService::completeDeliveryOrder). The method remains as the
+     * state-transition primitive used by lifecycle tests.
+     */
     public function fulfilOrder(SalesOrder $order): SalesOrder
     {
         if (! $order->isAllocated()) {

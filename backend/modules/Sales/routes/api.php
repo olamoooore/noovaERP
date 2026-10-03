@@ -30,7 +30,6 @@ Route::middleware([
         Route::middleware(\App\Http\Middleware\RequirePermission::class.':sales.write')->group(function () {
             Route::post('/sales/orders/{id}/confirm', [SalesOrderController::class, 'confirm']);
             Route::post('/sales/orders/{id}/allocate', [SalesOrderController::class, 'allocate']);
-            Route::post('/sales/orders/{id}/fulfil', [SalesOrderController::class, 'fulfil']);
             Route::post('/sales/orders/{id}/cancel', [SalesOrderController::class, 'cancel']);
             Route::post('/sales/orders/{id}/reset-to-draft', [SalesOrderController::class, 'resetToDraft'])
                 ->middleware(\App\Http\Middleware\RequirePermission::using('documents.reset_to_draft'));

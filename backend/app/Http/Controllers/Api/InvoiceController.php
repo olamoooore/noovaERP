@@ -863,13 +863,13 @@ class InvoiceController extends Controller
             'price_list_id' => $data['price_list_id'] ?? null,
         ], fn ($v) => $v !== null));
 
-        // Fast-track admin orders through the full lifecycle immediately
+        // Fast-track admin orders through confirm -> allocate. #373 (O4):
+        // fulfilment is derived from delivery-order completion, so invoicing
+        // must never mark the order fulfilled without a delivery.
         // Re-apply search_path after each DB::transaction() call which can reset connections
         $salesOrder = $this->salesOrderService->confirmOrder($salesOrder);
         $this->ensureTenantSearchPath();
         $salesOrder = $this->salesOrderService->allocateOrder($salesOrder);
-        $this->ensureTenantSearchPath();
-        $salesOrder = $this->salesOrderService->fulfilOrder($salesOrder);
         $this->ensureTenantSearchPath();
 
         $invoiceOverrides = array_filter([
