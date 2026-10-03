@@ -186,6 +186,18 @@ return [
         // #738 T5: MY classifies lines as service vs sales; SG has a single
         // GST type and must not be filtered by a MY-specific 'service' type.
         'line_type_map' => ['service' => 'service'],
+        // #665 EI3: LHDN MyInvois line classification + UN/ECE unit codes.
+        // Per-product overrides live on products; these are the declared pack
+        // defaults so an unmapped line is NOT a silent hardcode. The full code
+        // lists are pending the official LHDN/UNECE source (verified:false).
+        'einvoice' => [
+            'default_classification' => '001',
+            'default_unit' => 'C62',
+            'classification_codes' => [],
+            'unit_codes' => [],
+            'source' => 'LHDN MyInvois classification code list; UN/ECE Recommendation 20 unit codes (pending citation)',
+            'verified' => false,
+        ],
         'rules' => [
             [
                 'code' => 'MY-SALES-10',

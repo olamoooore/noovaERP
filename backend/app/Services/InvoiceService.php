@@ -141,6 +141,20 @@ class InvoiceService
             $invoice->refresh();
             $invoice->calculateTotals();
 
+            // The tenant policy / explicit caller decision is captured BEFORE
+            // the threshold rule runs: a policy-required invoice keeps its
+            // long-standing create-time submission below, while a
+            // threshold-only promotion is submitted by the interactive create
+            // endpoints (InvoiceController::store / SalesOrderController) —
+            // never twice.
+            $approvalRequestedByPolicy = (bool) $invoice->requires_approval;
+
+            // Issue #647: the tenant approval threshold is applied HERE, in the
+            // one service every creation path goes through (direct create,
+            // SO→invoice, quotation/DO conversion, imports, POS/channel), not
+            // only on the edit form.
+            $this->applyApprovalThreshold($invoice);
+
             // ADR-003A: Populate snapshot fields from authoritative customer/contact records
             app(DocumentSnapshotService::class)->populateInvoiceSnapshot($invoice);
 
@@ -148,7 +162,7 @@ class InvoiceService
             // every created invoice must go through the approval channel before
             // posting — submit it right away so it never sits in draft with no
             // pending request (which left quote→invoices unapprovable).
-            if ($invoice->requires_approval) {
+            if ($approvalRequestedByPolicy && $invoice->requires_approval) {
                 try {
                     $actor = \Illuminate\Support\Facades\Auth::user();
                     if ($actor && $invoice->lines()->exists()) {
@@ -164,6 +178,36 @@ class InvoiceService
 
             return $invoice->load(['customer', 'lines.product']);
         });
+    }
+
+    /**
+     * Issue #647: the ONE place the tenant invoice approval threshold is
+     * applied. Any invoice whose total meets or exceeds
+     * `sales.approval_threshold_amount` (SalesApprovalGate::SETTING_KEY) is
+     * promoted to `requires_approval = true`, which the creation path then
+     * submits for approval and which `InvoiceApprovalService::checkGuard()`
+     * enforces before posting.
+     *
+     * Callers: every invoice creation runs through createInvoiceInternal(),
+     * the edit form calls this after recalculating totals, and the draft
+     * re-import path calls it after its own recalculation — so a document can
+     * never skip the gate by being created (or grown) on a path that is not
+     * the edit form.
+     *
+     * @return bool whether the invoice requires approval after this call
+     */
+    public function applyApprovalThreshold(Invoice $invoice): bool
+    {
+        if (! app(SalesApprovalGate::class)->requiresApproval(Invoice::class, (float) $invoice->total)) {
+            return (bool) $invoice->requires_approval;
+        }
+
+        if (! $invoice->requires_approval) {
+            $invoice->requires_approval = true;
+            $invoice->save();
+        }
+
+        return true;
     }
 
     /**

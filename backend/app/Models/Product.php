@@ -101,6 +101,8 @@ class Product extends Model
         'reorder_quantity',
         'min_stock_threshold',
         'unit',
+        'einvoice_classification_code',
+        'einvoice_unit_code',
 
         // Physical Attributes
         'weight',

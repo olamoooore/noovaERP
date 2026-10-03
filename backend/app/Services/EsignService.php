@@ -346,6 +346,10 @@ class EsignService
                     $path,
                     null,
                     $signerName ?: 'Customer',
+                    // Issue #630: the signed copy is the evidence of this
+                    // e-signature request — chatter must never destroy it.
+                    EsignRequest::class,
+                    (int) $request->id,
                 );
 
                 $this->chatter->logEvent(
@@ -672,6 +676,10 @@ class EsignService
                     $signedPath,
                     null,
                     $signerName ?: 'Customer',
+                    // Issue #630: the signed PDF is the evidence of this
+                    // e-signature request — chatter must never destroy it.
+                    EsignRequest::class,
+                    (int) $request->id,
                 );
 
                 $this->chatter->logEvent(

@@ -52,7 +52,9 @@ class ComplianceService
                 'document_number' => $invoice->invoice_number,
                 'issued_date' => $invoice->invoice_date ?? $invoice->issued_date,
                 'total_amount' => $invoice->total ?? $invoice->total_amount,
-                'currency_code' => $invoice->currency_code ?? 'SGD',
+                // #669 EI7: never fall back to a literal — use the invoice's own
+                // currency, then its base currency, then the tenant's document currency.
+                'currency_code' => $invoice->currency_code ?: $invoice->base_currency_code ?: \App\Services\DocumentCurrencyResolver::resolve(),
                 'compliance_status' => 'pending',
                 'created_by' => \Auth::id(),
             ]
