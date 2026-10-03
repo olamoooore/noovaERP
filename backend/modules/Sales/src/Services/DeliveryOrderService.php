@@ -1065,7 +1065,10 @@ class DeliveryOrderService
                     continue;
                 }
 
-                $qty = (int) round((float) $line->quantity_delivered);
+                // #457 (DO5): stock must move the same fractional base-UOM
+                // quantity the COGS recognises — (int) round() moved 0 for
+                // 0.4 and 3 for 2.5 while the GL posted the float.
+                $qty = (float) $line->quantity_delivered;
                 if ($qty <= 0) {
                     continue;
                 }
@@ -1076,7 +1079,7 @@ class DeliveryOrderService
                 $issuedQuantities[$line->id] = $unissuedQty > 0 ? $unissuedQty : 0.0;
 
                 foreach ($this->bundleDecomposition->stockConsumingComponents($product, $unissuedQty) as $component) {
-                    $componentQty = (int) round($component['quantity']);
+                    $componentQty = (float) $component['quantity'];
                     if ($componentQty <= 0) {
                         continue;
                     }
@@ -1192,12 +1195,11 @@ class DeliveryOrderService
                 $isStockTracked = $product && (bool) ($product->track_inventory ?? false);
 
                 if ($isStockTracked) {
-                    $qty = (int) round((float) $line->quantity_delivered);
+                    // #457 (DO5): reverse exactly what was issued, fraction included.
+                    $qty = (float) $line->quantity_delivered;
 
                     foreach ($this->bundleDecomposition->stockConsumingComponents($product, $qty) as $component) {
-                        $issuedQty = (int) round(
-                            $this->goodsIssueLedger->issuedByDeliveryOrder($deliveryOrder, (int) $component['product']->id)
-                        );
+                        $issuedQty = (float) $this->goodsIssueLedger->issuedByDeliveryOrder($deliveryOrder, (int) $component['product']->id);
 
                         if ($issuedQty <= 0) {
                             continue;
@@ -1371,7 +1373,7 @@ class DeliveryOrderService
     //  HELPERS
     // ════════════════════════════════════════════════════════════════════════
 
-    private function fulfilReservationForLine(int $productId, int $warehouseId, int $qty, int $salesOrderId, int $salesOrderLineId): void
+    private function fulfilReservationForLine(int $productId, int $warehouseId, float $qty, int $salesOrderId, int $salesOrderLineId): void
     {
         $reservation = StockReservation::where([
             'source_document_type' => 'SalesOrder',
