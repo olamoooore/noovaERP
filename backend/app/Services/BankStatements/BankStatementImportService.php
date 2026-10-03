@@ -39,12 +39,22 @@ class BankStatementImportService
         $tenantId = (string) tenant()->getTenantKey();
         $path = $file->storeAs("bank-statements/{$tenantId}/previews", Str::uuid().'.'.$type, ['disk' => 'local']);
         $parsed = $this->parser->read(Storage::disk('local')->path($path), $type, $headerRow, $worksheet);
+        $proposedMapping = $this->parser->proposeMapping($parsed['headers']);
+        $dateOrder = $this->inferSlashDateOrder($parsed['rows'], (string) ($proposedMapping['transaction_date'] ?? ''));
         $token = Str::random(64);
         $safeName = preg_replace('/[^A-Za-z0-9._ -]/', '_', basename($file->getClientOriginalName()));
         Cache::put('bank-statement-preview:'.$token, ['tenant_id' => $tenantId, 'user_id' => $userId, 'bank_account_id' => $bankAccountId, 'path' => $path, 'type' => $type, 'hash' => $hash, 'file_name' => $safeName, 'header_row' => $headerRow, 'worksheet' => $parsed['worksheet']], now()->addHour());
         $this->audit->record('import_preview_generated', ['actor_id' => $userId, 'bank_account_id' => $bankAccountId, 'metadata' => ['file_hash' => $hash, 'file_type' => $type, 'source_rows' => count($parsed['rows'])]]);
 
-        return ['preview_token' => $token, 'file_hash' => $hash, 'headers' => $parsed['headers'], 'proposed_mapping' => $this->parser->proposeMapping($parsed['headers']), 'source_rows' => count($parsed['rows']), 'sample' => array_slice($parsed['rows'], 0, 100)];
+        return [
+            'preview_token' => $token, 'file_hash' => $hash, 'headers' => $parsed['headers'],
+            'proposed_mapping' => $proposedMapping, 'source_rows' => count($parsed['rows']),
+            'sample' => array_slice($parsed['rows'], 0, 100),
+            // BK1: the day/month order inferred from the whole date column, so
+            // the operator can see (and override) it before importing.
+            'date_column_format' => $dateOrder === 'd/m' ? 'd/m/Y' : ($dateOrder === 'm/d' ? 'm/d/Y' : null),
+            'date_column_ambiguous' => $this->hasSlashDate($parsed['rows'], (string) ($proposedMapping['transaction_date'] ?? '')) && $dateOrder === null,
+        ];
     }
 
     public function confirm(array $input, int $userId): BankStatementImport
@@ -63,7 +73,24 @@ class BankStatementImportService
         }
         $parsed = $this->parser->read(Storage::disk('local')->path($preview['path']), $preview['type'], $preview['header_row'], $preview['worksheet']);
 
-        return DB::transaction(function () use ($input, $userId, $preview, $parsed, $key) {
+        // BK1: slash/dot dates never fall back to Carbon::parse (which reads
+        // them m/d/Y and silently swaps day/month). The order comes from the
+        // explicit format (bank format profile) or is inferred from the whole
+        // column; a column that cannot settle its own order blocks the import.
+        $explicitFormat = isset($input['date_format']) && trim((string) $input['date_format']) !== ''
+            ? trim((string) $input['date_format'])
+            : null;
+        $dateColumn = (string) ($input['mapping']['transaction_date'] ?? '');
+        $inferredOrder = $explicitFormat === null ? $this->inferSlashDateOrder($parsed['rows'], $dateColumn) : null;
+        if ($explicitFormat === null && $this->hasSlashDate($parsed['rows'], $dateColumn) && $inferredOrder === null) {
+            throw new \InvalidArgumentException(
+                'Ambiguous transaction date column: the day/month order cannot be determined '
+                .'(no date has a day above 12, or rows disagree on the order). '
+                .'Choose a date format (d/m/Y or m/d/Y) and import again.'
+            );
+        }
+
+        return DB::transaction(function () use ($input, $userId, $preview, $parsed, $key, $inferredOrder) {
             $import = BankStatementImport::create([
                 'bank_account_id' => $preview['bank_account_id'], 'file_name' => $preview['file_name'], 'file_hash' => $preview['hash'],
                 'storage_path' => $preview['path'], 'file_type' => $preview['type'], 'status' => 'importing',
@@ -77,7 +104,7 @@ class BankStatementImportService
             $errors = 0;
             foreach ($parsed['rows'] as $row) {
                 try {
-                    $normal = $this->normalize($row, [...$input, 'source_file_hash' => $preview['hash']], $preview['bank_account_id']);
+                    $normal = $this->normalize($row, [...$input, 'source_file_hash' => $preview['hash']], $preview['bank_account_id'], $inferredOrder);
                 } catch (\Throwable) {
                     $errors++;
                     DB::table('bank_statement_import_errors')->insert([
@@ -154,13 +181,13 @@ class BankStatementImportService
         });
     }
 
-    private function normalize(array $row, array $input, int $bankAccountId): array
+    private function normalize(array $row, array $input, int $bankAccountId, ?string $inferredDateOrder = null): array
     {
         $m = $input['mapping'];
         $v = $row['values'];
         $get = fn (string $key) => isset($m[$key]) ? trim((string) ($v[$m[$key]] ?? '')) : '';
         $dateFormat = $input['date_format'] ?? null;
-        $date = $this->parseTransactionDate($get('transaction_date'), $dateFormat);
+        $date = $this->parseTransactionDate($get('transaction_date'), $dateFormat, $inferredDateOrder);
         $numeric = fn ($value) => (float) str_replace([',', ' '], '', (string) $value);
         $amount = isset($m['amount'])
             ? $numeric($get('amount'))
@@ -189,21 +216,103 @@ class BankStatementImportService
         return ['bank_account_id' => $bankAccountId, 'transaction_key' => hash('sha256', $canonical), 'source_row' => $row['source_row'], 'value_date' => $get('value_date') ?: null, 'transaction_date' => $date->format('Y-m-d'), 'transaction_time' => $get('transaction_time') ?: null, 'description' => $description, 'bank_reference' => $reference ?: null, 'customer_reference' => $get('customer_reference') ?: null, 'customer_code' => $get('customer_code') ?: null, 'amount' => $amount, 'currency_code' => strtoupper($input['currency_code']), 'running_balance' => $running === '' ? null : $numeric($running), 'status' => 'unmatched', 'matched_amount' => 0, 'residual_amount' => $amount, 'needs_review' => $reference === '', 'raw_data' => $v, 'allocation_reference' => $get('invoice_reference') ?: null, 'allocation_amount' => $get('allocation_amount') === '' ? null : $numeric($get('allocation_amount'))];
     }
 
-    private function parseTransactionDate(string $rawDate, ?string $dateFormat): Carbon
+    private function parseTransactionDate(string $rawDate, ?string $dateFormat, ?string $inferredDateOrder = null): Carbon
     {
-        if ($dateFormat) {
-            return Carbon::createFromFormat($dateFormat, $rawDate);
+        $raw = trim($rawDate);
+
+        // ISO dates carry a 4-digit year first — never ambiguous.
+        if (preg_match('/^\\d{4}-\\d{2}-\\d{2}(?:[T ].*)?$/', $raw)) {
+            return Carbon::createFromFormat('!Y-m-d', substr($raw, 0, 10));
         }
 
-        try {
-            $date = Carbon::createFromFormat('!d/m/Y', $rawDate);
-            if ($date->format('d/m/Y') === $rawDate) {
-                return $date;
+        // BK1: slash/dot numeric dates must come from the profile or the
+        // column inference — Carbon::parse would read them m/d/Y and swap
+        // 3/4/2026 (3 April) into 4 March with no warning.
+        if (preg_match('#^(\\d{1,2})[/.](\\d{1,2})[/.](\\d{4})$#', $raw)) {
+            $pattern = $dateFormat ?: match ($inferredDateOrder) {
+                'd/m' => 'd/m/Y',
+                'm/d' => 'm/d/Y',
+                default => null,
+            };
+            if ($pattern === null) {
+                throw new \InvalidArgumentException(
+                    'Ambiguous transaction date "'.$raw.'": day/month order unknown — provide the statement date format.'
+                );
             }
-        } catch (\Throwable) {
-            // Continue to the existing automatic parser for other date formats.
+
+            // Accept profile spellings (dd/mm/yyyy) and any ./- separators.
+            $fmt = str_replace(
+                ['yyyy', 'yy', 'dd', 'mm', 'YYYY', 'YY', 'DD', 'MM'],
+                ['Y', 'y', 'd', 'm', 'Y', 'y', 'd', 'm'],
+                $pattern,
+            );
+            $fmt = str_replace(['.', '-'], '/', $fmt);
+            $rawNormalized = str_replace(['.', '-'], '/', $raw);
+            $parts = explode('/', $rawNormalized);
+            $parts[0] = str_pad($parts[0], 2, '0', STR_PAD_LEFT);
+            $parts[1] = str_pad($parts[1], 2, '0', STR_PAD_LEFT);
+            $padded = implode('/', $parts);
+
+            $date = Carbon::createFromFormat('!'.$fmt, $padded);
+            if ($date === false || $date->format($fmt) !== $padded) {
+                throw new \InvalidArgumentException('Invalid transaction date "'.$rawDate.'".');
+            }
+
+            return $date;
         }
 
-        return Carbon::parse($rawDate);
+        // Non-numeric formats (e.g. "3 Apr 2026") keep the existing parser —
+        // the m/d ambiguity this issue targets only applies to slash/dot dates.
+        return Carbon::parse($raw);
+    }
+
+    /**
+     * Vote across the WHOLE transaction-date column: any value with a day
+     * above 12 settles d/m vs m/d; conflicting votes mean the column mixes
+     * orders and nothing can be inferred.
+     */
+    private function inferSlashDateOrder(array $rows, string $dateColumn): ?string
+    {
+        if ($dateColumn === '') {
+            return null;
+        }
+
+        $order = null;
+        foreach ($rows as $row) {
+            $raw = trim((string) ($row['values'][$dateColumn] ?? ''));
+            if (! preg_match('#^(\\d{1,2})[/.](\\d{1,2})[/.](\\d{4})$#', $raw, $m)) {
+                continue;
+            }
+            $a = (int) $m[1];
+            $b = (int) $m[2];
+            if ($a > 12 && $b > 12) {
+                return null;
+            }
+            $vote = $a > 12 ? 'd/m' : ($b > 12 ? 'm/d' : null);
+            if ($vote === null) {
+                continue;
+            }
+            if ($order !== null && $order !== $vote) {
+                return null;
+            }
+            $order = $vote;
+        }
+
+        return $order;
+    }
+
+    private function hasSlashDate(array $rows, string $dateColumn): bool
+    {
+        if ($dateColumn === '') {
+            return false;
+        }
+        foreach ($rows as $row) {
+            $raw = trim((string) ($row['values'][$dateColumn] ?? ''));
+            if ($raw !== '' && preg_match('#^\\d{1,2}[/.]\\d{1,2}[/.]\\d{4}$#', $raw)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
