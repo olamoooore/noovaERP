@@ -329,22 +329,37 @@ class ComplianceService
             return ['success' => false, 'message' => 'Submission is already cancelled'];
         }
 
-        if (! $this->isWithinCancellationWindow($submission)) {
-            return [
-                'success' => false,
-                'message' => sprintf(
-                    'Cancellation is only allowed within %d hours from the submission time.',
-                    self::MYINVOICE_CANCELLATION_WINDOW_HOURS
-                ),
-            ];
-        }
-
         $countryCode = $submission->country_code;
 
         try {
             $provider = $this->pluginRegistry->resolve($countryCode, 'provider');
             if (! $provider) {
                 return ['success' => false, 'message' => "No provider available for {$countryCode}"];
+            }
+
+            // #818 (EP7): not every pack can cancel. Peppol/InvoiceNow has no
+            // recall — a delivered document exists at the buyer's access point
+            // — so the SG pack declares cancellation unsupported and the user
+            // is routed to the credit-note flow instead of a fake cancellation
+            // the other side never saw. This check runs before the MyInvois
+            // window so an SG user gets the pack-correct guidance.
+            if (! $provider->supportsCancellation()) {
+                return [
+                    'success' => false,
+                    'message' => 'This country\'s e-invoicing does not support cancelling a delivered document; issue a credit note against the original invoice instead.',
+                ];
+            }
+
+            // MyInvois-specific: cancellation is only valid inside the 72-hour
+            // post-submission window.
+            if (! $this->isWithinCancellationWindow($submission)) {
+                return [
+                    'success' => false,
+                    'message' => sprintf(
+                        'Cancellation is only allowed within %d hours from the submission time.',
+                        self::MYINVOICE_CANCELLATION_WINDOW_HOURS
+                    ),
+                ];
             }
 
             $config = $this->getCountryConfig($countryCode);
