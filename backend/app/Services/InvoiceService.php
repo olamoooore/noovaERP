@@ -7,7 +7,10 @@ use App\Accounting\DTOs\DomainPostingLine;
 use App\Accounting\DTOs\DomainPostingRequest;
 use App\Models\Customer;
 use App\Models\Invoice;
+use App\Models\InvoiceLine;
 use App\Models\Payment;
+use App\Models\ProductBatch;
+use App\Models\ProductSerial;
 use App\Models\SettlementAuditLog;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -415,6 +418,8 @@ class InvoiceService
             }
 
             $unissuedQuantities = [];
+            $lineBatches = [];
+            $lineSerials = [];
             $totalCogs = 0.0;
 
             foreach ($invoice->lines as $line) {
@@ -430,7 +435,21 @@ class InvoiceService
 
                 $unissuedQuantities[$line->id] = $qty;
 
-                $totalCogs += $batchConsumption->costForLine($line->product, $qty, $cogsWarehouseId)
+                // Issue #683: the line's lot and serial are not decoration —
+                // the lot is the layer that leaves the warehouse (and the one
+                // COGS is costed from), and the serial must be available now or
+                // the whole posting is refused before anything is written.
+                $lineBatch = $this->resolveInvoiceLineBatch($line);
+                if ($lineBatch) {
+                    $lineBatches[$line->id] = $lineBatch;
+                }
+
+                $lineSerial = $this->resolveInvoiceLineSerial($line);
+                if ($lineSerial) {
+                    $lineSerials[$line->id] = $lineSerial;
+                }
+
+                $totalCogs += $batchConsumption->costForLine($line->product, $qty, $cogsWarehouseId, $lineBatch?->id)
                     ?? $bundleDecomposition->cost($line->product, $qty);
             }
 
@@ -541,13 +560,34 @@ class InvoiceService
                     continue;
                 }
 
+                // Issue #683: a bundle has no lot of its own — only a directly
+                // sold product carries the selected lot onto its stock movement.
+                $lineBatch = $line->product->is_bundle ? null : ($lineBatches[$lineId] ?? null);
+
                 foreach ($this->bundleDecomposition->stockConsumingComponents($line->product, (float) $unissuedQty) as $component) {
-                    $productId = $component['product']->id;
+                    $productId = (int) $component['product']->id;
                     $qty = (float) $component['quantity'];
                     if ($qty <= 0) {
                         continue;
                     }
-                    $componentDemand[$productId] = ($componentDemand[$productId] ?? 0.0) + $qty;
+
+                    $componentDemand[$productId] ??= [
+                        'quantity' => 0.0,
+                        'batches' => [],
+                        'batch_number' => null,
+                        'expiry_date' => null,
+                    ];
+
+                    $componentDemand[$productId]['quantity'] += $qty;
+
+                    if ($lineBatch && (int) $lineBatch->product_id === $productId) {
+                        $componentDemand[$productId]['batches'][$lineBatch->id] =
+                            ($componentDemand[$productId]['batches'][$lineBatch->id] ?? 0.0) + $qty;
+                        $componentDemand[$productId]['batch_number'] ??= $line->lot_number;
+                        $componentDemand[$productId]['expiry_date'] ??=
+                            $line->expiry_date?->toDateString()
+                            ?? $lineBatch->expiry_date?->toDateString();
+                    }
                 }
             }
 
@@ -559,7 +599,8 @@ class InvoiceService
             }
 
             if ($warehouseId !== null) {
-                foreach ($componentDemand as $productId => $remainingToDeduct) {
+                foreach ($componentDemand as $productId => $demand) {
+                    $remainingToDeduct = (float) $demand['quantity'];
                     if ($remainingToDeduct <= 0) {
                         continue;
                     }
@@ -572,8 +613,31 @@ class InvoiceService
                         reference: $invoice->invoice_number,
                         referenceType: 'Invoice',
                         referenceId: $invoice->id,
+                        batchNumber: $demand['batch_number'],
+                        expiryDate: $demand['expiry_date'] ? new \DateTime($demand['expiry_date']) : null,
+                        batchAllocations: $demand['batches'],
                     );
                 }
+            }
+
+            // Issue #683: stock has left for the invoice's serialised lines —
+            // walk the same mark-sold mechanism the delivery-order path uses
+            // (#131) so the serial belongs to this customer and cannot be sold
+            // again.
+            foreach ($lineSerials as $lineId => $serial) {
+                $line = $invoice->lines->firstWhere('id', $lineId);
+
+                if (! $line?->product) {
+                    continue;
+                }
+
+                $batchConsumption->markSerialsSold(
+                    product: $line->product,
+                    serialNumbers: [(string) $serial->serial_number],
+                    customerId: (int) $invoice->customer_id,
+                    saleReference: $invoice->invoice_number,
+                    soldAt: now(),
+                );
             }
 
             // Update customer outstanding + purchase stats so the customer
@@ -706,6 +770,64 @@ class InvoiceService
         // bundle components can actually move (previously the whole stock loop
         // was skipped for bundles and GL/inventory silently diverged).
         return \App\Models\Warehouse::getDefault()?->id;
+    }
+
+    /**
+     * Issue #683: the ProductBatch a document line names — by explicit id, or
+     * by the lot number it carries. Returns null (FEFO still applies) when the
+     * line names no batch or the reference does not belong to its product.
+     */
+    private function resolveInvoiceLineBatch(InvoiceLine $line): ?ProductBatch
+    {
+        $product = $line->product;
+
+        if (! $product) {
+            return null;
+        }
+
+        $batch = null;
+
+        if ($line->product_batch_id) {
+            $batch = $line->relationLoaded('batch')
+                ? $line->batch
+                : ProductBatch::find($line->product_batch_id);
+        } elseif (filled($line->lot_number)) {
+            $batch = ProductBatch::where('product_id', $product->id)
+                ->where(function ($query) use ($line) {
+                    $query->where('batch_number', $line->lot_number)
+                        ->orWhere('lot_number', $line->lot_number);
+                })
+                ->orderByRaw('expiry_date ASC NULLS LAST')
+                ->orderBy('id')
+                ->first();
+        }
+
+        if (! $batch || (int) $batch->product_id !== (int) $product->id) {
+            return null;
+        }
+
+        return $batch;
+    }
+
+    /**
+     * Issue #683: validate the serial a document line names (only for
+     * serial-tracked products) and return it so posting can mark it sold.
+     * Throws when the serial is unknown or no longer available — a second sale
+     * of the same serial must be refused before any stock or GL is written.
+     */
+    private function resolveInvoiceLineSerial(InvoiceLine $line): ?ProductSerial
+    {
+        $product = $line->product;
+
+        if (! $product || ($product->tracking_method ?? null) !== \App\Models\Product::TRACKING_SERIAL) {
+            return null;
+        }
+
+        return app(BatchSerialConsumptionService::class)->requireAvailableSerial(
+            $product,
+            $line->product_serial_id ? (int) $line->product_serial_id : null,
+            $line->serial_number ?: null,
+        );
     }
 
     private function resolveSalesOrderWarehouseId(?SalesOrder $salesOrder): ?int

@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Modules\Sales\Models\DeliveryOrderLine;
+use Modules\Sales\Models\SalesOrderLine;
 
 class MedicalCaseController extends Controller
 {
@@ -93,13 +94,18 @@ class MedicalCaseController extends Controller
             'items.*.product_id' => 'required_with:items|exists:products,id',
             'items.*.lot_id' => 'nullable|exists:product_lots,id',
             'items.*.allocated_qty' => 'required_with:items|numeric|min:0',
-            'items.*.unit_price' => 'required_with:items|numeric|min:0',
+            // Issue #563 (MC2): the client value is ignored — the case line
+            // price is derived below from the linked sales order line.
+            'items.*.unit_price' => 'nullable|numeric|min:0',
             'items.*.is_foc' => 'nullable|boolean',
             'items.*.notes' => 'nullable|string',
         ]);
 
+        $items = $this->deriveItemPrices($validated['items'] ?? []);
+        unset($validated['items']);
+
         try {
-            $case = DB::transaction(function () use ($validated, $request) {
+            $case = DB::transaction(function () use ($validated, $items, $request) {
                 $case = MedicalCase::create([
                     'customer_id' => $validated['customer_id'],
                     'invoice_id' => $validated['invoice_id'] ?? null,
@@ -116,8 +122,8 @@ class MedicalCaseController extends Controller
                     'created_by' => $request->user()->id,
                 ]);
 
-                if (! empty($validated['items'])) {
-                    foreach ($validated['items'] as $item) {
+                if ($items !== []) {
+                    foreach ($items as $item) {
                         MedicalCaseItem::create([
                             'medical_case_id' => $case->id,
                             'sales_order_item_id' => $item['sales_order_item_id'],
@@ -144,6 +150,54 @@ class MedicalCaseController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Issue #563 (MC2): a case line's `unit_price` is the final approved
+     * price snapshot of the linked sales order line — not free client input.
+     * It drives the percentage reward and the performance report, so it is
+     * derived here and any submitted value is ignored.
+     *
+     * The sales order line is the canonical source: the case item requires
+     * `sales_order_item_id` at creation, and a delivery order line (when one
+     * exists) points back to the same sales order line via
+     * `sales_order_line_id`. FOC lines are free of charge and always
+     * snapshot 0 (module spec §9 rule 8: is_foc = true, unit_price = 0).
+     *
+     * Fails closed: without a resolvable linked line there is no approved
+     * price to snapshot, so the case is rejected.
+     *
+     * @param  array<int, array<string, mixed>>  $items
+     * @return array<int, array<string, mixed>>
+     *
+     * @throws ValidationException
+     */
+    private function deriveItemPrices(array $items): array
+    {
+        if ($items === []) {
+            return [];
+        }
+
+        $lines = SalesOrderLine::query()
+            ->whereIn('id', array_column($items, 'sales_order_item_id'))
+            ->get()
+            ->keyBy('id');
+
+        foreach ($items as $index => $item) {
+            $line = $lines->get($item['sales_order_item_id']);
+
+            if (! $line) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.sales_order_item_id" => 'The linked sales order line could not be found, so the case line price cannot be derived.',
+                ]);
+            }
+
+            $items[$index]['unit_price'] = ($item['is_foc'] ?? false)
+                ? 0.0
+                : (float) $line->unit_price;
+        }
+
+        return $items;
     }
 
     public function show($id): JsonResponse
