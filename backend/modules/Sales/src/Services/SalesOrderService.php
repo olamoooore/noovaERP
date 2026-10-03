@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
+use Modules\Sales\Models\DeliveryOrderLine;
 use Modules\Sales\Models\SalesChannelReference;
 use Modules\Sales\Models\SalesInvoiceLink;
 use Modules\Sales\Models\SalesOrder;
@@ -557,6 +558,10 @@ class SalesOrderService
 
             $this->synchronizeInvoiceBookkeeping($order->fresh('lines'), $invoice->fresh('lines'));
 
+            // #455 (DO3): the same goods must not stay billable on the linked
+            // delivery orders after the order itself invoiced them.
+            $this->synchronizeDeliveryOrderInvoicedQuantities($order, $invoice->fresh('lines'));
+
             $this->lifecycleService->markInvoiced($order, 'Invoice created');
 
             $this->logChatter($order, 'status_changed', "Raised invoice {$invoice->invoice_number} from sales order {$order->sales_order_number}", [
@@ -977,6 +982,55 @@ class SalesOrderService
             $orderLine->update([
                 'quantity_invoiced' => (float) $orderLine->quantity_invoiced + (float) $matchedInvoiceLine->quantity,
             ]);
+        }
+    }
+
+    /**
+     * #455 (DO3): consume the linked delivery orders' billable quantities for
+     * every order line this invoice billed, so a later delivery-order invoice
+     * cannot bill the same goods a second time. Multiple DOs are served in
+     * order, each capped at its own remaining billable quantity.
+     */
+    private function synchronizeDeliveryOrderInvoicedQuantities(SalesOrder $order, \App\Models\Invoice $invoice): void
+    {
+        foreach ($invoice->lines as $invoiceLine) {
+            if (! $invoiceLine->sales_order_line_id) {
+                continue;
+            }
+
+            $remaining = (float) $invoiceLine->quantity;
+
+            if ($remaining <= 0.0001) {
+                continue;
+            }
+
+            $deliveryOrderLines = DeliveryOrderLine::query()
+                ->where('sales_order_line_id', $invoiceLine->sales_order_line_id)
+                ->whereHas('deliveryOrder', fn ($query) => $query->whereNotIn('status', ['cancelled']))
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($deliveryOrderLines as $deliveryOrderLine) {
+                if ($remaining <= 0.0001) {
+                    break;
+                }
+
+                $billable = (float) ($deliveryOrderLine->quantity_delivered ?: $deliveryOrderLine->quantity_ordered)
+                    - (float) $deliveryOrderLine->quantity_invoiced;
+
+                $allocate = min(max($billable, 0), $remaining);
+
+                if ($allocate <= 0.0001) {
+                    continue;
+                }
+
+                $deliveryOrderLine->update([
+                    'quantity_invoiced' => (float) $deliveryOrderLine->quantity_invoiced + $allocate,
+                ]);
+
+                $remaining -= $allocate;
+            }
         }
     }
 
