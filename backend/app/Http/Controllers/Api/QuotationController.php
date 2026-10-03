@@ -249,7 +249,9 @@ class QuotationController extends Controller
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
             'lines.*.product_notes' => 'nullable|string',
-            'lines.*.quantity' => 'required_if:lines.*.line_type,product|nullable|integer|min:0',
+            // #295 (Q7): product lines accept decimals (kg/hour/metre), the same
+            // domain rule as the invoice editor — positive, at most 4 decimals.
+            'lines.*.quantity' => 'required_if:lines.*.line_type,product|nullable|numeric|gt:0|decimal:0,4',
             // MRD pricelist-multicurrency FR-4/FR-6: unit_price is optional —
             // omitted prices resolve through PricingService (the only price
             // authority). price_mode carries the client's intent.
@@ -468,7 +470,8 @@ class QuotationController extends Controller
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required_with:lines|string',
             'lines.*.product_notes' => 'nullable|string',
-            'lines.*.quantity' => 'nullable|integer|min:0',
+            // #295 (Q7): decimals allowed, same domain rule as create.
+            'lines.*.quantity' => 'nullable|numeric|gt:0|decimal:0,4',
             'lines.*.unit_price' => 'nullable|numeric|min:0',
             'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
             'lines.*.override_reason' => 'nullable|string|max:500',

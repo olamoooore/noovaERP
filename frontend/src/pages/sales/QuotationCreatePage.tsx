@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard';
 import { Icon } from '@iconify/react';
-import { addCalendarDays, todayDateOnly } from '@/lib/dateOnly'
+import { addCalendarDays, isValidProductQuantity, todayDateOnly } from '@/lib/dateOnly'
 import { DEFAULT_QUOTE_VALIDITY_DAYS, followValidUntil } from '@/lib/quotationDates'
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency, getApiErrorMessage } from '@/lib/utils';
@@ -498,6 +498,21 @@ export const QuotationCreatePage: React.FC = () => {
 
     if (discountMode === 'percentage' && discountValue > 100) {
       toast({ variant: 'destructive', title: 'Percentage discount cannot exceed 100%' });
+      return;
+    }
+
+    // #295 (Q7): product lines need a quantity greater than 0 with at most
+    // 4 decimals — the API rejects 0/empty and over-precision; report it here
+    // with a clear message instead of a generic failure.
+    const invalidQuantityIndex = submissionLines.findIndex((line) =>
+      (line.line_type ?? 'product') === 'product' && !isValidProductQuantity(line.quantity)
+    );
+    if (invalidQuantityIndex >= 0) {
+      toast({
+        variant: 'destructive',
+        title: `Invalid quantity on line ${invalidQuantityIndex + 1}`,
+        description: 'Enter a quantity greater than 0 with at most 4 decimals.',
+      });
       return;
     }
 

@@ -983,17 +983,11 @@ class SalesOrderService
             return [(int) $roundedQuantity, (float) $line->unit_price, $line->description, $baseUnitPrice];
         }
 
-        $quantityLabel = rtrim(rtrim(number_format($quantity, 4, '.', ''), '0'), '.');
-        $unitPriceLabel = number_format((float) $line->unit_price, 2, '.', '');
-        $description = "{$line->description} ({$quantityLabel} {$line->unit} @ {$unitPriceLabel})";
-
-        // Fractional fold: the qty is folded into a single unit, so the base
-        // equivalent must scale identically (dual amounts stay consistent).
-        $foldedBase = $baseUnitPrice !== null
-            ? round($quantity * $baseUnitPrice, 2)
-            : null;
-
-        return [1, round($quantity * (float) $line->unit_price, 2), $description, $foldedBase];
+        // #295 (Q7): invoice_lines.quantity is numeric(15,4), so a fractional
+        // quantity is stored as the real quantity/unit price — the old
+        // "fractional fold" (one folded unit + note in the description) is no
+        // longer needed and hid the true quantity from the invoice/reports.
+        return [$quantity, (float) $line->unit_price, $line->description, $baseUnitPrice];
     }
 
     private function resolveSourceAccountingStatus(string $sourceDocumentType, int $sourceDocumentId, ?int $journalEntryId = null): string
