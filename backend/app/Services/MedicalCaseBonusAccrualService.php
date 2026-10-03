@@ -31,6 +31,13 @@ class MedicalCaseBonusAccrualService
             return 0;
         }
 
+        // Issue #563 (MC2): a free-of-charge line never counts toward a
+        // scheme — no percentage or fixed-amount discount and no FOC-quantity
+        // entitlement (module spec §9 rule 8 marks FOC lines).
+        if ($item->is_foc) {
+            return 0;
+        }
+
         $case = $item->medicalCase ?: MedicalCase::find($item->medical_case_id);
 
         if (! $case) {
