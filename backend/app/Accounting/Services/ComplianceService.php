@@ -3,7 +3,9 @@
 namespace App\Accounting\Services;
 
 use App\Accounting\BuyerTypeResolver;
+use App\Accounting\Contracts\ProvidesProviderName;
 use App\Accounting\Contracts\SupportsCredentialValidation;
+use App\Accounting\Contracts\SupportsPayloadDefaults;
 use App\Accounting\Contracts\SupportsSigning;
 use App\Accounting\Plugin\CountryPluginRegistry;
 use App\Enums\UserRole;
@@ -1575,11 +1577,15 @@ class ComplianceService
      */
     private function providerNameForCountry(string $countryCode): string
     {
-        return match (strtoupper($countryCode)) {
-            'SG' => 'peppol',
-            'MY' => 'myinvoice',
-            default => 'default',
-        };
+        // #699 (EC2/AC3): pack-owned — a provider that declares its name wins;
+        // otherwise the tenant's country configuration knows it. No
+        // country-code map lives in core any more.
+        $provider = $this->pluginRegistry->resolve($countryCode, 'provider');
+        if ($provider instanceof ProvidesProviderName) {
+            return $provider->providerName();
+        }
+
+        return $this->getCountryConfig($countryCode)?->provider_name ?? 'default';
     }
 
     /**
@@ -1617,80 +1623,17 @@ class ComplianceService
      * Priority: mapped value (from invoice/model) → DB context → .env fallback (in UBL builder).
      * ALL supplier fields must be covered here so that per-tenant DB config fully overrides .env.
      */
+    /**
+     * #699 (EC2/AC3): dispatch to the pack's mapper. MY's supplier-identity
+     * overlay (moved out of this class) is reached via SupportsPayloadDefaults;
+     * a pack without the capability leaves the payload untouched.
+     */
     private function applyProviderPayloadDefaults(array $payload, array $context, string $countryCode): array
     {
-        if (strtoupper($countryCode) !== 'MY') {
-            return $payload;
+        $mapper = $this->pluginRegistry->resolve($countryCode, 'mapper');
+        if ($mapper instanceof SupportsPayloadDefaults) {
+            return $mapper->applyPayloadDefaults($payload, $context);
         }
-
-        $supplier = is_array($payload['supplier'] ?? null) ? $payload['supplier'] : [];
-
-        // ── Party identity ──────────────────────────────────────────────────
-        $supplier['tin'] = $supplier['tin']
-            ?? $context['supplier_tin']
-            ?? null;
-
-        $supplier['name'] = $supplier['name']
-            ?? $context['supplier_name']
-            ?? null;
-
-        $supplier['company_registration'] = $supplier['company_registration']
-            ?? $context['supplier_registration_number']
-            ?? null;
-
-        $supplier['identity_type'] = $supplier['identity_type']
-            ?? $context['supplier_id_type']
-            ?? null;
-
-        $supplier['identity_number'] = $supplier['identity_number']
-            ?? $context['supplier_id_number']
-            ?? null;
-
-        // ── Business classification (MSIC) ──────────────────────────────────
-        $supplier['msic_code'] = $supplier['msic_code']
-            ?? $context['supplier_msic_code']
-            ?? null;
-
-        $supplier['business_activity_description'] = $supplier['business_activity_description']
-            ?? $context['supplier_business_activity_description']
-            ?? null;
-
-        // ── Contact ─────────────────────────────────────────────────────────
-        $contact = is_array($supplier['contact'] ?? null) ? $supplier['contact'] : [];
-        $contact['phone'] = $contact['phone']
-            ?? $supplier['phone']
-            ?? $context['supplier_phone']
-            ?? null;
-        $contact['email'] = $contact['email']
-            ?? $supplier['email']
-            ?? $context['supplier_email']
-            ?? null;
-        $supplier['contact'] = $contact;
-
-        // ── Address ─────────────────────────────────────────────────────────
-        $address = is_array($supplier['address'] ?? null) ? $supplier['address'] : [];
-        $address['street'] = $address['street']
-            ?? $context['supplier_address']
-            ?? null;
-        $address['city'] = $address['city']
-            ?? $context['supplier_city']
-            ?? null;
-        $address['state'] = $address['state']
-            ?? $context['supplier_state']
-            ?? null;
-        $address['postal_code'] = $address['postal_code']
-            ?? $context['supplier_postal_code']
-            ?? null;
-        $address['country'] = $address['country'] ?? 'MYS';
-        $supplier['address'] = $address;
-
-        $payload['supplier'] = $supplier;
-
-        // #813 EP2: self-billing does NOT mean buyer = supplier. The defaulting
-        // that copied the supplier's identity onto the buyer for self-billed
-        // types (and the journal-entry mapper's flag) is removed: in self-billing
-        // the supplier is the counterparty and the buyer is the tenant entity.
-        // The mapper is responsible for a correct buyer.
 
         return $payload;
     }
