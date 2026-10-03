@@ -258,13 +258,13 @@ class SalesOrder extends Model
 
     public static function generateOrderNumber(): string
     {
-        // #538 (ST1): the numbering service advances its counter past the
-        // issued numbers inside the lock, so the counter-in-rollback loop this
-        // method used to work around can no longer happen — and there is no
-        // timestamp fallback.
-        return app(\App\Services\DocumentNumberingService::class)->generateUnique(
+        // #899 (PC5): the one platform numbering service owns the locked
+        // counter; it advances past any issued number and never falls back to
+        // a guess. The callback keeps imported/legacy numbers reserved.
+        return app(\App\Platform\Numbering\NumberingService::class)->nextFor(
             'sales_order',
             'SO-{YYYY}-{SEQ:4}',
+            null,
             fn (string $prefix): array => static::withTrashed()
                 ->where('sales_order_number', 'like', $prefix.'%')
                 ->pluck('sales_order_number')
