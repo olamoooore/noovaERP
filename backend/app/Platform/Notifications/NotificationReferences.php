@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace App\Platform\Notifications;
 
 use App\Models\Invoice;
+use App\Models\Quotation;
+use Illuminate\Database\Eloquent\Model;
 use Modules\Sales\Models\DeliveryOrder;
+use Modules\Sales\Models\SalesOrder;
 
 /**
  * Builds the canonical reference block that goes into a notification payload.
@@ -124,5 +127,63 @@ class NotificationReferences
             'primary' => $primary,
             'links' => array_merge($links, self::productRefs($deliveryOrder->lines())),
         ];
+    }
+
+    /**
+     * @return array{primary: array, links: array<int, array>}
+     */
+    public static function forQuotation(Quotation $quotation): array
+    {
+        $primary = self::ref('quotation', $quotation->id, $quotation->quotation_number);
+
+        $links = self::compact([
+            $primary,
+            $quotation->customer_id ? self::ref('customer', $quotation->customer_id, null, $quotation->customer?->name) : null,
+            $quotation->sales_order_id ? self::ref('sales_order', $quotation->sales_order_id, $quotation->salesOrder?->sales_order_number) : null,
+        ]);
+
+        return [
+            'primary' => $primary,
+            'links' => array_merge($links, self::productRefs($quotation->lines())),
+        ];
+    }
+
+    /**
+     * @return array{primary: array, links: array<int, array>}
+     */
+    public static function forSalesOrder(SalesOrder $salesOrder): array
+    {
+        $primary = self::ref('sales_order', $salesOrder->id, $salesOrder->sales_order_number);
+
+        $links = self::compact([
+            $primary,
+            $salesOrder->customer_id ? self::ref('customer', $salesOrder->customer_id, null, $salesOrder->customer?->name) : null,
+        ]);
+
+        return [
+            'primary' => $primary,
+            'links' => array_merge($links, self::productRefs($salesOrder->lines())),
+        ];
+    }
+
+    /**
+     * Route a document model to its reference builder. Approval notifications
+     * cover quotations and sales orders as well as invoices / delivery orders
+     * (issue #650); an unknown model still gets a typed primary reference.
+     *
+     * @return array{primary: array|null, links: array<int, array>}
+     */
+    public static function forDocument(Model $document): array
+    {
+        return match (true) {
+            $document instanceof Invoice => self::forInvoice($document),
+            $document instanceof DeliveryOrder => self::forDeliveryOrder($document),
+            $document instanceof Quotation => self::forQuotation($document),
+            $document instanceof SalesOrder => self::forSalesOrder($document),
+            default => [
+                'primary' => self::ref(strtolower(class_basename($document)), $document->getKey()),
+                'links' => [],
+            ],
+        };
     }
 }

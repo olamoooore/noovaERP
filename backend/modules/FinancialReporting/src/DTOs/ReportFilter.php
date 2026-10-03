@@ -30,6 +30,10 @@ class ReportFilter
         public ?string $tag = null,
         /** MRD FR-8.1: restrict sales analytics to a document currency. */
         public ?string $currencyCode = null,
+        /** Issue #593: the customer's assigned salesperson (customers.salesperson_id). */
+        public ?int $salespersonId = null,
+        /** Issue #593: sales channel — pos | admin | ecommerce. */
+        public ?string $channel = null,
     ) {}
 
     /**
@@ -61,6 +65,12 @@ class ReportFilter
             currencyCode: isset($data['currency_code']) && $data['currency_code'] !== ''
                 ? strtoupper(substr((string) $data['currency_code'], 0, 3))
                 : null,
+            salespersonId: isset($data['salesperson_id']) && $data['salesperson_id'] !== ''
+                ? (int) $data['salesperson_id']
+                : null,
+            channel: isset($data['channel']) && $data['channel'] !== ''
+                ? strtolower((string) $data['channel'])
+                : null,
         );
     }
 
@@ -87,6 +97,8 @@ class ReportFilter
             $this->legalEntityId,
             $this->entityBookId,
             $this->tag,
+            $this->salespersonId,
+            $this->channel,
         ];
 
         return md5(implode(':', array_filter($parts)));

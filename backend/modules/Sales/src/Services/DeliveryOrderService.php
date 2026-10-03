@@ -385,9 +385,19 @@ class DeliveryOrderService
             if ($lineType === 'product') {
                 $hasDeliverableProduct = true;
             }
+            // #458 (DO6): quantities committed to OPEN (draft/confirmed)
+            // delivery orders are not reflected in quantity_delivered yet —
+            // subtract them so several open delivery orders cannot each pass
+            // this check and over-deliver the order.
+            $openCommitted = (float) DeliveryOrderLine::query()
+                ->where('sales_order_line_id', $soLine->id)
+                ->whereHas('deliveryOrder', fn ($query) => $query->whereNotIn('status', ['cancelled', 'done']))
+                ->sum('quantity_delivered');
+
             $remainingForThisLine = (float) $soLine->quantity
                 - (float) $soLine->quantity_delivered
-                - (float) $soLine->quantity_cancelled;
+                - (float) $soLine->quantity_cancelled
+                - $openCommitted;
 
             if ($quantityDelivered > $remainingForThisLine + 0.0001) {
                 throw new \Exception(
@@ -978,22 +988,51 @@ class DeliveryOrderService
             $orderForFulfilment = null;
             if ($deliveryOrder->sales_order_id) {
                 $orderForFulfilment = SalesOrder::find($deliveryOrder->sales_order_id);
+
+                // #458 (DO6): re-validate under a row lock on the order lines —
+                // two open delivery orders can each pass the creation check
+                // before either completes, so only the lock + re-check here
+                // guarantees delivered quantity can never exceed ordered.
+                $soLineIds = $deliveryOrder->lines
+                    ->pluck('sales_order_line_id')
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all();
+                $lockedSoLines = $soLineIds === []
+                    ? collect()
+                    : SalesOrderLine::whereIn('id', $soLineIds)->lockForUpdate()->get()->keyBy('id');
+
                 foreach ($deliveryOrder->lines as $line) {
-                    if ($line->salesOrderLine) {
-                        $soLine = $line->salesOrderLine;
-                        $newDelivered = (float) $soLine->quantity_delivered + (float) $line->quantity_delivered;
-                        $deliverable = max(
-                            (float) $soLine->quantity - (float) $soLine->quantity_cancelled,
-                            0
-                        );
-                        $soLine->update([
-                            'quantity_delivered' => $newDelivered,
-                            'quantity_fulfilled' => max(
-                                (float) $soLine->quantity_fulfilled,
-                                min($newDelivered, $deliverable)
-                            ),
-                        ]);
+                    if (! $line->sales_order_line_id) {
+                        continue;
                     }
+
+                    $soLine = $lockedSoLines->get($line->sales_order_line_id) ?? $line->salesOrderLine;
+                    if (! $soLine) {
+                        continue;
+                    }
+
+                    $newDelivered = (float) $soLine->quantity_delivered + (float) $line->quantity_delivered;
+                    $deliverable = max(
+                        (float) $soLine->quantity - (float) $soLine->quantity_cancelled,
+                        0
+                    );
+
+                    if ($newDelivered > $deliverable + 0.0001) {
+                        throw new \Exception(
+                            "Cannot complete delivery order {$deliveryOrder->delivery_order_number}: "
+                            ."line #{$soLine->id} would deliver {$newDelivered} of {$deliverable} ordered."
+                        );
+                    }
+
+                    $soLine->update([
+                        'quantity_delivered' => $newDelivered,
+                        'quantity_fulfilled' => max(
+                            (float) $soLine->quantity_fulfilled,
+                            min($newDelivered, $deliverable)
+                        ),
+                    ]);
                 }
             }
 
@@ -1058,6 +1097,11 @@ class DeliveryOrderService
                         batchNumber: $product->is_bundle ? null : ($line->lot_number ?? $line->batch_number),
                         expiryDate: (! $product->is_bundle && $line->expiry_date) ? new \DateTime($line->expiry_date) : null,
                         idempotencyKey: $key,
+                        // Issue #686: this issue may consume its own sales
+                        // order's reservation; stock held by other documents
+                        // is unavailable.
+                        reservationSourceType: $deliveryOrder->sales_order_id ? 'SalesOrder' : 'DeliveryOrder',
+                        reservationSourceId: (int) ($deliveryOrder->sales_order_id ?: $deliveryOrder->id),
                     );
                 }
 

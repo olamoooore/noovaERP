@@ -18,6 +18,12 @@ export interface ReportFilters {
   tag?: string;
   /** MRD FR-8.1: restrict sales analytics to a document currency. */
   currency_code?: string;
+  /** Issue #593: the customer's assigned salesperson (customers.salesperson_id). */
+  salesperson_id?: number;
+  /** Issue #593: sales channel. */
+  channel?: 'pos' | 'admin' | 'ecommerce' | 'storefront';
+  /** Issue #593: legal entity scope (falls back to the session's entity context). */
+  legal_entity_id?: number;
   movement_type?: string;
   method?: 'direct' | 'indirect';
   interval?: 'day' | 'week' | 'month' | 'year';
