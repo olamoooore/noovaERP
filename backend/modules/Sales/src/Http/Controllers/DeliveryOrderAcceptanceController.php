@@ -3,6 +3,7 @@
 namespace Modules\Sales\Http\Controllers;
 
 use App\Services\Chatter\ChatterService;
+use App\Support\EvidenceFileStorage;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Log;
@@ -155,6 +156,7 @@ class DeliveryOrderAcceptanceController extends Controller
 
         try {
             $stored = [];
+            $lastStoredPath = null;
 
             foreach ($files as $file) {
                 if ($file->getSize() > self::MAX_FILE_SIZE) {
@@ -167,6 +169,7 @@ class DeliveryOrderAcceptanceController extends Controller
                 }
 
                 $path = $this->storeFile($deliveryOrder, $file);
+                $lastStoredPath = $path;
 
                 $this->chatterService->registerAttachment(
                     DeliveryOrder::class,
@@ -182,6 +185,9 @@ class DeliveryOrderAcceptanceController extends Controller
                     // evidence — chatter must never be able to destroy them.
                     DeliveryOrder::class,
                     (int) $deliveryOrder->id,
+                    // Issue #631: stored bytes' checksum, so an overwritten
+                    // upload is detectable from the row.
+                    EvidenceFileStorage::checksum($file),
                 );
 
                 $stored[] = [
@@ -208,13 +214,17 @@ class DeliveryOrderAcceptanceController extends Controller
                     // Issue #630: the drawn signature is the signed copy itself.
                     DeliveryOrder::class,
                     (int) $deliveryOrder->id,
+                    // Issue #631: checksum of the stored PNG.
+                    $signature['checksum'],
                 );
 
                 $signedPath = $signature['path'];
                 $stored[] = ['id' => null, 'file_name' => 'signature.png'];
             } else {
-                $last = $files[count($files) - 1];
-                $signedPath = $this->storeFile($deliveryOrder, $last);
+                // Reuse the path the last upload was already stored under. A
+                // second storeFile() here wrote a duplicate file whose path
+                // diverged from the chatter row's once names became unique.
+                $signedPath = $lastStoredPath;
             }
 
             $deliveryOrder->update([
@@ -272,7 +282,7 @@ class DeliveryOrderAcceptanceController extends Controller
     /**
      * Persist a browser-drawn signature (PNG data URL).
      *
-     * @return array{path: string, size: int}
+     * @return array{path: string, size: int, checksum: string}
      */
     private function storeSignature(DeliveryOrder $deliveryOrder, string $dataUrl): array
     {
@@ -288,12 +298,19 @@ class DeliveryOrderAcceptanceController extends Controller
 
         Storage::disk('public')->put($path, $binary);
 
-        return ['path' => $path, 'size' => strlen($binary)];
+        return [
+            'path' => $path,
+            'size' => strlen($binary),
+            'checksum' => hash('sha256', $binary),
+        ];
     }
 
     private function storeFile(DeliveryOrder $deliveryOrder, $file): string
     {
-        $path = "delivery-orders/{$deliveryOrder->id}/evidence/".$file->getClientOriginalName();
+        // Issue #631: unique stored name (UUID + sanitised extension). The
+        // original client name is kept on the chatter row only, so a second
+        // upload named the same cannot overwrite this file.
+        $path = "delivery-orders/{$deliveryOrder->id}/evidence/".EvidenceFileStorage::uniqueName($file);
 
         Storage::disk('public')->putFileAs(
             dirname($path),

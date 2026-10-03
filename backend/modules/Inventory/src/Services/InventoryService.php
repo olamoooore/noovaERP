@@ -72,12 +72,15 @@ class InventoryService
         ?string $batchNumber = null,
         ?\DateTime $expiryDate = null,
         ?string $idempotencyKey = null,
-        array $batchAllocations = []
+        array $batchAllocations = [],
+        ?string $reservationSourceType = null,
+        ?int $reservationSourceId = null,
     ): StockMovement {
         return DB::transaction(function () use (
             $productId, $warehouseId, $quantity, $type, $reference,
             $referenceType, $referenceId, $adjustmentReasonId, $notes,
-            $batchNumber, $expiryDate, $idempotencyKey, $batchAllocations
+            $batchNumber, $expiryDate, $idempotencyKey, $batchAllocations,
+            $reservationSourceType, $reservationSourceId
         ) {
             // ── AR-002: Idempotency guard ─────────────────────────────────────
             // If a stable caller-supplied key is provided and a movement already
@@ -166,8 +169,53 @@ class InventoryService
                     throw new \InvalidArgumentException("Unsupported stock movement type: {$type}");
             }
 
-            // Check for negative stock
-            if (! $settings->allow_negative_stock && $newQuantity < 0) {
+            // ── Guard: negative stock and reservations held by others ─────────
+            // Issue #686: a goods issue for a sales document (caller supplied
+            // its reservation source) must not consume stock another document
+            // has reserved. Availability = on hand − active reservations of
+            // OTHER documents; the document's own hold counts as available to
+            // it. Callers without a reservation source keep the historical
+            // on-hand-only guard.
+            $isOutgoing = in_array($type, ['out', 'sale', 'transfer_out'], true);
+            $reservationScoped = $isOutgoing
+                && $reservationSourceType !== null
+                && $reservationSourceId !== null;
+
+            if ($reservationScoped) {
+                $requested = abs($quantity);
+                $reservedByOthers = $this->activeReservationsForOtherDocuments(
+                    $productId,
+                    $warehouseId,
+                    $reservationSourceType,
+                    $reservationSourceId,
+                );
+                $available = $oldQuantity - $reservedByOthers;
+
+                if ($requested > $available + 0.0000001) {
+                    if (! $settings->allow_negative_stock) {
+                        throw new \RuntimeException(
+                            "Insufficient available stock. On hand: {$oldQuantity}, ".
+                            "reserved by other documents: {$reservedByOthers}, ".
+                            "available: {$available}, requested: {$requested}."
+                        );
+                    }
+
+                    // Tenant override in effect (allow_negative_stock): keep
+                    // the historical behaviour, but record that this issue
+                    // consumes stock another document reserved.
+                    $this->logReservationOverride(
+                        $productId,
+                        $warehouseId,
+                        $requested,
+                        $oldQuantity,
+                        $reservedByOthers,
+                        $reservationSourceType,
+                        $reservationSourceId,
+                        $referenceType,
+                        $referenceId,
+                    );
+                }
+            } elseif (! $settings->allow_negative_stock && $newQuantity < 0) {
                 throw new \Exception("Insufficient stock. Available: {$oldQuantity}, Requested: ".abs($quantity));
             }
 
@@ -256,6 +304,83 @@ class InventoryService
 
             return $movement;
         });
+    }
+
+    /**
+     * Issue #686: active reservation quantity held by OTHER documents for a
+     * product/warehouse. The caller's own document (source type + id) is
+     * excluded: its hold counts as available to it. Rows are the source of
+     * truth — identification is reliable by (document type, document id).
+     */
+    private function activeReservationsForOtherDocuments(
+        int $productId,
+        int $warehouseId,
+        string $sourceType,
+        int $sourceId,
+    ): float {
+        return (float) \Modules\Inventory\Models\StockReservation::query()
+            ->where('product_id', $productId)
+            ->where('warehouse_id', $warehouseId)
+            ->whereIn('status', ['open', 'allocated'])
+            // NOT (type = own AND id = own), null-safe: a legacy row without a
+            // source is somebody else's reservation, never treated as own.
+            ->where(function ($query) use ($sourceType, $sourceId) {
+                $query->where('source_document_type', '!=', $sourceType)
+                    ->orWhereNull('source_document_type')
+                    ->orWhere('source_document_id', '!=', $sourceId)
+                    ->orWhereNull('source_document_id');
+            })
+            ->selectRaw('COALESCE(SUM(quantity - COALESCE(quantity_fulfilled, 0)), 0) AS reserved')
+            ->value('reserved');
+    }
+
+    /**
+     * Issue #686: the tenant override (allow_negative_stock) let this issue
+     * consume stock other documents reserved. Keep the historical behaviour
+     * but leave both an operator log line and a queryable audit record.
+     */
+    private function logReservationOverride(
+        int $productId,
+        int $warehouseId,
+        float $requested,
+        float $onHand,
+        float $reservedByOthers,
+        string $sourceType,
+        int $sourceId,
+        ?string $referenceType,
+        ?int $referenceId,
+    ): void {
+        $context = [
+            'product_id' => $productId,
+            'warehouse_id' => $warehouseId,
+            'requested' => $requested,
+            'on_hand' => $onHand,
+            'reserved_by_others' => $reservedByOthers,
+            'reservation_source_type' => $sourceType,
+            'reservation_source_id' => $sourceId,
+            'reference_type' => $referenceType,
+            'reference_id' => $referenceId,
+        ];
+
+        Log::warning(
+            'InventoryService: allow_negative_stock override consumed stock reserved by other documents',
+            $context
+        );
+
+        try {
+            app(\App\Services\AuditLogger::class)->log(
+                operation: 'stock_availability_override',
+                referenceType: $referenceType ?? 'stock_level',
+                referenceId: $referenceId ?? $productId,
+                metadata: $context,
+            );
+        } catch (\Throwable $e) {
+            // The audit trail must never block a stock movement the tenant
+            // settings explicitly allow.
+            Log::debug('InventoryService: reservation override audit log skipped', [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

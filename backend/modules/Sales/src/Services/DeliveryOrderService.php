@@ -1097,6 +1097,11 @@ class DeliveryOrderService
                         batchNumber: $product->is_bundle ? null : ($line->lot_number ?? $line->batch_number),
                         expiryDate: (! $product->is_bundle && $line->expiry_date) ? new \DateTime($line->expiry_date) : null,
                         idempotencyKey: $key,
+                        // Issue #686: this issue may consume its own sales
+                        // order's reservation; stock held by other documents
+                        // is unavailable.
+                        reservationSourceType: $deliveryOrder->sales_order_id ? 'SalesOrder' : 'DeliveryOrder',
+                        reservationSourceId: (int) ($deliveryOrder->sales_order_id ?: $deliveryOrder->id),
                     );
                 }
 
