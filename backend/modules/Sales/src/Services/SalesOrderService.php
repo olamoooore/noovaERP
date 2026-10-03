@@ -211,6 +211,12 @@ class SalesOrderService
                     'sku' => $lineData['sku'] ?? null,
                     'quantity' => $lineData['quantity'] ?? (($lineData['line_type'] ?? 'product') === 'product' ? 1 : 0),
                     'unit' => $lineData['unit'] ?? 'pcs',
+                    // Issue #685: remember the sales UoM the line was entered
+                    // in. The persisted quantity remains in stock units (see
+                    // the #135 conversion above); this is the provenance the
+                    // invoice and DO read to re-express the line in its sales
+                    // unit without re-implementing the conversion.
+                    'uom_id' => $lineData['uom_id'] ?? null,
                     'unit_price' => $lineData['unit_price'] ?? 0,
                     'list_price' => $lineData['list_price'] ?? null,
                     'discount_type' => $lineData['discount_type'] ?? 'percentage',
@@ -491,6 +497,21 @@ class SalesOrderService
                     $invoiceableQty,
                 );
 
+                // Issue #685: the order line stores base quantities, but the
+                // invoice is a customer-facing sales document — when the line
+                // was entered in a sales UoM, bill it in that UoM (2 Box) with
+                // a per-sales-UoM price. The conversion is the shared
+                // ProductUomConverter, so the totals are unchanged:
+                // (qty / factor) × (price × factor) = qty × price.
+                $lineUom = ($line->uom_id && $line->product_id)
+                    ? $this->uomConverter->resolveOrNull((int) $line->product_id, (int) $line->uom_id)
+                    : null;
+
+                if ($lineUom && ! $lineUom->isStockUnit()) {
+                    $invoiceQuantity = $this->uomConverter->fromStock($lineUom, (float) $invoiceQuantity);
+                    $invoiceUnitPrice = $this->uomConverter->basePriceToSales($lineUom, (float) $invoiceUnitPrice);
+                }
+
                 $lines[] = [
                     'line_type' => 'product',
                     'sequence' => $line->sequence ?? 0,
@@ -501,6 +522,11 @@ class SalesOrderService
                     'product_notes' => $line->product_notes,
                     'description' => $description,
                     'quantity' => $invoiceQuantity,
+                    // Issue #685: the sales UoM travels onto the invoice so the
+                    // document says "2 BX" and the e-invoice mapper can read
+                    // the UoM's UN/ECE code (#665).
+                    'uom_id' => $lineUom?->id,
+                    'unit' => $lineUom?->abbreviation,
                     'unit_price' => $invoiceUnitPrice,
                     // FR-5.3/5.5: provenance travels with the price.
                     'base_unit_price' => $invoiceBaseUnitPrice,
@@ -979,8 +1005,23 @@ class SalesOrderService
             // ordered/delivered quantity here blocked staged invoicing: the
             // second invoice saw the line as fully invoiced and refused to bill
             // the remainder.
+            //
+            // Issue #685: the order line's quantity is in stock units, but the
+            // invoice line may be denominated in a sales UoM (2 Box). Convert
+            // before accumulating so bookkeeping never compares Box with pcs.
+            $invoicedStockQty = (float) $matchedInvoiceLine->quantity;
+            if ($matchedInvoiceLine->uom_id && $orderLine->product_id) {
+                $invoiceLineUom = $this->uomConverter->resolveOrNull(
+                    (int) $orderLine->product_id,
+                    (int) $matchedInvoiceLine->uom_id,
+                );
+                if ($invoiceLineUom && ! $invoiceLineUom->isStockUnit()) {
+                    $invoicedStockQty = $this->uomConverter->toStock($invoiceLineUom, $invoicedStockQty);
+                }
+            }
+
             $orderLine->update([
-                'quantity_invoiced' => (float) $orderLine->quantity_invoiced + (float) $matchedInvoiceLine->quantity,
+                'quantity_invoiced' => (float) $orderLine->quantity_invoiced + $invoicedStockQty,
             ]);
         }
     }

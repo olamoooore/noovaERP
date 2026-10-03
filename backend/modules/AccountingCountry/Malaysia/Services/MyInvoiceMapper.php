@@ -1020,7 +1020,11 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
             );
         }
 
+        // Issue #685: when the line is denominated in a UoM, that record's
+        // admin-entered UN/ECE code is the authoritative unit for the line —
+        // a Box line must not go to LHDN as "C62" (piece).
         $unitCode = $line->unit_code
+            ?? ($line->uom?->unece_code)
             ?? $product?->einvoice_unit_code
             ?? config('tax_packs.MY.einvoice.default_unit', 'C62');
 

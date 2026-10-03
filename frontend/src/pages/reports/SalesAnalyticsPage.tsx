@@ -24,11 +24,13 @@ import { BarChart } from '@/components/charts/BarChart';
 import { LineChart } from '@/components/charts/LineChart';
 import { PieChart } from '@/components/charts/PieChart';
 import { useReportAutoRefresh } from '@/hooks/useReportAutoRefresh';
-import reportApi from '@/lib/reportApi';
+import reportApi, { formatLocalDate } from '@/lib/reportApi';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import type { ReportFilters as ReportFiltersType } from '@/types/reports';
 import {
   avgBy,
+  formatPeriodDate,
+  formatTrendPeriod,
   normalizeCategories,
   normalizeCustomers,
   normalizeProducts,
@@ -41,13 +43,11 @@ interface SalesAnalyticsPageProps {
   productOnly?: boolean;
 }
 
-const isoDate = (date: Date) => date.toISOString().split('T')[0];
-
-const defaultFilters = (): ReportFiltersType => {
+export const defaultFilters = (): ReportFiltersType => {
   const now = new Date();
   return {
-    start_date: isoDate(new Date(now.getFullYear(), now.getMonth(), 1)),
-    end_date: isoDate(now),
+    start_date: formatLocalDate(new Date(now.getFullYear(), now.getMonth(), 1)),
+    end_date: formatLocalDate(now),
     interval: 'day',
   };
 };
@@ -93,28 +93,6 @@ const FilterSelect = ({
     </Select>
   </div>
 );
-
-/** `2026-08-31` → `31 Aug 2026` (falls back to the raw value). */
-const formatPeriodDate = (value?: string | null) => {
-  if (!value) return '…';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-};
-
-/** Human period label for trend rows: day → date, month → `Sep 2026`. */
-const formatTrendPeriod = (period: string) => {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(period)) {
-    return formatPeriodDate(period);
-  }
-  if (/^\d{4}-\d{2}$/.test(period)) {
-    const date = new Date(`${period}-01`);
-    return Number.isNaN(date.getTime())
-      ? period
-      : date.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
-  }
-  return period;
-};
 
 /** True revenue-weighted AOV; averaging per-row AOVs skews large order counts. */
 const aov = (revenue: number, orders: number) => (orders > 0 ? revenue / orders : 0);
@@ -545,7 +523,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
       label: 'Period',
       sortable: true,
       className: 'whitespace-nowrap',
-      format: (value) => formatTrendPeriod(String(value)),
+      format: (value) => formatTrendPeriod(String(value), filters.interval),
     },
     {
       key: 'invoice_count',
@@ -604,7 +582,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
   const trendExportRows = [
     ['Period', 'Orders', 'Revenue', 'Avg Order Value'],
     ...trends.map((t) => [
-      formatTrendPeriod(t.period),
+      formatTrendPeriod(t.period, filters.interval),
       formatNumber(t.invoice_count),
       formatCurrency(t.total_revenue),
       formatCurrency(t.avg_order_value),
@@ -1115,7 +1093,10 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
                 </CardHeader>
                 <CardContent className="pt-6">
                   <LineChart
-                    data={trends.map((t) => ({ period: formatTrendPeriod(t.period), Revenue: t.total_revenue }))}
+                    data={trends.map((t) => ({
+                      period: formatTrendPeriod(t.period, filters.interval),
+                      Revenue: t.total_revenue,
+                    }))}
                     xKey="period"
                     yKeys={['Revenue']}
                     colors={['#3b82f6']}
@@ -1137,7 +1118,10 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
                 </CardHeader>
                 <CardContent className="pt-6">
                   <LineChart
-                    data={trends.map((t) => ({ period: formatTrendPeriod(t.period), Orders: t.invoice_count }))}
+                    data={trends.map((t) => ({
+                      period: formatTrendPeriod(t.period, filters.interval),
+                      Orders: t.invoice_count,
+                    }))}
                     xKey="period"
                     yKeys={['Orders']}
                     colors={['#10b981']}

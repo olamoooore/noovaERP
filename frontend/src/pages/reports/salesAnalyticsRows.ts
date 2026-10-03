@@ -8,6 +8,8 @@
  * the mapping is unit-testable and only has to be right in one place.
  */
 
+import { addDays, format, isValid, parse, startOfISOWeek } from 'date-fns';
+
 export interface ProductRow {
   /** Kept for traceability links (product detail page). */
   id: number | null;
@@ -121,4 +123,60 @@ export const safeDate = (value: unknown): string => {
   if (!value) return '-';
   const date = new Date(value as string);
   return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString();
+};
+
+/** `2026-08-31` → `31 Aug 2026` (falls back to the raw value). */
+export const formatPeriodDate = (value?: string | null) => {
+  if (!value) return '…';
+  const date = parse(value, 'yyyy-MM-dd', new Date());
+  return isValid(date) ? format(date, 'dd MMM yyyy') : value;
+};
+
+/**
+ * `2026-39` (ISO week year + ISO week) → `Week 39 (21–27 Sep 2026)`.
+ *
+ * ISO weeks run Monday–Sunday. A week that crosses a month or year boundary
+ * names both sides (`Week 1 (29 Dec 2025 – 4 Jan 2026)`) instead of printing
+ * one month that would be wrong.
+ */
+const formatISOWeekPeriod = (period: string) => {
+  const [yearPart, weekPart] = period.split('-');
+  const year = Number(yearPart);
+  const week = Number(weekPart);
+  if (!Number.isInteger(year) || !Number.isInteger(week) || week < 1 || week > 53) {
+    return period;
+  }
+
+  const monday = addDays(startOfISOWeek(new Date(year, 0, 4)), (week - 1) * 7);
+  const sunday = addDays(monday, 6);
+  const sameMonth =
+    monday.getMonth() === sunday.getMonth() && monday.getFullYear() === sunday.getFullYear();
+
+  return sameMonth
+    ? `Week ${week} (${format(monday, 'd')}–${format(sunday, 'd MMM yyyy')})`
+    : `Week ${week} (${format(monday, 'd MMM yyyy')} – ${format(sunday, 'd MMM yyyy')})`;
+};
+
+/**
+ * Human period label for trend rows: day → `22 Sep 2026`, week → `Week 39
+ * (21–27 Sep 2026)`, month → `Sep 2026`, year → the raw year.
+ *
+ * `interval` resolves the one ambiguous shape: `YYYY-MM` is a month key and
+ * `IYYY-IW` is a week key, and both look like `2026-39`. Without it, a second
+ * component above 12 can only be a week.
+ */
+export const formatTrendPeriod = (period: string, interval?: string) => {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(period)) {
+    return formatPeriodDate(period);
+  }
+  const yearMonth = /^(\d{4})-(\d{2})$/.exec(period);
+  if (yearMonth) {
+    const second = Number(yearMonth[2]);
+    if (interval === 'week' || (interval === undefined && second > 12)) {
+      return formatISOWeekPeriod(period);
+    }
+    const date = parse(`${period}-01`, 'yyyy-MM-dd', new Date());
+    return isValid(date) ? format(date, 'MMM yyyy') : period;
+  }
+  return period;
 };

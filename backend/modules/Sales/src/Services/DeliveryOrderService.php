@@ -152,6 +152,19 @@ class DeliveryOrderService
         private \App\Services\GoodsIssueLedger $goodsIssueLedger,
     ) {}
 
+    /**
+     * Issue #465 (DO13): stock availability for the standalone-DO create page.
+     * A standalone delivery order holds no reservation of its own, so every
+     * active hold is somebody else's — the same shared calculation the
+     * creation guard uses.
+     *
+     * @return array{on_hand: float, reserved: float, available: float}
+     */
+    public function stockAvailability(int $productId, int $warehouseId): array
+    {
+        return $this->inventoryService->stockAvailability($productId, $warehouseId);
+    }
+
     // ════════════════════════════════════════════════════════════════════════
     //  CREATION
     // ════════════════════════════════════════════════════════════════════════
@@ -379,6 +392,22 @@ class DeliveryOrderService
             }
 
             $quantityDelivered = (float) ($lineData['quantity_delivered'] ?? 0);
+
+            // Issue #685: a delivery quantity entered in a sales UoM (2 Box)
+            // is converted to stock units (24 pieces) before it is checked
+            // against the order's base quantities and stored; every ledger,
+            // reservation and COGS comparison below is in stock units.
+            $lineUom = (($lineData['uom_id'] ?? null) && $soLine->product_id)
+                ? app(\App\Services\ProductUomConverter::class)->resolveOrNull(
+                    (int) $soLine->product_id,
+                    (int) $lineData['uom_id'],
+                )
+                : null;
+
+            if ($lineUom && ! $lineUom->isStockUnit()) {
+                $quantityDelivered = app(\App\Services\ProductUomConverter::class)->toStock($lineUom, $quantityDelivered);
+            }
+
             if ($lineType === 'product' && $quantityDelivered <= 0) {
                 throw new \Exception("Delivery quantity must be greater than zero for sales order line #{$soLineId}.");
             }
@@ -426,6 +455,9 @@ class DeliveryOrderService
                 'quantity_ordered' => $lineType === 'product' ? (float) $soLine->quantity : 0,
                 'quantity_delivered' => $lineType === 'product' ? $quantityDelivered : 0,
                 'unit' => $lineData['unit'] ?? $soLine->unit,
+                // Issue #685: provenance for the sales UoM the operator
+                // entered; quantity_delivered above is stock units.
+                'uom_id' => $lineUom?->id,
                 'unit_price' => $lineType === 'product' ? (float) ($lineData['unit_price'] ?? $soLine->unit_price ?? 0) : null,
                 'base_unit_price' => $lineType === 'product'
                     ? (float) ($lineData['base_unit_price'] ?? ($soLine->base_unit_price ?? $soLine->unit_price) ?? 0)
@@ -795,12 +827,40 @@ class DeliveryOrderService
 
                 // Check available stock for stock-tracked products
                 $productId = $lineData['product_id'] ?? null;
+
+                // Issue #685: a line entered in a sales UoM (2 Box) is
+                // converted to stock units (24 pieces) before the availability
+                // check, serial resolution and storage — the ledger stays in
+                // one unit.
+                $lineUom = (($lineData['uom_id'] ?? null) && $productId)
+                    ? app(\App\Services\ProductUomConverter::class)->resolveOrNull(
+                        (int) $productId,
+                        (int) $lineData['uom_id'],
+                    )
+                    : null;
+
+                if ($lineUom && ! $lineUom->isStockUnit()) {
+                    $quantityDelivered = app(\App\Services\ProductUomConverter::class)->toStock($lineUom, $quantityDelivered);
+                }
+
                 if ($productId) {
                     $product = \App\Models\Product::find($productId);
                     if ($product && (bool) ($product->track_inventory ?? false)) {
-                        $stockLevel = $this->inventoryService->getStockLevel((int) $productId, (int) $warehouseId);
-                        $available = $stockLevel ? (float) $stockLevel->quantity : 0;
-                        if ($quantityDelivered > $available) {
+                        // Issue #465 (DO13): a standalone delivery order holds
+                        // no reservation of its own, so availability is on hand
+                        // minus every active reservation held by other
+                        // documents (the shared #686 formula). Comparing with
+                        // on-hand alone let it ship stock a confirmed sales
+                        // order was holding.
+                        $availability = $this->inventoryService->stockAvailability(
+                            (int) $productId,
+                            (int) $warehouseId,
+                        );
+                        $onHand = $availability['on_hand'];
+                        $reserved = $availability['reserved'];
+                        $available = $availability['available'];
+
+                        if ($quantityDelivered > $available + 0.0000001) {
                             // Document conversions (quotation/invoice → DO) are
                             // allowed to create backorders: the goods may not be
                             // received yet. Manual standalone creation stays
@@ -808,13 +868,16 @@ class DeliveryOrderService
                             if (empty($data['allow_backorder'])) {
                                 throw new \Exception(
                                     "Insufficient stock for {$product->name}. "
-                                    ."Available: {$available}, requested: {$quantityDelivered}."
+                                    ."On hand: {$onHand}, reserved: {$reserved}, "
+                                    ."available: {$available}, requested: {$quantityDelivered}."
                                 );
                             }
 
                             Log::warning('Standalone delivery order created as a backorder — insufficient stock', [
                                 'delivery_order_id' => $deliveryOrder->id,
                                 'product_id' => $productId,
+                                'on_hand' => $onHand,
+                                'reserved' => $reserved,
                                 'available' => $available,
                                 'requested' => $quantityDelivered,
                             ]);
@@ -834,6 +897,13 @@ class DeliveryOrderService
 
                 $unitPrice = $priced['unit_price'] ?? $lineData['unit_price'] ?? null;
 
+                // Issue #685: an explicitly supplied price is per sales UoM
+                // (300 per Box); store the per-stock-unit equivalent so the
+                // base-quantity line total stays qty × price.
+                if ($lineUom && ! $lineUom->isStockUnit() && $unitPrice !== null && $mode === 'legacy') {
+                    $unitPrice = app(\App\Services\ProductUomConverter::class)->salesPriceToBase($lineUom, (float) $unitPrice);
+                }
+
                 DeliveryOrderLine::create(array_merge([
                     'line_type' => $lineType,
                     'sequence' => $lineData['sequence'] ?? 0,
@@ -847,6 +917,9 @@ class DeliveryOrderService
                     'quantity_ordered' => $quantityDelivered,
                     'quantity_delivered' => $quantityDelivered,
                     'unit' => $lineData['unit'] ?? 'pcs',
+                    // Issue #685: provenance for the sales UoM entered;
+                    // quantity_delivered is stock units.
+                    'uom_id' => $lineUom?->id,
                     'unit_price' => $unitPrice,
                     'line_total' => $unitPrice !== null ? round($unitPrice * $quantityDelivered, 2) : null,
                     'lot_number' => $lineData['lot_number'] ?? null,

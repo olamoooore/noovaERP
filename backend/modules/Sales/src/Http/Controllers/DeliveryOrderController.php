@@ -263,6 +263,8 @@ class DeliveryOrderController extends Controller
                 'lines.*.quantity_delivered' => 'nullable|numeric|min:0',
                 'lines.*.quantity' => 'nullable|numeric|min:0',
                 'lines.*.unit' => 'nullable|string|max:20',
+                // Issue #685: optional sales UoM for the line.
+                'lines.*.uom_id' => 'nullable|integer|exists:product_uoms,id',
                 'lines.*.unit_price' => 'nullable|numeric|min:0',
                 'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
                 'lines.*.override_reason' => 'nullable|string|max:500',
@@ -355,6 +357,27 @@ class DeliveryOrderController extends Controller
         } catch (\Exception $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
+    }
+
+    /**
+     * Issue #465 (DO13): pre-submit stock check for the standalone DO create
+     * page. Reports on-hand, the quantity reserved by other documents' active
+     * holds and the resulting available quantity, so the user sees the hold
+     * before submitting (the creation guard uses the same shared formula).
+     */
+    public function stockCheck(Request $request)
+    {
+        $validated = $request->validate([
+            'product_id' => 'required|integer|exists:products,id',
+            'warehouse_id' => 'required|integer|exists:warehouses,id',
+        ]);
+
+        return response()->json(
+            $this->deliveryService->stockAvailability(
+                (int) $validated['product_id'],
+                (int) $validated['warehouse_id'],
+            )
+        );
     }
 
     /**
@@ -514,7 +537,9 @@ class DeliveryOrderController extends Controller
                 'message' => 'Approval required before this delivery order can be invoiced',
                 'requires_approval' => true,
                 'approval_request' => $approval,
-                'threshold' => $this->approvalGate->threshold(),
+                // #649: the threshold that actually applied to the gated
+                // subject (quotation / sales order / delivery order).
+                'threshold' => $this->approvalGate->threshold($gateSubject),
             ], 202);
         }
 
@@ -659,6 +684,24 @@ class DeliveryOrderController extends Controller
                 foreach ($validated['lines'] as $lineData) {
                     $qty = (float) ($lineData['quantity_delivered'] ?? 0);
                     $unitPrice = isset($lineData['unit_price']) ? (float) $lineData['unit_price'] : null;
+
+                    // Issue #685: a sales-UoM edit is converted to stock units
+                    // (and the price to its per-stock-unit equivalent) so the
+                    // stored line and its total stay in one unit.
+                    $lineUom = (($lineData['uom_id'] ?? null) && ! empty($lineData['product_id']))
+                        ? app(\App\Services\ProductUomConverter::class)->resolveOrNull(
+                            (int) $lineData['product_id'],
+                            (int) $lineData['uom_id'],
+                        )
+                        : null;
+
+                    if ($lineUom && ! $lineUom->isStockUnit() && $qty > 0) {
+                        $qty = app(\App\Services\ProductUomConverter::class)->toStock($lineUom, $qty);
+                        if ($unitPrice !== null) {
+                            $unitPrice = app(\App\Services\ProductUomConverter::class)->salesPriceToBase($lineUom, $unitPrice);
+                        }
+                    }
+
                     \Modules\Sales\Models\DeliveryOrderLine::create([
                         'line_type' => $lineData['line_type'] ?? 'product',
                         'sequence' => $lineData['sequence'] ?? 0,
@@ -671,6 +714,7 @@ class DeliveryOrderController extends Controller
                         'quantity_ordered' => $qty,
                         'quantity_delivered' => $qty,
                         'unit' => $lineData['unit'] ?? 'pcs',
+                        'uom_id' => $lineUom?->id,
                         'unit_price' => $unitPrice,
                         'line_total' => $unitPrice ? $unitPrice * $qty : null,
                         'lot_number' => $lineData['lot_number'] ?? null,

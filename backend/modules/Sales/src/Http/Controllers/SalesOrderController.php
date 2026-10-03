@@ -138,6 +138,34 @@ class SalesOrderController extends Controller
         ]);
 
         try {
+            // Issue #685: a supplied price on a line with a sales UoM is per
+            // sales UoM ("300 per Box"). The order stores stock-unit amounts
+            // (the invoice re-expresses the line in its sales unit), so the
+            // price is converted through the shared converter here. Lines
+            // without uom_id are untouched.
+            $uomConverter = app(\App\Services\ProductUomConverter::class);
+            foreach ($validated['lines'] as $index => $line) {
+                if (($line['line_type'] ?? 'product') !== 'product') {
+                    continue;
+                }
+
+                $lineUom = $uomConverter->resolveOrNull(
+                    isset($line['product_id']) ? (int) $line['product_id'] : null,
+                    isset($line['uom_id']) ? (int) $line['uom_id'] : null,
+                );
+
+                if (! $lineUom || $lineUom->isStockUnit()) {
+                    continue;
+                }
+
+                if (array_key_exists('unit_price', $line) && $line['unit_price'] !== null && (float) $line['unit_price'] > 0) {
+                    $validated['lines'][$index]['unit_price'] = $uomConverter->salesPriceToBase(
+                        $lineUom,
+                        (float) $line['unit_price'],
+                    );
+                }
+            }
+
             $order = $this->orderService->createOrder($validated);
 
             return response()->json($order->load(['customer', 'lines.product', 'statusHistory', 'channelReferences']), 201);
@@ -272,7 +300,9 @@ class SalesOrderController extends Controller
                 'message' => 'Approval required',
                 'requires_approval' => true,
                 'approval_request' => $approval,
-                'threshold' => $this->approvalGate->threshold(),
+                // #649: the threshold that actually applied (per-type override
+                // wins over the tenant-wide fallback).
+                'threshold' => $this->approvalGate->threshold($order),
                 'order' => $order->fresh(),
             ], 202);
         }

@@ -352,13 +352,16 @@ class HR686GoodsIssueAvailabilityTest extends TenantTestCase
 
     public function test_delivery_order_completion_refuses_to_ship_stock_reserved_for_another_order(): void
     {
-        // Order B holds 8 of the 10 units.
-        $reservingOrderId = $this->confirmedSalesOrder(8);
-
-        // Customer A's standalone delivery order passed the creation check on
-        // on-hand stock; completing it must still respect order B's hold.
+        // Customer A's standalone delivery order is created first: no holds
+        // exist yet, so #465's creation check (on hand − reservations) passes
+        // on the full 10 units.
         $deliveryOrderId = $this->standaloneDeliveryOrder(5);
         $this->confirmDeliveryOrder($deliveryOrderId);
+
+        // Order B now holds 8 of the 10 units. Completing customer A's order
+        // must still respect that hold even though it already passed creation.
+        $reservingOrderId = $this->confirmedSalesOrder(8);
+        $this->assertSame(8.0, $this->reservedOnHand(), 'Fixture: order B reserved 8 units');
 
         $response = $this->completeDeliveryOrder($deliveryOrderId);
 
