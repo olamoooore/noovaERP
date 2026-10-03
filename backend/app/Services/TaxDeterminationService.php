@@ -144,6 +144,10 @@ class TaxDeterminationService
 
             // A non-zero line rate is a historical/document override: the
             // booked amounts stay authoritative and only identity is resolved.
+            // #304 (X4): the identity/treatment block below is rate-guarded
+            // ($rateMatches), so a 0%-rated line never borrows a 9% default's
+            // identity — but an SST line booked at its rule's rate still
+            // adopts the rule's taxonomy (service vs sales).
             $usesLocalizedDefault = $line->product && (
                 $line->product->tax_id
                 || $line->product->tax_mode === 'custom'
@@ -153,7 +157,11 @@ class TaxDeterminationService
             $discount = (float) ($line->discount_amount ?? 0);
             $gross = (float) $line->quantity * (float) $line->unit_price;
 
-            if ($bookedRate <= 0 && ($line->tax_rate === null || $usesLocalizedDefault) && $resolved && (float) $resolved['rate'] > 0) {
+            // #304 (X4): only a line with NO booked rate at all ("use the
+            // default") may be engine-applied. An explicit 0% is the
+            // document's choice — zero-rated (or exempt per override) — and
+            // determination must never report tax the document did not book.
+            if ($bookedRate <= 0 && $line->tax_rate === null && $resolved && (float) $resolved['rate'] > 0) {
                 // Engine-applied tax: compute through the shared calculator so
                 // inclusive/exclusive and line discounts are handled once.
                 $calc = $this->engine->calculate(
