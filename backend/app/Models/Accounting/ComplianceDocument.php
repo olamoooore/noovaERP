@@ -23,6 +23,7 @@ class ComplianceDocument extends Model
         'country_code',
         'document_type',        // invoice, credit_note, bill, payment
         'document_id',          // GL record ID (invoice ID, etc)
+        'consolidated_document_id', // #815 AC2: the consolidated document this receipt was batched into
         'document_number',
         'issued_date',
         'total_amount',
