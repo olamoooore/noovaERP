@@ -23,6 +23,7 @@ interface Website {
   name: string
   slug: string
   status: 'draft' | 'published' | 'archived'
+  public_url?: string
   published_at: string | null
   created_at: string
   pages_count?: number
@@ -50,6 +51,8 @@ export function WebsitesIndex() {
   const [newWebsiteName, setNewWebsiteName] = useState('')
   const [domainWebsite, setDomainWebsite] = useState<Website | null>(null)
   const [newDomain, setNewDomain] = useState('')
+  const websitePublicUrl = (website: Website) => website.public_url
+    || `${window.location.origin}${(import.meta.env.VITE_BASE_PATH || '').replace(/\/+$/, '')}/site/${website.uuid}`
 
   const domainsQuery = useQuery({
     queryKey: ['website-domains', domainWebsite?.id],
@@ -211,13 +214,13 @@ export function WebsitesIndex() {
                     </div>
                     <p className="text-sm text-muted-foreground mb-3">
                       <a 
-                        href={`${window.location.origin}${(import.meta.env.VITE_BASE_PATH || '').replace(/\/+$/, '')}/w/${website.slug}`} 
+                        href={websitePublicUrl(website)}
                         target="_blank" 
                         rel="noopener noreferrer"
                         className="hover:text-primary hover:underline"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        {window.location.origin}{(import.meta.env.VITE_BASE_PATH || '').replace(/\/+$/, '')}/w/{website.slug}
+                        {websitePublicUrl(website)}
                       </a>
                     </p>
                     
@@ -245,7 +248,7 @@ export function WebsitesIndex() {
                           title="View Live Site"
                           onClick={(e) => {
                             e.stopPropagation()
-                            window.open(`${window.location.origin}${(import.meta.env.VITE_BASE_PATH || '').replace(/\/+$/, '')}/w/${website.slug}`, '_blank')
+                            window.open(websitePublicUrl(website), '_blank')
                           }}
                         >
                           <Icon icon="solar:eye-bold" className="h-3.5 w-3.5" />
