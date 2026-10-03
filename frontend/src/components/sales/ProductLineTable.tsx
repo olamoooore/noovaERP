@@ -75,6 +75,8 @@ export function productLineColumns(options: {
   lotNumber?: boolean
   expiryDate?: boolean
   taxRate?: boolean
+  /** Issue #465: on-hand / reserved / available stock cell (delivery orders). */
+  stock?: boolean
 } = {}): LineItemsColumn[] {
   return [
     { key: 'index', label: '#', align: 'center', minWidth: 'w-10', className: 'w-10' },
@@ -86,6 +88,7 @@ export function productLineColumns(options: {
     { key: 'lot_number', label: 'Lot Number', minWidth: 'min-w-[7.5rem]', hidden: !options.lotNumber },
     { key: 'expiry_date', label: 'Expiry Date', minWidth: 'min-w-[9.5rem]', hidden: !options.expiryDate },
     { key: 'qty', label: 'Qty', align: 'right', minWidth: 'min-w-[5.5rem]' },
+    { key: 'stock', label: 'Available', align: 'right', minWidth: 'min-w-[8.5rem]', hidden: !options.stock },
     { key: 'unit_price', label: 'Unit Price', align: 'right', minWidth: 'min-w-[7rem]' },
     { key: 'tax_rate', label: 'Tax %', align: 'right', minWidth: 'min-w-[5rem]', hidden: !options.taxRate },
     { key: 'line_total', label: 'Line Total', align: 'right', minWidth: 'min-w-[7rem]' },

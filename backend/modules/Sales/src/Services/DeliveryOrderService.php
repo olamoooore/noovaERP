@@ -152,6 +152,19 @@ class DeliveryOrderService
         private \App\Services\GoodsIssueLedger $goodsIssueLedger,
     ) {}
 
+    /**
+     * Issue #465 (DO13): stock availability for the standalone-DO create page.
+     * A standalone delivery order holds no reservation of its own, so every
+     * active hold is somebody else's — the same shared calculation the
+     * creation guard uses.
+     *
+     * @return array{on_hand: float, reserved: float, available: float}
+     */
+    public function stockAvailability(int $productId, int $warehouseId): array
+    {
+        return $this->inventoryService->stockAvailability($productId, $warehouseId);
+    }
+
     // ════════════════════════════════════════════════════════════════════════
     //  CREATION
     // ════════════════════════════════════════════════════════════════════════
@@ -833,9 +846,21 @@ class DeliveryOrderService
                 if ($productId) {
                     $product = \App\Models\Product::find($productId);
                     if ($product && (bool) ($product->track_inventory ?? false)) {
-                        $stockLevel = $this->inventoryService->getStockLevel((int) $productId, (int) $warehouseId);
-                        $available = $stockLevel ? (float) $stockLevel->quantity : 0;
-                        if ($quantityDelivered > $available) {
+                        // Issue #465 (DO13): a standalone delivery order holds
+                        // no reservation of its own, so availability is on hand
+                        // minus every active reservation held by other
+                        // documents (the shared #686 formula). Comparing with
+                        // on-hand alone let it ship stock a confirmed sales
+                        // order was holding.
+                        $availability = $this->inventoryService->stockAvailability(
+                            (int) $productId,
+                            (int) $warehouseId,
+                        );
+                        $onHand = $availability['on_hand'];
+                        $reserved = $availability['reserved'];
+                        $available = $availability['available'];
+
+                        if ($quantityDelivered > $available + 0.0000001) {
                             // Document conversions (quotation/invoice → DO) are
                             // allowed to create backorders: the goods may not be
                             // received yet. Manual standalone creation stays
@@ -843,13 +868,16 @@ class DeliveryOrderService
                             if (empty($data['allow_backorder'])) {
                                 throw new \Exception(
                                     "Insufficient stock for {$product->name}. "
-                                    ."Available: {$available}, requested: {$quantityDelivered}."
+                                    ."On hand: {$onHand}, reserved: {$reserved}, "
+                                    ."available: {$available}, requested: {$quantityDelivered}."
                                 );
                             }
 
                             Log::warning('Standalone delivery order created as a backorder — insufficient stock', [
                                 'delivery_order_id' => $deliveryOrder->id,
                                 'product_id' => $productId,
+                                'on_hand' => $onHand,
+                                'reserved' => $reserved,
                                 'available' => $available,
                                 'requested' => $quantityDelivered,
                             ]);
