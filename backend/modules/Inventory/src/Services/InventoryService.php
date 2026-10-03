@@ -183,13 +183,18 @@ class InventoryService
 
             if ($reservationScoped) {
                 $requested = abs($quantity);
-                $reservedByOthers = $this->activeReservationsForOtherDocuments(
+                // Issue #465 (DO13): one shared availability formula — on hand
+                // minus active reservations held by OTHER documents — serves
+                // both this goods-issue guard and the standalone-DO creation
+                // check / create-page stock check.
+                $availability = $this->stockAvailability(
                     $productId,
                     $warehouseId,
                     $reservationSourceType,
                     $reservationSourceId,
                 );
-                $available = $oldQuantity - $reservedByOthers;
+                $reservedByOthers = $availability['reserved'];
+                $available = $availability['available'];
 
                 if ($requested > $available + 0.0000001) {
                     if (! $settings->allow_negative_stock) {
@@ -307,6 +312,42 @@ class InventoryService
     }
 
     /**
+     * Issue #465 (DO13) / #686: reusable stock-availability computation.
+     *
+     * available = on hand − active reservations held by OTHER documents. The
+     * caller's own reservation (source type + id) counts as available to it;
+     * pass null/null when the caller holds no reservation of its own (e.g. a
+     * standalone delivery order), so every active hold is somebody else's.
+     *
+     * @return array{on_hand: float, reserved: float, available: float}
+     */
+    public function stockAvailability(
+        int $productId,
+        int $warehouseId,
+        ?string $sourceDocumentType = null,
+        ?int $sourceDocumentId = null,
+    ): array {
+        $onHand = (float) (StockLevel::where('product_id', $productId)
+            ->where('warehouse_id', $warehouseId)
+            ->value('quantity') ?? 0);
+
+        $reserved = ($sourceDocumentType !== null && $sourceDocumentId !== null)
+            ? $this->activeReservationsForOtherDocuments(
+                $productId,
+                $warehouseId,
+                $sourceDocumentType,
+                $sourceDocumentId,
+            )
+            : $this->activeReservations($productId, $warehouseId);
+
+        return [
+            'on_hand' => $onHand,
+            'reserved' => $reserved,
+            'available' => $onHand - $reserved,
+        ];
+    }
+
+    /**
      * Issue #686: active reservation quantity held by OTHER documents for a
      * product/warehouse. The caller's own document (source type + id) is
      * excluded: its hold counts as available to it. Rows are the source of
@@ -318,18 +359,36 @@ class InventoryService
         string $sourceType,
         int $sourceId,
     ): float {
-        return (float) \Modules\Inventory\Models\StockReservation::query()
+        return $this->activeReservations($productId, $warehouseId, $sourceType, $sourceId);
+    }
+
+    /**
+     * Issue #465/#686: active reservation quantity for a product/warehouse.
+     * When a source document is supplied, that document's own hold is
+     * excluded — NOT (type = own AND id = own), null-safe: a legacy row
+     * without a source is somebody else's reservation, never treated as own.
+     */
+    private function activeReservations(
+        int $productId,
+        int $warehouseId,
+        ?string $sourceType = null,
+        ?int $sourceId = null,
+    ): float {
+        $query = \Modules\Inventory\Models\StockReservation::query()
             ->where('product_id', $productId)
             ->where('warehouse_id', $warehouseId)
-            ->whereIn('status', ['open', 'allocated'])
-            // NOT (type = own AND id = own), null-safe: a legacy row without a
-            // source is somebody else's reservation, never treated as own.
-            ->where(function ($query) use ($sourceType, $sourceId) {
+            ->whereIn('status', ['open', 'allocated']);
+
+        if ($sourceType !== null && $sourceId !== null) {
+            $query->where(function ($query) use ($sourceType, $sourceId) {
                 $query->where('source_document_type', '!=', $sourceType)
                     ->orWhereNull('source_document_type')
                     ->orWhere('source_document_id', '!=', $sourceId)
                     ->orWhereNull('source_document_id');
-            })
+            });
+        }
+
+        return (float) $query
             ->selectRaw('COALESCE(SUM(quantity - COALESCE(quantity_fulfilled, 0)), 0) AS reserved')
             ->value('reserved');
     }

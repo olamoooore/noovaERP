@@ -300,7 +300,9 @@ class SalesOrderController extends Controller
                 'message' => 'Approval required',
                 'requires_approval' => true,
                 'approval_request' => $approval,
-                'threshold' => $this->approvalGate->threshold(),
+                // #649: the threshold that actually applied (per-type override
+                // wins over the tenant-wide fallback).
+                'threshold' => $this->approvalGate->threshold($order),
                 'order' => $order->fresh(),
             ], 202);
         }

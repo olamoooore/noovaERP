@@ -210,7 +210,9 @@ class InvoiceService
      */
     public function applyApprovalThreshold(Invoice $invoice): bool
     {
-        if (! app(SalesApprovalGate::class)->requiresApproval(Invoice::class, (float) $invoice->total)) {
+        // #649: the invoice is passed so its per-type threshold applies and the
+        // comparison runs on the base-currency total via its FX snapshot.
+        if (! app(SalesApprovalGate::class)->requiresApproval(Invoice::class, (float) $invoice->total, $invoice)) {
             return (bool) $invoice->requires_approval;
         }
 
