@@ -515,7 +515,9 @@ class DeliveryOrderController extends Controller
                 'message' => 'Approval required before this delivery order can be invoiced',
                 'requires_approval' => true,
                 'approval_request' => $approval,
-                'threshold' => $this->approvalGate->threshold(),
+                // #649: the threshold that actually applied to the gated
+                // subject (quotation / sales order / delivery order).
+                'threshold' => $this->approvalGate->threshold($gateSubject),
             ], 202);
         }
 

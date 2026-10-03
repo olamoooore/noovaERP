@@ -878,7 +878,7 @@ class QuotationController extends Controller
                 'message' => 'Approval required',
                 'requires_approval' => true,
                 'approval_request' => $approval,
-                'threshold' => $this->approvalGate->threshold(),
+                'threshold' => $this->approvalGate->threshold($quotation),
                 'quotation' => $quotation->fresh(['customer', 'lines.product']),
             ], 202);
         }
@@ -960,7 +960,7 @@ class QuotationController extends Controller
                     'message' => 'Approval required before this quotation can be invoiced',
                     'requires_approval' => true,
                     'approval_request' => $approval,
-                    'threshold' => $this->approvalGate->threshold(),
+                    'threshold' => $this->approvalGate->threshold($quotation),
                 ], 202);
             }
             $quotation = $this->releaseQuotation($quotation);
@@ -983,7 +983,7 @@ class QuotationController extends Controller
                 'message' => 'Approval required before this quotation can be invoiced',
                 'requires_approval' => true,
                 'approval_request' => $approval,
-                'threshold' => $this->approvalGate->threshold(),
+                'threshold' => $this->approvalGate->threshold($quotation),
             ], 202);
         }
 
@@ -1086,7 +1086,7 @@ class QuotationController extends Controller
                     'message' => 'Approval required before this quotation can be delivered',
                     'requires_approval' => true,
                     'approval_request' => $approval,
-                    'threshold' => $this->approvalGate->threshold(),
+                    'threshold' => $this->approvalGate->threshold($quotation),
                 ], 202);
             }
             $quotation = $this->releaseQuotation($quotation);
@@ -1104,7 +1104,7 @@ class QuotationController extends Controller
                 'message' => 'Approval required before this quotation can be delivered',
                 'requires_approval' => true,
                 'approval_request' => $approval,
-                'threshold' => $this->approvalGate->threshold(),
+                'threshold' => $this->approvalGate->threshold($quotation),
             ], 202);
         }
 

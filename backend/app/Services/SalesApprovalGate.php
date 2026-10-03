@@ -4,8 +4,9 @@ namespace App\Services;
 
 use App\Enums\UserRole;
 use App\Models\ApprovalRequest;
+use App\Models\Product;
 use App\Models\Quotation;
-use App\Models\SalesOrder;
+use App\Models\SalesApprovalRule;
 use App\Models\Setting;
 use App\Models\User;
 use App\Platform\Notifications\NotificationReferences;
@@ -13,6 +14,8 @@ use App\Platform\Notifications\NotificationService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Sales\Models\DeliveryOrder;
+use Modules\Sales\Models\SalesOrder;
 
 /**
  * Config-driven approval gate for Sales documents (Quotation, SalesOrder, Invoice).
@@ -22,8 +25,21 @@ use Illuminate\Support\Facades\Log;
  * document whose total meets or exceeds it triggers an `ApprovalRequest` (in addition
  * to, and independent of, the existing user-toggled `Invoice.requires_approval`).
  *
+ * Issue #649:
+ *   - The tenant-wide `sales.approval_threshold_amount` stays the fallback, but a
+ *     per-document-type override (`sales.{type}.approval_threshold_amount`) wins
+ *     when set.
+ *   - Documents are compared in BASE currency using the document's own
+ *     `exchange_rate`/`base_currency_code` snapshot (base = total × rate), not in
+ *     document currency.
+ *   - A tenant can additionally configure `sales_approval_rules` rows
+ *     (`SalesApprovalRule`) with an amount / discount % / margin / credit-exposure
+ *     condition per document type. Any matching active rule fires the gate even
+ *     without a threshold.
+ *
  * Behaviour:
- *   - Setting `sales.approval_threshold_amount` is read per-tenant; null/0 disables.
+ *   - Setting `sales.approval_threshold_amount` (or a per-type override) is read
+ *     per-tenant; null/0 disables that threshold.
  *   - When the gate fires, the caller's controller returns HTTP 202 with the
  *     `ApprovalRequest` payload so the caller knows approval is pending.
  *   - The document's own status is NOT advanced (SO/Quotation stay `draft`);
@@ -32,6 +48,33 @@ use Illuminate\Support\Facades\Log;
 class SalesApprovalGate
 {
     public const SETTING_KEY = 'sales.approval_threshold_amount';
+
+    /**
+     * Per-document-type threshold overrides (#649), applied before the
+     * tenant-wide {@see self::SETTING_KEY} fallback. The document-type names
+     * match {@see SalesApprovalRule} and the reviewer-setting prefixes.
+     *
+     * @var array<string, string>
+     */
+    public const DOCUMENT_THRESHOLD_SETTING_KEYS = [
+        SalesApprovalRule::DOCUMENT_TYPE_QUOTATION => 'sales.quotation.approval_threshold_amount',
+        SalesApprovalRule::DOCUMENT_TYPE_SALES_ORDER => 'sales.sales_order.approval_threshold_amount',
+        SalesApprovalRule::DOCUMENT_TYPE_INVOICE => 'sales.invoice.approval_threshold_amount',
+        SalesApprovalRule::DOCUMENT_TYPE_DELIVERY_ORDER => 'sales.delivery_order.approval_threshold_amount',
+    ];
+
+    /**
+     * Document class → document type. Drives both the per-type threshold key
+     * and the rule lookup.
+     *
+     * @var array<class-string, string>
+     */
+    private const DOCUMENT_CLASS_TYPES = [
+        Quotation::class => SalesApprovalRule::DOCUMENT_TYPE_QUOTATION,
+        SalesOrder::class => SalesApprovalRule::DOCUMENT_TYPE_SALES_ORDER,
+        \App\Models\Invoice::class => SalesApprovalRule::DOCUMENT_TYPE_INVOICE,
+        DeliveryOrder::class => SalesApprovalRule::DOCUMENT_TYPE_DELIVERY_ORDER,
+    ];
 
     /**
      * How long a gate-raised request stays actionable. Reuses the tenant
@@ -102,24 +145,340 @@ class SalesApprovalGate
         return self::REVIEWER_SETTING_PREFIXES[$requestType] ?? null;
     }
 
-    public function requiresApproval(string $subjectClass, float $amount): bool
+    /**
+     * Whether a document requires approval — the threshold and every active
+     * rule are OR-ed together. An empty configuration disables the gate.
+     *
+     * When a `$document` is supplied its per-type threshold wins over the
+     * tenant-wide setting and the comparison happens in BASE currency via the
+     * document's FX snapshot (#649). Without a document the legacy
+     * class+face-amount behaviour is preserved (no conversion, no rules —
+     * neither can be resolved without the row).
+     *
+     * Fail safe: a configured threshold with a document whose FX snapshot
+     * cannot be resolved (foreign currency, missing/zero rate) requires
+     * approval instead of guessing at a base amount.
+     */
+    public function requiresApproval(string $subjectClass, float $amount, ?Model $document = null): bool
     {
-        $threshold = $this->threshold();
-        if ($threshold === null || $threshold <= 0.0) {
+        $threshold = $this->threshold($document);
+        $rules = $document !== null ? $this->activeRulesFor($document) : collect();
+
+        $thresholdActive = $threshold !== null && $threshold > 0.0;
+
+        if (! $thresholdActive && $rules->isEmpty()) {
             return false;
         }
 
-        return $amount >= $threshold;
+        $baseAmount = $document !== null
+            ? $this->baseCurrencyAmount($document, $amount)
+            : $amount;
+
+        if ($baseAmount === null) {
+            Log::warning('SalesApprovalGate: document FX snapshot cannot be resolved; requiring approval', [
+                'document_class' => $document::class,
+                'document_id' => $document?->getKey(),
+                'currency_code' => $document->currency_code,
+                'base_currency_code' => $document->base_currency_code,
+                'exchange_rate' => $document->exchange_rate,
+            ]);
+
+            return true;
+        }
+
+        if ($thresholdActive && $baseAmount >= $threshold) {
+            return true;
+        }
+
+        foreach ($rules as $rule) {
+            if ($this->ruleRequiresApproval($rule, $document, $baseAmount)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
-    public function threshold(): ?float
+    /**
+     * Approval threshold for a document: its per-type override when set,
+     * otherwise the tenant-wide `sales.approval_threshold_amount` (#649).
+     *
+     * Without a document the tenant-wide setting is returned, preserving the
+     * pre-#649 behaviour for legacy callers.
+     */
+    public function threshold(?Model $document = null): ?float
     {
-        $raw = Setting::getValue(self::SETTING_KEY);
-        if ($raw === null || $raw === '' || $raw === 0 || $raw === '0') {
+        if ($document !== null) {
+            $type = self::documentTypeFor($document);
+
+            if ($type !== null) {
+                $perType = $this->numericSetting(self::DOCUMENT_THRESHOLD_SETTING_KEYS[$type] ?? null);
+
+                if ($perType !== null && $perType > 0.0) {
+                    return $perType;
+                }
+            }
+        }
+
+        return $this->numericSetting(self::SETTING_KEY);
+    }
+
+    /**
+     * Document type used by thresholds and rules, or null for a document the
+     * gate does not know (nothing per-type can be resolved for it).
+     */
+    public static function documentTypeFor(Model|string $document): ?string
+    {
+        $class = is_string($document) ? $document : $document::class;
+
+        return self::DOCUMENT_CLASS_TYPES[$class] ?? null;
+    }
+
+    /**
+     * Document total converted to the document's base currency using its own
+     * exchange-rate snapshot (#649): base = amount × exchange_rate.
+     *
+     * Same-currency documents are returned untouched. Returns null when the
+     * document is foreign-currency but carries no usable rate — the caller
+     * decides how to fail safe.
+     */
+    public function baseCurrencyAmount(Model $document, ?float $amount = null): ?float
+    {
+        $amount ??= (float) ($document->total ?? $document->amount ?? 0);
+
+        $currency = $document->currency_code;
+        $base = $document->base_currency_code;
+
+        if ($currency === null || $base === null
+            || strtoupper((string) $currency) === strtoupper((string) $base)) {
+            return $amount;
+        }
+
+        $rate = $document->exchange_rate;
+
+        if ($rate === null || (float) $rate <= 0.0) {
+            return null;
+        }
+
+        return round($amount * (float) $rate, 2);
+    }
+
+    private function numericSetting(?string $key): ?float
+    {
+        if ($key === null) {
+            return null;
+        }
+
+        try {
+            $raw = Setting::getValue($key);
+        } catch (\Throwable $e) {
+            Log::warning('SalesApprovalGate: failed to read the approval threshold setting', [
+                'key' => $key,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        if ($raw === null || $raw === '' || ! is_numeric($raw) || (float) $raw <= 0.0) {
             return null;
         }
 
         return (float) $raw;
+    }
+
+    /**
+     * Active rules that apply to a document, including wildcard (`*`) rules.
+     * A missing rule table (a tenant whose migration has not run) yields no
+     * rules rather than breaking the gate.
+     *
+     * @return \Illuminate\Support\Collection<int, SalesApprovalRule>
+     */
+    public function activeRulesFor(Model $document): \Illuminate\Support\Collection
+    {
+        $type = self::documentTypeFor($document);
+
+        if ($type === null) {
+            return collect();
+        }
+
+        try {
+            return SalesApprovalRule::query()
+                ->where('active', true)
+                ->whereIn('document_type', [$type, SalesApprovalRule::DOCUMENT_TYPE_ANY])
+                ->orderBy('id')
+                ->get();
+        } catch (\Throwable $e) {
+            Log::warning('SalesApprovalGate: failed to read approval rules', [
+                'document_class' => $document::class,
+                'document_type' => $type,
+                'error' => $e->getMessage(),
+            ]);
+
+            return collect();
+        }
+    }
+
+    /**
+     * Evaluate one rule against the document.
+     *
+     * Fail safe (#649): when the rule's metric cannot be resolved — an unknown
+     * condition kind, a document type that does not carry the needed columns,
+     * a missing product cost, or an unresolvable customer — the rule is
+     * treated as MATCHED (approval required) and the reason is logged, rather
+     * than letting an unassessable document bypass the gate.
+     */
+    private function ruleRequiresApproval(SalesApprovalRule $rule, Model $document, float $baseAmount): bool
+    {
+        $metric = match ($rule->condition_kind) {
+            SalesApprovalRule::CONDITION_AMOUNT => $baseAmount,
+            SalesApprovalRule::CONDITION_DISCOUNT_PCT => $this->discountPercentage($document),
+            SalesApprovalRule::CONDITION_MARGIN => $this->marginPercentage($document),
+            SalesApprovalRule::CONDITION_CREDIT_EXPOSURE => $this->creditExposure($document, $baseAmount),
+            default => null,
+        };
+
+        if ($metric === null) {
+            Log::warning('SalesApprovalGate: approval rule cannot be evaluated; requiring approval', [
+                'rule_id' => $rule->id,
+                'condition_kind' => $rule->condition_kind,
+                'document_class' => $document::class,
+                'document_id' => $document->getKey(),
+            ]);
+
+            return true;
+        }
+
+        return $rule->matches($metric);
+    }
+
+    /**
+     * Document discount as a percentage of its pre-discount subtotal.
+     * Null when the document type carries no discount/subtotal columns
+     * (e.g. delivery orders) — the gate then fails safe.
+     */
+    private function discountPercentage(Model $document): ?float
+    {
+        if (! array_key_exists('discount_amount', $document->getAttributes())
+            || ! array_key_exists('subtotal', $document->getAttributes())) {
+            return null;
+        }
+
+        $discount = (float) ($document->discount_amount ?? 0);
+        $subtotal = (float) ($document->subtotal ?? 0);
+
+        if ($subtotal <= 0.0) {
+            return $discount > 0.0 ? null : 0.0;
+        }
+
+        return round($discount / $subtotal * 100, 4);
+    }
+
+    /**
+     * Document margin as a percentage of net revenue (subtotal less header
+     * discount), using the product's recorded cost per line.
+     *
+     * There is no historical cost snapshot on sales lines, so the current
+     * product cost is authoritative here — the same source the pricing engine
+     * treats as cost. Null (fail safe) when revenue is unknown, the document
+     * has no product lines, or any product line's cost cannot be resolved.
+     */
+    private function marginPercentage(Model $document): ?float
+    {
+        if (! method_exists($document, 'lines')) {
+            return null;
+        }
+
+        $lines = $document->lines()->get();
+
+        if ($lines->isEmpty()) {
+            return null;
+        }
+
+        $revenue = $this->netRevenue($document);
+
+        if ($revenue === null || $revenue <= 0.0) {
+            return null;
+        }
+
+        $productIds = $lines
+            ->map(fn ($line) => $line->product_id !== null ? (int) $line->product_id : null)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($productIds === []) {
+            return null;
+        }
+
+        $costs = Product::query()->whereIn('id', $productIds)->pluck('cost', 'id');
+
+        $cost = 0.0;
+
+        foreach ($lines as $line) {
+            if (($line->line_type ?? 'product') !== 'product') {
+                continue;
+            }
+
+            $productId = $line->product_id !== null ? (int) $line->product_id : null;
+
+            if ($productId === null) {
+                continue;
+            }
+
+            $productCost = $costs[$productId] ?? null;
+
+            if ($productCost === null) {
+                return null;
+            }
+
+            $cost += (float) ($line->quantity ?? 0) * (float) $productCost;
+        }
+
+        return round(($revenue - $cost) / $revenue * 100, 4);
+    }
+
+    /**
+     * Revenue basis for the margin metric: subtotal less header discount when
+     * the document carries both, else its total.
+     */
+    private function netRevenue(Model $document): ?float
+    {
+        $subtotal = $document->subtotal ?? null;
+
+        if ($subtotal !== null) {
+            return (float) $subtotal - (float) ($document->discount_amount ?? 0);
+        }
+
+        return $document->total !== null ? (float) $document->total : null;
+    }
+
+    /**
+     * Prospective customer credit exposure in base currency: outstanding AR
+     * plus this document's base amount. Null when the document has no customer
+     * or the receivables context cannot be resolved — the gate fails safe.
+     */
+    private function creditExposure(Model $document, float $baseAmount): ?float
+    {
+        $customerId = $document->customer_id ?? null;
+
+        if ($customerId === null) {
+            return null;
+        }
+
+        try {
+            $context = app(AgedReceivablesService::class)->getCustomerContext((int) $customerId);
+        } catch (\Throwable $e) {
+            Log::warning('SalesApprovalGate: failed to resolve customer credit exposure', [
+                'customer_id' => $customerId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        return round((float) ($context['outstanding'] ?? 0) + $baseAmount, 2);
     }
 
     /**
@@ -587,7 +946,7 @@ class SalesApprovalGate
      */
     public function requestIfNeeded(Model $document, string $requestType, float $amount, User $user): ?ApprovalRequest
     {
-        if (! $this->requiresApproval($document::class, $amount)) {
+        if (! $this->requiresApproval($document::class, $amount, $document)) {
             return null;
         }
 
@@ -626,9 +985,18 @@ class SalesApprovalGate
     {
         $request = DB::transaction(function () use ($document, $user, $requestType, $reason) {
             $amount = (float) ($document->total ?? $document->amount ?? 0);
+            $threshold = $this->threshold($document);
+            $baseAmount = $this->baseCurrencyAmount($document, $amount);
             $metadata = [
                 'document_total' => $amount,
-                'threshold' => $this->threshold(),
+                // #649: the decision is made on the base-currency equivalent
+                // (document total × the document's own rate snapshot), so both
+                // amounts and the threshold that applied are recorded.
+                'base_amount' => $baseAmount,
+                'document_currency' => $document->currency_code,
+                'base_currency' => $document->base_currency_code,
+                'exchange_rate' => $document->exchange_rate !== null ? (float) $document->exchange_rate : null,
+                'threshold' => $threshold,
                 'document_class' => $document::class,
                 'document_id' => $document->id,
                 // Issue #646: the document state this request approves. Stored
@@ -638,7 +1006,7 @@ class SalesApprovalGate
             ];
 
             if ($document instanceof SalesOrder) {
-                $metadata['order_number'] = $document->order_number ?? null;
+                $metadata['order_number'] = $document->sales_order_number ?? null;
                 $metadata['customer_id'] = $document->customer_id;
             } elseif ($document instanceof Quotation) {
                 $metadata['quotation_number'] = $document->quotation_number ?? null;
@@ -656,7 +1024,9 @@ class SalesApprovalGate
                 'subject_type' => $document::class,
                 'subject_id' => $document->id,
                 'amount' => $amount,
-                'reason' => $reason ?? "Document total {$amount} meets or exceeds the tenant approval threshold.",
+                'reason' => $reason ?? ($baseAmount !== null
+                    ? "Document base amount {$baseAmount} meets or exceeds the tenant approval threshold or an active approval rule."
+                    : "Document total {$amount} cannot be converted to the base currency; approval is required."),
                 'metadata' => $metadata,
                 'requested_by' => $user->id,
                 'requested_at' => now(),
@@ -670,7 +1040,8 @@ class SalesApprovalGate
                 'subject_type' => $document::class,
                 'subject_id' => $document->id,
                 'amount' => $amount,
-                'threshold' => $this->threshold(),
+                'base_amount' => $baseAmount,
+                'threshold' => $threshold,
                 'expires_at' => $request->expires_at?->toIso8601String(),
             ]);
 
