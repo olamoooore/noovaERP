@@ -269,18 +269,48 @@ class PeppolSubmissionProvider implements SubmissionProviderContract
             $wrapper = $document->createElement('cac:'.$wrapperName);
             $partyElement = $document->createElement('cac:Party');
 
-            if (! empty($party['name'])) {
+            // #705 (SG2): the participant identifier is the UEN under Peppol
+            // ICD 0195 (e.g. 0195:202312345A) — never the internal id.
+            $partyId = is_array($party['party_id'] ?? null) ? $party['party_id'] : [];
+            if (trim((string) ($partyId['value'] ?? '')) !== '') {
+                $identification = $document->createElement('cac:PartyIdentification');
+                $identifier = $document->createElement('cbc:ID');
+                $identifier->setAttribute('schemeID', (string) ($partyId['scheme_id'] ?? '0195'));
+                $identifier->appendChild($document->createTextNode((string) $partyId['value']));
+                $identification->appendChild($identifier);
+                $partyElement->appendChild($identification);
+            }
+
+            $partyNameValue = $party['party_name'] ?? $party['name'] ?? null;
+            if (! empty($partyNameValue)) {
                 $partyName = $document->createElement('cac:PartyName');
                 $name = $document->createElement('cbc:Name');
-                $name->appendChild($document->createTextNode((string) $party['name']));
+                $name->appendChild($document->createTextNode((string) $partyNameValue));
                 $partyName->appendChild($name);
                 $partyElement->appendChild($partyName);
             }
 
-            if (! empty($party['registration'])) {
+            // #705 (SG2): the GST registration is a separate identifier from
+            // the UEN and belongs in its own PartyTaxScheme.
+            $partyTax = is_array($party['party_tax'] ?? null) ? $party['party_tax'] : [];
+            if (trim((string) ($partyTax['value'] ?? '')) !== '') {
+                $partyTaxScheme = $document->createElement('cac:PartyTaxScheme');
+                $taxCompanyId = $document->createElement('cbc:CompanyID');
+                $taxCompanyId->appendChild($document->createTextNode((string) $partyTax['value']));
+                $partyTaxScheme->appendChild($taxCompanyId);
+                $taxScheme = $document->createElement('cac:TaxScheme');
+                $taxSchemeId = $document->createElement('cbc:ID');
+                $taxSchemeId->appendChild($document->createTextNode((string) ($partyTax['scheme_id'] ?? 'GST')));
+                $taxScheme->appendChild($taxSchemeId);
+                $partyTaxScheme->appendChild($taxScheme);
+                $partyElement->appendChild($partyTaxScheme);
+            }
+
+            $registrationValue = $party['party_legal_entity']['company_id'] ?? $party['registration'] ?? null;
+            if (! empty($registrationValue)) {
                 $legal = $document->createElement('cac:PartyLegalEntity');
                 $registration = $document->createElement('cbc:CompanyID');
-                $registration->appendChild($document->createTextNode((string) $party['registration']));
+                $registration->appendChild($document->createTextNode((string) $registrationValue));
                 $legal->appendChild($registration);
                 $partyElement->appendChild($legal);
             }
