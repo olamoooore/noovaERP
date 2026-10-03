@@ -291,22 +291,37 @@ class SalesAnalyticsService
         [$salesOrderIds, $invoiceIds] = $this->documentIdsForTag($filter->tag ?? null);
 
         try {
-            // Same line-item base as getSalesByCategory() / getSalesByProduct(),
-            // so the trend series, the category split and the product table all
-            // reconcile for the selected period (#355).
-            $trends = DB::query()
+            // Issue #594: generate every period in the range and LEFT JOIN the
+            // aggregate onto it, so an empty period is a real zero row. The
+            // chart no longer joins non-adjacent days, growth_rate compares
+            // adjacent rows only, and the lowest period can be a zero day.
+            // The aggregate keeps the #355 line-item base, so the trend series
+            // still reconciles with the category and product tables.
+            $seriesSql = $this->periodSeriesSql($interval, $startDate, $endDate, $dateFormat);
+
+            $aggregateSql = DB::query()
                 ->fromSub($this->lineItemsUnion($filter, $salesOrderIds, $invoiceIds), 'li')
-                ->select([
-                    DB::raw("TO_CHAR(li.revenue_date, '{$dateFormat}') as period"),
-                    DB::raw('COUNT(DISTINCT li.order_ref) as order_count'),
-                    DB::raw('SUM(li.base_revenue) as total_revenue'),
-                    DB::raw('SUM(CASE WHEN li.channel = \'booking\' THEN li.base_revenue ELSE 0 END) as bookings_revenue'),
-                    DB::raw('SUM(CASE WHEN li.channel <> \'booking\' THEN li.base_revenue ELSE 0 END) as invoiced_revenue'),
-                    DB::raw('CASE WHEN COUNT(DISTINCT li.order_ref) > 0 THEN SUM(li.base_revenue) / COUNT(DISTINCT li.order_ref) ELSE 0 END as average_order_value'),
-                ])
+                ->selectRaw("TO_CHAR(li.revenue_date, '{$dateFormat}') as period")
+                ->selectRaw('COUNT(DISTINCT li.order_ref) as order_count')
+                ->selectRaw('SUM(li.base_revenue) as total_revenue')
+                ->selectRaw("SUM(CASE WHEN li.channel = 'booking' THEN li.base_revenue ELSE 0 END) as bookings_revenue")
+                ->selectRaw("SUM(CASE WHEN li.channel <> 'booking' THEN li.base_revenue ELSE 0 END) as invoiced_revenue")
                 ->groupBy('period')
-                ->orderBy('period')
-                ->get();
+                ->toSql();
+
+            $trends = collect(DB::select(
+                "SELECT p.period,
+                        COALESCE(t.order_count, 0) AS order_count,
+                        COALESCE(t.total_revenue, 0) AS total_revenue,
+                        COALESCE(t.bookings_revenue, 0) AS bookings_revenue,
+                        COALESCE(t.invoiced_revenue, 0) AS invoiced_revenue,
+                        CASE WHEN COALESCE(t.order_count, 0) > 0
+                             THEN t.total_revenue / t.order_count
+                             ELSE 0 END AS average_order_value
+                 FROM ({$seriesSql}) AS p
+                 LEFT JOIN ({$aggregateSql}) AS t ON t.period = p.period
+                 ORDER BY p.period"
+            ));
         } catch (\Throwable $e) {
             Log::error('SalesAnalyticsService getSalesTrends error', [
                 'error' => $e->getMessage(),
@@ -318,21 +333,25 @@ class SalesAnalyticsService
         $data = [];
         $previousRevenue = null;
         foreach ($trends as $trend) {
+            $revenue = (float) $trend->total_revenue;
             $growthRate = null;
-            if ($previousRevenue !== null && (float) $previousRevenue > 0) {
-                $growthRate = (((float) $trend->total_revenue - (float) $previousRevenue) / (float) $previousRevenue) * 100;
+            // Adjacent rows only. A zero previous period makes the rate
+            // undefined (division by zero guarded) instead of silently
+            // comparing across the empty period.
+            if ($previousRevenue !== null && $previousRevenue > 0) {
+                $growthRate = (($revenue - $previousRevenue) / $previousRevenue) * 100;
             }
             $data[] = [
                 'period' => $trend->period,
                 'order_count' => (int) $trend->order_count,
-                'total_sales' => round((float) $trend->total_revenue, 2),
-                'revenue' => round((float) $trend->total_revenue, 2),
+                'total_sales' => round($revenue, 2),
+                'revenue' => round($revenue, 2),
                 'bookings_revenue' => round((float) $trend->bookings_revenue, 2),
                 'invoiced_revenue' => round((float) $trend->invoiced_revenue, 2),
                 'average_order_value' => round((float) $trend->average_order_value, 2),
                 'growth_rate' => $growthRate !== null ? round($growthRate, 2) : null,
             ];
-            $previousRevenue = $trend->total_revenue;
+            $previousRevenue = $revenue;
         }
 
         $summary = $this->baseSummary([
@@ -359,6 +378,37 @@ class SalesAnalyticsService
             'summary' => $summary,
             'generated_at' => now()->toISOString(),
         ];
+    }
+
+    /**
+     * Issue #594: every period in the requested range as one `generate_series`
+     * row, aligned to the tenant's calendar — `day`, ISO `week` (Monday start,
+     * matching Postgres' DATE_TRUNC('week') and the `IYYY-IW` key), `month` and
+     * `year` — and formatted exactly like the aggregate's period key so the
+     * LEFT JOIN always lands.
+     */
+    private function periodSeriesSql(
+        string $interval,
+        Carbon $startDate,
+        Carbon $endDate,
+        string $dateFormat,
+    ): string {
+        [$trunc, $step, $start, $end] = match ($interval) {
+            'week' => ['week', '1 week', $startDate->copy()->startOfWeek(Carbon::MONDAY), $endDate->copy()->startOfWeek(Carbon::MONDAY)],
+            'month' => ['month', '1 month', $startDate->copy()->startOfMonth(), $endDate->copy()->startOfMonth()],
+            'year' => ['year', '1 year', $startDate->copy()->startOfYear(), $endDate->copy()->startOfYear()],
+            default => ['day', '1 day', $startDate->copy()->startOfDay(), $endDate->copy()->startOfDay()],
+        };
+
+        $start = $start->format('Y-m-d H:i:s');
+        $end = $end->format('Y-m-d H:i:s');
+
+        return "SELECT TO_CHAR(gs, '{$dateFormat}') AS period
+                FROM generate_series(
+                    DATE_TRUNC('{$trunc}', '{$start}'::timestamp),
+                    DATE_TRUNC('{$trunc}', '{$end}'::timestamp),
+                    INTERVAL '{$step}'
+                ) AS gs";
     }
 
     public function getSalesByCategory(ReportFilter $filter): array
@@ -490,6 +540,31 @@ class SalesAnalyticsService
     }
 
     /**
+     * Issue #594: the tenant timezone from company settings, defaulting to the
+     * application timezone and falling back to UTC when unset or unknown.
+     *
+     * The value is interpolated into SQL (`AT TIME ZONE`, `generate_series`),
+     * so it is only ever returned after passing PHP's own timezone identifier
+     * list — a tenant-stored string can never reach the query raw.
+     */
+    private function tenantTimezone(): string
+    {
+        try {
+            $timezone = $this->tableExists('company_settings')
+                ? DB::table('company_settings')->orderBy('id')->value('timezone')
+                : null;
+        } catch (\Throwable) {
+            $timezone = null;
+        }
+
+        if (! is_string($timezone) || $timezone === '') {
+            $timezone = (string) config('app.timezone', 'UTC');
+        }
+
+        return in_array($timezone, timezone_identifiers_list(), true) ? $timezone : 'UTC';
+    }
+
+    /**
      * UNION ALL of the four revenue streams, all on ONE definition (#355):
      *   - posted POS sales, NET of POS returns. A return order's lines are
      *     already written as negatives (PosOrder::createReturn()), so including
@@ -528,6 +603,14 @@ class SalesAnalyticsService
         $start = $startDate->format('Y-m-d H:i:s');
         $end = $endDate->copy()->endOfDay()->format('Y-m-d H:i:s');
         $baseCurrency = '(SELECT base_currency FROM company_settings ORDER BY id LIMIT 1)';
+
+        // Issue #594: timestamps are stored in UTC while document dates are
+        // already tenant-local calendar dates. Convert the timestamp arms to
+        // the tenant timezone so a period is bucketed (and range-filtered) by
+        // the tenant's calendar, not by UTC. Date arms are untouched.
+        $timezone = $this->tenantTimezone();
+        $posRevenueDate = "(COALESCE(po.paid_at, po.created_at) AT TIME ZONE 'UTC' AT TIME ZONE '{$timezone}')";
+        $soRevenueDate = "COALESCE(so.order_date, (so.created_at AT TIME ZONE 'UTC' AT TIME ZONE '{$timezone}'))";
 
         // Issue #593: customer / product / category / salesperson / channel /
         // legal-entity filters, applied per arm so the read model is narrowed
@@ -606,14 +689,14 @@ class SalesAnalyticsService
                    po.customer_id,
                    {$posNet} AS document_revenue,
                    COALESCE(poi.quantity, 0) AS quantity,
-                   COALESCE(po.paid_at, po.created_at) AS revenue_date,
+                   {$posRevenueDate} AS revenue_date,
                    'pos' AS channel,
                    'pos:' || po.id AS order_ref,
                    COALESCE(po.currency, {$baseCurrency}, 'USD') AS currency_code,
                    COALESCE(po.exchange_rate, 1.0) AS exchange_rate
             FROM pos_order_items poi
             JOIN pos_orders po ON po.id = poi.pos_order_id
-            WHERE COALESCE(po.paid_at, po.created_at) BETWEEN '{$start}' AND '{$end}'
+            WHERE {$posRevenueDate} BETWEEN '{$start}' AND '{$end}'
               AND po.status = 'paid'
               AND po.deleted_at IS NULL{$posTagClause}{$posCurrencyFilter}{$dim['pos']}
         ) UNION ALL (
@@ -621,7 +704,7 @@ class SalesAnalyticsService
                    so.customer_id,
                    {$soNet} AS document_revenue,
                    COALESCE(sol.quantity, 0) AS quantity,
-                   COALESCE(so.order_date, so.created_at) AS revenue_date,
+                   {$soRevenueDate} AS revenue_date,
                    'booking' AS channel,
                    'so:' || so.id AS order_ref,
                    COALESCE(so.currency_code, {$baseCurrency}, 'USD') AS currency_code,
@@ -632,7 +715,7 @@ class SalesAnalyticsService
               AND so.accounting_status <> 'reversed'
               AND so.channel <> 'pos'
               AND so.deleted_at IS NULL
-              AND COALESCE(so.order_date, so.created_at) BETWEEN '{$start}' AND '{$end}'
+              AND {$soRevenueDate} BETWEEN '{$start}' AND '{$end}'
               AND NOT EXISTS (
                   SELECT 1
                   FROM invoices si
