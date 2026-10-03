@@ -5,6 +5,7 @@ namespace Modules\Sales\Http\Controllers;
 use App\Accounting\DTOs\AccountingDocumentLineData;
 use App\Accounting\DTOs\AccountingOriginInvoiceData;
 use App\Exports\DeliveryOrdersExport;
+use App\Http\Middleware\RequirePermission;
 use App\Platform\BulkDelete\BulkDeleteService;
 use App\Platform\Import\ImportService;
 use App\Services\AccountingOriginInvoiceService;
@@ -968,12 +969,23 @@ class DeliveryOrderController extends Controller
      * Complete/validate a delivery order (CONFIRMED → DONE).
      * This is where stock is actually deducted.
      */
-    public function complete($id)
+    public function complete(Request $request, $id)
     {
         $deliveryOrder = DeliveryOrder::find($id);
 
         if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
+        }
+
+        // #453 (DO1): completing a draft auto-confirms it, which releases stock
+        // and posts COGS. That shortcut must not bypass the accounting gate the
+        // explicit confirm route enforces — re-check `accounting.post` with the
+        // same resolution as the route middleware (RequirePermission::allows).
+        if ($deliveryOrder->isDraft() && ! RequirePermission::allows($request, 'accounting.post')) {
+            return response()->json([
+                'message' => 'Completing a draft delivery order releases stock and posts COGS — accounting.post permission is required to auto-confirm it.',
+                'required_permission' => 'accounting.post',
+            ], 403);
         }
 
         $beforeStatus = $deliveryOrder->status;

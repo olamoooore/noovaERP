@@ -4,6 +4,7 @@ namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Modules\Inventory\Models\InventorySettings;
 
 class InventorySettingsController extends Controller
@@ -29,7 +30,24 @@ class InventorySettingsController extends Controller
         ]);
 
         $settings = InventorySettings::current();
+        $previouslyAllowedNegativeStock = (bool) $settings->allow_negative_stock;
+
         $settings->update($validated);
+
+        // Issue #686: allow_negative_stock is the tenant-level override of the
+        // reservation-aware goods-issue guard. Switching it on is a
+        // stock-control decision (route permission: inventory.settings) and is
+        // logged so the override has an audit trail.
+        if (array_key_exists('allow_negative_stock', $validated)
+            && (bool) $validated['allow_negative_stock'] !== $previouslyAllowedNegativeStock
+        ) {
+            Log::warning('Inventory settings: allow_negative_stock changed', [
+                'tenant_id' => function_exists('tenant') && tenant() ? tenant('id') : null,
+                'from' => $previouslyAllowedNegativeStock,
+                'to' => (bool) $validated['allow_negative_stock'],
+                'actor_id' => $request->user()?->id,
+            ]);
+        }
 
         return response()->json($settings);
     }

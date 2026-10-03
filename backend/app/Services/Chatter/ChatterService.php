@@ -288,6 +288,8 @@ class ChatterService
      * Used by flows that store the file themselves first (e.g. a customer's
      * payment-proof upload through the public acceptance portal, where there is
      * no authenticated user). `$uploadedById` may be null for customer actors.
+     * `$checksum` is the sha256 of the stored bytes (issue #631); callers that
+     * know it should pass it so an overwritten file is detectable.
      */
     public function registerAttachment(
         string $subjectType,
@@ -301,6 +303,7 @@ class ChatterService
         ?string $uploadedByName = null,
         ?string $evidenceType = null,
         ?int $evidenceId = null,
+        ?string $checksum = null,
     ): ChatterAttachment {
         $attachment = ChatterAttachment::create([
             'tenant_id' => $this->currentTenantId(),
@@ -315,7 +318,9 @@ class ChatterService
             'size' => $size,
             'storage_disk' => $storageDisk,
             'storage_path' => $storagePath,
-            'checksum' => null,
+            // Issue #631: evidence mirrors must record the bytes' checksum so
+            // an overwritten/forged file can be detected from the row alone.
+            'checksum' => $checksum,
             // Issue #630: evidence services name the record this file proves,
             // so the chatter delete path can refuse to destroy it.
             'evidence_type' => $evidenceType,

@@ -604,6 +604,12 @@ class InvoiceService
             }
 
             if ($warehouseId !== null) {
+                // Issue #686: an invoice linked to a sales order issues goods
+                // against that order's reservation; stock held by other
+                // documents' reservations is unavailable to it.
+                $reservationSourceType = $invoice->sales_order_id ? 'SalesOrder' : 'Invoice';
+                $reservationSourceId = (int) ($invoice->sales_order_id ?: $invoice->id);
+
                 foreach ($componentDemand as $productId => $demand) {
                     $remainingToDeduct = (float) $demand['quantity'];
                     if ($remainingToDeduct <= 0) {
@@ -621,6 +627,8 @@ class InvoiceService
                         batchNumber: $demand['batch_number'],
                         expiryDate: $demand['expiry_date'] ? new \DateTime($demand['expiry_date']) : null,
                         batchAllocations: $demand['batches'],
+                        reservationSourceType: $reservationSourceType,
+                        reservationSourceId: $reservationSourceId,
                     );
                 }
             }

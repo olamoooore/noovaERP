@@ -8,6 +8,8 @@ use App\Models\Quotation;
 use App\Models\SalesOrder;
 use App\Models\Setting;
 use App\Models\User;
+use App\Platform\Notifications\NotificationReferences;
+use App\Platform\Notifications\NotificationService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -30,6 +32,16 @@ use Illuminate\Support\Facades\Log;
 class SalesApprovalGate
 {
     public const SETTING_KEY = 'sales.approval_threshold_amount';
+
+    /**
+     * How long a gate-raised request stays actionable. Reuses the tenant
+     * setting the Sales Settings screen already publishes
+     * (`sales.invoice.approval_expiry_days`, issue #650) — the previous
+     * hard-coded window (7 days) is the fallback when the tenant never set it.
+     */
+    public const EXPIRY_SETTING_KEY = 'sales.invoice.approval_expiry_days';
+
+    public const DEFAULT_EXPIRY_DAYS = 7;
 
     public const REQUEST_TYPE_SALES_ORDER = 'sales_order_approval';
 
@@ -108,6 +120,33 @@ class SalesApprovalGate
         }
 
         return (float) $raw;
+    }
+
+    /**
+     * Request lifetime in days, from the tenant's Sales Settings. Falls back
+     * to the previous 7-day default when unset/invalid; a configured value
+     * below 1 day is ignored (a request must stay actionable at least a day).
+     */
+    public function expiryDays(): int
+    {
+        try {
+            $raw = Setting::getValue(self::EXPIRY_SETTING_KEY);
+        } catch (\Throwable $e) {
+            Log::warning('SalesApprovalGate: failed to read the approval expiry setting', [
+                'key' => self::EXPIRY_SETTING_KEY,
+                'error' => $e->getMessage(),
+            ]);
+
+            return self::DEFAULT_EXPIRY_DAYS;
+        }
+
+        if ($raw === null || $raw === '' || ! is_numeric($raw)) {
+            return self::DEFAULT_EXPIRY_DAYS;
+        }
+
+        $days = (int) $raw;
+
+        return $days >= 1 ? $days : self::DEFAULT_EXPIRY_DAYS;
     }
 
     /**
@@ -585,7 +624,7 @@ class SalesApprovalGate
      */
     public function createRequest(Model $document, User $user, string $requestType, ?string $reason = null): ApprovalRequest
     {
-        return DB::transaction(function () use ($document, $user, $requestType, $reason) {
+        $request = DB::transaction(function () use ($document, $user, $requestType, $reason) {
             $amount = (float) ($document->total ?? $document->amount ?? 0);
             $metadata = [
                 'document_total' => $amount,
@@ -622,7 +661,7 @@ class SalesApprovalGate
                 'requested_by' => $user->id,
                 'requested_at' => now(),
                 'status' => 'pending',
-                'expires_at' => now()->addDays(7),
+                'expires_at' => now()->addDays($this->expiryDays()),
             ]);
 
             Log::info('SalesApprovalGate: approval request created', [
@@ -632,9 +671,87 @@ class SalesApprovalGate
                 'subject_id' => $document->id,
                 'amount' => $amount,
                 'threshold' => $this->threshold(),
+                'expires_at' => $request->expires_at?->toIso8601String(),
             ]);
 
             return $request;
         });
+
+        // Issue #650: a request nobody is told about sits invisible until
+        // someone happens to open the approvals inbox. Notify the configured
+        // reviewers on the same channel the invoice/DO flows use (in-app row
+        // plus email). Deliberately outside the transaction: a notification
+        // hiccup must never roll back the request itself.
+        $this->notifyApprovers($request, $document, $user);
+
+        return $request;
+    }
+
+    /**
+     * Tell every configured reviewer that a sales document is waiting on them.
+     * Mirrors InvoiceApprovalService::notifyApprovers and
+     * DeliveryOrderService::notifyApprovers.
+     */
+    private function notifyApprovers(ApprovalRequest $request, Model $document, User $submitter): void
+    {
+        try {
+            $reviewers = $this->resolveReviewers($request->request_type, $submitter);
+
+            if ($reviewers->isEmpty()) {
+                Log::warning('SalesApprovalGate: no reviewers configured to notify', [
+                    'request_id' => $request->id,
+                    'request_type' => $request->request_type,
+                ]);
+
+                return;
+            }
+
+            $label = $this->documentLabel($document);
+            $number = $this->documentNumber($document);
+            $amount = number_format((float) ($document->total ?? $document->amount ?? 0), 2);
+            $customer = $document->customer?->name;
+
+            $payload = array_merge([
+                'subject' => trim("{$label} {$number} requires approval"),
+                'body' => trim("{$label} {$number}")
+                    .($customer !== null ? " for {$customer}" : '')
+                    ." totalling {$amount} requires your approval.",
+                'type' => $request->request_type,
+                'amount' => (float) ($document->total ?? $document->amount ?? 0),
+                'reason' => $request->reason,
+                'approval_request_id' => $request->id,
+                'approval_request_number' => $request->request_number,
+                'requested_by' => $submitter->name,
+            ], NotificationReferences::forDocument($document));
+
+            foreach ($reviewers as $reviewer) {
+                app(NotificationService::class)->dispatch('approval.requested', $reviewer, $payload);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('SalesApprovalGate: failed to notify approvers of approval request', [
+                'request_id' => $request->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function documentLabel(Model $document): string
+    {
+        return match (true) {
+            $document instanceof Quotation => 'Quotation',
+            $document instanceof SalesOrder => 'Sales order',
+            $document instanceof \App\Models\Invoice => 'Invoice',
+            $document instanceof \Modules\Sales\Models\DeliveryOrder => 'Delivery order',
+            default => class_basename($document),
+        };
+    }
+
+    private function documentNumber(Model $document): string
+    {
+        return (string) ($document->quotation_number
+            ?? $document->sales_order_number
+            ?? $document->invoice_number
+            ?? $document->delivery_order_number
+            ?? ('#'.$document->getKey()));
     }
 }
