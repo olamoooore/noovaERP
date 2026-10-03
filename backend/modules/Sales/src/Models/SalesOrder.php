@@ -79,6 +79,8 @@ class SalesOrder extends Model
         'customer_name_snapshot' => 'array',
         'billing_address_snapshot' => 'array',
         'shipping_address_snapshot' => 'array',
+        // Issue #896: optimistic-concurrency token.
+        'lock_version' => 'integer',
     ];
 
     protected static function boot()

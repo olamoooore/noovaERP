@@ -296,6 +296,8 @@ class Invoice extends Model
         'superseded_at' => 'datetime',
         'is_active_version' => 'boolean',
         'case_information' => 'array',
+        // Issue #896: optimistic-concurrency token.
+        'lock_version' => 'integer',
     ];
 
     public function customer(): BelongsTo
