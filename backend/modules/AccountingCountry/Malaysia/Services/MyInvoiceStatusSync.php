@@ -22,7 +22,11 @@ class MyInvoiceStatusSync implements SubmissionStatusSyncContract
         }
 
         try {
-            $provider = new MyInvoiceSubmissionProvider;
+            // Resolved from the container so the provider shares the same
+            // client binding the rest of the compliance flow uses (the
+            // submission path and the getStatus probe both resolve it this
+            // way) instead of constructing an independent one.
+            $provider = app(MyInvoiceSubmissionProvider::class);
             $result = $provider->getStatus($submission->provider_reference, $credentials);
 
             if (! ($result['success'] ?? false)

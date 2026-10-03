@@ -3,12 +3,17 @@
 namespace App\Accounting\Services;
 
 use App\Accounting\Plugin\CountryPluginRegistry;
+use App\Enums\UserRole;
 use App\Models\Accounting\ComplianceDocument;
 use App\Models\Accounting\ComplianceEvent;
 use App\Models\Accounting\ComplianceSubmission;
 use App\Models\Accounting\CountryConfiguration;
 use App\Models\CustomerCreditNote;
 use App\Models\Invoice;
+use App\Models\Payment;
+use App\Models\User;
+use App\Platform\Notifications\NotificationReferences;
+use App\Platform\Notifications\NotificationService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -625,6 +630,8 @@ class ComplianceService
                     'new_status' => $submission->submission_status,
                     'synced_at' => now()->toIso8601String(),
                 ], $previousStatus, $actorType);
+
+                $this->applyStatusChangeSideEffects($submission, $previousStatus);
             }
 
             return [
@@ -652,22 +659,173 @@ class ComplianceService
     }
 
     /**
+     * #666 AC2 — a status change to Invalid or to a buyer rejection request
+     * must reach the invoice owner and the finance team, and the rejection
+     * request must be visible on the document the e-invoice pages render.
+     *
+     * The provider answer is already written to the submission by the time
+     * this runs, so a notification problem must not fail the sync — it is
+     * logged instead (same policy as the invoice approval notifications).
+     */
+    private function applyStatusChangeSideEffects(ComplianceSubmission $submission, string $previousStatus): void
+    {
+        try {
+            $newStatus = $submission->submission_status;
+
+            if ($newStatus === $previousStatus
+                || ! in_array($newStatus, ['rejected', 'rejection_requested'], true)) {
+                return;
+            }
+
+            if ($newStatus === 'rejection_requested') {
+                // Rejection handling writes 'rejected' on the document, but a
+                // rejection REQUEST has no path of its own, so the document
+                // kept showing its previous status while the UI waited for
+                // the supplier's response.
+                $submission->document?->update([
+                    'compliance_status' => 'rejection_requested',
+                    'compliance_notes' => 'Buyer requested rejection of this e-invoice; supplier response required.',
+                    'validation_link' => $submission->validation_link,
+                ]);
+            }
+
+            $invoice = $this->resolveInvoiceForSubmission($submission);
+            if (! $invoice) {
+                return;
+            }
+
+            $recipients = $this->financeRecipients();
+            if ($invoice->created_by) {
+                $owner = User::find($invoice->created_by);
+                if ($owner) {
+                    $recipients->push($owner);
+                }
+            }
+
+            $recipients = $recipients->filter()->unique('id')->values();
+            if ($recipients->isEmpty()) {
+                return;
+            }
+
+            $data = array_merge([
+                'subject' => $newStatus === 'rejected'
+                    ? "E-invoice {$invoice->invoice_number} was rejected"
+                    : "Buyer requested rejection of e-invoice {$invoice->invoice_number}",
+                'body' => $newStatus === 'rejected'
+                    ? "E-invoice {$invoice->invoice_number} was rejected by the e-invoicing service and must be corrected and resubmitted."
+                    : "A buyer requested rejection of e-invoice {$invoice->invoice_number}; respond within the rejection window.",
+                'type' => 'einvoice_status',
+                'status' => $newStatus,
+                'reason' => $submission->rejection_reason ?? $submission->error_message ?? null,
+                'invoice_id' => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+            ], NotificationReferences::forInvoice($invoice));
+
+            $notificationService = app(NotificationService::class);
+            foreach ($recipients as $recipient) {
+                $notificationService->dispatch('einvoice.status_changed', $recipient, $data);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('E-invoice status change notification failed', [
+                'submission_id' => $submission->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * The invoice a compliance submission is about — for the document types
+     * issued against an invoice (credit note and refund note reference one).
+     */
+    private function resolveInvoiceForSubmission(ComplianceSubmission $submission): ?Invoice
+    {
+        $document = $submission->document;
+        if (! $document) {
+            return null;
+        }
+
+        return match ($document->document_type) {
+            'invoice' => Invoice::find($document->document_id),
+            'credit_note' => CustomerCreditNote::find($document->document_id)?->invoice,
+            'refund_note' => Payment::find($document->document_id)?->invoice,
+            default => null,
+        };
+    }
+
+    /**
+     * The finance-side users of the current tenant: the central
+     * user_company_access rows with a finance role, resolved back to tenant
+     * users by email (central and tenant user ids are separate id spaces).
+     *
+     * @return \Illuminate\Support\Collection<int, User>
+     */
+    private function financeRecipients(): \Illuminate\Support\Collection
+    {
+        $tenantId = $this->currentTenantId();
+        if ($tenantId === null) {
+            return collect();
+        }
+
+        $emails = DB::table('public.user_company_access')
+            ->join('public.users', 'public.users.id', '=', 'public.user_company_access.user_id')
+            ->where('public.user_company_access.tenant_id', $tenantId)
+            ->whereIn('public.user_company_access.role', [
+                UserRole::OWNER->value,
+                UserRole::ADMIN->value,
+                UserRole::ACCOUNTANT->value,
+            ])
+            ->pluck('public.users.email');
+
+        if ($emails->isEmpty()) {
+            return collect();
+        }
+
+        return User::whereIn('email', $emails)->get();
+    }
+
+    /**
      * Bulk sync pending submissions
      *
+     * @param  bool  $scheduledSweep  true when called by the scheduled job
+     *                                (#666 AC1): only submissions inside the
+     *                                polling window are queried — every run for
+     *                                submissions under 72h (the LHDN buyer
+     *                                rejection window), hourly for submissions
+     *                                between 72h and 7 days, never past 7 days.
+     *                                A manual sync always polls everything.
      * @return int Number synced
      */
-    public function syncPendingSubmissions(string $countryCode): int
+    public function syncPendingSubmissions(string $countryCode, bool $scheduledSweep = false): int
     {
         $countryCode = strtoupper($countryCode);
-        $pending = ComplianceSubmission::where('country_code', $countryCode)
+        $query = ComplianceSubmission::where('country_code', $countryCode)
             ->where('tenant_id', $this->currentTenantId())
             ->whereIn('submission_status', [
                 'pending',
                 'ack',
                 'rejection_requested',            // buyer has requested rejection — check if still pending or auto-expired
                 'rejection_declined_pending_expiry', // supplier declined — poll until LHDN clears rejectRequestDateTime
-            ])
-            ->get();
+            ]);
+
+        if ($scheduledSweep) {
+            $now = now();
+            $query->where(function ($window) use ($now) {
+                $window->whereNull('submitted_at')
+                    // Recent: poll on every sweep (every 10 minutes).
+                    ->orWhere('submitted_at', '>', $now->copy()->subHours(72))
+                    // 72h–7d: poll only when its hourly check is due.
+                    ->orWhere(function ($older) use ($now) {
+                        $older->where('submitted_at', '>', $now->copy()->subDays(7))
+                            ->where(function ($due) use ($now) {
+                                $due->whereNull('last_status_check')
+                                    ->orWhere('last_status_check', '<', $now->copy()->subHour());
+                            });
+                    });
+                // Past 7 days: excluded by all branches — never polled again.
+            });
+        }
+
+        $pending = $query->get();
 
         $synced = 0;
         foreach ($pending as $submission) {
