@@ -9,6 +9,7 @@ use App\Models\InvoiceEvidence;
 use App\Models\User;
 use App\Platform\Notifications\NotificationService;
 use App\Services\Chatter\ChatterService;
+use App\Support\EvidenceFileStorage;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -230,6 +231,9 @@ class InvoiceEvidenceService
                 // reference so chatter can never destroy it.
                 InvoiceEvidence::class,
                 (int) $evidence->id,
+                // Issue #631: same checksum as the evidence row, so an
+                // overwritten upload is detectable from either row.
+                $checksum,
             );
         } catch (\Throwable $e) {
             Log::warning('InvoiceEvidenceService: failed to mirror evidence to chatter', [
@@ -619,9 +623,10 @@ class InvoiceEvidenceService
 
     private function storeFile(Invoice $invoice, UploadedFile $file): string
     {
-        $tenant = tenant();
-        $tenantId = $tenant?->id ?? 'public';
-        $path = "invoices/{$invoice->id}/evidence/".$file->getClientOriginalName();
+        // Issue #631: unique stored name (UUID + sanitised extension). The
+        // original client name is kept as evidence/chatter metadata only, so
+        // a second upload named the same cannot overwrite this file.
+        $path = "invoices/{$invoice->id}/evidence/".EvidenceFileStorage::uniqueName($file);
 
         Storage::disk('public')->putFileAs(
             dirname($path),
