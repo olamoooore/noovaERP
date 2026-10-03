@@ -297,6 +297,8 @@ class QuotationController extends Controller
             // omitted prices resolve through PricingService (the only price
             // authority). price_mode carries the client's intent.
             'lines.*.unit_price' => 'nullable|numeric|min:0',
+            // Issue #685: optional sales UoM for the quoted line.
+            'lines.*.uom_id' => 'nullable|integer|exists:product_uoms,id',
             'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
             'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
@@ -385,7 +387,25 @@ class QuotationController extends Controller
                         ? \App\Models\Product::find($lineData['product_id'])
                         : null;
 
-                    $priced = $pricing->priceLineArray($lineProduct, $lineData, $pricingContext, $linePriceMode($lineData));
+                    $lineMode = $linePriceMode($lineData);
+                    $priced = $pricing->priceLineArray($lineProduct, $lineData, $pricingContext, $lineMode);
+
+                    // Issue #685: a quoted line entered in a sales UoM keeps
+                    // that quantity and a per-sales-UoM price. Engine-resolved
+                    // (auto/manual) prices are per stock unit, so they are
+                    // re-expressed through the shared converter; a legacy
+                    // explicit price is already the caller's per-sales price.
+                    $lineUom = $lineProduct
+                        ? app(\App\Services\ProductUomConverter::class)->resolveOrNull(
+                            (int) $lineProduct->id,
+                            isset($lineData['uom_id']) ? (int) $lineData['uom_id'] : null,
+                        )
+                        : null;
+
+                    if ($lineUom && ! $lineUom->isStockUnit() && $lineMode !== 'legacy' && isset($priced['unit_price'])) {
+                        $priced['unit_price'] = app(\App\Services\ProductUomConverter::class)
+                            ->basePriceToSales($lineUom, (float) $priced['unit_price']);
+                    }
 
                     $quotation->lines()->create(array_merge([
                         'line_type' => $lineType,
@@ -395,6 +415,7 @@ class QuotationController extends Controller
                         'description' => $lineData['description'],
                         'product_notes' => $lineData['product_notes'] ?? null,
                         'quantity' => $lineData['quantity'],
+                        'uom_id' => $lineUom?->id,
                         'unit_price' => $lineData['unit_price'] ?? 0,
                         'tax_rate' => $lineData['tax_rate'] ?? 0,
                         // #303 (X3): explicit flag wins; otherwise the engine
@@ -521,6 +542,8 @@ class QuotationController extends Controller
             // #295 (Q7): decimals allowed, same domain rule as create.
             'lines.*.quantity' => 'nullable|numeric|gt:0|decimal:0,4',
             'lines.*.unit_price' => 'nullable|numeric|min:0',
+            // Issue #685: optional sales UoM for the quoted line.
+            'lines.*.uom_id' => 'nullable|integer|exists:product_uoms,id',
             'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
             'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
@@ -573,6 +596,19 @@ class QuotationController extends Controller
                         $mode = $lineData['price_mode'] ?? (((float) ($lineData['unit_price'] ?? 0) > 0) ? 'legacy' : 'auto');
                         $priced = $pricing->priceLineArray($lineProduct, $lineData, $pricingContext, $mode);
 
+                        // Issue #685: same sales-UoM rule as create.
+                        $lineUom = $lineProduct
+                            ? app(\App\Services\ProductUomConverter::class)->resolveOrNull(
+                                (int) $lineProduct->id,
+                                isset($lineData['uom_id']) ? (int) $lineData['uom_id'] : null,
+                            )
+                            : null;
+
+                        if ($lineUom && ! $lineUom->isStockUnit() && $mode !== 'legacy' && isset($priced['unit_price'])) {
+                            $priced['unit_price'] = app(\App\Services\ProductUomConverter::class)
+                                ->basePriceToSales($lineUom, (float) $priced['unit_price']);
+                        }
+
                         $quotation->lines()->create(array_merge([
                             'line_type' => $lineType,
                             'sequence' => $lineData['sequence'] ?? $lineIndex,
@@ -581,6 +617,7 @@ class QuotationController extends Controller
                             'description' => $lineData['description'] ?? '',
                             'product_notes' => $lineData['product_notes'] ?? null,
                             'quantity' => $lineData['quantity'] ?? 0,
+                            'uom_id' => $lineUom?->id,
                             'unit_price' => $lineData['unit_price'] ?? 0,
                             'tax_rate' => $lineData['tax_rate'] ?? 0,
                             // #303 (X3): same engine-first resolution as create.
@@ -733,21 +770,38 @@ class QuotationController extends Controller
             // Build SalesOrder lines from quotation lines
             // FR-5.5: quotation → SO is a CONVERSION — currency, rate
             // snapshot and line prices propagate unchanged; nothing re-prices.
-            $salesLines = $quotation->lines->map(fn ($line) => array_filter([
-                'line_type' => $line->line_type ?? 'product',
-                'sequence' => $line->sequence ?? 0,
-                'product_id' => $line->product_id,
-                'description' => $line->description,
-                'quantity' => $line->quantity,
-                'unit_price' => $line->unit_price,
-                'price_mode' => 'carried',
-                'base_unit_price' => $line->base_unit_price,
-                'pricing_trace' => $line->pricing_trace,
-                'tax_rate' => $line->tax_rate,
-                // #303 (X3): the accepted price mode travels with the line.
-                'tax_inclusive' => (bool) $line->tax_inclusive,
-                'discount_amount' => $line->discount_amount,
-            ], fn ($v) => $v !== null))->toArray();
+            // Issue #685: a line quoted in a sales UoM hands the order the
+            // same quantity + UoM (the order service converts to stock units)
+            // and a per-stock-unit price, so the accepted per-Box price is
+            // preserved exactly.
+            $salesLines = $quotation->lines->map(function ($line) {
+                $uomConverter = app(\App\Services\ProductUomConverter::class);
+                $lineUom = ($line->uom_id && $line->product_id)
+                    ? $uomConverter->resolveOrNull((int) $line->product_id, (int) $line->uom_id)
+                    : null;
+
+                $unitPrice = $line->unit_price;
+                if ($lineUom && ! $lineUom->isStockUnit() && $unitPrice !== null) {
+                    $unitPrice = $uomConverter->salesPriceToBase($lineUom, (float) $unitPrice);
+                }
+
+                return array_filter([
+                    'line_type' => $line->line_type ?? 'product',
+                    'sequence' => $line->sequence ?? 0,
+                    'product_id' => $line->product_id,
+                    'description' => $line->description,
+                    'quantity' => $line->quantity,
+                    'uom_id' => $lineUom?->id,
+                    'unit_price' => $unitPrice,
+                    'price_mode' => 'carried',
+                    'base_unit_price' => $line->base_unit_price,
+                    'pricing_trace' => $line->pricing_trace,
+                    'tax_rate' => $line->tax_rate,
+                    // #303 (X3): the accepted price mode travels with the line.
+                    'tax_inclusive' => (bool) $line->tax_inclusive,
+                    'discount_amount' => $line->discount_amount,
+                ], fn ($v) => $v !== null);
+            })->toArray();
 
             // Resolve warehouse if needed
             $warehouseId = null;

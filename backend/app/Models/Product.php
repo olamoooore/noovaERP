@@ -287,6 +287,23 @@ class Product extends Model
         return $this->hasMany(ProductUom::class);
     }
 
+    /**
+     * Issue #685: the product's stock UoM (the base unit every stock level and
+     * movement is stored in).
+     */
+    public function stockUom(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(ProductUom::class)->where('is_base_unit', true);
+    }
+
+    /**
+     * Issue #685: the UoMs this product may be sold in.
+     */
+    public function salesUoms(): HasMany
+    {
+        return $this->hasMany(ProductUom::class)->where('is_sales_unit', true);
+    }
+
     // Suppliers
     public function suppliers(): BelongsToMany
     {

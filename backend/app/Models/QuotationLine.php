@@ -16,6 +16,8 @@ class QuotationLine extends Model
         'description',
         'product_notes',
         'quantity',
+        // Issue #685: the sales UoM the quoted line is denominated in.
+        'uom_id',
         'unit_price',
         'base_unit_price',
         'pricing_trace',
@@ -59,6 +61,14 @@ class QuotationLine extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    /**
+     * Issue #685: the sales UoM the quoted line is denominated in.
+     */
+    public function uom(): BelongsTo
+    {
+        return $this->belongsTo(ProductUom::class, 'uom_id');
     }
 
     /**

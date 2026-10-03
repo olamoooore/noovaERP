@@ -27,6 +27,9 @@ class SalesOrderLine extends Model
         'invoicing_policy',
         'quantity_cancelled',
         'unit',
+        // Issue #685: the sales UoM this line was entered in. Null (or the
+        // base unit) means the persisted quantity is already in stock units.
+        'uom_id',
         'unit_price',
         'base_unit_price',
         'pricing_trace',
@@ -71,6 +74,14 @@ class SalesOrderLine extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(\App\Models\Product::class);
+    }
+
+    /**
+     * Issue #685: the sales unit this line was entered in.
+     */
+    public function uom(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\ProductUom::class, 'uom_id');
     }
 
     public function incomeAccount(): BelongsTo
