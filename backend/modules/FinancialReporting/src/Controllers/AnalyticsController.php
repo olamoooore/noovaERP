@@ -5,6 +5,7 @@ namespace Modules\FinancialReporting\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Validation\ValidationException;
 use Modules\FinancialReporting\DTOs\ReportFilter;
 use Modules\FinancialReporting\Services\Analytics\CustomerAnalyticsService;
 use Modules\FinancialReporting\Services\Analytics\ExpenseAnalyticsService;
@@ -19,24 +20,80 @@ class AnalyticsController extends Controller
     ) {}
 
     /**
+     * Query keys the six sales-analytics endpoints accept (#593).
+     *
+     * A filter the caller believes was applied but silently dropped is worse
+     * than an error, so anything outside this set — and outside each
+     * endpoint's own extras (top / interval) — is rejected with a 422.
+     */
+    private const SALES_FILTER_RULES = [
+        'start_date' => 'nullable|date',
+        'end_date' => 'nullable|date|after_or_equal:start_date',
+        'tag' => 'nullable|string|max:120',
+        'currency_code' => 'nullable|string|size:3',
+        'customer_id' => 'nullable|integer|exists:customers,id',
+        'product_id' => 'nullable|integer|exists:products,id',
+        'category_id' => 'nullable|integer|exists:product_categories,id',
+        'salesperson_id' => 'nullable|integer|exists:users,id',
+        'channel' => 'nullable|in:pos,admin,ecommerce,storefront',
+        'legal_entity_id' => 'nullable|integer|exists:legal_entities,id',
+        // ResolveEntityContext reads entity_id (or X-Entity-Id); keep the
+        // query spelling of that context legal on these routes too.
+        'entity_id' => 'nullable|integer|exists:legal_entities,id',
+    ];
+
+    /**
+     * Validates a sales report's filters, rejects unknown query keys with a
+     * 422 and resolves the legal entity to scope by (#593).
+     *
+     * The entity is the explicit legal_entity_id when given, otherwise the
+     * request's entity context set by ResolveEntityContext (X-Entity-Id
+     * header, entity_id param, or the user's default entity) — so a session
+     * bound to one entity reads only that entity.
+     *
+     * Deliberately called OUTSIDE each method's try/catch: ValidationException
+     * has to reach Laravel's handler as a 422, not be logged as a 500.
+     *
+     * @param  array<string, string>  $extraRules
+     */
+    private function salesFilter(Request $request, array $extraRules = []): ReportFilter
+    {
+        $rules = array_merge(self::SALES_FILTER_RULES, $extraRules);
+
+        $unknown = array_diff(array_keys($request->query()), array_keys($rules));
+        if ($unknown !== []) {
+            throw ValidationException::withMessages([
+                'filters' => 'Unknown filter(s) for this report: '.implode(', ', $unknown),
+            ]);
+        }
+
+        $validated = $request->validate($rules);
+        $filter = ReportFilter::fromRequest($validated);
+
+        if ($filter->legalEntityId === null) {
+            $context = $request->attributes->get('legal_entity_id');
+            if ($context === null && isset($validated['entity_id'])) {
+                $context = $validated['entity_id'];
+            }
+            $filter->legalEntityId = $context !== null ? (int) $context : null;
+        }
+
+        return $filter;
+    }
+
+    /**
      * Get sales by product
      */
     public function salesByProduct(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'start_date' => 'nullable|date',
-            'end_date' => 'nullable|date|after_or_equal:start_date',
-            'tag' => 'nullable|string|max:120',
-            'currency_code' => 'nullable|string|size:3',
+        $filter = $this->salesFilter($request, [
             'top' => 'nullable|integer|min:1|max:100',
         ]);
 
         try {
-            $filter = ReportFilter::fromRequest($validated);
-
             // Check if top N products requested
-            if (isset($validated['top'])) {
-                $reportData = $this->salesAnalyticsService->getTopSellingProducts($filter, $validated['top']);
+            if ($request->has('top')) {
+                $reportData = $this->salesAnalyticsService->getTopSellingProducts($filter, $request->integer('top'));
             } else {
                 $reportData = $this->salesAnalyticsService->getSalesByProduct($filter);
             }
@@ -46,6 +103,7 @@ class AnalyticsController extends Controller
                 'success' => true,
                 'data' => [
                     'products' => $reportData['data'] ?? [],
+                    'pos_excluded_by_tag' => (bool) ($reportData['pos_excluded_by_tag'] ?? false),
                 ],
             ]);
 
@@ -67,15 +125,9 @@ class AnalyticsController extends Controller
      */
     public function salesByCustomer(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'start_date' => 'nullable|date',
-            'end_date' => 'nullable|date|after_or_equal:start_date',
-            'tag' => 'nullable|string|max:120',
-            'currency_code' => 'nullable|string|size:3',
-        ]);
+        $filter = $this->salesFilter($request);
 
         try {
-            $filter = ReportFilter::fromRequest($validated);
             $reportData = $this->salesAnalyticsService->getSalesByCustomer($filter);
 
             // Transform response to match frontend expectations
@@ -83,6 +135,7 @@ class AnalyticsController extends Controller
                 'success' => true,
                 'data' => [
                     'customers' => $reportData['data'] ?? [],
+                    'pos_excluded_by_tag' => (bool) ($reportData['pos_excluded_by_tag'] ?? false),
                 ],
             ]);
 
@@ -104,15 +157,9 @@ class AnalyticsController extends Controller
      */
     public function salesByCurrency(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'start_date' => 'nullable|date',
-            'end_date' => 'nullable|date|after_or_equal:start_date',
-            'tag' => 'nullable|string|max:120',
-            'currency_code' => 'nullable|string|size:3',
-        ]);
+        $filter = $this->salesFilter($request);
 
         try {
-            $filter = ReportFilter::fromRequest($validated);
             $reportData = $this->salesAnalyticsService->getSalesByCurrency($filter);
 
             return response()->json([
@@ -120,6 +167,7 @@ class AnalyticsController extends Controller
                 'data' => [
                     'currencies' => $reportData['data'] ?? [],
                     'summary' => $reportData['summary'] ?? [],
+                    'pos_excluded_by_tag' => (bool) ($reportData['pos_excluded_by_tag'] ?? false),
                 ],
             ]);
         } catch (\Exception $e) {
@@ -137,26 +185,19 @@ class AnalyticsController extends Controller
      */
     public function salesTrends(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'start_date' => 'nullable|date',
-            'end_date' => 'nullable|date|after_or_equal:start_date',
-            'interval' => 'nullable|in:day,week,month,year',
-            'tag' => 'nullable|string|max:120',
-            'currency_code' => 'nullable|string|size:3',
+        $filter = $this->salesFilter($request, [
             'interval' => 'nullable|in:day,week,month,year',
         ]);
 
         try {
-            $filter = ReportFilter::fromRequest($validated);
-            $interval = $validated['interval'] ?? 'day';
-
-            $reportData = $this->salesAnalyticsService->getSalesTrends($filter, $interval);
+            $reportData = $this->salesAnalyticsService->getSalesTrends($filter, $filter->interval ?? 'day');
 
             // Transform response to match frontend expectations
             return response()->json([
                 'success' => true,
                 'data' => [
                     'trends' => $reportData['data'] ?? [],
+                    'pos_excluded_by_tag' => (bool) ($reportData['pos_excluded_by_tag'] ?? false),
                 ],
             ]);
 
@@ -178,14 +219,9 @@ class AnalyticsController extends Controller
      */
     public function salesByCategory(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'start_date' => 'nullable|date',
-            'end_date' => 'nullable|date|after_or_equal:start_date',
-            'tag' => 'nullable|string|max:120',
-        ]);
+        $filter = $this->salesFilter($request);
 
         try {
-            $filter = ReportFilter::fromRequest($validated);
             $reportData = $this->salesAnalyticsService->getSalesByCategory($filter);
 
             // Transform response to match frontend expectations
@@ -193,6 +229,7 @@ class AnalyticsController extends Controller
                 'success' => true,
                 'data' => [
                     'categories' => $reportData['data'] ?? [],
+                    'pos_excluded_by_tag' => (bool) ($reportData['pos_excluded_by_tag'] ?? false),
                 ],
             ]);
 
@@ -214,13 +251,9 @@ class AnalyticsController extends Controller
      */
     public function profitMargins(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'start_date' => 'nullable|date',
-            'end_date' => 'nullable|date|after_or_equal:start_date',
-        ]);
+        $filter = $this->salesFilter($request);
 
         try {
-            $filter = ReportFilter::fromRequest($validated);
             $reportData = $this->salesAnalyticsService->getProfitMargins($filter);
 
             return response()->json([

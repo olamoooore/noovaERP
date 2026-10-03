@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { TagFilterSelect } from '@/components/tags/TagFilterSelect';
+import api from '@/lib/api';
 import pricingApi from '@/lib/pricingApi';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
 import { ReportExportToolbar } from '@/components/reports/ReportExportToolbar';
@@ -50,6 +51,48 @@ const defaultFilters = (): ReportFiltersType => {
     interval: 'day',
   };
 };
+
+interface FilterSelectOption {
+  value: string;
+  label: string;
+}
+
+/**
+ * One labelled dropdown in the sales filter bar (#593). `undefined` from
+ * `onChange` clears the filter; the 'all' item is what carries that value.
+ */
+const FilterSelect = ({
+  label,
+  value,
+  onChange,
+  options,
+  allLabel,
+  width = 'w-[160px]',
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string | undefined) => void;
+  options: FilterSelectOption[];
+  allLabel: string;
+  width?: string;
+}) => (
+  <div className="space-y-1.5">
+    <Label className="text-xs font-medium text-muted-foreground">{label}</Label>
+    <Select value={value} onValueChange={(next) => onChange(next === 'all' ? undefined : next)}>
+      <SelectTrigger className={`h-9 ${width} rounded-full text-sm`} aria-label={label}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">{allLabel}</SelectItem>
+        {options.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  </div>
+);
 
 /** `2026-08-31` → `31 Aug 2026` (falls back to the raw value). */
 const formatPeriodDate = (value?: string | null) => {
@@ -179,6 +222,74 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     queryFn: () => pricingApi.sellableCurrencies(),
   });
 
+  // ---------------------------------------------------------------------------
+  // Issue #593: filter option lists. Kept separate from the report queries so a
+  // missing permission on one list only empties its dropdown, never the report.
+  // ---------------------------------------------------------------------------
+  const { data: filterCustomers = [] } = useQuery({
+    queryKey: ['sales-filters', 'customers'],
+    queryFn: async () => {
+      const res = await api.get('/customers', { params: { per_page: 500 } });
+      return (res.data?.data?.data ?? res.data?.data ?? []) as Array<{
+        id: number;
+        name: string;
+        salesperson?: { id: number; name: string } | null;
+      }>;
+    },
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+
+  const { data: filterProducts = [] } = useQuery({
+    queryKey: ['sales-filters', 'products'],
+    queryFn: async () => {
+      const res = await api.get('/products', { params: { per_page: 500 } });
+      return (res.data?.data ?? []) as Array<{ id: number; name: string }>;
+    },
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+
+  const { data: filterCategories = [] } = useQuery({
+    queryKey: ['product-categories'],
+    queryFn: async () => {
+      const res = await api.get('/product-categories');
+      return (Array.isArray(res.data) ? res.data : res.data?.data || []) as Array<{
+        id: number;
+        name: string;
+      }>;
+    },
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+
+  const { data: filterEntities = [] } = useQuery({
+    queryKey: ['sales-filters', 'legal-entities'],
+    queryFn: async () => {
+      const res = await api.get('/accounting/legal-entities');
+      return (Array.isArray(res.data) ? res.data : res.data?.data || []) as Array<{
+        id: number;
+        name: string;
+      }>;
+    },
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+
+  // The salesperson filter matches customers.salesperson_id, so list the
+  // salespeople actually assigned to a customer rather than tenant users —
+  // those are different id spaces and the report would silently return 0 rows.
+  const filterSalespersons = useMemo(() => {
+    const byId = new Map<number, string>();
+    for (const customer of filterCustomers) {
+      const salesperson = customer.salesperson;
+      if (salesperson?.id && !byId.has(salesperson.id)) {
+        byId.set(salesperson.id, salesperson.name);
+      }
+    }
+    return [...byId].map(([id, name]) => ({ id, name }));
+  }, [filterCustomers]);
+
   const { data: byCurrencyData } = useQuery({
     queryKey: ['sales-by-currency', filters],
     queryFn: () => reportApi.getSalesByCurrency(filters),
@@ -240,6 +351,12 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
   const hasCustomFilters =
     !!filters.tag ||
     !!filters.currency_code ||
+    !!filters.customer_id ||
+    !!filters.product_id ||
+    !!filters.category_id ||
+    !!filters.salesperson_id ||
+    !!filters.channel ||
+    !!filters.legal_entity_id ||
     filters.interval !== 'day' ||
     filters.start_date !== defaultFilters().start_date ||
     filters.end_date !== defaultFilters().end_date;
@@ -557,6 +674,60 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
           </Select>
         </div>
 
+        <FilterSelect
+          label="Customer"
+          allLabel="All customers"
+          value={filters.customer_id ? String(filters.customer_id) : 'all'}
+          onChange={(value) => updateFilter('customer_id', value === undefined ? undefined : Number(value))}
+          options={filterCustomers.map((customer) => ({ value: String(customer.id), label: customer.name }))}
+        />
+
+        <FilterSelect
+          label="Product"
+          allLabel="All products"
+          value={filters.product_id ? String(filters.product_id) : 'all'}
+          onChange={(value) => updateFilter('product_id', value === undefined ? undefined : Number(value))}
+          options={filterProducts.map((product) => ({ value: String(product.id), label: product.name }))}
+        />
+
+        <FilterSelect
+          label="Category"
+          allLabel="All categories"
+          value={filters.category_id ? String(filters.category_id) : 'all'}
+          onChange={(value) => updateFilter('category_id', value === undefined ? undefined : Number(value))}
+          options={filterCategories.map((category) => ({ value: String(category.id), label: category.name }))}
+        />
+
+        <FilterSelect
+          label="Salesperson"
+          allLabel="All salespeople"
+          value={filters.salesperson_id ? String(filters.salesperson_id) : 'all'}
+          onChange={(value) => updateFilter('salesperson_id', value === undefined ? undefined : Number(value))}
+          options={filterSalespersons.map((person) => ({ value: String(person.id), label: person.name }))}
+        />
+
+        <FilterSelect
+          label="Channel"
+          allLabel="All channels"
+          value={filters.channel || 'all'}
+          onChange={(value) => updateFilter('channel', value as ReportFiltersType['channel'])}
+          options={[
+            { value: 'pos', label: 'POS' },
+            { value: 'admin', label: 'Admin' },
+            { value: 'ecommerce', label: 'E-commerce' },
+            { value: 'storefront', label: 'Storefront' },
+          ]}
+        />
+
+        <FilterSelect
+          label="Legal entity"
+          allLabel="All entities"
+          width="w-[170px]"
+          value={filters.legal_entity_id ? String(filters.legal_entity_id) : 'all'}
+          onChange={(value) => updateFilter('legal_entity_id', value === undefined ? undefined : Number(value))}
+          options={filterEntities.map((entity) => ({ value: String(entity.id), label: entity.name }))}
+        />
+
         <div className="space-y-1.5">
           <Label className="text-xs font-medium text-muted-foreground">Interval</Label>
           <Select
@@ -583,6 +754,12 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
           >
             Reset
           </HeaderActionButton>
+        )}
+        {filters.tag && (
+          <p className="mt-3 flex w-full items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+            <Icon icon="solar:info-circle-bold" className="h-4 w-4 shrink-0" />
+            {"POS sales excluded (POS orders can't be tagged)"}
+          </p>
         )}
       </div>
     </Card>

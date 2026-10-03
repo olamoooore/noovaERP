@@ -87,7 +87,7 @@ class SalesAnalyticsService
 
         try {
             $sales = DB::query()
-                ->fromSub($this->lineItemsUnion($startDate, $endDate, $salesOrderIds, $filter->currencyCode, $invoiceIds), 'li')
+                ->fromSub($this->lineItemsUnion($filter, $salesOrderIds, $invoiceIds), 'li')
                 ->leftJoin('products as p', 'p.id', '=', 'li.product_id')
                 ->select([
                     'p.id',
@@ -129,6 +129,7 @@ class SalesAnalyticsService
 
         return [
             'title' => 'Sales by Product',
+            'pos_excluded_by_tag' => $filter->tag !== null,
             'period' => [
                 'start_date' => $startDate->format('Y-m-d'),
                 'end_date' => $endDate->format('Y-m-d'),
@@ -164,7 +165,7 @@ class SalesAnalyticsService
             // un-invoiced bookings, all tax-excluded, discount-net and in the base
             // currency, with walk-ins (POS customer_id null) in the same aggregate.
             $rows = DB::query()
-                ->fromSub($this->lineItemsUnion($startDate, $endDate, $salesOrderIds, $filter->currencyCode, $invoiceIds), 'li')
+                ->fromSub($this->lineItemsUnion($filter, $salesOrderIds, $invoiceIds), 'li')
                 ->leftJoin('customers as c', 'c.id', '=', 'li.customer_id')
                 ->select([
                     'li.customer_id',
@@ -204,6 +205,7 @@ class SalesAnalyticsService
 
         return [
             'title' => 'Sales by Customer',
+            'pos_excluded_by_tag' => $filter->tag !== null,
             'period' => [
                 'start_date' => $startDate->format('Y-m-d'),
                 'end_date' => $endDate->format('Y-m-d'),
@@ -239,7 +241,7 @@ class SalesAnalyticsService
 
         try {
             $rows = DB::query()
-                ->fromSub($this->lineItemsUnion($startDate, $endDate, $salesOrderIds, $filter->currencyCode, $invoiceIds), 'li')
+                ->fromSub($this->lineItemsUnion($filter, $salesOrderIds, $invoiceIds), 'li')
                 ->select([
                     'li.currency_code',
                     DB::raw('SUM(li.document_revenue) as total_revenue'),
@@ -258,6 +260,7 @@ class SalesAnalyticsService
 
         return [
             'title' => 'Sales by Currency',
+            'pos_excluded_by_tag' => $filter->tag !== null,
             'data' => $rows->map(fn ($row) => [
                 'currency_code' => $row->currency_code,
                 'total_revenue' => round((float) $row->total_revenue, 2),
@@ -292,7 +295,7 @@ class SalesAnalyticsService
             // so the trend series, the category split and the product table all
             // reconcile for the selected period (#355).
             $trends = DB::query()
-                ->fromSub($this->lineItemsUnion($startDate, $endDate, $salesOrderIds, $filter->currencyCode, $invoiceIds), 'li')
+                ->fromSub($this->lineItemsUnion($filter, $salesOrderIds, $invoiceIds), 'li')
                 ->select([
                     DB::raw("TO_CHAR(li.revenue_date, '{$dateFormat}') as period"),
                     DB::raw('COUNT(DISTINCT li.order_ref) as order_count'),
@@ -346,6 +349,7 @@ class SalesAnalyticsService
 
         return [
             'title' => 'Sales Trends',
+            'pos_excluded_by_tag' => $filter->tag !== null,
             'interval' => $interval,
             'period' => [
                 'start_date' => $startDate->format('Y-m-d'),
@@ -366,7 +370,7 @@ class SalesAnalyticsService
 
         try {
             $sales = DB::query()
-                ->fromSub($this->lineItemsUnion($startDate, $endDate, $salesOrderIds, $filter->currencyCode, $invoiceIds), 'li')
+                ->fromSub($this->lineItemsUnion($filter, $salesOrderIds, $invoiceIds), 'li')
                 ->leftJoin('products as p', 'p.id', '=', 'li.product_id')
                 ->leftJoin('product_categories as c', 'c.id', '=', 'p.category_id')
                 ->select([
@@ -406,6 +410,7 @@ class SalesAnalyticsService
 
         return [
             'title' => 'Sales by Category',
+            'pos_excluded_by_tag' => $filter->tag !== null,
             'period' => [
                 'start_date' => $startDate->format('Y-m-d'),
                 'end_date' => $endDate->format('Y-m-d'),
@@ -512,15 +517,22 @@ class SalesAnalyticsService
      * SQL-injection surface.
      */
     private function lineItemsUnion(
-        Carbon $startDate,
-        Carbon $endDate,
+        ReportFilter $filter,
         ?array $salesOrderIds = null,
-        ?string $currencyCode = null,
         ?array $invoiceIds = null,
     ) {
+        $startDate = $filter->startDate ?? Carbon::now()->startOfMonth();
+        $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
+        $currencyCode = $filter->currencyCode;
+
         $start = $startDate->format('Y-m-d H:i:s');
-        $end = $endDate->endOfDay()->format('Y-m-d H:i:s');
+        $end = $endDate->copy()->endOfDay()->format('Y-m-d H:i:s');
         $baseCurrency = '(SELECT base_currency FROM company_settings ORDER BY id LIMIT 1)';
+
+        // Issue #593: customer / product / category / salesperson / channel /
+        // legal-entity filters, applied per arm so the read model is narrowed
+        // by them instead of ignoring them.
+        $dim = $this->dimensionClauses($filter);
 
         // MRD FR-8.1: currency dimension. Every arm carries a document currency
         // (POS orders snapshot theirs too), so an active filter keeps the
@@ -603,7 +615,7 @@ class SalesAnalyticsService
             JOIN pos_orders po ON po.id = poi.pos_order_id
             WHERE COALESCE(po.paid_at, po.created_at) BETWEEN '{$start}' AND '{$end}'
               AND po.status = 'paid'
-              AND po.deleted_at IS NULL{$posTagClause}{$posCurrencyFilter}
+              AND po.deleted_at IS NULL{$posTagClause}{$posCurrencyFilter}{$dim['pos']}
         ) UNION ALL (
             SELECT sol.product_id,
                    so.customer_id,
@@ -637,7 +649,7 @@ class SalesAnalyticsService
                               AND d.sales_order_id = so.id
                         )
                     )
-              ){$soTagClause}{$soCurrencyFilter}
+              ){$soTagClause}{$soCurrencyFilter}{$dim['so']}
         ) UNION ALL (
             SELECT il.product_id,
                    i.customer_id,
@@ -661,7 +673,7 @@ class SalesAnalyticsService
                       SELECT 1 FROM sales_orders poso
                       WHERE poso.id = i.sales_order_id AND poso.channel = 'pos'
                   )
-              ){$invoiceTagClause}{$invoiceCurrencyFilter}
+              ){$invoiceTagClause}{$invoiceCurrencyFilter}{$dim['invoice']}
         ) UNION ALL (
             SELECT cnl.product_id,
                    ccn.customer_id,
@@ -676,7 +688,7 @@ class SalesAnalyticsService
             JOIN customer_credit_notes ccn ON ccn.id = cnl.credit_note_id
             WHERE ccn.status = 'posted'
               AND ccn.voided_at IS NULL
-              AND ccn.credit_note_date BETWEEN '{$start}' AND '{$end}'{$creditNoteTagClause}{$creditNoteCurrencyFilter}
+              AND ccn.credit_note_date BETWEEN '{$start}' AND '{$end}'{$creditNoteTagClause}{$creditNoteCurrencyFilter}{$dim['credit_note']}
         )";
 
         // Outer wrapper: convert each document-currency amount to the base
@@ -695,6 +707,116 @@ class SalesAnalyticsService
                 FROM ({$arms}) AS li_doc";
 
         return DB::table(DB::raw('('.$sql.') AS li'));
+    }
+
+    /**
+     * WHERE fragments for the #593 dimension filters — customer, product,
+     * category, salesperson, channel and legal entity — one per union arm, so
+     * a filter narrows the read model itself instead of being accepted and
+     * then dropped.
+     *
+     * Each fragment starts with ' AND ' so it can be concatenated after the
+     * arm's existing conditions. Aliases match lineItemsUnion: po/poi (POS),
+     * so/sol (sales order), i/il (invoice), ccn/cnl (credit note).
+     *
+     * Channel per arm, from the document's real origin:
+     *   - POS orders are the only thing that can be 'pos' — the sales-order
+     *     arm already excludes pos-channel orders, and the invoice arm
+     *     excludes POS-origin invoices, so both are suppressed outright;
+     *   - a sales order carries channel directly (admin | ecommerce | storefront);
+     *   - an invoice inherits its sales order's channel, else its POS/web
+     *     origin, else 'admin' (a manual invoice);
+     *   - a credit note reverses an invoice, so it carries that invoice's
+     *     channel — a POS return stays 'pos'.
+     *
+     * Every interpolated value is an int-cast id or a channel literal from the
+     * controller's in:pos,admin,ecommerce,storefront rule, so nothing
+     * user-supplied is spliced in raw.
+     *
+     * @return array{pos: string, so: string, invoice: string, credit_note: string}
+     */
+    private function dimensionClauses(ReportFilter $filter): array
+    {
+        $clauses = ['pos' => '', 'so' => '', 'invoice' => '', 'credit_note' => ''];
+
+        if ($filter->customerId !== null) {
+            $id = (int) $filter->customerId;
+            $clauses['pos'] .= " AND po.customer_id = {$id}";
+            $clauses['so'] .= " AND so.customer_id = {$id}";
+            $clauses['invoice'] .= " AND i.customer_id = {$id}";
+            $clauses['credit_note'] .= " AND ccn.customer_id = {$id}";
+        }
+
+        if ($filter->productId !== null) {
+            $id = (int) $filter->productId;
+            $clauses['pos'] .= " AND poi.product_id = {$id}";
+            $clauses['so'] .= " AND sol.product_id = {$id}";
+            $clauses['invoice'] .= " AND il.product_id = {$id}";
+            $clauses['credit_note'] .= " AND cnl.product_id = {$id}";
+        }
+
+        if ($filter->categoryId !== null) {
+            $id = (int) $filter->categoryId;
+            $in = " IN (SELECT id FROM products WHERE category_id = {$id})";
+            $clauses['pos'] .= " AND poi.product_id{$in}";
+            $clauses['so'] .= " AND sol.product_id{$in}";
+            $clauses['invoice'] .= " AND il.product_id{$in}";
+            $clauses['credit_note'] .= " AND cnl.product_id{$in}";
+        }
+
+        if ($filter->salespersonId !== null) {
+            $id = (int) $filter->salespersonId;
+            $owns = " IN (SELECT id FROM customers WHERE salesperson_id = {$id})";
+            $clauses['pos'] .= " AND po.customer_id{$owns}";
+            $clauses['so'] .= " AND so.customer_id{$owns}";
+            $clauses['invoice'] .= " AND i.customer_id{$owns}";
+            $clauses['credit_note'] .= " AND ccn.customer_id{$owns}";
+        }
+
+        if ($filter->legalEntityId !== null) {
+            $id = (int) $filter->legalEntityId;
+            $clauses['pos'] .= " AND po.legal_entity_id = {$id}";
+            $clauses['so'] .= " AND so.legal_entity_id = {$id}";
+            $clauses['invoice'] .= " AND i.legal_entity_id = {$id}";
+            $clauses['credit_note'] .= " AND ccn.legal_entity_id = {$id}";
+        }
+
+        $channel = $filter->channel !== null && $filter->channel !== ''
+            ? strtolower($filter->channel)
+            : null;
+        if ($channel !== null) {
+            if (! in_array($channel, ['pos', 'admin', 'ecommerce', 'storefront'], true)) {
+                return array_map(fn () => ' AND 1 = 0', $clauses);
+            }
+
+            $clauses['pos'] .= $channel === 'pos' ? '' : ' AND 1 = 0';
+            $clauses['so'] .= $channel === 'pos'
+                ? ' AND 1 = 0'
+                : " AND so.channel = '{$channel}'";
+
+            $invoiceExpr = $this->invoiceChannelSql('i');
+            $clauses['invoice'] .= " AND ({$invoiceExpr}) = '{$channel}'";
+            $clauses['credit_note'] .= " AND (SELECT {$invoiceExpr}"
+                .' FROM invoices i WHERE i.id = ccn.invoice_id)'
+                ." = '{$channel}'";
+        }
+
+        return $clauses;
+    }
+
+    /**
+     * The channel an invoice belongs to: its sales order's channel, else its
+     * POS/web origin, else 'admin'. A correlated subquery in SQL because the
+     * invoice arm and the credit-note arm both need it against a different
+     * invoice alias (`i` in each case — the credit-note arm correlates it to
+     * the invoice being reversed).
+     */
+    private function invoiceChannelSql(string $alias): string
+    {
+        return "COALESCE((SELECT so.channel FROM sales_orders so WHERE so.id = {$alias}.sales_order_id),"
+            ." CASE WHEN {$alias}.pos_order_id IS NOT NULL THEN 'pos'"
+            ." WHEN {$alias}.web_order_id IS NOT NULL THEN 'ecommerce'"
+            ." ELSE 'admin' END)";
     }
 
     /**
