@@ -708,11 +708,21 @@ class DeliveryOrderController extends Controller
             'channel' => 'nullable|string|max:50',
         ]);
 
+        $beforeStatus = $deliveryOrder->status;
+
         try {
             $deliveryOrder = $this->deliveryService->confirmDeliveryOrder($deliveryOrder, [
                 'method' => $validated['method'] ?? 'digital',
                 'channel' => $validated['channel'] ?? null,
             ]);
+
+            $this->writeAuditLog(
+                'delivery_order_confirmed',
+                (int) $deliveryOrder->id,
+                ['status' => $beforeStatus],
+                ['status' => $deliveryOrder->status],
+                ['delivery_order_number' => $deliveryOrder->delivery_order_number],
+            );
 
             return response()->json([
                 'message' => 'Delivery order confirmed',
@@ -734,8 +744,18 @@ class DeliveryOrderController extends Controller
             return response()->json(['message' => 'Delivery order not found'], 404);
         }
 
+        $beforeStatus = $deliveryOrder->status;
+
         try {
             $deliveryOrder = $this->deliveryService->approveDeliveryOrder($deliveryOrder, $request->user());
+
+            $this->writeAuditLog(
+                'delivery_order_approved',
+                (int) $deliveryOrder->id,
+                ['status' => $beforeStatus],
+                ['status' => $deliveryOrder->status],
+                ['delivery_order_number' => $deliveryOrder->delivery_order_number],
+            );
 
             return response()->json([
                 'message' => 'Delivery order approved',
@@ -761,8 +781,21 @@ class DeliveryOrderController extends Controller
             'reason' => 'required|string|min:10|max:500',
         ]);
 
+        $beforeStatus = $deliveryOrder->status;
+
         try {
             $deliveryOrder = $this->deliveryService->rejectDeliveryOrder($deliveryOrder, $request->user(), $validated['reason']);
+
+            $this->writeAuditLog(
+                'delivery_order_approval_rejected',
+                (int) $deliveryOrder->id,
+                ['status' => $beforeStatus],
+                ['status' => $deliveryOrder->status],
+                [
+                    'delivery_order_number' => $deliveryOrder->delivery_order_number,
+                    'reason' => $validated['reason'],
+                ],
+            );
 
             return response()->json([
                 'message' => 'Delivery order rejected',
@@ -945,8 +978,18 @@ class DeliveryOrderController extends Controller
             return response()->json(['message' => 'Delivery order not found'], 404);
         }
 
+        $beforeStatus = $deliveryOrder->status;
+
         try {
             $deliveryOrder = $this->deliveryService->completeDeliveryOrder($deliveryOrder);
+
+            $this->writeAuditLog(
+                'delivery_order_completed',
+                (int) $deliveryOrder->id,
+                ['status' => $beforeStatus],
+                ['status' => $deliveryOrder->status],
+                ['delivery_order_number' => $deliveryOrder->delivery_order_number],
+            );
 
             return response()->json([
                 'message' => 'Delivery order completed — stock deducted',
@@ -973,8 +1016,24 @@ class DeliveryOrderController extends Controller
             'reason' => 'required|string|min:3',
         ]);
 
+        $beforeStatus = $deliveryOrder->status;
+
         try {
             $deliveryOrder = $this->deliveryService->reverseDeliveryOrder($deliveryOrder, $validated['reason']);
+
+            $this->writeAuditLog(
+                'delivery_order_reversed',
+                (int) $deliveryOrder->id,
+                ['status' => $beforeStatus],
+                [
+                    'status' => $deliveryOrder->status,
+                    'reversed_at' => optional($deliveryOrder->reversed_at)->toIso8601String(),
+                ],
+                [
+                    'delivery_order_number' => $deliveryOrder->delivery_order_number,
+                    'reason' => $validated['reason'],
+                ],
+            );
 
             return response()->json([
                 'message' => 'Delivery order reversed — stock restored',
@@ -994,9 +1053,21 @@ class DeliveryOrderController extends Controller
         }
 
         $reason = $request->input('reason');
+        $beforeStatus = $deliveryOrder->status;
 
         try {
             $deliveryOrder = $this->deliveryService->cancelDeliveryOrder($deliveryOrder, $reason);
+
+            $this->writeAuditLog(
+                'delivery_order_cancelled',
+                (int) $deliveryOrder->id,
+                ['status' => $beforeStatus],
+                ['status' => $deliveryOrder->status],
+                [
+                    'delivery_order_number' => $deliveryOrder->delivery_order_number,
+                    'reason' => $reason,
+                ],
+            );
 
             return response()->json([
                 'message' => 'Delivery order cancelled',
@@ -1039,6 +1110,8 @@ class DeliveryOrderController extends Controller
             'reason_text' => 'nullable|string|max:500',
         ]);
 
+        $beforeStatus = $deliveryOrder->status;
+
         try {
             $replacement = app(\App\Services\ReplacementDraftService::class)->createDeliveryOrderReplacementDraft(
                 $deliveryOrder,
@@ -1047,6 +1120,19 @@ class DeliveryOrderController extends Controller
                     'reason_text' => $validated['reason_text'] ?? 'Delivery order rejected',
                     'user_id' => \Illuminate\Support\Facades\Auth::id(),
                 ])
+            );
+
+            $this->writeAuditLog(
+                'delivery_order_rejected',
+                (int) $deliveryOrder->id,
+                ['status' => $beforeStatus, 'is_active_version' => true],
+                ['status' => $deliveryOrder->fresh()?->status, 'is_active_version' => false],
+                [
+                    'delivery_order_number' => $deliveryOrder->delivery_order_number,
+                    'reason_code' => $validated['reason_code'] ?? 'rejection',
+                    'reason_text' => $validated['reason_text'] ?? 'Delivery order rejected',
+                    'replacement_delivery_order_id' => (int) $replacement->id,
+                ],
             );
 
             return response()->json([
@@ -1070,8 +1156,18 @@ class DeliveryOrderController extends Controller
             return response()->json(['message' => 'Delivery order not found'], 404);
         }
 
+        $beforeStatus = $deliveryOrder->status;
+
         try {
             $deliveryOrder = $this->deliveryService->resetToDraft($deliveryOrder);
+
+            $this->writeAuditLog(
+                'delivery_order_reset_to_draft',
+                (int) $deliveryOrder->id,
+                ['status' => $beforeStatus],
+                ['status' => $deliveryOrder->status],
+                ['delivery_order_number' => $deliveryOrder->delivery_order_number],
+            );
 
             return response()->json([
                 'message' => 'Delivery order reset to draft',
@@ -1101,7 +1197,20 @@ class DeliveryOrderController extends Controller
             return response()->json(['message' => 'Cannot delete a cancelled delivery order. Reset it to draft first if you need to edit, or use force-delete for cleanup.'], 422);
         }
 
+        $beforeState = [
+            'status' => $deliveryOrder->status,
+            'delivery_order_number' => $deliveryOrder->delivery_order_number,
+        ];
+
         $deliveryOrder->delete();
+
+        $this->writeAuditLog(
+            'delivery_order_deleted',
+            (int) $deliveryOrder->id,
+            $beforeState,
+            ['deleted' => true],
+            ['delivery_order_number' => $beforeState['delivery_order_number']],
+        );
 
         return response()->json(['message' => 'Delivery order deleted']);
     }
@@ -1124,12 +1233,31 @@ class DeliveryOrderController extends Controller
             ], 422);
         }
 
+        $ordersToDelete = DeliveryOrder::whereIn('id', $validated['ids'])->get();
+
         $result = $this->bulkDeleteService->delete(
             'delivery_orders',
             $validated['ids'],
             tenant()?->id,
             ['soft_deletes' => true, 'check_fk' => false, 'user_id' => Auth::id()]
         );
+
+        // Issue #895: BulkDeleteService mass-updates via the query builder, so
+        // the model observer cannot see these deletions — write them here.
+        if (($result['deleted'] ?? 0) > 0) {
+            foreach ($ordersToDelete as $order) {
+                $this->writeAuditLog(
+                    'delivery_order_deleted',
+                    (int) $order->id,
+                    [
+                        'status' => $order->status,
+                        'delivery_order_number' => $order->delivery_order_number,
+                    ],
+                    ['deleted' => true],
+                    ['delivery_order_number' => $order->delivery_order_number, 'bulk' => true],
+                );
+            }
+        }
 
         return response()->json([
             'message' => "{$result['deleted']} delivery order(s) deleted",
@@ -1563,5 +1691,29 @@ class DeliveryOrderController extends Controller
                 'total_lines' => $do->lines->count(),
             ]),
         ]);
+    }
+
+    /**
+     * Issue #895 (SALES-PLAT / PC1): append a tamper-evident audit row for a
+     * delivery-order lifecycle transition. Deliberately uncaught — an audit
+     * failure surfaces as an error instead of silently succeeding.
+     */
+    private function writeAuditLog(
+        string $operation,
+        int $deliveryOrderId,
+        ?array $beforeState = null,
+        ?array $afterState = null,
+        array $metadata = [],
+    ): void {
+        app(\App\Services\AuditLogger::class)->log(
+            operation: $operation,
+            referenceType: 'delivery_order',
+            referenceId: $deliveryOrderId,
+            beforeState: $beforeState,
+            afterState: $afterState,
+            metadata: $metadata + [
+                'request_id' => request()?->header(\App\Http\Middleware\CorrelationIdMiddleware::HEADER),
+            ],
+        );
     }
 }

@@ -27,7 +27,8 @@ class QuotationLine extends Model
 
     protected $casts = [
         'sequence' => 'integer',
-        'quantity' => 'integer',
+        // #295 (Q7): decimal quantities (kg/hour/metre), like sales orders.
+        'quantity' => 'decimal:4',
         'unit_price' => 'decimal:2',
         'base_unit_price' => 'decimal:4',
         'pricing_trace' => 'array',

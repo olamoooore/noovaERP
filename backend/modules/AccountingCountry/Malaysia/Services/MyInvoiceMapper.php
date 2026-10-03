@@ -337,6 +337,110 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
         return $mapped;
     }
 
+    /**
+     * #816 EP5: map a customer refund (a credit-note cash refund, or a payment
+     * correction refund) to a MyInvois REFUND NOTE (LHDN type 04), referencing
+     * the original invoice's accepted UUID so LHDN links the money returned to
+     * the document it relates to.
+     */
+    public function mapRefundNote(object $refund, ?object $originalInvoice = null): array
+    {
+        $invoice = $originalInvoice ?? ($refund->invoice ?? null);
+
+        $issuedDate = $refund->refund_date ?? $refund->credit_note_date ?? $refund->payment_date ?? now();
+        $currency = $refund->currency_code ?? ($invoice->currency_code ?? 'MYR');
+
+        // #816 EP5: two refund sources. A credit-note-shaped refund carries its
+        // own subtotal/tax columns; a payment correction refund is a Payment —
+        // signed amount, no tax columns — so the refunded tax is split off the
+        // original invoice in proportion to its own tax. The payment records no
+        // tax leg of its own, and the proportion is derived arithmetic on this
+        // tenant's invoice (flagged pending tax-agent confirmation on #816).
+        $hasDocumentTotals = ($refund->subtotal ?? $refund->total_amount ?? null) !== null;
+
+        if ($hasDocumentTotals) {
+            $subtotal = round((float) ($refund->subtotal ?? $refund->total_amount), 2);
+            $refundTax = round((float) ($refund->tax_amount ?? 0), 2);
+        } else {
+            $gross = abs((float) ($refund->amount ?? 0));
+            $invoiceTotal = (float) ($invoice->total ?? 0);
+            $invoiceTax = (float) ($invoice->tax_amount ?? 0);
+            $refundTax = $invoiceTotal > 0 ? round($gross * $invoiceTax / $invoiceTotal, 2) : 0.0;
+            $subtotal = round($gross - $refundTax, 2);
+        }
+
+        $refundRate = $subtotal > 0 ? round(($refundTax / $subtotal) * 100, 2) : 0.0;
+
+        $lineCollection = $refund->lines ?? collect();
+        $lineItems = collect($lineCollection)->map(
+            fn ($line, int $index) => $this->mapLineItem($line, $index + 1)
+        )->values()->toArray();
+
+        if (empty($lineItems)) {
+            $lineItems[] = $hasDocumentTotals
+                ? $this->buildFallbackCreditNoteLineItem($refund)
+                : [
+                    'line_number' => 1,
+                    'item_id' => (string) ($refund->id ?? '1'),
+                    'description' => (string) ($refund->notes ?? $refund->reason ?? 'Refund'),
+                    'quantity' => 1.0,
+                    'unit_code' => 'C62',
+                    'unit_price' => $subtotal,
+                    'line_amount' => $subtotal,
+                    'discount_amount' => 0.0,
+                    'discount_percent' => 0.0,
+                    'tax_type' => $refundTax > 0 ? 'SST' : 'E',
+                    'sst_rate' => $refundRate,
+                    'sst_amount' => $refundTax,
+                    'tax_exemption_reason' => null,
+                ];
+        }
+
+        $supplier = $this->resolveSupplier($invoice);
+        $buyer = $refund->customer ?? null;
+
+        // mapTotals/mapTaxDetails read document columns a Payment does not have,
+        // so a payment refund is fed the split computed above.
+        $totalsSource = $hasDocumentTotals
+            ? $refund
+            : (object) ['subtotal' => $subtotal, 'discount_amount' => 0, 'tax_amount' => $refundTax, 'paid_amount' => 0];
+        $totalsLines = $hasDocumentTotals
+            ? collect($lineCollection)
+            : collect([(object) ['quantity' => 1, 'unit_price' => $subtotal, 'discount_amount' => 0, 'tax_rate' => $refundRate, 'tax_amount' => $refundTax]]);
+        $taxSummarySource = $hasDocumentTotals
+            ? $refund
+            : (object) ['tax_rate' => $refundRate, 'tax_amount' => $refundTax];
+
+        $mapped = [
+            'document_type' => 'refund_note',
+            'profile_version' => 'myinvoice-v1',
+            'invoice_id' => $refund->id,
+            'invoice_number' => $refund->refund_number ?? $refund->credit_note_number ?? $refund->payment_number,
+            'invoice_date' => is_string($issuedDate) ? $issuedDate : $issuedDate->format('Y-m-d'),
+            'issue_datetime' => is_string($issuedDate) ? $issuedDate : $issuedDate->format('c'),
+            'due_date' => null,
+            'currency_code' => $currency,
+            'exchange_rate' => $refund->exchange_rate ?? null,
+            'supplier' => $this->mapParty($supplier, true),
+            'buyer' => $this->mapParty($buyer, false),
+            'line_items' => $lineItems,
+            'totals' => $this->mapTotals($totalsSource, $totalsLines),
+            'tax_summary' => $this->mapTaxDetails($taxSummarySource),
+            'original_invoice_references' => $this->resolveOriginalInvoiceRefs((object) ['invoice' => $invoice]),
+            'payment_terms' => null,
+            'narration' => $refund->reason ?? $refund->notes ?? 'Refund',
+            'attachment_reference' => null,
+        ];
+
+        Log::info('myinvois:mapRefundNote — done', [
+            'refund_id' => $refund->id,
+            'invoice_number' => $mapped['invoice_number'],
+            'currency' => $currency,
+        ]);
+
+        return $mapped;
+    }
+
     private function resolveOriginalInvoiceRefs(object $creditNote): array
     {
         $originalInvoice = $creditNote->invoice ?? null;

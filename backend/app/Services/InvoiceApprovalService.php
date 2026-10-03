@@ -200,6 +200,22 @@ class InvoiceApprovalService
             $approvalRequest->reviewed_by,
         );
 
+        // Issue #895 (SALES-PLAT / PC1): the "approved" lifecycle event must be
+        // on the tamper-evident trail, not only the user-facing activity feed.
+        app(\App\Services\AuditLogger::class)->log(
+            operation: 'invoice_approved',
+            referenceType: 'invoice',
+            referenceId: (int) $invoice->id,
+            actorId: $approvalRequest->reviewed_by !== null ? (int) $approvalRequest->reviewed_by : null,
+            beforeState: ['approval_status' => Invoice::APPROVAL_PENDING],
+            afterState: ['approval_status' => Invoice::APPROVAL_APPROVED],
+            metadata: [
+                'approval_request_id' => $approvalRequest->id,
+                'invoice_number' => $invoice->invoice_number,
+                'review_notes' => $approvalRequest->review_notes,
+            ],
+        );
+
         Log::info('Invoice approval status updated to approved', [
             'invoice_id' => $invoice->id,
             'approval_request_id' => $approvalRequest->id,
@@ -255,6 +271,22 @@ class InvoiceApprovalService
             Invoice::APPROVAL_NOT_REQUIRED,
             \App\Models\InvoiceActivityLog::ACTOR_USER,
             $approvalRequest->reviewed_by,
+        );
+
+        // Issue #895 (SALES-PLAT / PC1): rejection is also an explicit,
+        // tamper-evident lifecycle event.
+        app(\App\Services\AuditLogger::class)->log(
+            operation: 'invoice_approval_rejected',
+            referenceType: 'invoice',
+            referenceId: (int) $invoice->id,
+            actorId: $approvalRequest->reviewed_by !== null ? (int) $approvalRequest->reviewed_by : null,
+            beforeState: ['approval_status' => Invoice::APPROVAL_PENDING],
+            afterState: ['approval_status' => Invoice::APPROVAL_REJECTED],
+            metadata: [
+                'approval_request_id' => $approvalRequest->id,
+                'invoice_number' => $invoice->invoice_number,
+                'reason' => $reason,
+            ],
         );
 
         Log::info('Invoice approval rejected', [

@@ -106,6 +106,8 @@ export function BankReconciliationPage() {
   const [statementOpeningBalance, setStatementOpeningBalance] = useState<string>('');
   const [statementFile, setStatementFile] = useState<File | null>(null);
   const [statementPreview, setStatementPreview] = useState<any>(null);
+  // BK1: day/month order for the statement's date column ('' = auto/inferred).
+  const [statementDateFormat, setStatementDateFormat] = useState<string>('');
   const [statementMapping, setStatementMapping] = useState<Record<string, string>>({});
   const [statementStartDate, setStatementStartDate] = useState('');
   const [matchSelections, setMatchSelections] = useState<Record<string, { glLineId: string; amount: string; reason: string }>>({});
@@ -475,6 +477,7 @@ export function BankReconciliationPage() {
     onSuccess: (preview) => {
       setStatementPreview(preview);
       setStatementMapping(preview.proposed_mapping ?? {});
+      setStatementDateFormat(preview.date_column_format ?? '');
       toast({ title: 'Statement preview ready', description: `${preview.source_rows} source rows detected.` });
     },
     onError: (error: any) => toast({ title: 'Statement preview failed', description: error?.response?.data?.message ?? error.message, variant: 'destructive' }),
@@ -489,6 +492,7 @@ export function BankReconciliationPage() {
       statement_end_date: statementDate,
       opening_balance: Number(statementOpeningBalance),
       closing_balance: Number(statementBalance),
+      date_format: statementDateFormat || undefined,
     }),
     onSuccess: (batch) => {
       setStatementPreview(null); setStatementFile(null); setStatementOpeningBalance('');
@@ -812,6 +816,38 @@ export function BankReconciliationPage() {
                     </Select>
                   </div>
                 ))}
+              </div>
+              {/* BK1: the date column's day/month order — inferred from the
+                  whole column, shown here, and overridable when ambiguous. */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <Label>Date format</Label>
+                  <Select
+                    value={statementDateFormat || 'auto'}
+                    onValueChange={(value) => setStatementDateFormat(value === 'auto' ? '' : value)}
+                  >
+                    <SelectTrigger aria-label="Date format">
+                      <SelectValue placeholder="Auto (from column)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">
+                        {statementPreview.date_column_format
+                          ? `Auto — inferred ${statementPreview.date_column_format}`
+                          : statementPreview.date_column_ambiguous
+                            ? 'Auto — ambiguous, pick a format'
+                            : 'Auto (from column)'}
+                      </SelectItem>
+                      <SelectItem value="d/m/Y">d/m/Y — 3/4 is 3 April</SelectItem>
+                      <SelectItem value="m/d/Y">m/d/Y — 4/3 is 3 April</SelectItem>
+                      <SelectItem value="Y-m-d">Y-m-d — ISO</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {statementPreview.date_column_ambiguous && !statementDateFormat && (
+                    <p className="mt-1 text-xs text-destructive">
+                      Ambiguous date column — no day above 12 settles the order. Pick a format before importing.
+                    </p>
+                  )}
+                </div>
               </div>
               {(!statementMapping.transaction_date || !statementMapping.description || (!statementMapping.amount && (!statementMapping.debit || !statementMapping.credit))) ? (
                 <p className="text-sm text-destructive">Required columns were not detected. Configure the source headers before importing.</p>

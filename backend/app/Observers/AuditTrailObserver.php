@@ -2,8 +2,10 @@
 
 namespace App\Observers;
 
+use App\Http\Middleware\CorrelationIdMiddleware;
 use App\Platform\SystemLog\Contracts\SystemLogServiceContract;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Auth;
 
 class AuditTrailObserver
 {
@@ -31,6 +33,23 @@ class AuditTrailObserver
         $modelId = $model->getAttribute('id') ?? $model->getKey();
 
         $changes = $action === 'updated' ? $model->getChanges() : [];
+        $before = [];
+        $after = [];
+
+        if ($action === 'updated') {
+            // Field-level audit: keep the old value next to the new one for
+            // every changed attribute, not just the resulting value.
+            foreach ($changes as $field => $value) {
+                $before[$field] = $model->getOriginal($field);
+                $after[$field] = $value;
+            }
+        } elseif ($action === 'deleted') {
+            $before = $model->getOriginal();
+        } else {
+            $after = $model->getAttributes();
+        }
+
+        $requestId = request()?->header(CorrelationIdMiddleware::HEADER);
 
         $this->systemLog->log(
             'info',
@@ -41,8 +60,13 @@ class AuditTrailObserver
                 'table' => $tableName,
                 'model_id' => $modelId,
                 'action' => $action,
+                'actor_id' => Auth::id(),
+                'request_id' => $requestId,
+                'before' => $before,
+                'after' => $after,
                 'changes' => $changes,
-            ]
+            ],
+            $requestId
         );
     }
 
@@ -52,6 +76,12 @@ class AuditTrailObserver
             str_starts_with($tableName, 'pos_') => 'pos',
             str_starts_with($tableName, 'inventory') || str_starts_with($tableName, 'stock') || str_starts_with($tableName, 'purchase') || str_starts_with($tableName, 'warehouse') => 'inventory',
             str_starts_with($tableName, 'hrm_') || str_starts_with($tableName, 'hr_') || str_starts_with($tableName, 'employee') || str_starts_with($tableName, 'payroll') || str_starts_with($tableName, 'attendance') || str_starts_with($tableName, 'leave') || str_starts_with($tableName, 'contract') => 'hrm',
+            str_starts_with($tableName, 'invoice')
+                || str_starts_with($tableName, 'quotation')
+                || str_starts_with($tableName, 'sales_')
+                || str_starts_with($tableName, 'delivery_')
+                || str_starts_with($tableName, 'customer')
+                || $tableName === 'payments' => 'sales',
             default => 'unknown',
         };
     }

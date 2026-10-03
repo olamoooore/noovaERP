@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard';
 import { Icon } from '@iconify/react';
-import { addCalendarDays, todayDateOnly } from '@/lib/dateOnly'
+import { addCalendarDays, isValidProductQuantity, todayDateOnly } from '@/lib/dateOnly'
 import { DEFAULT_QUOTE_VALIDITY_DAYS, followValidUntil } from '@/lib/quotationDates'
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency, getApiErrorMessage } from '@/lib/utils';
@@ -279,7 +279,7 @@ export const QuotationCreatePage: React.FC = () => {
     notes ? 'notes' : null,
   ].filter(Boolean).join(' · ');
 
-  const resolvePricingForLines = async (nextLines: QuotationLine[], listOverride?: string, currencyOverride?: string) => {
+  const resolvePricingForLines = async (nextLines: QuotationLine[], listOverride?: string, currencyOverride?: string, dateOverride?: string) => {
     const productLines = nextLines
       .map((line, index) => ({ line, index }))
       .filter(({ line }) => (line.line_type ?? 'product') === 'product' && !!line.product_id);
@@ -289,7 +289,7 @@ export const QuotationCreatePage: React.FC = () => {
       const result = await pricingApi.resolveBatch(
         {
           customer_id: customerId ? parseInt(customerId, 10) : null,
-          date: quotationDate || undefined,
+          date: (dateOverride ?? quotationDate) || undefined,
           // The editor's currency wins; empty lets the server resolve from
           // the customer's list (FR-5.2).
           document_currency: (currencyOverride ?? currencyCode) || undefined,
@@ -457,7 +457,9 @@ export const QuotationCreatePage: React.FC = () => {
 
     setValidUntil(followValidUntil(value, validUntil, validUntilManuallyEdited));
 
-    void resolvePricingForLines(lines);
+    // #299 (F7): the price list is date-effective — re-resolve auto lines for
+    // the new date (state has not updated yet, so pass it explicitly).
+    void resolvePricingForLines(lines, undefined, undefined, value);
   };
 
   const handleValidUntilChange = (value: string) => {
@@ -498,6 +500,21 @@ export const QuotationCreatePage: React.FC = () => {
 
     if (discountMode === 'percentage' && discountValue > 100) {
       toast({ variant: 'destructive', title: 'Percentage discount cannot exceed 100%' });
+      return;
+    }
+
+    // #295 (Q7): product lines need a quantity greater than 0 with at most
+    // 4 decimals — the API rejects 0/empty and over-precision; report it here
+    // with a clear message instead of a generic failure.
+    const invalidQuantityIndex = submissionLines.findIndex((line) =>
+      (line.line_type ?? 'product') === 'product' && !isValidProductQuantity(line.quantity)
+    );
+    if (invalidQuantityIndex >= 0) {
+      toast({
+        variant: 'destructive',
+        title: `Invalid quantity on line ${invalidQuantityIndex + 1}`,
+        description: 'Enter a quantity greater than 0 with at most 4 decimals.',
+      });
       return;
     }
 
