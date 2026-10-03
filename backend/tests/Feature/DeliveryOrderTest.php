@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\Product;
 use App\Models\User;
 use App\Models\Warehouse;
+use Illuminate\Support\Facades\DB;
 use Modules\Sales\Models\DeliveryOrder;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderLine;
@@ -31,7 +32,15 @@ class DeliveryOrderTest extends TenantTestCase
         parent::setUp();
         // Issue #176: DO completion posts COGS through the authority gate,
         // which needs a real tenant uuid and the actor's sales permission.
-        $this->bindTenantContextWithPermissions((string) \Illuminate\Support\Str::uuid());
+        // #453 (DO1): the central role row needs a real public.tenants target.
+        $tenantId = (string) \Illuminate\Support\Str::uuid();
+        \App\Models\Tenant::withoutEvents(fn () => \App\Models\Tenant::create([
+            'id' => $tenantId,
+            'name' => 'Delivery Order Test Tenant',
+            'email' => 'do-test-'.uniqid().'@test.local',
+            'plan' => 'standard',
+        ]));
+        $this->bindTenantContextWithPermissions($tenantId);
 
         $this->assertTenantSchemaReady([
             'customers', 'products', 'sales_orders', 'sales_order_lines',
@@ -44,6 +53,19 @@ class DeliveryOrderTest extends TenantTestCase
             'password' => bcrypt('password'),
         ]);
         $this->user->assignRole('Admin');
+        // #453 (DO1): the draft auto-confirm shortcut re-checks
+        // accounting.post with the same resolution as the route middleware,
+        // so the actor needs a real central role row. These API tests bypass
+        // routers with withoutMiddleware(), which the controller-level
+        // re-check outlives by design.
+        DB::table('user_company_access')->insert([
+            'user_id' => $this->user->id,
+            'tenant_id' => $this->boundTestTenant->id,
+            'role' => 'admin',
+            'is_default' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $this->actingAs($this->user);
 
         // Issue #176: the COGS posting gate requires an open fiscal period.
