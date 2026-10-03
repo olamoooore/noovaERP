@@ -19,5 +19,19 @@ class LegalEntity extends Model
         'base_currency',
         'fiscal_year_start',
         'status',
+        // Issue #612: per-entity letterhead used as the printed issuer.
+        'registration_number',
+        'tax_id',
+        'sst_registration_number',
+        'address',
+        'logo_url',
+        'email',
+        'phone',
+        'website',
+        'bank_details',
+    ];
+
+    protected $casts = [
+        'bank_details' => 'array',
     ];
 }

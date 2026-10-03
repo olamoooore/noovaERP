@@ -30,6 +30,20 @@ final class PaymentReceiptDataSource implements DataSourceContract
         return $entityId !== null ? (int) $entityId : null;
     }
 
+    public function resolutionContext(string $documentId): array
+    {
+        $payment = $this->load($documentId)->payment;
+
+        return DocumentResolutionContext::build([
+            'entity_id' => $this->legalEntityId(),
+            'branch_id' => $payment->getAttribute('branch_id'),
+            'currency' => $payment->currency ?? $payment->getAttribute('currency_code') ?? $payment->base_currency_code,
+            'language' => $payment->customer?->language ?? $payment->invoice?->customer?->language,
+            'customer_group' => $payment->customer?->customer_group ?? $payment->invoice?->customer?->customer_group,
+            'channel' => $payment->getAttribute('channel'),
+        ]);
+    }
+
     public function load(string $documentId): self
     {
         $this->payment = Payment::with(['customer', 'invoice'])->findOrFail($documentId);
@@ -40,7 +54,7 @@ final class PaymentReceiptDataSource implements DataSourceContract
     public function toArray(): array
     {
         $payment = $this->payment ?? throw new \RuntimeException('Payment not loaded.');
-        $company = CompanyDataSource::forCurrentTenant();
+        $company = CompanyDataSource::forDocument($payment);
         $currencyCode = $company['currency_code'] ?? 'MYR';
 
         return [
