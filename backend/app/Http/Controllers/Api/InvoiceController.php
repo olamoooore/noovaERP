@@ -2329,6 +2329,15 @@ class InvoiceController extends Controller
                     );
                 }
 
+                // Issue #684: posting deducted this invoice's stock; the
+                // reversal above released its COGS, so the goods go back on
+                // the shelf in the SAME transaction. Otherwise a draft that is
+                // deleted or re-edited loses the stock for good. Only stock
+                // this invoice itself issued moves — a completed delivery
+                // order owns whatever it shipped. Idempotent, so a
+                // reset → repost → reset cycle never double-returns.
+                $this->cancellationService->returnIssuedStockOnReset($invoice);
+
                 $invoice->update([
                     'status' => 'draft',
                     'journal_entry_id' => null,
