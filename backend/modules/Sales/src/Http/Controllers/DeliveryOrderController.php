@@ -6,8 +6,6 @@ use App\Accounting\DTOs\AccountingDocumentLineData;
 use App\Accounting\DTOs\AccountingOriginInvoiceData;
 use App\Exports\DeliveryOrdersExport;
 use App\Http\Middleware\RequirePermission;
-use App\Models\MedicalCase;
-use App\Models\MedicalCaseItem;
 use App\Platform\BulkDelete\BulkDeleteService;
 use App\Platform\Import\ImportService;
 use App\Services\AccountingOriginInvoiceService;
@@ -1303,12 +1301,13 @@ class DeliveryOrderController extends Controller
             'invoice_number' => 'invoice_number',
             'quotation_number' => 'quotation_number',
             'notes' => 'notes',
-            'case_no' => '_case_no',
-            'case_tag' => '_case_tag',
-            'case_date' => '_case_date',
-            'patient_name' => 'patient_name',
-            'delivered_to' => '_delivered_to',
-            'other_note' => '_other_note',
+            // Case-Tracking fields (case_no, case_tag, case_date,
+            // patient_name, delivered_to, other_note) are deliberately NOT
+            // mapped into the delivery_orders header: those columns do not
+            // exist there, and mapping them made every Case-Tracking CSV
+            // fail the header insert ("column _case_no does not exist"),
+            // rolling the whole import group back (#564). They are read
+            // from the raw CSV by extractCaseDataFromCsv() instead.
         ];
 
         $result = $this->importService->importGroupedCSV(
@@ -1467,14 +1466,29 @@ class DeliveryOrderController extends Controller
                         $line['line_total'] = $unitPrice * $quantity;
                     }
 
+                    // Issue #222 (surfaces on the #564 path): plaintext
+                    // patient_name has no column on delivery_order_lines —
+                    // encrypt it into patient_name_encrypted exactly like
+                    // the interactive path's DeliveryOrderLine mutator, so
+                    // a Case-Tracking CSV carrying patient names imports
+                    // instead of failing the line insert.
+                    if (isset($line['patient_name']) && $line['patient_name'] !== null && $line['patient_name'] !== '') {
+                        $line['patient_name_encrypted'] = \Illuminate\Support\Facades\Crypt::encryptString((string) $line['patient_name']);
+                    }
+                    unset($line['patient_name']);
+
                     return $line;
                 },
             ]
         );
 
-        // Post-import: create medical cases if case data is present
+        // Post-import: create medical cases if case data is present.
+        // The whole case (header + items + bonus usage, issue #564) is built
+        // transactionally inside the service; the controller only resolves
+        // which DO the case data belongs to.
         $caseData = $this->extractCaseDataFromCsv($file);
         $caseCount = 0;
+        $caseErrors = [];
         foreach ($caseData as $doNumber => $data) {
             if (empty($data['case_no']) && empty($data['case_tag']) && empty($data['patient_name'])) {
                 continue;
@@ -1485,55 +1499,33 @@ class DeliveryOrderController extends Controller
                     continue;
                 }
 
-                $caseNo = $this->buildCaseNo($data['case_no'] ?? null, $doNumber);
-                $bonusSchemeId = null;
-                if (! empty($data['case_tag'])) {
-                    $bonusSchemeId = $this->caseImportService->resolveOrCreateBonusScheme(
-                        $data['case_tag'], $do->customer_id, $data['case_date'] ?? null
-                    );
+                if ($this->caseImportService->createCaseFromDeliveryOrderImport($do, $data)) {
+                    $caseCount++;
                 }
-
-                $isFoc = $this->caseImportService->isFocTag($data['case_tag'] ?? null);
-                $case = MedicalCase::create([
-                    'case_no' => $caseNo,
-                    'case_tag' => $data['case_tag'] ?? null,
-                    'customer_id' => $do->customer_id,
-                    'delivery_address_id' => null,
-                    'patient_reference' => $data['patient_name'] ?? null,
-                    'case_date' => $data['case_date'] ?? null,
-                    'delivered_to' => $data['delivered_to'] ?? null,
-                    'notes' => $data['other_note'] ?? null,
-                    'status' => 'delivered',
-                    'created_by' => Auth::id(),
-                ]);
-
-                foreach ($do->lines as $line) {
-                    MedicalCaseItem::create([
-                        'medical_case_id' => $case->id,
-                        'delivery_order_item_id' => $line->id,
-                        'product_id' => $line->product_id,
-                        'delivered_qty' => $line->quantity_delivered,
-                        'allocated_qty' => $line->quantity_ordered,
-                        'unit_price' => $isFoc ? 0 : $line->unit_price,
-                        'is_foc' => $isFoc,
-                    ]);
-                }
-                $caseCount++;
             } catch (\Throwable $e) {
+                // Surface the failure to the caller: the case (including its
+                // bonus usage, issue #564) is transactional, so a thrown error
+                // means nothing was imported — reporting success would hide it.
                 Log::warning('Failed to create medical case from DO import', [
                     'do_number' => $doNumber,
                     'error' => $e->getMessage(),
                 ]);
+                $caseErrors[] = [
+                    'group' => $doNumber,
+                    'message' => 'Medical case creation failed: '.$e->getMessage(),
+                ];
             }
         }
+
+        $errors = array_merge($result['errors'], $caseErrors);
 
         return response()->json([
             'message' => "Import complete: {$result['created']} delivery order(s) created, {$result['restored']} restored, {$caseCount} medical case(s) created",
             'created' => $result['created'],
             'restored' => $result['restored'],
             'cases_created' => $caseCount,
-            'errors' => $result['errors'],
-        ], ! empty($result['errors']) ? 207 : 201);
+            'errors' => $errors,
+        ], ! empty($errors) ? 207 : 201);
     }
 
     /**
@@ -1603,26 +1595,6 @@ class DeliveryOrderController extends Controller
         }
     }
 
-    private function buildCaseNo(?string $caseNo, string $doNumber): string
-    {
-        if ($caseNo && trim($caseNo) !== '') {
-            $base = 'DO-'.trim($doNumber).'-'.trim($caseNo);
-            $final = $base;
-            $counter = 1;
-            while (MedicalCase::withTrashed()->where('case_no', $final)->exists()) {
-                $final = $base.'-'.$counter;
-                $counter++;
-                if ($counter > 100) {
-                    return 'DO-CASE-'.$doNumber;
-                }
-            }
-
-            return $final;
-        }
-
-        return 'DO-CASE-'.$doNumber;
-    }
-
     /**
      * Download import template.
      */
@@ -1641,7 +1613,7 @@ class DeliveryOrderController extends Controller
             ['name' => 'invoice_number', 'example' => 'INV-2024-001', 'description' => 'Linked invoice number.'],
             ['name' => 'quotation_number', 'example' => 'QT-2024-001', 'description' => 'Linked quotation number.'],
             ['name' => 'case_no', 'example' => '1st', 'description' => 'Medical case number (e.g. 1st, 2nd, 3rd).'],
-            ['name' => 'case_tag', 'example' => 'FOC', 'description' => 'Case tag: FOC, GEH, HTx 60s, Clinic, CCK — auto-creates bonus scheme.'],
+            ['name' => 'case_tag', 'example' => 'FOC', 'description' => 'Case tag: FOC, GEH, HTx 60s, Clinic, CCK — stored on the case; tags never create or assign a bonus scheme.'],
             ['name' => 'case_date', 'example' => '5/15/2025', 'description' => 'Date of the medical case.'],
             ['name' => 'patient_name', 'example' => 'Jane Doe', 'description' => 'Patient name for this line item.'],
             ['name' => 'delivered_to', 'example' => 'OT, Clinic, MENH', 'description' => 'Where it was delivered to.'],

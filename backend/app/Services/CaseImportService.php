@@ -2,21 +2,21 @@
 
 namespace App\Services;
 
-use App\Models\BonusScheme;
-use App\Models\BonusSchemeProduct;
-use App\Models\CustomerBonusScheme;
 use App\Models\Invoice;
-use App\Models\InvoiceLine;
 use App\Models\MedicalCase;
 use App\Models\MedicalCaseItem;
 use App\Models\Quotation;
-use App\Models\QuotationLine;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Sales\Models\DeliveryOrder;
+use Modules\Sales\Models\DeliveryOrderLine;
+use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Models\SalesOrderLine;
 
 /**
- * Handles automatic creation of Medical Cases and Bonus Schemes during
- * invoice / quotation / delivery order imports.
+ * Medical-case creation for the invoice / quotation / delivery order imports
+ * (issue #564).
  *
  * The "Case Tracking" CSV format from Acme contains:
  *   - Case No       → case_no (e.g. "1st", "2nd")
@@ -26,8 +26,18 @@ use Illuminate\Support\Facades\Log;
  *   - Delivered To  → delivered_to
  *   - Other Note    → notes
  *
- * When a case tag is present and does not match an existing bonus scheme,
- * one is created automatically and assigned to the customer.
+ * Issue #564 rules enforced here:
+ *   - A case tag is stored as a case tag ONLY. Imports never create or
+ *     assign bonus schemes: tags describe locations and FOC markers, not
+ *     scheme configuration, and the old resolveOrCreateBonusScheme() filled
+ *     the scheme list with empty `Auto: <tag>` schemes.
+ *   - Imports record bonus usage for each imported case item via
+ *     recordUsageForCase(), quantity taken from the linked delivery order
+ *     line when there is one. Quotation imports are the exception — spec
+ *     "Medical Case and Bonus Scheme Models.md" §6.5 forbids consuming
+ *     scheme entitlement while the quotation is still draft.
+ *   - Imported FOC lines are matched to an entitlement as a redemption
+ *     instead of counting as qualifying usage.
  */
 class CaseImportService
 {
@@ -35,9 +45,8 @@ class CaseImportService
      * After invoice import, create a medical case if case fields are present.
      *
      * @param  Invoice  $invoice  The freshly created invoice
-     * @param  array    $data  Case data: case_no, case_tag, case_date,
-     *                          patient_name, delivered_to, other_note
-     * @return MedicalCase|null
+     * @param  array  $data  Case data: case_no, case_tag, case_date,
+     *                       patient_name, delivered_to, other_note
      */
     public function createCaseFromInvoiceImport(Invoice $invoice, array $data): ?MedicalCase
     {
@@ -47,16 +56,7 @@ class CaseImportService
 
         $caseNo = $this->buildCaseNo($data['case_no'] ?? null, $invoice);
 
-        $bonusSchemeId = null;
-        if (! empty($data['case_tag'])) {
-            $bonusSchemeId = $this->resolveOrCreateBonusScheme(
-                $data['case_tag'],
-                $invoice->customer_id,
-                $data['case_date'] ?? null
-            );
-        }
-
-        return DB::transaction(function () use ($invoice, $data, $caseNo, $bonusSchemeId) {
+        return DB::transaction(function () use ($invoice, $data, $caseNo) {
             $case = MedicalCase::create([
                 'case_no' => $caseNo,
                 'case_tag' => $data['case_tag'] ?? null,
@@ -67,10 +67,11 @@ class CaseImportService
                 'delivered_to' => $data['delivered_to'] ?? null,
                 'notes' => $data['other_note'] ?? null,
                 'status' => $this->determineCaseStatus($invoice),
-                'created_by' => $invoice->created_by ?? null,
+                'created_by' => $invoice->created_by ?? Auth::id(),
             ]);
 
-            $this->linkInvoiceLinesToCase($invoice, $case, $bonusSchemeId);
+            $this->linkInvoiceLinesToCase($invoice, $case);
+            $this->recordUsageForCase($case);
 
             return $case;
         });
@@ -78,6 +79,11 @@ class CaseImportService
 
     /**
      * After quotation import, create a medical case if case fields are present.
+     *
+     * No usage is recorded: the quotation is still draft and spec §6.5 of the
+     * medical-case module documentation forbids consuming scheme entitlement
+     * for draft quotations. Usage happens when the goods actually move (DO)
+     * or the invoice is created.
      */
     public function createCaseFromQuotationImport(Quotation $quotation, array $data): ?MedicalCase
     {
@@ -87,16 +93,7 @@ class CaseImportService
 
         $caseNo = $this->buildCaseNo($data['case_no'] ?? null, null, $quotation);
 
-        $bonusSchemeId = null;
-        if (! empty($data['case_tag'])) {
-            $bonusSchemeId = $this->resolveOrCreateBonusScheme(
-                $data['case_tag'],
-                $quotation->customer_id,
-                $data['case_date'] ?? null
-            );
-        }
-
-        return DB::transaction(function () use ($quotation, $data, $caseNo, $bonusSchemeId) {
+        return DB::transaction(function () use ($quotation, $data, $caseNo) {
             $case = MedicalCase::create([
                 'case_no' => $caseNo,
                 'case_tag' => $data['case_tag'] ?? null,
@@ -106,86 +103,120 @@ class CaseImportService
                 'delivered_to' => $data['delivered_to'] ?? null,
                 'notes' => $data['other_note'] ?? null,
                 'status' => 'draft',
-                'created_by' => $quotation->created_by ?? null,
+                'created_by' => $quotation->created_by ?? Auth::id(),
             ]);
 
-            $this->linkQuotationLinesToCase($quotation, $case, $bonusSchemeId);
+            $this->linkQuotationLinesToCase($quotation, $case);
 
             return $case;
         });
     }
 
     /**
-     * Find or create a bonus scheme by name (case tag).
-     * Also assigns it to the customer if not already assigned.
+     * After delivery order import, create the medical case for the DO (the
+     * block used to live inline in DeliveryOrderController and rolled back
+     * half-way when an item insert failed — it now runs in one transaction).
+     *
+     * Case numbers keep the controller's historical shape:
+     * `DO-{doNumber}-{caseNo}`, falling back to `DO-CASE-{doNumber}`.
      */
-    public function resolveOrCreateBonusScheme(string $tag, int $customerId, ?string $caseDate = null): ?int
+    public function createCaseFromDeliveryOrderImport(DeliveryOrder $do, array $data): ?MedicalCase
     {
-        $tag = trim($tag);
-        if ($tag === '') {
+        if (empty($data['case_no']) && empty($data['case_tag']) && empty($data['patient_name'])) {
             return null;
         }
 
-        // Ensure tenant search_path is set
-        $this->ensureTenantSearchPath();
+        return DB::transaction(function () use ($do, $data) {
+            $isFoc = $this->isFocTag($data['case_tag'] ?? null);
 
-        $schemeName = "Auto: {$tag}";
-        try {
-            $existing = BonusScheme::where('name', $schemeName)->first();
-        } catch (\Throwable $e) {
-            Log::warning("Error querying bonus scheme: " . $e->getMessage());
-            $existing = null;
-        }
+            $case = MedicalCase::create([
+                'case_no' => $this->buildDeliveryOrderCaseNo($data['case_no'] ?? null, $do->delivery_order_number),
+                'case_tag' => $data['case_tag'] ?? null,
+                'customer_id' => $do->customer_id,
+                'delivery_address_id' => null,
+                'patient_reference' => $data['patient_name'] ?? null,
+                'case_date' => $data['case_date'] ?? null,
+                'delivered_to' => $data['delivered_to'] ?? null,
+                'notes' => $data['other_note'] ?? null,
+                'status' => 'delivered',
+                'created_by' => Auth::id() ?? $do->created_by,
+            ]);
 
-        $scheme = $existing;
-        $userId = auth()->id() ?? 1; // Fallback to 1 if no auth (shouldn't happen)
+            foreach ($do->lines as $line) {
+                $soLine = $this->resolveSalesOrderLineForCustomer((int) $do->customer_id, $line->product_id);
 
-        if (!$scheme) {
-            try {
-                $scheme = new BonusScheme();
-                $scheme->name = $schemeName;
-                $scheme->description = "Auto-created from import: case tag '{$tag}'";
-                $scheme->start_date = $caseDate ?? now()->toDateString();
-                $scheme->status = 'active';
-                $scheme->created_by = $userId;
-                $scheme->save();
-                Log::info("Auto-created bonus scheme from import", ['tag' => $tag, 'scheme_id' => $scheme->id]);
-            } catch (\Throwable $e) {
-                Log::warning("Failed to auto-create bonus scheme for tag '{$tag}': " . $e->getMessage() . " | trace: " . $e->getTraceAsString());
-                return null;
-            }
-        }
+                if (! $soLine) {
+                    // medical_case_items.sales_order_item_id is NOT NULL and
+                    // pointing an item at another product's line would corrupt
+                    // the bonus counter — skip this line loudly instead.
+                    Log::warning('Cannot create medical case item from DO import: no sales order line for product', [
+                        'delivery_order_id' => $do->id,
+                        'delivery_order_line_id' => $line->id,
+                        'product_id' => $line->product_id,
+                    ]);
 
-        try {
-            $existingAssignment = CustomerBonusScheme::where('customer_id', $customerId)
-                ->where('bonus_scheme_id', $scheme->id)
-                ->first();
+                    continue;
+                }
 
-            if (!$existingAssignment) {
-                CustomerBonusScheme::create([
-                    'customer_id' => $customerId,
-                    'bonus_scheme_id' => $scheme->id,
-                    'start_date' => $caseDate ?? now()->toDateString(),
-                    'status' => 'active',
-                    'remarks' => 'Auto-assigned from import',
+                MedicalCaseItem::create([
+                    'medical_case_id' => $case->id,
+                    'sales_order_item_id' => $soLine->id,
+                    'delivery_order_item_id' => $line->id,
+                    'product_id' => $line->product_id,
+                    'delivered_qty' => $line->quantity_delivered,
+                    'allocated_qty' => $line->quantity_ordered,
+                    'unit_price' => $isFoc ? 0 : $line->unit_price,
+                    'is_foc' => $isFoc,
                 ]);
             }
-        } catch (\Throwable $e) {
-            Log::warning("Failed to auto-assign bonus scheme to customer: " . $e->getMessage());
-        }
 
-        return $scheme->id;
+            $this->recordUsageForCase($case);
+
+            return $case;
+        });
     }
 
-    private function ensureTenantSearchPath(): void
+    /**
+     * Issue #564 AC1 — record bonus usage for every item of an imported case.
+     *
+     * Usage quantity: the linked delivery order line when there is one (the
+     * AC's "from DO lines when linked"), else the invoiced quantity, else the
+     * delivered quantity. FOC lines never count as qualifying usage; they are
+     * matched to an entitlement as a redemption instead (AC3).
+     *
+     * This is the single seam for issue #559: when BonusCounterService
+     * lands, point this method at it and the import call sites stay
+     * unchanged. Both the qualifying accrual (accrueForItem) and the FOC
+     * redemption (recordFocRedemption) already go through the shared
+     * MedicalCaseBonusAccrualService.
+     */
+    public function recordUsageForCase(MedicalCase $case): void
     {
-        try {
-            $schema = tenant()?->getSchemaName();
-            if ($schema) {
-                \Illuminate\Support\Facades\DB::statement("SET search_path TO \"{$schema}\", public");
+        foreach ($case->items as $item) {
+            if ($item->is_foc) {
+                $this->matchFocRedemption($item);
+
+                continue;
             }
-        } catch (\Throwable $e) {
-            // ignore if tenancy not active
+
+            if (! $item->sales_order_item_id) {
+                Log::warning('Cannot record usage for imported case item without a sales order line', [
+                    'medical_case_item_id' => $item->id,
+                ]);
+
+                continue;
+            }
+
+            $qty = $this->usageQuantityFor($item);
+            if ($qty <= 0) {
+                Log::warning('No usage quantity for imported case item', [
+                    'medical_case_item_id' => $item->id,
+                ]);
+
+                continue;
+            }
+
+            app(MedicalCaseBonusAccrualService::class)->accrueForItem($item, $qty);
         }
     }
 
@@ -194,10 +225,83 @@ class CaseImportService
      */
     public function isFocTag(?string $tag): bool
     {
-        if (!$tag) {
+        if (! $tag) {
             return false;
         }
+
         return stripos($tag, 'FOC') !== false;
+    }
+
+    /**
+     * Issue #564 AC3 — match an imported FOC line to an entitlement as a
+     * redemption (feeding issue #561's replay). The scheme/assignment
+     * matching lives in the shared MedicalCaseBonusAccrualService so imports
+     * and the interactive flows cannot drift apart. An unmatched FOC line
+     * records nothing — it stays on the case item (`is_foc`) for review.
+     */
+    private function matchFocRedemption(MedicalCaseItem $item): void
+    {
+        $qty = $this->usageQuantityFor($item);
+
+        if ($qty <= 0 || ! $item->sales_order_item_id) {
+            Log::warning('Imported FOC line without quantity or sales order line — recorded nothing', [
+                'medical_case_item_id' => $item->id,
+            ]);
+
+            return;
+        }
+
+        $usage = app(MedicalCaseBonusAccrualService::class)->recordFocRedemption($item, $qty);
+
+        if (! $usage) {
+            Log::warning('Imported FOC line has no matching entitlement — recorded nothing', [
+                'medical_case_item_id' => $item->id,
+                'product_id' => $item->product_id,
+                'sales_order_item_id' => $item->sales_order_item_id,
+            ]);
+        }
+    }
+
+    /**
+     * Quantity an imported case item contributes: the linked delivery order
+     * line's delivered quantity when linked (issue #564 AC1), else the
+     * invoiced quantity, else the delivered quantity.
+     */
+    private function usageQuantityFor(MedicalCaseItem $item): float
+    {
+        if ($item->delivery_order_item_id) {
+            $line = DeliveryOrderLine::find($item->delivery_order_item_id);
+            if ($line && (float) $line->quantity_delivered > 0) {
+                return (float) $line->quantity_delivered;
+            }
+        }
+
+        if ((float) $item->invoiced_qty > 0) {
+            return (float) $item->invoiced_qty;
+        }
+
+        return (float) $item->delivered_qty;
+    }
+
+    /**
+     * Resolve the sales order line a case item must link (its
+     * sales_order_item_id is NOT NULL): the invoice's own sales order by
+     * product first, then any sales order line of the same customer and
+     * product — imports create standalone documents with no guaranteed
+     * sales_order_id of their own. Returns null when the customer never
+     * ordered the product rather than linking a wrong product's line.
+     */
+    private function resolveSalesOrderLineForCustomer(int $customerId, ?int $productId): ?SalesOrderLine
+    {
+        if (! $productId) {
+            return null;
+        }
+
+        return SalesOrderLine::query()
+            ->where('product_id', $productId)
+            ->whereHas('salesOrder', fn ($q) => $q->where('customer_id', $customerId))
+            ->orderByDesc('id')
+            ->first();
     }
 
     /**
@@ -216,23 +320,48 @@ class CaseImportService
                 $docId = (string) $quotation->id;
             }
             $cleanCaseNo = trim($caseNo);
-            $baseNumber = $prefix . $docId . '-' . $cleanCaseNo;
+            $baseNumber = $prefix.$docId.'-'.$cleanCaseNo;
 
             // Ensure uniqueness — append counter if needed
             $finalNumber = $baseNumber;
             $counter = 1;
             while (MedicalCase::withTrashed()->where('case_no', $finalNumber)->exists()) {
-                $finalNumber = $baseNumber . '-' . $counter;
+                $finalNumber = $baseNumber.'-'.$counter;
                 $counter++;
                 if ($counter > 100) {
                     // Fallback: use generated number
                     return MedicalCase::generateCaseNumber();
                 }
             }
+
             return $finalNumber;
         }
 
         return MedicalCase::generateCaseNumber();
+    }
+
+    /**
+     * Case number for delivery-order imports (shape kept from the block
+     * formerly inlined in DeliveryOrderController).
+     */
+    private function buildDeliveryOrderCaseNo(?string $caseNo, string $doNumber): string
+    {
+        if ($caseNo && trim($caseNo) !== '') {
+            $base = 'DO-'.trim($doNumber).'-'.trim($caseNo);
+            $final = $base;
+            $counter = 1;
+            while (MedicalCase::withTrashed()->where('case_no', $final)->exists()) {
+                $final = $base.'-'.$counter;
+                $counter++;
+                if ($counter > 100) {
+                    return 'DO-CASE-'.$doNumber;
+                }
+            }
+
+            return $final;
+        }
+
+        return 'DO-CASE-'.$doNumber;
     }
 
     /**
@@ -243,39 +372,52 @@ class CaseImportService
         if ($invoice->lifecycle_status === 'posted' || $invoice->status === 'posted') {
             return 'invoiced';
         }
+
         return 'draft';
     }
 
     /**
      * Link invoice line items to the medical case.
      */
-    private function linkInvoiceLinesToCase(Invoice $invoice, MedicalCase $case, ?int $bonusSchemeId): void
+    private function linkInvoiceLinesToCase(Invoice $invoice, MedicalCase $case): void
     {
         $isFoc = $this->isFocTag($case->case_tag);
-        $salesOrder = $invoice->sales_order_id ? \Modules\Sales\Models\SalesOrder::find($invoice->sales_order_id) : null;
-        $salesOrderLines = $salesOrder ? $salesOrder->lines : collect();
+        $salesOrder = $invoice->sales_order_id ? SalesOrder::find($invoice->sales_order_id) : null;
 
         foreach ($invoice->lines as $line) {
             $productId = $line->product_id;
-            // If no product_id on line, try to find by description match on SO
-            if (!$productId && $salesOrder) {
-                $soLine = $salesOrderLines->firstWhere('description', $line->description);
-                $productId = $soLine?->product_id;
-            }
-            if (!$productId) {
-                $productId = $salesOrderLines->first()?->product_id;
+
+            // The invoice line's own sales-order line is the exact link …
+            $soLine = $line->sales_order_line_id
+                ? SalesOrderLine::find($line->sales_order_line_id)
+                : null;
+
+            // … else match by product inside the invoice's sales order …
+            if (! $soLine && $salesOrder && $productId) {
+                $soLine = $salesOrder->lines->firstWhere('product_id', $productId);
             }
 
-            // Try to find the matching SO line by product_id
-            $soLine = $salesOrderLines->firstWhere('product_id', $productId);
-            if (!$soLine && $salesOrderLines->count() > 0) {
-                $soLine = $salesOrderLines->first();
+            // … else fall back to any line of the same customer + product.
+            if (! $soLine && $productId) {
+                $soLine = $this->resolveSalesOrderLineForCustomer((int) $invoice->customer_id, $productId);
             }
-            if (!$soLine) {
+
+            if (! $soLine) {
                 Log::warning('Cannot create medical case item: no sales order line available', [
                     'invoice_id' => $invoice->id,
                     'line_id' => $line->id,
                 ]);
+
+                continue;
+            }
+
+            $productId = $productId ?: $soLine->product_id;
+            if (! $productId) {
+                Log::warning('Cannot create medical case item: line has no product', [
+                    'invoice_id' => $invoice->id,
+                    'line_id' => $line->id,
+                ]);
+
                 continue;
             }
 
@@ -296,28 +438,34 @@ class CaseImportService
     /**
      * Link quotation line items to the medical case.
      */
-    private function linkQuotationLinesToCase(Quotation $quotation, MedicalCase $case, ?int $bonusSchemeId): void
+    private function linkQuotationLinesToCase(Quotation $quotation, MedicalCase $case): void
     {
         $isFoc = $this->isFocTag($case->case_tag);
-
-        $so = $quotation->sales_order_id ? \Modules\Sales\Models\SalesOrder::find($quotation->sales_order_id) : null;
-        $soLines = $so ? $so->lines : collect();
-        $fallbackSoLineId = $soLines->first()?->id ?? \Modules\Sales\Models\SalesOrderLine::first()?->id;
-
-        if (!$fallbackSoLineId) {
-            Log::warning('Cannot create medical case item: no sales order line available', [
-                'quotation_id' => $quotation->id,
-            ]);
-            return;
-        }
+        $so = $quotation->sales_order_id ? SalesOrder::find($quotation->sales_order_id) : null;
 
         foreach ($quotation->lines as $line) {
             $productId = $line->product_id;
-            $soLine = $soLines->firstWhere('product_id', $productId);
+            $soLine = null;
+
+            if ($so && $productId) {
+                $soLine = $so->lines->firstWhere('product_id', $productId);
+            }
+            if (! $soLine && $productId) {
+                $soLine = $this->resolveSalesOrderLineForCustomer((int) $quotation->customer_id, $productId);
+            }
+
+            if (! $soLine || ! $productId) {
+                Log::warning('Cannot create medical case item: no sales order line available', [
+                    'quotation_id' => $quotation->id,
+                    'product_id' => $productId,
+                ]);
+
+                continue;
+            }
 
             MedicalCaseItem::create([
                 'medical_case_id' => $case->id,
-                'sales_order_item_id' => $soLine?->id ?? $fallbackSoLineId,
+                'sales_order_item_id' => $soLine->id,
                 'product_id' => $productId,
                 'allocated_qty' => $line->quantity,
                 'unit_price' => $isFoc ? 0 : $line->unit_price,

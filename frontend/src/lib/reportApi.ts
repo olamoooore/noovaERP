@@ -544,13 +544,25 @@ class ReportApiClient {
   // ==================== Sales Analytics ====================
 
   /**
+   * Issue #593: the sales endpoints answer 422 for query keys they don't
+   * take, and only `/sales/trends` accepts `interval`. Every caller shares
+   * one filters object, so drop the key this endpoint doesn't understand
+   * instead of letting the report 422 on an unrelated filter.
+   */
+  private salesParams(filters: ReportFilters): ReportFilters {
+    const rest: ReportFilters = { ...filters };
+    delete rest.interval;
+    return rest;
+  }
+
+  /**
    * Get Sales by Product
    */
   async getSalesByProduct(filters: ReportFilters): Promise<SalesByProductData> {
     try {
       const response = await api.get<ApiResponse<SalesByProductData>>(
         '/analytics/sales/by-product',
-        { params: filters }
+        { params: this.salesParams(filters) }
       );
       return response.data.data;
     } catch (error) {
@@ -566,7 +578,7 @@ class ReportApiClient {
     try {
       const response = await api.get<ApiResponse<SalesByCustomerData>>(
         '/analytics/sales/by-customer',
-        { params: filters }
+        { params: this.salesParams(filters) }
       );
       return response.data.data;
     } catch (error) {
@@ -585,7 +597,7 @@ class ReportApiClient {
     try {
       const response = await api.get<ApiResponse<{ currencies: Array<{ currency_code: string; total_revenue: number; base_revenue: number; order_count: number }>; summary: { total_base_revenue: number } }>>(
         '/analytics/sales/by-currency',
-        { params: filters }
+        { params: this.salesParams(filters) }
       );
       return response.data.data;
     } catch (error) {
@@ -614,7 +626,7 @@ class ReportApiClient {
     try {
       const response = await api.get<ApiResponse<SalesByCategoryData>>(
         '/analytics/sales/by-category',
-        { params: filters }
+        { params: this.salesParams(filters) }
       );
       return response.data.data;
     } catch (error) {
