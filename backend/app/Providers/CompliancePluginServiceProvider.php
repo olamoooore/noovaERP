@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Accounting\Events\CreditNotePosted;
 use App\Accounting\Events\InvoicePosted;
+use App\Accounting\Events\RefundPosted;
 use App\Accounting\Plugin\CountryPluginRegistry;
 use App\Accounting\Services\ComplianceService;
 use App\Models\Accounting\CountryConfiguration;
@@ -113,6 +114,18 @@ class CompliancePluginServiceProvider extends ServiceProvider
                 fn (ComplianceService $service, string $countryCode) => $service->submitCreditNote($event->creditNote, $countryCode),
                 'credit_note',
                 (int) $event->creditNote->id,
+                $event->tenantId,
+            );
+        });
+
+        // #816 (EP5): money returned to the buyer is a refund note (MyInvois
+        // type 04), so a posted customer refund follows the same auto_submit
+        // rules as an invoice or a credit note.
+        Event::listen(RefundPosted::class, function (RefundPosted $event) {
+            $this->autoSubmit(
+                fn (ComplianceService $service, string $countryCode) => $service->submitRefundNote($event->refundPayment, $countryCode),
+                'refund_note',
+                (int) $event->refundPayment->id,
                 $event->tenantId,
             );
         });
