@@ -24,9 +24,25 @@ class InvoiceDataSource implements DataSourceContract
     public function legalEntityId(): ?int
     {
         $invoice = $this->invoice ?? throw new \RuntimeException('Invoice not loaded.');
-        $entityId = $invoice->customer?->legal_entity_id;
+        // Issue #875: the invoice carries its own legal entity; the customer's
+        // entity is only a fallback for rows created before that backfill.
+        $entityId = $invoice->legal_entity_id ?? $invoice->customer?->legal_entity_id;
 
         return $entityId !== null ? (int) $entityId : null;
+    }
+
+    public function resolutionContext(string $documentId): array
+    {
+        $invoice = $this->load($documentId)->invoice;
+
+        return DocumentResolutionContext::build([
+            'entity_id' => $this->legalEntityId(),
+            'branch_id' => $invoice->getAttribute('branch_id'),
+            'currency' => $invoice->currency_code,
+            'language' => $invoice->customer?->language,
+            'customer_group' => $invoice->customer?->customer_group,
+            'channel' => $invoice->getAttribute('created_via_module') ?? $invoice->getAttribute('origin_type'),
+        ]);
     }
 
     public function load(string $documentId): self
@@ -39,7 +55,7 @@ class InvoiceDataSource implements DataSourceContract
     public function toArray(): array
     {
         $invoice = $this->invoice ?? throw new \RuntimeException('Invoice not loaded.');
-        $company = CompanyDataSource::forCurrentTenant();
+        $company = CompanyDataSource::forDocument($invoice);
         // MRD pricelist-multicurrency FR-8.5: the DOCUMENT currency drives
         // the printed figures when the invoice carries a snapshot; the base
         // currency equivalent is exposed as a secondary token.

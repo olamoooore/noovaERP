@@ -18,7 +18,7 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract, SupportsPayloadDef
      * LHDN standard general-public TIN for consolidated/end-consumer invoices.
      * This is a fixed LHDN constant, not an identity credential — safe to hardcode.
      */
-    private const LHDN_GENERAL_PUBLIC_TIN = 'EI00000000010';
+    public const LHDN_GENERAL_PUBLIC_TIN = 'EI00000000010';
 
     /** Buyer types the Malaysia pack recognises (stored on customers.buyer_type). */
     private const BUYER_TYPE_BUSINESS = 'business';

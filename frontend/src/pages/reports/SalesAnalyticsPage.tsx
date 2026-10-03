@@ -26,7 +26,7 @@ import { PieChart } from '@/components/charts/PieChart';
 import { useReportAutoRefresh } from '@/hooks/useReportAutoRefresh';
 import reportApi, { formatLocalDate } from '@/lib/reportApi';
 import { formatCurrency, formatNumber } from '@/lib/utils';
-import type { ReportFilters as ReportFiltersType } from '@/types/reports';
+import type { ReportComparison, ReportFilters as ReportFiltersType } from '@/types/reports';
 import {
   avgBy,
   formatPeriodDate,
@@ -96,6 +96,37 @@ const FilterSelect = ({
 
 /** True revenue-weighted AOV; averaging per-row AOVs skews large order counts. */
 const aov = (revenue: number, orders: number) => (orders > 0 ? revenue / orders : 0);
+
+/** Issue #595: absolute comparison delta, signed and coloured. */
+function DeltaCell({ delta, currency = true }: { delta: number; currency?: boolean }) {
+  const tone =
+    delta > 0 ? 'text-emerald-600' : delta < 0 ? 'text-red-600' : 'text-muted-foreground';
+  return (
+    <span className={`font-semibold tabular-nums ${tone}`}>
+      {delta > 0 ? '+' : ''}
+      {currency ? formatCurrency(delta) : formatNumber(delta)}
+    </span>
+  );
+}
+
+/** Issue #595: Δ% — the API sends null when the previous value is 0. */
+function DeltaPercentCell({ percent }: { percent: number }) {
+  const tone =
+    percent > 0 ? 'text-emerald-600' : percent < 0 ? 'text-red-600' : 'text-muted-foreground';
+  return (
+    <span className={`font-semibold tabular-nums ${tone}`}>
+      {percent > 0 ? '+' : ''}
+      {percent.toFixed(2)}%
+    </span>
+  );
+}
+
+/** Issue #595: " vs 1 Sep 2026 → 30 Sep 2026" for a report heading. */
+function comparisonRangeLabel(comparison?: ReportComparison) {
+  return comparison
+    ? ` vs ${formatPeriodDate(comparison.period.start_date)} → ${formatPeriodDate(comparison.period.end_date)}`
+    : '';
+}
 
 function ReportHeading({
   title,
@@ -168,6 +199,22 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
   const trendsRef = useRef<HTMLDivElement>(null);
   const categoryRef = useRef<HTMLDivElement>(null);
 
+  // ---------------------------------------------------------------------------
+  // Issue #595: a custom comparison only reaches the API once both bounds are
+  // chosen — the endpoint rejects an incomplete custom range with a 422, so
+  // the page neither asks nor shows an error while the user is still picking.
+  // ---------------------------------------------------------------------------
+  const queryFilters = useMemo<ReportFiltersType>(() => {
+    if (filters.comparison !== 'custom') return filters;
+    if (filters.compare_start_date && filters.compare_end_date) return filters;
+
+    const incomplete = { ...filters };
+    delete incomplete.comparison;
+    delete incomplete.compare_start_date;
+    delete incomplete.compare_end_date;
+    return incomplete;
+  }, [filters]);
+
   // Sales by Product Query
   const {
     data: productData,
@@ -175,8 +222,8 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     isFetching: isProductFetching,
     error: productError,
   } = useQuery({
-    queryKey: ['sales-by-product', filters],
-    queryFn: () => reportApi.getSalesByProduct(filters),
+    queryKey: ['sales-by-product', queryFilters],
+    queryFn: () => reportApi.getSalesByProduct(queryFilters),
     enabled: productOnly,
     staleTime: 15 * 1000,
   });
@@ -188,8 +235,8 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     isFetching: isCustomerFetching,
     error: customerError,
   } = useQuery({
-    queryKey: ['sales-by-customer', filters],
-    queryFn: () => reportApi.getSalesByCustomer(filters),
+    queryKey: ['sales-by-customer', queryFilters],
+    queryFn: () => reportApi.getSalesByCustomer(queryFilters),
     enabled: !productOnly && activeTab === 'by-customer',
     staleTime: 15 * 1000,
   });
@@ -269,8 +316,8 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
   }, [filterCustomers]);
 
   const { data: byCurrencyData } = useQuery({
-    queryKey: ['sales-by-currency', filters],
-    queryFn: () => reportApi.getSalesByCurrency(filters),
+    queryKey: ['sales-by-currency', queryFilters],
+    queryFn: () => reportApi.getSalesByCurrency(queryFilters),
   });
 
   const {
@@ -279,8 +326,8 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     isFetching: isTrendsFetching,
     error: trendsError,
   } = useQuery({
-    queryKey: ['sales-trends', filters],
-    queryFn: () => reportApi.getSalesTrends(filters),
+    queryKey: ['sales-trends', queryFilters],
+    queryFn: () => reportApi.getSalesTrends(queryFilters),
     enabled: !productOnly && activeTab === 'trends',
     staleTime: 15 * 1000,
   });
@@ -292,8 +339,8 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     isFetching: isCategoryFetching,
     error: categoryError,
   } = useQuery({
-    queryKey: ['sales-by-category', filters],
-    queryFn: () => reportApi.getSalesByCategory(filters),
+    queryKey: ['sales-by-category', queryFilters],
+    queryFn: () => reportApi.getSalesByCategory(queryFilters),
     enabled: !productOnly && activeTab === 'by-category',
     staleTime: 15 * 1000,
   });
@@ -326,6 +373,15 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     value: ReportFiltersType[K],
   ) => setFilters((prev) => ({ ...prev, [key]: value }));
 
+  // Issue #595: switching away from custom drops the (now meaningless) range.
+  const updateComparison = (mode: string) =>
+    setFilters((prev) => ({
+      ...prev,
+      comparison: mode === 'none' ? undefined : (mode as ReportFiltersType['comparison']),
+      compare_start_date: mode === 'custom' ? prev.compare_start_date : undefined,
+      compare_end_date: mode === 'custom' ? prev.compare_end_date : undefined,
+    }));
+
   const hasCustomFilters =
     !!filters.tag ||
     !!filters.currency_code ||
@@ -335,12 +391,42 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     !!filters.salesperson_id ||
     !!filters.channel ||
     !!filters.legal_entity_id ||
+    !!filters.comparison ||
     filters.interval !== 'day' ||
     filters.start_date !== defaultFilters().start_date ||
     filters.end_date !== defaultFilters().end_date;
 
   const periodLabel = `${formatPeriodDate(filters.start_date)} → ${formatPeriodDate(filters.end_date)}`;
   const exportRange = `${filters.start_date}_${filters.end_date}`;
+
+  // ---------------------------------------------------------------------------
+  // Issue #595: Δ + Δ% columns for one metric. Columns key straight into the
+  // flat `{metric}_delta[_percent]` fields the API adds to each row, so a row
+  // without a comparison renders '-'. Hidden entirely without a comparison.
+  // ---------------------------------------------------------------------------
+  const hasComparison = !!queryFilters.comparison;
+
+  const comparisonColumns = (metric: string, label: string): Column[] =>
+    hasComparison
+      ? [
+          {
+            key: `${metric}_delta`,
+            label: `Δ ${label}`,
+            sortable: true,
+            align: 'right',
+            className: 'tabular-nums',
+            format: (value: number) => <DeltaCell delta={value} />,
+          },
+          {
+            key: `${metric}_delta_percent`,
+            label: `Δ% ${label}`,
+            sortable: true,
+            align: 'right',
+            className: 'tabular-nums',
+            format: (value: number) => <DeltaPercentCell percent={value} />,
+          },
+        ]
+      : [];
 
   // ---------------------------------------------------------------------------
   // Columns — numeric columns are tabular so figures line up vertically.
@@ -373,6 +459,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
       className: 'tabular-nums',
       format: (value) => formatCurrency(value),
     },
+    ...comparisonColumns('total_revenue', 'Revenue'),
     {
       key: 'total_cost',
       label: 'Cost',
@@ -434,6 +521,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
       className: 'tabular-nums',
       format: (value) => formatCurrency(value),
     },
+    ...comparisonColumns('total_revenue', 'Revenue'),
     {
       key: 'average_order_value',
       label: 'Avg Order Value',
@@ -486,6 +574,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
       className: 'tabular-nums',
       format: (value) => formatCurrency(value),
     },
+    ...comparisonColumns('revenue', 'Revenue'),
     {
       key: 'total_profit',
       label: 'Profit',
@@ -541,6 +630,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
       className: 'tabular-nums',
       format: (value) => formatCurrency(value),
     },
+    ...comparisonColumns('revenue', 'Revenue'),
     {
       key: 'avg_order_value',
       label: 'Avg Order Value',
@@ -724,6 +814,61 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
           </Select>
         </div>
 
+        {/* Issue #595: comparison period — derived (previous period / same
+            period last year) or an explicit custom range. Every tab then shows
+            Δ and Δ% columns for its headline metric. */}
+        <div className="space-y-1.5">
+          <Label className="text-xs font-medium text-muted-foreground">Compare</Label>
+          <Select value={filters.comparison ?? 'none'} onValueChange={updateComparison}>
+            <SelectTrigger className="h-9 w-[200px] rounded-full text-sm" aria-label="Comparison period">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No comparison</SelectItem>
+              <SelectItem value="previous_period">Previous period</SelectItem>
+              <SelectItem value="same_period_last_year">Same period last year</SelectItem>
+              <SelectItem value="custom">Custom range</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {filters.comparison === 'custom' && (
+          <>
+            <div className="space-y-1.5">
+              <Label htmlFor="sales-compare-from" className="text-xs font-medium text-muted-foreground">
+                Compare from
+              </Label>
+              <Input
+                id="sales-compare-from"
+                type="date"
+                aria-label="Compare from"
+                value={filters.compare_start_date || ''}
+                onChange={(e) => updateFilter('compare_start_date', e.target.value)}
+                className="h-9 w-[150px] rounded-full text-sm"
+              />
+            </div>
+            <span className="pb-2 text-xs text-muted-foreground">→</span>
+            <div className="space-y-1.5">
+              <Label htmlFor="sales-compare-to" className="text-xs font-medium text-muted-foreground">
+                Compare to
+              </Label>
+              <Input
+                id="sales-compare-to"
+                type="date"
+                aria-label="Compare to"
+                value={filters.compare_end_date || ''}
+                onChange={(e) => updateFilter('compare_end_date', e.target.value)}
+                className="h-9 w-[150px] rounded-full text-sm"
+              />
+            </div>
+          </>
+        )}
+
+        {filters.comparison === 'custom' &&
+          (!filters.compare_start_date || !filters.compare_end_date) && (
+            <span className="pb-2 text-xs text-amber-600">Select a complete custom range</span>
+          )}
+
         {hasCustomFilters && (
           <HeaderActionButton
             variant="ghost"
@@ -778,7 +923,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
         <div className="space-y-6">
           <ReportHeading
             title="Sales by Product"
-            subtitle={`For the period ${periodLabel}`}
+            subtitle={`For the period ${periodLabel}${comparisonRangeLabel(productData?.comparison)}`}
           >
             <ReportExportToolbar
               targetRef={productRef}
@@ -934,7 +1079,10 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
 
         {/* ------------------------------- Customers ------------------------------ */}
         <TabsContent value="by-customer" className="space-y-6">
-          <ReportHeading title="Sales by Customer" subtitle={`For the period ${periodLabel}`}>
+          <ReportHeading
+            title="Sales by Customer"
+            subtitle={`For the period ${periodLabel}${comparisonRangeLabel(customerData?.comparison)}`}
+          >
             <ReportExportToolbar
               targetRef={customerRef}
               title="Sales by Customer"
@@ -1037,7 +1185,10 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
 
         {/* -------------------------------- Trends -------------------------------- */}
         <TabsContent value="trends" className="space-y-6">
-          <ReportHeading title="Sales Trends" subtitle={`For the period ${periodLabel}`}>
+          <ReportHeading
+            title="Sales Trends"
+            subtitle={`For the period ${periodLabel}${comparisonRangeLabel(trendsData?.comparison)}`}
+          >
             <ReportExportToolbar
               targetRef={trendsRef}
               title="Sales Trends"
@@ -1161,7 +1312,10 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
 
         {/* ------------------------------ By Category ----------------------------- */}
         <TabsContent value="by-category" className="space-y-6">
-          <ReportHeading title="Sales by Category" subtitle={`For the period ${periodLabel}`}>
+          <ReportHeading
+            title="Sales by Category"
+            subtitle={`For the period ${periodLabel}${comparisonRangeLabel(categoryData?.comparison)}`}
+          >
             <ReportExportToolbar
               targetRef={categoryRef}
               title="Sales by Category"

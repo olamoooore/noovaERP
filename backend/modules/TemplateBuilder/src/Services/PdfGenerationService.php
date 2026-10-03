@@ -25,11 +25,17 @@ final class PdfGenerationService implements PdfGenerationServiceContract
         private readonly MergeFieldResolver $mergeFields,
     ) {}
 
-    public function render(string $documentType, string $documentId, array $options = []): array
+    public function render(string $documentType, string $documentId, array $options = [], ?array $context = null): array
     {
+        // Issue #612: resolve the template against the DOCUMENT's context
+        // (selling entity, branch, currency, customer language/group,
+        // channel) — not as an anonymous tenant render. Callers may override
+        // explicitly; null means "derive from the document's data source".
+        $context ??= $this->dataSources->resolutionContextFor($documentType, $documentId);
+
         $template = isset($options['template_id'])
             ? $this->templates->find($options['template_id'])
-            : $this->templates->resolveFor($documentType);
+            : $this->templates->resolveFor($documentType, $context);
 
         // Lazily provision the tenant's system-default starter templates when
         // none is assigned for this document type yet. Without this, a tenant
@@ -39,7 +45,7 @@ final class PdfGenerationService implements PdfGenerationServiceContract
         // their legacy fallbacks.
         if (! $template && ! isset($options['template_id'])) {
             $this->templates->seedDefaults();
-            $template = $this->templates->resolveFor($documentType);
+            $template = $this->templates->resolveFor($documentType, $context);
         }
 
         if (! $template) {

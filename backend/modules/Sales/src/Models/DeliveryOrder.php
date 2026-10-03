@@ -258,11 +258,13 @@ class DeliveryOrder extends Model
 
     public static function generateNumber(): string
     {
-        // #538 (ST1): collision recovery is the numbering service's job now;
-        // no timestamp suffix is ever issued.
-        return app(\App\Services\DocumentNumberingService::class)->generateUnique(
+        // #899 (PC5): the one platform numbering service owns the locked
+        // counter; no timestamp suffix is ever issued and there is no local
+        // guess/repair loop.
+        return app(\App\Platform\Numbering\NumberingService::class)->nextFor(
             'delivery_order',
             'DO-{YYYY}-{SEQ:4}',
+            null,
             fn (string $prefix): array => static::withTrashed()
                 ->where('delivery_order_number', 'like', $prefix.'%')
                 ->pluck('delivery_order_number')
