@@ -299,6 +299,8 @@ class ChatterService
         string $storagePath,
         ?int $uploadedById = null,
         ?string $uploadedByName = null,
+        ?string $evidenceType = null,
+        ?int $evidenceId = null,
     ): ChatterAttachment {
         $attachment = ChatterAttachment::create([
             'tenant_id' => $this->currentTenantId(),
@@ -314,6 +316,10 @@ class ChatterService
             'storage_disk' => $storageDisk,
             'storage_path' => $storagePath,
             'checksum' => null,
+            // Issue #630: evidence services name the record this file proves,
+            // so the chatter delete path can refuse to destroy it.
+            'evidence_type' => $evidenceType,
+            'evidence_id' => $evidenceId,
         ]);
 
         // Public-portal uploads have no authenticated user, so logEvent cannot
@@ -358,34 +364,110 @@ class ChatterService
      * (invoice evidence, e-sign signed copies, signed delivery orders), so the
      * path is the link. A true result means deleting through chatter would
      * destroy evidence and must be refused.
+     *
+     * Issue #630 extends this: an attachment registered by an evidence service
+     * now carries `evidence_type` / `evidence_id` directly (schema-based
+     * contract). The path checks below remain as the safety net for rows
+     * registered before those columns existed.
      */
     public function isEvidenceLinked(ChatterAttachment $attachment): bool
+    {
+        return $this->evidenceLinkDescription($attachment) !== null;
+    }
+
+    /**
+     * Describe the evidence a chatter attachment belongs to, or null when it
+     * is an ordinary attachment.
+     *
+     * Used both for the delete guard (`isEvidenceLinked`) and for the 403
+     * message ("This file is evidence for …"), so the two cannot drift.
+     */
+    public function evidenceLinkDescription(ChatterAttachment $attachment): ?string
+    {
+        $type = $attachment->evidence_type;
+        if (is_string($type) && $type !== '' && $attachment->evidence_id !== null) {
+            return $this->evidenceTypeLabel($type).' #'.$attachment->evidence_id;
+        }
+
+        return $this->storedPathEvidenceDescription((string) $attachment->storage_path);
+    }
+
+    /**
+     * Issue #630: does any OTHER record still reference this stored file?
+     *
+     * Chatter attachment rows can share one file (e.g. an evidence file
+     * mirrored into a second feed entry), so deleting one row must not remove
+     * the bytes while another row — or an evidence record the schema contract
+     * does not cover — still points at it.
+     */
+    public function isFileReferencedElsewhere(ChatterAttachment $attachment): bool
     {
         $path = (string) $attachment->storage_path;
         if ($path === '') {
             return false;
         }
 
-        // Invoice evidence (uploads, customer portal acceptance, e-sign).
-        // Include soft-deleted rows: revoked evidence is still an audit
-        // artifact whose file must not disappear through chatter.
-        if (InvoiceEvidence::query()->withTrashed()->where('file_path', $path)->exists()) {
+        $disk = (string) ($attachment->storage_disk ?: 'public');
+
+        $referencedByAnotherAttachment = ChatterAttachment::query()
+            ->whereKeyNot($attachment->getKey())
+            ->where('storage_path', $path)
+            ->where(function ($query) use ($disk) {
+                $query->where('storage_disk', $disk)->orWhereNull('storage_disk');
+            })
+            ->exists();
+
+        if ($referencedByAnotherAttachment) {
             return true;
+        }
+
+        // Evidence records own the file even when this attachment row does not
+        // carry the schema reference (legacy rows).
+        return $this->storedPathEvidenceDescription($path) !== null;
+    }
+
+    private function evidenceTypeLabel(string $type): string
+    {
+        return match ($type) {
+            InvoiceEvidence::class => 'invoice evidence',
+            EsignRequest::class => 'an electronic signature request',
+            DeliveryOrder::class => 'a signed delivery order',
+            default => 'a document',
+        };
+    }
+
+    /**
+     * Safety net (#629): find the evidence record that owns this exact stored
+     * path. Soft-deleted rows are included — revoked evidence is still an
+     * audit artifact whose file must not disappear through chatter.
+     */
+    private function storedPathEvidenceDescription(string $path): ?string
+    {
+        if ($path === '') {
+            return null;
+        }
+
+        // Invoice evidence (uploads, customer portal acceptance, e-sign).
+        $invoiceEvidence = InvoiceEvidence::query()->withTrashed()->where('file_path', $path)->first();
+        if ($invoiceEvidence) {
+            return 'invoice evidence #'.$invoiceEvidence->id;
         }
 
         // Built-in e-signature signed copies (invoice / delivery order /
         // quotation) recorded on the e-sign request.
-        if (EsignRequest::query()->withTrashed()->where('signed_document_path', $path)->exists()) {
-            return true;
+        $esign = EsignRequest::query()->withTrashed()->where('signed_document_path', $path)->first();
+        if ($esign) {
+            return 'an electronic signature request #'.$esign->id;
         }
 
         // Signed delivery orders stored on the order itself (the public
         // acceptance portal path, which creates no e-sign request).
-        if (DeliveryOrder::query()->where('signed_document_path', $path)->exists()) {
-            return true;
+        $deliveryOrder = DeliveryOrder::query()->where('signed_document_path', $path)->first();
+        if ($deliveryOrder) {
+            return 'a signed delivery order #'.$deliveryOrder->id;
         }
 
-        return false;
+        return null;
     }
 
     /**
@@ -407,7 +489,14 @@ class ChatterService
     {
         $attachment = $this->findAttachment($subjectType, $subjectId, $attachmentId);
 
-        Storage::disk($attachment->storage_disk ?: 'local')->delete($attachment->storage_path);
+        // Issue #630: never destroy the stored file while it is evidence or is
+        // referenced by another record. The controller refuses evidence-linked
+        // deletes with a 403; this is the last line of defence for direct
+        // service calls.
+        if (! $this->isEvidenceLinked($attachment) && ! $this->isFileReferencedElsewhere($attachment)) {
+            Storage::disk($attachment->storage_disk ?: 'local')->delete($attachment->storage_path);
+        }
+
         $attachment->delete();
 
         $this->logEvent($subjectType, (int) $subjectId, 'attachment_deleted', 'Attachment deleted', [

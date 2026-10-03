@@ -226,6 +226,10 @@ class InvoiceEvidenceService
                 // Customer uploads have no platform user; name them so the
                 // feed does not attribute the file to "System".
                 trim(($customerName ?: 'Customer').($customerEmail ? " ({$customerEmail})" : '')),
+                // Issue #630: this file IS the evidence row — stamp the
+                // reference so chatter can never destroy it.
+                InvoiceEvidence::class,
+                (int) $evidence->id,
             );
         } catch (\Throwable $e) {
             Log::warning('InvoiceEvidenceService: failed to mirror evidence to chatter', [
@@ -538,6 +542,79 @@ class InvoiceEvidenceService
         }
 
         return ['blocked' => false];
+    }
+
+    /**
+     * Issue #630 data check: evidence rows whose stored file no longer exists.
+     *
+     * Every row is evidence that has already been destroyed (e.g. a chatter
+     * delete before the #630 guard): the record still points at the file — for
+     * the "evidence before posting" gate that means an invoice claims evidence
+     * that an auditor can no longer retrieve.
+     *
+     * @return array{rows: array<int, array<string, mixed>>, count: int}
+     */
+    public function missingEvidenceFiles(int $limit = 500): array
+    {
+        $evidenceRows = InvoiceEvidence::query()
+            ->withTrashed()
+            ->with('invoice:id,invoice_number')
+            ->whereNotNull('file_path')
+            ->orderBy('id')
+            ->limit($limit)
+            ->get();
+
+        $missing = [];
+
+        foreach ($evidenceRows as $evidence) {
+            $path = (string) $evidence->file_path;
+
+            if ($path === '' || $this->evidenceFileExists($path)) {
+                continue;
+            }
+
+            $missing[] = [
+                'evidence_id' => (int) $evidence->id,
+                'invoice_id' => $evidence->invoice_id !== null ? (int) $evidence->invoice_id : null,
+                'invoice_number' => $evidence->invoice?->invoice_number,
+                'type' => $evidence->type,
+                'source' => $evidence->source,
+                'file_path' => $path,
+                'file_name' => $evidence->file_name,
+                'deleted_at' => optional($evidence->deleted_at)->toIso8601String(),
+                'created_at' => optional($evidence->created_at)->toIso8601String(),
+            ];
+        }
+
+        return [
+            'rows' => $missing,
+            'count' => count($missing),
+        ];
+    }
+
+    /**
+     * Evidence rows do not record which disk their path was written to
+     * (uploads use `public`, portal signatures may use the default disk), so a
+     * file counts as present when any configured evidence disk has it.
+     */
+    private function evidenceFileExists(string $path): bool
+    {
+        $disks = array_unique(array_filter([
+            'public',
+            (string) config('filesystems.default', 'local'),
+        ]));
+
+        foreach ($disks as $disk) {
+            try {
+                if (Storage::disk($disk)->exists($path)) {
+                    return true;
+                }
+            } catch (\Throwable) {
+                // Unknown/unconfigured disk — try the next one.
+            }
+        }
+
+        return false;
     }
 
     private function storeFile(Invoice $invoice, UploadedFile $file): string

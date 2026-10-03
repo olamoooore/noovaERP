@@ -459,8 +459,10 @@ class ChatterController extends Controller
      */
     private function authorizeAttachmentDeletion(Request $request, ChatterAttachment $attachment): void
     {
-        if ($this->chatter->isEvidenceLinked($attachment)) {
-            abort(403, 'This attachment is evidence for a document and cannot be deleted through chatter.');
+        // Issue #629/#630: evidence-linked files are never deletable through
+        // chatter. Name the evidence so the operator knows where to manage it.
+        if ($description = $this->chatter->evidenceLinkDescription($attachment)) {
+            abort(403, "This file is evidence for {$description} and cannot be deleted through chatter.");
         }
 
         $user = $request->user();

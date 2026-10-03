@@ -22,7 +22,6 @@ use App\Services\InvoiceDeliveryService;
 use App\Services\InvoiceEvidenceService;
 use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
-use App\Services\SalesApprovalGate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -45,7 +44,6 @@ class InvoiceController extends Controller
         private InvoiceApprovalService $approvalService,
         private InvoiceDeliveryService $deliveryService,
         private InvoiceEvidenceService $evidenceService,
-        private SalesApprovalGate $approvalGate,
         private DeliveryOrderService $deliveryOrderService,
         private EInvoiceLifecycleGuard $eInvoiceLifecycle,
         private InvoiceCancellationService $cancellationService,
@@ -802,6 +800,11 @@ class InvoiceController extends Controller
             $existingInvoice->load('lines');
             $existingInvoice->calculateTotals();
 
+            // Issue #647: a re-import replaces the draft's totals — the same
+            // approval-threshold rule must run here as on any other total
+            // change, through the service that owns the rule.
+            $this->invoiceService->applyApprovalThreshold($existingInvoice);
+
             return $existingInvoice;
         }
 
@@ -1324,15 +1327,11 @@ class InvoiceController extends Controller
             $invoice->refresh();
             $invoice->calculateTotals();
 
-            // Issue #180: auto-promote `requires_approval` when the tenant's
-            // threshold is set and the invoice total meets or exceeds it.
-            // The existing `submitApproval` flow then handles the workflow.
-            if ($this->approvalGate->requiresApproval(Invoice::class, (float) $invoice->total)) {
-                if (! $invoice->requires_approval) {
-                    $invoice->requires_approval = true;
-                    $invoice->save();
-                }
-            }
+            // Issue #180/#647: auto-promote `requires_approval` when the
+            // tenant's threshold is set and the invoice total meets or exceeds
+            // it. The rule itself lives in InvoiceService so create and every
+            // total-changing update share one implementation.
+            $this->invoiceService->applyApprovalThreshold($invoice);
         });
 
         $changedFields = [];
@@ -2261,6 +2260,19 @@ class InvoiceController extends Controller
     {
         return response()->json([
             'data' => $this->cancellationService->cancelledInvoicesWithUnreversedJournals(),
+        ]);
+    }
+
+    /**
+     * Issue #630 data check: evidence rows whose stored file is missing from
+     * disk (destroyed through chatter before the #630 delete guard, or
+     * otherwise). Every row is invoice evidence that can no longer be
+     * retrieved — a gap in the "evidence before posting" trail.
+     */
+    public function missingEvidenceFilesDataCheck(): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->evidenceService->missingEvidenceFiles(),
         ]);
     }
 
