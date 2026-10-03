@@ -413,6 +413,12 @@ export const CreateInvoicePage: React.FC = () => {
   const [pasteText, setPasteText] = useState('');
   const [pasteBusy, setPasteBusy] = useState(false);
   const [repeatConfirmOpen, setRepeatConfirmOpen] = useState(false);
+  // #298 (F6): pending warehouse change + the line indexes whose lot/serial
+  // pick does NOT exist in the new warehouse (only those are cleared).
+  const [warehouseClearConfirm, setWarehouseClearConfirm] = useState<{
+    nextId: string;
+    clearIndexes: number[];
+  } | null>(null);
   // 8.3: one drawer for secondary details + per-user density.
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [density, setDensity] = useDensity();
@@ -1177,6 +1183,69 @@ export const CreateInvoicePage: React.FC = () => {
     // Catalog additions must price through the engine too (list currency +
     // FX), not just echo the catalogue number.
     void resolvePricingForLines(customerId, next);
+  };
+
+  // #298 (F6): a warehouse switch must never silently drop lot/serial picks.
+  // Selections that also exist in the new warehouse are kept; only the rest
+  // are listed in a confirmation dialog, and Cancel keeps the old warehouse.
+  const handleWarehouseChange = async (nextWarehouseId: string) => {
+    warehouseTouchedRef.current = true;
+    if (!nextWarehouseId || nextWarehouseId === warehouseId) {
+      setWarehouseId(nextWarehouseId);
+      return;
+    }
+
+    const selected = lines
+      .map((line, index) => ({ line, index }))
+      .filter(({ line }) => line.product_batch_id != null || line.product_serial_id != null);
+    if (selected.length === 0) {
+      setWarehouseId(nextWarehouseId);
+      return;
+    }
+
+    const clearIndexes: number[] = [];
+    await Promise.all(
+      selected.map(async ({ line, index }) => {
+        if (!line.product_id) return; // free-text lot without ids: never destroyed
+        try {
+          const res = await api.get(`/products/${line.product_id}/tracking-availability`, {
+            params: { warehouse_id: nextWarehouseId },
+          });
+          const data = res.data?.data ?? res.data ?? {};
+          const batchKept =
+            line.product_batch_id == null ||
+            (data.batches ?? []).some((batch: any) => Number(batch.id) === Number(line.product_batch_id));
+          const serialKept =
+            line.product_serial_id == null ||
+            (data.serials ?? []).some((serial: any) => Number(serial.id) === Number(line.product_serial_id));
+          if (!batchKept || !serialKept) clearIndexes.push(index);
+        } catch {
+          // Availability unknown -> keep the selection (never drop data
+          // because a check failed).
+        }
+      }),
+    );
+
+    if (clearIndexes.length === 0) {
+      setWarehouseId(nextWarehouseId);
+      return;
+    }
+    setWarehouseClearConfirm({ nextId: nextWarehouseId, clearIndexes });
+  };
+
+  const applyWarehouseChange = () => {
+    if (!warehouseClearConfirm) return;
+    const { nextId, clearIndexes } = warehouseClearConfirm;
+    const toClear = new Set(clearIndexes);
+    setWarehouseId(nextId);
+    setLines((current) =>
+      current.map((line, index) =>
+        toClear.has(index)
+          ? { ...line, product_batch_id: null, product_serial_id: null, lot_number: '', serial_number: '', expiry_date: '' }
+          : line,
+      ),
+    );
+    setWarehouseClearConfirm(null);
   };
 
   // D6(a): load the previous invoice's lines. Prices are carried verbatim, so
@@ -2076,11 +2145,11 @@ export const CreateInvoicePage: React.FC = () => {
                   chip; clicking one edits it in place. */}
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {!isQuoteMode && (
-                  <label className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background px-3 text-xs" title="Stock warehouse — changing it clears batch/serial selections">
+                  <label className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background px-3 text-xs" title="Stock warehouse — changing it asks before clearing unavailable batch/serial selections">
                     <span className="text-muted-foreground">Warehouse</span>
                     <select
                       value={warehouseId}
-                      onChange={(event) => { warehouseTouchedRef.current = true; setWarehouseId(event.target.value); setLines((current) => current.map((line) => ({ ...line, product_batch_id: null, product_serial_id: null, lot_number: '', serial_number: '', expiry_date: '' }))); }}
+                      onChange={(event) => { void handleWarehouseChange(event.target.value); }}
                       className="max-w-[14rem] bg-transparent text-xs font-medium focus:outline-none"
                     >
                       <option value="">Select</option>
@@ -3420,6 +3489,32 @@ export const CreateInvoicePage: React.FC = () => {
               Cancel
             </Button>
             <Button onClick={performRepeatLastInvoice}>Replace lines</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* #298 (F6): switching warehouses lists exactly which picks are lost. */}
+      <Dialog
+        open={!!warehouseClearConfirm}
+        onOpenChange={(open) => {
+          if (!open) setWarehouseClearConfirm(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change warehouse?</DialogTitle>
+            <DialogDescription>
+              {warehouseClearConfirm?.clearIndexes.length ?? 0} lot selection
+              {(warehouseClearConfirm?.clearIndexes.length ?? 0) === 1 ? '' : 's'} will be cleared —
+              they are not available in the new warehouse. Selections available in the new
+              warehouse are kept.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWarehouseClearConfirm(null)}>
+              Cancel
+            </Button>
+            <Button onClick={applyWarehouseChange}>Change warehouse</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
