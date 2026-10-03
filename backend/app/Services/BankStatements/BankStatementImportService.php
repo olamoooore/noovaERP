@@ -19,6 +19,7 @@ class BankStatementImportService
     public function __construct(
         private BankStatementParser $parser,
         private BankStatementAuditService $audit,
+        private StatementAmountParser $amounts = new StatementAmountParser,
     ) {}
 
     public function preview(UploadedFile $file, int $bankAccountId, int $userId, int $headerRow = 1, ?string $worksheet = null): array
@@ -102,9 +103,25 @@ class BankStatementImportService
             $this->audit->record('import_confirmed', ['actor_id' => $userId, 'bank_account_id' => $import->bank_account_id, 'import_id' => $import->id, 'after_state' => ['mapping' => $input['mapping']], 'metadata' => ['file_hash' => $preview['hash']]]);
             $groups = [];
             $errors = 0;
+            $zeroRows = 0;
             foreach ($parsed['rows'] as $row) {
                 try {
                     $normal = $this->normalize($row, [...$input, 'source_file_hash' => $preview['hash']], $preview['bank_account_id'], $inferredOrder);
+                } catch (UnparsableAmountException $e) {
+                    $errors++;
+                    DB::table('bank_statement_import_errors')->insert([
+                        'id' => (string) Str::uuid(),
+                        'import_id' => $import->id,
+                        'source_row' => $row['source_row'],
+                        'field' => $e->field,
+                        'code' => 'AMOUNT_UNPARSEABLE',
+                        'severity' => 'error',
+                        'message' => $e->getMessage(),
+                        'safe_value' => mb_substr($e->raw, 0, 255),
+                        'created_at' => now(),
+                    ]);
+
+                    continue;
                 } catch (\Throwable) {
                     $errors++;
                     DB::table('bank_statement_import_errors')->insert([
@@ -122,6 +139,22 @@ class BankStatementImportService
                     continue;
                 }
                 if ((float) $normal['amount'] === 0.0) {
+                    // BK2: a real zero amount is counted and reported — one
+                    // warning row per source line, plus the total on the
+                    // import's metadata — never dropped silently.
+                    $zeroRows++;
+                    DB::table('bank_statement_import_errors')->insert([
+                        'id' => (string) Str::uuid(),
+                        'import_id' => $import->id,
+                        'source_row' => $normal['source_row'],
+                        'field' => 'amount',
+                        'code' => 'ZERO_AMOUNT_ROW',
+                        'severity' => 'warning',
+                        'message' => 'The row amount is 0.00, so it was not imported as a transaction.',
+                        'safe_value' => '0',
+                        'created_at' => now(),
+                    ]);
+
                     continue;
                 }
                 $groups[$normal['transaction_key']] ??= ['transaction' => $normal, 'allocations' => []];
@@ -151,7 +184,7 @@ class BankStatementImportService
                     BankStatementAllocation::create(['bank_statement_transaction_id' => $transaction->id, 'allocation_type' => 'invoice_reference', 'external_reference' => $allocationReference, 'amount' => $allocationAmount, 'sequence' => 1, 'raw_data' => $data['raw_data']]);
                 }
             }
-            $import->update(['status' => $errors ? 'failed' : 'imported', 'transaction_count' => $created, 'duplicate_count' => $duplicates, 'error_count' => $errors, 'imported_at' => $errors ? null : now()]);
+            $import->update(['status' => $errors ? 'failed' : 'imported', 'transaction_count' => $created, 'duplicate_count' => $duplicates, 'error_count' => $errors, 'imported_at' => $errors ? null : now(), 'metadata' => array_merge($import->metadata ?? [], ['zero_amount_rows' => $zeroRows])]);
             $this->audit->record($errors ? 'import_failed' : 'import_completed', ['actor_id' => $userId, 'bank_account_id' => $import->bank_account_id, 'import_id' => $import->id, 'after_state' => ['status' => $errors ? 'failed' : 'imported', 'row_count' => count($parsed['rows']), 'transaction_count' => $created, 'duplicate_count' => $duplicates, 'error_count' => $errors]]);
             Cache::forget($key);
 
@@ -188,10 +221,14 @@ class BankStatementImportService
         $get = fn (string $key) => isset($m[$key]) ? trim((string) ($v[$m[$key]] ?? '')) : '';
         $dateFormat = $input['date_format'] ?? null;
         $date = $this->parseTransactionDate($get('transaction_date'), $dateFormat, $inferredDateOrder);
-        $numeric = fn ($value) => (float) str_replace([',', ' '], '', (string) $value);
+        // BK2: ONE amount parser (leading/trailing signs, DR/CR, parentheses,
+        // currency codes/symbols, thousands separators). Anything it cannot
+        // read throws UnparsableAmountException — a field-named row error —
+        // rather than being coerced to 0 and skipped as an empty row.
+        $numeric = fn (string $value, string $field): float => $this->amounts->parse($value, $field);
         $amount = isset($m['amount'])
-            ? $numeric($get('amount'))
-            : $numeric($get('credit')) - abs($numeric($get('debit')));
+            ? $numeric($get('amount'), 'amount')
+            : $numeric($get('credit'), 'credit') - abs($numeric($get('debit'), 'debit'));
         $description = $get('description');
         if ($description === '') {
             throw new \InvalidArgumentException('Missing description.');
@@ -213,7 +250,7 @@ class BankStatementImportService
             $running,
         ]);
 
-        return ['bank_account_id' => $bankAccountId, 'transaction_key' => hash('sha256', $canonical), 'source_row' => $row['source_row'], 'value_date' => $get('value_date') ?: null, 'transaction_date' => $date->format('Y-m-d'), 'transaction_time' => $get('transaction_time') ?: null, 'description' => $description, 'bank_reference' => $reference ?: null, 'customer_reference' => $get('customer_reference') ?: null, 'customer_code' => $get('customer_code') ?: null, 'amount' => $amount, 'currency_code' => strtoupper($input['currency_code']), 'running_balance' => $running === '' ? null : $numeric($running), 'status' => 'unmatched', 'matched_amount' => 0, 'residual_amount' => $amount, 'needs_review' => $reference === '', 'raw_data' => $v, 'allocation_reference' => $get('invoice_reference') ?: null, 'allocation_amount' => $get('allocation_amount') === '' ? null : $numeric($get('allocation_amount'))];
+        return ['bank_account_id' => $bankAccountId, 'transaction_key' => hash('sha256', $canonical), 'source_row' => $row['source_row'], 'value_date' => $get('value_date') ?: null, 'transaction_date' => $date->format('Y-m-d'), 'transaction_time' => $get('transaction_time') ?: null, 'description' => $description, 'bank_reference' => $reference ?: null, 'customer_reference' => $get('customer_reference') ?: null, 'customer_code' => $get('customer_code') ?: null, 'amount' => $amount, 'currency_code' => strtoupper($input['currency_code']), 'running_balance' => $running === '' ? null : $numeric($running, 'running_balance'), 'status' => 'unmatched', 'matched_amount' => 0, 'residual_amount' => $amount, 'needs_review' => $reference === '', 'raw_data' => $v, 'allocation_reference' => $get('invoice_reference') ?: null, 'allocation_amount' => $get('allocation_amount') === '' ? null : $numeric($get('allocation_amount'), 'allocation_amount')];
     }
 
     private function parseTransactionDate(string $rawDate, ?string $dateFormat, ?string $inferredDateOrder = null): Carbon

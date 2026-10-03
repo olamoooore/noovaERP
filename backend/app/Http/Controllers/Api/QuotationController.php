@@ -69,6 +69,47 @@ class QuotationController extends Controller
         }
     }
 
+    /**
+     * Issue #895 (SALES-PLAT / PC1): append a tamper-evident audit row for a
+     * quotation field change or lifecycle transition. Deliberately uncaught —
+     * an audit failure surfaces as an error instead of silently succeeding.
+     */
+    private function writeAuditLog(
+        string $operation,
+        int $quotationId,
+        ?array $beforeState = null,
+        ?array $afterState = null,
+        array $metadata = [],
+    ): void {
+        app(\App\Services\AuditLogger::class)->log(
+            operation: $operation,
+            referenceType: 'quotation',
+            referenceId: $quotationId,
+            beforeState: $beforeState,
+            afterState: $afterState,
+            metadata: $metadata + [
+                'request_id' => request()?->header(\App\Http\Middleware\CorrelationIdMiddleware::HEADER),
+            ],
+        );
+    }
+
+    /**
+     * Issue #895: a compact, field-level snapshot of a quotation line for the
+     * audit trail (ids alone cannot show what price/discount was changed).
+     */
+    private function auditLineSnapshot($line): array
+    {
+        return [
+            'id' => $line->id !== null ? (int) $line->id : null,
+            'product_id' => $line->product_id !== null ? (int) $line->product_id : null,
+            'description' => $line->description,
+            'quantity' => (float) $line->quantity,
+            'unit_price' => (float) $line->unit_price,
+            'tax_rate' => (float) ($line->tax_rate ?? 0),
+            'discount_amount' => (float) ($line->discount_amount ?? 0),
+        ];
+    }
+
     public function index(Request $request)
     {
         $query = $this->filteredQuotationQuery($request);
@@ -485,6 +526,12 @@ class QuotationController extends Controller
         }
 
         $before = $quotation->getOriginal();
+        // Issue #895: the draft edit replaces lines (delete + recreate), which
+        // bypasses model events — snapshot them here for the audit trail.
+        $beforeLines = $quotation->lines()->get()
+            ->map(fn ($line) => $this->auditLineSnapshot($line))
+            ->values()
+            ->all();
 
         try {
             DB::transaction(function () use ($request, $quotation, $validated) {
@@ -575,6 +622,25 @@ class QuotationController extends Controller
                 "Updated quotation {$quotation->quotation_number}",
                 $extra + ['fields' => $changedFields === [] ? 'line items' : implode(', ', $changedFields)],
             );
+
+            // Issue #895: field-level, append-only audit of what the edit
+            // changed — old and new value for every touched field and line.
+            $this->writeAuditLog(
+                'quotation_updated',
+                (int) $quotation->id,
+                [
+                    'fields' => array_intersect_key($before, array_flip($changedFields)),
+                    'lines' => $beforeLines,
+                ],
+                [
+                    'fields' => array_intersect_key($quotation->fresh()->getAttributes(), array_flip($changedFields)),
+                    'lines' => $quotation->lines()->get()
+                        ->map(fn ($line) => $this->auditLineSnapshot($line))
+                        ->values()
+                        ->all(),
+                ],
+                ['quotation_number' => $quotation->quotation_number],
+            );
         }
 
         return response()->json($quotation->fresh(['customer', 'lines.product']));
@@ -592,7 +658,21 @@ class QuotationController extends Controller
             return response()->json(['message' => 'Only draft quotations can be deleted'], 403);
         }
 
+        $beforeState = [
+            'status' => $quotation->status,
+            'quotation_number' => $quotation->quotation_number,
+            'total' => (float) $quotation->total,
+        ];
+
         $quotation->delete();
+
+        $this->writeAuditLog(
+            'quotation_deleted',
+            (int) $quotation->id,
+            $beforeState,
+            ['deleted' => true],
+            ['quotation_number' => $beforeState['quotation_number']],
+        );
 
         return response()->json(['message' => 'Quotation deleted successfully']);
     }
@@ -734,8 +814,26 @@ class QuotationController extends Controller
             ], 202);
         }
 
+        $beforeStatus = $quotation->status;
+
         try {
             $quotation = $this->releaseQuotation($quotation);
+
+            // Issue #895: confirmation creates a Sales Order — record the
+            // transition and the order it produced on the audit trail.
+            $this->writeAuditLog(
+                'quotation_confirmed',
+                (int) $quotation->id,
+                ['status' => $beforeStatus, 'sales_order_id' => null],
+                [
+                    'status' => $quotation->status,
+                    'sales_order_id' => $quotation->sales_order_id !== null ? (int) $quotation->sales_order_id : null,
+                ],
+                [
+                    'quotation_number' => $quotation->quotation_number,
+                    'sales_order_number' => $quotation->salesOrder?->sales_order_number,
+                ],
+            );
 
             $this->logQuotationChatter(
                 $quotation,
@@ -1582,6 +1680,14 @@ class QuotationController extends Controller
             return $quotation->fresh(['customer', 'lines.product', 'salesOrder']);
         });
 
+        $this->writeAuditLog(
+            'quotation_cancelled',
+            (int) $quotation->id,
+            ['status' => $fromStatus],
+            ['status' => $quotation->status],
+            ['quotation_number' => $quotation->quotation_number],
+        );
+
         $this->logQuotationChatter(
             $quotation,
             'status_changed',
@@ -1623,6 +1729,8 @@ class QuotationController extends Controller
             'reason_text' => 'nullable|string|max:500',
         ]);
 
+        $beforeStatus = $quotation->status;
+
         try {
             $replacement = app(\App\Services\ReplacementDraftService::class)->createQuotationReplacementDraft(
                 $quotation,
@@ -1631,6 +1739,22 @@ class QuotationController extends Controller
                     'reason_text' => $validated['reason_text'] ?? 'Quotation rejected',
                     'user_id' => \Illuminate\Support\Facades\Auth::id(),
                 ])
+            );
+
+            $superseded = $quotation->fresh();
+
+            $this->writeAuditLog(
+                'quotation_rejected',
+                (int) $quotation->id,
+                ['status' => $beforeStatus, 'is_active_version' => true],
+                ['status' => $superseded?->status, 'is_active_version' => false],
+                [
+                    'quotation_number' => $quotation->quotation_number,
+                    'reason_code' => $validated['reason_code'] ?? 'rejection',
+                    'reason_text' => $validated['reason_text'] ?? 'Quotation rejected',
+                    'replacement_quotation_id' => (int) $replacement->id,
+                    'replacement_quotation_number' => $replacement->quotation_number,
+                ],
             );
 
             return response()->json([
@@ -1692,6 +1816,14 @@ class QuotationController extends Controller
             'sales_order_id' => null,
         ]);
 
+        $this->writeAuditLog(
+            'quotation_reset_to_draft',
+            (int) $quotation->id,
+            ['status' => $fromStatus],
+            ['status' => $quotation->status, 'sales_order_id' => null],
+            ['quotation_number' => $quotation->quotation_number],
+        );
+
         $this->logQuotationChatter(
             $quotation,
             'status_changed',
@@ -1725,7 +1857,22 @@ class QuotationController extends Controller
 
         foreach ($deletable as $quotation) {
             try {
+                $beforeState = [
+                    'status' => $quotation->status,
+                    'quotation_number' => $quotation->quotation_number,
+                    'total' => (float) $quotation->total,
+                ];
+
                 $quotation->delete();
+
+                $this->writeAuditLog(
+                    'quotation_deleted',
+                    (int) $quotation->id,
+                    $beforeState,
+                    ['deleted' => true],
+                    ['quotation_number' => $beforeState['quotation_number'], 'bulk' => true],
+                );
+
                 $deletedIds[] = $quotation->id;
             } catch (\Throwable $e) {
                 $skipped[] = ['id' => $quotation->id, 'reason' => $e->getMessage()];

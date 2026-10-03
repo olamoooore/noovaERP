@@ -71,12 +71,13 @@ class InventoryService
         ?string $notes = null,
         ?string $batchNumber = null,
         ?\DateTime $expiryDate = null,
-        ?string $idempotencyKey = null
+        ?string $idempotencyKey = null,
+        array $batchAllocations = []
     ): StockMovement {
         return DB::transaction(function () use (
             $productId, $warehouseId, $quantity, $type, $reference,
             $referenceType, $referenceId, $adjustmentReasonId, $notes,
-            $batchNumber, $expiryDate, $idempotencyKey
+            $batchNumber, $expiryDate, $idempotencyKey, $batchAllocations
         ) {
             // ── AR-002: Idempotency guard ─────────────────────────────────────
             // If a stable caller-supplied key is provided and a movement already
@@ -219,6 +220,7 @@ class InventoryService
                         referenceType: $referenceType,
                         referenceId: $referenceId,
                         idempotencyKey: $idempotencyKey ?? "movement-{$movement->id}",
+                        batchAllocations: $batchAllocations,
                     );
                 } elseif ($type === 'return') {
                     $batchConsumption->restoreFromLedger(

@@ -197,7 +197,21 @@ class CustomerCreditNotesController extends Controller
             ], 403);
         }
 
+        $beforeState = [
+            'status' => $creditNote->status,
+            'credit_note_number' => $creditNote->credit_note_number,
+            'amount' => (float) $creditNote->total_amount,
+        ];
+
         $creditNote->delete();
+
+        $this->writeAuditLog(
+            'customer_credit_note_deleted',
+            (int) $creditNote->id,
+            $beforeState,
+            ['deleted' => true],
+            ['credit_note_number' => $beforeState['credit_note_number'], 'invoice_id' => $creditNote->invoice_id],
+        );
 
         return response()->json(['message' => 'Credit note deleted successfully']);
     }
@@ -216,6 +230,18 @@ class CustomerCreditNotesController extends Controller
 
         try {
             $posted = $this->creditNoteService->postCreditNote($creditNote);
+
+            $this->writeAuditLog(
+                'customer_credit_note_posted',
+                (int) $posted->id,
+                ['status' => 'draft', 'journal_entry_id' => null],
+                [
+                    'status' => $posted->status,
+                    'journal_entry_id' => $posted->journal_entry_id,
+                    'amount' => (float) $posted->total_amount,
+                ],
+                ['credit_note_number' => $posted->credit_note_number, 'invoice_id' => $posted->invoice_id],
+            );
 
             return response()->json([
                 'message' => 'Credit note posted successfully',
@@ -255,6 +281,14 @@ class CustomerCreditNotesController extends Controller
 
         try {
             $voided = $this->creditNoteService->voidCreditNote($creditNote);
+
+            $this->writeAuditLog(
+                'customer_credit_note_voided',
+                (int) $voided->id,
+                ['status' => 'posted', 'journal_entry_id' => $creditNote->journal_entry_id],
+                ['status' => $voided->status, 'reversal_journal_entry_id' => $voided->reversal_journal_entry_id],
+                ['credit_note_number' => $voided->credit_note_number, 'invoice_id' => $voided->invoice_id],
+            );
 
             return response()->json([
                 'message' => 'Credit note voided successfully',
@@ -298,5 +332,29 @@ class CustomerCreditNotesController extends Controller
         );
 
         return response()->json($validation);
+    }
+
+    /**
+     * Issue #895 (SALES-PLAT / PC1): append a tamper-evident audit row for a
+     * credit-note lifecycle transition. Deliberately uncaught — an audit
+     * failure surfaces as an error instead of silently succeeding.
+     */
+    private function writeAuditLog(
+        string $operation,
+        int $creditNoteId,
+        ?array $beforeState = null,
+        ?array $afterState = null,
+        array $metadata = [],
+    ): void {
+        app(\App\Services\AuditLogger::class)->log(
+            operation: $operation,
+            referenceType: 'customer_credit_note',
+            referenceId: $creditNoteId,
+            beforeState: $beforeState,
+            afterState: $afterState,
+            metadata: $metadata + [
+                'request_id' => request()?->header(\App\Http\Middleware\CorrelationIdMiddleware::HEADER),
+            ],
+        );
     }
 }

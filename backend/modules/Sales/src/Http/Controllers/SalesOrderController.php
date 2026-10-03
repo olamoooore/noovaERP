@@ -279,8 +279,18 @@ class SalesOrderController extends Controller
 
         $creditCheck = $this->creditCheckService->checkCreditLimit($order->customer, (float) $order->total);
 
+        $beforeStatus = $order->status;
+
         try {
             $order = $this->orderService->confirmOrder($order);
+
+            $this->writeAuditLog(
+                'sales_order_confirmed',
+                (int) $order->id,
+                ['status' => $beforeStatus],
+                ['status' => $order->status],
+                ['sales_order_number' => $order->sales_order_number],
+            );
 
             return response()->json([
                 'message' => 'Order confirmed',
@@ -300,8 +310,18 @@ class SalesOrderController extends Controller
             return response()->json(['message' => 'Sales order not found'], 404);
         }
 
+        $beforeStatus = $order->status;
+
         try {
             $order = $this->orderService->allocateOrder($order);
+
+            $this->writeAuditLog(
+                'sales_order_allocated',
+                (int) $order->id,
+                ['status' => $beforeStatus],
+                ['status' => $order->status],
+                ['sales_order_number' => $order->sales_order_number],
+            );
 
             return response()->json(['message' => 'Order allocated', 'order' => $order]);
         } catch (\Exception $e) {
@@ -317,8 +337,18 @@ class SalesOrderController extends Controller
             return response()->json(['message' => 'Sales order not found'], 404);
         }
 
+        $beforeStatus = $order->status;
+
         try {
             $order = $this->orderService->fulfilOrder($order);
+
+            $this->writeAuditLog(
+                'sales_order_fulfilled',
+                (int) $order->id,
+                ['status' => $beforeStatus],
+                ['status' => $order->status],
+                ['sales_order_number' => $order->sales_order_number],
+            );
 
             return response()->json(['message' => 'Order fulfilled', 'order' => $order]);
         } catch (\Exception $e) {
@@ -402,8 +432,18 @@ class SalesOrderController extends Controller
             'reason' => 'required|string|min:3',
         ]);
 
+        $beforeStatus = $order->status;
+
         try {
             $order = $this->orderService->cancelOrder($order, $validated['reason']);
+
+            $this->writeAuditLog(
+                'sales_order_cancelled',
+                (int) $order->id,
+                ['status' => $beforeStatus],
+                ['status' => $order->status, 'cancellation_reason' => $order->cancellation_reason],
+                ['sales_order_number' => $order->sales_order_number, 'reason' => $validated['reason']],
+            );
 
             return response()->json(['message' => 'Order cancelled', 'order' => $order]);
         } catch (\Exception $e) {
@@ -433,7 +473,16 @@ class SalesOrderController extends Controller
 
         // Issue #141: go through the state machine (cancelled -> draft) instead
         // of a raw status write so the transition is validated and audited.
+        $beforeStatus = $order->status;
         $order = $this->lifecycleService->resetToDraft($order, 'Order reset to draft');
+
+        $this->writeAuditLog(
+            'sales_order_reset_to_draft',
+            (int) $order->id,
+            ['status' => $beforeStatus],
+            ['status' => $order->status],
+            ['sales_order_number' => $order->sales_order_number],
+        );
 
         return response()->json([
             'message' => 'Order reset to draft',
@@ -602,7 +651,21 @@ class SalesOrderController extends Controller
             return response()->json(['message' => 'Only draft orders can be deleted'], 403);
         }
 
+        $beforeState = [
+            'status' => $order->status,
+            'sales_order_number' => $order->sales_order_number,
+            'total' => (float) $order->total,
+        ];
+
         $order->delete();
+
+        $this->writeAuditLog(
+            'sales_order_deleted',
+            (int) $order->id,
+            $beforeState,
+            ['deleted' => true],
+            ['sales_order_number' => $beforeState['sales_order_number']],
+        );
 
         return response()->json(['message' => 'Sales order deleted']);
     }
@@ -625,5 +688,29 @@ class SalesOrderController extends Controller
             'message' => 'Bill-by-delivered setting updated',
             'bill_by_delivered_qty' => $order->bill_by_delivered_qty,
         ]);
+    }
+
+    /**
+     * Issue #895 (SALES-PLAT / PC1): append a tamper-evident audit row for a
+     * sales-order lifecycle transition. Deliberately uncaught — an audit
+     * failure surfaces as an error instead of silently succeeding.
+     */
+    private function writeAuditLog(
+        string $operation,
+        int $orderId,
+        ?array $beforeState = null,
+        ?array $afterState = null,
+        array $metadata = [],
+    ): void {
+        app(\App\Services\AuditLogger::class)->log(
+            operation: $operation,
+            referenceType: 'sales_order',
+            referenceId: $orderId,
+            beforeState: $beforeState,
+            afterState: $afterState,
+            metadata: $metadata + [
+                'request_id' => request()?->header(\App\Http\Middleware\CorrelationIdMiddleware::HEADER),
+            ],
+        );
     }
 }
