@@ -43,9 +43,20 @@ class SFRSInvoiceMapper implements InvoiceSchemaMapperContract
      */
     public function mapCreditNote(object $creditNote): array
     {
-        $mapped = $this->mapInvoice($creditNote->originalInvoice);
+        // #817 (EP6): CustomerCreditNote exposes the credited invoice as
+        // `invoice`; the old `originalInvoice` name does not exist on the
+        // model, and without the invoice number the UBL BillingReference
+        // would only carry an internal database id.
+        $originalInvoice = $creditNote->invoice ?? null;
+
+        $mapped = $this->mapInvoice($originalInvoice);
         $mapped['document_type'] = 'CreditNote';
-        $mapped['related_invoice_id'] = $creditNote->originalInvoice->id;
+        $mapped['related_invoice_id'] = $originalInvoice?->id;
+        $mapped['original_invoice_number'] = $originalInvoice?->invoice_number;
+        $mapped['custom_id'] = $creditNote->credit_note_number ?? $mapped['custom_id'];
+        if ($creditNote->credit_note_date) {
+            $mapped['issue_date'] = $creditNote->credit_note_date->format('Y-m-d');
+        }
         $mapped['reason'] = $creditNote->reason;
 
         return $mapped;
