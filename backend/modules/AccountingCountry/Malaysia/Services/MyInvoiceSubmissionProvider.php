@@ -3,6 +3,7 @@
 namespace Modules\AccountingCountry\Malaysia\Services;
 
 use App\Accounting\Contracts\SubmissionProviderContract;
+use App\Accounting\Contracts\SupportsSigning;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Carbon;
@@ -14,7 +15,7 @@ use Illuminate\Support\Str;
  * Malaysia MyInvoice Submission Provider
  * Submits invoices to MyInvoice portal via REST API
  */
-class MyInvoiceSubmissionProvider implements SubmissionProviderContract
+class MyInvoiceSubmissionProvider implements SubmissionProviderContract, SupportsSigning
 {
     private const SUBMISSION_BUILD_VERSION = '2026-04-06-retry-remap';
 

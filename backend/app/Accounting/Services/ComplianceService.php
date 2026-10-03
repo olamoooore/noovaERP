@@ -3,6 +3,8 @@
 namespace App\Accounting\Services;
 
 use App\Accounting\BuyerTypeResolver;
+use App\Accounting\Contracts\SupportsCredentialValidation;
+use App\Accounting\Contracts\SupportsSigning;
 use App\Accounting\Plugin\CountryPluginRegistry;
 use App\Enums\UserRole;
 use App\Models\Accounting\ComplianceDocument;
@@ -215,7 +217,7 @@ class ComplianceService
                         return ['success' => false, 'message' => "No plugin available for {$countryCode}"];
                     }
 
-                    $validation = $validator->validateInvoice($sourceDocument);
+                    $validation = $validator->validateInvoice($sourceDocument, $context);
                     if (! $validation['valid']) {
                         return ['success' => false, 'message' => 'Validation failed: '.implode(', ', $validation['errors'])];
                     }
@@ -628,7 +630,7 @@ class ComplianceService
 
             if (! $updated && in_array($submission->submission_status, ['pending', 'ack', 'unknown'], true)) {
                 $provider = $this->pluginRegistry->resolve($countryCode, 'provider');
-                if ($provider && method_exists($provider, 'getStatus')) {
+                if ($provider) {
                     $probeResult = $provider->getStatus($submission->provider_reference, $context);
                     if (($probeResult['success'] ?? false) !== true) {
                         return [
@@ -1082,9 +1084,7 @@ class ComplianceService
 
             $nonInvoiceTypes = ['credit_note', 'refund_note', 'bill', 'vendor_debit_note', 'journal_entry'];
             if (! in_array($docType, $nonInvoiceTypes, true)) {
-                $validation = strtoupper($countryCode) === 'MY'
-                    ? $validator->validateInvoice($sourceDocument, $context)
-                    : $validator->validateInvoice($sourceDocument);
+                $validation = $validator->validateInvoice($sourceDocument, $context);
                 if (! $validation['valid']) {
                     DB::rollBack();
 
@@ -1128,8 +1128,11 @@ class ComplianceService
                 'line_item_count' => count($payload['line_items'] ?? []),
             ]);
 
-            if ($countryCode === 'MY') {
-                $credentialError = $this->validateMyInvoiceCredentials($context);
+            // #699 (EC2): credential requirements are the pack's, not the
+            // core's — asked via the capability interface instead of a
+            // country-code branch.
+            if ($validator instanceof SupportsCredentialValidation) {
+                $credentialError = $validator->validateCredentials($context);
                 if ($credentialError !== null) {
                     DB::rollBack();
 
@@ -1404,7 +1407,7 @@ class ComplianceService
     {
         $provider = $this->pluginRegistry->resolve($countryCode, 'provider');
 
-        if (! method_exists($provider, 'signDocument')) {
+        if (! $provider instanceof SupportsSigning) {
             $signatureMetadata = null;
             $handwrittenDataUrl = $signingData['handwritten_signature_data_url'] ?? null;
             if (is_string($handwrittenDataUrl) && $handwrittenDataUrl !== '') {
@@ -1614,37 +1617,6 @@ class ComplianceService
      * Priority: mapped value (from invoice/model) → DB context → .env fallback (in UBL builder).
      * ALL supplier fields must be covered here so that per-tenant DB config fully overrides .env.
      */
-
-    /**
-     * Returns an error message if the tenant's MyInvois credentials are incomplete,
-     * null if everything required is present.
-     */
-    private function validateMyInvoiceCredentials(array $context): ?string
-    {
-        $required = [
-            'myinvoice_client_id' => 'LHDN API Client ID',
-            'myinvoice_client_secret' => 'LHDN API Client Secret',
-            'supplier_tin' => 'Supplier TIN',
-            'supplier_name' => 'Supplier Name',
-        ];
-
-        $missing = [];
-        foreach ($required as $key => $label) {
-            $val = $context[$key] ?? null;
-            if ($val === null || $val === '') {
-                $missing[] = $label;
-            }
-        }
-
-        if (empty($missing)) {
-            return null;
-        }
-
-        return 'MyInvois credentials are not fully configured for this tenant. '
-            .'Missing: '.implode(', ', $missing).'. '
-            .'Configure them at Accounting → MyInvois Settings.';
-    }
-
     private function applyProviderPayloadDefaults(array $payload, array $context, string $countryCode): array
     {
         if (strtoupper($countryCode) !== 'MY') {

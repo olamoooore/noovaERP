@@ -77,6 +77,12 @@ class MyInvoiceSigningIdentityTest extends TestCase
         return [$privateKey, $certificatePem];
     }
 
+    public function test_the_my_provider_declares_the_signing_capability(): void
+    {
+        // #699 (EC2): core detects signing via the interface, not method_exists.
+        $this->assertInstanceOf(\App\Accounting\Contracts\SupportsSigning::class, $this->makeProvider());
+    }
+
     public function test_production_signing_never_falls_back_to_the_platform_certificate(): void
     {
         $provider = $this->makeProvider();
