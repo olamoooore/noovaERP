@@ -359,6 +359,10 @@ final class DocumentTemplateService implements DocumentTemplateServiceContract
     {
         return [
             'tenant' => 10,
+            // Issue #612: an entity-scoped default must outrank the tenant
+            // default, otherwise both match at priority 10 and resolve as
+            // TEMPLATE_RESOLUTION_AMBIGUOUS.
+            'entity' => 20,
             'language' => 30,
             'currency' => 40,
             'warehouse' => 50,

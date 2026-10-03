@@ -30,6 +30,21 @@ final class CustomerStatementDataSource implements DataSourceContract
         return $entityId !== null ? (int) $entityId : null;
     }
 
+    public function resolutionContext(string $documentId): array
+    {
+        $statement = $this->load($documentId)->statement;
+        $payload = is_array($statement->payload) ? $statement->payload : [];
+
+        return DocumentResolutionContext::build([
+            'entity_id' => $this->legalEntityId(),
+            'branch_id' => $statement->getAttribute('branch_id'),
+            'currency' => $payload['currency'] ?? null,
+            'language' => $statement->customer?->language,
+            'customer_group' => $statement->customer?->customer_group,
+            'channel' => $statement->getAttribute('channel'),
+        ]);
+    }
+
     public function load(string $documentId): self
     {
         $this->statement = CustomerStatement::with(['customer'])->findOrFail($documentId);
@@ -40,7 +55,7 @@ final class CustomerStatementDataSource implements DataSourceContract
     public function toArray(): array
     {
         $statement = $this->statement ?? throw new \RuntimeException('Customer statement not loaded.');
-        $company = CompanyDataSource::forCurrentTenant();
+        $company = CompanyDataSource::forDocument($statement);
 
         $payload = $statement->payload ?? [];
 

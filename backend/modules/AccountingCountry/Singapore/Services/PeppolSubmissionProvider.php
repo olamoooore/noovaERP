@@ -2,6 +2,7 @@
 
 namespace Modules\AccountingCountry\Singapore\Services;
 
+use App\Accounting\Contracts\ProvidesProviderName;
 use App\Accounting\Contracts\SubmissionProviderContract;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Log;
@@ -11,7 +12,7 @@ use Illuminate\Support\Str;
  * Singapore PEPPOL Submission Provider
  * Submits invoices to PEPPOL network via access point
  */
-class PeppolSubmissionProvider implements SubmissionProviderContract
+class PeppolSubmissionProvider implements ProvidesProviderName, SubmissionProviderContract
 {
     protected Client $client;
 
@@ -30,6 +31,14 @@ class PeppolSubmissionProvider implements SubmissionProviderContract
         $this->endpoint = trim((string) ($this->testMode
             ? config('compliance.singapore.peppol_test_endpoint', '')
             : config('compliance.singapore.peppol_endpoint', '')));
+    }
+
+    /**
+     * #699 (EC2/AC3): the pack declares its own provider name.
+     */
+    public function providerName(): string
+    {
+        return 'peppol';
     }
 
     /**

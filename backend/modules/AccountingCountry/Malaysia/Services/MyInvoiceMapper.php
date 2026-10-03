@@ -3,6 +3,7 @@
 namespace Modules\AccountingCountry\Malaysia\Services;
 
 use App\Accounting\Contracts\InvoiceSchemaMapperContract;
+use App\Accounting\Contracts\SupportsPayloadDefaults;
 use App\Models\Invoice;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -11,13 +12,13 @@ use Illuminate\Support\Facades\Log;
  * Malaysia MyInvoice Mapper
  * Maps GL invoices to MyInvoice portal format (JSON-based)
  */
-class MyInvoiceMapper implements InvoiceSchemaMapperContract
+class MyInvoiceMapper implements InvoiceSchemaMapperContract, SupportsPayloadDefaults
 {
     /**
      * LHDN standard general-public TIN for consolidated/end-consumer invoices.
      * This is a fixed LHDN constant, not an identity credential — safe to hardcode.
      */
-    private const LHDN_GENERAL_PUBLIC_TIN = 'EI00000000010';
+    public const LHDN_GENERAL_PUBLIC_TIN = 'EI00000000010';
 
     /** Buyer types the Malaysia pack recognises (stored on customers.buyer_type). */
     private const BUYER_TYPE_BUSINESS = 'business';
@@ -1100,5 +1101,84 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
             'sst_exemption' => $rate === 0.0,
             'sst_exemption_code' => $invoice->tax_exemption_code ?? null,
         ];
+    }
+
+    /**
+     * #699 (EC2/AC3): MOVED from ComplianceService — MyInvois payload defaults
+     * overlay the tenant/entity supplier identity from the provider context.
+     * The core now reaches this through SupportsPayloadDefaults.
+     */
+    public function applyPayloadDefaults(array $payload, array $context): array
+    {
+        $supplier = is_array($payload['supplier'] ?? null) ? $payload['supplier'] : [];
+
+        // ── Party identity ──────────────────────────────────────────────────
+        $supplier['tin'] = $supplier['tin']
+            ?? $context['supplier_tin']
+            ?? null;
+
+        $supplier['name'] = $supplier['name']
+            ?? $context['supplier_name']
+            ?? null;
+
+        $supplier['company_registration'] = $supplier['company_registration']
+            ?? $context['supplier_registration_number']
+            ?? null;
+
+        $supplier['identity_type'] = $supplier['identity_type']
+            ?? $context['supplier_id_type']
+            ?? null;
+
+        $supplier['identity_number'] = $supplier['identity_number']
+            ?? $context['supplier_id_number']
+            ?? null;
+
+        // ── Business classification (MSIC) ──────────────────────────────────
+        $supplier['msic_code'] = $supplier['msic_code']
+            ?? $context['supplier_msic_code']
+            ?? null;
+
+        $supplier['business_activity_description'] = $supplier['business_activity_description']
+            ?? $context['supplier_business_activity_description']
+            ?? null;
+
+        // ── Contact ─────────────────────────────────────────────────────────
+        $contact = is_array($supplier['contact'] ?? null) ? $supplier['contact'] : [];
+        $contact['phone'] = $contact['phone']
+            ?? $supplier['phone']
+            ?? $context['supplier_phone']
+            ?? null;
+        $contact['email'] = $contact['email']
+            ?? $supplier['email']
+            ?? $context['supplier_email']
+            ?? null;
+        $supplier['contact'] = $contact;
+
+        // ── Address ─────────────────────────────────────────────────────────
+        $address = is_array($supplier['address'] ?? null) ? $supplier['address'] : [];
+        $address['street'] = $address['street']
+            ?? $context['supplier_address']
+            ?? null;
+        $address['city'] = $address['city']
+            ?? $context['supplier_city']
+            ?? null;
+        $address['state'] = $address['state']
+            ?? $context['supplier_state']
+            ?? null;
+        $address['postal_code'] = $address['postal_code']
+            ?? $context['supplier_postal_code']
+            ?? null;
+        $address['country'] = $address['country'] ?? 'MYS';
+        $supplier['address'] = $address;
+
+        $payload['supplier'] = $supplier;
+
+        // #813 EP2: self-billing does NOT mean buyer = supplier. The defaulting
+        // that copied the supplier's identity onto the buyer for self-billed
+        // types (and the journal-entry mapper's flag) is removed: in self-billing
+        // the supplier is the counterparty and the buyer is the tenant entity.
+        // The mapper is responsible for a correct buyer.
+
+        return $payload;
     }
 }

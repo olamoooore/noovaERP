@@ -3,14 +3,47 @@
 namespace Modules\AccountingCountry\Malaysia\Services;
 
 use App\Accounting\Contracts\CountryValidationContract;
+use App\Accounting\Contracts\SupportsCredentialValidation;
 use App\Models\Invoice;
 use Illuminate\Support\Carbon;
 
 /**
  * Validates invoices against Malaysia MFRS and MyInvois requirements.
  */
-class MFRSValidationService implements CountryValidationContract
+class MFRSValidationService implements CountryValidationContract, SupportsCredentialValidation
 {
+    /**
+     * #699 (EC2): MyInvois credential requirements belong to the MY pack —
+     * the core used to branch on `countryCode === 'MY'` to call this.
+     *
+     * @return string|null an onboarding error message, or null when complete
+     */
+    public function validateCredentials(array $context): ?string
+    {
+        $required = [
+            'myinvoice_client_id' => 'LHDN API Client ID',
+            'myinvoice_client_secret' => 'LHDN API Client Secret',
+            'supplier_tin' => 'Supplier TIN',
+            'supplier_name' => 'Supplier Name',
+        ];
+
+        $missing = [];
+        foreach ($required as $key => $label) {
+            $val = $context[$key] ?? null;
+            if ($val === null || $val === '') {
+                $missing[] = $label;
+            }
+        }
+
+        if (empty($missing)) {
+            return null;
+        }
+
+        return 'MyInvois credentials are not fully configured for this tenant. '
+            .'Missing: '.implode(', ', $missing).'. '
+            .'Configure them at Accounting → MyInvois Settings.';
+    }
+
     protected array $errors = [];
 
     private array $providerContext = [];

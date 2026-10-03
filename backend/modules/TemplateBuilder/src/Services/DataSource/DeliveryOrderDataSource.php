@@ -30,6 +30,20 @@ final class DeliveryOrderDataSource implements DataSourceContract
         return $entityId !== null ? (int) $entityId : null;
     }
 
+    public function resolutionContext(string $documentId): array
+    {
+        $do = $this->load($documentId)->do;
+
+        return DocumentResolutionContext::build([
+            'entity_id' => $this->legalEntityId(),
+            'branch_id' => $do->getAttribute('branch_id') ?? $do->salesOrder?->getAttribute('branch_id'),
+            'currency' => $do->currency_code,
+            'language' => $do->customer?->language,
+            'customer_group' => $do->customer?->customer_group,
+            'channel' => $do->salesOrder?->getAttribute('channel') ?? $do->getAttribute('channel'),
+        ]);
+    }
+
     public function load(string $documentId): self
     {
         $this->do = DeliveryOrder::with(['customer', 'warehouse', 'lines.product', 'salesOrder', 'invoice', 'quotation'])->findOrFail($documentId);
@@ -40,7 +54,7 @@ final class DeliveryOrderDataSource implements DataSourceContract
     public function toArray(): array
     {
         $do = $this->do ?? throw new \RuntimeException('Delivery order not loaded.');
-        $company = CompanyDataSource::forCurrentTenant();
+        $company = CompanyDataSource::forDocument($do);
         // MRD FR-8.5: document currency primary; base equivalent secondary.
         $companyCurrency = $company['currency_code'] ?? 'MYR';
         $currencyCode = $do->currency_code ?: $companyCurrency;

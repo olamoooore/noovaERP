@@ -25,6 +25,16 @@ interface DataSourceContract
      */
     public function legalEntityId(): ?int;
 
+    /**
+     * Template resolution dimensions for the document (entity, branch,
+     * currency, customer language, customer group, channel). Loads the
+     * source record itself so renderers can pass the result straight to
+     * DocumentTemplateService::resolveFor() (ADR-004 §11, issue #612).
+     *
+     * @return array<string,mixed>
+     */
+    public function resolutionContext(string $documentId): array;
+
     /** The typed merge-field payload consumed by the renderer. */
     public function toArray(): array;
 

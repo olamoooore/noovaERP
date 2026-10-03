@@ -31,6 +31,18 @@ final class PurchaseOrderDataSource implements DataSourceContract
         return $po->legal_entity_id !== null ? (int) $po->legal_entity_id : null;
     }
 
+    public function resolutionContext(string $documentId): array
+    {
+        $po = $this->load($documentId)->po;
+
+        return DocumentResolutionContext::build([
+            'entity_id' => $this->legalEntityId(),
+            'branch_id' => $po->getAttribute('branch_id'),
+            'currency' => $po->currency,
+            'channel' => $po->getAttribute('channel'),
+        ]);
+    }
+
     public function load(string $documentId): self
     {
         $this->po = PurchaseOrder::with(['supplier', 'warehouse', 'items.product'])->findOrFail($documentId);
@@ -41,7 +53,7 @@ final class PurchaseOrderDataSource implements DataSourceContract
     public function toArray(): array
     {
         $po = $this->po ?? throw new \RuntimeException('Purchase order not loaded.');
-        $company = CompanyDataSource::forCurrentTenant();
+        $company = CompanyDataSource::forDocument($po);
         $currencyCode = $po->currency ?: ($company['currency_code'] ?? 'MYR');
 
         $lines = [];

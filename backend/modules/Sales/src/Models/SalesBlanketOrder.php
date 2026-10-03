@@ -78,6 +78,18 @@ class SalesBlanketOrder extends Model
 
     public static function generateNumber(): string
     {
-        return 'BO-'.now()->format('Y').'-'.str_pad((string) (static::whereYear('created_at', now()->year)->count() + 1), 4, '0', STR_PAD_LEFT);
+        // #899 (PC5): blanket orders used count()+1, so concurrent creates
+        // produced the same number and deleting one made the next number
+        // collide. The platform numbering service issues the next locked,
+        // unique sequence value instead.
+        return app(\App\Platform\Numbering\NumberingService::class)->nextFor(
+            'sales_blanket_order',
+            'BO-{YYYY}-{SEQ:4}',
+            null,
+            fn (string $prefix): array => static::query()
+                ->where('blanket_number', 'like', $prefix.'%')
+                ->pluck('blanket_number')
+                ->all(),
+        );
     }
 }

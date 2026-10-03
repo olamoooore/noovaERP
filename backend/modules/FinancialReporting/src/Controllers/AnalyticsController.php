@@ -43,6 +43,23 @@ class AnalyticsController extends Controller
     ];
 
     /**
+     * Issue #595: comparison period. Derived modes plus an explicit custom
+     * range (the two date params alone imply `custom`). Built in a method
+     * because the mode list is composed from the service's shared constants
+     * and a class constant cannot call implode().
+     *
+     * @return array<string, string>
+     */
+    private static function comparisonRules(): array
+    {
+        return [
+            'comparison' => 'nullable|in:'.implode(',', SalesAnalyticsService::comparisonModes()),
+            'compare_start_date' => 'nullable|date',
+            'compare_end_date' => 'nullable|date|after_or_equal:compare_start_date',
+        ];
+    }
+
+    /**
      * Validates a sales report's filters, rejects unknown query keys with a
      * 422 and resolves the legal entity to scope by (#593).
      *
@@ -58,7 +75,7 @@ class AnalyticsController extends Controller
      */
     private function salesFilter(Request $request, array $extraRules = []): ReportFilter
     {
-        $rules = array_merge(self::SALES_FILTER_RULES, $extraRules);
+        $rules = array_merge(self::SALES_FILTER_RULES, self::comparisonRules(), $extraRules);
 
         $unknown = array_diff(array_keys($request->query()), array_keys($rules));
         if ($unknown !== []) {
@@ -70,6 +87,26 @@ class AnalyticsController extends Controller
         $validated = $request->validate($rules);
         $filter = ReportFilter::fromRequest($validated);
 
+        // Issue #595: a custom comparison needs both bounds, and a derived
+        // mode must not carry stray explicit dates — reject rather than guess
+        // which the caller meant.
+        if ($filter->comparisonMode === SalesAnalyticsService::COMPARISON_MODE_CUSTOM
+            && ($filter->compareStartDate === null || $filter->compareEndDate === null)) {
+            throw ValidationException::withMessages([
+                'comparison' => 'A custom comparison requires compare_start_date and compare_end_date.',
+            ]);
+        }
+
+        if (in_array($filter->comparisonMode, [
+            SalesAnalyticsService::COMPARISON_MODE_PREVIOUS_PERIOD,
+            SalesAnalyticsService::COMPARISON_MODE_SAME_PERIOD_LAST_YEAR,
+        ], true)
+            && ($filter->compareStartDate !== null || $filter->compareEndDate !== null)) {
+            throw ValidationException::withMessages([
+                'comparison' => 'compare_start_date/compare_end_date are only valid with comparison=custom.',
+            ]);
+        }
+
         if ($filter->legalEntityId === null) {
             $context = $request->attributes->get('legal_entity_id');
             if ($context === null && isset($validated['entity_id'])) {
@@ -79,6 +116,23 @@ class AnalyticsController extends Controller
         }
 
         return $filter;
+    }
+
+    /**
+     * Issue #595: only add the comparison envelope when one was computed, so
+     * the response shape is unchanged for callers that did not ask for it.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>  $reportData
+     * @return array<string, mixed>
+     */
+    private function withComparisonPayload(array $data, array $reportData): array
+    {
+        if (isset($reportData['comparison'])) {
+            $data['comparison'] = $reportData['comparison'];
+        }
+
+        return $data;
     }
 
     /**
@@ -101,10 +155,10 @@ class AnalyticsController extends Controller
             // Transform response to match frontend expectations
             return response()->json([
                 'success' => true,
-                'data' => [
+                'data' => $this->withComparisonPayload([
                     'products' => $reportData['data'] ?? [],
                     'pos_excluded_by_tag' => (bool) ($reportData['pos_excluded_by_tag'] ?? false),
-                ],
+                ], $reportData),
             ]);
 
         } catch (\Exception $e) {
@@ -133,10 +187,10 @@ class AnalyticsController extends Controller
             // Transform response to match frontend expectations
             return response()->json([
                 'success' => true,
-                'data' => [
+                'data' => $this->withComparisonPayload([
                     'customers' => $reportData['data'] ?? [],
                     'pos_excluded_by_tag' => (bool) ($reportData['pos_excluded_by_tag'] ?? false),
-                ],
+                ], $reportData),
             ]);
 
         } catch (\Exception $e) {
@@ -164,11 +218,11 @@ class AnalyticsController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => [
+                'data' => $this->withComparisonPayload([
                     'currencies' => $reportData['data'] ?? [],
                     'summary' => $reportData['summary'] ?? [],
                     'pos_excluded_by_tag' => (bool) ($reportData['pos_excluded_by_tag'] ?? false),
-                ],
+                ], $reportData),
             ]);
         } catch (\Exception $e) {
             \Log::error('Sales by Currency analytics failed', ['error' => $e->getMessage()]);
@@ -195,10 +249,10 @@ class AnalyticsController extends Controller
             // Transform response to match frontend expectations
             return response()->json([
                 'success' => true,
-                'data' => [
+                'data' => $this->withComparisonPayload([
                     'trends' => $reportData['data'] ?? [],
                     'pos_excluded_by_tag' => (bool) ($reportData['pos_excluded_by_tag'] ?? false),
-                ],
+                ], $reportData),
             ]);
 
         } catch (\Exception $e) {
@@ -227,10 +281,10 @@ class AnalyticsController extends Controller
             // Transform response to match frontend expectations
             return response()->json([
                 'success' => true,
-                'data' => [
+                'data' => $this->withComparisonPayload([
                     'categories' => $reportData['data'] ?? [],
                     'pos_excluded_by_tag' => (bool) ($reportData['pos_excluded_by_tag'] ?? false),
-                ],
+                ], $reportData),
             ]);
 
         } catch (\Exception $e) {

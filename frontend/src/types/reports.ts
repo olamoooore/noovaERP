@@ -1,5 +1,22 @@
 // Report Types and Interfaces
 
+/** Issue #595: how a report derives its comparison window. */
+export type ComparisonMode = 'previous_period' | 'same_period_last_year' | 'custom';
+
+/** Issue #595: Δ / Δ% for one metric; delta_percent is null when previous is 0. */
+export interface MetricComparison {
+  previous: number;
+  delta: number;
+  delta_percent: number | null;
+}
+
+export interface ReportComparison {
+  mode: ComparisonMode;
+  period: { start_date: string; end_date: string };
+  /** Summary-level comparison, keyed by summary field (e.g. total_revenue). */
+  summary?: Record<string, MetricComparison>;
+}
+
 export interface ReportFilters {
   start_date?: string;
   end_date?: string;
@@ -24,6 +41,14 @@ export interface ReportFilters {
   channel?: 'pos' | 'admin' | 'ecommerce' | 'storefront';
   /** Issue #593: legal entity scope (falls back to the session's entity context). */
   legal_entity_id?: number;
+  /**
+   * Issue #595: comparison mode. Derived from the primary period
+   * (`previous_period`, `same_period_last_year`) or an explicit range.
+   */
+  comparison?: ComparisonMode;
+  /** Issue #595: explicit custom comparison bounds (comparison = custom). */
+  compare_start_date?: string;
+  compare_end_date?: string;
   movement_type?: string;
   method?: 'direct' | 'indirect';
   interval?: 'day' | 'week' | 'month' | 'year';
@@ -369,6 +394,8 @@ export interface SalesByProductData {
     total_profit: number;
     profit_margin: number;
   }>;
+  /** Issue #595: present only when a comparison period was requested. */
+  comparison?: ReportComparison;
 }
 
 export interface SalesByCustomerData {
@@ -383,6 +410,7 @@ export interface SalesByCustomerData {
     average_order_value: number;
     last_purchase_date: string;
   }>;
+  comparison?: ReportComparison;
 }
 
 export interface SalesTrendsData {
@@ -394,6 +422,7 @@ export interface SalesTrendsData {
     average_order_value: number;
     growth_rate: number | null;
   }>;
+  comparison?: ReportComparison;
 }
 
 export interface SalesByCategoryData {
@@ -409,6 +438,7 @@ export interface SalesByCategoryData {
     profit_margin: number;
     revenue_percentage: number;
   }>;
+  comparison?: ReportComparison;
 }
 
 export interface ExpensesByCategoryData {

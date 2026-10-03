@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\FinancialReporting\Services\Analytics;
 
 use App\Services\DocumentCurrencyResolver;
+use App\Services\Reporting\ComparesReportPeriods;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -64,10 +65,37 @@ use Modules\FinancialReporting\DTOs\ReportFilter;
  */
 class SalesAnalyticsService
 {
+    use ComparesReportPeriods;
+
     /**
      * Channels surfaced in every report below.
      */
     private const CHANNELS_INCLUDED = ['pos', 'admin', 'ecommerce'];
+
+    /**
+     * Issue #595: numeric row fields each report compares when a comparison
+     * window is requested. Names are the response's own field names, so the
+     * frontend can render `{metric}_delta` / `{metric}_delta_percent`.
+     */
+    private const PRODUCT_COMPARISON_METRICS = [
+        'total_quantity', 'total_revenue', 'total_cost', 'total_profit', 'profit_margin',
+    ];
+
+    private const CUSTOMER_COMPARISON_METRICS = [
+        'total_orders', 'total_revenue', 'average_order_value',
+    ];
+
+    private const CURRENCY_COMPARISON_METRICS = [
+        'total_revenue', 'base_revenue', 'total_quantity', 'order_count',
+    ];
+
+    private const TRENDS_COMPARISON_METRICS = [
+        'order_count', 'total_sales', 'revenue', 'bookings_revenue', 'invoiced_revenue', 'average_order_value',
+    ];
+
+    private const CATEGORY_COMPARISON_METRICS = [
+        'product_count', 'quantity_sold', 'revenue', 'cost', 'profit', 'profit_margin', 'revenue_percentage',
+    ];
 
     /**
      * The human-readable definition of every "revenue" figure in this service.
@@ -79,6 +107,17 @@ class SalesAnalyticsService
         .'Dated by document date; excludes shipping (posted to its own revenue account).';
 
     public function getSalesByProduct(ReportFilter $filter): array
+    {
+        return $this->withPeriodComparison(
+            $filter,
+            $this->buildSalesByProduct($filter),
+            fn (ReportFilter $rangeFilter): array => $this->buildSalesByProduct($rangeFilter),
+            self::PRODUCT_COMPARISON_METRICS,
+            'id',
+        );
+    }
+
+    private function buildSalesByProduct(ReportFilter $filter): array
     {
         $startDate = $filter->startDate ?? Carbon::now()->startOfMonth();
         $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
@@ -153,6 +192,17 @@ class SalesAnalyticsService
     }
 
     public function getSalesByCustomer(ReportFilter $filter): array
+    {
+        return $this->withPeriodComparison(
+            $filter,
+            $this->buildSalesByCustomer($filter),
+            fn (ReportFilter $rangeFilter): array => $this->buildSalesByCustomer($rangeFilter),
+            self::CUSTOMER_COMPARISON_METRICS,
+            'id',
+        );
+    }
+
+    private function buildSalesByCustomer(ReportFilter $filter): array
     {
         $startDate = $filter->startDate ?? Carbon::now()->startOfMonth();
         $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
@@ -234,6 +284,17 @@ class SalesAnalyticsService
      */
     public function getSalesByCurrency(ReportFilter $filter): array
     {
+        return $this->withPeriodComparison(
+            $filter,
+            $this->buildSalesByCurrency($filter),
+            fn (ReportFilter $rangeFilter): array => $this->buildSalesByCurrency($rangeFilter),
+            self::CURRENCY_COMPARISON_METRICS,
+            'currency_code',
+        );
+    }
+
+    private function buildSalesByCurrency(ReportFilter $filter): array
+    {
         $startDate = $filter->startDate ?? Carbon::now()->startOfMonth();
         $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
 
@@ -276,6 +337,20 @@ class SalesAnalyticsService
     }
 
     public function getSalesTrends(ReportFilter $filter, string $interval = 'day'): array
+    {
+        // Issue #595: a timeline compares positionally — primary day 1 against
+        // comparison day 1 — because the period labels themselves differ by
+        // construction; both series are zero-filled by buildSalesTrends (#594)
+        // so the positions always exist.
+        return $this->withPeriodComparison(
+            $filter,
+            $this->buildSalesTrends($filter, $interval),
+            fn (ReportFilter $rangeFilter): array => $this->buildSalesTrends($rangeFilter, $interval),
+            self::TRENDS_COMPARISON_METRICS,
+        );
+    }
+
+    private function buildSalesTrends(ReportFilter $filter, string $interval = 'day'): array
     {
         $startDate = $filter->startDate ?? Carbon::now()->startOfMonth();
         $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
@@ -412,6 +487,17 @@ class SalesAnalyticsService
     }
 
     public function getSalesByCategory(ReportFilter $filter): array
+    {
+        return $this->withPeriodComparison(
+            $filter,
+            $this->buildSalesByCategory($filter),
+            fn (ReportFilter $rangeFilter): array => $this->buildSalesByCategory($rangeFilter),
+            self::CATEGORY_COMPARISON_METRICS,
+            'category_id',
+        );
+    }
+
+    private function buildSalesByCategory(ReportFilter $filter): array
     {
         $startDate = $filter->startDate ?? Carbon::now()->startOfMonth();
         $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();

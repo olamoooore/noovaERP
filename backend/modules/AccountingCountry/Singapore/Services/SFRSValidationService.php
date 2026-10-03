@@ -25,7 +25,7 @@ class SFRSValidationService implements CountryValidationContract
      * - PEPPOL UBL/XML compatibility
      * - GST identification
      */
-    public function validateInvoice(Invoice $invoice): array
+    public function validateInvoice(Invoice $invoice, array $context = []): array
     {
         $errors = [];
 

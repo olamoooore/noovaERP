@@ -21,6 +21,7 @@ use Maatwebsite\Excel\Facades\Excel;
 use Modules\Sales\Models\DeliveryOrder;
 use Modules\Sales\Models\DeliveryOrderLine;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Models\SalesOrderLine;
 use Modules\Sales\Services\DeliveryOrderService;
 
 class DeliveryOrderController extends Controller
@@ -560,6 +561,15 @@ class DeliveryOrderController extends Controller
 
                 foreach ($invoicedByLine as $lineId => $quantity) {
                     DeliveryOrderLine::whereKey($lineId)->increment('quantity_invoiced', $quantity);
+
+                    // #455 (DO3): for a DO linked to a Sales Order, the order
+                    // line's invoiced quantity must move with it — otherwise
+                    // SO "Create Invoice" would bill the same goods again.
+                    $deliveryOrderLine = $deliveryOrder->lines->firstWhere('id', $lineId);
+                    if ($deliveryOrderLine?->sales_order_line_id) {
+                        SalesOrderLine::whereKey($deliveryOrderLine->sales_order_line_id)
+                            ->increment('quantity_invoiced', $quantity);
+                    }
                 }
 
                 // The first invoice stays the legacy primary pointer; every
