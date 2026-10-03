@@ -337,6 +337,60 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
         return $mapped;
     }
 
+    /**
+     * #816 EP5: map a customer refund (a credit-note cash refund, or a payment
+     * correction refund) to a MyInvois REFUND NOTE (LHDN type 04), referencing
+     * the original invoice's accepted UUID so LHDN links the money returned to
+     * the document it relates to.
+     */
+    public function mapRefundNote(object $refund, ?object $originalInvoice = null): array
+    {
+        $issuedDate = $refund->refund_date ?? $refund->credit_note_date ?? now();
+        $currency = $refund->currency_code ?? 'MYR';
+
+        $lineCollection = $refund->lines ?? collect();
+        $lineItems = collect($lineCollection)->map(
+            fn ($line, int $index) => $this->mapLineItem($line, $index + 1)
+        )->values()->toArray();
+
+        if (empty($lineItems)) {
+            $lineItems[] = $this->buildFallbackCreditNoteLineItem($refund);
+        }
+
+        $invoice = $originalInvoice ?? ($refund->invoice ?? null);
+        $supplier = $this->resolveSupplier($invoice);
+        $buyer = $refund->customer ?? null;
+
+        $mapped = [
+            'document_type' => 'refund_note',
+            'profile_version' => 'myinvoice-v1',
+            'invoice_id' => $refund->id,
+            'invoice_number' => $refund->refund_number ?? $refund->credit_note_number,
+            'invoice_date' => is_string($issuedDate) ? $issuedDate : $issuedDate->format('Y-m-d'),
+            'issue_datetime' => is_string($issuedDate) ? $issuedDate : $issuedDate->format('c'),
+            'due_date' => null,
+            'currency_code' => $currency,
+            'exchange_rate' => $refund->exchange_rate ?? null,
+            'supplier' => $this->mapParty($supplier, true),
+            'buyer' => $this->mapParty($buyer, false),
+            'line_items' => $lineItems,
+            'totals' => $this->mapTotals($refund, collect($lineCollection)),
+            'tax_summary' => $this->mapTaxDetails($refund),
+            'original_invoice_references' => $this->resolveOriginalInvoiceRefs((object) ['invoice' => $invoice]),
+            'payment_terms' => null,
+            'narration' => $refund->reason ?? $refund->notes ?? 'Refund',
+            'attachment_reference' => null,
+        ];
+
+        Log::info('myinvois:mapRefundNote — done', [
+            'refund_id' => $refund->id,
+            'invoice_number' => $mapped['invoice_number'],
+            'currency' => $currency,
+        ]);
+
+        return $mapped;
+    }
+
     private function resolveOriginalInvoiceRefs(object $creditNote): array
     {
         $originalInvoice = $creditNote->invoice ?? null;
