@@ -14,6 +14,7 @@ use App\Accounting\Services\StructuredObservabilityService;
 use App\Listeners\DeliveryOrderApprovalDecisionListener;
 use App\Listeners\InvoiceApprovalDecisionListener;
 use App\Listeners\PreventDangerousMigrations;
+use App\Listeners\SalesApprovalDecisionListener;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -84,6 +85,10 @@ class AppServiceProvider extends ServiceProvider
         // Wire invoice approval callbacks to the generic approval decision event
         Event::listen(ApprovalDecisionEvent::class, InvoiceApprovalDecisionListener::class);
         Event::listen(ApprovalDecisionEvent::class, DeliveryOrderApprovalDecisionListener::class);
+        // Issue #650: threshold requests on quotations / sales orders notify
+        // the requester of the decision and record the one-click Continue
+        // (the gate keeps documents in draft by design — #180/#646).
+        Event::listen(ApprovalDecisionEvent::class, SalesApprovalDecisionListener::class);
 
         // Register the approval-flow communication subtypes. Without this the
         // Communication engine rejects 'invoice.approval_submitted' with
