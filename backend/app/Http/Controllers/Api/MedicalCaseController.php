@@ -12,6 +12,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use Modules\Sales\Models\DeliveryOrderLine;
 
 class MedicalCaseController extends Controller
 {
@@ -296,12 +298,15 @@ class MedicalCaseController extends Controller
             'items' => 'required|array',
             'items.*.id' => 'required|exists:medical_case_items,id',
             'items.*.delivered_qty' => 'required|numeric|min:0',
-            'items.*.delivery_order_item_id' => 'nullable|exists:delivery_order_lines,id',
+            // Issue #562 (MC1): a case delivery must be recorded from a real
+            // shipped document — a hand-typed quantity with no completed DO
+            // line can no longer earn rewards.
+            'items.*.delivery_order_item_id' => 'required|integer|exists:delivery_order_lines,id',
         ]);
 
         try {
             DB::transaction(function () use ($case, $validated) {
-                foreach ($validated['items'] as $itemData) {
+                foreach ($validated['items'] as $index => $itemData) {
                     $item = MedicalCaseItem::where('medical_case_id', $case->id)
                         ->where('id', $itemData['id'])
                         ->firstOrFail();
@@ -310,11 +315,17 @@ class MedicalCaseController extends Controller
                         throw new \RuntimeException("Delivered quantity cannot exceed allocated quantity for item {$item->id}");
                     }
 
+                    $deliveryOrderLine = DeliveryOrderLine::with('deliveryOrder')
+                        ->lockForUpdate()
+                        ->find($itemData['delivery_order_item_id']);
+
+                    $this->assertDeliverableFromLine($case, $item, $deliveryOrderLine, (float) $itemData['delivered_qty'], $index);
+
                     $previouslyDelivered = (float) $item->delivered_qty;
 
                     $item->update([
                         'delivered_qty' => $itemData['delivered_qty'],
-                        'delivery_order_item_id' => $itemData['delivery_order_item_id'] ?? $item->delivery_order_item_id,
+                        'delivery_order_item_id' => $deliveryOrderLine->id,
                     ]);
 
                     // Issue #184: accrue bonus usage for the newly delivered
@@ -335,11 +346,68 @@ class MedicalCaseController extends Controller
                 'message' => 'Medical case delivery recorded successfully',
                 'data' => $case->fresh()->load(['customer', 'items.product']),
             ]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             return response()->json([
                 'message' => 'Failed to record delivery',
                 'error' => $e->getMessage(),
             ], 500);
+        }
+    }
+
+    /**
+     * Issue #562 (MC1): the delivered quantity may only be recorded from a
+     * product line of a completed delivery order for the same customer, whose
+     * delivered quantity still has room after every other case already linked
+     * to that line.
+     */
+    private function assertDeliverableFromLine(
+        MedicalCase $case,
+        MedicalCaseItem $item,
+        ?DeliveryOrderLine $line,
+        float $deliveredQty,
+        int $index,
+    ): void {
+        $error = fn (string $message) => ValidationException::withMessages([
+            "items.{$index}.delivery_order_item_id" => $message,
+        ]);
+
+        if (! $line) {
+            throw $error('The delivery order line does not exist.');
+        }
+
+        $order = $line->deliveryOrder;
+
+        if (! $order) {
+            throw $error('The delivery order line has no delivery order.');
+        }
+
+        if (($line->line_type ?? 'product') !== 'product') {
+            throw $error('Only product lines of a completed delivery order can back a case delivery.');
+        }
+
+        if (! $order->isDone()) {
+            throw $error('The delivery order line must belong to a completed delivery order.');
+        }
+
+        if ((int) $order->customer_id !== (int) $case->customer_id) {
+            throw $error('The delivery order line must belong to the same customer as the medical case.');
+        }
+
+        if ((int) $line->product_id !== (int) $item->product_id) {
+            throw $error('The delivery order line must be for the same product as the medical case item.');
+        }
+
+        $alreadyLinked = (float) MedicalCaseItem::query()
+            ->where('delivery_order_item_id', $line->id)
+            ->where('id', '!=', $item->id)
+            ->sum('delivered_qty');
+
+        $remaining = round((float) $line->quantity_delivered - $alreadyLinked, 4);
+
+        if (round($deliveredQty, 4) > $remaining) {
+            throw $error("The delivered quantity exceeds the delivery order line's remaining quantity of {$remaining}.");
         }
     }
 

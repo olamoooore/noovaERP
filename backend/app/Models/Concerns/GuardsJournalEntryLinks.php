@@ -13,12 +13,20 @@ namespace App\Models\Concerns;
  * including soft-deleted) is authoritative traceability and must stop the
  * deletion. Only genuinely orphaned links (referenced JE physically gone,
  * or no JE id at all) are cleaned up before the delete proceeds.
+ *
+ * Issue #684: only a `post` link is the document's live ledger posting. A
+ * `reversal` link is the correction record of a posting that has ALREADY been
+ * reversed — the original entry is deactivated and the reset/cancel path
+ * releases the `post` link — so it must not block deleting the reset-to-draft
+ * document it no longer backs. Counting reversal links here made every
+ * reset draft undeletable.
  */
 trait GuardsJournalEntryLinks
 {
     public function guardJournalEntryLinksOnDelete(string $documentLabel): void
     {
         $liveLinks = $this->journalEntryLinks()
+            ->where('relation_type', 'post')
             ->whereHas('journalEntry', fn ($query) => $query->withTrashed())
             ->count();
 

@@ -16,6 +16,8 @@ use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Sales\Models\DeliveryOrder;
+use Modules\Sales\Models\DeliveryOrderLine;
 use Modules\Sales\Models\SalesOrder as SalesOrderModel;
 use Modules\Sales\Models\SalesOrderLine;
 use Spatie\Permission\Models\Role;
@@ -133,10 +135,39 @@ class HR184MedicalCaseBonusAccrualTest extends TenantTestCase
         return [$case, $item];
     }
 
+    /**
+     * Issue #562: the deliver route only accepts usage backed by a completed
+     * delivery order line for the same customer and product.
+     */
+    private function completedDeliveryOrderLine(Product $product, float $deliveredQty): DeliveryOrderLine
+    {
+        $order = DeliveryOrder::create([
+            'customer_id' => $this->customer->id,
+            'status' => 'done',
+            'created_by' => $this->user->id,
+        ]);
+
+        return DeliveryOrderLine::create([
+            'delivery_order_id' => $order->id,
+            'sales_order_line_id' => $this->salesOrderLine->id,
+            'line_type' => 'product',
+            'product_id' => $product->id,
+            'quantity_ordered' => $deliveredQty,
+            'quantity_delivered' => $deliveredQty,
+            'unit_price' => 100,
+        ]);
+    }
+
     private function deliver(MedicalCase $case, MedicalCaseItem $item, float $qty)
     {
+        $line = $this->completedDeliveryOrderLine($item->product, $qty);
+
         return $this->actingAs($this->user)->postJson('/api/v1/medical-cases/'.$case->id.'/deliver', [
-            'items' => [['id' => $item->id, 'delivered_qty' => $qty]],
+            'items' => [[
+                'id' => $item->id,
+                'delivered_qty' => $qty,
+                'delivery_order_item_id' => $line->id,
+            ]],
         ]);
     }
 

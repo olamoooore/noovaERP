@@ -112,6 +112,8 @@ class Quotation extends Model
         'delivery_date' => 'date',
         'is_active_version' => 'boolean',
         'superseded_at' => 'datetime',
+        // Issue #896: optimistic-concurrency token.
+        'lock_version' => 'integer',
     ];
 
     public function customer(): BelongsTo

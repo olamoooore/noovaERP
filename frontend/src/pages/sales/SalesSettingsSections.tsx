@@ -218,10 +218,14 @@ export function NumberingSettings() {
   const [savedDefaults, setSavedDefaults] = useState<Record<string, string>>({})
 
   if (formats && !initialized) {
+    // #542 (ST5): all six sales-document formats are editable here.
     const snapshot = {
       invoice: formats.invoice?.current ?? 'INV-{YYYY}-{SEQ:4}',
       quotation: formats.quotation?.current ?? 'QUO-{YYYY}-{SEQ:4}',
+      sales_order: formats.sales_order?.current ?? 'SO-{YYYY}-{SEQ:4}',
       delivery_order: formats.delivery_order?.current ?? 'DO-{YYYY}-{SEQ:4}',
+      credit_note: formats.credit_note?.current ?? 'CN-{YYYY}-{SEQ:4}',
+      payment: formats.payment?.current ?? 'PAY/{YYYY}/{MM}/{SEQ:3}',
       date_format: formats.date_format ?? 'Y-m-d',
     }
     setSavedDefaults(snapshot)
@@ -243,10 +247,17 @@ export function NumberingSettings() {
       toast({ title: 'Numbering settings saved' })
     },
     onError: (error: any) => {
+      // A rejected format answers 422 with per-field errors (#542).
+      const fieldErrors = error.response?.data?.errors
+      const firstFieldError = fieldErrors ? Object.values(fieldErrors)[0] : null
+      const description = Array.isArray(firstFieldError)
+        ? firstFieldError[0]
+        : error.response?.data?.message || 'Please try again.'
+
       toast({
         variant: 'destructive',
         title: 'Save failed',
-        description: error.response?.data?.message || 'Please try again.',
+        description,
       })
     },
   })
@@ -258,7 +269,7 @@ export function NumberingSettings() {
       <SettingsSectionHeader
         icon="solar:hashtag-circle-bold-duotone"
         title="Document Numbering"
-        description="Control how invoice, quotation, and delivery order numbers are generated. Use tokens to build the format."
+        description="Control how invoice, quotation, sales order, delivery order, credit note and payment numbers are generated. Use tokens to build the format."
       />
       <CardContent className="space-y-6 pt-6">
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
@@ -292,6 +303,27 @@ export function NumberingSettings() {
             value={current.delivery_order ?? ''}
             onChange={(v) => setLocal({ ...local, delivery_order: v })}
             defaultValue="DO-{YYYY}-{SEQ:4}"
+          />
+          <NumberingField
+            label="Sales order number"
+            description="Applied to new sales orders"
+            value={current.sales_order ?? ''}
+            onChange={(v) => setLocal({ ...local, sales_order: v })}
+            defaultValue="SO-{YYYY}-{SEQ:4}"
+          />
+          <NumberingField
+            label="Credit note number"
+            description="Applied to new customer credit notes"
+            value={current.credit_note ?? ''}
+            onChange={(v) => setLocal({ ...local, credit_note: v })}
+            defaultValue="CN-{YYYY}-{SEQ:4}"
+          />
+          <NumberingField
+            label="Payment number"
+            description="Applied to new customer payments"
+            value={current.payment ?? ''}
+            onChange={(v) => setLocal({ ...local, payment: v })}
+            defaultValue="PAY/{YYYY}/{MM}/{SEQ:3}"
           />
         </div>
 

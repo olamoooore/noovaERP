@@ -2,6 +2,8 @@
 
 namespace Modules\Sales\Http\Controllers;
 
+use App\Platform\Locking\RecordVersionConflictException;
+use App\Platform\Locking\RecordVersionGuard;
 use App\Platform\Pagination\PaginationService;
 use App\Services\CustomerCreditNoteService;
 use App\Services\CustomerWideSearchService;
@@ -24,6 +26,7 @@ class SalesOrderController extends Controller
         private CreditCheckService $creditCheckService,
         private CustomerCreditNoteService $creditNoteService,
         private SalesApprovalGate $approvalGate,
+        private RecordVersionGuard $versionGuard,
     ) {}
 
     public function index(Request $request)
@@ -213,8 +216,24 @@ class SalesOrderController extends Controller
             'discount_amount' => 'nullable|numeric|min:0',
         ]);
 
-        $order->update($validated);
-        $order->calculateTotals();
+        try {
+            DB::transaction(function () use ($request, $order, $validated) {
+                // Issue #896: the row lock + version check must cover the write.
+                $this->versionGuard->assertFresh($request, $order, 'sales_order');
+
+                $order->update($validated);
+                $order->calculateTotals();
+
+                // Issue #896: the write succeeded — advance the concurrency token.
+                $this->versionGuard->advance($order);
+            });
+        } catch (RecordVersionConflictException $e) {
+            return $this->versionGuard->conflictResponse($e, ['customer', 'lines.product']);
+        }
+
+        // Optional soft lock: record who last saved so a later conflicting
+        // editor is told "being edited by …" (advisory only).
+        $this->versionGuard->recordEditing($request, $order, 'sales_order');
 
         // Issue #646: same rule as quotations — an edit that changes
         // approval-relevant content (total, discount, currency, customer)

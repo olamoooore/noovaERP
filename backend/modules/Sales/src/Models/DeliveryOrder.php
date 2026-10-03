@@ -42,6 +42,8 @@ class DeliveryOrder extends Model
         'expected_date',
         'payment_terms',
         'completed_at',
+        'reversed_at',
+        'reversal_reason',
         'source',
         'external_reference',
         'po_number',
@@ -83,6 +85,7 @@ class DeliveryOrder extends Model
         'delivery_date' => 'date',
         'expected_date' => 'date',
         'completed_at' => 'datetime',
+        'reversed_at' => 'datetime',
         'issued_at' => 'datetime',
         'delivered_at' => 'datetime',
         'shipping_address_overridden' => 'boolean',
@@ -236,6 +239,16 @@ class DeliveryOrder extends Model
     public function isCancelled(): bool
     {
         return $this->status === 'cancelled';
+    }
+
+    /**
+     * #463 (DO11): a reversed delivery order carries status 'cancelled' too
+     * (stock was restored, COGS reversed) but is tracked with reversed_at so it
+     * is distinguishable from a never-shipped cancellation.
+     */
+    public function isReversed(): bool
+    {
+        return $this->reversed_at !== null;
     }
 
     public function isCompleted(): bool

@@ -428,8 +428,12 @@ export function DeliveryOrdersPage() {
                             Approval Rejected
                           </Badge>
                         ) : (
-                          <Badge variant="secondary" className={getStatusBadge(do_.status)}>
-                            {do_.status}
+                          <Badge
+                            variant="secondary"
+                            className={do_.reversed_at ? 'bg-purple-100 text-purple-800' : getStatusBadge(do_.status)}
+                            title={do_.reversed_at && do_.reversal_reason ? `Reversed: ${do_.reversal_reason}` : undefined}
+                          >
+                            {do_.reversed_at ? 'reversed' : do_.status}
                           </Badge>
                         )}
                       </TableCell>

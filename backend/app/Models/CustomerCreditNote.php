@@ -142,10 +142,18 @@ class CustomerCreditNote extends Model
 
     public static function generateCreditNoteNumber(): string
     {
-        $latest = static::orderBy('id', 'desc')->first();
-        $number = $latest ? (int) substr($latest->credit_note_number, -4) + 1 : 1;
-
-        return 'CN-'.date('Y').'-'.str_pad($number, 4, '0', STR_PAD_LEFT);
+        // #542 (ST5): credit notes use the configurable numbering service like
+        // every other sales document; the previous generator took the last
+        // note's suffix + 1 regardless of year, so a configured format could
+        // never apply.
+        return app(\App\Services\DocumentNumberingService::class)->generateUnique(
+            'credit_note',
+            'CN-{YYYY}-{SEQ:4}',
+            fn (string $prefix): array => static::query()
+                ->where('credit_note_number', 'like', $prefix.'%')
+                ->pluck('credit_note_number')
+                ->all(),
+        );
     }
 
     public function calculateTotals(): void

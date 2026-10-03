@@ -194,17 +194,48 @@ class InvoiceCancellationService
      */
     private function returnIssuedStock(Invoice $invoice): void
     {
+        $this->returnIssuedStockWith($invoice, 'CANCEL', 'invoice-cancel', 'Cancellation of');
+    }
+
+    /**
+     * Issue #684 — reset-to-draft reverses the invoice's COGS, so it must also
+     * return the stock the posting deducted, inside the same transaction as the
+     * journal reversal. Without this the stock stays out while the draft is
+     * edited or deleted and is lost for good.
+     *
+     * Shares the #681 return path but carries its own idempotency namespace:
+     * `issuedByInvoice()` already nets out returns linked to the invoice, and
+     * the `invoice-reset-…` key makes a reset → repost → reset cycle (or a
+     * cancel → reset) return the goods exactly once. Goods a completed delivery
+     * order shipped are not touched — they belong to the delivery.
+     */
+    public function returnIssuedStockOnReset(Invoice $invoice): void
+    {
+        $this->returnIssuedStockWith($invoice, 'RESET', 'invoice-reset', 'Reset to draft of');
+    }
+
+    /**
+     * @param  string  $referencePrefix  movement reference prefix (CANCEL/RESET)
+     * @param  string  $idempotencyPrefix  stable per-operation idempotency namespace
+     * @param  string  $notesPrefix  human-readable reason prefix
+     */
+    private function returnIssuedStockWith(
+        Invoice $invoice,
+        string $referencePrefix,
+        string $idempotencyPrefix,
+        string $notesPrefix,
+    ): void {
         foreach ($this->goodsIssueLedger->issuedByInvoice($invoice) as $issue) {
             $this->inventoryService->adjustStock(
                 productId: $issue['product_id'],
                 warehouseId: $issue['warehouse_id'],
                 quantity: $issue['quantity'],
                 type: 'return',
-                reference: "CANCEL-{$invoice->invoice_number}",
+                reference: "{$referencePrefix}-{$invoice->invoice_number}",
                 referenceType: 'Invoice',
                 referenceId: $invoice->id,
-                notes: "Cancellation of invoice {$invoice->invoice_number}",
-                idempotencyKey: "invoice-cancel-{$invoice->id}-product-{$issue['product_id']}",
+                notes: "{$notesPrefix} invoice {$invoice->invoice_number}",
+                idempotencyKey: "{$idempotencyPrefix}-{$invoice->id}-product-{$issue['product_id']}",
             );
         }
     }

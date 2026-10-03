@@ -32,6 +32,13 @@ class AppServiceProvider extends ServiceProvider
         // no third-party e-sign service. Swap this binding to adopt an
         // external provider without touching call sites.
         $this->app->bind(\App\Contracts\EsignProviderInterface::class, \App\Services\BuiltInEsignProvider::class);
+        // Issue #896: RecordVersionGuard depends on the locking contract; the
+        // platform's soft-lock implementation was previously resolvable only
+        // as a concrete class (no callers at all).
+        $this->app->bind(
+            \App\Platform\Locking\Contracts\RecordLockingServiceContract::class,
+            \App\Platform\Locking\RecordLockingService::class,
+        );
         $this->app->register(CompliancePluginServiceProvider::class);
 
         // ADR-005 Accounting Domain Services

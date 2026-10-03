@@ -9,6 +9,8 @@ use App\Models\Invoice;
 use App\Models\Product;
 use App\Models\Quotation;
 use App\Models\Warehouse;
+use App\Platform\Locking\RecordVersionConflictException;
+use App\Platform\Locking\RecordVersionGuard;
 use App\Platform\Pagination\PaginationService;
 use App\Services\CaseImportService;
 use App\Services\CustomerWideSearchService;
@@ -36,6 +38,7 @@ class QuotationController extends Controller
         private SalesApprovalGate $approvalGate,
         private CaseImportService $caseImportService,
         private DeliveryOrderService $deliveryService,
+        private RecordVersionGuard $versionGuard,
     ) {}
 
     /**
@@ -479,7 +482,67 @@ class QuotationController extends Controller
         }
 
         $before = $quotation->getOriginal();
-        $quotation->update($validated);
+
+        try {
+            DB::transaction(function () use ($request, $quotation, $validated) {
+                // Issue #896: the row lock + version check must cover the write.
+                $this->versionGuard->assertFresh($request, $quotation, 'quotation');
+
+                $quotation->update($validated);
+
+                if ($request->has('lines')) {
+                    // Draft edits re-price through the engine using the quotation's
+                    // OWN currency + rate snapshot (FR-1.7: the header snapshot is not
+                    // re-derived; only missing/auto lines change price).
+                    $pricing = app(\App\Services\PricingService::class);
+                    $pricingContext = $pricing->documentContext([
+                        'customer_id' => $quotation->customer_id,
+                        'date' => $quotation->quotation_date?->toDateString(),
+                        'currency_code' => $quotation->currency_code,
+                        'exchange_rate' => $quotation->exchange_rate,
+                        'base_currency_code' => $quotation->base_currency_code,
+                    ]);
+
+                    $quotation->lines()->delete();
+                    foreach ($request->lines as $lineIndex => $lineData) {
+                        $lineData = (array) $lineData;
+                        $lineType = $lineData['line_type'] ?? 'product';
+
+                        $lineProduct = $lineType === 'product' && ! empty($lineData['product_id'])
+                            ? \App\Models\Product::find($lineData['product_id'])
+                            : null;
+
+                        $mode = $lineData['price_mode'] ?? (((float) ($lineData['unit_price'] ?? 0) > 0) ? 'legacy' : 'auto');
+                        $priced = $pricing->priceLineArray($lineProduct, $lineData, $pricingContext, $mode);
+
+                        $quotation->lines()->create(array_merge([
+                            'line_type' => $lineType,
+                            'sequence' => $lineData['sequence'] ?? $lineIndex,
+                            'product_id' => $lineData['product_id'] ?? null,
+                            'model_number' => $lineData['model_number'] ?? null,
+                            'description' => $lineData['description'] ?? '',
+                            'product_notes' => $lineData['product_notes'] ?? null,
+                            'quantity' => $lineData['quantity'] ?? 0,
+                            'unit_price' => $lineData['unit_price'] ?? 0,
+                            'tax_rate' => $lineData['tax_rate'] ?? 0,
+                            'discount_amount' => $lineData['discount_amount'] ?? 0,
+                        ], $priced));
+                    }
+                }
+
+                $quotation->refresh();
+                $quotation->calculateTotals();
+
+                // Issue #896: the write succeeded — advance the concurrency token.
+                $this->versionGuard->advance($quotation);
+            });
+        } catch (RecordVersionConflictException $e) {
+            return $this->versionGuard->conflictResponse($e, ['customer', 'lines.product']);
+        }
+
+        // Optional soft lock: record who last saved so a later conflicting
+        // editor is told "being edited by …" (advisory only).
+        $this->versionGuard->recordEditing($request, $quotation, 'quotation');
 
         $changedFields = [];
         foreach (array_keys($validated) as $field) {
@@ -490,49 +553,6 @@ class QuotationController extends Controller
                 $changedFields[] = $field;
             }
         }
-
-        if ($request->has('lines')) {
-            // Draft edits re-price through the engine using the quotation's
-            // OWN currency + rate snapshot (FR-1.7: the header snapshot is not
-            // re-derived; only missing/auto lines change price).
-            $pricing = app(\App\Services\PricingService::class);
-            $pricingContext = $pricing->documentContext([
-                'customer_id' => $quotation->customer_id,
-                'date' => $quotation->quotation_date?->toDateString(),
-                'currency_code' => $quotation->currency_code,
-                'exchange_rate' => $quotation->exchange_rate,
-                'base_currency_code' => $quotation->base_currency_code,
-            ]);
-
-            $quotation->lines()->delete();
-            foreach ($request->lines as $lineIndex => $lineData) {
-                $lineData = (array) $lineData;
-                $lineType = $lineData['line_type'] ?? 'product';
-
-                $lineProduct = $lineType === 'product' && ! empty($lineData['product_id'])
-                    ? \App\Models\Product::find($lineData['product_id'])
-                    : null;
-
-                $mode = $lineData['price_mode'] ?? (((float) ($lineData['unit_price'] ?? 0) > 0) ? 'legacy' : 'auto');
-                $priced = $pricing->priceLineArray($lineProduct, $lineData, $pricingContext, $mode);
-
-                $quotation->lines()->create(array_merge([
-                    'line_type' => $lineType,
-                    'sequence' => $lineData['sequence'] ?? $lineIndex,
-                    'product_id' => $lineData['product_id'] ?? null,
-                    'model_number' => $lineData['model_number'] ?? null,
-                    'description' => $lineData['description'] ?? '',
-                    'product_notes' => $lineData['product_notes'] ?? null,
-                    'quantity' => $lineData['quantity'] ?? 0,
-                    'unit_price' => $lineData['unit_price'] ?? 0,
-                    'tax_rate' => $lineData['tax_rate'] ?? 0,
-                    'discount_amount' => $lineData['discount_amount'] ?? 0,
-                ], $priced));
-            }
-        }
-
-        $quotation->refresh();
-        $quotation->calculateTotals();
 
         // Issue #646: an approved request only covers the document state it
         // was raised for. If this edit changed that state (total, discount,

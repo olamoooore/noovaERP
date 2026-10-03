@@ -572,16 +572,40 @@ class CompanySettingsController extends Controller
 
     public function updateDocumentFormats(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'invoice' => 'nullable|string|max:100',
-            'quotation' => 'nullable|string|max:100',
-            'delivery_order' => 'nullable|string|max:100',
-            'date_format' => 'nullable|string|in:d/m/Y,m/d/Y,Y-m-d,dd/mm/yy,mm/dd/yy',
-        ]);
+        // #542 (ST5): all six sales-document formats are editable here.
+        $types = array_keys(\App\Services\DocumentNumberingService::TYPE_DEFAULTS);
+
+        $rules = array_fill_keys($types, 'nullable|string|max:100');
+        $rules['date_format'] = 'nullable|string|in:d/m/Y,m/d/Y,Y-m-d,dd/mm/yy,mm/dd/yy';
+
+        $validated = $request->validate($rules);
 
         $service = app(\App\Services\DocumentNumberingService::class);
 
-        foreach (['invoice', 'quotation', 'delivery_order'] as $type) {
+        // Validate every submitted format before saving any of them, so a bad
+        // format cannot leave the settings half-updated.
+        $errors = [];
+
+        foreach ($types as $type) {
+            if (! isset($validated[$type])) {
+                continue;
+            }
+
+            $result = $service->validateFormat($validated[$type]);
+
+            if (! $result['valid']) {
+                $errors[$type] = $result['errors'];
+            }
+        }
+
+        if ($errors !== []) {
+            return response()->json([
+                'message' => 'Invalid document number format.',
+                'errors' => $errors,
+            ], 422);
+        }
+
+        foreach ($types as $type) {
             if (isset($validated[$type])) {
                 $service->setFormat($type, $validated[$type]);
             }
