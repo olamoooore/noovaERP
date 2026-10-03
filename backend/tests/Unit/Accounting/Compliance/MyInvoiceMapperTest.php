@@ -500,4 +500,58 @@ class MyInvoiceMapperTest extends TestCase
 
         return $invoice;
     }
+
+    public function test_document_discount_is_allocated_to_lines_and_totals_reconcile(): void
+    {
+        // #305 (X5): subtotal 100, 10% tax, document discount 10.
+        // Invoice/ledger: tax 9.00, total 99.00. The MyInvois payload must
+        // agree line-for-line and header-for-header.
+        $invoice = new Invoice;
+        $invoice->setRawAttributes([
+            'id' => 30,
+            'invoice_number' => 'INV-X5-0001',
+            'invoice_date' => '2026-10-03',
+            'currency_code' => 'MYR',
+            'subtotal' => 100.00,
+            'tax_amount' => 9.00,
+            'discount_amount' => 10.00,
+            'total' => 99.00,
+            'paid_amount' => 0,
+        ], true);
+
+        $invoice->supplier = (object) [
+            'name' => 'NoovaERP Sdn Bhd',
+            'tax_identification_number' => 'IG22308550020',
+            'company_registration' => null,
+            'country_code' => 'MY',
+        ];
+
+        $invoice->setRelation('customer', (object) [
+            'name' => 'Customer',
+            'is_individual' => false,
+            'country_code' => 'MY',
+        ]);
+
+        $invoice->setRelation('lines', new Collection([
+            tap(new InvoiceLine, fn ($l) => $l->setRawAttributes([
+                'id' => 30, 'description' => 'Consulting', 'quantity' => 1,
+                'unit_price' => 100.00, 'tax_rate' => 10, 'tax_amount' => 10.00,
+                'discount_amount' => 0, 'line_total' => 110.00,
+            ], true)),
+        ]));
+
+        $payload = (new MyInvoiceMapper)->mapInvoice($invoice);
+
+        // Header reconciles to the invoice and the ledger.
+        $this->assertSame(100.00, $payload['totals']['subtotal']);
+        $this->assertSame(10.00, $payload['totals']['discount_total']);
+        $this->assertSame(90.00, $payload['totals']['subtotal_after_discount']);
+        $this->assertSame((float) $invoice->tax_amount, $payload['totals']['sst_amount']);
+        $this->assertSame((float) $invoice->total, $payload['totals']['gross_amount']);
+
+        // The line carries its share of the document discount.
+        $this->assertSame(90.00, $payload['line_items'][0]['line_amount']);
+        $this->assertSame(10.00, $payload['line_items'][0]['discount_amount']);
+        $this->assertSame(9.00, $payload['line_items'][0]['sst_amount']);
+    }
 }

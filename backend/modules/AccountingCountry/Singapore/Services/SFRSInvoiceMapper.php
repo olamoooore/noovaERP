@@ -242,6 +242,40 @@ class SFRSInvoiceMapper implements InvoiceSchemaMapperContract
             ];
         }
 
+        // #305 (X5): the document discount is sent as a Peppol allowance, so
+        // the taxable/taxable-base figures must be the POST-discount amounts
+        // and the tax must equal the booked invoice tax — never a cent more.
+        $documentDiscount = (float) ($invoice->discount_amount ?? 0);
+        $documentSubtotal = (float) ($invoice->subtotal ?? 0);
+
+        if ($documentDiscount > 0 && $documentSubtotal > 0 && $taxSubtotals !== []) {
+            $ratio = max(($documentSubtotal - $documentDiscount) / $documentSubtotal, 0.0);
+            $bookedTax = (float) ($invoice->tax_amount ?? 0);
+            $targetTax = $bookedTax > 0 ? $bookedTax : round(array_sum(array_map(
+                fn (array $row) => (float) $row['tax_amount']['amount'],
+                $taxSubtotals,
+            )) * $ratio, 2);
+            $targetTaxable = round($documentSubtotal - $documentDiscount, 2);
+
+            $runningTax = 0.0;
+            $runningTaxable = 0.0;
+            $lastIndex = count($taxSubtotals) - 1;
+
+            foreach ($taxSubtotals as $index => &$row) {
+                if ($index === $lastIndex) {
+                    $row['taxable_amount']['amount'] = round($targetTaxable - $runningTaxable, 2);
+                    $row['tax_amount']['amount'] = round($targetTax - $runningTax, 2);
+                } else {
+                    $row['taxable_amount']['amount'] = round((float) $row['taxable_amount']['amount'] * $ratio, 2);
+                    $row['tax_amount']['amount'] = round((float) $row['tax_amount']['amount'] * $ratio, 2);
+                }
+
+                $runningTaxable = round($runningTaxable + (float) $row['taxable_amount']['amount'], 2);
+                $runningTax = round($runningTax + (float) $row['tax_amount']['amount'], 2);
+            }
+            unset($row);
+        }
+
         if ($taxSubtotals === []) {
             $taxSubtotals[] = [
                 'tax_category_code' => 'S', // Standard rate
@@ -273,7 +307,8 @@ class SFRSInvoiceMapper implements InvoiceSchemaMapperContract
                     'currency_id' => $invoice->currency_code ?? 'SGD',
                 ],
                 'tax_exclusive_amount' => [
-                    'amount' => $invoice->subtotal,
+                    // #305 (X5): LineExtensionTotal(100) - document allowance(10).
+                    'amount' => round((float) $invoice->subtotal - (float) ($invoice->discount_amount ?? 0), 2),
                     'currency_id' => $invoice->currency_code ?? 'SGD',
                 ],
                 'tax_inclusive_amount' => [
