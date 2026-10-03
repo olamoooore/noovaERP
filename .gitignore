@@ -73,10 +73,11 @@ test-sample/
 .kiro/steering/
 STEERING-PACK-ADDENDUM-REVIEW.md
 
-# Test/validation scripts
-*validation*.php
-!backend/modules/AccountingCountry/Malaysia/Services/MFRSValidationService.php
-!backend/modules/AccountingCountry/Singapore/Services/SFRSValidationService.php
+# Ad-hoc local validation scripts (repo root only — this rule previously
+# matched *validation*.php anywhere and silently excluded
+# SFRSValidationService.php, the missing class behind #698, and would exclude
+# any new *Validation* source/interface under backend/).
+/*validation*.php
 
 # OpenClaw implementation pack (local reference only)
 ace-openclaw-implementation-pack/

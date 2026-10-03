@@ -3,6 +3,10 @@
 namespace App\Accounting\Services;
 
 use App\Accounting\BuyerTypeResolver;
+use App\Accounting\Contracts\ProvidesProviderName;
+use App\Accounting\Contracts\SupportsCredentialValidation;
+use App\Accounting\Contracts\SupportsPayloadDefaults;
+use App\Accounting\Contracts\SupportsSigning;
 use App\Accounting\Plugin\CountryPluginRegistry;
 use App\Enums\UserRole;
 use App\Models\Accounting\ComplianceDocument;
@@ -215,7 +219,7 @@ class ComplianceService
                         return ['success' => false, 'message' => "No plugin available for {$countryCode}"];
                     }
 
-                    $validation = $validator->validateInvoice($sourceDocument);
+                    $validation = $validator->validateInvoice($sourceDocument, $context);
                     if (! $validation['valid']) {
                         return ['success' => false, 'message' => 'Validation failed: '.implode(', ', $validation['errors'])];
                     }
@@ -628,7 +632,7 @@ class ComplianceService
 
             if (! $updated && in_array($submission->submission_status, ['pending', 'ack', 'unknown'], true)) {
                 $provider = $this->pluginRegistry->resolve($countryCode, 'provider');
-                if ($provider && method_exists($provider, 'getStatus')) {
+                if ($provider) {
                     $probeResult = $provider->getStatus($submission->provider_reference, $context);
                     if (($probeResult['success'] ?? false) !== true) {
                         return [
@@ -1082,9 +1086,7 @@ class ComplianceService
 
             $nonInvoiceTypes = ['credit_note', 'refund_note', 'bill', 'vendor_debit_note', 'journal_entry'];
             if (! in_array($docType, $nonInvoiceTypes, true)) {
-                $validation = strtoupper($countryCode) === 'MY'
-                    ? $validator->validateInvoice($sourceDocument, $context)
-                    : $validator->validateInvoice($sourceDocument);
+                $validation = $validator->validateInvoice($sourceDocument, $context);
                 if (! $validation['valid']) {
                     DB::rollBack();
 
@@ -1128,8 +1130,11 @@ class ComplianceService
                 'line_item_count' => count($payload['line_items'] ?? []),
             ]);
 
-            if ($countryCode === 'MY') {
-                $credentialError = $this->validateMyInvoiceCredentials($context);
+            // #699 (EC2): credential requirements are the pack's, not the
+            // core's — asked via the capability interface instead of a
+            // country-code branch.
+            if ($validator instanceof SupportsCredentialValidation) {
+                $credentialError = $validator->validateCredentials($context);
                 if ($credentialError !== null) {
                     DB::rollBack();
 
@@ -1404,7 +1409,7 @@ class ComplianceService
     {
         $provider = $this->pluginRegistry->resolve($countryCode, 'provider');
 
-        if (! method_exists($provider, 'signDocument')) {
+        if (! $provider instanceof SupportsSigning) {
             $signatureMetadata = null;
             $handwrittenDataUrl = $signingData['handwritten_signature_data_url'] ?? null;
             if (is_string($handwrittenDataUrl) && $handwrittenDataUrl !== '') {
@@ -1572,11 +1577,15 @@ class ComplianceService
      */
     private function providerNameForCountry(string $countryCode): string
     {
-        return match (strtoupper($countryCode)) {
-            'SG' => 'peppol',
-            'MY' => 'myinvoice',
-            default => 'default',
-        };
+        // #699 (EC2/AC3): pack-owned — a provider that declares its name wins;
+        // otherwise the tenant's country configuration knows it. No
+        // country-code map lives in core any more.
+        $provider = $this->pluginRegistry->resolve($countryCode, 'provider');
+        if ($provider instanceof ProvidesProviderName) {
+            return $provider->providerName();
+        }
+
+        return $this->getCountryConfig($countryCode)?->provider_name ?? 'default';
     }
 
     /**
@@ -1614,111 +1623,17 @@ class ComplianceService
      * Priority: mapped value (from invoice/model) → DB context → .env fallback (in UBL builder).
      * ALL supplier fields must be covered here so that per-tenant DB config fully overrides .env.
      */
-
     /**
-     * Returns an error message if the tenant's MyInvois credentials are incomplete,
-     * null if everything required is present.
+     * #699 (EC2/AC3): dispatch to the pack's mapper. MY's supplier-identity
+     * overlay (moved out of this class) is reached via SupportsPayloadDefaults;
+     * a pack without the capability leaves the payload untouched.
      */
-    private function validateMyInvoiceCredentials(array $context): ?string
-    {
-        $required = [
-            'myinvoice_client_id' => 'LHDN API Client ID',
-            'myinvoice_client_secret' => 'LHDN API Client Secret',
-            'supplier_tin' => 'Supplier TIN',
-            'supplier_name' => 'Supplier Name',
-        ];
-
-        $missing = [];
-        foreach ($required as $key => $label) {
-            $val = $context[$key] ?? null;
-            if ($val === null || $val === '') {
-                $missing[] = $label;
-            }
-        }
-
-        if (empty($missing)) {
-            return null;
-        }
-
-        return 'MyInvois credentials are not fully configured for this tenant. '
-            .'Missing: '.implode(', ', $missing).'. '
-            .'Configure them at Accounting → MyInvois Settings.';
-    }
-
     private function applyProviderPayloadDefaults(array $payload, array $context, string $countryCode): array
     {
-        if (strtoupper($countryCode) !== 'MY') {
-            return $payload;
+        $mapper = $this->pluginRegistry->resolve($countryCode, 'mapper');
+        if ($mapper instanceof SupportsPayloadDefaults) {
+            return $mapper->applyPayloadDefaults($payload, $context);
         }
-
-        $supplier = is_array($payload['supplier'] ?? null) ? $payload['supplier'] : [];
-
-        // ── Party identity ──────────────────────────────────────────────────
-        $supplier['tin'] = $supplier['tin']
-            ?? $context['supplier_tin']
-            ?? null;
-
-        $supplier['name'] = $supplier['name']
-            ?? $context['supplier_name']
-            ?? null;
-
-        $supplier['company_registration'] = $supplier['company_registration']
-            ?? $context['supplier_registration_number']
-            ?? null;
-
-        $supplier['identity_type'] = $supplier['identity_type']
-            ?? $context['supplier_id_type']
-            ?? null;
-
-        $supplier['identity_number'] = $supplier['identity_number']
-            ?? $context['supplier_id_number']
-            ?? null;
-
-        // ── Business classification (MSIC) ──────────────────────────────────
-        $supplier['msic_code'] = $supplier['msic_code']
-            ?? $context['supplier_msic_code']
-            ?? null;
-
-        $supplier['business_activity_description'] = $supplier['business_activity_description']
-            ?? $context['supplier_business_activity_description']
-            ?? null;
-
-        // ── Contact ─────────────────────────────────────────────────────────
-        $contact = is_array($supplier['contact'] ?? null) ? $supplier['contact'] : [];
-        $contact['phone'] = $contact['phone']
-            ?? $supplier['phone']
-            ?? $context['supplier_phone']
-            ?? null;
-        $contact['email'] = $contact['email']
-            ?? $supplier['email']
-            ?? $context['supplier_email']
-            ?? null;
-        $supplier['contact'] = $contact;
-
-        // ── Address ─────────────────────────────────────────────────────────
-        $address = is_array($supplier['address'] ?? null) ? $supplier['address'] : [];
-        $address['street'] = $address['street']
-            ?? $context['supplier_address']
-            ?? null;
-        $address['city'] = $address['city']
-            ?? $context['supplier_city']
-            ?? null;
-        $address['state'] = $address['state']
-            ?? $context['supplier_state']
-            ?? null;
-        $address['postal_code'] = $address['postal_code']
-            ?? $context['supplier_postal_code']
-            ?? null;
-        $address['country'] = $address['country'] ?? 'MYS';
-        $supplier['address'] = $address;
-
-        $payload['supplier'] = $supplier;
-
-        // #813 EP2: self-billing does NOT mean buyer = supplier. The defaulting
-        // that copied the supplier's identity onto the buyer for self-billed
-        // types (and the journal-entry mapper's flag) is removed: in self-billing
-        // the supplier is the counterparty and the buyer is the tenant entity.
-        // The mapper is responsible for a correct buyer.
 
         return $payload;
     }

@@ -67,4 +67,28 @@ class MFRSValidationServiceTest extends TestCase
         $this->assertTrue($result['valid']);
         $this->assertSame([], $result['errors']);
     }
+
+    public function test_validate_credentials_reports_every_missing_myinvois_field(): void
+    {
+        $error = (new MFRSValidationService)->validateCredentials([]);
+
+        $this->assertNotNull($error);
+        $this->assertStringContainsString('LHDN API Client ID', $error);
+        $this->assertStringContainsString('LHDN API Client Secret', $error);
+        $this->assertStringContainsString('Supplier TIN', $error);
+        $this->assertStringContainsString('Supplier Name', $error);
+        $this->assertStringContainsString('Accounting → MyInvois Settings', $error);
+    }
+
+    public function test_validate_credentials_accepts_a_complete_context(): void
+    {
+        $error = (new MFRSValidationService)->validateCredentials([
+            'myinvoice_client_id' => 'id',
+            'myinvoice_client_secret' => 'secret',
+            'supplier_tin' => 'C1234567890',
+            'supplier_name' => 'NoovaERP Sdn Bhd',
+        ]);
+
+        $this->assertNull($error);
+    }
 }
