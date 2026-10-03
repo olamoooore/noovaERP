@@ -211,6 +211,62 @@ class SalesOrder extends Model
         return $this->status === 'invoiced';
     }
 
+    /**
+     * #371 (O2): invoice progress as a first-class status, kept separate from
+     * the delivery/lifecycle state: nothing_to_invoice | to_invoice |
+     * partially_invoiced | fully_invoiced, derived from each line's billable
+     * (policy-aware) vs invoiced quantity.
+     */
+    public function invoiceStatus(): string
+    {
+        $lines = $this->relationLoaded('lines') ? $this->lines : $this->lines()->get();
+
+        $hasBillable = false;
+        $hasInvoiced = false;
+        $hasRemaining = false;
+
+        foreach ($lines as $line) {
+            if (in_array($line->line_type ?? 'product', ['note', 'section'], true)) {
+                continue;
+            }
+
+            // Overall invoice progress is measured against the ordered
+            // quantity; the line's invoicing policy only limits what THIS
+            // moment can bill (delivered_qty waits for deliveries).
+            $billable = max((float) $line->quantity - (float) $line->quantity_cancelled, 0);
+
+            if ($billable <= 0.0001) {
+                continue;
+            }
+
+            $hasBillable = true;
+            $invoiced = (float) $line->quantity_invoiced;
+
+            if ($invoiced > 0.0001) {
+                $hasInvoiced = true;
+            }
+
+            if ($invoiced + 0.0001 < $billable) {
+                $hasRemaining = true;
+            }
+        }
+
+        if (! $hasBillable) {
+            return 'nothing_to_invoice';
+        }
+
+        if (! $hasInvoiced) {
+            return 'to_invoice';
+        }
+
+        return $hasRemaining ? 'partially_invoiced' : 'fully_invoiced';
+    }
+
+    public function isFullyInvoiced(): bool
+    {
+        return $this->invoiceStatus() === 'fully_invoiced';
+    }
+
     public function isCancelled(): bool
     {
         return $this->status === 'cancelled';

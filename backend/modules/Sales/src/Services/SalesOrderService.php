@@ -574,7 +574,9 @@ class SalesOrderService
                 'link_type' => 'primary',
                 'link_state' => 'active',
                 'invoiced_qty' => $totalInvoiceableQty,
-                'invoiced_value' => $order->total,
+                // #371 (O2): the link records THIS invoice's actual value —
+                // the order total overstated every partial invoice.
+                'invoiced_value' => (float) $invoice->total,
                 'created_by' => TenantUserHelper::requireTenantUserId($order->created_by),
             ]);
 
@@ -588,10 +590,16 @@ class SalesOrderService
             // delivery orders after the order itself invoiced them.
             $this->synchronizeDeliveryOrderInvoicedQuantities($order, $invoice->fresh('lines'));
 
-            $this->lifecycleService->markInvoiced($order, 'Invoice created');
+            // #371 (O2): only a fully invoiced order locks as `invoiced`.
+            // A partial invoice leaves the lifecycle state alone so the
+            // remainder can still be delivered, invoiced, cancelled or closed.
+            $order = $order->fresh('lines');
+            if ($order->isFullyInvoiced()) {
+                $this->lifecycleService->markInvoiced($order, 'Invoice created');
+            }
 
             $this->logChatter($order, 'status_changed', "Raised invoice {$invoice->invoice_number} from sales order {$order->sales_order_number}", [
-                'to_state' => 'invoiced',
+                'to_state' => $order->fresh()->status,
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
             ]);
@@ -620,7 +628,15 @@ class SalesOrderService
             $order = $this->lifecycleService->cancel($order, $reason);
 
             foreach ($order->lines as $line) {
-                $line->update(['quantity_cancelled' => $line->quantity - $line->quantity_fulfilled]);
+                // #371 (O2): cancel the remainder only — quantity already
+                // delivered OR invoiced stays uncancelled (a cancelled
+                // invoice quantity would corrupt the credit-note basis).
+                $line->update([
+                    'quantity_cancelled' => max(
+                        0,
+                        (float) $line->quantity - max((float) $line->quantity_fulfilled, (float) $line->quantity_invoiced)
+                    ),
+                ]);
             }
 
             // Issue #152 (hostile re-review): a release order from a blanket
