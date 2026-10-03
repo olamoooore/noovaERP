@@ -39,7 +39,11 @@ class SyncEInvoiceStatusCommand extends Command
                     ->values();
 
                 foreach ($countries as $country) {
-                    $synced = app(ComplianceService::class)->syncPendingSubmissions((string) $country);
+                    // Scheduled sweep (#666 AC1): poll only submissions inside
+                    // the polling window (recent every run, 72h–7d hourly,
+                    // never past 7 days) so one sweep is a bounded number of
+                    // provider calls per tenant.
+                    $synced = app(ComplianceService::class)->syncPendingSubmissions((string) $country, scheduledSweep: true);
                     $total += $synced;
 
                     if ($synced > 0) {

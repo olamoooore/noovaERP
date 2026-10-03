@@ -37,9 +37,12 @@ class EinvStatusSyncScheduledTest extends TenantTestCase
         {
             public array $calls = [];
 
-            public function syncPendingSubmissions(string $countryCode): int
+            public array $scheduledSweepFlags = [];
+
+            public function syncPendingSubmissions(string $countryCode, bool $scheduledSweep = false): int
             {
                 $this->calls[] = strtoupper($countryCode);
+                $this->scheduledSweepFlags[] = $scheduledSweep;
 
                 return 1;
             }
@@ -50,5 +53,9 @@ class EinvStatusSyncScheduledTest extends TenantTestCase
 
         $this->assertContains('MY', $fake->calls, 'The enabled e-invoice country must be polled.');
         $this->assertNotContains('SG', $fake->calls, 'A disabled country must not be polled.');
+        $this->assertTrue(
+            in_array(true, $fake->scheduledSweepFlags, true),
+            'The scheduled run must sweep with the polling window applied (#666 AC1).'
+        );
     }
 }
