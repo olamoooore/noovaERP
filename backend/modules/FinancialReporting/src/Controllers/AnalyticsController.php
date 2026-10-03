@@ -56,6 +56,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
+                'success' => false,
                 'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
@@ -92,6 +93,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
+                'success' => false,
                 'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
@@ -123,7 +125,10 @@ class AnalyticsController extends Controller
         } catch (\Exception $e) {
             \Log::error('Sales by Currency analytics failed', ['error' => $e->getMessage()]);
 
-            return response()->json(['error' => 'Failed to generate analytics. Please try again.'], 500);
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to generate analytics. Please try again.',
+            ], 500);
         }
     }
 
@@ -162,6 +167,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
+                'success' => false,
                 'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
@@ -197,6 +203,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
+                'success' => false,
                 'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
@@ -228,6 +235,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
+                'success' => false,
                 'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
@@ -269,6 +277,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
+                'success' => false,
                 'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
@@ -303,6 +312,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
+                'success' => false,
                 'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
@@ -337,6 +347,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
+                'success' => false,
                 'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
@@ -371,6 +382,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
+                'success' => false,
                 'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
@@ -402,6 +414,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
+                'success' => false,
                 'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
@@ -433,6 +446,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
+                'success' => false,
                 'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
@@ -464,6 +478,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
+                'success' => false,
                 'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
@@ -495,6 +510,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
+                'success' => false,
                 'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
