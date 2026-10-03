@@ -1504,10 +1504,17 @@ class QuotationController extends Controller
                         ]);
                     }
                 } catch (\Throwable $caseError) {
+                    // Surface the failure: the quotation is already created,
+                    // but reporting no error would hide that its case (issue
+                    // #564 path) was not.
                     Log::warning('Failed to create medical case from quotation import', [
                         'quotation_id' => $quotation->id,
                         'error' => $caseError->getMessage(),
                     ]);
+                    $errors[] = [
+                        'row' => $firstIndex + 2,
+                        'message' => 'Quotation '.$quotation->quotation_number.' created but case creation failed: '.$caseError->getMessage(),
+                    ];
                 }
 
                 // Link to existing invoice(s) if invoice_number is provided
