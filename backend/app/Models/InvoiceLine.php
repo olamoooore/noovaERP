@@ -32,6 +32,11 @@ class InvoiceLine extends Model
         'serial_number',
         'expiry_date',
         'quantity',
+        // Issue #685: the sales UoM the line was entered in; `unit` is the
+        // abbreviation snapshot shown on the document ("2 BX"). A null uom_id
+        // means the quantity is in the product's stock unit, as before.
+        'uom_id',
+        'unit',
         'unit_price',
         'base_unit_price',
         'pricing_trace',
@@ -97,6 +102,16 @@ class InvoiceLine extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    /**
+     * Issue #685: the sales UoM this line is denominated in. Stock and COGS
+     * convert through ProductUomConverter at posting; the line keeps the sales
+     * quantity and per-sales-UoM price.
+     */
+    public function uom(): BelongsTo
+    {
+        return $this->belongsTo(ProductUom::class, 'uom_id');
     }
 
     public function batch(): BelongsTo

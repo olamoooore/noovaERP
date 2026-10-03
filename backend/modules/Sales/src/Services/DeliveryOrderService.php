@@ -379,6 +379,22 @@ class DeliveryOrderService
             }
 
             $quantityDelivered = (float) ($lineData['quantity_delivered'] ?? 0);
+
+            // Issue #685: a delivery quantity entered in a sales UoM (2 Box)
+            // is converted to stock units (24 pieces) before it is checked
+            // against the order's base quantities and stored; every ledger,
+            // reservation and COGS comparison below is in stock units.
+            $lineUom = (($lineData['uom_id'] ?? null) && $soLine->product_id)
+                ? app(\App\Services\ProductUomConverter::class)->resolveOrNull(
+                    (int) $soLine->product_id,
+                    (int) $lineData['uom_id'],
+                )
+                : null;
+
+            if ($lineUom && ! $lineUom->isStockUnit()) {
+                $quantityDelivered = app(\App\Services\ProductUomConverter::class)->toStock($lineUom, $quantityDelivered);
+            }
+
             if ($lineType === 'product' && $quantityDelivered <= 0) {
                 throw new \Exception("Delivery quantity must be greater than zero for sales order line #{$soLineId}.");
             }
@@ -426,6 +442,9 @@ class DeliveryOrderService
                 'quantity_ordered' => $lineType === 'product' ? (float) $soLine->quantity : 0,
                 'quantity_delivered' => $lineType === 'product' ? $quantityDelivered : 0,
                 'unit' => $lineData['unit'] ?? $soLine->unit,
+                // Issue #685: provenance for the sales UoM the operator
+                // entered; quantity_delivered above is stock units.
+                'uom_id' => $lineUom?->id,
                 'unit_price' => $lineType === 'product' ? (float) ($lineData['unit_price'] ?? $soLine->unit_price ?? 0) : null,
                 'base_unit_price' => $lineType === 'product'
                     ? (float) ($lineData['base_unit_price'] ?? ($soLine->base_unit_price ?? $soLine->unit_price) ?? 0)
@@ -795,6 +814,22 @@ class DeliveryOrderService
 
                 // Check available stock for stock-tracked products
                 $productId = $lineData['product_id'] ?? null;
+
+                // Issue #685: a line entered in a sales UoM (2 Box) is
+                // converted to stock units (24 pieces) before the availability
+                // check, serial resolution and storage — the ledger stays in
+                // one unit.
+                $lineUom = (($lineData['uom_id'] ?? null) && $productId)
+                    ? app(\App\Services\ProductUomConverter::class)->resolveOrNull(
+                        (int) $productId,
+                        (int) $lineData['uom_id'],
+                    )
+                    : null;
+
+                if ($lineUom && ! $lineUom->isStockUnit()) {
+                    $quantityDelivered = app(\App\Services\ProductUomConverter::class)->toStock($lineUom, $quantityDelivered);
+                }
+
                 if ($productId) {
                     $product = \App\Models\Product::find($productId);
                     if ($product && (bool) ($product->track_inventory ?? false)) {
@@ -834,6 +869,13 @@ class DeliveryOrderService
 
                 $unitPrice = $priced['unit_price'] ?? $lineData['unit_price'] ?? null;
 
+                // Issue #685: an explicitly supplied price is per sales UoM
+                // (300 per Box); store the per-stock-unit equivalent so the
+                // base-quantity line total stays qty × price.
+                if ($lineUom && ! $lineUom->isStockUnit() && $unitPrice !== null && $mode === 'legacy') {
+                    $unitPrice = app(\App\Services\ProductUomConverter::class)->salesPriceToBase($lineUom, (float) $unitPrice);
+                }
+
                 DeliveryOrderLine::create(array_merge([
                     'line_type' => $lineType,
                     'sequence' => $lineData['sequence'] ?? 0,
@@ -847,6 +889,9 @@ class DeliveryOrderService
                     'quantity_ordered' => $quantityDelivered,
                     'quantity_delivered' => $quantityDelivered,
                     'unit' => $lineData['unit'] ?? 'pcs',
+                    // Issue #685: provenance for the sales UoM entered;
+                    // quantity_delivered is stock units.
+                    'uom_id' => $lineUom?->id,
                     'unit_price' => $unitPrice,
                     'line_total' => $unitPrice !== null ? round($unitPrice * $quantityDelivered, 2) : null,
                     'lot_number' => $lineData['lot_number'] ?? null,
@@ -1065,7 +1110,10 @@ class DeliveryOrderService
                     continue;
                 }
 
-                $qty = (int) round((float) $line->quantity_delivered);
+                // #457 (DO5): stock must move the same fractional base-UOM
+                // quantity the COGS recognises — (int) round() moved 0 for
+                // 0.4 and 3 for 2.5 while the GL posted the float.
+                $qty = (float) $line->quantity_delivered;
                 if ($qty <= 0) {
                     continue;
                 }
@@ -1076,7 +1124,7 @@ class DeliveryOrderService
                 $issuedQuantities[$line->id] = $unissuedQty > 0 ? $unissuedQty : 0.0;
 
                 foreach ($this->bundleDecomposition->stockConsumingComponents($product, $unissuedQty) as $component) {
-                    $componentQty = (int) round($component['quantity']);
+                    $componentQty = (float) $component['quantity'];
                     if ($componentQty <= 0) {
                         continue;
                     }
@@ -1192,12 +1240,11 @@ class DeliveryOrderService
                 $isStockTracked = $product && (bool) ($product->track_inventory ?? false);
 
                 if ($isStockTracked) {
-                    $qty = (int) round((float) $line->quantity_delivered);
+                    // #457 (DO5): reverse exactly what was issued, fraction included.
+                    $qty = (float) $line->quantity_delivered;
 
                     foreach ($this->bundleDecomposition->stockConsumingComponents($product, $qty) as $component) {
-                        $issuedQty = (int) round(
-                            $this->goodsIssueLedger->issuedByDeliveryOrder($deliveryOrder, (int) $component['product']->id)
-                        );
+                        $issuedQty = (float) $this->goodsIssueLedger->issuedByDeliveryOrder($deliveryOrder, (int) $component['product']->id);
 
                         if ($issuedQty <= 0) {
                             continue;
@@ -1371,7 +1418,7 @@ class DeliveryOrderService
     //  HELPERS
     // ════════════════════════════════════════════════════════════════════════
 
-    private function fulfilReservationForLine(int $productId, int $warehouseId, int $qty, int $salesOrderId, int $salesOrderLineId): void
+    private function fulfilReservationForLine(int $productId, int $warehouseId, float $qty, int $salesOrderId, int $salesOrderLineId): void
     {
         $reservation = StockReservation::where([
             'source_document_type' => 'SalesOrder',
@@ -1453,13 +1500,46 @@ class DeliveryOrderService
             ->resolveReviewers(\App\Services\SalesApprovalGate::REQUEST_TYPE_DELIVERY_ORDER, $submitter);
     }
 
+    /**
+     * #454 (DO2): the reviewer action must go through the canonical
+     * ApprovalService — reviewer pool (Sales Settings → Approval Workflow),
+     * pending-only and no self-approval — instead of flipping the flag
+     * directly. The decision event mirrors the outcome back through
+     * applyApprovedDecision() (DeliveryOrderApprovalDecisionListener).
+     */
     public function approveDeliveryOrder(DeliveryOrder $deliveryOrder, \App\Models\User $user): DeliveryOrder
     {
-        if ($deliveryOrder->approval_status === 'approved') {
-            return $deliveryOrder;
+        $request = $this->pendingApprovalRequest($deliveryOrder);
+
+        $this->assertMayDecideApproval($request, $user, 'approval');
+
+        app(\App\Services\ApprovalService::class)->approveRequest((int) $request->id, (int) $user->id);
+
+        return $this->applyApprovedDecision($deliveryOrder->fresh(), $user);
+    }
+
+    public function rejectDeliveryOrder(DeliveryOrder $deliveryOrder, \App\Models\User $user, string $reason): DeliveryOrder
+    {
+        $request = $this->pendingApprovalRequest($deliveryOrder);
+
+        $this->assertMayDecideApproval($request, $user, 'rejection');
+
+        app(\App\Services\ApprovalService::class)->rejectRequest((int) $request->id, (int) $user->id, $reason);
+
+        return $this->applyRejectedDecision($deliveryOrder->fresh(), $user, $reason);
+    }
+
+    /**
+     * State application for a decision already authorised by ApprovalService
+     * (also the callback for inbox decisions via
+     * DeliveryOrderApprovalDecisionListener). Idempotent.
+     */
+    public function applyApprovedDecision(DeliveryOrder $deliveryOrder, \App\Models\User $user): DeliveryOrder
+    {
+        if ($deliveryOrder->approval_status !== 'approved') {
+            $deliveryOrder->update(['approval_status' => 'approved']);
         }
 
-        $deliveryOrder->update(['approval_status' => 'approved']);
         $this->settleApprovalRequest($deliveryOrder, 'approved', (int) $user->id);
 
         $this->logChatter($deliveryOrder, 'status_changed', "Approved {$deliveryOrder->delivery_order_number}", [
@@ -1469,7 +1549,7 @@ class DeliveryOrderService
         return $deliveryOrder->fresh();
     }
 
-    public function rejectDeliveryOrder(DeliveryOrder $deliveryOrder, \App\Models\User $user, string $reason): DeliveryOrder
+    public function applyRejectedDecision(DeliveryOrder $deliveryOrder, \App\Models\User $user, string $reason): DeliveryOrder
     {
         $deliveryOrder->update([
             'approval_status' => 'rejected',
@@ -1483,6 +1563,42 @@ class DeliveryOrderService
         ]);
 
         return $deliveryOrder->fresh();
+    }
+
+    private function pendingApprovalRequest(DeliveryOrder $deliveryOrder): \App\Models\ApprovalRequest
+    {
+        if ($deliveryOrder->approval_status !== 'pending') {
+            throw new \Exception(
+                'This delivery order is not pending approval (current: '.($deliveryOrder->approval_status ?? 'none').').'
+            );
+        }
+
+        $request = \App\Models\ApprovalRequest::query()
+            ->where('subject_type', DeliveryOrder::class)
+            ->where('subject_id', $deliveryOrder->id)
+            ->where('request_type', 'delivery_order_approval')
+            ->where('status', 'pending')
+            ->latest('id')
+            ->first();
+
+        if (! $request) {
+            throw new \Exception('This delivery order has no pending approval request.');
+        }
+
+        return $request;
+    }
+
+    private function assertMayDecideApproval(\App\Models\ApprovalRequest $request, \App\Models\User $user, string $action): void
+    {
+        if ((int) $request->requested_by === (int) $user->id) {
+            throw new \Illuminate\Auth\Access\AuthorizationException("Self-{$action} is not permitted.");
+        }
+
+        if (! app(\App\Services\ApprovalService::class)->userCanApprove($user, $request->request_type, (float) $request->amount)) {
+            throw new \Illuminate\Auth\Access\AuthorizationException(
+                'You are not a reviewer for delivery order approvals.'
+            );
+        }
     }
 
     /**

@@ -4,8 +4,9 @@ namespace Tests\Unit\Accounting\Compliance;
 
 use App\Accounting\Plugin\CountryPluginRegistry;
 use App\Accounting\Services\ComplianceService;
+use App\Models\Invoice;
 use Modules\AccountingCountry\Singapore\Services\SFRSValidationService;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 /**
  * Example Test Suite for Compliance Plugin System
@@ -33,27 +34,14 @@ class CompliancePluginExampleTest extends TestCase
     {
         $validator = new SFRSValidationService;
 
-        $invoice = (object) [
+        $invoice = $this->invoiceFixture([
             'invoice_date' => now(),
             'invoice_number' => 'INV001',
             'customer_id' => 1,
-            'supplier' => (object) [
-                'registration_number' => '123456789A', // Valid 10-char UEN
-            ],
-            'customer' => (object) [
-                'is_sme' => true,
-            ],
             'tax_amount' => 100,
             'tax_rate' => 8,
-            'lineItems' => collect([
-                (object) [
-                    'description' => 'Product A',
-                    'quantity' => 1,
-                    'unit_price' => 1000,
-                ],
-            ]),
             'issued_date' => now()->subDay(),
-        ];
+        ], supplierUen: '1234567890A');
 
         $result = $validator->validateInvoice($invoice);
 
@@ -68,28 +56,14 @@ class CompliancePluginExampleTest extends TestCase
     {
         $validator = new SFRSValidationService;
 
-        $invoice = (object) [
+        $invoice = $this->invoiceFixture([
             'invoice_date' => now(),
             'invoice_number' => 'INV002',
             'customer_id' => 1,
-            'supplier' => (object) [
-                'registration_number' => '123456789A',
-            ],
-            'customer' => (object) [
-                'is_sme' => false,
-                'registration_number' => '987654321B',
-            ],
             'tax_amount' => 70,
             'tax_rate' => 7, // Invalid - must be 0 or 8
-            'lineItems' => collect([
-                (object) [
-                    'description' => 'Product B',
-                    'quantity' => 2,
-                    'unit_price' => 500,
-                ],
-            ]),
             'issued_date' => now()->subDay(),
-        ];
+        ], supplierUen: '1234567890A', customerSme: false, customerUen: '9876543210B');
 
         $result = $validator->validateInvoice($invoice);
 
@@ -105,27 +79,14 @@ class CompliancePluginExampleTest extends TestCase
     {
         $validator = new SFRSValidationService;
 
-        $invoice = (object) [
+        $invoice = $this->invoiceFixture([
             'invoice_date' => now(),
             'invoice_number' => 'INV003',
             'customer_id' => 1,
-            'supplier' => (object) [
-                'registration_number' => null, // Missing UEN
-            ],
-            'customer' => (object) [
-                'is_sme' => true,
-            ],
             'tax_amount' => 0,
             'tax_rate' => 0,
-            'lineItems' => collect([
-                (object) [
-                    'description' => 'Service',
-                    'quantity' => 1,
-                    'unit_price' => 100,
-                ],
-            ]),
             'issued_date' => now()->subDay(),
-        ];
+        ], supplierUen: null, customerSme: true);
 
         $result = $validator->validateInvoice($invoice);
 
@@ -140,27 +101,14 @@ class CompliancePluginExampleTest extends TestCase
     {
         $validator = new SFRSValidationService;
 
-        $invoice = (object) [
+        $invoice = $this->invoiceFixture([
             'invoice_date' => now()->addDay(), // Future date
             'invoice_number' => 'INV004',
             'customer_id' => 1,
-            'supplier' => (object) [
-                'registration_number' => '123456789A',
-            ],
-            'customer' => (object) [
-                'is_sme' => true,
-            ],
             'tax_amount' => 80,
             'tax_rate' => 8,
             'issued_date' => now()->addDay(), // Future
-            'lineItems' => collect([
-                (object) [
-                    'description' => 'Future Product',
-                    'quantity' => 1,
-                    'unit_price' => 1000,
-                ],
-            ]),
-        ];
+        ], supplierUen: '1234567890A', customerSme: true);
 
         $result = $validator->validateInvoice($invoice);
 
@@ -220,5 +168,34 @@ class CompliancePluginExampleTest extends TestCase
         $this->assertTrue(in_array(0, $validRates));
         $this->assertTrue(in_array(6, $validRates));
         $this->assertFalse(in_array($invalidRate, $validRates));
+    }
+
+    /**
+     * Build an unpersisted invoice carrying the attributes and relations the
+     * SG validator reads. CountryValidationContract::validateInvoice() types
+     * the argument as App\Models\Invoice, so the fixtures must be models —
+     * the previous stdClass fixtures could never satisfy the signature.
+     */
+    private function invoiceFixture(
+        array $attributes,
+        ?string $supplierUen = '1234567890A',
+        ?bool $customerSme = true,
+        ?string $customerUen = null,
+    ): Invoice {
+        $invoice = new Invoice;
+        foreach ($attributes as $key => $value) {
+            $invoice->setAttribute($key, $value);
+        }
+
+        $invoice->setRelation('supplier', (object) ['registration_number' => $supplierUen]);
+        $invoice->setRelation('customer', (object) [
+            'is_sme' => (bool) $customerSme,
+            'registration_number' => $customerUen,
+        ]);
+        $invoice->setRelation('lineItems', collect([
+            (object) ['description' => 'Item', 'quantity' => 1, 'unit_price' => 100],
+        ]));
+
+        return $invoice;
     }
 }

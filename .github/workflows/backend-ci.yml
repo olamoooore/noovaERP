@@ -150,6 +150,15 @@ jobs:
           php -d memory_limit=256M artisan test --parallel --processes=4 --testsuite=Feature
         timeout-minutes: 10
 
+      # #698 EC1 AC2: the compliance plugin unit suite (validator/mapper/
+      # provider, incl. the SG P0 regressions) must run in CI — it previously
+      # lived in tests/Unit and was never executed by any workflow.
+      - name: Run compliance unit suite
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          php -d memory_limit=256M artisan test tests/Unit/Accounting/Compliance
+
       - name: Run OCR test suite
         working-directory: backend
         run: |

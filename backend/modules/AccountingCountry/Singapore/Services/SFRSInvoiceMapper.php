@@ -12,6 +12,12 @@ use App\Models\Invoice;
 class SFRSInvoiceMapper implements InvoiceSchemaMapperContract
 {
     /**
+     * #705 (SG2): Peppol participant identifier scheme for a Singapore UEN.
+     * (ICD 0195 — the invoice identifier scheme, NOT the old internal label.)
+     */
+    private const SG_UEN_SCHEME_ID = '0195';
+
+    /**
      * Map GL invoice to PEPPOL format
      */
     public function mapInvoice(Invoice $invoice): array
@@ -43,9 +49,20 @@ class SFRSInvoiceMapper implements InvoiceSchemaMapperContract
      */
     public function mapCreditNote(object $creditNote): array
     {
-        $mapped = $this->mapInvoice($creditNote->originalInvoice);
+        // #817 (EP6): CustomerCreditNote exposes the credited invoice as
+        // `invoice`; the old `originalInvoice` name does not exist on the
+        // model, and without the invoice number the UBL BillingReference
+        // would only carry an internal database id.
+        $originalInvoice = $creditNote->invoice ?? null;
+
+        $mapped = $this->mapInvoice($originalInvoice);
         $mapped['document_type'] = 'CreditNote';
-        $mapped['related_invoice_id'] = $creditNote->originalInvoice->id;
+        $mapped['related_invoice_id'] = $originalInvoice?->id;
+        $mapped['original_invoice_number'] = $originalInvoice?->invoice_number;
+        $mapped['custom_id'] = $creditNote->credit_note_number ?? $mapped['custom_id'];
+        if ($creditNote->credit_note_date) {
+            $mapped['issue_date'] = $creditNote->credit_note_date->format('Y-m-d');
+        }
         $mapped['reason'] = $creditNote->reason;
 
         return $mapped;
@@ -99,18 +116,35 @@ class SFRSInvoiceMapper implements InvoiceSchemaMapperContract
 
     /**
      * Map party (supplier/customer) to PEPPOL format
+     *
+     * #705 (SG2): the participant identifier is the Singapore UEN under Peppol
+     * ICD 0195. A missing UEN must never fall back to the internal database id
+     * — validatePayload() refuses the document instead. The GST registration
+     * is a separate identifier from the UEN and maps to its own PartyTaxScheme.
      */
     private function mapParty($party, string $type): array
     {
+        $uen = $party->registration_number
+            ?? $party->company_registration
+            ?? $party->company_registration_number
+            ?? null;
+
         return [
             'party_id' => [
-                'scheme_id' => 'SG_UEN',
-                'value' => $party->registration_number ?? $party->id,
+                'scheme_id' => self::SG_UEN_SCHEME_ID,
+                'value' => $uen,
             ],
             'party_name' => $party->name,
             'party_legal_entity' => [
                 'registration_name' => $party->legal_name ?? $party->name,
-                'company_id' => $party->registration_number,
+                'company_id' => $uen,
+            ],
+            'party_tax' => [
+                'scheme_id' => 'GST',
+                'value' => $party->gst_registration_number
+                    ?? $party->sst_registration_number
+                    ?? $party->tax_registration_number
+                    ?? null,
             ],
             'party_address' => [
                 'street' => $party->address_line_1,
@@ -300,6 +334,11 @@ class SFRSInvoiceMapper implements InvoiceSchemaMapperContract
      */
     private function validateParty(array $party): bool
     {
-        return isset($party['party_name']) && isset($party['party_address']);
+        // #705 (SG2): a party without a UEN cannot be a Peppol participant —
+        // the internal id is never an acceptable substitute.
+        return ! empty($party['party_name'])
+            && isset($party['party_address'])
+            && ($party['party_id']['scheme_id'] ?? null) === self::SG_UEN_SCHEME_ID
+            && trim((string) ($party['party_id']['value'] ?? '')) !== '';
     }
 }

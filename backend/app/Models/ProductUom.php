@@ -25,6 +25,11 @@ class ProductUom extends Model
         'product_id',
         'name',
         'abbreviation',
+        // Issue #685: optional, admin-entered fields. `unece_code` is the
+        // UN/ECE 5153 unit code the e-invoice mapper (#665) reads; it is never
+        // derived from a hard-coded code table.
+        'category',
+        'unece_code',
         'conversion_factor',
         'is_base_unit',
         'is_purchase_unit',
@@ -57,6 +62,16 @@ class ProductUom extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    /**
+     * Issue #685: the stock UoM is the product's base unit. Queries that need
+     * to resolve it should go through ProductUomConverter so no caller grows
+     * its own copy of this rule.
+     */
+    public function isStockUnit(): bool
+    {
+        return (bool) $this->is_base_unit;
     }
 
     /**

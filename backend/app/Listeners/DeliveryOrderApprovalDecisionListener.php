@@ -53,9 +53,12 @@ class DeliveryOrderApprovalDecisionListener
 
         try {
             match ($event->action) {
-                ApprovalDecisionEvent::ACTION_APPROVED => $this->deliveryService->approveDeliveryOrder($deliveryOrder, $actor),
-                ApprovalDecisionEvent::ACTION_REJECTED => $this->deliveryService->rejectDeliveryOrder($deliveryOrder, $actor, $event->reason ?? 'No reason provided'),
-                ApprovalDecisionEvent::ACTION_EXPIRED => $this->deliveryService->rejectDeliveryOrder($deliveryOrder, $actor, 'Approval request expired'),
+                // The decision was already authorised by ApprovalService —
+                // apply the outcome directly (the checked entry points would
+                // correctly refuse a request that is no longer pending).
+                ApprovalDecisionEvent::ACTION_APPROVED => $this->deliveryService->applyApprovedDecision($deliveryOrder, $actor),
+                ApprovalDecisionEvent::ACTION_REJECTED => $this->deliveryService->applyRejectedDecision($deliveryOrder, $actor, $event->reason ?? 'No reason provided'),
+                ApprovalDecisionEvent::ACTION_EXPIRED => $this->deliveryService->applyRejectedDecision($deliveryOrder, $actor, 'Approval request expired'),
                 ApprovalDecisionEvent::ACTION_WITHDRAWN => $deliveryOrder->update([
                     'requires_approval' => false,
                     'approval_status' => 'not_required',

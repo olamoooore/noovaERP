@@ -64,7 +64,7 @@ class InvoiceController extends Controller
 
         $search = $request->filled('search') ? trim((string) $request->search) : '';
 
-        $with = ['customer', 'lines', 'approvalRequest'];
+        $with = ['customer', 'lines.uom', 'approvalRequest'];
         if ($search !== '') {
             // Load the surfaces the wide search can match through, so the list
             // can show WHY each row matched (contact person, address, line, tag).
@@ -525,6 +525,9 @@ class InvoiceController extends Controller
             'lines.*.product_serial_id' => 'nullable|integer|exists:product_serials,id',
             'lines.*.expiry_date' => 'nullable|date',
             'lines.*.quantity' => 'nullable|integer|min:0',
+            // Issue #685: optional sales UoM. Callers that omit it keep the
+            // stock-unit behaviour exactly as before.
+            'lines.*.uom_id' => 'nullable|integer|exists:product_uoms,id',
             'lines.*.unit_price' => 'nullable|numeric|min:0',
             'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
             'lines.*.override_reason' => 'nullable|string|max:500',
@@ -782,6 +785,23 @@ class InvoiceController extends Controller
                 $mode = $line['price_mode'] ?? (((float) ($line['unit_price'] ?? 0) > 0) ? 'legacy' : 'auto');
                 $priced = $pricing->priceLineArray($lineProduct, $line, $draftContext, $mode);
 
+                // Issue #685: a line entered in a sales UoM keeps that
+                // quantity and a per-sales-UoM price on the draft invoice.
+                // Engine-resolved (auto/manual) prices are per stock unit and
+                // are re-expressed here through the shared converter; an
+                // explicit legacy price is already the caller's per-sales price.
+                $lineUom = $lineProduct
+                    ? app(\App\Services\ProductUomConverter::class)->resolveOrNull(
+                        (int) $lineProduct->id,
+                        isset($line['uom_id']) ? (int) $line['uom_id'] : null,
+                    )
+                    : null;
+
+                if ($lineUom && ! $lineUom->isStockUnit() && $mode !== 'legacy' && isset($priced['unit_price'])) {
+                    $priced['unit_price'] = app(\App\Services\ProductUomConverter::class)
+                        ->basePriceToSales($lineUom, (float) $priced['unit_price']);
+                }
+
                 $existingInvoice->lines()->create(array_merge([
                     'line_type' => $line['line_type'] ?? 'product',
                     'sequence' => $line['sequence'] ?? 0,
@@ -795,6 +815,8 @@ class InvoiceController extends Controller
                     'product_serial_id' => $line['product_serial_id'] ?? null,
                     'expiry_date' => $line['expiry_date'] ?? null,
                     'quantity' => $line['quantity'],
+                    'uom_id' => $lineUom?->id,
+                    'unit' => $lineUom?->abbreviation,
                     'unit_price' => $line['unit_price'] ?? 0,
                     'tax_rate' => $line['tax_rate'] ?? 0,
                     'tax_inclusive' => array_key_exists('tax_inclusive', $line)
@@ -816,26 +838,48 @@ class InvoiceController extends Controller
             return $existingInvoice;
         }
 
-        // For new invoices, create via SalesOrder lifecycle
-        $salesLines = array_map(fn ($line) => array_filter([
-            'line_type' => $line['line_type'] ?? 'product',
-            'sequence' => $line['sequence'] ?? 0,
-            'product_id' => $line['product_id'] ?? null,
-            'model_number' => $line['model_number'] ?? null,
-            'description' => $line['description'],
-            'product_notes' => $line['product_notes'] ?? null,
-            'quantity' => $line['quantity'],
-            'unit_price' => $line['unit_price'],
-            // MRD FR-4/FR-6: the editor's pricing intent travels with the
-            // line (auto/manual/carried + override reason for the floor audit).
-            'price_mode' => $line['price_mode'] ?? null,
-            'override_reason' => $line['override_reason'] ?? null,
-            'tax_rate' => $line['tax_rate'] ?? 0,
-            // #303 (X3): null when the screen did not send it — the Sales Order
-            // then resolves it through the engine (product override included).
-            'tax_inclusive' => $line['tax_inclusive'] ?? null,
-            'discount_amount' => $line['discount_amount'] ?? 0,
-        ], fn ($v) => $v !== null), $data['lines']);
+        // For new invoices, create via SalesOrder lifecycle.
+        // Issue #685: a supplied uom_id travels with the line, and a price the
+        // caller expressed per sales UoM is converted to the per-stock-unit
+        // price the SalesOrder internals use (the invoice re-expresses it in
+        // the sales UoM again when created from the order).
+        $uomConverter = app(\App\Services\ProductUomConverter::class);
+        $salesLines = [];
+        foreach ($data['lines'] as $line) {
+            $lineType = $line['line_type'] ?? 'product';
+            $lineUom = $lineType === 'product'
+                ? $uomConverter->resolveOrNull(
+                    isset($line['product_id']) ? (int) $line['product_id'] : null,
+                    isset($line['uom_id']) ? (int) $line['uom_id'] : null,
+                )
+                : null;
+
+            $unitPrice = $line['unit_price'] ?? null;
+            if ($lineUom && $unitPrice !== null && (float) $unitPrice > 0) {
+                $unitPrice = $uomConverter->salesPriceToBase($lineUom, (float) $unitPrice);
+            }
+
+            $salesLines[] = array_filter([
+                'line_type' => $lineType,
+                'sequence' => $line['sequence'] ?? 0,
+                'product_id' => $line['product_id'] ?? null,
+                'model_number' => $line['model_number'] ?? null,
+                'description' => $line['description'],
+                'product_notes' => $line['product_notes'] ?? null,
+                'quantity' => $line['quantity'],
+                'uom_id' => $lineUom?->id,
+                'unit_price' => $unitPrice,
+                // MRD FR-4/FR-6: the editor's pricing intent travels with the
+                // line (auto/manual/carried + override reason for the floor audit).
+                'price_mode' => $line['price_mode'] ?? null,
+                'override_reason' => $line['override_reason'] ?? null,
+                'tax_rate' => $line['tax_rate'] ?? 0,
+                // #303 (X3): null when the screen did not send it — the Sales Order
+                // then resolves it through the engine (product override included).
+                'tax_inclusive' => $line['tax_inclusive'] ?? null,
+                'discount_amount' => $line['discount_amount'] ?? 0,
+            ], fn ($v) => $v !== null);
+        }
 
         // Resolve warehouse if any line references a stock-tracked product
         $warehouseId = null;
@@ -1030,6 +1074,9 @@ class InvoiceController extends Controller
                 'product_notes' => $line->product_notes,
                 'quantity' => (float) $line->quantity,
                 'quantity_delivered' => (float) $line->quantity,
+                // Issue #685: hand the DO the line's sales UoM so the goods
+                // issue converts 2 Box → 24 stock units instead of shipping 2.
+                'uom_id' => $line->uom_id,
                 'unit_price' => (float) $line->unit_price,
                 'lot_number' => $line->lot_number,
                 'serial_number' => $line->serial_number,
@@ -1097,7 +1144,7 @@ class InvoiceController extends Controller
 
     public function show(Request $request, $id)
     {
-        $invoice = Invoice::with(['customer', 'lines.product', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor', 'buyer', 'salesOrder', 'quotation', 'deliveryOrders', 'evidence.confirmedBy'])->find($id);
+        $invoice = Invoice::with(['customer', 'lines.product', 'lines.uom', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor', 'buyer', 'salesOrder', 'quotation', 'deliveryOrders', 'evidence.confirmedBy'])->find($id);
 
         if (! $invoice) {
             return response()->json(['message' => 'Invoice not found'], 404);
@@ -1232,6 +1279,9 @@ class InvoiceController extends Controller
             'lines.*.product_serial_id' => 'nullable|integer|exists:product_serials,id',
             'lines.*.expiry_date' => 'nullable|date',
             'lines.*.quantity' => 'nullable|integer|min:0',
+            // Issue #685: optional sales UoM. Callers that omit it keep the
+            // stock-unit behaviour exactly as before.
+            'lines.*.uom_id' => 'nullable|integer|exists:product_uoms,id',
             'lines.*.unit_price' => 'nullable|numeric|min:0',
             'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
             'lines.*.override_reason' => 'nullable|string|max:500',

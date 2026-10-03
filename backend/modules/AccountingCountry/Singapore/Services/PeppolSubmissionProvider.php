@@ -160,25 +160,31 @@ class PeppolSubmissionProvider implements SubmissionProviderContract
     }
 
     /**
+     * #818 (EP7): Peppol has no recall — once the document reached the buyer's
+     * access point it exists, and the only correction is a credit note. The
+     * pack declares cancellation unsupported so the core routes the user to
+     * the credit-note flow instead of issuing a cancellation nobody else saw.
+     */
+    public function supportsCancellation(): bool
+    {
+        return false;
+    }
+
+    /**
      * Cancel submission
+     *
+     * #818 (EP7): always refused. The previous implementation sent an HTTP
+     * DELETE to a non-existent access-point endpoint and reported success on
+     * HTTP 200 while the buyer still held the invoice. A queued-at-AP
+     * withdrawal is not implemented (the access-point integration itself is
+     * still the placeholder tracked in #706).
      */
     public function cancel(string $providerReference, array $credentials): array
     {
-        if (! $this->isConfigured()) {
-            return ['success' => false, 'message' => 'Singapore Peppol/InvoiceNow is not configured.'];
-        }
-
-        try {
-            $response = $this->client->delete("{$this->endpoint}/api/v1/invoices/{$providerReference}", [
-                'headers' => $this->buildHeaders($credentials),
-                'timeout' => 10,
-            ]);
-
-            return ['success' => $response->getStatusCode() === 200];
-
-        } catch (\Exception $e) {
-            return ['success' => false, 'message' => $e->getMessage()];
-        }
+        return [
+            'success' => false,
+            'message' => 'Peppol/InvoiceNow does not support cancelling a delivered document; issue a credit note against the original invoice instead.',
+        ];
     }
 
     /**
@@ -186,24 +192,49 @@ class PeppolSubmissionProvider implements SubmissionProviderContract
      */
     private function convertToUBL(array $payload): string
     {
-        // Issue #99: build a real UBL 2.1 Invoice document (Peppol BIS 3
-        // profile) with the parties, monetary totals and lines, using
-        // DOMDocument so values are escaped correctly.
+        $documentType = strtolower(trim((string) ($payload['document_type'] ?? '')));
+
+        // #817 (EP6): the provider picks the builder from document_type. A
+        // credit note built as an Invoice reaches the buyer as a second
+        // invoice, so anything that is not an invoice or a credit note is
+        // refused rather than serialised as the wrong document.
+        return match ($documentType) {
+            '', 'invoice' => $this->buildUblDocument($payload, false),
+            'creditnote', 'credit_note' => $this->buildUblDocument($payload, true),
+            default => throw new \InvalidArgumentException(
+                "Unsupported Peppol document type '{$documentType}': refusing to build a document that would misrepresent it."
+            ),
+        };
+    }
+
+    /**
+     * Issue #99: build a real UBL 2.1 document (Peppol BIS 3 profile) with the
+     * parties, monetary totals and lines, using DOMDocument so values are
+     * escaped correctly.
+     *
+     * Issue #817 (EP6): an invoice and a credit note are different UBL
+     * documents — root namespace, type code, line element names and the
+     * mandatory BillingReference all differ.
+     */
+    private function buildUblDocument(array $payload, bool $isCreditNote): string
+    {
         $document = new \DOMDocument('1.0', 'UTF-8');
         $document->formatOutput = true;
 
-        $invoice = $document->createElementNS(
-            'urn:oasis:names:specification:ubl:schema:xsd:Invoice-2',
-            'Invoice'
+        $root = $document->createElementNS(
+            $isCreditNote
+                ? 'urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2'
+                : 'urn:oasis:names:specification:ubl:schema:xsd:Invoice-2',
+            $isCreditNote ? 'CreditNote' : 'Invoice'
         );
-        $invoice->setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns:cac', 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2');
-        $invoice->setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns:cbc', 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2');
-        $document->appendChild($invoice);
+        $root->setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns:cac', 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2');
+        $root->setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns:cbc', 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2');
+        $document->appendChild($root);
 
-        $append = function (string $name, ?string $value) use ($document, $invoice) {
+        $append = function (string $name, ?string $value) use ($document, $root) {
             $element = $document->createElement('cbc:'.$name);
             $element->appendChild($document->createTextNode((string) $value));
-            $invoice->appendChild($element);
+            $root->appendChild($element);
         };
 
         $append('CustomizationID', $payload['customization_id'] ?? 'urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0');
@@ -211,8 +242,25 @@ class PeppolSubmissionProvider implements SubmissionProviderContract
         $append('ID', $payload['custom_id'] ?? $payload['invoice_number'] ?? '');
         $append('IssueDate', $payload['issue_date'] ?? now()->toDateString());
         $append('DueDate', $payload['due_date'] ?? null);
-        $append('InvoiceTypeCode', $payload['type_code'] ?? '380');
+        $append(
+            $isCreditNote ? 'CreditNoteTypeCode' : 'InvoiceTypeCode',
+            $payload['type_code'] ?? ($isCreditNote ? '381' : '380')
+        );
         $append('DocumentCurrencyCode', $payload['currency'] ?? 'SGD');
+
+        if ($isCreditNote) {
+            // The buyer cannot reconcile a credit without the reference to the
+            // document it credits.
+            $billingReference = $document->createElement('cac:BillingReference');
+            $invoiceReference = $document->createElement('cac:InvoiceDocumentReference');
+            $referenceId = $document->createElement('cbc:ID');
+            $referenceId->appendChild($document->createTextNode(
+                (string) ($payload['original_invoice_number'] ?? $payload['related_invoice_id'] ?? '')
+            ));
+            $invoiceReference->appendChild($referenceId);
+            $billingReference->appendChild($invoiceReference);
+            $root->appendChild($billingReference);
+        }
 
         foreach ([
             'AccountingSupplierParty' => $payload['supplier'] ?? [],
@@ -221,24 +269,54 @@ class PeppolSubmissionProvider implements SubmissionProviderContract
             $wrapper = $document->createElement('cac:'.$wrapperName);
             $partyElement = $document->createElement('cac:Party');
 
-            if (! empty($party['name'])) {
+            // #705 (SG2): the participant identifier is the UEN under Peppol
+            // ICD 0195 (e.g. 0195:202312345A) — never the internal id.
+            $partyId = is_array($party['party_id'] ?? null) ? $party['party_id'] : [];
+            if (trim((string) ($partyId['value'] ?? '')) !== '') {
+                $identification = $document->createElement('cac:PartyIdentification');
+                $identifier = $document->createElement('cbc:ID');
+                $identifier->setAttribute('schemeID', (string) ($partyId['scheme_id'] ?? '0195'));
+                $identifier->appendChild($document->createTextNode((string) $partyId['value']));
+                $identification->appendChild($identifier);
+                $partyElement->appendChild($identification);
+            }
+
+            $partyNameValue = $party['party_name'] ?? $party['name'] ?? null;
+            if (! empty($partyNameValue)) {
                 $partyName = $document->createElement('cac:PartyName');
                 $name = $document->createElement('cbc:Name');
-                $name->appendChild($document->createTextNode((string) $party['name']));
+                $name->appendChild($document->createTextNode((string) $partyNameValue));
                 $partyName->appendChild($name);
                 $partyElement->appendChild($partyName);
             }
 
-            if (! empty($party['registration'])) {
+            // #705 (SG2): the GST registration is a separate identifier from
+            // the UEN and belongs in its own PartyTaxScheme.
+            $partyTax = is_array($party['party_tax'] ?? null) ? $party['party_tax'] : [];
+            if (trim((string) ($partyTax['value'] ?? '')) !== '') {
+                $partyTaxScheme = $document->createElement('cac:PartyTaxScheme');
+                $taxCompanyId = $document->createElement('cbc:CompanyID');
+                $taxCompanyId->appendChild($document->createTextNode((string) $partyTax['value']));
+                $partyTaxScheme->appendChild($taxCompanyId);
+                $taxScheme = $document->createElement('cac:TaxScheme');
+                $taxSchemeId = $document->createElement('cbc:ID');
+                $taxSchemeId->appendChild($document->createTextNode((string) ($partyTax['scheme_id'] ?? 'GST')));
+                $taxScheme->appendChild($taxSchemeId);
+                $partyTaxScheme->appendChild($taxScheme);
+                $partyElement->appendChild($partyTaxScheme);
+            }
+
+            $registrationValue = $party['party_legal_entity']['company_id'] ?? $party['registration'] ?? null;
+            if (! empty($registrationValue)) {
                 $legal = $document->createElement('cac:PartyLegalEntity');
                 $registration = $document->createElement('cbc:CompanyID');
-                $registration->appendChild($document->createTextNode((string) $party['registration']));
+                $registration->appendChild($document->createTextNode((string) $registrationValue));
                 $legal->appendChild($registration);
                 $partyElement->appendChild($legal);
             }
 
             $wrapper->appendChild($partyElement);
-            $invoice->appendChild($wrapper);
+            $root->appendChild($wrapper);
         }
 
         $taxTotal = $document->createElement('cac:TaxTotal');
@@ -286,7 +364,7 @@ class PeppolSubmissionProvider implements SubmissionProviderContract
             $taxTotal->appendChild($subtotal);
         }
 
-        $invoice->appendChild($taxTotal);
+        $root->appendChild($taxTotal);
 
         $monetaryTotal = $document->createElement('cac:LegalMonetaryTotal');
         foreach ([
@@ -299,28 +377,28 @@ class PeppolSubmissionProvider implements SubmissionProviderContract
             $amount->setAttribute('currencyID', $payload['currency'] ?? 'SGD');
             $monetaryTotal->appendChild($amount);
         }
-        $invoice->appendChild($monetaryTotal);
+        $root->appendChild($monetaryTotal);
 
         foreach ($payload['lines'] ?? [] as $index => $line) {
-            $invoiceLine = $document->createElement('cac:InvoiceLine');
-            $invoiceLine->appendChild($document->createElement('cbc:ID', (string) ($line['id'] ?? $index + 1)));
-            $invoiceLine->appendChild($document->createElement('cbc:InvoicedQuantity', (string) ($line['quantity'] ?? 1)));
+            $lineElement = $document->createElement($isCreditNote ? 'cac:CreditNoteLine' : 'cac:InvoiceLine');
+            $lineElement->appendChild($document->createElement('cbc:ID', (string) ($line['id'] ?? $index + 1)));
+            $lineElement->appendChild($document->createElement($isCreditNote ? 'cbc:CreditedQuantity' : 'cbc:InvoicedQuantity', (string) ($line['quantity'] ?? 1)));
 
             $lineAmount = $document->createElement('cbc:LineExtensionAmount', number_format((float) ($line['line_total'] ?? 0), 2, '.', ''));
             $lineAmount->setAttribute('currencyID', $payload['currency'] ?? 'SGD');
-            $invoiceLine->appendChild($lineAmount);
+            $lineElement->appendChild($lineAmount);
 
             $item = $document->createElement('cac:Item');
             $itemName = $document->createElement('cbc:Name');
             $itemName->appendChild($document->createTextNode((string) ($line['description'] ?? 'Item')));
             $item->appendChild($itemName);
-            $invoiceLine->appendChild($item);
+            $lineElement->appendChild($item);
 
             $price = $document->createElement('cac:Price');
             $price->appendChild($document->createElement('cbc:PriceAmount', number_format((float) ($line['unit_price'] ?? 0), 2, '.', '')));
-            $invoiceLine->appendChild($price);
+            $lineElement->appendChild($price);
 
-            $invoice->appendChild($invoiceLine);
+            $root->appendChild($lineElement);
         }
 
         return $document->saveXML();

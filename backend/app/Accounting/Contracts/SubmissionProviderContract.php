@@ -33,6 +33,15 @@ interface SubmissionProviderContract
     public function cancel(string $providerReference, array $credentials): array;
 
     /**
+     * Whether this provider can cancel/recall a delivered document.
+     *
+     * A pack with no recall mechanism (Peppol/InvoiceNow, #818 EP7) declares
+     * false so the core routes the user to the credit-note flow instead of
+     * reporting a cancellation the other side never saw.
+     */
+    public function supportsCancellation(): bool;
+
+    /**
      * Retry failed submission
      */
     public function retry(array $payload, string $providerReference, array $credentials): array;

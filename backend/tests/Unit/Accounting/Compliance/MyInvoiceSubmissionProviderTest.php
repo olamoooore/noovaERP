@@ -391,6 +391,137 @@ class MyInvoiceSubmissionProviderTest extends TestCase
         $this->assertSame('abc123base64', $invoice['UBLExtensions'][0]['UBLExtension'][0]['ExtensionContent'][0]['Signature'][0]['SignatureValue'][0]['_']);
     }
 
+    /**
+     * #702 (MY1): a document carrying the digital signature must declare the
+     * signed schema version 1.1. The unsigned path stays on 1.0 — see
+     * MyInvoiceMapperTest's ERR237 regression guard.
+     */
+    public function test_signed_payload_declares_version_1_1(): void
+    {
+        $provider = $this->makeProviderWithResponses([]);
+        $payload = $this->validPayload();
+        $payload['_signature_metadata'] = [
+            'enabled' => true,
+            'signature_value' => 'abc123base64',
+            'digest_value' => 'digestbase64',
+            'key_id' => 'urn:uuid:test-signature',
+            'certificate' => ['serial_number' => 'SER123'],
+        ];
+
+        $reflection = new \ReflectionClass($provider);
+        $method = $reflection->getMethod('buildUblDocumentFromMappedPayload');
+        $method->setAccessible(true);
+
+        $document = $method->invoke($provider, $payload);
+        $invoice = $document['Invoice'][0];
+
+        $this->assertSame(
+            '1.1',
+            $invoice['InvoiceTypeCode'][0]['listVersionID'] ?? null,
+            'a signed document must declare the signed-schema version 1.1'
+        );
+        $this->assertArrayHasKey('UBLExtensions', $invoice);
+    }
+
+    /**
+     * #702 (MY1): an unsigned document may go to the sandbox, but production
+     * must refuse it — before any provider call.
+     */
+    public function test_production_unsigned_submission_is_blocked_with_signature_required(): void
+    {
+        $provider = $this->makeProviderWithResponses([
+            new Response(201, [], json_encode([
+                'submissionUID' => 'MY-SUB-UNSIGNED',
+                'response_code' => 'RECEIVED',
+                'status' => 'submitted',
+            ])),
+        ]);
+
+        $result = $provider->submit($this->validPayload(), [
+            'api_key' => 'prod-key',
+            'api_token' => 'prod-token',
+            'test_mode' => false,
+        ]);
+
+        $this->assertFalse($result['success'], 'an unsigned production submission must be refused');
+        $this->assertSame('SIGNATURE_REQUIRED_IN_PRODUCTION', $result['error_code'] ?? null);
+        $this->assertStringContainsString('digital signature', $result['message']);
+    }
+
+    public function test_production_signed_submission_proceeds(): void
+    {
+        $provider = $this->makeProviderWithResponses([
+            new Response(201, [], json_encode([
+                'submissionUID' => 'MY-SUB-SIGNED',
+                'response_code' => 'RECEIVED',
+                'status' => 'submitted',
+            ])),
+        ]);
+
+        $payload = $this->validPayload();
+        $payload['_signature_metadata'] = [
+            'enabled' => true,
+            'signature_value' => 'abc123base64',
+        ];
+
+        $result = $provider->submit($payload, [
+            'api_key' => 'prod-key',
+            'api_token' => 'prod-token',
+            'test_mode' => false,
+        ]);
+
+        $this->assertTrue($result['success'], 'a signed production submission must not be blocked by the signature policy');
+    }
+
+    public function test_sandbox_unsigned_submission_is_still_allowed(): void
+    {
+        $provider = $this->makeProviderWithResponses([
+            new Response(201, [], json_encode([
+                'submissionUID' => 'MY-SUB-SANDBOX',
+                'response_code' => 'RECEIVED',
+                'status' => 'submitted',
+            ])),
+        ]);
+
+        $result = $provider->submit($this->validPayload(), [
+            'api_key' => 'sandbox-key',
+            'api_token' => 'sandbox-token',
+            'test_mode' => true,
+        ]);
+
+        $this->assertTrue($result['success'], 'the sandbox still accepts unsigned documents');
+    }
+
+    public function test_production_handwritten_only_metadata_does_not_count_as_a_digital_signature(): void
+    {
+        $provider = $this->makeProviderWithResponses([
+            new Response(201, [], json_encode([
+                'submissionUID' => 'MY-SUB-HANDWRITTEN',
+                'response_code' => 'RECEIVED',
+                'status' => 'submitted',
+            ])),
+        ]);
+
+        $payload = $this->validPayload();
+        $payload['_signature_metadata'] = [
+            'enabled' => true,
+            'mode' => 'handwritten',
+            'handwritten_signature' => ['data_url' => 'data:image/png;base64,AAAA'],
+        ];
+
+        $result = $provider->submit($payload, [
+            'api_key' => 'prod-key',
+            'api_token' => 'prod-token',
+            'test_mode' => false,
+        ]);
+
+        $this->assertFalse(
+            $result['success'],
+            'LHDN requires the digital certificate — a handwritten signature is not a signed submission'
+        );
+        $this->assertSame('SIGNATURE_REQUIRED_IN_PRODUCTION', $result['error_code'] ?? null);
+    }
+
     public function test_submit_fails_locally_when_header_tax_does_not_match_line_taxes(): void
     {
         $provider = $this->makeProviderWithResponses([]);
