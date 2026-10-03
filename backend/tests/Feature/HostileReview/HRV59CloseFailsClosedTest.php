@@ -24,12 +24,18 @@ class HRV59CloseFailsClosedTest extends Issue59ClosingEntryViaPostingEngineTest
         $period = \Closure::bind(fn () => $this->period, $this, Issue59ClosingEntryViaPostingEngineTest::class)();
         $user = \Closure::bind(fn () => $this->user, $this, Issue59ClosingEntryViaPostingEngineTest::class)();
 
+        // #761 decision (option b): monthly closes no longer post closing
+        // entries, so the fail-closed guarantee is exercised on the one
+        // legitimate close — a fiscal-year-end period.
+        $period->update(['period_start' => '2026-12-01', 'period_end' => '2026-12-31']);
+        $period->refresh();
+
         $revenue = ChartOfAccount::create(['code' => '49'.Str::random(4), 'name' => 'HRV59 revenue', 'type' => 'revenue', 'account_type' => 'revenue', 'is_active' => true]);
         $cash = ChartOfAccount::create(['code' => '19'.Str::random(4), 'name' => 'HRV59 cash', 'type' => 'asset', 'account_type' => 'asset', 'is_active' => true]);
 
         // Non-zero P&L inside the period (posted, active).
         $jeId = DB::table('journal_entries')->insertGetId([
-            'entry_number' => 'HRV59-'.Str::random(5), 'entry_date' => '2026-05-15', 'description' => 'HRV59 sale',
+            'entry_number' => 'HRV59-'.Str::random(5), 'entry_date' => '2026-12-15', 'description' => 'HRV59 sale',
             'status' => 'posted', 'is_active_version' => true, 'created_by' => $user->id,
             'created_at' => now(), 'updated_at' => now(),
         ]);

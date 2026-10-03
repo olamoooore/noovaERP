@@ -85,8 +85,15 @@ class PeriodCloseService
                 // Run automatic adjustments (accruals, revaluations)
                 $adjustments = $this->runAutomaticAdjustments($period);
 
-                // Generate closing entries
-                $closingEntries = $this->generateClosingEntries($period);
+                // #761 (A1, decision 2026-10-02, option b — Odoo model): a
+                // period close is a lock only. The single closing entry to
+                // retained earnings is posted at FISCAL YEAR END; a monthly
+                // close must not zero the P&L (the old monthly closing entry
+                // made every closed month report ~zero revenue and expenses,
+                // because ProfitLossService counts posted P&L postings).
+                $closingEntries = $this->isFiscalYearEndPeriod($period)
+                    ? $this->generateClosingEntries($period)
+                    : [];
 
                 // Close the period
                 FiscalPeriod::where('id', $period->id)->update(['status' => 'closed']);
@@ -138,7 +145,7 @@ class PeriodCloseService
             }
 
             // Remove closing entries
-            $removedEntries = $this->removeClosingEntries($period);
+            $removedEntries = $this->reverseClosingEntries($period, "Period reopen for {$period->code} (issue #68)");
 
             // Remove automatic adjustments
             $removedAdjustments = $this->removeAutomaticAdjustments($period);
@@ -302,6 +309,36 @@ class PeriodCloseService
         return $adjustments;
     }
 
+    /**
+     * #761 (A1, option b): only the fiscal-year-end period posts a closing
+     * entry. Fiscal years are calendar-aligned until #768 generalises them.
+     */
+    private function isFiscalYearEndPeriod(FiscalPeriod $period): bool
+    {
+        if (! $period->period_end) {
+            return false;
+        }
+
+        return $period->period_end->toDateString() === sprintf('%04d-12-31', (int) $period->fiscal_year);
+    }
+
+    /**
+     * Whether this fiscal year already has an active closing entry.
+     */
+    private function fiscalYearHasClosingEntry(FiscalPeriod $period): bool
+    {
+        if (! $this->tablesExist(['journal_entries', 'fiscal_periods'])) {
+            return false;
+        }
+
+        return DB::table('journal_entries as je')
+            ->join('fiscal_periods as fp', 'fp.id', '=', 'je.period_id')
+            ->where('je.type', 'period_close')
+            ->where('je.is_active_version', true)
+            ->where('fp.fiscal_year', (int) $period->fiscal_year)
+            ->exists();
+    }
+
     private function generateClosingEntries(FiscalPeriod $period): array
     {
         $entries = [];
@@ -311,6 +348,13 @@ class PeriodCloseService
         // zeroed by an offsetting posting to Retained Earnings. This is the
         // standard end-of-period close accounting treatment.
         if (! $this->tablesExist(['journal_entry_lines', 'journal_entries'])) {
+            return $entries;
+        }
+
+        // #761 (A1, option b): exactly one closing entry per fiscal year — a
+        // yearly period and the December monthly period must not both close
+        // the same year.
+        if ($this->fiscalYearHasClosingEntry($period)) {
             return $entries;
         }
 
@@ -598,7 +642,12 @@ class PeriodCloseService
      * closing entry instead of generating a fresh one against the
      * period's now-current P&L balances.
      */
-    private function removeClosingEntries(FiscalPeriod $period): int
+    /**
+     * Reverse every active closing entry for a period through the
+     * authoritative ACC-002 reversal path. Shared by reopen (#68) and the
+     * #761 repair command.
+     */
+    public function reverseClosingEntries(FiscalPeriod $period, string $reason, string $reasonCode = 'PERIOD_REOPEN'): int
     {
         if (! $this->tablesExist(['journal_entries', 'journal_entry_links'])) {
             return 0;
@@ -626,8 +675,8 @@ class PeriodCloseService
             $req = new ReversalRequest(
                 journalEntryId: (int) $jeId,
                 reversalDate: now()->toDateString(),
-                reason: "Period reopen for {$period->code} (issue #68)",
-                reasonCode: 'PERIOD_REOPEN',
+                reason: $reason,
+                reasonCode: $reasonCode,
                 tenantId: tenant()?->id,
             );
             $result = $this->postingEngine->reverse($req);
@@ -653,7 +702,7 @@ class PeriodCloseService
             $this->postingEngine->retirePostingReference(
                 (int) $jeId,
                 $result->journalEntry?->id,
-                "Period reopen for {$period->code}",
+                $reason,
             );
 
             $reversed++;

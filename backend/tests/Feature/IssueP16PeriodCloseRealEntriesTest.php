@@ -19,6 +19,12 @@ use Tests\TenantTestCase;
  * Runtime tests for issue P1-6 — PeriodCloseService must actually generate
  * closing entries that zero out P&L accounts and post to Retained Earnings,
  * not silently skip work and mark the period closed anyway.
+ *
+ * Adapted to the #761 decision (2026-10-02, option b — Odoo model): a monthly
+ * close is a lock only; the closing entry to retained earnings is posted at
+ * fiscal year end. These tests therefore exercise a fiscal-year-end period
+ * (December); the monthly-close behaviour is guarded by
+ * Issue761PeriodCloseKeepsPLTest.
  */
 class IssueP16PeriodCloseRealEntriesTest extends TenantTestCase
 {
@@ -44,8 +50,8 @@ class IssueP16PeriodCloseRealEntriesTest extends TenantTestCase
         return FiscalPeriod::create([
             'code' => '2026-P'.uniqid(),
             'name' => 'Test Period',
-            'period_start' => '2026-01-01',
-            'period_end' => '2026-01-31',
+            'period_start' => '2026-12-01',
+            'period_end' => '2026-12-31',
             'fiscal_year' => 2026,
             'status' => 'open',
             'created_by' => $this->user->id,
@@ -63,7 +69,7 @@ class IssueP16PeriodCloseRealEntriesTest extends TenantTestCase
         ]);
     }
 
-    public function test_period_close_generates_closing_entries_zeroing_out_pnl(): void
+    public function test_year_end_close_generates_closing_entries_zeroing_out_pnl(): void
     {
         $revenue = $this->makeAccount('4000', 'Sales Revenue', 'revenue');
         $expense = $this->makeAccount('5000', 'Salaries Expense', 'expense');
@@ -74,7 +80,7 @@ class IssueP16PeriodCloseRealEntriesTest extends TenantTestCase
         // Seed P&L activity in the period: revenue 1000, expense 400
         $entry = JournalEntry::create([
             'entry_number' => 'TEST-'.Str::uuid(),
-            'entry_date' => '2026-01-15',
+            'entry_date' => '2026-12-15',
             'description' => 'Test revenue + expense',
             'status' => 'posted',
             'type' => 'manual',
@@ -100,7 +106,7 @@ class IssueP16PeriodCloseRealEntriesTest extends TenantTestCase
 
         $expenseEntry = JournalEntry::create([
             'entry_number' => 'TEST-'.Str::uuid(),
-            'entry_date' => '2026-01-20',
+            'entry_date' => '2026-12-20',
             'description' => 'Expense accrual',
             'status' => 'posted',
             'type' => 'manual',
