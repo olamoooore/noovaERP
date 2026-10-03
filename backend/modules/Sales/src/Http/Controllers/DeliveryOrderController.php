@@ -760,6 +760,10 @@ class DeliveryOrderController extends Controller
                 'message' => 'Delivery order approved',
                 'data' => $deliveryOrder,
             ]);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            // #454 (DO2): reviewer pool / self-approval failures are 403;
+            // state failures (not pending, no request) stay 422.
+            return response()->json(['message' => $e->getMessage()], 403);
         } catch (\Exception $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
@@ -800,6 +804,8 @@ class DeliveryOrderController extends Controller
                 'message' => 'Delivery order rejected',
                 'data' => $deliveryOrder,
             ]);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            return response()->json(['message' => $e->getMessage()], 403);
         } catch (\Exception $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
