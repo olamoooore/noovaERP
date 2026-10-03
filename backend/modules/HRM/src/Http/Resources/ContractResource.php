@@ -18,7 +18,12 @@ class ContractResource extends JsonResource
             'job_title' => $this->job_title,
             'employment_type' => $this->employment_type,
             'status' => $this->status,
-            'base_monthly_salary' => (float) $this->base_monthly_salary,
+            // #787 (Y1): salary is payroll data — hidden unless the caller
+            // holds hrm.payroll.view (same resolution as the route guard).
+            'base_monthly_salary' => $this->when(
+                \App\Http\Middleware\RequirePermission::allows(request(), 'hrm.payroll.view'),
+                fn () => (float) $this->base_monthly_salary,
+            ),
             'overtime_eligible' => (bool) $this->overtime_eligible,
             'timeshift' => $this->whenLoaded('timeshift', fn () => $this->timeshift ? [
                 'id' => $this->timeshift->id,

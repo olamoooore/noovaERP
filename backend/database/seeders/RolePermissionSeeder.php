@@ -186,6 +186,13 @@ class RolePermissionSeeder extends Seeder
         'hrm.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::VIEWER],
         'hrm.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
         'hrm.settings' => [UserRole::OWNER, UserRole::ADMIN],
+        // #787 (Y1): payroll runs, salaries and the GL-posting payroll
+        // actions are gated separately from general HRM access — VIEWER and
+        // CASHIER must never read salaries or approve/pay a run. MANAGER can
+        // view/run but not approve or pay (segregation of duties).
+        'hrm.payroll.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
+        'hrm.payroll.approve' => [UserRole::OWNER, UserRole::ADMIN],
+        'hrm.payroll.pay' => [UserRole::OWNER, UserRole::ADMIN],
 
         // Loyalty
         'loyalty.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::VIEWER],

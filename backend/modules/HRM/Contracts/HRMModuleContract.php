@@ -41,9 +41,11 @@ class HRMModuleContract extends BaseModuleContract
 
     public function getPermissions(): array
     {
+        // #787 (Y1): aligned with the permissions the routes actually
+        // enforce from RolePermissionSeeder::PERMISSION_MATRIX.
         return [
-            'hrm.employees.view', 'hrm.employees.create',
-            'hrm.payroll.manage', 'hrm.attendance.view',
+            'hrm.view', 'hrm.write', 'hrm.settings',
+            'hrm.payroll.view', 'hrm.payroll.approve', 'hrm.payroll.pay',
         ];
     }
 
