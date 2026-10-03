@@ -406,6 +406,15 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
     }
 
     /**
+     * #818 (EP7): MyInvois supports cancellation inside the 72-hour window,
+     * so the core may offer the cancel action for MY documents.
+     */
+    public function supportsCancellation(): bool
+    {
+        return true;
+    }
+
+    /**
      * Cancel submission
      */
     public function cancel(string $providerReference, array $credentials): array

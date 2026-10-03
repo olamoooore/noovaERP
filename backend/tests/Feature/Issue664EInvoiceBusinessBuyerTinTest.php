@@ -302,6 +302,11 @@ class FakeLhdnProvider664 implements SubmissionProviderContract
         ];
     }
 
+    public function supportsCancellation(): bool
+    {
+        return true;
+    }
+
     public function retry(array $payload, string $providerReference, array $credentials): array
     {
         return ['success' => true, 'provider_reference' => $providerReference, 'message' => 'Retried'];

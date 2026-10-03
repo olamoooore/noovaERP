@@ -160,25 +160,31 @@ class PeppolSubmissionProvider implements SubmissionProviderContract
     }
 
     /**
+     * #818 (EP7): Peppol has no recall — once the document reached the buyer's
+     * access point it exists, and the only correction is a credit note. The
+     * pack declares cancellation unsupported so the core routes the user to
+     * the credit-note flow instead of issuing a cancellation nobody else saw.
+     */
+    public function supportsCancellation(): bool
+    {
+        return false;
+    }
+
+    /**
      * Cancel submission
+     *
+     * #818 (EP7): always refused. The previous implementation sent an HTTP
+     * DELETE to a non-existent access-point endpoint and reported success on
+     * HTTP 200 while the buyer still held the invoice. A queued-at-AP
+     * withdrawal is not implemented (the access-point integration itself is
+     * still the placeholder tracked in #706).
      */
     public function cancel(string $providerReference, array $credentials): array
     {
-        if (! $this->isConfigured()) {
-            return ['success' => false, 'message' => 'Singapore Peppol/InvoiceNow is not configured.'];
-        }
-
-        try {
-            $response = $this->client->delete("{$this->endpoint}/api/v1/invoices/{$providerReference}", [
-                'headers' => $this->buildHeaders($credentials),
-                'timeout' => 10,
-            ]);
-
-            return ['success' => $response->getStatusCode() === 200];
-
-        } catch (\Exception $e) {
-            return ['success' => false, 'message' => $e->getMessage()];
-        }
+        return [
+            'success' => false,
+            'message' => 'Peppol/InvoiceNow does not support cancelling a delivered document; issue a credit note against the original invoice instead.',
+        ];
     }
 
     /**
