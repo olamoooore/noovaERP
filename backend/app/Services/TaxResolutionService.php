@@ -69,6 +69,22 @@ class TaxResolutionService
     }
 
     /**
+     * #303 (X3): the single engine-first resolution used when a document
+     * line does not carry an explicit inclusive/exclusive flag — rule-linked
+     * tax, product override, custom mode and tenant default all resolve
+     * exactly as they already do at POS.
+     */
+    public function isInclusiveForProduct(
+        Product $product,
+        ?ProductVariant $variant = null,
+        ?string $date = null,
+        ?string $jurisdiction = null,
+        string $direction = 'output',
+    ): bool {
+        return (bool) $this->resolveTaxForProduct($product, $variant, $jurisdiction, $direction, $date)['is_inclusive'];
+    }
+
+    /**
      * Calculate tax amount for a given subtotal
      *
      * @param  float  $subtotal  Net amount (before tax for exclusive, gross for inclusive)

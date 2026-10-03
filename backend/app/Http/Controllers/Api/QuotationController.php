@@ -300,6 +300,7 @@ class QuotationController extends Controller
             'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
             'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            'lines.*.tax_inclusive' => 'nullable|boolean',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
             // FR-5.2: header currency + explicit price list selection.
             'currency_code' => 'nullable|string|size:3',
@@ -396,6 +397,12 @@ class QuotationController extends Controller
                         'quantity' => $lineData['quantity'],
                         'unit_price' => $lineData['unit_price'] ?? 0,
                         'tax_rate' => $lineData['tax_rate'] ?? 0,
+                        // #303 (X3): explicit flag wins; otherwise the engine
+                        // (rule-linked tax / product override) resolves it.
+                        'tax_inclusive' => array_key_exists('tax_inclusive', $lineData)
+                            ? (bool) $lineData['tax_inclusive']
+                            : ($lineProduct !== null
+                                && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $validated['quotation_date'] ?? null)),
                         'discount_amount' => $lineData['discount_amount'] ?? 0,
                     ], $priced));
                 }
@@ -517,6 +524,7 @@ class QuotationController extends Controller
             'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
             'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            'lines.*.tax_inclusive' => 'nullable|boolean',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
         ]);
 
@@ -575,6 +583,11 @@ class QuotationController extends Controller
                             'quantity' => $lineData['quantity'] ?? 0,
                             'unit_price' => $lineData['unit_price'] ?? 0,
                             'tax_rate' => $lineData['tax_rate'] ?? 0,
+                            // #303 (X3): same engine-first resolution as create.
+                            'tax_inclusive' => array_key_exists('tax_inclusive', $lineData)
+                                ? (bool) $lineData['tax_inclusive']
+                                : ($lineProduct !== null
+                                    && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $quotation->quotation_date?->toDateString())),
                             'discount_amount' => $lineData['discount_amount'] ?? 0,
                         ], $priced));
                     }
@@ -731,6 +744,8 @@ class QuotationController extends Controller
                 'base_unit_price' => $line->base_unit_price,
                 'pricing_trace' => $line->pricing_trace,
                 'tax_rate' => $line->tax_rate,
+                // #303 (X3): the accepted price mode travels with the line.
+                'tax_inclusive' => (bool) $line->tax_inclusive,
                 'discount_amount' => $line->discount_amount,
             ], fn ($v) => $v !== null))->toArray();
 
@@ -1457,6 +1472,12 @@ class QuotationController extends Controller
                     $priced = $lineProduct
                         ? $importPricing->priceLineArray($lineProduct, $line, $importContext, 'carried')
                         : [];
+
+                    if (! array_key_exists('tax_inclusive', $line)) {
+                        // #303 (X3): engine-first resolution for imported quotes.
+                        $line['tax_inclusive'] = $lineProduct !== null
+                            && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $quotationDate);
+                    }
 
                     $quotation->lines()->create(array_merge($line, array_filter($priced, fn ($v) => $v !== null)));
                 }

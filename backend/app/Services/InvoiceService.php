@@ -116,6 +116,10 @@ class InvoiceService
             $invoice = Invoice::create($data);
 
             foreach ($lines as $lineIndex => $lineData) {
+                $lineTaxInclusive = array_key_exists('tax_inclusive', $lineData)
+                    ? (bool) $lineData['tax_inclusive']
+                    : $this->resolveLineTaxInclusive($lineData['product_id'] ?? null, $data['invoice_date'] ?? null);
+
                 $invoice->lines()->create([
                     'line_type' => $lineData['line_type'] ?? 'product',
                     // Issue #138: stable link to the originating order line.
@@ -137,6 +141,7 @@ class InvoiceService
                     'base_unit_price' => $lineData['base_unit_price'] ?? null,
                     'pricing_trace' => $lineData['pricing_trace'] ?? null,
                     'tax_rate' => $lineData['tax_rate'] ?? 0,
+                    'tax_inclusive' => $lineTaxInclusive,
                     'discount_amount' => $lineData['discount_amount'] ?? 0,
                 ]);
             }
@@ -770,6 +775,29 @@ class InvoiceService
         // bundle components can actually move (previously the whole stock loop
         // was skipped for bundles and GL/inventory silently diverged).
         return \App\Models\Warehouse::getDefault()?->id;
+    }
+
+    /**
+     * #303 (X3): engine-first inclusive/exclusive resolution for callers that
+     * do not send the flag (legacy screens, OCR/import, direct service use).
+     */
+    private function resolveLineTaxInclusive(?int $productId, mixed $invoiceDate): bool
+    {
+        if ($productId === null) {
+            return false;
+        }
+
+        $product = \App\Models\Product::find($productId);
+
+        if ($product === null) {
+            return false;
+        }
+
+        $date = $invoiceDate !== null
+            ? \Illuminate\Support\Carbon::parse($invoiceDate)->toDateString()
+            : null;
+
+        return app(TaxResolutionService::class)->isInclusiveForProduct($product, null, $date);
     }
 
     /**
