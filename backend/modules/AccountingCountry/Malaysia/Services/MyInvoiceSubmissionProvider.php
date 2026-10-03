@@ -57,6 +57,20 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         $this->configureTenantEnvironment($credentials);
         $idempotencyKey = (string) ($credentials['idempotency_key'] ?? Str::uuid());
 
+        // #702 (MY1): production (non-sandbox) MyInvois submissions must be
+        // signed — an unsigned v1.0 document may only be sent to preprod. This
+        // check runs before any token or submission HTTP call.
+        $signaturePolicyError = $this->signaturePolicyError($payload, $credentials);
+        if ($signaturePolicyError !== null) {
+            return [
+                'success' => false,
+                'message' => $signaturePolicyError,
+                'error_code' => 'SIGNATURE_REQUIRED_IN_PRODUCTION',
+                'error_category' => 'signature_required',
+                'finance_action' => 'Configure the entity signing certificate or continue in the sandbox environment.',
+            ];
+        }
+
         try {
             $credentials = $this->withAccessToken($credentials);
 
@@ -1014,8 +1028,14 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
 
     /**
      * Convert mapped payload into a MyInvois UBL-style JSON document.
+     *
+     * #702 (MY1): `$signed` forces the signed-schema version (1.1) for the
+     * canonical document that will be signed — the signature digest is
+     * computed over that document, so the version must be chosen before
+     * signing and reproduced exactly at submit time. Pass null to derive it
+     * from the payload's signature metadata.
      */
-    private function buildUblDocumentFromMappedPayload(array $payload): array
+    private function buildUblDocumentFromMappedPayload(array $payload, ?bool $signed = null): array
     {
         ['invoice_date' => $invoiceDate, 'issue_time' => $issueTime] = $this->resolveIssueDateTime($payload);
         $currency = (string) ($payload['currency_code'] ?? 'MYR');
@@ -1164,6 +1184,11 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         $shouldIncludeSignature = ! empty($signatureMetadata['enabled'])
             && $signatureValue !== '';
 
+        // #702 (MY1): LHDN's signed schema is document version 1.1; an unsigned
+        // document stays on 1.0. The version must be explicit — both for the
+        // canonical bytes that get signed and for the submitted document.
+        $documentVersion = ($signed ?? $shouldIncludeSignature) ? '1.1' : '1.0';
+
         // G-37 (#274): invoice-level TaxTotal carries one TaxSubtotal per
         // category/rate (was a single blanket subtotal).
         $taxSubtotals = [];
@@ -1209,7 +1234,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             'ID' => [['_' => $invoiceNumber]],
             'IssueDate' => [['_' => $invoiceDate]],
             'IssueTime' => [['_' => $formattedIssueTime]],
-            'InvoiceTypeCode' => [['_' => $docTypeCode, 'listVersionID' => '1.0']],
+            'InvoiceTypeCode' => [['_' => $docTypeCode, 'listVersionID' => $documentVersion]],
             'DocumentCurrencyCode' => [['_' => $currency]],
             'TaxCurrencyCode' => [['_' => $isForeignCurrency ? 'MYR' : $currency]],
             'AccountingSupplierParty' => [[
@@ -1924,6 +1949,37 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
      * Sign a mapped payload with the configured organisation certificate (XAdES / RSA-SHA256).
      * Called by ComplianceService::prepareDocumentArtifacts() before submission.
      */
+    /**
+     * #702 (MY1): LHDN's signed schema is document version 1.1, and production
+     * submissions must be signed. An unsigned document is only acceptable in
+     * the sandbox, so production is refused here — before any HTTP call.
+     *
+     * "Signed" means the XAdES signature metadata the signing service produces
+     * (or an already-signed document payload). A handwritten-signature
+     * metadata block does not count: LHDN requires the digital certificate.
+     */
+    private function signaturePolicyError(array $payload, array $credentials): ?string
+    {
+        $testMode = array_key_exists('test_mode', $credentials)
+            ? (bool) $credentials['test_mode']
+            : $this->testMode;
+
+        if ($testMode) {
+            return null;
+        }
+
+        $metadata = is_array($payload['_signature_metadata'] ?? null) ? $payload['_signature_metadata'] : [];
+        $hasDigitalSignature = ! empty($payload['_signed_document'])
+            || (! empty($metadata['enabled'])
+                && (string) ($metadata['signature_value'] ?? '') !== '');
+
+        if ($hasDigitalSignature) {
+            return null;
+        }
+
+        return 'MyInvois production submissions require a digital signature; configure the signing certificate for this entity or continue in the sandbox environment.';
+    }
+
     public function signDocument(array $payload, array $context): array
     {
         $signingContext = [
@@ -1967,7 +2023,10 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             'payload_hash' => hash('sha256', (string) json_encode($payload)),
         ]);
 
-        $ublDocument = $this->buildUblDocumentFromMappedPayload($payload);
+        // #702 (MY1): the canonical document being signed must already declare
+        // the signed-schema version (1.1), because the digest is computed over
+        // it and the submit-time rebuild must reproduce it byte-for-byte.
+        $ublDocument = $this->buildUblDocumentFromMappedPayload($payload, signed: (bool) $signingContext['signature_enabled']);
         $signatureService = new MyInvoiceDigitalSignatureService;
         $result = $signatureService->sign($ublDocument, $signingContext);
 
