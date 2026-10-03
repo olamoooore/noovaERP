@@ -279,7 +279,7 @@ export const QuotationCreatePage: React.FC = () => {
     notes ? 'notes' : null,
   ].filter(Boolean).join(' · ');
 
-  const resolvePricingForLines = async (nextLines: QuotationLine[], listOverride?: string, currencyOverride?: string) => {
+  const resolvePricingForLines = async (nextLines: QuotationLine[], listOverride?: string, currencyOverride?: string, dateOverride?: string) => {
     const productLines = nextLines
       .map((line, index) => ({ line, index }))
       .filter(({ line }) => (line.line_type ?? 'product') === 'product' && !!line.product_id);
@@ -289,7 +289,7 @@ export const QuotationCreatePage: React.FC = () => {
       const result = await pricingApi.resolveBatch(
         {
           customer_id: customerId ? parseInt(customerId, 10) : null,
-          date: quotationDate || undefined,
+          date: (dateOverride ?? quotationDate) || undefined,
           // The editor's currency wins; empty lets the server resolve from
           // the customer's list (FR-5.2).
           document_currency: (currencyOverride ?? currencyCode) || undefined,
@@ -457,7 +457,9 @@ export const QuotationCreatePage: React.FC = () => {
 
     setValidUntil(followValidUntil(value, validUntil, validUntilManuallyEdited));
 
-    void resolvePricingForLines(lines);
+    // #299 (F7): the price list is date-effective — re-resolve auto lines for
+    // the new date (state has not updated yet, so pass it explicitly).
+    void resolvePricingForLines(lines, undefined, undefined, value);
   };
 
   const handleValidUntilChange = (value: string) => {

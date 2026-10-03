@@ -1014,6 +1014,9 @@ export const CreateInvoicePage: React.FC = () => {
     nextLines: InvoiceLine[],
     currencyOverride?: string,
     listOverride?: string,
+    // #299 (F7): price against a date that has not landed in state yet — the
+    // date input's onChange runs before React re-renders with the new value.
+    dateOverride?: string,
   ) => {
     const productLines = nextLines
       .map((line, index) => ({ line, index }))
@@ -1024,7 +1027,7 @@ export const CreateInvoicePage: React.FC = () => {
       const result = await pricingApi.resolveBatch(
         {
           customer_id: customerIdArg ? parseInt(customerIdArg, 10) : null,
-          date: invoiceDate || undefined,
+          date: (dateOverride ?? invoiceDate) || undefined,
           // The editor's selected currency wins; when empty the server
           // resolves the customer's list currency (FR-5.2).
           document_currency: (currencyOverride ?? currencyCode) || undefined,
@@ -1994,6 +1997,12 @@ export const CreateInvoicePage: React.FC = () => {
                       const newDate = event.target.value;
                       setInvoiceDate(newDate);
                       setDueDate(calcDueDate(newDate, paymentTerms));
+                      // #299 (F7): price lists are date-effective — a new
+                      // invoice date must re-resolve auto/carried lines for
+                      // that date (manual lines are kept by the apply loop).
+                      if (customerId) {
+                        void resolvePricingForLines(customerId, lines, undefined, undefined, newDate);
+                      }
                     }}
                     className="h-9 w-full min-w-0 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                   />
