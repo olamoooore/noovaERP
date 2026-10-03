@@ -27,6 +27,44 @@ class SalesServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->registerAuditObservers();
+        $this->registerExceptionRetryHandlers();
+    }
+
+    /**
+     * Issue #902 (PC8): the retry actions behind the Sales exception types.
+     * The registry is platform-owned; each domain contributes the handlers
+     * for operations it owns. A handler must throw when the retry fails so
+     * the queued exception is reopened with the retry error.
+     */
+    private function registerExceptionRetryHandlers(): void
+    {
+        $registry = app(\App\Platform\Exceptions\ExceptionRetryRegistry::class);
+
+        $registry->register(
+            'sales.delivery_order.notify_approvers',
+            function (\App\Platform\Exceptions\ExceptionQueue $exception): void {
+                $deliveryOrder = \Modules\Sales\Models\DeliveryOrder::find($exception->document_id);
+
+                if (! $deliveryOrder) {
+                    throw new \RuntimeException("Delivery order {$exception->document_id} no longer exists.");
+                }
+
+                app(\Modules\Sales\Services\DeliveryOrderService::class)->retryApprovalNotification($deliveryOrder);
+            },
+        );
+
+        $registry->register(
+            'sales.payment.post',
+            function (\App\Platform\Exceptions\ExceptionQueue $exception): void {
+                $payment = \App\Models\Payment::find($exception->document_id);
+
+                if (! $payment) {
+                    throw new \RuntimeException("Payment {$exception->document_id} no longer exists.");
+                }
+
+                app(\App\Services\PaymentPostingService::class)->post($payment);
+            },
+        );
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Platform;
 
 use App\Platform\EventBus\DomainEventDispatcher;
+use App\Platform\Exceptions\ExceptionRetryRegistry;
 use App\Platform\SystemLog\Contracts\SystemLogServiceContract;
 use App\Platform\SystemLog\SystemLogService;
 use Illuminate\Support\ServiceProvider;
@@ -13,6 +14,10 @@ class PlatformServiceProvider extends ServiceProvider
     {
         $this->app->singleton(DomainEventDispatcher::class);
         $this->app->bind(SystemLogServiceContract::class, SystemLogService::class);
+
+        // Issue #902: retry handlers for queued exceptions are contributed by
+        // each domain provider; the registry itself is platform-owned.
+        $this->app->singleton(ExceptionRetryRegistry::class);
 
         // Wire up the DomainEventDispatcher to ContactMasterService
         $this->app->afterResolving(\Modules\Contact\src\Services\ContactMasterService::class, function ($service) {

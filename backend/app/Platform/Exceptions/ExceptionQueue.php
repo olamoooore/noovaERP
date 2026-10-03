@@ -18,6 +18,7 @@ class ExceptionQueue extends Model
 
     protected $casts = [
         'context' => 'array',
+        'legal_entity_id' => 'integer',
         'retry_count' => 'integer',
         'max_retries' => 'integer',
         'next_retry_at' => 'datetime',
