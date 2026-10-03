@@ -73,7 +73,7 @@ interface SalesOrderLine {
   line_total: number
 }
 
-type OrderAction = 'confirm' | 'allocate' | 'fulfil' | 'invoice' | 'reset-to-draft' | null
+type OrderAction = 'confirm' | 'allocate' | 'invoice' | 'reset-to-draft' | null
 
 export function SalesOrderDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -234,16 +234,6 @@ export function SalesOrderDetailPage() {
               disabled={actionMutation.isPending}
             >
               Allocate
-            </HeaderActionButton>
-          )}
-          {order.status === 'allocated' && (
-            <HeaderActionButton
-              icon="solar:delivery-bold-duotone"
-              loading={actionMutation.isPending}
-              onClick={() => actionMutation.mutate('fulfil')}
-              disabled={actionMutation.isPending}
-            >
-              Fulfil
             </HeaderActionButton>
           )}
           {['confirmed', 'allocated', 'fulfilled', 'invoiced'].includes(order.status) && (

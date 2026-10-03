@@ -329,33 +329,6 @@ class SalesOrderController extends Controller
         }
     }
 
-    public function fulfil($id)
-    {
-        $order = $this->findScopedOrder(request(), $id);
-
-        if (! $order) {
-            return response()->json(['message' => 'Sales order not found'], 404);
-        }
-
-        $beforeStatus = $order->status;
-
-        try {
-            $order = $this->orderService->fulfilOrder($order);
-
-            $this->writeAuditLog(
-                'sales_order_fulfilled',
-                (int) $order->id,
-                ['status' => $beforeStatus],
-                ['status' => $order->status],
-                ['sales_order_number' => $order->sales_order_number],
-            );
-
-            return response()->json(['message' => 'Order fulfilled', 'order' => $order]);
-        } catch (\Exception $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-    }
-
     public function createInvoice($id)
     {
         $order = $this->findScopedOrder(request(), $id);

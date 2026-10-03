@@ -924,13 +924,11 @@ class QuotationController extends Controller
 
                 // A quotation may be invoiced in stages: only advance the order
                 // through the lifecycle when it has not already reached that
-                // state. Re-running allocation/fulfilment on an already
-                // fulfilled order blocked every second (partial) invoice.
+                // state. #373 (O4): invoicing must NOT mark the order fulfilled —
+                // fulfilment is derived from delivery-order completion only, so
+                // quote -> invoice stops short at allocation.
                 if ($salesOrder->isConfirmed()) {
                     $salesOrder = $this->salesOrderService->allocateOrder($salesOrder);
-                }
-                if ($salesOrder->isAllocated()) {
-                    $salesOrder = $this->salesOrderService->fulfilOrder($salesOrder);
                 }
 
                 // Creates an invoice for whatever is still invoiceable on the
