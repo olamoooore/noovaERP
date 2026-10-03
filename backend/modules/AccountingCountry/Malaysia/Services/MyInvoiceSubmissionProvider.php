@@ -1982,6 +1982,24 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
 
     public function signDocument(array $payload, array $context): array
     {
+        // #701 (EC4): the signing identity must be the tenant/entity's own.
+        // In production the platform configuration is never a fallback for the
+        // certificate, key, key id or signer name — otherwise a tenant without
+        // its own certificate has its tax documents signed with the platform's
+        // certificate. Sandbox testing keeps the platform fallback.
+        $isProduction = array_key_exists('test_mode', $context)
+            ? ! (bool) $context['test_mode']
+            : ! $this->testMode;
+
+        $identity = function (string $key) use ($context, $isProduction): string {
+            $value = $context[$key] ?? null;
+            if ($value !== null && $value !== '') {
+                return (string) $value;
+            }
+
+            return $isProduction ? '' : (string) $this->safeConfig('compliance.malaysia.'.$key, '');
+        };
+
         $signingContext = [
             'signature_enabled' => (bool) (
                 $context['signature_enabled']
@@ -1991,27 +2009,21 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
                 $context['signature_use_for_submission']
                 ?? $this->safeConfig('compliance.malaysia.signature_use_for_submission', false)
             ),
-            'signature_private_key' => (string) (
-                $context['signature_private_key']
-                ?? $this->safeConfig('compliance.malaysia.signature_private_key', '')
-            ),
-            'signature_private_key_passphrase' => (string) (
-                $context['signature_private_key_passphrase']
-                ?? $this->safeConfig('compliance.malaysia.signature_private_key_passphrase', '')
-            ),
-            'signature_certificate' => (string) (
-                $context['signature_certificate']
-                ?? $this->safeConfig('compliance.malaysia.signature_certificate', '')
-            ),
-            'signature_key_id' => (string) (
-                $context['signature_key_id']
-                ?? $this->safeConfig('compliance.malaysia.signature_key_id', '')
-            ),
-            'signature_name' => (string) (
-                $context['signature_name']
-                ?? $this->safeConfig('compliance.malaysia.signature_name', '')
-            ),
+            'signature_private_key' => $identity('signature_private_key'),
+            'signature_private_key_passphrase' => $identity('signature_private_key_passphrase'),
+            'signature_certificate' => $identity('signature_certificate'),
+            'signature_key_id' => $identity('signature_key_id'),
+            'signature_name' => $identity('signature_name'),
         ];
+
+        if ($isProduction && $signingContext['signature_enabled']
+            && (trim($signingContext['signature_private_key']) === '' || trim($signingContext['signature_certificate']) === '')) {
+            return [
+                'success' => false,
+                'message' => 'No signing certificate is configured for this tenant/entity. Production MyInvois submissions must be signed with the tenant\'s own certificate — the platform certificate is never used for tenant documents (#701 EC4). Configure it in the MyInvois settings.',
+                'signature_metadata' => ['enabled' => false, 'mode' => 'unconfigured'],
+            ];
+        }
 
         $this->safeLog('info', 'myinvois:signDocument — entry', [
             'invoice_id' => $payload['invoice_id'] ?? null,

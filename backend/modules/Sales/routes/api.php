@@ -77,6 +77,10 @@ Route::middleware([
         Route::middleware(\App\Http\Middleware\RequirePermission::class.':sales.view')->group(function () {
             Route::get('/sales/delivery-orders/export', [DeliveryOrderController::class, 'export']);
             Route::get('/sales/delivery-orders/template', [DeliveryOrderController::class, 'template']);
+            // Issue #465: pre-submit availability (on hand / reserved / available)
+            // for the standalone DO create page. Must precede the apiResource
+            // below so "stock-check" is not captured by the {id} show route.
+            Route::get('/sales/delivery-orders/stock-check', [DeliveryOrderController::class, 'stockCheck']);
             Route::get('/sales/orders/{id}/deliveries', [DeliveryOrderController::class, 'forSalesOrder']);
         });
 

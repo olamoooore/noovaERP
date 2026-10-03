@@ -61,8 +61,70 @@ const DO_CREATE_LINKED_COLUMNS = [
 
 const DO_CREATE_STANDALONE_COLUMNS = [
   '#', 'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Lot Number',
-  'Expiry Date', 'Qty', 'Unit Price', 'Line Total', 'Actions',
+  'Expiry Date', 'Qty', 'Available', 'Unit Price', 'Line Total', 'Actions',
 ].map((label, index) => ({ label, index: index + 1 }))
+
+const formatStockQty = (value: number) =>
+  Number(value).toLocaleString(undefined, { maximumFractionDigits: 4 })
+
+/**
+ * Issue #465 (DO13): the standalone-DO availability cell. On hand minus the
+ * quantity other documents have actively reserved — the same shared formula
+ * the backend creation guard uses. Red when the line asks for more than is
+ * available.
+ */
+function StandaloneStockCell({
+  productId,
+  warehouseId,
+  requested,
+}: {
+  productId: number | null
+  warehouseId: string
+  requested: number
+}) {
+  const { data, isFetching } = useQuery<{ on_hand: number; reserved: number; available: number }>({
+    queryKey: ['do-stock-check', productId, warehouseId],
+    queryFn: async () => {
+      const res = await api.get('/sales/delivery-orders/stock-check', {
+        params: { product_id: productId, warehouse_id: warehouseId },
+      })
+      return res.data
+    },
+    enabled: !!productId && !!warehouseId,
+    staleTime: 30_000,
+  })
+
+  if (!productId || !warehouseId) {
+    return <span className="text-xs text-muted-foreground">—</span>
+  }
+
+  if (isFetching && !data) {
+    return <span className="text-xs text-muted-foreground">Checking…</span>
+  }
+
+  if (!data) {
+    return <span className="text-xs text-muted-foreground">—</span>
+  }
+
+  const insufficient = requested > Number(data.available)
+
+  return (
+    <div className="leading-tight">
+      <div
+        className={cn(
+          'text-xs tabular-nums',
+          insufficient ? 'font-semibold text-destructive' : 'font-medium text-foreground',
+        )}
+        title={insufficient ? 'Requested quantity exceeds available stock' : undefined}
+      >
+        {formatStockQty(data.available)}
+      </div>
+      <div className="text-[10px] tabular-nums text-muted-foreground">
+        On hand {formatStockQty(data.on_hand)} · Reserved {formatStockQty(data.reserved)}
+      </div>
+    </div>
+  )
+}
 
 export function DeliveryOrderCreatePage() {
   const navigate = useNavigate()
@@ -793,6 +855,7 @@ export function DeliveryOrderCreatePage() {
                 productNotes: true,
                 lotNumber: true,
                 expiryDate: true,
+                stock: true,
               })}
             >
                 {standaloneLines.map((line, idx) => (
@@ -811,7 +874,7 @@ export function DeliveryOrderCreatePage() {
                       <DocumentTextLineRow
                         type={line.line_type}
                         text={line.description}
-                        colSpan={12}
+                        colSpan={13}
                         total={line.line_type === 'section' ? formatCurrency(getDocumentSectionTotal(standaloneLines, idx, (item) => (Number(item.quantity) || 0) * (Number(item.unit_price) || 0))) : undefined}
                         onChange={(text) => updateStandaloneLine(idx, 'description', text)}
                         onDelete={() => removeStandaloneLine(idx)}
@@ -911,6 +974,16 @@ export function DeliveryOrderCreatePage() {
                               if (!Number.isNaN(parsed) && parsed >= 0) updateStandaloneLine(idx, 'quantity', parsed)
                             }}
                             className={LINE_INPUT_NUMERIC}
+                          />
+                        </div>
+                      </td>
+
+                      <td className={cn(LINE_CELL, 'w-[8.5rem] min-w-[7.5rem]')}>
+                        <div className={cn(LINE_CELL_BOX, 'justify-end')}>
+                          <StandaloneStockCell
+                            productId={line.product_id}
+                            warehouseId={warehouseId}
+                            requested={Number(line.quantity) || 0}
                           />
                         </div>
                       </td>

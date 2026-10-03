@@ -359,6 +359,27 @@ class DeliveryOrderController extends Controller
     }
 
     /**
+     * Issue #465 (DO13): pre-submit stock check for the standalone DO create
+     * page. Reports on-hand, the quantity reserved by other documents' active
+     * holds and the resulting available quantity, so the user sees the hold
+     * before submitting (the creation guard uses the same shared formula).
+     */
+    public function stockCheck(Request $request)
+    {
+        $validated = $request->validate([
+            'product_id' => 'required|integer|exists:products,id',
+            'warehouse_id' => 'required|integer|exists:warehouses,id',
+        ]);
+
+        return response()->json(
+            $this->deliveryService->stockAvailability(
+                (int) $validated['product_id'],
+                (int) $validated['warehouse_id'],
+            )
+        );
+    }
+
+    /**
      * Attach tags supplied on a create request to the freshly created document.
      */
     private function attachTags(DeliveryOrder $deliveryOrder, array $tags, ?int $userId): void
@@ -515,7 +536,9 @@ class DeliveryOrderController extends Controller
                 'message' => 'Approval required before this delivery order can be invoiced',
                 'requires_approval' => true,
                 'approval_request' => $approval,
-                'threshold' => $this->approvalGate->threshold(),
+                // #649: the threshold that actually applied to the gated
+                // subject (quotation / sales order / delivery order).
+                'threshold' => $this->approvalGate->threshold($gateSubject),
             ], 202);
         }
 
