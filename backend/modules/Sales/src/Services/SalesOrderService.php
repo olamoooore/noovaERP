@@ -216,7 +216,14 @@ class SalesOrderService
                     'discount_value' => $lineData['discount_value'] ?? 0,
                     'discount_amount' => $lineData['discount_amount'] ?? 0,
                     'tax_rate' => $lineData['tax_rate'] ?? 0,
-                    'tax_inclusive' => (bool) ($lineData['tax_inclusive'] ?? false),
+                    // #303 (X3): an explicit per-line flag wins; otherwise the
+                    // engine (rule-linked tax / product override / custom mode)
+                    // resolves it, so an inclusive-priced product is inclusive on
+                    // every document without the client having to say so.
+                    'tax_inclusive' => array_key_exists('tax_inclusive', $lineData)
+                        ? (bool) $lineData['tax_inclusive']
+                        : ($lineProduct !== null
+                            && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $data['order_date'] ?? null)),
                     'tax_amount' => $lineData['tax_amount'] ?? 0,
                     'income_account_id' => $lineData['income_account_id'] ?? null,
                     // Issue #151: preserve the line's invoicing policy through
@@ -343,6 +350,12 @@ class SalesOrderService
         });
     }
 
+    /**
+     * #373 (O4): no production HTTP route or automated flow may call this —
+     * fulfilment is derived from delivery-order completion (see
+     * DeliveryOrderService::completeDeliveryOrder). The method remains as the
+     * state-transition primitive used by lifecycle tests.
+     */
     public function fulfilOrder(SalesOrder $order): SalesOrder
     {
         if (! $order->isAllocated()) {
@@ -492,6 +505,9 @@ class SalesOrderService
                     'base_unit_price' => $invoiceBaseUnitPrice,
                     'pricing_trace' => $line->pricing_trace,
                     'tax_rate' => $line->tax_rate,
+                    // #303 (X3): the order line's inclusive mode is part of the
+                    // carried price — the invoice must book the same gross.
+                    'tax_inclusive' => (bool) $line->tax_inclusive,
                     'discount_amount' => $line->discount_amount,
                 ];
             }
@@ -651,6 +667,15 @@ class SalesOrderService
                 'price_mode' => 'carried',
                 'tax_rate' => $item->tax_rate ?? 0,
                 'tax_amount' => $item->tax_amount ?? 0,
+                // #303 (X3): pos_order_items does not store the flag; resolve
+                // it with the same engine call PosOrderController used at sale
+                // time so the mirrored line keeps the inclusive price.
+                'tax_inclusive' => $item->product !== null
+                    && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct(
+                        $item->product,
+                        $item->variant,
+                        $posOrder->created_at?->toDateString(),
+                    ),
                 'discount_amount' => 0,
                 'source_line_type' => 'PosOrderItem',
                 'source_line_id' => $item->id,

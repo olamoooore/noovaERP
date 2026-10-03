@@ -43,6 +43,18 @@ class AccountingImportService
                 $mapped = $this->mapRow($row, $mapping);
                 $errors = $this->validateRow($mapped, $importType);
 
+                // #431 (CU3): the dry-run lists rows whose customer resolves
+                // to more than one existing customer (or to an unknown code)
+                // and records duplicate candidates for review — such rows are
+                // flagged, never silently merged at commit time.
+                if ($importType === 'invoice') {
+                    $resolutionIssue = app(CanonicalCustomerService::class)
+                        ->flagCustomerResolutionIssues($mapped, ['batch_id' => $batch->id, 'row_number' => $index + 1]);
+                    if ($resolutionIssue !== null) {
+                        $errors[] = $resolutionIssue;
+                    }
+                }
+
                 $status = empty($errors) ? 'valid' : 'error';
                 if (! empty($errors)) {
                     $counts['error']++;
@@ -196,8 +208,8 @@ class AccountingImportService
                 break;
 
             case 'invoice':
-                if (empty($mapped['customer_name']) && empty($mapped['customer_id'])) {
-                    $errors[] = 'customer_name or customer_id is required';
+                if (empty($mapped['customer_name']) && empty($mapped['customer_id']) && empty($mapped['customer_code'])) {
+                    $errors[] = 'customer_name, customer_id or customer_code is required';
                 }
                 if (empty($mapped['invoice_number'])) {
                     $errors[] = 'invoice_number is required';
@@ -311,12 +323,16 @@ class AccountingImportService
     private function createInvoice(array $data, int $userId): \App\Models\Invoice
     {
         $customerId = $data['customer_id'] ?? null;
-        if (! $customerId && ! empty($data['customer_name'])) {
+        $resolvedCustomer = null;
+        if (! $customerId) {
             // #51 + CI architecture guard: never bypass CanonicalCustomerService
-            // in production code paths. The canonical service creates the
-            // customer + Contact Master link in one transaction.
-            $customer = app(CanonicalCustomerService::class)->getOrCreateByName($data['customer_name']);
-            $customerId = $customer->id;
+            // in production code paths. #431 (CU3): resolution goes through the
+            // ambiguity-aware path — strong key (customer_code) first, then a
+            // name match that only ever matches ONE customer or creates a new
+            // one; same-name collisions raise CustomerAmbiguousForImportException
+            // (candidate recorded) instead of silently picking the first row.
+            $resolvedCustomer = app(CanonicalCustomerService::class)->resolveForImport($data);
+            $customerId = $resolvedCustomer->id;
         }
 
         if (! $customerId) {
@@ -342,7 +358,7 @@ class AccountingImportService
             'status' => 'draft',
             'notes' => $data['notes'] ?? null,
             'currency_code' => $data['currency_code'] ?? null,
-            'customer_name' => $data['customer_name'] ?? null,
+            'customer_name' => $data['customer_name'] ?? $resolvedCustomer?->name,
             'created_by' => $userId,
         ]);
     }

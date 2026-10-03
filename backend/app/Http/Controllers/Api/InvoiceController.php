@@ -529,6 +529,7 @@ class InvoiceController extends Controller
             'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
             'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            'lines.*.tax_inclusive' => 'nullable|boolean',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
             // MRD pricelist-multicurrency FR-5.1/5.2: document currency +
             // optional explicit price list for this document.
@@ -796,6 +797,10 @@ class InvoiceController extends Controller
                     'quantity' => $line['quantity'],
                     'unit_price' => $line['unit_price'] ?? 0,
                     'tax_rate' => $line['tax_rate'] ?? 0,
+                    'tax_inclusive' => array_key_exists('tax_inclusive', $line)
+                        ? (bool) $line['tax_inclusive']
+                        : ($lineProduct !== null
+                            && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $data['invoice_date'] ?? null)),
                     'discount_amount' => $line['discount_amount'] ?? 0,
                 ], array_filter($priced, fn ($v) => $v !== null)));
             }
@@ -826,6 +831,9 @@ class InvoiceController extends Controller
             'price_mode' => $line['price_mode'] ?? null,
             'override_reason' => $line['override_reason'] ?? null,
             'tax_rate' => $line['tax_rate'] ?? 0,
+            // #303 (X3): null when the screen did not send it — the Sales Order
+            // then resolves it through the engine (product override included).
+            'tax_inclusive' => $line['tax_inclusive'] ?? null,
             'discount_amount' => $line['discount_amount'] ?? 0,
         ], fn ($v) => $v !== null), $data['lines']);
 
@@ -863,13 +871,13 @@ class InvoiceController extends Controller
             'price_list_id' => $data['price_list_id'] ?? null,
         ], fn ($v) => $v !== null));
 
-        // Fast-track admin orders through the full lifecycle immediately
+        // Fast-track admin orders through confirm -> allocate. #373 (O4):
+        // fulfilment is derived from delivery-order completion, so invoicing
+        // must never mark the order fulfilled without a delivery.
         // Re-apply search_path after each DB::transaction() call which can reset connections
         $salesOrder = $this->salesOrderService->confirmOrder($salesOrder);
         $this->ensureTenantSearchPath();
         $salesOrder = $this->salesOrderService->allocateOrder($salesOrder);
-        $this->ensureTenantSearchPath();
-        $salesOrder = $this->salesOrderService->fulfilOrder($salesOrder);
         $this->ensureTenantSearchPath();
 
         $invoiceOverrides = array_filter([
@@ -1228,6 +1236,7 @@ class InvoiceController extends Controller
             'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
             'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            'lines.*.tax_inclusive' => 'nullable|boolean',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
         ], [
             'invoice_number.unique' => 'This invoice number is already used by another invoice (including deleted ones). Choose a different number.',
@@ -1332,6 +1341,10 @@ class InvoiceController extends Controller
                             'quantity' => $line['quantity'],
                             'unit_price' => $line['unit_price'] ?? 0,
                             'tax_rate' => $line['tax_rate'] ?? 0,
+                            'tax_inclusive' => array_key_exists('tax_inclusive', $line)
+                                ? (bool) $line['tax_inclusive']
+                                : ($lineProduct !== null
+                                    && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $invoice->invoice_date?->toDateString())),
                             'discount_amount' => $line['discount_amount'] ?? 0,
                         ], array_filter($priced, fn ($v) => $v !== null)));
                     }

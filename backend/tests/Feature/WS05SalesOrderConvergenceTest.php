@@ -70,10 +70,17 @@ class WS05SalesOrderConvergenceTest extends TenantTestCase
             base_path('app/Http/Controllers/Api/InvoiceController.php')
         );
 
-        // The admin order must be fast-tracked through confirm → allocate → fulfil before invoicing
+        // The admin order must be fast-tracked through confirm → allocate before
+        // invoicing. #373 (O4): fulfilment is derived from delivery-order
+        // completion — invoicing must NOT call fulfilOrder() (that marked
+        // orders fulfilled with no delivery and left reservations open).
         $this->assertStringContainsString('confirmOrder(', $src);
         $this->assertStringContainsString('allocateOrder(', $src);
-        $this->assertStringContainsString('fulfilOrder(', $src);
+        $this->assertStringNotContainsString(
+            'fulfilOrder(',
+            $src,
+            'InvoiceController must not mark orders fulfilled — fulfilment comes from delivery orders (#373)'
+        );
     }
 
     // -------------------------------------------------------------------------

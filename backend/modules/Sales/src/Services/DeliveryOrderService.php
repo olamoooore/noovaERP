@@ -970,15 +970,40 @@ class DeliveryOrderService
 
             $deliveryOrder->load(['lines.product', 'lines.salesOrderLine']);
 
-            // Update SO line delivered quantities (for linked DOs) — always, before stock deduction
+            // Update SO line delivered quantities (for linked DOs) — always, before stock deduction.
+            // #373 (O4): fulfilment is DERIVED from deliveries — mirror the
+            // delivered quantity into quantity_fulfilled (capped so outstanding
+            // never goes negative) and, once every line is fully delivered,
+            // transition the order to 'fulfilled' while it is still allocated.
+            $orderForFulfilment = null;
             if ($deliveryOrder->sales_order_id) {
+                $orderForFulfilment = SalesOrder::find($deliveryOrder->sales_order_id);
                 foreach ($deliveryOrder->lines as $line) {
                     if ($line->salesOrderLine) {
                         $soLine = $line->salesOrderLine;
                         $newDelivered = (float) $soLine->quantity_delivered + (float) $line->quantity_delivered;
-                        $soLine->update(['quantity_delivered' => $newDelivered]);
+                        $deliverable = max(
+                            (float) $soLine->quantity - (float) $soLine->quantity_cancelled,
+                            0
+                        );
+                        $soLine->update([
+                            'quantity_delivered' => $newDelivered,
+                            'quantity_fulfilled' => max(
+                                (float) $soLine->quantity_fulfilled,
+                                min($newDelivered, $deliverable)
+                            ),
+                        ]);
                     }
                 }
+            }
+
+            // #373 (O4): derive the order's fulfilled state from the delivery
+            // that just completed — never from invoicing or a manual action.
+            if ($orderForFulfilment
+                && $orderForFulfilment->isAllocated()
+                && $this->isFullyDelivered($orderForFulfilment->fresh('lines'))
+            ) {
+                $this->lifecycleService->fulfil($orderForFulfilment, 'All lines delivered');
             }
 
             // Deduct stock for each stock-tracked line. Issue #130: a bundle

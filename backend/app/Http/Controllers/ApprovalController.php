@@ -4,27 +4,36 @@ namespace App\Http\Controllers;
 
 use App\Models\ApprovalRequest;
 use App\Services\ApprovalService;
+use App\Services\ApprovalVisibilityService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 
 class ApprovalController extends Controller
 {
     public function __construct(
-        private ApprovalService $approvalService
+        private ApprovalService $approvalService,
+        private ApprovalVisibilityService $visibility
     ) {}
 
     /**
      * Create an approval request (POST /approvals)
      * Accepts backend field names: request_type, subject_type, subject_id, amount, reason
      * Also accepts frontend aliases: type → request_type, source_type → subject_type, source_id → subject_id
+     *
+     * subject_type/source_type are limited to the config/approvals.php
+     * whitelist (issue #651): an arbitrary value used to be accepted and then
+     * fed to the polymorphic subject relation by list/show.
      */
     public function store(Request $request)
     {
+        $allowedSubjectTypes = array_keys((array) config('approvals.subject_types', []));
+
         $validated = $request->validate([
             'request_type' => 'required_without:type|string|in:void,refund,return,discount,price_override',
             'type' => 'required_without:request_type|string|in:void,refund,return,discount,price_override',
-            'subject_type' => 'required_without:source_type|string',
-            'source_type' => 'required_without:subject_type|string',
+            'subject_type' => ['required_without:source_type', 'string', Rule::in($allowedSubjectTypes)],
+            'source_type' => ['required_without:subject_type', 'string', Rule::in($allowedSubjectTypes)],
             'subject_id' => 'required_without:source_id|integer',
             'source_id' => 'required_without:subject_id|integer',
             'amount' => 'required|numeric|min:0',
@@ -64,28 +73,45 @@ class ApprovalController extends Controller
     }
 
     /**
-     * List pending approval requests
+     * List pending approval requests the caller may see (issue #651).
+     *
+     * Scoped to: requests they can decide, requests they raised themselves,
+     * and requests whose subject document they may view — entity-scoped to
+     * their accessible legal entities.
      */
     public function index(Request $request)
     {
         $requestType = $request->input('type');
         $requests = $this->approvalService->getPendingRequests($requestType);
 
+        ApprovalRequest::loadSubjects($requests);
+
+        $visible = $this->visibility->visible($requests, $request->user());
+
         return response()->json([
-            'data' => $requests,
-            'count' => $requests->count(),
+            'data' => $visible,
+            'count' => $visible->count(),
         ]);
     }
 
     /**
-     * Get a specific approval request
+     * Get a specific approval request — same visibility rule as the list
+     * (issue #651): another user's / another entity's request is 403.
      */
-    public function show($id)
+    public function show(Request $request, $id)
     {
-        $request = ApprovalRequest::with(['requestedBy', 'reviewedBy', 'subject'])
+        $approvalRequest = ApprovalRequest::with(['requestedBy', 'reviewedBy'])
             ->findOrFail($id);
 
-        return response()->json(['data' => $request]);
+        ApprovalRequest::loadSubjects(collect([$approvalRequest]));
+
+        abort_unless(
+            $this->visibility->canView($approvalRequest, $request->user()),
+            403,
+            'You do not have permission to view this approval request.'
+        );
+
+        return response()->json(['data' => $approvalRequest]);
     }
 
     /**
@@ -163,9 +189,13 @@ class ApprovalController extends Controller
 
         $requests = ApprovalRequest::where('requested_by', auth()->id())
             ->where('status', $status)
-            ->with(['reviewedBy', 'subject'])
+            ->with(['reviewedBy'])
             ->orderBy('requested_at', 'desc')
             ->paginate(20);
+
+        // Safe subject attachment (issue #651): the morph `subject` eager load
+        // 500s on the POS alias 'PosOrder', which every POS request carries.
+        ApprovalRequest::loadSubjects($requests->items());
 
         return response()->json($requests);
     }
