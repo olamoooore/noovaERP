@@ -18,8 +18,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { TagEditor } from '@/components/tags/TagEditor'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { ChatterDialog } from '@/components/chatter'
+import { AuditTab } from '@/components/audit/AuditTab'
 import api from '@/lib/api'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { fetchBulkStockAvailability } from '@/components/sales/stockAvailability'
@@ -451,6 +453,18 @@ export function SalesOrderDetailPage() {
         </div>
       </div>
 
+      <Tabs defaultValue="document" className="space-y-6">
+        <TabsList className="h-10 w-fit rounded-full">
+          <TabsTrigger value="document" className="gap-2 rounded-full px-4">
+            Document
+          </TabsTrigger>
+          <TabsTrigger value="audit" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:shield-check-bold-duotone" className="h-4 w-4" />
+            Audit
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="document" className="space-y-6 mt-6">
       {/* Smart Buttons */}
       <div className="flex flex-wrap gap-3">
         {showFulfilmentSmartButtons && (
@@ -660,6 +674,13 @@ export function SalesOrderDetailPage() {
           )}
         </div>
       )}
+        </TabsContent>
+
+        <TabsContent value="audit" className="mt-6">
+          <AuditTab endpoint={`/sales/orders/${id}/audit`} permission="sales.view" />
+        </TabsContent>
+      </Tabs>
+
       <StockShortageDialog
         open={shortageLines !== null}
         onOpenChange={(open) => {

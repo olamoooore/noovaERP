@@ -9,8 +9,10 @@ import { DocumentLinkChip } from '@/components/documents/DocumentLinkChip'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { QuotationCaseInformationDisplay } from '@/components/sales/QuotationCaseInformation'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { ChatterDock } from '@/components/chatter'
+import { AuditTab } from '@/components/audit/AuditTab'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
 import { formatCurrency, formatDate } from '@/lib/utils'
@@ -512,6 +514,18 @@ export function QuotationDetailPage() {
         </div>
       </div>
 
+      <Tabs defaultValue="document" className="space-y-6">
+        <TabsList className="h-10 w-fit rounded-full">
+          <TabsTrigger value="document" className="gap-2 rounded-full px-4">
+            Document
+          </TabsTrigger>
+          <TabsTrigger value="audit" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:shield-check-bold-duotone" className="h-4 w-4" />
+            Audit
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="document" className="space-y-6 mt-6">
       {/* Linked-document smart buttons */}
       <div className="flex flex-wrap gap-2">
         {quotation.invoices && quotation.invoices.length > 0 && (
@@ -938,6 +952,13 @@ export function QuotationDetailPage() {
           )}
         </div>
       )}
+        </TabsContent>
+
+        <TabsContent value="audit" className="mt-6">
+          <AuditTab endpoint={`/quotations/${id}/audit`} permission="quotations.view" />
+        </TabsContent>
+      </Tabs>
+
       <ConfirmDialog
         open={confirmAction === 'delete'}
         onOpenChange={(open) => !open && setConfirmAction(null)}

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\DocumentAuditController;
 use Illuminate\Support\Facades\Route;
 use Modules\Sales\Http\Controllers\DeliveryOrderController;
 use Modules\Sales\Http\Controllers\SalesOrderController;
@@ -56,6 +57,15 @@ Route::middleware([
 
             // Lifecycle history (immutable audit)
             Route::get('/sales/orders/{id}/history', [SalesOrderController::class, 'history']);
+
+            // Issue #905 (PCU1): read-only audit tab under the sales-order
+            // view gate (sales.view opens the record).
+            Route::get('/sales/orders/{subjectId}/audit', [DocumentAuditController::class, 'index'])
+                ->whereNumber('subjectId')
+                ->defaults('auditSubject', 'sales_order');
+            Route::get('/sales/orders/{subjectId}/audit/export', [DocumentAuditController::class, 'export'])
+                ->whereNumber('subjectId')
+                ->defaults('auditSubject', 'sales_order');
             // Issue #150: sales-pipeline analytics (pre-invoice).
             Route::get('/sales/analytics/pipeline', [\Modules\Sales\Http\Controllers\SalesPipelineAnalyticsController::class, 'index']);
 
@@ -86,6 +96,14 @@ Route::middleware([
             // #465 check, bulk POST body (warehouse_id + product lines).
             Route::post('/sales/delivery-orders/stock-check', [DeliveryOrderController::class, 'bulkStockCheck']);
             Route::get('/sales/orders/{id}/deliveries', [DeliveryOrderController::class, 'forSalesOrder']);
+
+            // Issue #905 (PCU1): read-only audit tab under the DO view gate.
+            Route::get('/sales/delivery-orders/{subjectId}/audit', [DocumentAuditController::class, 'index'])
+                ->whereNumber('subjectId')
+                ->defaults('auditSubject', 'delivery_order');
+            Route::get('/sales/delivery-orders/{subjectId}/audit/export', [DocumentAuditController::class, 'export'])
+                ->whereNumber('subjectId')
+                ->defaults('auditSubject', 'delivery_order');
         });
 
         Route::apiResource('sales/delivery-orders', DeliveryOrderController::class)

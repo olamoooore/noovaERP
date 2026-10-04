@@ -23,6 +23,7 @@ import api from '@/lib/api'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { TagEditor } from '@/components/tags/TagEditor'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import { AuditTab } from '@/components/audit/AuditTab'
 import { downloadReportDocx, downloadReportXlsx } from '@/lib/reportFiles'
 
 const numericPhoneValue = (value: string) => value.replace(/\D/g, '')
@@ -838,6 +839,10 @@ export function CustomerDetailsPage() {
           <TabsTrigger value="financial" className="gap-2 rounded-full px-4">
             <Icon icon="solar:wallet-bold-duotone" className="h-4 w-4" />
             Financial
+          </TabsTrigger>
+          <TabsTrigger value="audit" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:shield-check-bold-duotone" className="h-4 w-4" />
+            Audit
           </TabsTrigger>
         </TabsList>
 
@@ -1821,6 +1826,11 @@ export function CustomerDetailsPage() {
               </Card>
             )}
           </div>
+        </TabsContent>
+
+        {/* Audit Tab — read-only #895 trail (#905 / PCU1) */}
+        <TabsContent value="audit" className="mt-6">
+          <AuditTab endpoint={`/customers/${id}/audit`} permission="customers.view" />
         </TabsContent>
       </Tabs>
 
