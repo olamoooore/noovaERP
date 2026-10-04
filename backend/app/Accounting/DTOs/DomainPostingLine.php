@@ -37,6 +37,12 @@ class DomainPostingLine
         // posting profiles express direction per role, which cannot represent
         // a sign-dependent rounding leg; an explicit account + direction is
         // only valid when BOTH are supplied.
+        //
+        // Issue #876 (SA2): an account WITHOUT a direction pins only the
+        // CONCRETE account (a document line's income/GL override) — the
+        // profile role still owns the direction and validation; only the
+        // resolved account changes. Null keeps the role-based resolution
+        // exactly as before.
         public readonly ?int $accountId = null,
         public readonly ?string $direction = null,
     ) {}
