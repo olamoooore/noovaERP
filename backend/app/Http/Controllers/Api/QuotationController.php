@@ -18,7 +18,6 @@ use App\Services\DocumentWideSearchService;
 use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
 use App\Services\SalesApprovalGate;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -27,7 +26,6 @@ use Illuminate\Support\Str;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Sales\Services\DeliveryOrderService;
 use Modules\Sales\Services\SalesOrderService;
-use Modules\TemplateBuilder\Services\DataSource\CompanyDataSource;
 
 class QuotationController extends Controller
 {
@@ -266,9 +264,15 @@ class QuotationController extends Controller
             'contact_email' => 'nullable|email|max:255',
             'contact_phone' => 'nullable|string|max:50',
             'salesperson' => 'nullable|string|max:255',
+            // Issue #553: sales team (defaults from Sales Settings when blank).
+            'sales_team' => 'nullable|string|max:255',
             'delivery_lead_time' => 'nullable|string|max:255',
             'shipping_method' => 'nullable|string|max:255',
             'shipping_terms' => 'nullable|string|max:255',
+            // Issue #333: Incoterms are length-bounded free text — the
+            // platform has no authoritative code list to validate against.
+            'incoterm_code' => 'nullable|string|max:20',
+            'incoterm_place' => 'nullable|string|max:255',
             'validity' => 'nullable|string|max:255',
             'case_number' => 'nullable|string|max:100',
             'date_of_case' => 'nullable|date',
@@ -314,6 +318,12 @@ class QuotationController extends Controller
             'tags.*' => 'string|max:100',
         ]);
 
+        // Issue #553: when the tenant enabled "default salesperson = current
+        // user" (and/or a per-user default team), stamp the blank fields on
+        // this new quotation. Explicit request values always win.
+        $validated = app(\App\Services\SalesDefaultsService::class)
+            ->applyCreationDefaults($validated, Auth::id());
+
         // A supplied price without an explicit intent is legacy behaviour
         // (kept verbatim); the wired UI always sends price_mode.
         $linePriceMode = static function (array $lineData): string {
@@ -354,9 +364,13 @@ class QuotationController extends Controller
                     'contact_email' => $validated['contact_email'] ?? null,
                     'contact_phone' => $validated['contact_phone'] ?? null,
                     'salesperson' => $validated['salesperson'] ?? null,
+                    'sales_team' => $validated['sales_team'] ?? null,
                     'delivery_lead_time' => $validated['delivery_lead_time'] ?? null,
                     'shipping_method' => $validated['shipping_method'] ?? null,
                     'shipping_terms' => $validated['shipping_terms'] ?? null,
+                    // Issue #333: Incoterm code + place.
+                    'incoterm_code' => $validated['incoterm_code'] ?? null,
+                    'incoterm_place' => $validated['incoterm_place'] ?? null,
                     'validity' => $validated['validity'] ?? null,
                     'case_number' => $validated['case_number'] ?? null,
                     'date_of_case' => $validated['date_of_case'] ?? null,
@@ -485,6 +499,10 @@ class QuotationController extends Controller
             return response()->json(['message' => 'Quotation not found'], 404);
         }
 
+        // Issue #906 (UX2): who last saved this draft, for the advisory
+        // "Someone else is editing" banner. Null when nobody holds the lock.
+        $quotation->setAttribute('active_lock', $this->versionGuard->activeLockInfo('quotation', (int) $quotation->id));
+
         return response()->json($quotation);
     }
 
@@ -520,9 +538,15 @@ class QuotationController extends Controller
             'contact_email' => 'nullable|email|max:255',
             'contact_phone' => 'nullable|string|max:50',
             'salesperson' => 'nullable|string|max:255',
+            // Issue #553: sales team (defaults from Sales Settings when blank).
+            'sales_team' => 'nullable|string|max:255',
             'delivery_lead_time' => 'nullable|string|max:255',
             'shipping_method' => 'nullable|string|max:255',
             'shipping_terms' => 'nullable|string|max:255',
+            // Issue #333: Incoterms are length-bounded free text — the
+            // platform has no authoritative code list to validate against.
+            'incoterm_code' => 'nullable|string|max:20',
+            'incoterm_place' => 'nullable|string|max:255',
             'validity' => 'nullable|string|max:255',
             'case_number' => 'nullable|string|max:100',
             'date_of_case' => 'nullable|date',
@@ -737,33 +761,6 @@ class QuotationController extends Controller
     }
 
     /**
-     * Download the quotation as a PDF.
-     */
-    public function pdf($id)
-    {
-        $quotation = Quotation::with(['customer', 'lines.product'])->find($id);
-
-        if (! $quotation) {
-            return response()->json(['message' => 'Quotation not found'], 404);
-        }
-
-        // Ensure totals are accurate before rendering.
-        $quotation->calculateTotals();
-        $quotation->refresh();
-
-        $company = CompanyDataSource::forCurrentTenant();
-
-        $pdf = Pdf::loadView('sales.quotation-pdf', [
-            'quotation' => $quotation,
-            'company' => $company,
-        ])->setPaper('a4', 'portrait');
-
-        $filename = 'quotation-'.$quotation->quotation_number.'.pdf';
-
-        return $pdf->download($filename);
-    }
-
-    /**
      * Confirm a quotation.
      * Creates a SalesOrder from the quotation lines and marks the quotation as confirmed.
      */
@@ -838,10 +835,18 @@ class QuotationController extends Controller
                 // policy travel with the order (and from there to its DOs).
                 'commitment_date' => $quotation->commitment_date?->toDateString(),
                 'shipping_policy' => $quotation->shipping_policy ?: 'asap',
+                // Issue #333: the accepted trade term travels with the order
+                // (and from there to its invoices).
+                'incoterm_code' => $quotation->incoterm_code,
+                'incoterm_place' => $quotation->incoterm_place,
                 // #291: the header discount is part of the accepted price — it
                 // must travel onto the Sales Order (and from there the invoice),
                 // otherwise a quote accepted at 990 was ordered/billed at 1,100.
                 'discount_amount' => (float) ($quotation->discount_amount ?? 0),
+                // Issue #553: the accepted quote's salesperson/team travel with
+                // the order so the creation defaults never overwrite them.
+                'salesperson' => $quotation->salesperson,
+                'sales_team' => $quotation->sales_team,
                 'lines' => $salesLines,
                 'warehouse_id' => $warehouseId,
                 // FR-5.5: document currency + FX snapshot propagate verbatim.
@@ -1043,6 +1048,10 @@ class QuotationController extends Controller
                     'plant_code' => $quotation->plant_code,
                     'company_code' => $quotation->company_code,
                     'payment_terms_snapshot' => $quotation->credit_terms,
+                    // Issue #333: a SO raised before the trade term existed on
+                    // the order still bills with the quotation's term.
+                    'incoterm_code' => $invoice->incoterm_code ?: $quotation->incoterm_code,
+                    'incoterm_place' => $invoice->incoterm_place ?: $quotation->incoterm_place,
                 ]);
 
                 return $invoice->load(['customer', 'lines.product', 'quotation', 'salesOrder']);

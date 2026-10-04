@@ -76,6 +76,13 @@ Route::middleware([
     Route::get('/credit-notes/{id}/html', [DocumentRenderController::class, 'creditNoteHtml'])
         ->middleware($perm('document.view'));
 
+    // Issue #618 (TP8): read-only resolver preview for the shared print/send
+    // menu label. `document_id` derives the #612 context from the source
+    // document; without it, explicit context dimensions are accepted (the
+    // customer statement has no persisted document until it is generated).
+    Route::get('/documents/{documentType}/resolution', [DocumentRenderController::class, 'documentResolution'])
+        ->middleware($perm('document.view'));
+
     // Issue #613: explicit, permissioned re-issue with the current template.
     // Stores a new immutable version and keeps the previously issued copy.
     // Uses the already-seeded document.regenerate permission (Owner/Admin/

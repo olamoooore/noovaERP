@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { preventImplicitSubmit } from '@/lib/prevent-enter-submit';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -31,6 +31,10 @@ import { DocumentTextLineRow, getDocumentSectionTotal } from '@/components/sales
 import { QuotationCaseInformation, emptyQuotationCaseInformation } from '@/components/sales/QuotationCaseInformation';
 import { InternalReferenceTags } from '@/components/sales/InternalReferenceTags';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
+import { EditingBanner } from '@/components/sales/EditingBanner';
+import { SaveConflictDialog } from '@/components/sales/SaveConflictDialog';
+import { extractSaveConflict, type SaveConflict } from '@/lib/recordConflict';
+import { useAuthStore } from '@/store/authStore';
 
 const QUOTATION_EDIT_COLUMNS = ['#', 'Product', 'Description', 'Model #', 'Product Notes', 'Qty', 'Unit Price', 'Tax %', 'Discount', 'Line Total', 'Actions']
   .map((label, index) => ({ label, index: index + 1 }));
@@ -98,8 +102,16 @@ export const QuotationEditPage: React.FC = () => {
   const [deliveryLeadTime, setDeliveryLeadTime] = useState('');
   const [shippingMethod, setShippingMethod] = useState('');
   const [shippingTerms, setShippingTerms] = useState('');
+  // Issue #333: Incoterm code + place.
+  const [incotermCode, setIncotermCode] = useState('');
+  const [incotermPlace, setIncotermPlace] = useState('');
   const [validity, setValidity] = useState('');
   const [caseInformation, setCaseInformation] = useState(emptyQuotationCaseInformation);
+  // Issue #906: what to show when the server rejects a save as stale.
+  const [conflict, setConflict] = useState<SaveConflict | null>(null);
+  const lastPayloadRef = useRef<Record<string, any> | null>(null);
+  const currentUserId = useAuthStore((state) => state.user?.id);
+  const canOverwrite = useAuthStore((state) => state.hasPermission('quotations.write'));
 
   const { data: products } = useQuery({
     queryKey: ['products-list'],
@@ -109,7 +121,7 @@ export const QuotationEditPage: React.FC = () => {
     },
   });
 
-  const { data: quotation, isLoading } = useQuery({
+  const { data: quotation, isLoading, refetch: refetchQuotation } = useQuery({
     queryKey: ['quotation', id],
     queryFn: async () => {
       const response = await api.get(`/quotations/${id}`);
@@ -143,6 +155,8 @@ export const QuotationEditPage: React.FC = () => {
     setDeliveryLeadTime(quotation.delivery_lead_time || '');
     setShippingMethod(quotation.shipping_method || '');
     setShippingTerms(quotation.shipping_terms || '');
+    setIncotermCode(quotation.incoterm_code || '');
+    setIncotermPlace(quotation.incoterm_place || '');
     setValidity(quotation.validity || '');
     setCaseInformation({
       case_number: quotation.case_number || '',
@@ -172,17 +186,28 @@ export const QuotationEditPage: React.FC = () => {
   }, [quotation]);
 
   const updateMutation = useMutation({
-    mutationFn: async (data: unknown) => {
+    mutationFn: async (data: Record<string, any>) => {
+      // Issue #906: keep the failed payload so "Overwrite" can resend it
+      // against the conflict's current version.
+      lastPayloadRef.current = data;
       const response = await api.put(`/quotations/${id}`, data);
       return response.data;
     },
     onSuccess: () => {
+      setConflict(null);
       queryClient.invalidateQueries({ queryKey: ['quotation', id] });
       queryClient.invalidateQueries({ queryKey: ['quotations'] });
       toast({ title: 'Quotation updated successfully' });
       navigate(`/quotations/${id}`);
     },
-    onError: (error: any) => {
+    onError: (error: any, variables: unknown) => {
+      // Issue #906: a stale 409 opens the compare-and-choose dialog instead
+      // of the generic toast.
+      const saveConflict = extractSaveConflict(error, (variables ?? {}) as Record<string, any>);
+      if (saveConflict) {
+        setConflict(saveConflict);
+        return;
+      }
       toast({
         variant: 'destructive',
         title: 'Failed to update quotation',
@@ -345,6 +370,8 @@ export const QuotationEditPage: React.FC = () => {
       delivery_lead_time: deliveryLeadTime || null,
       shipping_method: shippingMethod || null,
       shipping_terms: shippingTerms || null,
+      incoterm_code: incotermCode || null,
+      incoterm_place: incotermPlace || null,
       validity: validity || null,
       ...Object.fromEntries(Object.entries(caseInformation).map(([key, value]) => [key, value || null])),
       notes: notes || null,
@@ -352,6 +379,9 @@ export const QuotationEditPage: React.FC = () => {
       discount_amount: documentDiscountAmount || 0,
       discount_type: discountMode,
       discount_value: discountValue,
+      // Issue #906: echo the version the editor loaded; #896's guard turns a
+      // mismatch into a 409 instead of silently overwriting the other user.
+      version: quotation?.lock_version ?? undefined,
   lines: submissionLines
     .filter((line) => line.description || line.product_id)
     .map((line, index) => ({
@@ -369,6 +399,19 @@ export const QuotationEditPage: React.FC = () => {
     };
 
     updateMutation.mutate(payload);
+  };
+
+  // Issue #906: discard local edits, refetch and re-hydrate the server copy.
+  const handleReloadTheirs = () => {
+    setConflict(null);
+    void queryClient.invalidateQueries({ queryKey: ['quotation', id] });
+    void refetchQuotation();
+  };
+
+  // Issue #906: resend my payload against the version the conflict reported.
+  const handleOverwrite = () => {
+    if (!conflict || !lastPayloadRef.current) return;
+    updateMutation.mutate({ ...lastPayloadRef.current, version: conflict.currentVersion });
   };
 
   if (isLoading) {
@@ -402,6 +445,8 @@ export const QuotationEditPage: React.FC = () => {
           {id && <div className="mt-2"><TagEditor subjectType="quotation" subjectId={id} /></div>}
         </div>
       </div>
+
+      <EditingBanner activeEditor={quotation?.active_lock} currentUserId={currentUserId} />
 
       <form onSubmit={handleSubmit} onKeyDown={preventImplicitSubmit}>
         <Card className="mb-6">
@@ -573,6 +618,30 @@ export const QuotationEditPage: React.FC = () => {
                   onChange={(event) => setShippingTerms(event.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
                   placeholder="e.g. FOB, CIF, EXW"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Incoterm Code</label>
+                <input
+                  type="text"
+                  aria-label="Incoterm Code"
+                  value={incotermCode}
+                  onChange={(event) => setIncotermCode(event.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  placeholder="e.g. FOB, CIF, DDP"
+                  maxLength={20}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Incoterm Place</label>
+                <input
+                  type="text"
+                  aria-label="Incoterm Place"
+                  value={incotermPlace}
+                  onChange={(event) => setIncotermPlace(event.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  placeholder="e.g. Port Klang"
+                  maxLength={255}
                 />
               </div>
               <div>
@@ -885,6 +954,15 @@ export const QuotationEditPage: React.FC = () => {
           </Button>
         </div>
       </form>
+
+      <SaveConflictDialog
+        open={conflict !== null}
+        conflict={conflict}
+        canOverwrite={canOverwrite}
+        onOpenChange={(open) => { if (!open) setConflict(null); }}
+        onReloadTheirs={handleReloadTheirs}
+        onOverwrite={handleOverwrite}
+      />
     </div>
   );
 };

@@ -10,7 +10,10 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Modules\TemplateBuilder\Contracts\PdfGenerationServiceContract;
 use Modules\TemplateBuilder\Models\DocumentTemplate;
+use Modules\TemplateBuilder\Platform\ResolutionResult;
 use Modules\TemplateBuilder\Services\DataSource\DataSourceRegistry;
+use Modules\TemplateBuilder\Services\DataSource\DocumentResolutionContext;
+use Modules\TemplateBuilder\Services\DocumentTemplateService;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -37,6 +40,7 @@ class DocumentRenderController extends Controller
     public function __construct(
         private readonly PdfGenerationServiceContract $pdf,
         private readonly DataSourceRegistry $dataSources,
+        private readonly DocumentTemplateService $templates,
     ) {}
 
     public function invoicePdf(Request $request, string $id): Response
@@ -141,6 +145,65 @@ class DocumentRenderController extends Controller
     public function creditNoteHtml(Request $request, string $id): Response
     {
         return $this->renderDocument('credit_note', $id, $request, null, 'html');
+    }
+
+    /**
+     * Issue #618 (TP8): read-only resolution preview for a document.
+     *
+     * The shared print/send menu shows which template the deterministic
+     * resolver picks for THIS document ("Using: <template> (<rule>)") before
+     * anything is rendered. It reuses the #612 document resolution context so
+     * the label matches what Preview/Download/Print will actually use.
+     *
+     * Documents that do not exist yet (a customer statement is generated from
+     * a customer + period) pass explicit resolution dimensions instead of a
+     * document_id; the context normaliser drops unknown channel values.
+     */
+    public function documentResolution(Request $request, string $documentType): JsonResponse
+    {
+        if (! $this->dataSources->has($documentType)) {
+            return response()->json(['message' => "No render path for document type '{$documentType}'."], 404);
+        }
+
+        $documentId = $request->query('document_id');
+
+        if (is_string($documentId) && $documentId !== '') {
+            // Same authorization as a render: the SOURCE document's own
+            // permission and legal-entity scope.
+            $denied = $this->authorizeRender($documentType, $documentId, $request);
+            if ($denied !== null) {
+                return $denied;
+            }
+
+            $context = $this->dataSources->resolutionContextFor($documentType, $documentId);
+        } else {
+            $context = DocumentResolutionContext::build([
+                'entity_id' => $request->query('entity_id'),
+                'branch_id' => $request->query('branch_id'),
+                'language' => $request->query('language'),
+                'currency' => $request->query('currency'),
+                'country' => $request->query('country'),
+                'jurisdiction' => $request->query('jurisdiction'),
+                'customer_group' => $request->query('customer_group'),
+                'channel' => $request->query('channel'),
+            ]);
+        }
+
+        $result = $this->templates->resolveWithExplanation($documentType, $context);
+
+        return response()->json([
+            'data' => [
+                'outcome' => $result->outcome->value,
+                'template_id' => $result->template?->id,
+                'template_name' => $result->template?->name,
+                'rule' => $result->assignment ? [
+                    'scope_type' => $result->assignment->scope_type,
+                    'scope_value' => $result->assignment->scope_value,
+                ] : null,
+                'rule_label' => $this->resolutionRuleLabel($result),
+                'explanation' => $result->explanation,
+            ],
+        ]);
     }
 
     /**
@@ -262,5 +325,29 @@ class DocumentRenderController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Human label for the assignment that won resolution — "entity rule",
+     * "customer rule", … — or "system default" when no assignment matched and
+     * the fallback applied. Null when nothing resolved.
+     */
+    private function resolutionRuleLabel(ResolutionResult $result): ?string
+    {
+        if ($result->template === null) {
+            return null;
+        }
+
+        if ($result->assignment === null) {
+            return 'system default';
+        }
+
+        $scope = (string) ($result->assignment->scope_type ?: 'tenant');
+
+        return match ($scope) {
+            // The resolver's customer_group dimension is the customer rule.
+            'customer_group' => 'customer rule',
+            default => $scope.' rule',
+        };
     }
 }

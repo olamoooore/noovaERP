@@ -41,5 +41,10 @@ class PostingRequest
         // expectedRecordVersion at commit time.
         public readonly ?int $expectedRecordVersion = null,
         public readonly ?int $currentRecordVersion = null,
+        // ── #878 (SA4): originating trigger of a non-interactive posting
+        // (e.g. "job:GenerateRecurringSalesOrders", "schedule:daily",
+        // "webhook:stripe:evt_123"). Recorded on the journal entry and audit
+        // log when the posting is attributed to the tenant system actor.
+        public readonly ?string $trigger = null,
     ) {}
 }

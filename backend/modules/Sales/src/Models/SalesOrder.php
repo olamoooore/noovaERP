@@ -51,6 +51,9 @@ class SalesOrder extends Model
         // Issue #408: commitment (promised) date + shipping policy.
         'commitment_date',
         'shipping_policy',
+        // Issue #333: Incoterm code + place (free text; no statutory list).
+        'incoterm_code',
+        'incoterm_place',
         'cancellation_reason',
         'cancelled_by',
         'cancelled_at',
@@ -62,6 +65,10 @@ class SalesOrder extends Model
         'attention_to',
         'contact_email',
         'contact_phone',
+        // Issue #553: default salesperson/team stamped at creation from the
+        // user's Sales Settings defaults (free text; see SalesDefaultsService).
+        'salesperson',
+        'sales_team',
         // Issue #149: online quotation acceptance / eSignature portal.
         'acceptance_token',
         'acceptance_expires_at',

@@ -72,7 +72,14 @@ final class DataSourceRegistry
      */
     public function loadPayload(string $documentType, string $documentId): array
     {
-        return self::maskProtectedFields($this->make($documentType)->load($documentId)->toArray());
+        $payload = self::maskProtectedFields($this->make($documentType)->load($documentId)->toArray());
+
+        // Issue #553: the tenant's pricelist display mode is applied here, at
+        // the single choke point every PDF/HTML render reads through, so no
+        // sales data source can bypass it. Presentation only — stored line
+        // figures are untouched.
+        return app(\App\Services\SalesPricelistDisplayService::class)
+            ->applyToDocumentPayload($documentType, $payload);
     }
 
     /**

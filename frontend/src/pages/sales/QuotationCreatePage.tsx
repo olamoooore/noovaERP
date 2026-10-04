@@ -155,6 +155,9 @@ export const QuotationCreatePage: React.FC = () => {
   const [deliveryLeadTime, setDeliveryLeadTime] = useState('');
   const [shippingMethod, setShippingMethod] = useState('');
   const [shippingTerms, setShippingTerms] = useState('');
+  // Issue #333: Incoterm code + place.
+  const [incotermCode, setIncotermCode] = useState('');
+  const [incotermPlace, setIncotermPlace] = useState('');
   const [validity, setValidity] = useState('');
   const [caseInformation, setCaseInformation] = useState(emptyQuotationCaseInformation);
   // Invoice-page parity: secondary fields live in one drawer, not inline.
@@ -567,6 +570,8 @@ export const QuotationCreatePage: React.FC = () => {
       delivery_lead_time: deliveryLeadTime || undefined,
       shipping_method: shippingMethod || undefined,
       shipping_terms: shippingTerms || undefined,
+      incoterm_code: incotermCode || undefined,
+      incoterm_place: incotermPlace || undefined,
       validity: validity || undefined,
       ...Object.fromEntries(Object.entries(caseInformation).map(([key, value]) => [key, value || null])),
       notes: notes || undefined,
@@ -919,6 +924,30 @@ export const QuotationCreatePage: React.FC = () => {
                     onChange={(event) => setShippingTerms(event.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
                     placeholder="e.g. FOB, CIF, EXW"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Incoterm Code</label>
+                  <input
+                    type="text"
+                    aria-label="Incoterm Code"
+                    value={incotermCode}
+                    onChange={(event) => setIncotermCode(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="e.g. FOB, CIF, DDP"
+                    maxLength={20}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Incoterm Place</label>
+                  <input
+                    type="text"
+                    aria-label="Incoterm Place"
+                    value={incotermPlace}
+                    onChange={(event) => setIncotermPlace(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="e.g. Port Klang"
+                    maxLength={255}
                   />
                 </div>
                 <div>

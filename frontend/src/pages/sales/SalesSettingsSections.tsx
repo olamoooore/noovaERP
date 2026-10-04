@@ -25,6 +25,14 @@ export interface ReviewerConfig {
 }
 
 export interface SalesSettings {
+  // Issue #333: tenant cash rounding (Odoo-style). Default OFF.
+  cash_rounding: {
+    enabled: boolean
+    method: 'nearest' | 'up' | 'down'
+    precision: number
+    account_id: number | null
+    methods?: string[]
+  }
   invoice: {
     allow_custom_number: boolean
     field_profile: 'general' | 'medical' | 'trading' | 'services'
@@ -63,9 +71,25 @@ export interface SalesSettings {
   quotation: ReviewerConfig
   sales_order: ReviewerConfig
   invoice_threshold: ReviewerConfig
+  // Issue #553: creation defaults for new sales documents.
+  defaults: {
+    salesperson_mode: 'none' | 'current_user'
+    team_by_user: Record<string, string>
+  }
+  // Issue #553: line presentation on rendered sales documents.
+  pricelist: {
+    display: 'show_discount' | 'net_price'
+  }
 }
 
 export const emptySalesSettings: SalesSettings = {
+  cash_rounding: {
+    enabled: false,
+    method: 'nearest',
+    precision: 0.05,
+    account_id: null,
+    methods: ['nearest', 'up', 'down'],
+  },
   invoice: {
     allow_custom_number: true,
     field_profile: 'medical',
@@ -107,6 +131,13 @@ export const emptySalesSettings: SalesSettings = {
   invoice_threshold: {
     reviewer_user_ids: [],
     reviewer_roles: [],
+  },
+  defaults: {
+    salesperson_mode: 'none',
+    team_by_user: {},
+  },
+  pricelist: {
+    display: 'show_discount',
   },
 }
 
@@ -783,6 +814,145 @@ export function InvoiceDefaultsSettings() {
   )
 }
 
+// ─── Sales Defaults (Issue #553) ────────────────────────────────────────────
+
+type SalespersonMode = SalesSettings['defaults']['salesperson_mode']
+type PricelistDisplay = SalesSettings['pricelist']['display']
+
+export function SalesDefaultsSettings() {
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+  const { data, isLoading } = useSalesSettings()
+  const [mode, setMode] = useState<SalespersonMode | null>(null)
+  const [display, setDisplay] = useState<PricelistDisplay | null>(null)
+  const [teams, setTeams] = useState<Record<string, string> | null>(null)
+
+  const mutation = useMutation({
+    mutationFn: async (patch: {
+      defaults: SalesSettings['defaults']
+      pricelist: SalesSettings['pricelist']
+    }) => {
+      const res = await api.put('/settings/sales', patch)
+      return res.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales-settings'] })
+      toast({ title: 'Sales defaults saved' })
+      setMode(null)
+      setDisplay(null)
+      setTeams(null)
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Save failed',
+        description: error.response?.data?.message || 'Please try again.',
+      })
+    },
+  })
+
+  if (isLoading || !data) return <SettingsLoadingCard />
+
+  const currentMode = mode ?? data.defaults?.salesperson_mode ?? 'none'
+  const currentDisplay = display ?? data.pricelist?.display ?? 'show_discount'
+  const currentTeams = teams ?? data.defaults?.team_by_user ?? {}
+  const users = data.invoice?.available_reviewers ?? []
+  const hasChanges = mode !== null || display !== null || teams !== null
+
+  return (
+    <Card className="overflow-hidden">
+      <SettingsSectionHeader
+        icon="solar:user-hand-up-bold-duotone"
+        title="Sales Defaults"
+        description="Pre-fill new quotations and sales orders with a salesperson and team, and choose how pricelist discounts appear on documents."
+      />
+      <CardContent className="divide-y py-0">
+        <SettingsRow
+          title="Default salesperson"
+          description="When enabled, new quotations and sales orders start with the creating user as the salesperson. Leave it blank to have no default."
+        >
+          <Select value={currentMode} onValueChange={(v) => setMode(v as SalespersonMode)}>
+            <SelectTrigger className="w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No default (leave blank)</SelectItem>
+              <SelectItem value="current_user">Current user</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+
+        <SettingsRow
+          title="Pricelist display"
+          description="Show discount on lines keeps the list unit price and prints the discount separately; Net price only prints the unit price after the line discount."
+        >
+          <Select value={currentDisplay} onValueChange={(v) => setDisplay(v as PricelistDisplay)}>
+            <SelectTrigger className="w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="show_discount">Show discount on lines</SelectItem>
+              <SelectItem value="net_price">Net price only</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+
+        <div className="space-y-3 py-4">
+          <div className="space-y-1">
+            <div className="text-sm font-medium leading-none">Default sales team per user</div>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              The team stamped on documents a user creates. Leave a person blank to create their documents
+              without a team.
+            </p>
+          </div>
+
+          {users.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No team members found.</p>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {users.map((person) => (
+                <div
+                  key={person.id}
+                  className="flex items-center gap-3 rounded-lg border bg-card p-2.5 transition-colors hover:border-primary/30"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium leading-tight">{person.name}</div>
+                    <div className="truncate text-xs leading-tight text-muted-foreground">{person.email}</div>
+                  </div>
+                  <Input
+                    aria-label={`Default team for ${person.name}`}
+                    value={currentTeams[String(person.id)] ?? ''}
+                    onChange={(e) => setTeams({ ...currentTeams, [String(person.id)]: e.target.value })}
+                    placeholder="No team"
+                    className="w-36"
+                    maxLength={255}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </CardContent>
+      <SettingsSaveBar
+        hasChanges={hasChanges}
+        isPending={mutation.isPending}
+        onSave={() =>
+          mutation.mutate({
+            defaults: { salesperson_mode: currentMode, team_by_user: currentTeams },
+            pricelist: { display: currentDisplay },
+          })
+        }
+        onCancel={() => {
+          setMode(null)
+          setDisplay(null)
+          setTeams(null)
+        }}
+        label="Save defaults"
+      />
+    </Card>
+  )
+}
+
 // ─── Payments & Portal ──────────────────────────────────────────────────────
 
 export function PaymentPortalSettings() {
@@ -954,6 +1124,124 @@ export function TaxPricingSettings() {
         onSave={() => mutation.mutate(local)}
         onCancel={() => setLocal({})}
         label="Save tax settings"
+      />
+    </Card>
+  )
+}
+
+// ─── Cash Rounding ──────────────────────────────────────────────────────────
+
+const ROUNDING_METHODS = [
+  { value: 'nearest', label: 'Round to nearest step' },
+  { value: 'up', label: 'Always round up' },
+  { value: 'down', label: 'Always round down' },
+]
+
+export function CashRoundingSettings() {
+  const { data, isLoading } = useSalesSettings()
+  const [local, setLocal] = useState<Partial<SalesSettings['cash_rounding']>>({})
+  const mutation = useSalesSettingsMutation('cash_rounding', 'Cash rounding settings saved', () => setLocal({}))
+
+  const { data: accounts } = useQuery({
+    queryKey: ['chart-of-accounts', 'cash-rounding'],
+    queryFn: async () => {
+      const res = await api.get('/chart-of-accounts', { params: { is_active: 1 } })
+      return (res.data?.data ?? []) as Array<{ id: number; code: string; name: string; type: string }>
+    },
+  })
+
+  if (isLoading || !data) return <SettingsLoadingCard />
+
+  const rounding = { ...data.cash_rounding, ...local }
+
+  return (
+    <Card className="overflow-hidden">
+      <SettingsSectionHeader
+        icon="solar:calculator-minimalistic-bold-duotone"
+        title="Cash Rounding"
+        description="Round every invoice's final payable total to a cash step and book the difference to a rounding account."
+      />
+      <CardContent className="divide-y py-0">
+        <SettingsRow
+          title="Enable cash rounding"
+          description="Off by default. When enabled, invoice totals are rounded and the adjustment is posted as its own journal line."
+        >
+          <Switch
+            checked={rounding.enabled}
+            onCheckedChange={(v) => setLocal({ ...local, enabled: v })}
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          title="Rounding method"
+          description="How each invoice total is rounded to the step."
+        >
+          <Select
+            value={rounding.method}
+            onValueChange={(v) =>
+              setLocal({ ...local, method: v as SalesSettings['cash_rounding']['method'] })
+            }
+            disabled={!rounding.enabled}
+          >
+            <SelectTrigger className="w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ROUNDING_METHODS.map((m) => (
+                <SelectItem key={m.value} value={m.value}>
+                  {m.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+
+        <SettingsRow
+          title="Rounding step"
+          description="The smallest cash unit — e.g. 0.05 for MYR 5 sen."
+        >
+          <Input
+            type="number"
+            min={0.01}
+            max={100}
+            step={0.01}
+            value={rounding.precision}
+            onChange={(e) =>
+              setLocal({ ...local, precision: parseFloat(e.target.value) || 0 })
+            }
+            disabled={!rounding.enabled}
+            className="w-28 text-center"
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          title="Rounding account"
+          description="Ledger account that carries the rounding gain/loss. Required whenever rounding is enabled."
+        >
+          <Select
+            value={rounding.account_id ? String(rounding.account_id) : undefined}
+            onValueChange={(v) => setLocal({ ...local, account_id: parseInt(v, 10) })}
+            disabled={!rounding.enabled}
+          >
+            <SelectTrigger className="w-72">
+              <SelectValue placeholder="Select an account" />
+            </SelectTrigger>
+            <SelectContent>
+              {(accounts ?? []).map((account) => (
+                <SelectItem key={account.id} value={String(account.id)}>
+                  {account.code} — {account.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+      </CardContent>
+      <SettingsSaveBar
+        hasChanges={Object.keys(local).length > 0}
+        isPending={mutation.isPending}
+        onSave={() => mutation.mutate(local)}
+        onCancel={() => setLocal({})}
+        label="Save cash rounding"
       />
     </Card>
   )

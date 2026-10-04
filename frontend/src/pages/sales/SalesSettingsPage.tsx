@@ -7,8 +7,10 @@ import {
   NumberingSettings,
   ApprovalSettings,
   InvoiceDefaultsSettings,
+  SalesDefaultsSettings,
   PaymentPortalSettings,
   TaxPricingSettings,
+  CashRoundingSettings,
   DeliverySettings,
 } from './SalesSettingsSections'
 
@@ -35,6 +37,13 @@ const SECTIONS: SettingsSectionDef[] = [
     component: InvoiceDefaultsSettings,
   },
   {
+    key: 'sales-defaults',
+    title: 'Sales Defaults',
+    description: 'Default salesperson, team and pricelist display',
+    icon: 'solar:user-hand-up-bold-duotone',
+    component: SalesDefaultsSettings,
+  },
+  {
     key: 'payments',
     title: 'Payments & Portal',
     description: 'Customer acceptance, signatures & payment links',
@@ -47,6 +56,13 @@ const SECTIONS: SettingsSectionDef[] = [
     description: 'Default rates, treatments and price basis',
     icon: 'solar:sale-bold-duotone',
     component: TaxPricingSettings,
+  },
+  {
+    key: 'rounding',
+    title: 'Cash Rounding',
+    description: 'Round invoice totals and post the difference',
+    icon: 'solar:calculator-minimalistic-bold-duotone',
+    component: CashRoundingSettings,
   },
   {
     key: 'delivery',

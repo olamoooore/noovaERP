@@ -73,9 +73,23 @@ Schedule::command('sales:generate-recurring-orders')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Issue #606 - weekly per-salesperson sales digest. The command iterates every
+// tenant (IteratesTenants) and sends only to users who opted in.
+Schedule::command('sales:send-weekly-digest')
+    ->weeklyOn(1, '07:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Issue #109 - Inventory subledger vs GL control-account reconciliation.
 Schedule::command('inventory:reconcile-gl')
     ->dailyAt('05:45')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Issue #881 - AR subledger vs GL AR control account, per legal entity.
+// --fail-on-variance makes an out-of-tolerance day a failed run (alertable).
+Schedule::command('accounting:reconcile-ar-gl --fail-on-variance')
+    ->dailyAt('05:50')
     ->withoutOverlapping()
     ->runInBackground();
 

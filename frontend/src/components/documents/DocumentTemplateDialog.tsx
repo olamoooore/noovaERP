@@ -14,8 +14,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
+import { extractBlobError } from './documentRender'
 
-export type DocumentTemplateType = 'invoice' | 'delivery_order' | 'quotation'
+export type DocumentTemplateType =
+  | 'invoice'
+  | 'delivery_order'
+  | 'quotation'
+  | 'sales_order'
+  | 'credit_note'
+  | 'receipt'
+  | 'customer_statement'
 
 interface DocumentTemplateDialogProps {
   open: boolean
@@ -27,6 +35,14 @@ interface DocumentTemplateDialogProps {
   filename: string
   /** Human label used in the dialog title, e.g. `Invoice`. */
   title: string
+  /**
+   * Issue #618: the template the deterministic resolver picked for this
+   * document (from the resolution endpoint). Preferred over the tenant-wide
+   * active default so the dialog opens on exactly what Preview/Print use.
+   */
+  defaultTemplateId?: string | null
+  /** Open straight on the "choose another template" step. */
+  initialStep?: 'default' | 'choose'
 }
 
 interface TemplateOption {
@@ -48,6 +64,8 @@ export function DocumentTemplateDialog({
   pdfPath,
   filename,
   title,
+  defaultTemplateId,
+  initialStep = 'default',
 }: DocumentTemplateDialogProps) {
   const { toast } = useToast()
   const [choosingAnother, setChoosingAnother] = useState(false)
@@ -56,32 +74,35 @@ export function DocumentTemplateDialog({
   const autoDownloadAttempted = useRef(false)
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['document-template-options', documentType],
+    queryKey: ['document-template-options', documentType, defaultTemplateId ?? null],
     queryFn: async () => {
       const [list, defaults] = await Promise.all([
         api.get('/template-builder/templates', {
           params: { document_type: documentType, status: 'published', per_page: 100 },
         }),
-        // Preselect the tenant's resolved default; tolerate older tenants that
-        // cannot resolve one (the picker still works with the first template).
-        api.get('/template-builder/active-defaults').catch(() => null),
+        // The per-document resolver pick is authoritative (#618); only fall
+        // back to the tenant-wide active default when the caller has none.
+        // Tolerate older tenants that cannot resolve one.
+        defaultTemplateId
+          ? Promise.resolve(null)
+          : api.get('/template-builder/active-defaults').catch(() => null),
       ])
       return {
         templates: (list.data?.data || []) as TemplateOption[],
-        defaultTemplateId: (defaults?.data?.data?.[documentType] ?? null) as string | null,
+        activeDefaultId: (defaults?.data?.data?.[documentType] ?? null) as string | null,
       }
     },
     enabled: open,
   })
 
   const templates = useMemo(() => data?.templates ?? [], [data])
-  const defaultTemplateId = data?.defaultTemplateId ?? null
+  const resolvedDefaultId = defaultTemplateId ?? data?.activeDefaultId ?? null
   const defaultTemplate = useMemo(() => {
-    return templates.find((template) => template.id === defaultTemplateId)
+    return templates.find((template) => template.id === resolvedDefaultId)
       ?? templates.find((template) => template.is_system_default)
       ?? templates[0]
       ?? null
-  }, [templates, defaultTemplateId])
+  }, [templates, resolvedDefaultId])
   const alternativeTemplates = useMemo(
     () => templates.filter((template) => template.id !== defaultTemplate?.id),
     [templates, defaultTemplate],
@@ -95,7 +116,11 @@ export function DocumentTemplateDialog({
       setBusy(null)
       return
     }
-    if (!choosingAnother || selectedTemplateId || alternativeTemplates.length === 0) return
+    if (initialStep === 'choose') setChoosingAnother(true)
+  }, [open, initialStep])
+
+  useEffect(() => {
+    if (!open || !choosingAnother || selectedTemplateId || alternativeTemplates.length === 0) return
     setSelectedTemplateId(String(alternativeTemplates[0].id))
   }, [open, choosingAnother, alternativeTemplates, selectedTemplateId])
 
@@ -227,18 +252,4 @@ export function DocumentTemplateDialog({
       </DialogContent>
     </Dialog>
   )
-}
-
-/** Render errors are returned as a JSON blob (responseType: 'blob'). */
-async function extractBlobError(error: any): Promise<string | null> {
-  const data = error?.response?.data
-  if (data instanceof Blob) {
-    try {
-      const parsed = JSON.parse(await data.text())
-      return parsed?.message ?? null
-    } catch {
-      return null
-    }
-  }
-  return data?.message ?? null
 }

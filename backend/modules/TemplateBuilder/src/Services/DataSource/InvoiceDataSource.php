@@ -154,6 +154,9 @@ class InvoiceDataSource implements DataSourceContract
                     : '',
                 'attention_to' => $invoice->attention_to ?? '',
                 'shipping_method' => $invoice->shipping_method ?? '',
+                // Issue #333: Incoterm code + place (blank when unset).
+                'incoterm_code' => $invoice->incoterm_code ?? '',
+                'incoterm_place' => $invoice->incoterm_place ?? '',
                 'delivery_date' => optional($invoice->delivery_date)->format('Y-m-d') ?? '',
                 'internal_reference' => $invoice->internal_reference ?? '',
                 'doctor' => $invoice->doctor?->full_name ?? $invoice->doctor?->display_name ?? '',
@@ -183,6 +186,9 @@ class InvoiceDataSource implements DataSourceContract
                 'tax' => (float) $invoice->tax_amount,
                 'discount' => (float) ($invoice->discount_amount ?? 0),
                 'shipping' => (float) ($invoice->shipping_cost ?? 0),
+                // Issue #333: signed cash-rounding delta already included in
+                // the grand total (0.00 when rounding is disabled).
+                'rounding' => (float) ($invoice->rounding_amount ?? 0),
                 'total' => (float) $invoice->total,
                 'paid' => (float) ($invoice->paid_amount ?? 0),
                 'balance' => (float) $invoice->balance,
@@ -509,6 +515,8 @@ class InvoiceDataSource implements DataSourceContract
                 ['token' => 'invoice.billing_contact_name', 'label' => 'Billing Contact'],
                 ['token' => 'invoice.shipping_contact_name', 'label' => 'Shipping Contact'],
                 ['token' => 'invoice.shipping_method', 'label' => 'Shipping Method'],
+                ['token' => 'invoice.incoterm_code', 'label' => 'Incoterm Code'],
+                ['token' => 'invoice.incoterm_place', 'label' => 'Incoterm Place'],
                 ['token' => 'invoice.salesperson', 'label' => 'Salesperson'],
                 ['token' => 'invoice.delivery_date', 'label' => 'Delivery Date'],
                 ['token' => 'invoice.notes', 'label' => 'Notes'],
@@ -554,6 +562,7 @@ class InvoiceDataSource implements DataSourceContract
                 ['token' => 'totals.tax', 'label' => 'Tax'],
                 ['token' => 'totals.discount', 'label' => 'Discount'],
                 ['token' => 'totals.shipping', 'label' => 'Shipping'],
+                ['token' => 'totals.rounding', 'label' => 'Cash Rounding'],
                 ['token' => 'totals.total', 'label' => 'Grand Total'],
                 ['token' => 'totals.paid', 'label' => 'Amount Paid'],
                 ['token' => 'totals.balance', 'label' => 'Balance Due'],
@@ -612,6 +621,9 @@ class InvoiceDataSource implements DataSourceContract
                 'billing_contact_name' => 'Dr. Sarah Chen',
                 'shipping_contact_name' => 'Dr. Sarah Chen',
                 'salesperson' => 'John Smith',
+                'shipping_method' => 'Courier',
+                'incoterm_code' => 'FOB',
+                'incoterm_place' => 'Port Klang',
             ],
             'customer' => [
                 'code' => 'CUST-0001',
@@ -643,6 +655,7 @@ class InvoiceDataSource implements DataSourceContract
             ],
             'totals' => [
                 'subtotal' => 7600.00, 'tax' => 456.00, 'discount' => 100.00, 'shipping' => 0.00,
+                'rounding' => 0.00,
                 'total' => 8056.00, 'paid' => 0.00, 'balance' => 8056.00,
                 'amount_in_words' => AmountInWords::format(8056.00, 'SGD', 'en'),
             ],

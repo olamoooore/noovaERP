@@ -42,6 +42,10 @@ class PostingProfileSeeder extends Seeder
                     'sales_tax_payable' => ['direction' => 'credit'],
                     'cogs' => ['direction' => 'debit'],
                     'inventory' => ['direction' => 'credit'],
+                    // Issue #880 (SA7) / MRD FR-7.4: FX rounding residual
+                    // lands on the existing FX gain/loss role accounts.
+                    'realized_fx_gain' => ['direction' => 'credit'],
+                    'realized_fx_loss' => ['direction' => 'debit'],
                 ]),
                 'control_account_requirements' => json_encode([
                     ['account_role' => 'accounts_receivable', 'source_capability' => 'ACC-003', 'requires_exceptional_authority' => false],

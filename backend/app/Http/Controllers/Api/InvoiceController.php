@@ -497,6 +497,10 @@ class InvoiceController extends Controller
             'contact_phone' => 'nullable|string|max:50',
             'billing_address_snapshot' => 'nullable|string',
             'shipping_address_snapshot' => 'nullable|string',
+            // Issue #333: Incoterm code + place. Length-bounded free text —
+            // the platform has no authoritative Incoterms code list.
+            'incoterm_code' => 'nullable|string|max:20',
+            'incoterm_place' => 'nullable|string|max:255',
             'company_registration_number' => 'nullable|string|max:100',
             'tax_registration_number' => 'nullable|string|max:100',
             'tax_jurisdiction' => 'nullable|string|max:10',
@@ -1222,6 +1226,10 @@ class InvoiceController extends Controller
             $invoice->can_approve = $reviewerIds->contains((int) $user->id) && ! $isSubmitter;
         }
 
+        // Issue #906 (UX2): who last saved this draft, for the advisory
+        // "Someone else is editing" banner. Null when nobody holds the lock.
+        $invoice->setAttribute('active_lock', $this->versionGuard->activeLockInfo('invoice', (int) $invoice->id));
+
         return response()->json($invoice);
     }
 
@@ -1282,6 +1290,10 @@ class InvoiceController extends Controller
             'contact_phone' => 'nullable|string|max:50',
             'billing_address_snapshot' => 'nullable|string',
             'shipping_address_snapshot' => 'nullable|string',
+            // Issue #333: Incoterm code + place. Length-bounded free text —
+            // the platform has no authoritative Incoterms code list.
+            'incoterm_code' => 'nullable|string|max:20',
+            'incoterm_place' => 'nullable|string|max:255',
             'company_registration_number' => 'nullable|string|max:100',
             'tax_registration_number' => 'nullable|string|max:100',
             'tax_jurisdiction' => 'nullable|string|max:10',

@@ -124,11 +124,19 @@ class SalesOrderController extends Controller
             'notes' => 'nullable|string',
             'internal_notes' => 'nullable|string',
             'customer_reference' => 'nullable|string|max:100',
+            // Issue #553: salesperson/team free text; creation defaults apply
+            // server-side when omitted (SalesDefaultsService).
+            'salesperson' => 'nullable|string|max:255',
+            'sales_team' => 'nullable|string|max:255',
             'order_date' => 'nullable|date',
             'required_date' => 'nullable|date',
             // Issue #408: editable promise date + partial-delivery policy.
             'commitment_date' => 'nullable|date',
             'shipping_policy' => ['nullable', \Illuminate\Validation\Rule::in(SalesOrder::SHIPPING_POLICIES)],
+            // Issue #333: Incoterms are length-bounded free text — the
+            // platform has no authoritative code list to validate against.
+            'incoterm_code' => 'nullable|string|max:20',
+            'incoterm_place' => 'nullable|string|max:255',
             'currency_code' => 'nullable|string|size:3',
             'discount_amount' => 'nullable|numeric|min:0',
             'lines' => 'required|array|min:1',
@@ -205,6 +213,10 @@ class SalesOrderController extends Controller
             return response()->json(['message' => 'Sales order not found'], 404);
         }
 
+        // Issue #906 (UX2): who last saved this draft, for the advisory
+        // "Someone else is editing" banner. Null when nobody holds the lock.
+        $order->setAttribute('active_lock', $this->versionGuard->activeLockInfo('sales_order', (int) $order->id));
+
         return response()->json($order);
     }
 
@@ -262,6 +274,9 @@ class SalesOrderController extends Controller
             // Issue #408: editable promise date + partial-delivery policy.
             'commitment_date' => 'nullable|date',
             'shipping_policy' => ['nullable', \Illuminate\Validation\Rule::in(SalesOrder::SHIPPING_POLICIES)],
+            // Issue #333: Incoterms are length-bounded free text.
+            'incoterm_code' => 'nullable|string|max:20',
+            'incoterm_place' => 'nullable|string|max:255',
             'discount_amount' => 'nullable|numeric|min:0',
         ]);
 

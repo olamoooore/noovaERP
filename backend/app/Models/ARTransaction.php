@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * View columns:
  *   transaction_type, transaction_id, document_number, customer_id,
  *   customer_name, transaction_date, due_date, debit, credit, amount,
- *   status, currency_code, created_at, updated_at
+ *   status, currency_code, created_at, updated_at, legal_entity_id
  *
  * NOTE: Views have no real primary key.  We use 'transaction_id' as a
  * logical key so Eloquent hydration works, but the combination

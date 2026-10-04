@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
 import { DocumentLinkChip } from '@/components/documents/DocumentLinkChip';
-import { DocumentTemplateDialog } from '@/components/documents/DocumentTemplateDialog';
+import { PrintSendMenu } from '@/components/documents/PrintSendMenu';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
@@ -80,7 +80,6 @@ export const CustomerInvoiceDetail: React.FC = () => {
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [showCreditNoteDialog, setShowCreditNoteDialog] = useState(false);
-  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const isQuoteMode = location.pathname.startsWith('/sales/quotes');
   const documentLabel = isQuoteMode ? 'Quotation' : 'Invoice';
   const backPath = isQuoteMode ? '/sales/quotes' : '/accounting/customers/bills';
@@ -144,6 +143,28 @@ export const CustomerInvoiceDetail: React.FC = () => {
       toast({
         variant: 'destructive',
         title: isQuoteMode ? 'Failed to convert quotation' : 'Failed to post invoice',
+        description: error.response?.data?.message || 'An error occurred',
+      });
+    },
+  });
+
+  // #618: the shared print/send menu reuses the existing invoice delivery
+  // service for its Email and WhatsApp actions.
+  const deliverInvoiceMutation = useMutation({
+    mutationFn: async (channel: 'email' | 'whatsapp') => {
+      const response = await api.post(`/invoices/${id}/deliver`, { channel });
+      return response.data;
+    },
+    onSuccess: (_data, channel) => {
+      queryClient.invalidateQueries({ queryKey: ['customer-invoice', id] });
+      toast({
+        title: channel === 'whatsapp' ? 'Invoice sent via WhatsApp' : 'Invoice emailed to the customer',
+      });
+    },
+    onError: (error: any, channel) => {
+      toast({
+        variant: 'destructive',
+        title: channel === 'whatsapp' ? 'Failed to send via WhatsApp' : 'Failed to email invoice',
         description: error.response?.data?.message || 'An error occurred',
       });
     },
@@ -341,20 +362,16 @@ export const CustomerInvoiceDetail: React.FC = () => {
                 </HeaderActionButton>
               )}
 
-            <HeaderActionButton
-              variant="outline"
-              icon="solar:printer-bold-duotone"
-              onClick={() => setTemplateDialogOpen(true)}
-            >
-              Print
-            </HeaderActionButton>
-            <HeaderActionButton
-              variant="outline"
-              icon="solar:download-minimalistic-bold-duotone"
-              onClick={() => setTemplateDialogOpen(true)}
-            >
-              PDF
-            </HeaderActionButton>
+            {/* #618: one print/send menu shared with every sales document. */}
+            <PrintSendMenu
+              documentType="invoice"
+              pdfPath={`/invoices/${id}/pdf`}
+              filename={`invoice-${invoice.invoice_number || id}.pdf`}
+              title="Invoice"
+              resolutionPath={`/documents/invoice/resolution?document_id=${id}`}
+              onEmail={() => deliverInvoiceMutation.mutate('email')}
+              onWhatsApp={() => deliverInvoiceMutation.mutate('whatsapp')}
+            />
           </>}
         />
       </div>
@@ -440,6 +457,21 @@ export const CustomerInvoiceDetail: React.FC = () => {
               <div>
                 <p className="text-sm text-muted-foreground mb-1">Shipping Method</p>
                 <p className="font-medium">{invoice.shipping_method}</p>
+              </div>
+            )}
+            {invoice.incoterm_code && (
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">Incoterm</p>
+                <p className="font-medium">
+                  {invoice.incoterm_code}
+                  {invoice.incoterm_place ? ` — ${invoice.incoterm_place}` : ''}
+                </p>
+              </div>
+            )}
+            {Number(invoice.rounding_amount || 0) !== 0 && (
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">Cash Rounding</p>
+                <p className="font-medium">{formatCurrency(invoice.rounding_amount)}</p>
               </div>
             )}
             <div>
@@ -861,15 +893,6 @@ export const CustomerInvoiceDetail: React.FC = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      <DocumentTemplateDialog
-        open={templateDialogOpen}
-        onOpenChange={setTemplateDialogOpen}
-        documentType="invoice"
-        pdfPath={`/invoices/${id}/pdf`}
-        filename={`invoice-${invoice.invoice_number || id}.pdf`}
-        title="Invoice"
-      />
 
       <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
         <AlertDialogContent>

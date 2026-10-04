@@ -112,6 +112,9 @@ class TaxReturnAggregator
      * F15 (#280): the drill-down shares the EXACT row path with aggregate(),
      * so the sum of drill-down rows equals the box value to the cent.
      *
+     * #861 (RP7): an optional jurisdiction scopes the rows to one country's
+     * trail (used by the audit-file and SST audit-listing exports).
+     *
      * @return array<int, array<string, mixed>>
      */
     public function drilldown(
@@ -120,8 +123,9 @@ class TaxReturnAggregator
         ?string $direction = null,
         ?string $taxCode = null,
         ?string $documentType = null,
+        ?string $jurisdiction = null,
     ): array {
-        $rows = $this->normalizedRows($period, $legalEntityId);
+        $rows = $this->normalizedRows($period, $legalEntityId, $jurisdiction);
 
         return array_values(array_filter($rows, function (array $row) use ($direction, $taxCode, $documentType) {
             if ($direction !== null && $row['direction'] !== strtolower($direction)) {

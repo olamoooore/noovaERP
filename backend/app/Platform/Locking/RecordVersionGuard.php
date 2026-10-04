@@ -126,15 +126,48 @@ class RecordVersionGuard
             'data' => $current,
         ];
 
-        $lock = $this->activeLock($exception->resourceType, (int) $current->getKey());
-        if ($lock !== null) {
-            $body['active_lock'] = [
-                'user_id' => $lock->user_id,
-                'expires_at' => optional($lock->expires_at)->toIso8601String(),
-            ];
+        $lockInfo = $this->activeLockInfo($exception->resourceType, (int) $current->getKey());
+        if ($lockInfo !== null) {
+            $body['active_lock'] = $lockInfo;
         }
 
         return response()->json($body, 409);
+    }
+
+    /**
+     * Issue #906: the "being edited by …" payload shared by the GET show
+     * responses (the advisory banner) and the 409 (the conflict dialog).
+     * `user_name` is resolved here so every client shows the same label.
+     */
+    public function activeLockInfo(string $resourceType, int $resourceId): ?array
+    {
+        $lock = $this->activeLock($resourceType, $resourceId);
+
+        if ($lock === null) {
+            return null;
+        }
+
+        return [
+            'user_id' => $lock->user_id,
+            'user_name' => $this->userName((int) $lock->user_id),
+            'expires_at' => optional($lock->expires_at)->toIso8601String(),
+        ];
+    }
+
+    private function userName(int $userId): ?string
+    {
+        try {
+            // Tenant schema mirror of the central user (see
+            // SyncTenantUserFromCentralAuth) — the same id the soft lock stores.
+            return \App\Models\User::query()->whereKey($userId)->value('name');
+        } catch (\Throwable $e) {
+            Log::warning('RecordVersionGuard: active lock user lookup failed', [
+                'user_id' => $userId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     public function etag(Model $record): string

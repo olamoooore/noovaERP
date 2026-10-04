@@ -4,6 +4,7 @@ use App\Http\Middleware\RequirePermission;
 use Illuminate\Support\Facades\Route;
 use Modules\AccountingCountry\Http\Controllers\EInvoicingCapabilityController;
 use Modules\AccountingCountry\Http\Controllers\StatutoryReturnController;
+use Modules\AccountingCountry\Http\Controllers\TaxAuditExportController;
 use Modules\AccountingCountry\Http\Controllers\TaxReportController;
 
 /*
@@ -71,6 +72,13 @@ Route::prefix('accounting/tax-report')
         Route::post('/withholding/remit', [TaxReportController::class, 'remit'])
             ->middleware(RequirePermission::using('tax.policy.manage|tax.manage'));
         Route::get('/withholding/export', [TaxReportController::class, 'withholdingExport']);
+
+        // #861 RP7: SG IRAS audit file (IAF) data export and MY SST
+        // transaction listing — per entity + period, shared #860 lifecycle.
+        Route::get('/sg-iaf', [TaxAuditExportController::class, 'sgIaf'])
+            ->middleware(RequirePermission::using('reports.view'));
+        Route::get('/my-sst-listing', [TaxAuditExportController::class, 'mySstListing'])
+            ->middleware(RequirePermission::using('reports.view'));
     });
 
 /*

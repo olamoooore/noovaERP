@@ -108,6 +108,9 @@ export function BankReconciliationPage() {
   const [statementPreview, setStatementPreview] = useState<any>(null);
   // BK1: day/month order for the statement's date column ('' = auto/inferred).
   const [statementDateFormat, setStatementDateFormat] = useState<string>('');
+  // BK7: overlapping exports are flagged in the preview; default is to skip
+  // the already-imported rows unless the operator picks "import anyway".
+  const [statementImportDuplicates, setStatementImportDuplicates] = useState(false);
   const [statementMapping, setStatementMapping] = useState<Record<string, string>>({});
   const [statementStartDate, setStatementStartDate] = useState('');
   const [matchSelections, setMatchSelections] = useState<Record<string, { glLineId: string; amount: string; reason: string }>>({});
@@ -478,6 +481,7 @@ export function BankReconciliationPage() {
       setStatementPreview(preview);
       setStatementMapping(preview.proposed_mapping ?? {});
       setStatementDateFormat(preview.date_column_format ?? '');
+      setStatementImportDuplicates(false);
       toast({ title: 'Statement preview ready', description: `${preview.source_rows} source rows detected.` });
     },
     onError: (error: any) => toast({ title: 'Statement preview failed', description: error?.response?.data?.message ?? error.message, variant: 'destructive' }),
@@ -493,6 +497,7 @@ export function BankReconciliationPage() {
       opening_balance: Number(statementOpeningBalance),
       closing_balance: Number(statementBalance),
       date_format: statementDateFormat || undefined,
+      import_duplicates: statementImportDuplicates || undefined,
     }),
     onSuccess: (batch) => {
       setStatementPreview(null); setStatementFile(null); setStatementOpeningBalance('');
@@ -782,7 +787,7 @@ export function BankReconciliationPage() {
                 id="statement-file"
                 type="file"
                 accept=".csv,.xlsx"
-                onChange={(e) => { setStatementFile(e.target.files?.[0] ?? null); setStatementPreview(null); }}
+                onChange={(e) => { setStatementFile(e.target.files?.[0] ?? null); setStatementPreview(null); setStatementImportDuplicates(false); }}
                 className="h-9 cursor-pointer rounded-lg file:mr-3 file:rounded-full file:border-0 file:bg-primary/10 file:px-3 file:py-1 file:text-xs file:font-medium file:text-primary hover:file:bg-primary/20"
               />
               {statementFile && (
@@ -849,6 +854,29 @@ export function BankReconciliationPage() {
                   )}
                 </div>
               </div>
+              {/* BK7: overlapping exports / re-downloads are flagged here so the
+                  operator chooses between skipping the rows (default) and
+                  importing them anyway. */}
+              {(statementPreview.duplicate_row_count ?? 0) > 0 && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
+                  <p className="font-medium text-amber-900">
+                    {statementPreview.duplicate_row_count} row(s) in this file already exist for this account —
+                    it overlaps an earlier import or is a re-download.
+                  </p>
+                  <p className="mt-1 text-amber-800">
+                    Source rows: {(statementPreview.duplicate_rows ?? []).map((row: any) => row.source_row).join(', ')}
+                  </p>
+                  <label className="mt-2 flex items-center gap-2 text-amber-900">
+                    <input
+                      type="checkbox"
+                      aria-label="Import duplicate rows anyway"
+                      checked={statementImportDuplicates}
+                      onChange={(e) => setStatementImportDuplicates(e.target.checked)}
+                    />
+                    Import these rows anyway (leave unchecked to skip them)
+                  </label>
+                </div>
+              )}
               {(!statementMapping.transaction_date || !statementMapping.description || (!statementMapping.amount && (!statementMapping.debit || !statementMapping.credit))) ? (
                 <p className="text-sm text-destructive">Required columns were not detected. Configure the source headers before importing.</p>
               ) : (

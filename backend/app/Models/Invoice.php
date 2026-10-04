@@ -226,6 +226,11 @@ class Invoice extends Model
         'discount_amount',
         'shipping_cost',
         'shipping_method',
+        // Issue #333: Incoterm code + place carried from the quote/order.
+        'incoterm_code',
+        'incoterm_place',
+        // Issue #333: signed cash-rounding delta included in `total`.
+        'rounding_amount',
         'total',
         'paid_amount',
         'balance',
@@ -285,6 +290,7 @@ class Invoice extends Model
         'discount_amount' => 'decimal:2',
         'shipping_cost' => 'decimal:2',
         'shipping_method',
+        'rounding_amount' => 'decimal:2',
         'total' => 'decimal:2',
         'paid_amount' => 'decimal:2',
         'balance' => 'decimal:2',
@@ -491,7 +497,13 @@ class Invoice extends Model
             $this->tax_amount = $lineTaxSum;
         }
 
-        $this->total = $this->subtotal - $discount + $this->tax_amount;
+        // Issue #333: cash rounding is applied to the final gross total by the
+        // ONE shared rounding service; the signed delta is persisted so the
+        // posting path books exactly the number shown to the customer.
+        $gross = round($this->subtotal - $discount + $this->tax_amount, 2);
+        $this->rounding_amount = app(\App\Services\CashRoundingService::class)->delta($gross);
+        $this->total = round($gross + (float) $this->rounding_amount, 2);
+
         $this->balance = $this->total - $this->paid_amount;
         $this->save();
     }

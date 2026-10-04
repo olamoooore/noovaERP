@@ -22,7 +22,7 @@ import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { DocumentTemplateDialog } from '@/components/documents/DocumentTemplateDialog'
+import { PrintSendMenu } from '@/components/documents/PrintSendMenu'
 import { fetchBulkStockAvailability } from '@/components/sales/stockAvailability'
 import { StockShortageDialog, type ShortageLine } from '@/components/sales/StockShortageDialog'
 
@@ -339,8 +339,6 @@ export function QuotationDetailPage() {
     deleteMutation.mutate()
   }
 
-  const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
-
   // Product Notes starts hidden, matching the previous default.
   const [hiddenLineColumns, setHiddenLineColumns] = useState<number[]>(
     () => QUOTATION_LINE_COLUMNS.filter((c) => c.label.toLowerCase() === 'product notes').map((c) => c.index)
@@ -496,14 +494,14 @@ export function QuotationDetailPage() {
               Cancel
             </HeaderActionButton>
           )}
-          <HeaderActionButton
-            variant="outline"
-            icon="solar:download-minimalistic-bold-duotone"
-            title="Download PDF"
-            onClick={() => setTemplateDialogOpen(true)}
-          >
-            PDF
-          </HeaderActionButton>
+          {/* #618: one print/send menu shared with every sales document. */}
+          <PrintSendMenu
+            documentType="quotation"
+            pdfPath={`/quotations/${id}/pdf`}
+            filename={`quotation-${quotation.quotation_number}.pdf`}
+            title="Quotation"
+            resolutionPath={`/documents/quotation/resolution?document_id=${id}`}
+          />
           {quotation.status === 'draft' && (
             <HeaderActionButton
               variant="outline"
@@ -785,6 +783,14 @@ export function QuotationDetailPage() {
                 <div className="font-medium">{quotation.shipping_terms || '-'}</div>
               </div>
               <div>
+                <div className="text-muted-foreground">Incoterm</div>
+                <div className="font-medium">
+                  {quotation.incoterm_code
+                    ? `${quotation.incoterm_code}${quotation.incoterm_place ? ` — ${quotation.incoterm_place}` : ''}`
+                    : '-'}
+                </div>
+              </div>
+              <div>
                 <div className="text-muted-foreground">Validity</div>
                 <div className="font-medium">{quotation.validity || '-'}</div>
               </div>
@@ -1017,15 +1023,6 @@ export function QuotationDetailPage() {
           setConfirmAction(null)
           resetToDraftMutation.mutate()
         }}
-      />
-
-      <DocumentTemplateDialog
-        open={templateDialogOpen}
-        onOpenChange={setTemplateDialogOpen}
-        documentType="quotation"
-        pdfPath={`/quotations/${id}/pdf`}
-        filename={`quotation-${quotation.quotation_number}.pdf`}
-        title="Quotation"
       />
 
       <StockShortageDialog

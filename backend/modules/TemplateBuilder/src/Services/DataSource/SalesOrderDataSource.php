@@ -132,6 +132,9 @@ class SalesOrderDataSource implements DataSourceContract
                 'salesperson' => $salesperson,
                 'quotation_number' => $order->quotation?->quotation_number ?? '',
                 'accepted_at' => optional($order->accepted_at)->format('Y-m-d') ?? '',
+                // Issue #333: Incoterm code + place (blank when unset).
+                'incoterm_code' => $order->incoterm_code ?? '',
+                'incoterm_place' => $order->incoterm_place ?? '',
             ],
             // Compatibility namespace for invoice-shaped templates; mirrors
             // the QuotationDataSource contract.
@@ -148,6 +151,9 @@ class SalesOrderDataSource implements DataSourceContract
                 'attention_to' => $order->attention_to ?? '',
                 'salesperson' => $salesperson,
                 'internal_reference' => $order->internal_reference ?? '',
+                // Issue #333: Incoterm code + place (blank when unset).
+                'incoterm_code' => $order->incoterm_code ?? '',
+                'incoterm_place' => $order->incoterm_place ?? '',
             ],
             'customer' => [
                 'code' => $order->customer?->code ?? '',
@@ -208,6 +214,8 @@ class SalesOrderDataSource implements DataSourceContract
                 ['token' => 'sales_order.warehouse', 'label' => 'Warehouse'],
                 ['token' => 'sales_order.salesperson', 'label' => 'Salesperson'],
                 ['token' => 'sales_order.quotation_number', 'label' => 'Source Quotation'],
+                ['token' => 'sales_order.incoterm_code', 'label' => 'Incoterm Code'],
+                ['token' => 'sales_order.incoterm_place', 'label' => 'Incoterm Place'],
                 ['token' => 'sales_order.notes', 'label' => 'Notes'],
             ]],
             ['group' => 'Customer', 'fields' => [
@@ -259,6 +267,8 @@ class SalesOrderDataSource implements DataSourceContract
             'salesperson' => 'John Smith',
             'quotation_number' => 'QT-2026-0001',
             'accepted_at' => '2026-07-07',
+            'incoterm_code' => 'FOB',
+            'incoterm_place' => 'Port Klang',
         ];
         $base['invoice']['number'] = 'SO-2026-0042';
         $base['invoice']['issue_date'] = '2026-07-08';

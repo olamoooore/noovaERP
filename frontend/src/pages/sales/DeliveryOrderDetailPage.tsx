@@ -18,7 +18,7 @@ import api from '@/lib/api'
 import { Icon } from '@iconify/react'
 import { formatCurrency, formatDate, resolveImageUrl, cn } from '@/lib/utils'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { DocumentTemplateDialog } from '@/components/documents/DocumentTemplateDialog'
+import { PrintSendMenu } from '@/components/documents/PrintSendMenu'
 import { DeliveryOrderColumnVisibility, SalesLineColumnMenu } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
@@ -34,7 +34,6 @@ export function DeliveryOrderDetailPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { toast } = useToast()
-  const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [chatterOpen, setChatterOpen] = useState(false)
   const [showInvoicesPanel, setShowInvoicesPanel] = useState(false)
 
@@ -498,14 +497,19 @@ export function DeliveryOrderDetailPage() {
               Cancel
             </HeaderActionButton>
           )}
-          <HeaderActionButton
-            variant="outline"
-            icon="solar:download-minimalistic-bold-duotone"
-            title="Download PDF"
-            onClick={() => setTemplateDialogOpen(true)}
-          >
-            PDF
-          </HeaderActionButton>
+          {/* #618: one print/send menu shared with every sales document. */}
+          <PrintSendMenu
+            documentType="delivery_order"
+            pdfPath={`/delivery-orders/${id}/pdf`}
+            filename={`DO-${deliveryOrder.delivery_order_number}.pdf`}
+            title="Delivery Order"
+            resolutionPath={`/documents/delivery_order/resolution?document_id=${id}`}
+            onEmail={() => {
+              setSendToEmail(deliveryOrder.customer?.email ?? '')
+              setSendCc('')
+              setSendDialogOpen(true)
+            }}
+          />
           {/* Destructive action always last. */}
           {deliveryOrder.status === 'draft' && (
             <HeaderActionButton
@@ -521,15 +525,6 @@ export function DeliveryOrderDetailPage() {
           )}
         </div>
       </div>
-
-      <DocumentTemplateDialog
-        open={templateDialogOpen}
-        onOpenChange={setTemplateDialogOpen}
-        documentType="delivery_order"
-        pdfPath={`/delivery-orders/${id}/pdf`}
-        filename={`DO-${deliveryOrder.delivery_order_number}.pdf`}
-        title="Delivery Order"
-      />
 
       <Dialog open={sendDialogOpen} onOpenChange={setSendDialogOpen}>
         <DialogContent>

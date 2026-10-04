@@ -16,6 +16,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\AccountingCountry\Services\TaxReportingService;
+use Modules\AccountingCountry\Singapore\Services\GstF5ReturnService;
 use Spatie\Permission\Models\Role;
 use Tests\TenantTestCase;
 
@@ -164,5 +165,36 @@ class TaxReportingReversalConsistencyTest extends TenantTestCase
         $this->assertSame(-9.0, (float) ($oct['trail_tax'] ?? 0), 'October trail carries the signed reversal');
         $this->assertSame(-9.0, (float) ($oct['gl_net'] ?? 0), 'October GL must match the trail');
         $this->assertTrue($october['balanced'], 'October must be balanced');
+    }
+
+    public function test_a_country_pack_return_shares_the_same_lifecycle_scope(): void
+    {
+        $entryId = $this->postTaxedInvoice('2026-09-15');
+        $this->reverse($entryId, '2026-10-02');
+
+        $f5 = app(GstF5ReturnService::class);
+
+        // September: box 1 comes from the trail (aggregator) and box 13 from
+        // the GL — one lifecycle scope, so both must keep the original.
+        $september = $f5->generate('2026-09');
+        $this->assertSame(
+            100.0,
+            (float) $september['boxes']['box_1_standard_rated_supplies'],
+            'September box 1 keeps the original supply'
+        );
+        $this->assertSame(
+            100.0,
+            (float) $september['boxes']['box_13_revenue'],
+            'September box 13 must use the same scope as the trail boxes and keep the original revenue'
+        );
+
+        // October: the GL side carries the signed reversal like every other
+        // tax report — not silently dropped because the row is lifecycle "reversed".
+        $october = $f5->generate('2026-10');
+        $this->assertSame(
+            -100.0,
+            (float) $october['boxes']['box_13_revenue'],
+            'October box 13 must carry the signed reversal'
+        );
     }
 }

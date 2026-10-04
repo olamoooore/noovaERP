@@ -50,8 +50,11 @@ final class BlockRenderer implements TemplateRendererInterface
     private function renderBlocks(array $blocks, string $context): string
     {
         if ($context === '') {
-            $totalsIndex = array_key_last(array_filter($blocks, fn ($block) => ($block['type'] ?? null) === 'totals'));
-            $footerIndex = array_key_last(array_filter($blocks, fn ($block) => ($block['type'] ?? null) === 'footer'));
+            // Issue #616: a block whose condition is false must not be hoisted
+            // into the pinned final summary — conditionPasses() is the same
+            // gate the rest of the block tree goes through.
+            $totalsIndex = array_key_last(array_filter($blocks, fn ($block) => ($block['type'] ?? null) === 'totals' && $this->conditionPasses($block)));
+            $footerIndex = array_key_last(array_filter($blocks, fn ($block) => ($block['type'] ?? null) === 'footer' && $this->conditionPasses($block)));
 
             if ($totalsIndex !== null && $footerIndex !== null) {
                 $totals = $blocks[$totalsIndex];
@@ -145,6 +148,11 @@ final class BlockRenderer implements TemplateRendererInterface
 
         $cells = '';
         foreach ($children as $child) {
+            // Issue #616: a conditional/conditioned child must be skipped
+            // here too — renderBlocks() is not on this path.
+            if (! $this->conditionPasses($child)) {
+                continue;
+            }
             $inner = $this->renderBlock($child, $context);
             $align = $child['align'] ?? 'left';
             $valign = $child['valign'] ?? 'top';

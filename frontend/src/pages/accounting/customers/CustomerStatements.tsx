@@ -3,7 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
-import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import { PrintSendMenu } from '@/components/documents/PrintSendMenu'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -98,35 +98,35 @@ export const CustomerStatements = () => {
     { debit: 0, credit: 0 }
   ), [transactions])
 
-  const generatePdf = useMutation({
+  const selectedCustomer = selectedCustomerQuery.data
+
+  // #618: the shared print/send menu renders through the existing statement
+  // endpoint (which persists the statement record) and resolves its default
+  // template from the selected customer's own context (#612 dimensions).
+  const statementPdfPath = `/accounting/customers/${customerId}/statement?start_date=${period.start}&end_date=${period.end}`
+  const statementResolutionPath = useMemo(() => {
+    const params = new URLSearchParams()
+    if (selectedCustomer?.legal_entity_id != null) params.set('entity_id', String(selectedCustomer.legal_entity_id))
+    if (selectedCustomer?.customer_group) params.set('customer_group', String(selectedCustomer.customer_group))
+    if (selectedCustomer?.language) params.set('language', String(selectedCustomer.language))
+    const query = params.toString()
+    return `/documents/customer_statement/resolution${query ? `?${query}` : ''}`
+  }, [selectedCustomer])
+
+  // Reuses the existing statement generation + mail service (`send_email`).
+  const emailStatement = useMutation({
     mutationFn: async () => {
-      // The route lives under /accounting/customers (the previous
-      // /customers/{id}/statement path does not exist and 404'd every time).
-      const response = await api.get(`/accounting/customers/${customerId}/statement`, {
-        params: {
-          start_date: period.start,
-          end_date: period.end,
-        },
-        responseType: 'blob',
+      const response = await api.post(`/accounting/customers/${customerId}/statement`, {
+        start_date: period.start,
+        end_date: period.end,
+        send_email: true,
       })
-      return response.data as BlobPart
+      return response.data
     },
-    onSuccess: (pdfBytes) => {
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' })
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      const customerCode = selectedCustomerQuery.data?.code || customerId || 'UNKNOWN'
-      link.download = `SOA_${customerCode}_${period.end.split('-').join('')}.pdf`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-      toast({ title: 'Statement of Account generated successfully' })
-    },
+    onSuccess: () => toast({ title: 'Statement emailed to the customer' }),
     onError: (error) => toast({
-      title: 'Failed to generate PDF',
-      description: getApiErrorMessage(error, 'The customer statement could not be generated.'),
+      title: 'Failed to email statement',
+      description: getApiErrorMessage(error, 'The customer statement could not be sent.'),
       variant: 'destructive',
     }),
   })
@@ -172,13 +172,26 @@ export const CustomerStatements = () => {
               ))}
             </SelectContent>
           </Select>
-          <HeaderActionButton
-            icon="solar:file-download-bold-duotone"
-            onClick={() => generatePdf.mutate()}
-            disabled={!customerId || generatePdf.isPending}
-          >
-            {generatePdf.isPending ? 'Generating…' : 'Generate PDF'}
-          </HeaderActionButton>
+          {customerId && (
+            <PrintSendMenu
+              documentType="customer_statement"
+              pdfPath={statementPdfPath}
+              filename={`SOA_${selectedCustomer?.code || customerId || 'UNKNOWN'}_${period.end.split('-').join('')}.pdf`}
+              title="Statement of Account"
+              resolutionPath={statementResolutionPath}
+              onEmail={() => {
+                if (!selectedCustomer?.email) {
+                  toast({
+                    variant: 'destructive',
+                    title: 'No email on file',
+                    description: 'Add an email address to the customer before sending the statement.',
+                  })
+                  return
+                }
+                emailStatement.mutate()
+              }}
+            />
+          )}
         </div>
       </div>
 

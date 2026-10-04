@@ -65,6 +65,11 @@ final class DefaultTemplates
                         ['type' => 'text', 'content' => '<b style="color:#6b7280;font-size:9px;text-transform:uppercase;">Ship To</b><br/><span style="font-size:10px;color:#374151;">{{ invoice.shipping_address }}</span>'],
                         ['type' => 'text', 'align' => 'right', 'content' => '{{ invoice.shipping_method }}'],
                     ]],
+                    // Issue #333: Incoterm (free-text code + place stored on
+                    // the document) prints when set; hidden when unset.
+                    ['type' => 'conditional', 'condition' => "{{ invoice.incoterm_code }} != ''", 'children' => [
+                        ['type' => 'text', 'align' => 'right', 'content' => '<b>Incoterm:</b> {{ invoice.incoterm_code }} &mdash; {{ invoice.incoterm_place }}'],
+                    ]],
                     // Issue #617: an acceptance copy is not a tax invoice. The
                     // render service supplies this token (acceptance_copy →
                     // "ACCEPTANCE COPY — NOT A TAX INVOICE"); it is empty for
@@ -336,22 +341,53 @@ final class DefaultTemplates
                             ['type' => 'image', 'url' => '{{ company.logo_url }}', 'width' => 120, 'align' => 'left'],
                             ['type' => 'text', 'content' => '<div style="font-size:20px;font-weight:bold;color:#111827;">{{ company.name }}</div><div style="font-size:10px;color:#6b7280;">{{ company.address }}</div><div style="font-size:10px;color:#6b7280;">{{ company.website }}</div>'],
                         ]],
-                        ['type' => 'text', 'align' => 'right', 'content' => '<div style="font-size:24px;font-weight:bold;color:#111827;">ACCOUNT STATEMENT</div>'],
+                        // Issue #616: a comparison is the same customer_statement
+                        // document; only the heading and body differ.
+                        ['type' => 'conditional', 'condition' => '{{ statement.period_type }} != comparison', 'align' => 'right', 'children' => [
+                            ['type' => 'text', 'align' => 'right', 'content' => '<div style="font-size:24px;font-weight:bold;color:#111827;">ACCOUNT STATEMENT</div>'],
+                        ]],
+                        ['type' => 'conditional', 'condition' => '{{ statement.period_type }} == comparison', 'align' => 'right', 'children' => [
+                            ['type' => 'text', 'align' => 'right', 'content' => '<div style="font-size:20px;font-weight:bold;color:#111827;">STATEMENT OF ACCOUNT — COMPARISON</div>'],
+                        ]],
                     ]],
                     ['type' => 'divider'],
                     ['type' => 'columns', 'gap' => 8, 'children' => [
                         ['type' => 'text', 'content' => '<b style="color:#6b7280;font-size:9px;text-transform:uppercase;">Customer</b><br/><b>{{ customer.name }}</b><br/><span style="font-size:10px;color:#6b7280;">{{ customer.code }} · {{ customer.email }}</span>'],
                         ['type' => 'text', 'align' => 'right', 'content' => '<b>Statement #:</b> {{ statement.number }}<br/><b>Period:</b> {{ statement.period_start }} to {{ statement.period_end }}<br/><b>Generated:</b> {{ statement.generated_at }}'],
                     ]],
-                    ['type' => 'spacer', 'height' => 8],
-                    ['type' => 'totals', 'rows' => [
+                    // Issue #616: comparison payload variant — rendered rows
+                    // come from the CustomerStatement data source, so the
+                    // tenant's own template branding applies.
+                    ['type' => 'conditional', 'condition' => '{{ statement.period_type }} == comparison', 'children' => [
+                        ['type' => 'spacer', 'height' => 10],
+                        ['type' => 'text', 'content' => '<b style="font-size:13px;color:#1a56db;">Outstanding Balance Summary</b>'],
+                        ['type' => 'table', 'source' => 'comparison_rows', 'paginate' => false, 'columns' => [
+                            ['label' => 'As Of', 'field' => 'as_of_date', 'width' => '24%'],
+                            ['label' => 'Invoices', 'field' => 'invoice_count', 'width' => '12%', 'align' => 'right'],
+                            ['label' => 'Total Outstanding', 'field' => 'total_outstanding', 'width' => '22%', 'align' => 'right', 'format' => 'money'],
+                            ['label' => 'Change', 'field' => 'outstanding_change', 'width' => '21%', 'align' => 'right', 'format' => 'money'],
+                            ['label' => 'Change (%)', 'field' => 'outstanding_change_pct', 'width' => '21%', 'align' => 'right'],
+                        ]],
+                        ['type' => 'spacer', 'height' => 12],
+                        ['type' => 'text', 'content' => '<b style="font-size:13px;color:#1a56db;">Aging Breakdown</b>'],
+                        ['type' => 'table', 'source' => 'comparison_rows', 'paginate' => false, 'columns' => [
+                            ['label' => 'As Of', 'field' => 'as_of_date', 'width' => '28%'],
+                            ['label' => 'Current', 'field' => 'aging_current', 'width' => '14%', 'align' => 'right', 'format' => 'money'],
+                            ['label' => '1-30', 'field' => 'aging_1_30', 'width' => '14%', 'align' => 'right', 'format' => 'money'],
+                            ['label' => '31-60', 'field' => 'aging_31_60', 'width' => '14%', 'align' => 'right', 'format' => 'money'],
+                            ['label' => '61-90', 'field' => 'aging_61_90', 'width' => '14%', 'align' => 'right', 'format' => 'money'],
+                            ['label' => '90+', 'field' => 'aging_90_plus', 'width' => '16%', 'align' => 'right', 'format' => 'money'],
+                        ]],
+                    ]],
+                    // The canonical statement body is skipped for the
+                    // comparison payload variant.
+                    ['type' => 'totals', 'condition' => '{{ statement.period_type }} != comparison', 'rows' => [
                         ['label' => 'Opening Balance', 'field' => 'totals.opening_balance', 'format' => 'money'],
                         ['label' => 'Total Debits', 'field' => 'totals.total_debits', 'format' => 'money'],
                         ['label' => 'Total Credits', 'field' => 'totals.total_credits', 'format' => 'money'],
                         ['label' => 'Closing Balance', 'field' => 'totals.closing_balance', 'format' => 'money', 'bold' => true],
                     ]],
-                    ['type' => 'spacer', 'height' => 8],
-                    ['type' => 'table', 'source' => 'transactions', 'columns' => [
+                    ['type' => 'table', 'source' => 'transactions', 'condition' => '{{ statement.period_type }} != comparison', 'columns' => [
                         ['label' => '#', 'field' => 'index', 'width' => '5%', 'align' => 'center'],
                         ['label' => 'Date', 'field' => 'date', 'width' => '12%'],
                         ['label' => 'Type', 'field' => 'type', 'width' => '13%'],
@@ -407,6 +443,11 @@ final class DefaultTemplates
                     ['type' => 'columns', 'gap' => 8, 'children' => [
                         ['type' => 'text', 'content' => '<b style="color:#6b7280;font-size:9px;text-transform:uppercase;">Ship To</b><br/><span style="font-size:10px;color:#374151;">{{ sales_order.shipping_address }}</span>'],
                         ['type' => 'text', 'align' => 'right', 'content' => '<b>Attention:</b> {{ sales_order.attention_to }}<br/><b>Warehouse:</b> {{ sales_order.warehouse }}'],
+                    ]],
+                    // Issue #333: Incoterm (free-text code + place stored on
+                    // the document) prints when set; hidden when unset.
+                    ['type' => 'conditional', 'condition' => "{{ sales_order.incoterm_code }} != ''", 'children' => [
+                        ['type' => 'text', 'align' => 'right', 'content' => '<b>Incoterm:</b> {{ sales_order.incoterm_code }} &mdash; {{ sales_order.incoterm_place }}'],
                     ]],
                     ['type' => 'spacer', 'height' => 12],
                     ['type' => 'table', 'source' => 'lines', 'paginate' => false, 'columns' => [

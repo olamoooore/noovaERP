@@ -6,13 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Mail\CustomerStatementMail;
 use App\Models\Customer;
 use App\Models\CustomerStatement;
-use App\Models\Setting;
 use App\Services\CustomerStatementService;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
@@ -103,28 +100,20 @@ class CustomerStatementController extends Controller
             ]);
         }
 
-        // Render through the tenant's own template when one is published, and
-        // otherwise fall back to the built-in statement layout. The renderer
-        // throws when a tenant has no published customer_statement template,
-        // which used to fail the entire request (500) even though a complete
-        // built-in layout exists.
-        try {
-            $pdfService = app(PdfGenerationServiceContract::class);
-            $result = $pdfService->render('customer_statement', (string) $statement->id, [
-                'format' => 'pdf',
-            ]);
-            $bytes = $result['bytes'];
-        } catch (\Throwable $e) {
-            Log::warning('CustomerStatementController: template render unavailable, using built-in layout', [
-                'statement_id' => $statement->id,
-                'error' => $e->getMessage(),
-            ]);
-
-            $bytes = Pdf::loadView('accounting.customer-statement-pdf', [
-                'payload' => $payload,
-                'statementId' => $statement->id,
-            ])->output();
-        }
+        // Every statement path renders through the tenant's own template
+        // (lazily seeding the system-default starter when none is assigned).
+        // The previous catch-fallback to the accounting.customer-statement-pdf
+        // Blade was a second, divergent layout outside the template platform (#616).
+        //
+        // Issue #618: an explicit template selection from the shared print/send
+        // menu is forwarded so "Choose template" actually renders that template
+        // (the menu's Preview/Print pass the resolver's pick the same way).
+        $pdfService = app(PdfGenerationServiceContract::class);
+        $result = $pdfService->render('customer_statement', (string) $statement->id, [
+            'format' => 'pdf',
+            'template_id' => $request->input('template'),
+        ]);
+        $bytes = $result['bytes'];
 
         $filename = $filenameBase.'.pdf';
 
@@ -168,7 +157,7 @@ class CustomerStatementController extends Controller
             'generated_by' => Auth::id(),
         ]);
 
-        $pdfRelativePath = $this->storeStatementPdf($statement, $payload);
+        $pdfRelativePath = $this->storeStatementPdf($statement);
         $statement->forceFill([
             'pdf_path' => $pdfRelativePath,
         ])->save();
@@ -377,182 +366,49 @@ class CustomerStatementController extends Controller
             'generated_at' => now()->format('Y-m-d'),
         ];
 
-        $pdf = Pdf::loadView('accounting.customer-statement-comparison-pdf', [
+        // Persist the comparison as a statement document so the template
+        // platform can resolve the tenant's customer_statement template and
+        // record the render; the tailored comparison Blade layout was a
+        // parallel, tenant-invisible renderer.
+        $statement = CustomerStatement::create([
+            'customer_id' => $customer->id,
+            'start_date' => $dates[0],
+            'end_date' => $dates[count($dates) - 1],
+            'period_type' => 'comparison',
+            'include_paid' => false,
             'payload' => $payload,
+            'generated_by' => Auth::id(),
         ]);
+
+        $result = app(PdfGenerationServiceContract::class)->render(
+            'customer_statement',
+            (string) $statement->id,
+            ['format' => 'pdf'],
+        );
 
         $filename = sprintf('SOA_Compare_%s_%s.pdf', $customer->code ?? 'UNKNOWN', now()->format('Ymd'));
 
-        return response($pdf->output(), 200, [
+        return response($result['bytes'], 200, [
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => 'inline; filename="'.$filename.'"',
         ]);
     }
 
     /**
-     * Render and persist the statement PDF. The Blade template consumes the
-     * canonical payload produced by CustomerStatementService (issue #191: the
-     * previous template expected keys the payload never contained, so every
-     * generate() call fatally errored).
+     * Render and persist the statement PDF through the template platform.
+     * The previous implementation rendered the accounting.customer-statement-pdf
+     * Blade directly, bypassing the tenant's assigned template (issue #616).
      */
-    private function computeAgingAtDate($invoices, Carbon $asOf): array
+    protected function storeStatementPdf(CustomerStatement $statement): string
     {
-        $aging = [
-            'current' => 0,
-            'days_1_30' => 0,
-            'days_31_60' => 0,
-            'days_61_90' => 0,
-            'days_90_plus' => 0,
-        ];
-
-        foreach ($invoices as $invoice) {
-            if (! $invoice->due_date) {
-                $aging['current'] += round((float) $invoice->balance, 2);
-
-                continue;
-            }
-
-            $dueDate = Carbon::parse($invoice->due_date);
-            $daysOverdue = $asOf->diffInDays($dueDate, false); // negative = past due
-
-            if ($daysOverdue >= 0) {
-                $aging['current'] += round((float) $invoice->balance, 2);
-            } elseif ($daysOverdue >= -30) {
-                $aging['days_1_30'] += round((float) $invoice->balance, 2);
-            } elseif ($daysOverdue >= -60) {
-                $aging['days_31_60'] += round((float) $invoice->balance, 2);
-            } elseif ($daysOverdue >= -90) {
-                $aging['days_61_90'] += round((float) $invoice->balance, 2);
-            } else {
-                $aging['days_90_plus'] += round((float) $invoice->balance, 2);
-            }
-        }
-
-        return $aging;
-    }
-
-    protected function buildStatementPayload(Customer $customer, array $validated): array
-    {
-        $query = DB::table('ar_transactions')
-            ->where('customer_id', $customer->id)
-            ->where('transaction_type', 'invoice')
-            ->where('status', 'posted')
-            ->where('transaction_date', '>=', $validated['start_date'])
-            ->where('transaction_date', '<=', $validated['end_date'])
-            ->orderBy('transaction_date', 'asc')
-            ->orderBy('created_at', 'asc');
-
-        $transactions = $query->get();
-
-        $openingBalance = DB::table('ar_transactions')
-            ->where('customer_id', $customer->id)
-            ->where('transaction_type', 'invoice')
-            ->where('status', 'posted')
-            ->where('transaction_date', '<', $validated['start_date'])
-            ->selectRaw('COALESCE(SUM(debit - credit), 0) as balance')
-            ->value('balance');
-
-        $runningBalance = (float) $openingBalance;
-        $statementLines = $transactions->map(function ($transaction) use (&$runningBalance) {
-            $runningBalance += $transaction->debit - $transaction->credit;
-
-            return [
-                'date' => $transaction->transaction_date,
-                'type' => $transaction->transaction_type,
-                'document_number' => $transaction->document_number,
-                'description' => ucfirst($transaction->transaction_type).' '.$transaction->document_number,
-                'due_date' => $transaction->due_date,
-                'debit' => (float) $transaction->debit,
-                'credit' => (float) $transaction->credit,
-                'balance' => round($runningBalance, 2),
-                'status' => $transaction->status,
-            ];
-        });
-
-        return [
-            'customer' => [
-                'id' => $customer->id,
-                'code' => $customer->code,
-                'name' => $customer->name,
-                'email' => $customer->email,
-                'address' => $customer->billing_address,
-                'payment_terms' => $customer->payment_terms,
-            ],
-            'period' => [
-                'start_date' => $validated['start_date'],
-                'end_date' => $validated['end_date'],
-                'type' => $validated['period_type'] ?? 'custom',
-            ],
-            'opening_balance' => round((float) $openingBalance, 2),
-            'closing_balance' => round($runningBalance, 2),
-            'total_debits' => round((float) $transactions->sum('debit'), 2),
-            'total_credits' => round((float) $transactions->sum('credit'), 2),
-            'transactions' => $statementLines->values(),
-            'total_amount_due' => round($runningBalance, 2),
-            'currency' => data_get(Setting::getValue('currency', ['code' => 'USD']), 'code', 'USD'),
-            'as_of_date' => $validated['end_date'],
-            'company' => $this->resolveCompanySettings(),
-            'bank' => $this->resolveBankSettings(),
-            'generated_at' => now()->toISOString(),
-            'include_paid' => (bool) ($validated['include_paid'] ?? false),
-        ];
-    }
-
-    /**
-     * Company block for the statement payload (used by the legacy blade PDF).
-     *
-     * Commit 4bb87d8e deleted this helper and resolveBankSettings() but left
-     * their call sites behind, so every statement PDF request failed with
-     * "Method ... does not exist" and returned 500. Restored, and sourced from
-     * the canonical company resolver so a statement matches every other
-     * document rather than reading a non-existent column off a key/value table.
-     */
-    private function resolveCompanySettings(): array
-    {
-        $company = \Modules\TemplateBuilder\Services\DataSource\CompanyDataSource::forCurrentTenant();
-
-        return [
-            'name' => $company['name'] ?? '',
-            'address' => $company['address'] ?? '',
-            'email' => $company['email'] ?? '',
-            'phone' => $company['phone'] ?? '',
-            'logo' => $company['logo_url'] ?? '',
-            'registration_number' => $company['registration_number'] ?? '',
-        ];
-    }
-
-    /**
-     * Bank details for the statement footer, from the tenant's own bank accounts.
-     *
-     * The template data source reads bank_name / account_name / account_number /
-     * swift_code / bank_code (the last two are simply absent from the table, so
-     * they resolve to empty strings).
-     */
-    private function resolveBankSettings(): array
-    {
-        $bank = DB::table('bank_accounts')
-            ->orderByDesc('is_active')
-            ->orderBy('id')
-            ->first();
-
-        return [
-            'bank_name' => $bank->bank_name ?? '',
-            'account_name' => $bank->account_name ?? '',
-            'account_number' => $bank->account_number ?? '',
-            'swift_code' => $bank->swift_code ?? '',
-            'bank_code' => $bank->bank_code ?? '',
-        ];
-    }
-
-    protected function storeStatementPdf(CustomerStatement $statement, array $payload): string
-    {
-        $pdf = Pdf::loadView('accounting.customer-statement-pdf', [
-            'payload' => $payload,
-            'statementId' => $statement->id,
-        ]);
+        $result = app(PdfGenerationServiceContract::class)->render(
+            'customer_statement',
+            (string) $statement->id,
+            ['format' => 'pdf'],
+        );
 
         $relativePath = sprintf('customer-statements/customer-%d/statement-%d.pdf', $statement->customer_id, $statement->id);
-        Storage::disk('public')->put($relativePath, $pdf->output());
+        Storage::disk('public')->put($relativePath, $result['bytes']);
 
         return $relativePath;
     }

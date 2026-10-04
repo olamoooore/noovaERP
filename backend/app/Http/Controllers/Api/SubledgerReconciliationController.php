@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\Reconciliation\APGLReconciliationService;
+use App\Services\Reconciliation\ARControlAccountNotConfiguredException;
 use App\Services\Reconciliation\ARGLReconciliationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -32,17 +33,27 @@ class SubledgerReconciliationController extends Controller
             $validated = $request->validate([
                 'as_of_date' => 'required|date',
                 'control_account_id' => 'nullable|integer|exists:chart_of_accounts,id',
+                'legal_entity_id' => 'nullable|integer|exists:legal_entities,id',
+                'tolerance' => 'nullable|numeric|min:0',
             ]);
+
+            // Explicit request value first; otherwise the entity resolved by
+            // ResolveEntityContext (X-Entity-Id / entity_id / user default).
+            $legalEntityId = $validated['legal_entity_id']
+                ?? $request->attributes->get('legal_entity_id');
 
             $result = $this->arReconciliationService->reconcile(
                 $validated['as_of_date'],
-                $validated['control_account_id'] ?? null
+                $validated['control_account_id'] ?? null,
+                $legalEntityId ? (int) $legalEntityId : null,
+                (float) ($validated['tolerance'] ?? 0.01),
             );
 
             return response()->json([
                 'success' => true,
                 'data' => [
                     'control_result_id' => $result->id,
+                    'legal_entity_id' => $result->legal_entity_id,
                     'as_of_date' => $result->as_of_date,
                     'subledger_balance' => $result->subledger_balance,
                     'gl_balance' => $result->gl_balance,
@@ -52,6 +63,19 @@ class SubledgerReconciliationController extends Controller
                     'is_reconciled' => $result->isPassed(),
                 ],
             ]);
+
+        } catch (ARControlAccountNotConfiguredException $e) {
+            // A missing mapping is a setup error, not a server failure — the
+            // caller must fix the account mapping and re-run.
+            Log::warning('AR reconciliation blocked: control account mapping missing', [
+                'error' => $e->getMessage(),
+                'request' => $request->all(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
 
         } catch (\Exception $e) {
             Log::error('AR to GL reconciliation failed', [
@@ -123,14 +147,27 @@ class SubledgerReconciliationController extends Controller
         try {
             $validated = $request->validate([
                 'as_of_date' => 'required|date',
+                'legal_entity_id' => 'nullable|integer|exists:legal_entities,id',
             ]);
 
-            $report = $this->arReconciliationService->generateReport($validated['as_of_date']);
+            $legalEntityId = $validated['legal_entity_id']
+                ?? $request->attributes->get('legal_entity_id');
+
+            $report = $this->arReconciliationService->generateReport(
+                $validated['as_of_date'],
+                $legalEntityId ? (int) $legalEntityId : null,
+            );
 
             return response()->json([
                 'success' => true,
                 'data' => $report,
             ]);
+
+        } catch (ARControlAccountNotConfiguredException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
 
         } catch (\Exception $e) {
             Log::error('AR reconciliation report failed', [
@@ -187,6 +224,7 @@ class SubledgerReconciliationController extends Controller
         try {
             $validated = $request->validate([
                 'limit' => 'nullable|integer|min:1|max:100|default:12',
+                'legal_entity_id' => 'nullable|integer|exists:legal_entities,id',
             ]);
 
             $controlName = match ($type) {
@@ -195,7 +233,12 @@ class SubledgerReconciliationController extends Controller
                 default => throw new \InvalidArgumentException("Invalid reconciliation type: {$type}"),
             };
 
+            // Only an explicit query filter — AP results are not entity-scoped
+            // yet, so a middleware-resolved entity must not blank its history.
+            $legalEntityId = $validated['legal_entity_id'] ?? null;
+
             $history = \App\Models\ReconciliationControlResult::forControl($controlName)
+                ->when($legalEntityId, fn ($q) => $q->where('legal_entity_id', (int) $legalEntityId))
                 ->orderByDesc('as_of_date')
                 ->limit($validated['limit'])
                 ->get();

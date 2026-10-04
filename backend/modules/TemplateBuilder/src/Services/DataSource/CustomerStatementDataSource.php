@@ -96,6 +96,31 @@ final class CustomerStatementDataSource implements DataSourceContract
             'document_count' => (int) ($bucket['document_count'] ?? 0),
         ], $payload['currency_totals'] ?? []);
 
+        // Issue #616: the year-over-year comparison is the same
+        // customer_statement document carrying a comparison payload. Rows are
+        // exposed so a tenant template can bind a table (with its own
+        // branding) instead of the caller rendering a hard-coded Blade layout.
+        $comparisonRows = [];
+        foreach (($payload['comparisons'] ?? []) as $i => $comparison) {
+            $delta = $payload['deltas'][$i - 1] ?? [];
+            $aging = is_array($comparison['aging'] ?? null) ? $comparison['aging'] : [];
+
+            $comparisonRows[] = [
+                'index' => $i + 1,
+                'as_of_date' => $comparison['as_of_date'] ?? '',
+                'total_outstanding' => (float) ($comparison['total_outstanding'] ?? 0),
+                'outstanding_change' => (float) ($delta['outstanding_change'] ?? 0),
+                'outstanding_change_pct' => (float) ($delta['outstanding_change_pct'] ?? 0),
+                'invoice_count' => (int) ($comparison['invoice_count'] ?? 0),
+                'invoice_count_change' => (int) ($delta['invoice_count_change'] ?? 0),
+                'aging_current' => (float) ($aging['current'] ?? 0),
+                'aging_1_30' => (float) ($aging['days_1_30'] ?? 0),
+                'aging_31_60' => (float) ($aging['days_31_60'] ?? 0),
+                'aging_61_90' => (float) ($aging['days_61_90'] ?? 0),
+                'aging_90_plus' => (float) ($aging['days_90_plus'] ?? 0),
+            ];
+        }
+
         return [
             'statement' => [
                 'number' => 'STMT-'.$statement->id,
@@ -117,6 +142,7 @@ final class CustomerStatementDataSource implements DataSourceContract
             ],
             'company' => $company,
             'transactions' => $transactions,
+            'comparison_rows' => $comparisonRows,
             'currency_totals' => $currencyTotals,
             'totals' => [
                 'opening_balance' => (float) ($payload['opening_balance'] ?? 0),
@@ -195,6 +221,18 @@ final class CustomerStatementDataSource implements DataSourceContract
                 ['token' => 'transactions.currency_code', 'label' => 'Document currency (per row)'],
                 ['token' => 'transactions.exchange_rate', 'label' => 'Snapshot rate (per row)'],
                 ['token' => 'currency_totals', 'label' => 'Per-currency subtotals table (binds a Table block)'],
+            ]],
+            ['group' => 'Comparison', 'fields' => [
+                ['token' => 'comparison_rows', 'label' => 'Comparison table (binds a Table block)'],
+                ['token' => 'comparison_rows.as_of_date', 'label' => 'As-of date (per row)'],
+                ['token' => 'comparison_rows.total_outstanding', 'label' => 'Total outstanding (per row)'],
+                ['token' => 'comparison_rows.outstanding_change', 'label' => 'Outstanding change (per row)'],
+                ['token' => 'comparison_rows.invoice_count', 'label' => 'Invoice count (per row)'],
+                ['token' => 'comparison_rows.aging_current', 'label' => 'Aging current (per row)'],
+                ['token' => 'comparison_rows.aging_1_30', 'label' => 'Aging 1-30 (per row)'],
+                ['token' => 'comparison_rows.aging_31_60', 'label' => 'Aging 31-60 (per row)'],
+                ['token' => 'comparison_rows.aging_61_90', 'label' => 'Aging 61-90 (per row)'],
+                ['token' => 'comparison_rows.aging_90_plus', 'label' => 'Aging 90+ (per row)'],
             ]],
         ];
     }

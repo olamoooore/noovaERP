@@ -34,6 +34,7 @@ const InvoicePaymentPage = lazy(() => import('@/pages/InvoicePaymentPage').then(
 const InvoiceImportPage = lazy(() => import('@/pages/InvoiceImportPage').then(m => ({ default: m.InvoiceImportPage })))
 const NotificationsPage = lazy(() => import('@/pages/NotificationsPage').then(m => ({ default: m.default })))
 const MyActivitiesPage = lazy(() => import('@/pages/Activities/MyActivitiesPage'))
+const OperationsConsolePage = lazy(() => import('@/pages/operations/OperationsConsolePage'))
 const SearchResultsPage = lazy(() => import('@/pages/SearchResultsPage').then(m => ({ default: m.default })))
 const ApprovalsInboxPage = lazy(() => import('@/pages/ApprovalsInboxPage').then(m => ({ default: m.default })))
 const InvoiceAcceptancePage = lazy(() => import('@/pages/InvoiceAcceptancePage').then(m => ({ default: m.default })))
@@ -353,6 +354,18 @@ function App() {
               {/* Main Layout Routes - with sidebar */}
               <Route element={<MainLayout />}>
                 <Route path="/dashboard" element={<DashboardPage />} />
+                <Route
+                  path="/operations/console"
+                  element={
+                    <RequirePermissionAccess
+                      permission="accounting.view|sales.view|settings.view"
+                      title="Operations Console access required"
+                      description="Your role does not include a permission for any exception type on the operations queue. Ask an Owner or Admin if you need access."
+                    >
+                      <OperationsConsolePage />
+                    </RequirePermissionAccess>
+                  }
+                />
                 <Route path="/master-contacts" element={<ContactsDashboardPage />} />
                 <Route path="/products/dashboard" element={<ProductDashboardPage />} />
                 <Route path="/products" element={<ProductsPage />} />

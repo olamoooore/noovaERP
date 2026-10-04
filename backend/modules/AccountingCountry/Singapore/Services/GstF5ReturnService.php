@@ -129,8 +129,11 @@ class GstF5ReturnService
 
     /**
      * #745 T12 AC2: Box 13 — revenue for the accounting period from POSTED
-     * revenue accounts (net credit), the same posted/not-reversed rules the
-     * tax aggregator uses. Out-of-scope supplies are still revenue.
+     * revenue accounts (net credit), through the SAME lifecycle scope the tax
+     * aggregator and every other tax report share (#860 RP6 AC1): originals
+     * kept — including `reversed`, because the reversal engine writes signed
+     * offsetting rows — and only voided/superseded entries excluded. Out-of-
+     * scope supplies are still revenue.
      */
     private function revenueForPeriod(string $period, ?int $legalEntityId): float
     {
@@ -143,17 +146,17 @@ class GstF5ReturnService
         $start = min($months).'-01';
         $end = date('Y-m-t', strtotime(max($months).'-01'));
 
-        return round((float) DB::table('journal_entry_lines as jel')
+        $query = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
             ->whereIn('coa.type', ['revenue', 'income'])
             ->where('je.status', 'posted')
             ->whereBetween('je.entry_date', [$start, $end])
-            ->where(function ($query) {
-                $query->whereNull('je.lifecycle_status')
-                    ->orWhereNotIn('je.lifecycle_status', ['reversed', 'voided', 'superseded']);
-            })
-            ->when($legalEntityId !== null, fn ($query) => $query->where('je.legal_entity_id', $legalEntityId))
+            ->when($legalEntityId !== null, fn ($query) => $query->where('je.legal_entity_id', $legalEntityId));
+
+        TaxReturnAggregator::applyLiveLifecycle($query);
+
+        return round((float) $query
             ->selectRaw('COALESCE(SUM(jel.credit - jel.debit), 0) as revenue')
             ->value('revenue'), 2);
     }
