@@ -264,6 +264,8 @@ class QuotationController extends Controller
             'contact_email' => 'nullable|email|max:255',
             'contact_phone' => 'nullable|string|max:50',
             'salesperson' => 'nullable|string|max:255',
+            // Issue #553: sales team (defaults from Sales Settings when blank).
+            'sales_team' => 'nullable|string|max:255',
             'delivery_lead_time' => 'nullable|string|max:255',
             'shipping_method' => 'nullable|string|max:255',
             'shipping_terms' => 'nullable|string|max:255',
@@ -312,6 +314,12 @@ class QuotationController extends Controller
             'tags.*' => 'string|max:100',
         ]);
 
+        // Issue #553: when the tenant enabled "default salesperson = current
+        // user" (and/or a per-user default team), stamp the blank fields on
+        // this new quotation. Explicit request values always win.
+        $validated = app(\App\Services\SalesDefaultsService::class)
+            ->applyCreationDefaults($validated, Auth::id());
+
         // A supplied price without an explicit intent is legacy behaviour
         // (kept verbatim); the wired UI always sends price_mode.
         $linePriceMode = static function (array $lineData): string {
@@ -352,6 +360,7 @@ class QuotationController extends Controller
                     'contact_email' => $validated['contact_email'] ?? null,
                     'contact_phone' => $validated['contact_phone'] ?? null,
                     'salesperson' => $validated['salesperson'] ?? null,
+                    'sales_team' => $validated['sales_team'] ?? null,
                     'delivery_lead_time' => $validated['delivery_lead_time'] ?? null,
                     'shipping_method' => $validated['shipping_method'] ?? null,
                     'shipping_terms' => $validated['shipping_terms'] ?? null,
@@ -522,6 +531,8 @@ class QuotationController extends Controller
             'contact_email' => 'nullable|email|max:255',
             'contact_phone' => 'nullable|string|max:50',
             'salesperson' => 'nullable|string|max:255',
+            // Issue #553: sales team (defaults from Sales Settings when blank).
+            'sales_team' => 'nullable|string|max:255',
             'delivery_lead_time' => 'nullable|string|max:255',
             'shipping_method' => 'nullable|string|max:255',
             'shipping_terms' => 'nullable|string|max:255',
@@ -817,6 +828,10 @@ class QuotationController extends Controller
                 // must travel onto the Sales Order (and from there the invoice),
                 // otherwise a quote accepted at 990 was ordered/billed at 1,100.
                 'discount_amount' => (float) ($quotation->discount_amount ?? 0),
+                // Issue #553: the accepted quote's salesperson/team travel with
+                // the order so the creation defaults never overwrite them.
+                'salesperson' => $quotation->salesperson,
+                'sales_team' => $quotation->sales_team,
                 'lines' => $salesLines,
                 'warehouse_id' => $warehouseId,
                 // FR-5.5: document currency + FX snapshot propagate verbatim.

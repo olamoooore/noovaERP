@@ -120,6 +120,13 @@ class SalesOrderService
             $data['accounting_status'] = $data['accounting_status'] ?? 'not_posted';
             $data['order_date'] = $data['order_date'] ?? now()->toDateString();
 
+            // Issue #553: creation defaults from Sales Settings — default
+            // salesperson = current user and the user's default team. Explicit
+            // caller values (POS/storefront conversions, quote conversions)
+            // always win.
+            $data = app(\App\Services\SalesDefaultsService::class)
+                ->applyCreationDefaults($data, $actorId);
+
             // Issue #140: stamp the legal entity from the customer (explicit
             // caller-supplied value wins) so orders are entity-scopable.
             if (empty($data['legal_entity_id']) && ! empty($data['customer_id'])) {

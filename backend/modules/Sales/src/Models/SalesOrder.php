@@ -62,6 +62,10 @@ class SalesOrder extends Model
         'attention_to',
         'contact_email',
         'contact_phone',
+        // Issue #553: default salesperson/team stamped at creation from the
+        // user's Sales Settings defaults (free text; see SalesDefaultsService).
+        'salesperson',
+        'sales_team',
         // Issue #149: online quotation acceptance / eSignature portal.
         'acceptance_token',
         'acceptance_expires_at',

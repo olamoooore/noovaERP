@@ -656,6 +656,31 @@ class CompanySettingsController extends Controller
                     'reviewer_user_ids' => array_values(array_map('intval', (array) \App\Models\Setting::getValue('sales.delivery_order.reviewer_user_ids', []))),
                     'reviewer_roles' => array_values((array) \App\Models\Setting::getValue('sales.delivery_order.reviewer_roles', [])),
                 ],
+                // Issue #553: creation defaults for new sales documents.
+                // salesperson_mode = current_user stamps the creating user's
+                // name; team_by_user maps a user id to their default team.
+                'defaults' => [
+                    'salesperson_mode' => (string) \App\Models\Setting::getValue('sales.defaults.salesperson_mode', 'none'),
+                    'team_by_user' => (static function (): array {
+                        $map = \App\Models\Setting::getValue('sales.defaults.team_by_user', []);
+                        if (! is_array($map)) {
+                            return [];
+                        }
+
+                        $clean = [];
+                        foreach ($map as $userId => $team) {
+                            if (is_string($team) && trim($team) !== '') {
+                                $clean[(string) $userId] = trim($team);
+                            }
+                        }
+
+                        return $clean;
+                    })(),
+                ],
+                // Issue #553: line pricelist presentation on rendered documents.
+                'pricelist' => [
+                    'display' => (string) \App\Models\Setting::getValue('sales.pricelist.display', 'show_discount'),
+                ],
             ],
         ]);
     }
@@ -705,6 +730,11 @@ class CompanySettingsController extends Controller
             'delivery_order.reviewer_user_ids.*' => 'integer|exists:users,id',
             'delivery_order.reviewer_roles' => 'nullable|array',
             'delivery_order.reviewer_roles.*' => 'string|in:owner,admin,manager,sales,accountant,cashier,viewer',
+            // Issue #553: new-document creation defaults + pricelist display.
+            'defaults.salesperson_mode' => 'nullable|in:none,current_user',
+            'defaults.team_by_user' => 'nullable|array',
+            'defaults.team_by_user.*' => 'nullable|string|max:255',
+            'pricelist.display' => 'nullable|in:show_discount,net_price',
         ]);
 
         $map = [
@@ -735,6 +765,10 @@ class CompanySettingsController extends Controller
             'invoice_threshold.reviewer_roles' => 'sales.invoice_threshold.reviewer_roles',
             'delivery_order.reviewer_user_ids' => 'sales.delivery_order.reviewer_user_ids',
             'delivery_order.reviewer_roles' => 'sales.delivery_order.reviewer_roles',
+            // Issue #553: new-document defaults + pricelist display.
+            'defaults.salesperson_mode' => 'sales.defaults.salesperson_mode',
+            'defaults.team_by_user' => 'sales.defaults.team_by_user',
+            'pricelist.display' => 'sales.pricelist.display',
         ];
 
         // MRD R10.3: tax writes go to the ONE canonical Setting tax block
@@ -776,6 +810,18 @@ class CompanySettingsController extends Controller
                 'default_tax_id' => null,
                 'jurisdiction' => null,
             ], $taxSetting));
+        }
+
+        // Issue #553: drop blank team assignments before persisting so clearing
+        // an input actually removes the mapping, and trim surrounding spaces.
+        if (isset($validated['defaults']['team_by_user']) && is_array($validated['defaults']['team_by_user'])) {
+            $cleanTeams = [];
+            foreach ($validated['defaults']['team_by_user'] as $userId => $team) {
+                if (is_string($team) && trim($team) !== '') {
+                    $cleanTeams[(string) $userId] = trim($team);
+                }
+            }
+            $validated['defaults']['team_by_user'] = $cleanTeams;
         }
 
         // $validated arrives nested (['invoice' => ['key' => value]]), while

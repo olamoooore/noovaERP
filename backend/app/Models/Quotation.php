@@ -70,6 +70,9 @@ class Quotation extends Model
         'contact_email',
         'contact_phone',
         'salesperson',
+        // Issue #553: default sales team stamped from the user's Sales
+        // Settings default (free text alongside the free-text salesperson).
+        'sales_team',
         'delivery_lead_time',
         'shipping_method',
         'shipping_terms',

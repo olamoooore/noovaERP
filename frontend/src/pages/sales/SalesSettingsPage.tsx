@@ -7,6 +7,7 @@ import {
   NumberingSettings,
   ApprovalSettings,
   InvoiceDefaultsSettings,
+  SalesDefaultsSettings,
   PaymentPortalSettings,
   TaxPricingSettings,
   DeliverySettings,
@@ -33,6 +34,13 @@ const SECTIONS: SettingsSectionDef[] = [
     description: 'Terms, notes, and posting behaviour',
     icon: 'solar:document-add-bold-duotone',
     component: InvoiceDefaultsSettings,
+  },
+  {
+    key: 'sales-defaults',
+    title: 'Sales Defaults',
+    description: 'Default salesperson, team and pricelist display',
+    icon: 'solar:user-hand-up-bold-duotone',
+    component: SalesDefaultsSettings,
   },
   {
     key: 'payments',

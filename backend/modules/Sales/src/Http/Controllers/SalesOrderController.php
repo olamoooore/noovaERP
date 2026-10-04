@@ -124,6 +124,10 @@ class SalesOrderController extends Controller
             'notes' => 'nullable|string',
             'internal_notes' => 'nullable|string',
             'customer_reference' => 'nullable|string|max:100',
+            // Issue #553: salesperson/team free text; creation defaults apply
+            // server-side when omitted (SalesDefaultsService).
+            'salesperson' => 'nullable|string|max:255',
+            'sales_team' => 'nullable|string|max:255',
             'order_date' => 'nullable|date',
             'required_date' => 'nullable|date',
             // Issue #408: editable promise date + partial-delivery policy.
