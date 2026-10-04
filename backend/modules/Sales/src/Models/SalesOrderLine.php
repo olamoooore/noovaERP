@@ -26,6 +26,7 @@ class SalesOrderLine extends Model
         'quantity_invoiced',
         'invoicing_policy',
         'quantity_cancelled',
+        'backorder_quantity',
         'unit',
         // Issue #685: the sales UoM this line was entered in. Null (or the
         // base unit) means the persisted quantity is already in stock units.
@@ -46,6 +47,11 @@ class SalesOrderLine extends Model
         'source_line_id',
     ];
 
+    /**
+     * #379 (O10): the line is on backorder when stock could not be reserved.
+     */
+    protected $appends = ['is_backordered'];
+
     protected $casts = [
         'sequence' => 'integer',
         'quantity' => 'decimal:4',
@@ -54,6 +60,7 @@ class SalesOrderLine extends Model
         'quantity_delivered' => 'decimal:4',
         'quantity_invoiced' => 'decimal:4',
         'quantity_cancelled' => 'decimal:4',
+        'backorder_quantity' => 'decimal:4',
         'unit_price' => 'decimal:2',
         'base_unit_price' => 'decimal:4',
         'pricing_trace' => 'array',
@@ -140,5 +147,10 @@ class SalesOrderLine extends Model
         );
         $this->tax_amount = $calc['tax'];
         $this->line_total = $calc['gross'];
+    }
+
+    public function getIsBackorderedAttribute(): bool
+    {
+        return (float) ($this->backorder_quantity ?? 0) > 0;
     }
 }

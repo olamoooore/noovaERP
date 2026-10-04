@@ -1191,20 +1191,29 @@ class SalesOrderService
                 $this->reservationService->reserve(
                     productId: $line->product_id,
                     warehouseId: $warehouseId,
-                    quantity: (int) round((float) $line->quantity),
+                    // #379 (O10): base-unit quantities are decimal — (int)
+                    // round() reserved 3 for 2.5 and nothing for 0.4.
+                    quantity: (float) $line->quantity,
                     sourceDocumentType: 'SalesOrder',
                     sourceDocumentId: $order->id,
                     sourceDocumentLineId: $line->id,
                     notes: "Reserved for sales order {$order->sales_order_number}",
                 );
+
+                if ((float) ($line->backorder_quantity ?? 0) !== 0.0) {
+                    $line->update(['backorder_quantity' => 0]);
+                }
             } catch (\Throwable $e) {
-                // Out-of-stock (or other reservation error): fall back to a backorder
-                // instead of aborting the whole order / import.
-                Log::warning('Stock reservation skipped — order proceeds as backorder', [
+                // Out-of-stock (or other reservation error): the line becomes
+                // a VISIBLE backorder instead of a silent log line (#379).
+                $line->update(['backorder_quantity' => (float) $line->quantity]);
+
+                Log::warning('Stock reservation skipped — line flagged as backorder', [
                     'sales_order_id' => $order->id,
                     'sales_order_number' => $order->sales_order_number,
                     'product_id' => $line->product_id,
                     'quantity' => $line->quantity,
+                    'backorder_quantity' => (float) $line->quantity,
                     'warehouse_id' => $warehouseId,
                     'error' => $e->getMessage(),
                 ]);
