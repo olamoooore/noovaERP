@@ -268,7 +268,7 @@ export function SalesOrdersPage() {
             </div>
           ) : (
             <>
-              <SalesLineColumnVisibility tableClass="sales-orders-listing-columns" columns={listingColumns(['Order #', 'Customer', 'Channel', 'Date', 'Created Date', 'Total', 'Status', 'Actions'])}>
+              <SalesLineColumnVisibility tableClass="sales-orders-listing-columns" columns={listingColumns(['Order #', 'Customer', 'Channel', 'Date', 'Commitment', 'Expected', 'Created Date', 'Total', 'Status', 'Actions'])}>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -276,6 +276,9 @@ export function SalesOrdersPage() {
                     <SortableHead label="Customer" sortKey="customer.name" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                     <SortableHead label="Channel" sortKey="channel" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                     <SortableHead label="Date" sortKey="order_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    {/* Issue #408: promise date, computed expected date and the late flag. */}
+                    <SortableHead label="Commitment" sortKey="commitment_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <SortableHead label="Expected" sortKey="expected_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                     <SortableHead label="Created Date" sortKey="created_at" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                     <SortableHead label="Total" sortKey="total" activeKey={sortKey} direction={sortDir} onSort={toggleSort} align="right" />
                     <SortableHead label="Status" sortKey="status" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
@@ -336,6 +339,18 @@ export function SalesOrdersPage() {
                         <Badge variant="outline" className="capitalize">{order.channel || 'admin'}</Badge>
                       </TableCell>
                       <TableCell>{order.order_date ? formatDate(order.order_date) : '-'}</TableCell>
+                      {/* Issue #408: late orders (past the promise, undelivered). */}
+                      <TableCell>
+                        <div className="flex items-center gap-1.5">
+                          <span>{order.commitment_date ? formatDate(order.commitment_date) : '-'}</span>
+                          {order.is_late && (
+                            <Badge variant="destructive" className="shrink-0" title="Commitment date has passed and the order is not fully delivered">
+                              Late
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>{order.expected_date ? formatDate(order.expected_date) : '-'}</TableCell>
                       <TableCell>{formatDate(order.created_at || order.order_date)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(order.total || 0)}</TableCell>
                       <TableCell>

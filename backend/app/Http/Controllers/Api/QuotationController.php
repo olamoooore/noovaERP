@@ -254,6 +254,9 @@ class QuotationController extends Controller
             'quotation_number' => 'nullable|string|max:60|unique:quotations,quotation_number',
             'quotation_date' => 'nullable|date',
             'valid_until' => 'nullable|date',
+            // Issue #408: promise date + partial-delivery policy.
+            'commitment_date' => 'nullable|date',
+            'shipping_policy' => 'nullable|in:asap,when_all_ready',
             'customer_reference' => 'nullable|string|max:100',
             'internal_reference' => 'nullable|string|max:255',
             'credit_terms' => 'nullable|string|max:255',
@@ -338,6 +341,9 @@ class QuotationController extends Controller
                     'quotation_number' => isset($validated['quotation_number']) ? trim($validated['quotation_number']) : null,
                     'quotation_date' => $validated['quotation_date'] ?? now()->toDateString(),
                     'valid_until' => $validated['valid_until'] ?? null,
+                    // Issue #408: commitment date + shipping policy.
+                    'commitment_date' => $validated['commitment_date'] ?? null,
+                    'shipping_policy' => $validated['shipping_policy'] ?? 'asap',
                     'customer_id' => $validated['customer_id'],
                     'customer_reference' => $validated['customer_reference'] ?? null,
                     'internal_reference' => $validated['internal_reference'] ?? null,
@@ -502,6 +508,9 @@ class QuotationController extends Controller
             'customer_id' => 'exists:customers,id',
             'quotation_date' => 'date',
             'valid_until' => 'nullable|date',
+            // Issue #408: promise date + partial-delivery policy.
+            'commitment_date' => 'nullable|date',
+            'shipping_policy' => 'nullable|in:asap,when_all_ready',
             'customer_reference' => 'nullable|string|max:100',
             'internal_reference' => 'nullable|string|max:255',
             'credit_terms' => 'nullable|string|max:255',
@@ -825,6 +834,10 @@ class QuotationController extends Controller
                 // chain (SO → DO → invoice) stays traceable from any of them.
                 'customer_reference' => $quotation->customer_reference,
                 'internal_reference' => $quotation->internal_reference,
+                // Issue #408: the accepted promise date and partial-delivery
+                // policy travel with the order (and from there to its DOs).
+                'commitment_date' => $quotation->commitment_date?->toDateString(),
+                'shipping_policy' => $quotation->shipping_policy ?: 'asap',
                 // #291: the header discount is part of the accepted price — it
                 // must travel onto the Sales Order (and from there the invoice),
                 // otherwise a quote accepted at 990 was ordered/billed at 1,100.

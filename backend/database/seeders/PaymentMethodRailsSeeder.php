@@ -26,8 +26,16 @@ class PaymentMethodRailsSeeder extends Seeder
         ],
     ];
 
-    public function run(): void
+    /**
+     * The country may arrive as a callWith parameter (e.g. from the country
+     * seeders) or on the public property when the seeder is invoked directly.
+     */
+    public function run(?string $countryCode = null): void
     {
+        if ($countryCode !== null) {
+            $this->countryCode = $countryCode;
+        }
+
         $country = strtoupper($this->countryCode);
         foreach (self::RAILS[$country] ?? [] as $rail) {
             PaymentMethod::updateOrCreate(

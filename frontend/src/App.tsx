@@ -33,6 +33,7 @@ const InvoiceDetailPage = lazy(() => import('@/pages/InvoiceDetailPage').then(m 
 const InvoicePaymentPage = lazy(() => import('@/pages/InvoicePaymentPage').then(m => ({ default: m.InvoicePaymentPage })))
 const InvoiceImportPage = lazy(() => import('@/pages/InvoiceImportPage').then(m => ({ default: m.InvoiceImportPage })))
 const NotificationsPage = lazy(() => import('@/pages/NotificationsPage').then(m => ({ default: m.default })))
+const MyActivitiesPage = lazy(() => import('@/pages/Activities/MyActivitiesPage'))
 const SearchResultsPage = lazy(() => import('@/pages/SearchResultsPage').then(m => ({ default: m.default })))
 const ApprovalsInboxPage = lazy(() => import('@/pages/ApprovalsInboxPage').then(m => ({ default: m.default })))
 const InvoiceAcceptancePage = lazy(() => import('@/pages/InvoiceAcceptancePage').then(m => ({ default: m.default })))
@@ -427,6 +428,7 @@ function App() {
                 <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
                 <Route path="/invoices/:id/payment" element={<InvoicePaymentPage />} />
                 <Route path="/notifications" element={<NotificationsPage />} />
+                <Route path="/activities" element={<MyActivitiesPage />} />
                 <Route path="/search" element={<SearchResultsPage />} />
                 <Route path="/approvals" element={<ApprovalsInboxPage />} />
                 <Route path="/accounting" element={<Navigate to="/accounting/dashboard" replace />} />

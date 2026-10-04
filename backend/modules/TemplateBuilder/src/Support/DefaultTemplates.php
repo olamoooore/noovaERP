@@ -65,6 +65,13 @@ final class DefaultTemplates
                         ['type' => 'text', 'content' => '<b style="color:#6b7280;font-size:9px;text-transform:uppercase;">Ship To</b><br/><span style="font-size:10px;color:#374151;">{{ invoice.shipping_address }}</span>'],
                         ['type' => 'text', 'align' => 'right', 'content' => '{{ invoice.shipping_method }}'],
                     ]],
+                    // Issue #617: an acceptance copy is not a tax invoice. The
+                    // render service supplies this token (acceptance_copy →
+                    // "ACCEPTANCE COPY — NOT A TAX INVOICE"); it is empty for
+                    // the canonical final invoice, so the banner is hidden.
+                    ['type' => 'conditional', 'condition' => "{{ document_variant }} != ''", 'children' => [
+                        ['type' => 'text', 'align' => 'center', 'content' => '<div style="border:2px solid #b91c1c;color:#b91c1c;font-weight:bold;letter-spacing:2px;padding:6px;font-size:13px;">{{ document_variant }}</div>'],
+                    ]],
                     ['type' => 'spacer', 'height' => 12],
                     ['type' => 'table', 'source' => 'lines', 'paginate' => true, 'show_page_subtotal' => true, 'subtotal_label' => 'Page Subtotal', 'subtotal_field' => 'line_total', 'subtotal_format' => 'money', 'columns' => [
                         ['label' => '#', 'field' => 'index', 'width' => '6%', 'align' => 'center'],

@@ -22,7 +22,9 @@ use Modules\Sales\Models\SalesOrderLine;
  *   - Case No       → case_no (e.g. "1st", "2nd")
  *   - Case Tag      → case_tag (e.g. "FOC", "GEH", "HTx 60s", "Clinic", "CCK")
  *   - Case Date     → case_date
- *   - Patient Name  → patient_reference (non-identifying)
+ *   - Patient Name  → patient_name_encrypted (issue #568: PHI goes to the
+ *                     encrypted field only; patient_reference keeps the
+ *                     non-identifying case code)
  *   - Delivered To  → delivered_to
  *   - Other Note    → notes
  *
@@ -62,7 +64,11 @@ class CaseImportService
                 'case_tag' => $data['case_tag'] ?? null,
                 'customer_id' => $invoice->customer_id,
                 'invoice_id' => $invoice->id,
-                'patient_reference' => $data['patient_name'] ?? null,
+                // Issue #568 (BS7): the CSV patient name is PHI — it goes to
+                // the encrypted column only, never the searchable plain
+                // patient_reference, which keeps the non-identifying case code.
+                'patient_reference' => $caseNo,
+                'patient_name_encrypted' => $data['patient_name'] ?? null,
                 'case_date' => $data['case_date'] ?? null,
                 'delivered_to' => $data['delivered_to'] ?? null,
                 'notes' => $data['other_note'] ?? null,
@@ -98,7 +104,9 @@ class CaseImportService
                 'case_no' => $caseNo,
                 'case_tag' => $data['case_tag'] ?? null,
                 'customer_id' => $quotation->customer_id,
-                'patient_reference' => $data['patient_name'] ?? null,
+                // Issue #568 (BS7): PHI goes to the encrypted column only.
+                'patient_reference' => $caseNo,
+                'patient_name_encrypted' => $data['patient_name'] ?? null,
                 'case_date' => $data['case_date'] ?? null,
                 'delivered_to' => $data['delivered_to'] ?? null,
                 'notes' => $data['other_note'] ?? null,
@@ -128,13 +136,16 @@ class CaseImportService
 
         return DB::transaction(function () use ($do, $data) {
             $isFoc = $this->isFocTag($data['case_tag'] ?? null);
+            $caseNo = $this->buildDeliveryOrderCaseNo($data['case_no'] ?? null, $do->delivery_order_number);
 
             $case = MedicalCase::create([
-                'case_no' => $this->buildDeliveryOrderCaseNo($data['case_no'] ?? null, $do->delivery_order_number),
+                'case_no' => $caseNo,
                 'case_tag' => $data['case_tag'] ?? null,
                 'customer_id' => $do->customer_id,
                 'delivery_address_id' => null,
-                'patient_reference' => $data['patient_name'] ?? null,
+                // Issue #568 (BS7): PHI goes to the encrypted column only.
+                'patient_reference' => $caseNo,
+                'patient_name_encrypted' => $data['patient_name'] ?? null,
                 'case_date' => $data['case_date'] ?? null,
                 'delivered_to' => $data['delivered_to'] ?? null,
                 'notes' => $data['other_note'] ?? null,

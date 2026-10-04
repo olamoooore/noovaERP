@@ -188,11 +188,17 @@ class PayrollApiTest extends HrmTestCase
 
     public function test_can_approve_calculated_run(): void
     {
+        // #793: approval posts the accrual, so the run must carry payable
+        // totals (a zero-net run has nothing to accrue and is refused).
         $run = PayrollRun::create([
             'reference' => 'PAY-2026-03',
             'period_start' => '2026-03-01',
             'period_end' => '2026-03-31',
             'status' => 'calculated',
+            'total_gross' => 3000,
+            'total_deductions' => 0,
+            'total_net' => 3000,
+            'currency' => 'MYR',
         ]);
 
         $response = $this->postJson("/api/v1/hrm/payroll-runs/{$run->id}/approve");
@@ -222,11 +228,16 @@ class PayrollApiTest extends HrmTestCase
 
     public function test_can_mark_paid(): void
     {
+        // #793: marking paid posts the payment, which needs a payable amount.
         $run = PayrollRun::create([
             'reference' => 'PAY-2026-03',
             'period_start' => '2026-03-01',
             'period_end' => '2026-03-31',
             'status' => 'approved',
+            'total_gross' => 3000,
+            'total_deductions' => 0,
+            'total_net' => 3000,
+            'currency' => 'MYR',
         ]);
 
         $response = $this->postJson("/api/v1/hrm/payroll-runs/{$run->id}/mark-paid");

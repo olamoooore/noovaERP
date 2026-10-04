@@ -10,6 +10,7 @@ use App\Models\Invoice;
 use App\Models\InvoiceActivityLog;
 use App\Models\InvoiceEvidence;
 use App\Models\Product;
+use App\Models\Setting;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Platform\Locking\RecordVersionConflictException;
@@ -31,6 +32,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Sales\Services\DeliveryOrderService;
 use Modules\Sales\Services\SalesOrderService;
@@ -533,6 +535,9 @@ class InvoiceController extends Controller
             'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'lines.*.tax_inclusive' => 'nullable|boolean',
+            // #309 (X9): a per-line exemption reason travels with an exempt
+            // line (the customer profile supplies the default).
+            'lines.*.tax_exemption_reason' => 'nullable|string|max:120',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
             // MRD pricelist-multicurrency FR-5.1/5.2: document currency +
             // optional explicit price list for this document.
@@ -541,6 +546,15 @@ class InvoiceController extends Controller
             'tags' => 'nullable|array',
             'tags.*' => 'string|max:100',
         ]);
+
+        // #315: sales.invoice.allow_custom_number gates hand-typed numbers. A
+        // client-supplied number is rejected (not silently ignored or
+        // renumbered) so the UI and the API agree on the tenant policy.
+        if (trim((string) ($validated['invoice_number'] ?? '')) !== '' && ! $this->customInvoiceNumberingAllowed()) {
+            throw ValidationException::withMessages([
+                'invoice_number' => 'Custom invoice numbers are disabled by the sales setting sales.invoice.allow_custom_number. Clear the number to use the automatic one.',
+            ]);
+        }
 
         // Lock-date check: block creating invoice dated in a closed period
         $invoiceDate = $validated['invoice_date'] ?? now()->toDateString();
@@ -670,6 +684,15 @@ class InvoiceController extends Controller
     }
 
     /**
+     * #315: tenant policy for hand-typed invoice numbers. Defaults to allowed
+     * so tenants that never touched the setting keep the historical behaviour.
+     */
+    private function customInvoiceNumberingAllowed(): bool
+    {
+        return (bool) Setting::getValue('sales.invoice.allow_custom_number', true);
+    }
+
+    /**
      * Shared invoice creation flow used by both store() and import().
      * Creates the backing SalesOrder (admin channel, full lifecycle) + Invoice.
      *
@@ -778,6 +801,15 @@ class InvoiceController extends Controller
             ], fn ($v) => $v !== null));
 
             // Recreate lines
+            // #309 (X9): a re-imported draft honours the customer's tax
+            // exemption exactly like a freshly created invoice.
+            $draftCustomerId = $existingInvoice->customer_id !== null ? (int) $existingInvoice->customer_id : null;
+            $draftDate = $existingInvoice->invoice_date?->toDateString();
+            $draftCustomerExempt = \App\Support\CustomerTaxProfileResolver::isExempt($draftCustomerId, $draftDate);
+            $draftExemptionReason = $draftCustomerExempt
+                ? \App\Support\CustomerTaxProfileResolver::exemptionReason($draftCustomerId, $draftDate)
+                : null;
+
             foreach ($data['lines'] as $line) {
                 $lineProduct = ($line['line_type'] ?? 'product') === 'product' && ! empty($line['product_id'])
                     ? \App\Models\Product::find($line['product_id'])
@@ -818,12 +850,13 @@ class InvoiceController extends Controller
                     'uom_id' => $lineUom?->id,
                     'unit' => $lineUom?->abbreviation,
                     'unit_price' => $line['unit_price'] ?? 0,
-                    'tax_rate' => $line['tax_rate'] ?? 0,
+                    'tax_rate' => $draftCustomerExempt ? 0 : ($line['tax_rate'] ?? 0),
                     'tax_inclusive' => array_key_exists('tax_inclusive', $line)
                         ? (bool) $line['tax_inclusive']
                         : ($lineProduct !== null
                             && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $data['invoice_date'] ?? null)),
                     'discount_amount' => $line['discount_amount'] ?? 0,
+                    'tax_exemption_reason' => $line['tax_exemption_reason'] ?? $draftExemptionReason,
                 ], array_filter($priced, fn ($v) => $v !== null)));
             }
 
@@ -1287,10 +1320,26 @@ class InvoiceController extends Controller
             'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'lines.*.tax_inclusive' => 'nullable|boolean',
+            // #309 (X9): a per-line exemption reason travels with an exempt
+            // line (the customer profile supplies the default).
+            'lines.*.tax_exemption_reason' => 'nullable|string|max:120',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
         ], [
             'invoice_number.unique' => 'This invoice number is already used by another invoice (including deleted ones). Choose a different number.',
         ]);
+
+        // #315: renumbering is a custom-number action too. An unchanged number
+        // echoed back by the edit form is not a renumber and stays allowed.
+        $requestedNumber = trim((string) ($validated['invoice_number'] ?? ''));
+        if (
+            $requestedNumber !== ''
+            && $requestedNumber !== (string) $invoice->invoice_number
+            && ! $this->customInvoiceNumberingAllowed()
+        ) {
+            throw ValidationException::withMessages([
+                'invoice_number' => 'Custom invoice numbers are disabled by the sales setting sales.invoice.allow_custom_number. Keep the current number.',
+            ]);
+        }
 
         foreach (['doctor', 'requestor', 'billing', 'shipping'] as $contactType) {
             $nameKey = $contactType.'_contact_name';
@@ -1368,6 +1417,15 @@ class InvoiceController extends Controller
                         'base_currency_code' => $invoice->base_currency_code,
                     ]);
 
+                    // #309 (X9): an edited draft honours the customer's tax
+                    // exemption exactly like a freshly created invoice.
+                    $editCustomerId = $invoice->customer_id !== null ? (int) $invoice->customer_id : null;
+                    $editDate = $invoice->invoice_date?->toDateString();
+                    $editCustomerExempt = \App\Support\CustomerTaxProfileResolver::isExempt($editCustomerId, $editDate);
+                    $editExemptionReason = $editCustomerExempt
+                        ? \App\Support\CustomerTaxProfileResolver::exemptionReason($editCustomerId, $editDate)
+                        : null;
+
                     $invoice->lines()->delete();
                     foreach ($lines as $line) {
                         $lineProduct = ($line['line_type'] ?? 'product') === 'product' && ! empty($line['product_id'])
@@ -1390,12 +1448,13 @@ class InvoiceController extends Controller
                             'expiry_date' => $line['expiry_date'] ?? null,
                             'quantity' => $line['quantity'],
                             'unit_price' => $line['unit_price'] ?? 0,
-                            'tax_rate' => $line['tax_rate'] ?? 0,
+                            'tax_rate' => $editCustomerExempt ? 0 : ($line['tax_rate'] ?? 0),
                             'tax_inclusive' => array_key_exists('tax_inclusive', $line)
                                 ? (bool) $line['tax_inclusive']
                                 : ($lineProduct !== null
                                     && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $invoice->invoice_date?->toDateString())),
                             'discount_amount' => $line['discount_amount'] ?? 0,
+                            'tax_exemption_reason' => $line['tax_exemption_reason'] ?? $editExemptionReason,
                         ], array_filter($priced, fn ($v) => $v !== null)));
                     }
                 }
@@ -1652,9 +1711,10 @@ class InvoiceController extends Controller
         ]);
 
         $channel = $validated['channel'];
-        $documentType = $validated['document_type'] ?? ($invoice->status === 'posted'
-            ? 'final_invoice'
-            : 'acceptance_copy');
+        // Issue #617: leave the document type unset when the caller did not
+        // choose one so InvoiceDeliveryService can apply the #539
+        // "document type on send" setting (falling back to invoice status).
+        $documentType = $validated['document_type'] ?? null;
 
         try {
             if (! empty($validated['resend'])) {
@@ -1892,7 +1952,10 @@ class InvoiceController extends Controller
 
         $expiresDays = $validated['expires_in_days'] ?? 30;
         $sendEmail = $validated['send_email'] ?? true;
-        $documentType = $validated['document_type'] ?? 'final_invoice';
+        // Issue #617: null lets InvoiceDeliveryService apply the #539
+        // "document type on send" setting / invoice-status default instead of
+        // this endpoint hardcoding the final invoice.
+        $documentType = $validated['document_type'] ?? null;
         $recipientOverride = $validated['recipient_email'] ?? null;
 
         if ($sendEmail && $recipientOverride && ! empty($validated['save_customer_email']) && $invoice->customer) {

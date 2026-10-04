@@ -78,3 +78,50 @@ describe('buildCustomerPayload', () => {
     })
   })
 })
+
+/**
+ * #436 (CU8): the create dialog captures a structured billing address with an
+ * ISO country code and sends it as addresses[]; the flat billing_* form fields
+ * must not leak into the payload.
+ */
+describe('buildCustomerPayload — structured billing address', () => {
+  it('maps the flat billing fields to an addresses[] billing record and normalises the country', () => {
+    const payload = buildCustomerPayload({
+      name: 'Klinik Sihat',
+      billing_street: ' 12 Jalan Ampang ',
+      billing_street2: 'Suite 4-1',
+      billing_city: 'Kuala Lumpur',
+      billing_state: '14',
+      billing_zip: '50450',
+      billing_country: 'my',
+      credit_limit: '',
+      payment_terms: '30',
+    })
+
+    expect(payload.addresses).toEqual([
+      {
+        type: 'billing',
+        street: '12 Jalan Ampang',
+        street2: 'Suite 4-1',
+        city: 'Kuala Lumpur',
+        state: '14',
+        zip: '50450',
+        country: 'MY',
+        is_default: true,
+      },
+    ])
+    expect('billing_street' in payload).toBe(false)
+    expect('billing_country' in payload).toBe(false)
+  })
+
+  it('omits addresses when every billing field is empty', () => {
+    const payload = buildCustomerPayload({
+      name: 'Walk-in',
+      billing_street: '',
+      billing_city: '   ',
+      billing_country: '',
+    })
+
+    expect(payload.addresses).toBeUndefined()
+  })
+})

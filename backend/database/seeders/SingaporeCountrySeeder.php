@@ -96,71 +96,10 @@ class SingaporeCountrySeeder extends Seeder
             return;
         }
 
-        $sgTaxRates = [
-            [
-                'name' => 'GST Standard Rated 9%',
-                'code' => 'SG-GST9',
-                'rate' => 9.00,
-                'type' => 'gst',
-                'description' => 'Singapore GST — standard rated supply at 9% (effective 1 Jan 2024)',
-            ],
-            [
-                'name' => 'GST Zero Rated 0%',
-                'code' => 'SG-GST0',
-                'rate' => 0.00,
-                'type' => 'gst',
-                'description' => 'Singapore GST — zero-rated supply (exports, international services)',
-            ],
-            [
-                'name' => 'GST Exempt',
-                'code' => 'SG-GSTEX',
-                'rate' => 0.00,
-                'type' => 'gst',
-                'description' => 'Singapore GST — exempt supply (financial services, residential leasing)',
-            ],
-            [
-                'name' => 'GST Out of Scope',
-                'code' => 'SG-GSTOS',
-                'rate' => 0.00,
-                'type' => 'gst',
-                'description' => 'Singapore GST — out-of-scope supply (third country sales, private transactions)',
-            ],
-            [
-                'name' => 'Withholding Tax 15% (SG)',
-                'code' => 'SG-WHT15',
-                'rate' => 15.00,
-                'type' => 'withholding',
-                'description' => 'Singapore Withholding Tax — 15% on payments to non-residents (Section 45)',
-            ],
-            [
-                'name' => 'Withholding Tax 10% (SG)',
-                'code' => 'SG-WHT10',
-                'rate' => 10.00,
-                'type' => 'withholding',
-                'description' => 'Singapore Withholding Tax — 10% on management fees to non-residents',
-            ],
-        ];
-
-        $inserted = 0;
-        $skipped = 0;
-
-        foreach ($sgTaxRates as $rate) {
-            if (DB::table('tax_rates')->where('code', $rate['code'])->exists()) {
-                $skipped++;
-
-                continue;
-            }
-
-            DB::table('tax_rates')->insert(array_merge($rate, [
-                'tax_account_id' => $taxAccount->id,
-                'is_compound' => false,
-                'is_active' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]));
-            $inserted++;
-        }
-
-        $this->command?->info("SG Tax Rates: {$inserted} inserted, {$skipped} skipped.");
+        // #771 A11: tax rules come from the tax pack (#733/#739). This seeder
+        // no longer writes the retired tax_rates table, which created a third
+        // tax store with unsourced WHT rates that MigrateLegacyTaxRates could
+        // copy into the live engine.
+        $this->command?->info('SG tax rates: skipped — tax rules come from the tax pack.');
     }
 }

@@ -200,7 +200,10 @@ class Issue564MedicalCaseImportTest extends TenantTestCase
         $this->assertSame('HTx 60s', $case->case_tag);
         $this->assertSame((int) $this->customer->id, (int) $case->customer_id);
         $this->assertSame('delivered', $case->status);
-        $this->assertSame('Import Patient', $case->patient_reference);
+        // Issue #568 (BS7): the imported name is PHI — encrypted at rest, not
+        // in the searchable patient_reference, which keeps the case code.
+        $this->assertSame('Import Patient', $case->patient_name);
+        $this->assertSame($case->case_no, $case->patient_reference);
 
         $item = MedicalCaseItem::latest('id')->firstOrFail();
         $this->assertSame((int) $case->id, (int) $item->medical_case_id);

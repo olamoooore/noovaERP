@@ -176,7 +176,8 @@ class TaxEngineService
         // an unconfigured tenant. A document charges tax only when the tenant
         // has an explicit rule (or an explicit product-level configuration);
         // otherwise it resolves to no-tax with a deterministic warning.
-        return $this->none($jurisdiction, 'No applicable tax rule was found. Configure a tax rule before charging tax in this jurisdiction/direction.');
+        // #451: unclassified lines carry the tenant-level treatment default.
+        return $this->none($jurisdiction, 'No applicable tax rule was found. Configure a tax rule before charging tax in this jurisdiction/direction.', true);
     }
 
     /**
@@ -277,7 +278,12 @@ class TaxEngineService
             'regime' => $regime,
             'scope' => $tax->scope ?: $direction,
             'tax_type' => $tax->type,
-            'treatment' => $tax->treatment ?: ($tax->rate > 0 ? 'standard_rated' : 'zero_rated'),
+            // #451: a rule without a declared treatment falls back to the
+            // tenant-level treatment default (zero-rate rules only — a
+            // charging rule stays standard-rated).
+            'treatment' => $tax->treatment ?: ($tax->rate > 0
+                ? 'standard_rated'
+                : ($this->defaultTreatment() ?? 'zero_rated')),
             'source' => $source,
             // MRD R4.2: recoverability travels with the resolved rule.
             'creditable' => $tax->creditable !== null ? (bool) $tax->creditable : true,
@@ -285,13 +291,40 @@ class TaxEngineService
         ];
     }
 
-    private function none(string $jurisdiction, string $reason): array
+    /**
+     * #451: tenant-level default tax treatment persisted by Sales Settings
+     * (`tax.default_tax_treatment`). Maps the UI option vocabulary onto the
+     * engine's treatment vocabulary; absent or unknown values return null so
+     * the existing fallbacks stay in place. This never changes a rate.
+     */
+    public function defaultTreatment(): ?string
     {
+        $value = Setting::getValue('tax', [])['default_tax_treatment'] ?? null;
+
+        if (! is_string($value)) {
+            return null;
+        }
+
+        return match (strtolower(trim($value))) {
+            'standard', 'standard_rated' => 'standard_rated',
+            'zero_rated' => 'zero_rated',
+            'exempt' => 'exempt',
+            'out_of_scope' => 'out_of_scope',
+            default => null,
+        };
+    }
+
+    private function none(string $jurisdiction, string $reason, bool $useTenantDefaultTreatment = false): array
+    {
+        $treatment = $useTenantDefaultTreatment
+            ? ($this->defaultTreatment() ?? 'out_of_scope')
+            : 'out_of_scope';
+
         return [
             'rate' => 0.0, 'is_inclusive' => false, 'tax_code' => 'NO-TAX',
             'tax_id' => null, 'tax_name' => 'No Tax', 'jurisdiction' => $jurisdiction,
             'regime' => $this->packs()->regime($jurisdiction),
-            'scope' => 'both', 'treatment' => 'out_of_scope', 'source' => 'none', 'reason' => $reason,
+            'scope' => 'both', 'treatment' => $treatment, 'source' => 'none', 'reason' => $reason,
         ];
     }
 

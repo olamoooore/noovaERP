@@ -37,6 +37,8 @@ class MalaysiaCountrySeeder extends Seeder
         'Other Income' => ['type' => 'revenue',   'subtype' => 'income_other'],
         'Expenses' => ['type' => 'expense',   'subtype' => 'expense'],
         'Current Year Earnings' => ['type' => 'equity',    'subtype' => 'equity'],
+        // #762 A2: equity accounts and equity distributions.
+        'Equity' => ['type' => 'equity',    'subtype' => 'equity'],
     ];
 
     public function run(): void
@@ -102,12 +104,14 @@ class MalaysiaCountrySeeder extends Seeder
             ['code' => '221200', 'name' => 'Receipt in Advance (Customer Prepayments)', 'excel_type' => 'Current Liabilities'],
             ['code' => '221300', 'name' => 'SST Control Account',                   'excel_type' => 'Current Liabilities'],
             ['code' => '221400', 'name' => 'Provision for Taxation',                'excel_type' => 'Current Liabilities'],
-            ['code' => '221500', 'name' => 'Proposed Dividend',                     'excel_type' => 'Current Liabilities'],
+            // #762 A2: dividends declared after the reporting date are not liabilities (MFRS 110).
+            ['code' => '221500', 'name' => 'Proposed Dividend',                     'excel_type' => 'Equity'],
             ['code' => '221600', 'name' => 'Other Payable',                         'excel_type' => 'Payable'],
-            ['code' => '310000', 'name' => 'Paid Capital',                          'excel_type' => 'Current Liabilities'],
-            ['code' => '320000', 'name' => 'Accumulated Profit & Loss',             'excel_type' => 'Current Liabilities'],
-            ['code' => '330000', 'name' => 'Profit & Loss Account',                 'excel_type' => 'Current Liabilities'],
-            ['code' => '340000', 'name' => 'Short-term Borrowing',                  'excel_type' => 'Current Liabilities'],
+            ['code' => '310000', 'name' => 'Paid Capital',                          'excel_type' => 'Equity'],
+            ['code' => '320000', 'name' => 'Accumulated Profit & Loss',             'excel_type' => 'Equity'],
+            ['code' => '330000', 'name' => 'Profit & Loss Account',                 'excel_type' => 'Equity'],
+            // #762 A2: a borrowing, numbered in the liability range rather than the equity block.
+            ['code' => '240000', 'name' => 'Short-term Borrowing',                  'excel_type' => 'Current Liabilities'],
             ['code' => '410000', 'name' => 'Trade Income',                          'excel_type' => 'Income'],
             ['code' => '420000', 'name' => 'Other Income and Gains',                'excel_type' => 'Income'],
             ['code' => '421000', 'name' => 'Sundry Income',                         'excel_type' => 'Income'],
@@ -136,7 +140,8 @@ class MalaysiaCountrySeeder extends Seeder
             ['code' => '521600', 'name' => 'Overseas Traveling',                    'excel_type' => 'Expenses'],
             ['code' => '521800', 'name' => 'Wages & Salaries',                      'excel_type' => 'Expenses'],
             ['code' => '521810', 'name' => 'KWSP Contribution',                     'excel_type' => 'Expenses'],
-            ['code' => '521820', 'name' => 'PCB Contribution',                      'excel_type' => 'Expenses'],
+            // #762 A2: PCB is employee tax withheld — a liability accrual, not an employer cost.
+            ['code' => '521820', 'name' => 'PCB Contribution',                      'excel_type' => 'Current Liabilities'],
             ['code' => '521830', 'name' => 'EIS Contribution',                      'excel_type' => 'Expenses'],
             ['code' => '521900', 'name' => 'Bonus Payment',                         'excel_type' => 'Expenses'],
             ['code' => '522100', 'name' => 'SST',                                   'excel_type' => 'Expenses'],
@@ -146,7 +151,7 @@ class MalaysiaCountrySeeder extends Seeder
             ['code' => '522500', 'name' => 'Audit Fees',                            'excel_type' => 'Expenses'],
             ['code' => '522600', 'name' => 'Bad Debts',                             'excel_type' => 'Expenses'],
             ['code' => '522800', 'name' => 'Legal & Professional Fees',             'excel_type' => 'Expenses'],
-            ['code' => '522900', 'name' => 'Dividend',                              'excel_type' => 'Expenses'],
+            ['code' => '522900', 'name' => 'Dividend',                              'excel_type' => 'Equity'],
             ['code' => '523100', 'name' => 'Disposal',                              'excel_type' => 'Expenses'],
             ['code' => '523400', 'name' => 'Repair and Maintenance',                'excel_type' => 'Expenses'],
             ['code' => '523500', 'name' => 'Advertising',                           'excel_type' => 'Expenses'],
@@ -209,78 +214,10 @@ class MalaysiaCountrySeeder extends Seeder
             return;
         }
 
-        $myTaxRates = [
-            [
-                'name' => 'SST Sales Tax 10%',
-                'code' => 'MY-SST10',
-                'rate' => 10.00,
-                'type' => 'sales',
-                'description' => 'Malaysia Sales Tax (SST) — standard 10% rate on taxable goods',
-            ],
-            [
-                'name' => 'SST Sales Tax 5%',
-                'code' => 'MY-SST5',
-                'rate' => 5.00,
-                'type' => 'sales',
-                'description' => 'Malaysia Sales Tax (SST) — reduced 5% rate on specified goods',
-            ],
-            [
-                'name' => 'SST Service Tax 8%',
-                'code' => 'MY-SVT8',
-                'rate' => 8.00,
-                'type' => 'sales',
-                'description' => 'Malaysia Service Tax (SST) — 8% on taxable services (effective 2024)',
-            ],
-            [
-                'name' => 'SST Service Tax 6%',
-                'code' => 'MY-SVT6',
-                'rate' => 6.00,
-                'type' => 'sales',
-                'description' => 'Malaysia Service Tax (SST) — 6% on standard services',
-            ],
-            [
-                'name' => 'SST Exempt',
-                'code' => 'MY-SST0',
-                'rate' => 0.00,
-                'type' => 'sales',
-                'description' => 'Malaysia SST — zero-rated / exempt supply',
-            ],
-            [
-                'name' => 'Withholding Tax 10% (MY)',
-                'code' => 'MY-WHT10',
-                'rate' => 10.00,
-                'type' => 'withholding',
-                'description' => 'Malaysia Withholding Tax — 10% on royalties, technical fees',
-            ],
-            [
-                'name' => 'Withholding Tax 15% (MY)',
-                'code' => 'MY-WHT15',
-                'rate' => 15.00,
-                'type' => 'withholding',
-                'description' => 'Malaysia Withholding Tax — 15% on contract payments to non-residents',
-            ],
-        ];
-
-        $inserted = 0;
-        $skipped = 0;
-
-        foreach ($myTaxRates as $rate) {
-            if (DB::table('tax_rates')->where('code', $rate['code'])->exists()) {
-                $skipped++;
-
-                continue;
-            }
-
-            DB::table('tax_rates')->insert(array_merge($rate, [
-                'tax_account_id' => $taxAccount->id,
-                'is_compound' => false,
-                'is_active' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]));
-            $inserted++;
-        }
-
-        $this->command?->info("MY Tax Rates: {$inserted} inserted, {$skipped} skipped.");
+        // #771 A11: tax rules come from the tax pack (#733/#739). This seeder
+        // no longer writes the retired tax_rates table, which created a third
+        // tax store with wrong types (service tax as sales) and unsourced WHT
+        // rates that MigrateLegacyTaxRates could copy into the live engine.
+        $this->command?->info('MY tax rates: skipped — tax rules come from the tax pack.');
     }
 }

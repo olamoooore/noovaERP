@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { NotificationBell } from '@/components/layout/NotificationBell'
+import { ActivitiesBadge } from '@/components/layout/ActivitiesBadge'
 import { GlobalSearch } from '@/components/search/GlobalSearch'
 
 function greetingFor(hour: number): { label: string; icon: string } {
@@ -80,6 +81,9 @@ export function TopBar() {
       </div>
 
       <div className="flex shrink-0 items-center gap-3">
+        {/* My Activities — open follow-ups assigned to me (issue #637) */}
+        <ActivitiesBadge />
+
         {/* Notifications */}
         <NotificationBell />
 

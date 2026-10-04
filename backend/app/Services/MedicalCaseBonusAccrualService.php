@@ -92,24 +92,15 @@ class MedicalCaseBonusAccrualService
                 continue;
             }
 
-            $discount = 0.0;
-
-            if ($rule->discount_amount !== null) {
-                $discount = (float) $rule->discount_amount;
-            } elseif ($rule->discount_percentage !== null) {
-                $discount = round(
-                    $newlyDeliveredQty * (float) $item->unit_price * ((float) $rule->discount_percentage / 100),
-                    2
-                );
-            }
+            $calculation = $rule->calculateDiscount($newlyDeliveredQty, (float) $item->unit_price);
 
             $usage = BonusSchemeUsage::create([
                 'customer_bonus_scheme_id' => $assignment->id,
                 'sales_order_item_id' => $item->sales_order_item_id,
                 'medical_case_item_id' => $item->id,
                 'qualifying_qty' => $newlyDeliveredQty,
-                'discount_amount' => $discount,
-                'foc_qty' => (float) ($rule->foc_qty ?? 0),
+                'discount_amount' => round($calculation['discount'], 2),
+                'foc_qty' => $calculation['foc_qty'],
                 'status' => 'pending',
             ]);
 

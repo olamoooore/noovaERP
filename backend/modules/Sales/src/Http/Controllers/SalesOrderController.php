@@ -45,6 +45,19 @@ class SalesOrderController extends Controller
             $query->where('channel', $request->channel);
         }
 
+        // Issue #408: the #365 action queue can request only late orders
+        // (past the commitment date and not fully delivered) server-side.
+        if ($request->boolean('late')) {
+            $query->whereNotNull('commitment_date')
+                ->whereDate('commitment_date', '<', now()->toDateString())
+                ->whereNotIn('status', ['cancelled'])
+                ->whereHas('lines', function ($lineQuery) {
+                    $lineQuery->where(function ($typeQuery) {
+                        $typeQuery->whereNull('line_type')->orWhereNotIn('line_type', ['note', 'section']);
+                    })->whereRaw('quantity - quantity_cancelled > quantity_delivered + 0.0001');
+                });
+        }
+
         if ($request->has('customer_id')) {
             $query->where('customer_id', $request->customer_id);
         }
@@ -113,6 +126,9 @@ class SalesOrderController extends Controller
             'customer_reference' => 'nullable|string|max:100',
             'order_date' => 'nullable|date',
             'required_date' => 'nullable|date',
+            // Issue #408: editable promise date + partial-delivery policy.
+            'commitment_date' => 'nullable|date',
+            'shipping_policy' => ['nullable', \Illuminate\Validation\Rule::in(SalesOrder::SHIPPING_POLICIES)],
             'currency_code' => 'nullable|string|size:3',
             'discount_amount' => 'nullable|numeric|min:0',
             'lines' => 'required|array|min:1',
@@ -241,6 +257,9 @@ class SalesOrderController extends Controller
             'internal_notes' => 'nullable|string',
             'customer_reference' => 'nullable|string|max:100',
             'required_date' => 'nullable|date',
+            // Issue #408: editable promise date + partial-delivery policy.
+            'commitment_date' => 'nullable|date',
+            'shipping_policy' => ['nullable', \Illuminate\Validation\Rule::in(SalesOrder::SHIPPING_POLICIES)],
             'discount_amount' => 'nullable|numeric|min:0',
         ]);
 

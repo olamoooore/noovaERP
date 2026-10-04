@@ -20,6 +20,17 @@ use Modules\TemplateBuilder\Services\DataSource\DataSourceRegistry;
 
 final class PdfGenerationService implements PdfGenerationServiceContract
 {
+    /**
+     * Issue #617: display text for each non-canonical document variant. The
+     * canonical document (no variant, or a variant key not listed here) has
+     * no banner.
+     *
+     * @var array<string,string>
+     */
+    private const DOCUMENT_VARIANTS = [
+        'acceptance_copy' => 'ACCEPTANCE COPY — NOT A TAX INVOICE',
+    ];
+
     public function __construct(
         private readonly DataSourceRegistry $dataSources,
         private readonly TemplateRendererService $renderer,
@@ -30,12 +41,17 @@ final class PdfGenerationService implements PdfGenerationServiceContract
     public function render(string $documentType, string $documentId, array $options = [], ?array $context = null): array
     {
         $format = $options['format'] ?? 'pdf';
+        $variant = $this->documentVariantText($options['document_variant'] ?? null);
 
         // Issue #613 (TP3): a posted/issued document is reprinted from its
         // stored immutable copy — never re-rendered against the current
         // template or current company data. An explicit template selection or
         // a signed render is an intentional one-off and bypasses the snapshot.
-        if (! isset($options['template_id']) && ! isset($options['signature'])) {
+        //
+        // Issue #617: a requested variant (acceptance copy) is a different
+        // document from the issued tax invoice, so it must never be served
+        // from that immutable copy either.
+        if ($variant === null && ! isset($options['template_id']) && ! isset($options['signature'])) {
             $stored = $this->storedCopy($documentType, $documentId, $format);
 
             if ($stored !== null) {
@@ -100,6 +116,10 @@ final class PdfGenerationService implements PdfGenerationServiceContract
         }
 
         $data = $this->dataSources->loadPayload($documentType, $documentId);
+        // Issue #617: expose the requested variant to the template. Empty on
+        // the canonical (final) document, so the shipped default invoice
+        // template's conditional banner stays hidden.
+        $data['document_variant'] = $variant ?? '';
         $built = $this->build($template, $data, $format, $options['signature'] ?? null);
 
         $ttl = (int) config('templatebuilder.pdf.cache_ttl_min', 1440);
@@ -195,6 +215,19 @@ final class PdfGenerationService implements PdfGenerationServiceContract
         }
 
         return $this->build($template, $data, $format);
+    }
+
+    /**
+     * Issue #617: display text for a requested document variant, or null when
+     * the request is for the canonical document (no/unknown variant key).
+     */
+    private function documentVariantText(?string $variant): ?string
+    {
+        if ($variant === null || $variant === '') {
+            return null;
+        }
+
+        return self::DOCUMENT_VARIANTS[$variant] ?? null;
     }
 
     /**

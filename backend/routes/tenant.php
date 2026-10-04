@@ -66,7 +66,6 @@ Route::middleware([
         Route::post('/events/bookings/confirm-payment', [\Modules\EventManagement\Http\Controllers\PublicEventController::class, 'confirmPayment']);
     });
 
-
     // -------------------------------------------------------------------------
     // Storefront public runtime (generic commerce module, MRD P1).
     // Tenant from host (InitializeTenantForPublicAccess, fail-closed), gated by
@@ -283,6 +282,15 @@ Route::middleware([
         Route::post('/{subjectType}/{subjectId}/attachments', [\App\Http\Controllers\Api\ChatterController::class, 'uploadAttachment']);
         Route::get('/{subjectType}/{subjectId}/attachments/{attachmentId}/download', [\App\Http\Controllers\Api\ChatterController::class, 'downloadAttachment']);
         Route::delete('/{subjectType}/{subjectId}/attachments/{attachmentId}', [\App\Http\Controllers\Api\ChatterController::class, 'deleteAttachment']);
+    });
+
+    // Issue #637 — "My Activities": cross-document follow-ups assigned to the
+    // authenticated user. Own-only: the controller filters on assigned_to_id
+    // and re-checks the matching document view permission per row.
+    Route::prefix('activities')->group(function () {
+        Route::get('/mine', [\App\Http\Controllers\Api\MyActivityController::class, 'mine']);
+        Route::post('/{activityId}/complete', [\App\Http\Controllers\Api\MyActivityController::class, 'complete'])->whereNumber('activityId');
+        Route::post('/{activityId}/snooze', [\App\Http\Controllers\Api\MyActivityController::class, 'snooze'])->whereNumber('activityId');
     });
 
     // Document correction endpoints

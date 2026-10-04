@@ -72,6 +72,15 @@ class InvoiceService
             $data['due_date'] = $data['due_date'] ?? now()->addDays(30);
             $data['status'] = 'draft';
 
+            // #309 (X9): tax resolution consults the customer's tax profile —
+            // an exemption valid on the document date suppresses the line tax
+            // and records its reason for the e-invoice.
+            $customerId = isset($data['customer_id']) ? (int) $data['customer_id'] : null;
+            $customerExempt = \App\Support\CustomerTaxProfileResolver::isExempt($customerId, $data['invoice_date']);
+            $customerExemptionReason = $customerExempt
+                ? \App\Support\CustomerTaxProfileResolver::exemptionReason($customerId, $data['invoice_date'])
+                : null;
+
             // Apply the tenant's approval default when the caller did not
             // decide explicitly, so every creation path honours the setting.
             if (! array_key_exists('requires_approval', $data)) {
@@ -144,9 +153,12 @@ class InvoiceService
                     // propagate from the SO line through the creation token.
                     'base_unit_price' => $lineData['base_unit_price'] ?? null,
                     'pricing_trace' => $lineData['pricing_trace'] ?? null,
-                    'tax_rate' => $lineData['tax_rate'] ?? 0,
+                    'tax_rate' => $customerExempt ? 0 : ($lineData['tax_rate'] ?? 0),
                     'tax_inclusive' => $lineTaxInclusive,
                     'discount_amount' => $lineData['discount_amount'] ?? 0,
+                    // #309 (X9): the line records its exemption reason so the
+                    // MyInvois E line carries it; an explicit line reason wins.
+                    'tax_exemption_reason' => $lineData['tax_exemption_reason'] ?? $customerExemptionReason,
                 ]);
             }
 

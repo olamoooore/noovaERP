@@ -513,6 +513,9 @@ class InvoiceDataSource implements DataSourceContract
                 ['token' => 'invoice.delivery_date', 'label' => 'Delivery Date'],
                 ['token' => 'invoice.notes', 'label' => 'Notes'],
                 ['token' => 'invoice.terms', 'label' => 'Terms & Conditions'],
+                // Issue #617: filled by the render service when a non-final
+                // variant (acceptance copy) of the invoice is requested.
+                ['token' => 'document_variant', 'label' => 'Document Variant Banner (blank for the final invoice)'],
             ]],
             ['group' => 'Customer', 'fields' => [
                 ['token' => 'customer.code', 'label' => 'Customer Code'],
@@ -630,6 +633,9 @@ class InvoiceDataSource implements DataSourceContract
                 'status' => 'valid',
                 'validation_link' => 'https://myinvois.example/0f8fad5b-d9cb-469f-a165-70867728950e/share/LONGID',
             ],
+            // Issue #617: overridden by the render service for variants
+            // (acceptance copies); empty means the canonical final invoice.
+            'document_variant' => '',
             'lines' => [
                 ['index' => 1, 'sku' => 'SKU-1001', 'description' => 'Enterprise licence — 50 seats', 'quantity' => 1, 'unit_price' => 4500.00, 'tax_rate' => 6.0, 'discount' => 0, 'line_total' => 4770.00, 'lot_number' => 'LOT-2607A', 'expiry_date' => '2029-06-07'],
                 ['index' => 2, 'sku' => 'SKU-2099', 'description' => 'On-site training (2 days)',     'quantity' => 2, 'unit_price' => 1200.00, 'tax_rate' => 6.0, 'discount' => 0, 'line_total' => 2544.00, 'lot_number' => '', 'expiry_date' => ''],

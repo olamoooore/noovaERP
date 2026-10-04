@@ -168,6 +168,13 @@ class StatutoryReturnController extends Controller
             ], 422);
         }
 
+        // #857 RP5: filings are always per legal entity. A single-entity tenant
+        // defaults to that entity so the filing closes its activity (legacy
+        // key-0 filings are mapped to it when reading).
+        if ($legalEntityId === null) {
+            $legalEntityId = $this->singleLegalEntityId();
+        }
+
         // The F5 has manual/declaration boxes; SST-02 does not accept inputs.
         $return = $country === 'SG'
             ? app(GstF5ReturnService::class)->generate($period, $legalEntityId, $boxInputs)
@@ -483,6 +490,17 @@ class StatutoryReturnController extends Controller
     private function tenantHasMultipleEntities(): bool
     {
         return \Illuminate\Support\Facades\DB::table('legal_entities')->count() > 1;
+    }
+
+    /**
+     * #857 RP5: the tenant's single legal entity, or null when it has none or
+     * several (in which case entity_id is required / left tenant-wide).
+     */
+    private function singleLegalEntityId(): ?int
+    {
+        $ids = \Illuminate\Support\Facades\DB::table('legal_entities')->pluck('id');
+
+        return $ids->count() === 1 ? (int) $ids->first() : null;
     }
 
     /**

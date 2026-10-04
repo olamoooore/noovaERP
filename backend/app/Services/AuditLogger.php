@@ -3,11 +3,15 @@
 namespace App\Services;
 
 use App\Models\AuditLog;
+use App\Platform\Audit\AuditHashChain;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Request;
 
 class AuditLogger
 {
+    public function __construct(private ?AuditHashChain $hashChain = null) {}
+
     /**
      * Log a POS operation
      */
@@ -39,21 +43,70 @@ class AuditLogger
             }
         }
 
-        return AuditLog::create([
-            'operation' => $operation,
-            'reference_type' => $referenceType,
-            'reference_id' => $referenceId,
-            'actor_id' => $actorId,
-            'terminal_id' => $terminalId,
-            'session_id' => $sessionId,
-            'source_route' => $sourceRoute,
-            'idempotency_key' => $idempotencyKey,
-            'before_state' => $beforeState,
-            'after_state' => $afterState,
-            'metadata' => $metadata,
-            'ip_address' => $ipAddress,
-            'user_agent' => $userAgent,
-        ]);
+        // Created-at is truncated to the database's timestamp precision so the
+        // hash computed here matches the value read back during verification.
+        $createdAt = now()->startOfSecond();
+        $tenantId = tenant()?->id;
+
+        // Issue #912: chain the audit row to the tenant's previous audit entry
+        // and advance the chain head in the same transaction as the insert.
+        return DB::transaction(function () use (
+            $operation,
+            $referenceType,
+            $referenceId,
+            $actorId,
+            $terminalId,
+            $sessionId,
+            $sourceRoute,
+            $idempotencyKey,
+            $beforeState,
+            $afterState,
+            $metadata,
+            $ipAddress,
+            $userAgent,
+            $createdAt,
+            $tenantId,
+        ) {
+            $seal = ($this->hashChain ??= app(AuditHashChain::class))->seal([
+                'tenant_id' => $tenantId,
+                'actor_id' => $actorId,
+                'operation' => $operation,
+                'subject' => $referenceType.'#'.$referenceId,
+                'payload' => [
+                    'before_state' => $beforeState,
+                    'after_state' => $afterState,
+                    'metadata' => $metadata,
+                    'source_route' => $sourceRoute,
+                    'idempotency_key' => $idempotencyKey,
+                    'terminal_id' => $terminalId,
+                    'session_id' => $sessionId,
+                    'ip_address' => $ipAddress,
+                    'user_agent' => $userAgent,
+                ],
+                'created_at' => $createdAt,
+            ]);
+
+            return AuditLog::create([
+                'operation' => $operation,
+                'reference_type' => $referenceType,
+                'reference_id' => $referenceId,
+                'actor_id' => $actorId,
+                'terminal_id' => $terminalId,
+                'session_id' => $sessionId,
+                'source_route' => $sourceRoute,
+                'idempotency_key' => $idempotencyKey,
+                'before_state' => $beforeState,
+                'after_state' => $afterState,
+                'metadata' => $metadata,
+                'ip_address' => $ipAddress,
+                'user_agent' => $userAgent,
+                'created_at' => $createdAt,
+                'updated_at' => $createdAt,
+                'previous_hash' => $seal['previous_hash'],
+                'entry_hash' => $seal['entry_hash'],
+                'chain_sequence' => $seal['chain_sequence'],
+            ]);
+        });
     }
 
     /**

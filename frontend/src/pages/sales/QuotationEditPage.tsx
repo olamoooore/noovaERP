@@ -78,6 +78,9 @@ export const QuotationEditPage: React.FC = () => {
   // #297 (Q11): local calendar defaults, never the UTC day.
   const [quotationDate, setQuotationDate] = useState(todayDateOnly());
   const [validUntil, setValidUntil] = useState(addCalendarDays(todayDateOnly(), 30));
+  // Issue #408: commitment (promised) date + shipping policy.
+  const [commitmentDate, setCommitmentDate] = useState('');
+  const [shippingPolicy, setShippingPolicy] = useState<'asap' | 'when_all_ready'>('asap');
   const [notes, setNotes] = useState('');
   const [terms, setTerms] = useState('');
   const [discountAmount, setDiscountAmount] = useState<number | ''>('');
@@ -121,6 +124,9 @@ export const QuotationEditPage: React.FC = () => {
     setCustomerId(quotation.customer_id ? String(quotation.customer_id) : '');
     setQuotationDate(quotation.quotation_date ? String(quotation.quotation_date).split('T')[0] : todayDateOnly());
     setValidUntil(quotation.valid_until ? String(quotation.valid_until).split('T')[0] : '');
+    // Issue #408
+    setCommitmentDate(quotation.commitment_date ? String(quotation.commitment_date).split('T')[0] : '');
+    setShippingPolicy(quotation.shipping_policy === 'when_all_ready' ? 'when_all_ready' : 'asap');
     setNotes(quotation.notes || '');
     setTerms(quotation.terms || '');
     setDiscountMode(quotation.discount_type === 'percentage' ? 'percentage' : 'fixed');
@@ -324,6 +330,9 @@ export const QuotationEditPage: React.FC = () => {
       customer_id: parseInt(customerId, 10),
       quotation_date: quotationDate,
       valid_until: validUntil || null,
+      // Issue #408: promised date + partial-delivery policy.
+      commitment_date: commitmentDate || null,
+      shipping_policy: shippingPolicy,
       customer_reference: customerReference || null,
       internal_reference: internalReference || null,
       credit_terms: creditTerms || null,
@@ -436,6 +445,28 @@ export const QuotationEditPage: React.FC = () => {
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
                   placeholder="PO / customer code"
                 />
+              </div>
+              {/* Issue #408: commitment (promised) date + shipping policy.
+                  The expected date is computed by the server from lead times. */}
+              <div>
+                <label className="block text-sm font-medium mb-1">Commitment Date</label>
+                <input
+                  type="date"
+                  value={commitmentDate}
+                  onChange={(event) => setCommitmentDate(event.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Shipping Policy</label>
+                <select
+                  value={shippingPolicy}
+                  onChange={(event) => setShippingPolicy(event.target.value as 'asap' | 'when_all_ready')}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="asap">As soon as possible (partial deliveries allowed)</option>
+                  <option value="when_all_ready">When all products are ready (no partials)</option>
+                </select>
               </div>
             </div>
 
