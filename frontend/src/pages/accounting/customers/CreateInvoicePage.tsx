@@ -38,6 +38,9 @@ import { LineItemsTable } from '@/components/sales/LineItemsTable'
 import { TagEditor } from '@/components/tags/TagEditor'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
 import { HeaderChip, StaticChip } from '@/components/ui/HeaderChip'
+import { EditingBanner } from '@/components/sales/EditingBanner'
+import { SaveConflictDialog } from '@/components/sales/SaveConflictDialog'
+import { extractSaveConflict, type SaveConflict } from '@/lib/recordConflict'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useDensity } from '@/hooks/useDensity'
 import { TagPicker } from '@/components/tags/TagPicker'
@@ -371,6 +374,12 @@ export const CreateInvoicePage: React.FC = () => {
   const { toast } = useToast()
   const canViewPriceLists = useAuthStore((state) => state.hasPermission('pricelists.view'));
   const isQuoteMode = location.pathname.startsWith('/sales/quotes');
+  // Issue #906: stale-save conflict state (dialog) + the payload to resend.
+  const [conflict, setConflict] = useState<SaveConflict | null>(null);
+  const lastSavePayloadRef = useRef<Record<string, any> | null>(null);
+  const currentUserId = useAuthStore((state) => state.user?.id);
+  const canOverwriteConflict = useAuthStore((state) =>
+    state.hasPermission(isQuoteMode ? 'quotations.write' : 'invoices.write'));
   const isEditMode = Boolean(id);
   const documentLabel = isQuoteMode ? 'Quotation' : 'Invoice';
   const isLegacyInvoiceRoute = location.pathname.startsWith('/invoices/');
@@ -514,7 +523,7 @@ export const CreateInvoicePage: React.FC = () => {
     });
   };
 
-  const { data: existingInvoice, isLoading: isInvoiceLoading, isSuccess: invoiceLoaded } = useQuery({
+  const { data: existingInvoice, isLoading: isInvoiceLoading, isSuccess: invoiceLoaded, refetch: refetchInvoice } = useQuery({
     queryKey: ['invoice-edit', id],
     queryFn: async () => {
       const response = await api.get(`/invoices/${id}`);
@@ -887,13 +896,17 @@ export const CreateInvoicePage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerId]);
   const saveMutation = useMutation({
-    mutationFn: async (data: unknown) => {
+    mutationFn: async (data: Record<string, any>) => {
+      // Issue #906: keep the failed payload so "Overwrite" can resend it
+      // against the conflict's current version.
+      lastSavePayloadRef.current = data;
       const response = isEditMode
         ? await api.put(`/invoices/${id}`, data)
         : await api.post('/invoices', data);
       return response.data;
     },
     onSuccess: async (data) => {
+      setConflict(null);
       toast({ title: `${documentLabel} ${isEditMode ? 'updated' : 'created'} successfully` });
       const invoiceId = id || data?.id || data?.data?.id;
       const savedStatus = data?.status ?? data?.data?.status;
@@ -930,13 +943,22 @@ export const CreateInvoicePage: React.FC = () => {
         navigate(backPath);
       }
     },
-    onError: (error: any) => {
+    onError: (error: any, variables: unknown) => {
       const message = getApiErrorMessage(error);
       // FR-6.3: a below-floor manual override needs an audited reason — ask
       // for it once, then retry with the reason attached to manual lines.
       if (typeof message === 'string' && message.toLowerCase().includes('override_reason')) {
         setOverrideReason('');
         setOverrideDialogOpen(true);
+        return;
+      }
+      // Issue #906: a stale 409 opens the compare-and-choose dialog instead
+      // of the generic toast (edit mode only — creates cannot conflict).
+      const saveConflict = isEditMode
+        ? extractSaveConflict(error, (variables ?? {}) as Record<string, any>)
+        : null;
+      if (saveConflict) {
+        setConflict(saveConflict);
         return;
       }
       toast({
@@ -1843,6 +1865,11 @@ export const CreateInvoicePage: React.FC = () => {
       requires_approval: requiresApproval,
       ...(!isEditMode && tags.length ? { tags } : {}),
       ...(customInvoiceNumber && (isQuoteMode || allowCustomNumber) ? { invoice_number: customInvoiceNumber } : {}),
+      // Issue #896/#906: echo the loaded version so a concurrent editor's
+      // save is detected instead of silently overwritten.
+      ...(isEditMode && existingInvoice?.lock_version != null
+        ? { version: existingInvoice.lock_version }
+        : {}),
       ...documentSnapshot,
       lines: submissionLines
         .filter((line) => line.description || line.product_id)
@@ -1868,6 +1895,22 @@ export const CreateInvoicePage: React.FC = () => {
     };
 
     saveMutation.mutate(payload);
+  };
+
+  // Issue #906: discard local edits, refetch and re-hydrate the server copy.
+  // The invoice page hydrates once per id (and never after line interactions),
+  // so resetting those guards is what lets "Reload theirs" repaint the form.
+  const handleReloadTheirs = () => {
+    setConflict(null);
+    hydratedInvoiceIdRef.current = null;
+    linesTouchedRef.current = false;
+    void refetchInvoice();
+  };
+
+  // Issue #906: resend my payload against the version the conflict reported.
+  const handleOverwrite = () => {
+    if (!conflict || !lastSavePayloadRef.current) return;
+    saveMutation.mutate({ ...lastSavePayloadRef.current, version: conflict.currentVersion });
   };
 
   // Every document-currency figure renders in the SELECTED currency
@@ -2037,6 +2080,11 @@ export const CreateInvoicePage: React.FC = () => {
             </div>
           )}
         </div>
+
+        <EditingBanner
+          activeEditor={isEditMode ? existingInvoice?.active_lock : null}
+          currentUserId={currentUserId}
+        />
 
         <form onSubmit={handleSubmit} onKeyDown={preventImplicitSubmit}>
           <Card className="mb-6">
@@ -3560,6 +3608,15 @@ export const CreateInvoicePage: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <SaveConflictDialog
+        open={conflict !== null}
+        conflict={conflict}
+        canOverwrite={canOverwriteConflict}
+        onOpenChange={(open) => { if (!open) setConflict(null); }}
+        onReloadTheirs={handleReloadTheirs}
+        onOverwrite={handleOverwrite}
+      />
     </TooltipProvider>
   );
 };

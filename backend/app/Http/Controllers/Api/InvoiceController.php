@@ -1222,6 +1222,10 @@ class InvoiceController extends Controller
             $invoice->can_approve = $reviewerIds->contains((int) $user->id) && ! $isSubmitter;
         }
 
+        // Issue #906 (UX2): who last saved this draft, for the advisory
+        // "Someone else is editing" banner. Null when nobody holds the lock.
+        $invoice->setAttribute('active_lock', $this->versionGuard->activeLockInfo('invoice', (int) $invoice->id));
+
         return response()->json($invoice);
     }
 

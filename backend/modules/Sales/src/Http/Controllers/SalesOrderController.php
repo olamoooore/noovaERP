@@ -205,6 +205,10 @@ class SalesOrderController extends Controller
             return response()->json(['message' => 'Sales order not found'], 404);
         }
 
+        // Issue #906 (UX2): who last saved this draft, for the advisory
+        // "Someone else is editing" banner. Null when nobody holds the lock.
+        $order->setAttribute('active_lock', $this->versionGuard->activeLockInfo('sales_order', (int) $order->id));
+
         return response()->json($order);
     }
 

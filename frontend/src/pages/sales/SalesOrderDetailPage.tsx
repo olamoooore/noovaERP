@@ -28,6 +28,10 @@ import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
 import { fetchBulkStockAvailability } from '@/components/sales/stockAvailability'
 import { StockShortageDialog, type ShortageLine } from '@/components/sales/StockShortageDialog'
+import { EditingBanner } from '@/components/sales/EditingBanner'
+import { SaveConflictDialog } from '@/components/sales/SaveConflictDialog'
+import { extractSaveConflict, type ActiveEditor, type SaveConflict } from '@/lib/recordConflict'
+import { useAuthStore } from '@/store/authStore'
 
 interface AddressSnapshot {
   address?: string
@@ -99,6 +103,9 @@ interface SalesOrder {
   customer_reference?: string
   internal_reference?: string
   created_at: string
+  // Issue #896/#906: optimistic-concurrency token + who last saved the draft.
+  lock_version?: number
+  active_lock?: ActiveEditor | null
   lines: SalesOrderLine[]
   quotation?: { id: number; quotation_number: string }
   invoices?: { id: number; invoice_number: string; status: string }[]
@@ -294,11 +301,16 @@ export function SalesOrderDetailPage() {
   const [shortageLines, setShortageLines] = useState<ShortageLine[] | null>(null)
   const [preflightPending, setPreflightPending] = useState(false)
   const confirmIntentRef = useRef<'backorder' | 'partial' | null>(null)
+  // Issue #906: stale-save conflict state (dialog) + the payload to resend.
+  const [conflict, setConflict] = useState<SaveConflict | null>(null)
+  const lastPromisePayloadRef = useRef<Record<string, any> | null>(null)
+  const currentUserId = useAuthStore((state) => state.user?.id)
+  const canOverwrite = useAuthStore((state) => state.hasPermission('sales.write'))
   const navigate = useNavigate()
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
-  const { data: order, isLoading } = useQuery({
+  const { data: order, isLoading, refetch: refetchOrder } = useQuery({
     queryKey: ['sales-order', id],
     queryFn: async () => {
       const response = await api.get(`/sales/orders/${id}`)
@@ -471,18 +483,25 @@ export function SalesOrderDetailPage() {
 
   // Issue #408: commitment date + shipping policy edit for draft orders.
   const promiseMutation = useMutation({
-    mutationFn: async () => {
-      await api.put(`/sales/orders/${id}`, {
-        commitment_date: commitmentDraft || null,
-        shipping_policy: policyDraft,
-      })
+    mutationFn: async (payload: Record<string, any>) => {
+      // Issue #906: keep the failed payload so "Overwrite" can resend it
+      // against the conflict's current version.
+      lastPromisePayloadRef.current = payload
+      await api.put(`/sales/orders/${id}`, payload)
     },
     onSuccess: () => {
+      setConflict(null)
       refresh()
       setPromiseOpen(false)
       toast({ title: 'Success', description: 'Promise date and shipping policy updated' })
     },
-    onError: (error: any) => {
+    onError: (error: any, variables: unknown) => {
+      // Issue #906: a stale 409 opens the compare-and-choose dialog.
+      const saveConflict = extractSaveConflict(error, (variables ?? {}) as Record<string, any>)
+      if (saveConflict) {
+        setConflict(saveConflict)
+        return
+      }
       toast({
         title: 'Error',
         description: error.response?.data?.message || 'Failed to update the promise dates',
@@ -490,6 +509,29 @@ export function SalesOrderDetailPage() {
       })
     },
   })
+
+  const savePromiseDraft = () => {
+    promiseMutation.mutate({
+      commitment_date: commitmentDraft || null,
+      shipping_policy: policyDraft,
+      // Issue #896/#906: echo the loaded version so a concurrent editor's
+      // save is detected instead of silently overwritten.
+      version: order?.lock_version ?? undefined,
+    })
+  }
+
+  // Issue #906: discard local edits, refetch and re-hydrate the server copy.
+  const handleReloadTheirs = () => {
+    setConflict(null)
+    refresh()
+    void refetchOrder()
+  }
+
+  // Issue #906: resend my payload against the version the conflict reported.
+  const handleOverwrite = () => {
+    if (!conflict || !lastPromisePayloadRef.current) return
+    promiseMutation.mutate({ ...lastPromisePayloadRef.current, version: conflict.currentVersion })
+  }
 
   const openPromiseDialog = () => {
     setCommitmentDraft(order?.commitment_date ? String(order.commitment_date).split('T')[0] : '')
@@ -757,6 +799,8 @@ export function SalesOrderDetailPage() {
           />
         </div>
       </div>
+
+      <EditingBanner activeEditor={order.active_lock} currentUserId={currentUserId} />
 
       <Tabs defaultValue="document" className="space-y-6">
         <TabsList className="h-10 w-fit rounded-full">
@@ -1136,7 +1180,7 @@ export function SalesOrderDetailPage() {
             <Button variant="outline" onClick={() => setPromiseOpen(false)}>
               Keep
             </Button>
-            <Button disabled={promiseMutation.isPending} onClick={() => promiseMutation.mutate()}>
+            <Button disabled={promiseMutation.isPending} onClick={savePromiseDraft}>
               {promiseMutation.isPending ? 'Saving...' : 'Save'}
             </Button>
           </DialogFooter>
@@ -1173,6 +1217,14 @@ export function SalesOrderDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <SaveConflictDialog
+        open={conflict !== null}
+        conflict={conflict}
+        canOverwrite={canOverwrite}
+        onOpenChange={(open) => { if (!open) setConflict(null) }}
+        onReloadTheirs={handleReloadTheirs}
+        onOverwrite={handleOverwrite}
+      />
     </div>
   )
 }
