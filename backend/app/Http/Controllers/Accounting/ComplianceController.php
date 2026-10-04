@@ -1120,9 +1120,12 @@ class ComplianceController extends Controller
 
         if ($result['success']) {
             return response()->json(['success' => true, 'data' => $result['report']]);
-        } else {
-            return response()->json(['success' => false, 'errors' => $result['errors'] ?? $result['message']], 400);
         }
+
+        // #764 (A4): a not-implemented exporter is 501, not a 400 "export error".
+        $status = ($result['not_implemented'] ?? false) ? 501 : 400;
+
+        return response()->json(['success' => false, 'errors' => $result['errors'] ?? $result['message']], $status);
     }
 
     public function downloadReport(Request $request, $countryCode, $reportType)
@@ -1155,10 +1158,13 @@ class ComplianceController extends Controller
         );
 
         if (! ($result['success'] ?? false)) {
+            // #764 (A4): not-implemented exporters surface as 501.
+            $status = ($result['not_implemented'] ?? false) ? 501 : 400;
+
             return response()->json([
                 'success' => false,
                 'errors' => $result['errors'] ?? $result['message'] ?? 'Failed to generate report',
-            ], 400);
+            ], $status);
         }
 
         if (in_array($downloadFormat, ['excel', 'xlsx'], true)) {

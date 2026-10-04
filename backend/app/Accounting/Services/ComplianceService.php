@@ -1565,6 +1565,9 @@ class ComplianceService
                 'xbrl_validation' => $xbrlValidation,
             ];
 
+        } catch (\App\Accounting\Exceptions\StatutoryReportNotImplemented $e) {
+            // #764 (A4): a stubbed exporter must fail loudly, mapped to 501.
+            return ['success' => false, 'not_implemented' => true, 'message' => $e->getMessage()];
         } catch (\Exception $e) {
             Log::error('Statutory report export failed', ['error' => $e->getMessage()]);
 
