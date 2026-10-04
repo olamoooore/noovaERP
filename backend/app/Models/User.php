@@ -5,7 +5,6 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
@@ -58,6 +57,7 @@ class User extends Authenticatable
         'password',
         'is_active',
         'deactivated_at',
+        'is_system',
     ];
 
     protected $hidden = [
@@ -69,6 +69,7 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'deactivated_at' => 'datetime',
         'is_active' => 'boolean',
+        'is_system' => 'boolean',
         'meta' => 'array',
         'password' => 'hashed',
     ];
@@ -169,9 +170,9 @@ class User extends Authenticatable
      * @param  string  $adminRole  Must be in `PRIVILEGED_ROLES`. Pass
      *                             `null` to clear the role.
      * @param  int|string|null  $actorId  The authenticated actor
-     *                             performing the assignment. Required
-     *                             for audit; pass `null` only from seeders
-     *                             or system-initiated flows.
+     *                                    performing the assignment. Required
+     *                                    for audit; pass `null` only from seeders
+     *                                    or system-initiated flows.
      * @param  string|null  $reason  Free-text audit justification.
      *
      * @throws \InvalidArgumentException if `$adminRole` is not in `PRIVILEGED_ROLES` and is non-null.
@@ -207,4 +208,3 @@ class User extends Authenticatable
         ]);
     }
 }
-

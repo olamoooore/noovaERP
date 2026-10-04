@@ -26,10 +26,10 @@ use App\Services\ApprovalPolicyService;
 use App\Services\CorrectionRequest;
 use App\Services\FiscalPeriodValidator;
 use App\Services\LockDateValidationService;
+use App\Support\TenantUserHelper;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class PostingEngine implements PostingEngineInterface
 {
@@ -273,6 +273,18 @@ class PostingEngine implements PostingEngineInterface
                 }
                 $userId = TenantUserHelper::requireTenantUserId($request->userId);
 
+                // #878 (SA4): non-interactive postings are attributed to the
+                // tenant's dedicated system actor, with the originating
+                // trigger recorded (job / schedule / webhook id). Interactive
+                // postings resolve to the real authenticated user or fail
+                // closed — never to an arbitrary lowest-ID user.
+                $isSystemActor = TenantUserHelper::isSystemActor($userId);
+                $postingTrigger = $request->trigger ?? ($request->metadata['trigger'] ?? null);
+                if ($postingTrigger === null && $isSystemActor) {
+                    $postingTrigger = 'background';
+                }
+                $triggerType = $postingTrigger !== null ? explode(':', $postingTrigger, 2)[0] : null;
+
                 $entry = JournalEntry::create([
                     'journal_id' => $request->journalId,
                     'entry_number' => $this->generateEntryNumber($request->journalId),
@@ -286,6 +298,15 @@ class PostingEngine implements PostingEngineInterface
                     'created_by' => $userId,
                     'legal_entity_id' => $request->legalEntityId,
                     'entity_book_id' => $request->entityBookId,
+                    ...($isSystemActor ? [
+                        'origin_type' => 'system',
+                        'origin_context' => [
+                            'actor_type' => 'SYSTEM',
+                            'system_actor_id' => $userId,
+                            'trigger' => $postingTrigger,
+                            'trigger_type' => $triggerType,
+                        ],
+                    ] : []),
                     // MRD pricelist-multicurrency FR-5.7/§12: header FX stamp
                     // from the DOCUMENT snapshot (columns existed since
                     // 2025_12_30_062429 but had no writer). Only set when the
@@ -352,6 +373,10 @@ class PostingEngine implements PostingEngineInterface
                         'correlation_id' => $request->correlationId,
                         'tenant_id' => $request->tenantId,
                         'metadata' => $request->metadata,
+                        // #878 (SA4): actor type + originating trigger are
+                        // part of the immutable posting audit trail.
+                        'actor_type' => $isSystemActor ? 'SYSTEM' : 'HUMAN',
+                        'posting_trigger' => $postingTrigger,
                     ],
                 ]);
 
@@ -365,7 +390,7 @@ class PostingEngine implements PostingEngineInterface
                     context: [
                         'tenant_id' => $request->tenantId ?? tenant()->id ?? null,
                         'actor_id' => (string) $userId,
-                        'actor_type' => 'HUMAN',
+                        'actor_type' => $isSystemActor ? 'SYSTEM' : 'HUMAN',
                         'command_id' => $request->requestId,
                         'correlation_id' => $request->correlationId,
                         'metadata' => [
@@ -404,6 +429,8 @@ class PostingEngine implements PostingEngineInterface
                         'total_debit' => $totalDebit,
                         'total_credit' => $totalCredit,
                         'posted_by' => $userId,
+                        'actor_type' => $isSystemActor ? 'SYSTEM' : 'HUMAN',
+                        'posting_trigger' => $postingTrigger,
                     ],
                 ]);
 
