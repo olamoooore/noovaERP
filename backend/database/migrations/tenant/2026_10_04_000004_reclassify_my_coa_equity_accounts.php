@@ -30,8 +30,12 @@ return new class extends Migration
         }
 
         foreach (self::RECLASSIFY as $code => $target) {
+            // PHP casts numeric-string array keys to int, and drivers that bind
+            // integers as int4 compare against the varchar `code` column as
+            // `character varying = integer` (seen on legacy tenant schemas).
+            // Compare as text so every driver and column shape matches.
             $rows = DB::table('chart_of_accounts')
-                ->where('code', $code)
+                ->whereRaw('code::text = ?', [(string) $code])
                 ->where('type', '!=', $target['type'])
                 ->get(['id', 'code', 'name', 'type']);
 
