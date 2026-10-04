@@ -36,6 +36,17 @@ abstract class HrmTestCase extends TenantTestCase
         $this->bindTenantContext((string) Str::uuid());
 
         $this->mockFeatureGate(true);
+
+        // #787 (Y1): every HRM route now enforces RequirePermission. These
+        // module suites exercise payroll/HRM behaviour, not RBAC — dedicated
+        // router-level coverage lives in
+        // tests/Feature/HrmPayrollPermissionEnforcementTest — so every acting
+        // user here is treated as fully permitted (same pattern as the POS
+        // suites).
+        $roleMock = \Mockery::mock(\App\Services\TenantRoleService::class);
+        $roleMock->shouldReceive('hasPermission')->andReturn(true);
+        $roleMock->shouldReceive('hasAnyPermission')->andReturn(true);
+        app()->instance(\App\Services\TenantRoleService::class, $roleMock);
     }
 
     protected function mockFeatureGate(bool $isEntitled): void
