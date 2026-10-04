@@ -412,18 +412,27 @@ class InvoiceService
             // existing FX gain/loss role account (MRD pricelist-multicurrency
             // FR-7.4 — "posted to the same FX account (or a rounding account
             // if configured)"). It is never absorbed at revenue.
+            //
+            // Issue #333: the cash-rounding delta persisted by
+            // Invoice::calculateTotals() is the ONE source of truth for the
+            // rounding leg — posting never re-derives it, so the document
+            // total and the ledger cannot disagree. Cash rounding posts as its
+            // own line, so the FX residual excludes it.
+            $roundingAmount = round((float) ($invoice->rounding_amount ?? 0), 2);
+            $roundingBase = abs($roundingAmount) > 0.0 ? $toBase($roundingAmount) : 0.0;
+
             $arBase = $toBase((float) $invoice->total);
             $revenueExactBase = $toBase($salesRevenue);
 
             if ($foreign) {
-                $residual = round($arBase - $revenueExactBase - $taxBaseTotal - $shippingBase, 2);
+                $residual = round($arBase - $revenueExactBase - $taxBaseTotal - $shippingBase - $roundingBase, 2);
                 $revenueBase = $revenueExactBase;
             } else {
                 // Same-currency documents (rate 1.0) have no FX residual to
                 // classify; a tampered-inconsistent header keeps the legacy
                 // balance-through-revenue arithmetic.
                 $residual = 0.0;
-                $revenueBase = round($arBase - $taxBaseTotal - $shippingBase, 2);
+                $revenueBase = round($arBase - $taxBaseTotal - $shippingBase - $roundingBase, 2);
             }
 
             if ($foreign && abs($residual) > 0.02) {
@@ -475,6 +484,25 @@ class InvoiceService
                     originalAmount: $foreign ? round((float) $invoice->shipping_cost, 2) : null,
                     exchangeRate: $foreign ? $fxRate : null,
                     description: "Shipping - Invoice {$invoice->invoice_number}",
+                );
+            }
+
+            if (abs($roundingAmount) > 0.0) {
+                // Issue #333: the cash-rounding adjustment is its own line on
+                // the tenant's configured rounding account. Rounding UP is a
+                // gain (credit); rounding DOWN is a loss (debit). The account
+                // resolves from the tenant setting — when it is missing the
+                // posting fails loudly (accountIdOrFail) rather than silently
+                // dropping the adjustment.
+                $lines[] = new DomainPostingLine(
+                    accountRole: 'rounding',
+                    amount: abs($roundingBase),
+                    currencyCode: $foreign ? $baseCurrency : null,
+                    originalAmount: $foreign ? abs($roundingAmount) : null,
+                    exchangeRate: $foreign ? $fxRate : null,
+                    description: "Cash rounding - Invoice {$invoice->invoice_number}",
+                    accountId: app(CashRoundingService::class)->accountIdOrFail(),
+                    direction: $roundingBase >= 0 ? 'credit' : 'debit',
                 );
             }
 

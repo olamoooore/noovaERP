@@ -118,6 +118,31 @@ class PostingPolicyMapper
      */
     private function mapLineThroughProfile(DomainPostingLine $line, array $profile, DomainPostingRequest $request): ?array
     {
+        // Issue #333: a line that pins its own account (the tenant's cash
+        // rounding account) is already fully specified — no profile role
+        // lookup applies. Direction must accompany the explicit account,
+        // otherwise the line is unmappable and the resolve() caller errors.
+        if ($line->accountId !== null) {
+            if (! in_array($line->direction, ['debit', 'credit'], true)) {
+                return null;
+            }
+
+            return [
+                'account_role' => $line->accountRole,
+                'account_id' => $line->accountId,
+                'debit' => $line->direction === 'debit' ? $line->amount : 0,
+                'credit' => $line->direction === 'credit' ? $line->amount : 0,
+                'description' => $line->description,
+                'currency_code' => $line->currencyCode,
+                'original_amount' => $line->originalAmount,
+                'exchange_rate' => $line->exchangeRate,
+                'dimensions' => array_merge($request->dimensions, $line->dimensions),
+                'tax_reference' => $line->taxResultReference,
+                'tax_code' => $line->taxCode,
+                'tax_id' => $line->taxId,
+            ];
+        }
+
         $mapping = $profile['mappings'][$line->accountRole] ?? null;
 
         if (! $mapping) {

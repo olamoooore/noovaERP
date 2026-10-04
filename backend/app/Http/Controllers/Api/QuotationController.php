@@ -269,6 +269,10 @@ class QuotationController extends Controller
             'delivery_lead_time' => 'nullable|string|max:255',
             'shipping_method' => 'nullable|string|max:255',
             'shipping_terms' => 'nullable|string|max:255',
+            // Issue #333: Incoterms are length-bounded free text — the
+            // platform has no authoritative code list to validate against.
+            'incoterm_code' => 'nullable|string|max:20',
+            'incoterm_place' => 'nullable|string|max:255',
             'validity' => 'nullable|string|max:255',
             'case_number' => 'nullable|string|max:100',
             'date_of_case' => 'nullable|date',
@@ -364,6 +368,9 @@ class QuotationController extends Controller
                     'delivery_lead_time' => $validated['delivery_lead_time'] ?? null,
                     'shipping_method' => $validated['shipping_method'] ?? null,
                     'shipping_terms' => $validated['shipping_terms'] ?? null,
+                    // Issue #333: Incoterm code + place.
+                    'incoterm_code' => $validated['incoterm_code'] ?? null,
+                    'incoterm_place' => $validated['incoterm_place'] ?? null,
                     'validity' => $validated['validity'] ?? null,
                     'case_number' => $validated['case_number'] ?? null,
                     'date_of_case' => $validated['date_of_case'] ?? null,
@@ -536,6 +543,10 @@ class QuotationController extends Controller
             'delivery_lead_time' => 'nullable|string|max:255',
             'shipping_method' => 'nullable|string|max:255',
             'shipping_terms' => 'nullable|string|max:255',
+            // Issue #333: Incoterms are length-bounded free text — the
+            // platform has no authoritative code list to validate against.
+            'incoterm_code' => 'nullable|string|max:20',
+            'incoterm_place' => 'nullable|string|max:255',
             'validity' => 'nullable|string|max:255',
             'case_number' => 'nullable|string|max:100',
             'date_of_case' => 'nullable|date',
@@ -824,6 +835,10 @@ class QuotationController extends Controller
                 // policy travel with the order (and from there to its DOs).
                 'commitment_date' => $quotation->commitment_date?->toDateString(),
                 'shipping_policy' => $quotation->shipping_policy ?: 'asap',
+                // Issue #333: the accepted trade term travels with the order
+                // (and from there to its invoices).
+                'incoterm_code' => $quotation->incoterm_code,
+                'incoterm_place' => $quotation->incoterm_place,
                 // #291: the header discount is part of the accepted price — it
                 // must travel onto the Sales Order (and from there the invoice),
                 // otherwise a quote accepted at 990 was ordered/billed at 1,100.
@@ -1033,6 +1048,10 @@ class QuotationController extends Controller
                     'plant_code' => $quotation->plant_code,
                     'company_code' => $quotation->company_code,
                     'payment_terms_snapshot' => $quotation->credit_terms,
+                    // Issue #333: a SO raised before the trade term existed on
+                    // the order still bills with the quotation's term.
+                    'incoterm_code' => $invoice->incoterm_code ?: $quotation->incoterm_code,
+                    'incoterm_place' => $invoice->incoterm_place ?: $quotation->incoterm_place,
                 ]);
 
                 return $invoice->load(['customer', 'lines.product', 'quotation', 'salesOrder']);

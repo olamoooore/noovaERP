@@ -445,6 +445,10 @@ class SalesOrderService
                 'customer_reference' => $order->customer_reference,
                 'internal_reference' => $order->internal_reference,
                 'po_number' => $order->po_number,
+                // Issue #333: the order's Incoterm (code + place) is part of
+                // the agreed trade term — it travels onto every invoice.
+                'incoterm_code' => $order->incoterm_code,
+                'incoterm_place' => $order->incoterm_place,
                 // MRD FR-5.5: currency + rate snapshot propagate unchanged.
                 'currency_code' => $order->currency_code,
                 'exchange_rate' => $order->exchange_rate,

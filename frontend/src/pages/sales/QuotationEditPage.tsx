@@ -102,6 +102,9 @@ export const QuotationEditPage: React.FC = () => {
   const [deliveryLeadTime, setDeliveryLeadTime] = useState('');
   const [shippingMethod, setShippingMethod] = useState('');
   const [shippingTerms, setShippingTerms] = useState('');
+  // Issue #333: Incoterm code + place.
+  const [incotermCode, setIncotermCode] = useState('');
+  const [incotermPlace, setIncotermPlace] = useState('');
   const [validity, setValidity] = useState('');
   const [caseInformation, setCaseInformation] = useState(emptyQuotationCaseInformation);
   // Issue #906: what to show when the server rejects a save as stale.
@@ -152,6 +155,8 @@ export const QuotationEditPage: React.FC = () => {
     setDeliveryLeadTime(quotation.delivery_lead_time || '');
     setShippingMethod(quotation.shipping_method || '');
     setShippingTerms(quotation.shipping_terms || '');
+    setIncotermCode(quotation.incoterm_code || '');
+    setIncotermPlace(quotation.incoterm_place || '');
     setValidity(quotation.validity || '');
     setCaseInformation({
       case_number: quotation.case_number || '',
@@ -365,6 +370,8 @@ export const QuotationEditPage: React.FC = () => {
       delivery_lead_time: deliveryLeadTime || null,
       shipping_method: shippingMethod || null,
       shipping_terms: shippingTerms || null,
+      incoterm_code: incotermCode || null,
+      incoterm_place: incotermPlace || null,
       validity: validity || null,
       ...Object.fromEntries(Object.entries(caseInformation).map(([key, value]) => [key, value || null])),
       notes: notes || null,
@@ -611,6 +618,30 @@ export const QuotationEditPage: React.FC = () => {
                   onChange={(event) => setShippingTerms(event.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
                   placeholder="e.g. FOB, CIF, EXW"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Incoterm Code</label>
+                <input
+                  type="text"
+                  aria-label="Incoterm Code"
+                  value={incotermCode}
+                  onChange={(event) => setIncotermCode(event.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  placeholder="e.g. FOB, CIF, DDP"
+                  maxLength={20}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Incoterm Place</label>
+                <input
+                  type="text"
+                  aria-label="Incoterm Place"
+                  value={incotermPlace}
+                  onChange={(event) => setIncotermPlace(event.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  placeholder="e.g. Port Klang"
+                  maxLength={255}
                 />
               </div>
               <div>

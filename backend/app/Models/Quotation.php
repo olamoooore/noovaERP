@@ -76,6 +76,9 @@ class Quotation extends Model
         'delivery_lead_time',
         'shipping_method',
         'shipping_terms',
+        // Issue #333: Incoterm code + place (free text; no statutory list).
+        'incoterm_code',
+        'incoterm_place',
         'validity',
         'case_number',
         'date_of_case',

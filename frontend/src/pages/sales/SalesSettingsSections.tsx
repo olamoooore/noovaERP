@@ -25,6 +25,14 @@ export interface ReviewerConfig {
 }
 
 export interface SalesSettings {
+  // Issue #333: tenant cash rounding (Odoo-style). Default OFF.
+  cash_rounding: {
+    enabled: boolean
+    method: 'nearest' | 'up' | 'down'
+    precision: number
+    account_id: number | null
+    methods?: string[]
+  }
   invoice: {
     allow_custom_number: boolean
     field_profile: 'general' | 'medical' | 'trading' | 'services'
@@ -75,6 +83,13 @@ export interface SalesSettings {
 }
 
 export const emptySalesSettings: SalesSettings = {
+  cash_rounding: {
+    enabled: false,
+    method: 'nearest',
+    precision: 0.05,
+    account_id: null,
+    methods: ['nearest', 'up', 'down'],
+  },
   invoice: {
     allow_custom_number: true,
     field_profile: 'medical',
@@ -1109,6 +1124,124 @@ export function TaxPricingSettings() {
         onSave={() => mutation.mutate(local)}
         onCancel={() => setLocal({})}
         label="Save tax settings"
+      />
+    </Card>
+  )
+}
+
+// ─── Cash Rounding ──────────────────────────────────────────────────────────
+
+const ROUNDING_METHODS = [
+  { value: 'nearest', label: 'Round to nearest step' },
+  { value: 'up', label: 'Always round up' },
+  { value: 'down', label: 'Always round down' },
+]
+
+export function CashRoundingSettings() {
+  const { data, isLoading } = useSalesSettings()
+  const [local, setLocal] = useState<Partial<SalesSettings['cash_rounding']>>({})
+  const mutation = useSalesSettingsMutation('cash_rounding', 'Cash rounding settings saved', () => setLocal({}))
+
+  const { data: accounts } = useQuery({
+    queryKey: ['chart-of-accounts', 'cash-rounding'],
+    queryFn: async () => {
+      const res = await api.get('/chart-of-accounts', { params: { is_active: 1 } })
+      return (res.data?.data ?? []) as Array<{ id: number; code: string; name: string; type: string }>
+    },
+  })
+
+  if (isLoading || !data) return <SettingsLoadingCard />
+
+  const rounding = { ...data.cash_rounding, ...local }
+
+  return (
+    <Card className="overflow-hidden">
+      <SettingsSectionHeader
+        icon="solar:calculator-minimalistic-bold-duotone"
+        title="Cash Rounding"
+        description="Round every invoice's final payable total to a cash step and book the difference to a rounding account."
+      />
+      <CardContent className="divide-y py-0">
+        <SettingsRow
+          title="Enable cash rounding"
+          description="Off by default. When enabled, invoice totals are rounded and the adjustment is posted as its own journal line."
+        >
+          <Switch
+            checked={rounding.enabled}
+            onCheckedChange={(v) => setLocal({ ...local, enabled: v })}
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          title="Rounding method"
+          description="How each invoice total is rounded to the step."
+        >
+          <Select
+            value={rounding.method}
+            onValueChange={(v) =>
+              setLocal({ ...local, method: v as SalesSettings['cash_rounding']['method'] })
+            }
+            disabled={!rounding.enabled}
+          >
+            <SelectTrigger className="w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ROUNDING_METHODS.map((m) => (
+                <SelectItem key={m.value} value={m.value}>
+                  {m.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+
+        <SettingsRow
+          title="Rounding step"
+          description="The smallest cash unit — e.g. 0.05 for MYR 5 sen."
+        >
+          <Input
+            type="number"
+            min={0.01}
+            max={100}
+            step={0.01}
+            value={rounding.precision}
+            onChange={(e) =>
+              setLocal({ ...local, precision: parseFloat(e.target.value) || 0 })
+            }
+            disabled={!rounding.enabled}
+            className="w-28 text-center"
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          title="Rounding account"
+          description="Ledger account that carries the rounding gain/loss. Required whenever rounding is enabled."
+        >
+          <Select
+            value={rounding.account_id ? String(rounding.account_id) : undefined}
+            onValueChange={(v) => setLocal({ ...local, account_id: parseInt(v, 10) })}
+            disabled={!rounding.enabled}
+          >
+            <SelectTrigger className="w-72">
+              <SelectValue placeholder="Select an account" />
+            </SelectTrigger>
+            <SelectContent>
+              {(accounts ?? []).map((account) => (
+                <SelectItem key={account.id} value={String(account.id)}>
+                  {account.code} — {account.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+      </CardContent>
+      <SettingsSaveBar
+        hasChanges={Object.keys(local).length > 0}
+        isPending={mutation.isPending}
+        onSave={() => mutation.mutate(local)}
+        onCancel={() => setLocal({})}
+        label="Save cash rounding"
       />
     </Card>
   )

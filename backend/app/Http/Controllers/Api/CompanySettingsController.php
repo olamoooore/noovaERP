@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\AccountMapping;
+use App\Services\CashRoundingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -585,6 +586,19 @@ class CompanySettingsController extends Controller
     {
         return response()->json([
             'data' => [
+                // Issue #333: tenant cash rounding (Odoo-style). Default OFF
+                // so every existing tenant keeps byte-identical totals.
+                'cash_rounding' => (static function (): array {
+                    $settings = app(CashRoundingService::class)->settings();
+
+                    return [
+                        'enabled' => $settings['enabled'],
+                        'method' => $settings['method'],
+                        'precision' => $settings['precision'],
+                        'account_id' => $settings['account_id'],
+                        'methods' => CashRoundingService::METHODS,
+                    ];
+                })(),
                 'invoice' => [
                     'allow_custom_number' => (bool) \App\Models\Setting::getValue('sales.invoice.allow_custom_number', true),
                     // D4: which extra header fields the invoice entry screen
@@ -688,6 +702,12 @@ class CompanySettingsController extends Controller
     public function updateSalesSettings(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            // Issue #333: tenant cash rounding. The rounding account is a
+            // tenant-chosen chart_of_accounts row (never auto-seeded).
+            'cash_rounding.enabled' => 'nullable|boolean',
+            'cash_rounding.method' => ['nullable', \Illuminate\Validation\Rule::in(CashRoundingService::METHODS)],
+            'cash_rounding.precision' => 'nullable|numeric|gt:0|max:100',
+            'cash_rounding.account_id' => 'nullable|integer|exists:chart_of_accounts,id',
             'invoice.allow_custom_number' => 'nullable|boolean',
             'invoice.field_profile' => 'nullable|string|in:general,medical,trading,services',
             'invoice.default_requires_approval' => 'nullable|boolean',
@@ -822,6 +842,33 @@ class CompanySettingsController extends Controller
                 }
             }
             $validated['defaults']['team_by_user'] = $cleanTeams;
+        }
+
+        // Issue #333: cash rounding is ONE JSON block under the canonical
+        // `sales.cash_rounding` key (the key CashRoundingService reads), so
+        // partial updates merge instead of overwriting sibling fields.
+        if (array_key_exists('cash_rounding', $validated) && is_array($validated['cash_rounding'])) {
+            $rounding = array_merge(
+                CashRoundingService::DEFAULTS,
+                \App\Models\Setting::getValue(CashRoundingService::SETTING_KEY, []),
+            );
+
+            $input = $validated['cash_rounding'];
+
+            if (array_key_exists('enabled', $input)) {
+                $rounding['enabled'] = (bool) $input['enabled'];
+            }
+            if (array_key_exists('method', $input)) {
+                $rounding['method'] = $input['method'];
+            }
+            if (array_key_exists('precision', $input)) {
+                $rounding['precision'] = (float) $input['precision'];
+            }
+            if (array_key_exists('account_id', $input)) {
+                $rounding['account_id'] = $input['account_id'] !== null ? (int) $input['account_id'] : null;
+            }
+
+            \App\Models\Setting::setValue(CashRoundingService::SETTING_KEY, $rounding);
         }
 
         // $validated arrives nested (['invoice' => ['key' => value]]), while

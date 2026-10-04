@@ -92,6 +92,9 @@ interface SalesOrder {
   expected_date?: string | null
   shipping_policy?: 'asap' | 'when_all_ready' | string
   is_late?: boolean
+  // Issue #333: Incoterm code + place.
+  incoterm_code?: string | null
+  incoterm_place?: string | null
   status: string
   allowed_transitions?: string[]
   invoice_status?: string
@@ -941,6 +944,16 @@ export function SalesOrderDetailPage() {
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Internal Ref:</span>
                   <span className="text-sm">{order.internal_reference}</span>
+                </div>
+              )}
+              {/* Issue #333: accepted Incoterm (code + place). */}
+              {order.incoterm_code && (
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Incoterm:</span>
+                  <span className="text-sm">
+                    {order.incoterm_code}
+                    {order.incoterm_place ? ` — ${order.incoterm_place}` : ''}
+                  </span>
                 </div>
               )}
             </div>

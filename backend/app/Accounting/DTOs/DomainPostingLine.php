@@ -32,5 +32,12 @@ class DomainPostingLine
         // persisted at PostingEngine::post()).
         public readonly ?string $taxCode = null,
         public readonly ?int $taxId = null,
+        // Issue #333: an explicit account pinned by the caller (the tenant's
+        // cash-rounding account) with its own debit/credit direction. The
+        // posting profiles express direction per role, which cannot represent
+        // a sign-dependent rounding leg; an explicit account + direction is
+        // only valid when BOTH are supplied.
+        public readonly ?int $accountId = null,
+        public readonly ?string $direction = null,
     ) {}
 }

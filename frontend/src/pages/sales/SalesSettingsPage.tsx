@@ -10,6 +10,7 @@ import {
   SalesDefaultsSettings,
   PaymentPortalSettings,
   TaxPricingSettings,
+  CashRoundingSettings,
   DeliverySettings,
 } from './SalesSettingsSections'
 
@@ -55,6 +56,13 @@ const SECTIONS: SettingsSectionDef[] = [
     description: 'Default rates, treatments and price basis',
     icon: 'solar:sale-bold-duotone',
     component: TaxPricingSettings,
+  },
+  {
+    key: 'rounding',
+    title: 'Cash Rounding',
+    description: 'Round invoice totals and post the difference',
+    icon: 'solar:calculator-minimalistic-bold-duotone',
+    component: CashRoundingSettings,
   },
   {
     key: 'delivery',

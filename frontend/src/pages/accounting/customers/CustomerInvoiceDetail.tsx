@@ -459,6 +459,21 @@ export const CustomerInvoiceDetail: React.FC = () => {
                 <p className="font-medium">{invoice.shipping_method}</p>
               </div>
             )}
+            {invoice.incoterm_code && (
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">Incoterm</p>
+                <p className="font-medium">
+                  {invoice.incoterm_code}
+                  {invoice.incoterm_place ? ` — ${invoice.incoterm_place}` : ''}
+                </p>
+              </div>
+            )}
+            {Number(invoice.rounding_amount || 0) !== 0 && (
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">Cash Rounding</p>
+                <p className="font-medium">{formatCurrency(invoice.rounding_amount)}</p>
+              </div>
+            )}
             <div>
               <p className="text-sm text-muted-foreground mb-1">Total Amount</p>
               <p className="text-xl font-bold text-primary">{formatCurrency(invoice.total)}</p>

@@ -783,6 +783,14 @@ export function QuotationDetailPage() {
                 <div className="font-medium">{quotation.shipping_terms || '-'}</div>
               </div>
               <div>
+                <div className="text-muted-foreground">Incoterm</div>
+                <div className="font-medium">
+                  {quotation.incoterm_code
+                    ? `${quotation.incoterm_code}${quotation.incoterm_place ? ` — ${quotation.incoterm_place}` : ''}`
+                    : '-'}
+                </div>
+              </div>
+              <div>
                 <div className="text-muted-foreground">Validity</div>
                 <div className="font-medium">{quotation.validity || '-'}</div>
               </div>

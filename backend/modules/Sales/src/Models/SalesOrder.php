@@ -51,6 +51,9 @@ class SalesOrder extends Model
         // Issue #408: commitment (promised) date + shipping policy.
         'commitment_date',
         'shipping_policy',
+        // Issue #333: Incoterm code + place (free text; no statutory list).
+        'incoterm_code',
+        'incoterm_place',
         'cancellation_reason',
         'cancelled_by',
         'cancelled_at',
