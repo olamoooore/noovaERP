@@ -18,7 +18,6 @@ use App\Services\DocumentWideSearchService;
 use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
 use App\Services\SalesApprovalGate;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -27,7 +26,6 @@ use Illuminate\Support\Str;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Sales\Services\DeliveryOrderService;
 use Modules\Sales\Services\SalesOrderService;
-use Modules\TemplateBuilder\Services\DataSource\CompanyDataSource;
 
 class QuotationController extends Controller
 {
@@ -738,33 +736,6 @@ class QuotationController extends Controller
         );
 
         return response()->json(['message' => 'Quotation deleted successfully']);
-    }
-
-    /**
-     * Download the quotation as a PDF.
-     */
-    public function pdf($id)
-    {
-        $quotation = Quotation::with(['customer', 'lines.product'])->find($id);
-
-        if (! $quotation) {
-            return response()->json(['message' => 'Quotation not found'], 404);
-        }
-
-        // Ensure totals are accurate before rendering.
-        $quotation->calculateTotals();
-        $quotation->refresh();
-
-        $company = CompanyDataSource::forCurrentTenant();
-
-        $pdf = Pdf::loadView('sales.quotation-pdf', [
-            'quotation' => $quotation,
-            'company' => $company,
-        ])->setPaper('a4', 'portrait');
-
-        $filename = 'quotation-'.$quotation->quotation_number.'.pdf';
-
-        return $pdf->download($filename);
     }
 
     /**
