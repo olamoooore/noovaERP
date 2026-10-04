@@ -114,6 +114,14 @@ class TaxDeterminationService
             && $customerJurisdiction !== null
             && strtoupper($customerJurisdiction) !== strtoupper($jurisdiction);
 
+        // #309 (X9): the customer's tax profile decides exempt treatment —
+        // a valid exemption on the transaction date is EXEMPT, distinct from a
+        // zero-rated supply, and keeps its identity on the e-invoice.
+        $customerExempt = \App\Support\CustomerTaxProfileResolver::isExempt(
+            $invoice->customer_id,
+            $transactionDate,
+        );
+
         $defaultTaxId = ! empty(\App\Models\Setting::getValue('tax', [])['default_tax_id']);
 
         // Build per-line tax determinations.
@@ -183,8 +191,8 @@ class TaxDeterminationService
 
             $treatment = match (true) {
                 $taxRate > 0 => 'standard_rated',
-                $taxRate === 0.0 && ($overrides['treatment'] ?? null) !== 'exempt' => 'zero_rated',
-                default => 'exempt',
+                ($overrides['treatment'] ?? null) === 'exempt' || $customerExempt => 'exempt',
+                default => 'zero_rated',
             };
 
             $taxCode = $this->resolveTaxCode(
@@ -198,7 +206,11 @@ class TaxDeterminationService
             // borrow the code/treatment/tax_id of a rule with another rate.
             $rateMatches = $resolved && abs((float) $resolved['rate'] - $taxRate) < 0.005;
             $taxId = null;
-            if ($resolved && ($line->tax_rate === null || $usesLocalizedDefault) && $rateMatches) {
+            // #309 (X9): a customer exemption outranks the product rule's
+            // identity — an exempt 0% line must stay EXEMPT, not borrow a
+            // zero-rated rule's treatment.
+            $exemptionOutranksRule = $customerExempt && $taxRate <= 0;
+            if ($resolved && ! $exemptionOutranksRule && ($line->tax_rate === null || $usesLocalizedDefault) && $rateMatches) {
                 $taxCode = $resolved['tax_code'];
                 $treatment = $resolved['treatment'];
                 $taxId = $resolved['tax_id'] ?? null;

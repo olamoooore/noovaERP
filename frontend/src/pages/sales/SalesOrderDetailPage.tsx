@@ -20,10 +20,12 @@ import { TagEditor } from '@/components/tags/TagEditor'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { Progress } from '@/components/ui/progress'
 import { ChatterDialog } from '@/components/chatter'
 import { AuditTab } from '@/components/audit/AuditTab'
 import api from '@/lib/api'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
 import { fetchBulkStockAvailability } from '@/components/sales/stockAvailability'
 import { StockShortageDialog, type ShortageLine } from '@/components/sales/StockShortageDialog'
 
@@ -74,8 +76,13 @@ interface SalesOrderLine {
   description: string
   product_notes?: string
   quantity: number
+  quantity_allocated?: number | string
+  quantity_fulfilled?: number | string
   quantity_delivered?: number | string
+  quantity_invoiced?: number | string
   quantity_cancelled?: number | string
+  backorder_quantity?: number | string
+  is_backordered?: boolean
   unit_price: number
   tax_rate: number
   tax_amount: number
@@ -113,6 +120,44 @@ function isFullyDelivered(lines: SalesOrderLine[]) {
         Number(line.quantity) - Number(line.quantity_cancelled ?? 0),
     )
   )
+}
+
+const quantityValue = (value: number | string | null | undefined) => {
+  const parsed = Number(value ?? 0)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+/** #400 (SU2): show quantities without decimal-cast noise ("6.0000" -> "6"). */
+const formatQuantity = (value: number | string | null | undefined) =>
+  quantityValue(value).toLocaleString(undefined, { maximumFractionDigits: 4 })
+
+/** #400 (SU2): still to ship = ordered - delivered - cancelled. */
+function remainingToDeliver(line: SalesOrderLine): number {
+  return Math.max(
+    0,
+    quantityValue(line.quantity) - quantityValue(line.quantity_delivered) - quantityValue(line.quantity_cancelled),
+  )
+}
+
+/** #400 (SU2): still to bill = ordered - invoiced - cancelled. */
+function remainingToInvoice(line: SalesOrderLine): number {
+  return Math.max(
+    0,
+    quantityValue(line.quantity) - quantityValue(line.quantity_invoiced) - quantityValue(line.quantity_cancelled),
+  )
+}
+
+/** #400 (SU2) / DX1: delivered share of the deliverable quantity (0-100). */
+function deliveryProgress(line: SalesOrderLine): number {
+  const deliverable = quantityValue(line.quantity) - quantityValue(line.quantity_cancelled)
+  if (deliverable <= 0) return 0
+
+  return Math.min(100, Math.max(0, Math.round((quantityValue(line.quantity_delivered) / deliverable) * 100)))
+}
+
+/** #400 (SU2) / #379: the line has stock that could not be reserved. */
+function isBackordered(line: SalesOrderLine): boolean {
+  return line.is_backordered === true || quantityValue(line.backorder_quantity) > 0
 }
 
 function getInvoiceStatusLabel(invoices: NonNullable<SalesOrder['invoices']>) {
@@ -623,27 +668,92 @@ export function SalesOrderDetailPage() {
                 <TableHead>Description</TableHead>
                 <TableHead>Model #</TableHead>
                 <TableHead>Product Notes</TableHead>
-                <TableHead className="text-right">Qty</TableHead>
+                <TableHead className="text-right">Ordered</TableHead>
+                <TableHead className="text-right">Reserved</TableHead>
+                <TableHead className="text-right">Delivered Qty</TableHead>
+                <TableHead className="text-right">Invoiced Qty</TableHead>
+                <TableHead className="text-right">Remaining to Deliver</TableHead>
+                <TableHead className="text-right">Remaining to Invoice</TableHead>
+                <TableHead className="text-right">Discount</TableHead>
                 <TableHead className="text-right">Unit Price</TableHead>
                 <TableHead className="text-right">Tax</TableHead>
                 <TableHead className="text-right">Total</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {order.lines?.map((line, index) => (
-                <TableRow key={line.id}>
-                  <TableCell>{index + 1}</TableCell>
-                  <TableCell className="font-medium">{line.product?.name || '-'}</TableCell>
-                  <TableCell className="text-muted-foreground">{line.product?.sku || line.sku || '-'}</TableCell>
-                  <TableCell>{line.description || '-'}</TableCell>
-                  <TableCell className="text-muted-foreground">{line.model_number || line.product?.manufacturer_part_number || '-'}</TableCell>
-                  <TableCell className="text-muted-foreground">{line.product_notes || '-'}</TableCell>
-                  <TableCell className="text-right">{line.quantity}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(line.tax_amount)}</TableCell>
-                  <TableCell className="text-right font-medium">{formatCurrency(line.line_total)}</TableCell>
-                </TableRow>
-              ))}
+              {order.lines?.map((line, index) => {
+                const lineType = line.line_type ?? 'product'
+
+                // #400 (SU2): notes and sections are text rows, not empty product rows.
+                if (lineType === 'note' || lineType === 'section') {
+                  const isSection = lineType === 'section'
+                  return (
+                    <TableRow key={line.id} className={isSection ? 'bg-muted/60' : 'bg-muted/30'}>
+                      <TableCell
+                        colSpan={16}
+                        className={isSection ? 'font-semibold' : 'italic text-muted-foreground'}
+                      >
+                        <div className="flex items-center justify-between gap-4">
+                          <span>{line.description}</span>
+                          {isSection && (
+                            <span className="whitespace-nowrap tabular-nums">
+                              {formatCurrency(
+                                getDocumentSectionTotal(order.lines, index, (item) => Number(item.line_total ?? 0)),
+                              )}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                }
+
+                return (
+                  <TableRow key={line.id}>
+                    <TableCell>{index + 1}</TableCell>
+                    <TableCell className="font-medium">{line.product?.name || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{line.product?.sku || line.sku || '-'}</TableCell>
+                    <TableCell>{line.description || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{line.model_number || line.product?.manufacturer_part_number || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{line.product_notes || '-'}</TableCell>
+                    <TableCell className="text-right">
+                      <div>{formatQuantity(line.quantity)}</div>
+                      {quantityValue(line.quantity_cancelled) > 0 && (
+                        <div className="text-xs text-muted-foreground">
+                          Cancelled {formatQuantity(line.quantity_cancelled)}
+                        </div>
+                      )}
+                      {isBackordered(line) && (
+                        <Badge
+                          variant="destructive"
+                          className="mt-1"
+                          title={`${formatQuantity(line.backorder_quantity)} not reserved`}
+                        >
+                          Backorder {formatQuantity(line.backorder_quantity)}
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">{formatQuantity(line.quantity_allocated)}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex flex-col items-end gap-1">
+                        <span>{formatQuantity(line.quantity_delivered)}</span>
+                        <Progress
+                          value={deliveryProgress(line)}
+                          className="h-1.5 w-16"
+                          aria-label={`Delivered ${deliveryProgress(line)}%`}
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">{formatQuantity(line.quantity_invoiced)}</TableCell>
+                    <TableCell className="text-right">{formatQuantity(remainingToDeliver(line))}</TableCell>
+                    <TableCell className="text-right">{formatQuantity(remainingToInvoice(line))}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(Number(line.discount_amount ?? 0))}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(line.tax_amount)}</TableCell>
+                    <TableCell className="text-right font-medium">{formatCurrency(line.line_total)}</TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
         </CardContent>
