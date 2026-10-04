@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useAuthStore } from '@/store/authStore'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -9,8 +9,10 @@ import { DocumentLinkChip } from '@/components/documents/DocumentLinkChip'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { QuotationCaseInformationDisplay } from '@/components/sales/QuotationCaseInformation'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { ChatterDock } from '@/components/chatter'
+import { AuditTab } from '@/components/audit/AuditTab'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
 import { formatCurrency, formatDate } from '@/lib/utils'
@@ -21,6 +23,8 @@ import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DocumentTemplateDialog } from '@/components/documents/DocumentTemplateDialog'
+import { fetchBulkStockAvailability } from '@/components/sales/stockAvailability'
+import { StockShortageDialog, type ShortageLine } from '@/components/sales/StockShortageDialog'
 
 const QUOTATION_LINE_COLUMNS = [
   '#', 'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Qty', 'Unit Price', 'Tax', 'Total',
@@ -57,6 +61,12 @@ export function QuotationDetailPage() {
   // children (invoice post, DO confirm) remain accounting.post.
   const canManageQuotation = hasPermission('quotations.write')
 
+  // Issue #687 (UX1): explicit shortage choice before the quotation spawns
+  // its silently-backordered Sales Order (#379).
+  const [shortageLines, setShortageLines] = useState<ShortageLine[] | null>(null)
+  const [preflightPending, setPreflightPending] = useState(false)
+  const confirmIntentRef = useRef<'backorder' | 'partial' | null>(null)
+
   const confirmMutation = useMutation({
 
     mutationFn: async () => {
@@ -73,6 +83,30 @@ export function QuotationDetailPage() {
         })
         return
       }
+
+      // Issue #687: the explicit choice made in the shortage dialog decides
+      // what happens after the quotation releases its Sales Order.
+      const intent = confirmIntentRef.current
+      confirmIntentRef.current = null
+      if (intent === 'partial') {
+        const salesOrderId = data?.data?.sales_order_id
+        toast({
+          title: 'Quotation confirmed',
+          description: 'Create the delivery order for the available quantity; short lines stay backordered.',
+        })
+        if (salesOrderId) {
+          navigate(`/delivery-orders/create?sales_order_id=${salesOrderId}`)
+        }
+        return
+      }
+      if (intent === 'backorder') {
+        toast({
+          title: 'Quotation confirmed — Sales Order created',
+          description: 'Short lines continue as backorders until stock arrives.',
+        })
+        return
+      }
+
       toast({ title: 'Quotation confirmed — Sales Order created' })
     },
     onError: (error: any) => {
@@ -83,6 +117,85 @@ export function QuotationDetailPage() {
       })
     },
   })
+
+  /**
+   * Issue #687: preflight the quotation's product lines against the warehouse
+   * the released Sales Order will reserve from. The server resolves it as
+   * "default warehouse, else first", so the preflight mirrors that (loaded
+   * when the user confirms — the quotation form has no warehouse selector).
+   * Advisory only — a failed availability service is surfaced and the confirm
+   * still proceeds.
+   */
+  const beginConfirm = async () => {
+    const productLines = ((quotation?.lines ?? []) as any[]).filter(
+      (line) =>
+        (line.line_type ?? 'product') === 'product' &&
+        line.product_id &&
+        Number(line.quantity) > 0,
+    )
+
+    if (productLines.length === 0) {
+      confirmMutation.mutate()
+      return
+    }
+
+    setPreflightPending(true)
+    let shorts: ShortageLine[] | null = null
+    try {
+      const warehouseResponse = await api.get('/warehouses', { params: { per_page: 100 } })
+      const warehouses = warehouseResponse.data?.data || warehouseResponse.data || []
+      const warehouse = Array.isArray(warehouses)
+        ? warehouses.find((candidate: any) => candidate.is_default) ?? warehouses[0]
+        : null
+
+      if (warehouse) {
+        const availability = await fetchBulkStockAvailability(
+          warehouse.id,
+          productLines.map((line: any) => ({
+            product_id: line.product_id,
+            quantity: Number(line.quantity),
+          })),
+        )
+
+        const short = (availability.lines ?? []).filter((line) => !line.sufficient)
+        if (short.length > 0) {
+          shorts = short.map((line) => {
+            const quotationLine = productLines.find(
+              (candidate: any) => Number(candidate.product_id) === Number(line.product_id),
+            )
+            return {
+              product_id: line.product_id,
+              product_name: quotationLine?.product?.name ?? null,
+              requested: Number(line.requested),
+              available: Number(line.available),
+              incoming_quantity: Number(line.incoming_quantity ?? 0),
+            }
+          })
+        }
+      }
+    } catch {
+      toast({
+        title: 'Stock check unavailable',
+        description: 'Confirming without the availability summary — the order may include backorders.',
+        variant: 'destructive',
+      })
+    } finally {
+      setPreflightPending(false)
+    }
+
+    if (shorts) {
+      setShortageLines(shorts)
+      return
+    }
+
+    confirmMutation.mutate()
+  }
+
+  const chooseShortageAction = (intent: 'backorder' | 'partial') => {
+    setShortageLines(null)
+    confirmIntentRef.current = intent
+    confirmMutation.mutate()
+  }
 
   const createInvoiceMutation = useMutation({
     mutationFn: async () => {
@@ -339,9 +452,9 @@ export function QuotationDetailPage() {
           {['draft', 'sent'].includes(quotation.status) && canManageQuotation && (
             <HeaderActionButton
               icon="solar:check-circle-bold-duotone"
-              loading={confirmMutation.isPending}
-              onClick={() => confirmMutation.mutate()}
-              disabled={confirmMutation.isPending}
+              loading={confirmMutation.isPending || preflightPending}
+              onClick={() => void beginConfirm()}
+              disabled={confirmMutation.isPending || preflightPending}
             >
               Confirm
             </HeaderActionButton>
@@ -401,6 +514,18 @@ export function QuotationDetailPage() {
         </div>
       </div>
 
+      <Tabs defaultValue="document" className="space-y-6">
+        <TabsList className="h-10 w-fit rounded-full">
+          <TabsTrigger value="document" className="gap-2 rounded-full px-4">
+            Document
+          </TabsTrigger>
+          <TabsTrigger value="audit" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:shield-check-bold-duotone" className="h-4 w-4" />
+            Audit
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="document" className="space-y-6 mt-6">
       {/* Linked-document smart buttons */}
       <div className="flex flex-wrap gap-2">
         {quotation.invoices && quotation.invoices.length > 0 && (
@@ -827,6 +952,13 @@ export function QuotationDetailPage() {
           )}
         </div>
       )}
+        </TabsContent>
+
+        <TabsContent value="audit" className="mt-6">
+          <AuditTab endpoint={`/quotations/${id}/audit`} permission="quotations.view" />
+        </TabsContent>
+      </Tabs>
+
       <ConfirmDialog
         open={confirmAction === 'delete'}
         onOpenChange={(open) => !open && setConfirmAction(null)}
@@ -870,6 +1002,24 @@ export function QuotationDetailPage() {
         pdfPath={`/quotations/${id}/pdf`}
         filename={`quotation-${quotation.quotation_number}.pdf`}
         title="Quotation"
+      />
+
+      <StockShortageDialog
+        open={shortageLines !== null}
+        onOpenChange={(open) => {
+          if (!open) setShortageLines(null)
+        }}
+        lines={shortageLines ?? []}
+        pending={confirmMutation.isPending}
+        onBackorder={() => chooseShortageAction('backorder')}
+        onDeliverPartially={() => chooseShortageAction('partial')}
+        onChangeWarehouse={() => {
+          setShortageLines(null)
+          toast({
+            title: 'Not confirmed',
+            description: 'Change the default commitment warehouse, then confirm the quotation again.',
+          })
+        }}
       />
 
       <ChatterDock

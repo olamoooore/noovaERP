@@ -20,7 +20,11 @@ use Modules\TemplateBuilder\Renderers\CodeRenderer;
 use Modules\TemplateBuilder\Services\AssignmentResolver;
 use Modules\TemplateBuilder\Services\AuditWriter;
 use Modules\TemplateBuilder\Services\CommunicationTemplateBridge;
+use Modules\TemplateBuilder\Services\DataSource\CreditNoteDataSource;
 use Modules\TemplateBuilder\Services\DataSource\DataSourceRegistry;
+use Modules\TemplateBuilder\Services\DataSource\SalesOrderConfirmationDataSource;
+use Modules\TemplateBuilder\Services\DataSource\SalesOrderDataSource;
+use Modules\TemplateBuilder\Services\DataSource\SalesProformaInvoiceDataSource;
 use Modules\TemplateBuilder\Services\DocumentSnapshotService;
 use Modules\TemplateBuilder\Services\DocumentTemplateService;
 use Modules\TemplateBuilder\Services\EditorialLifecycleService;
@@ -30,6 +34,7 @@ use Modules\TemplateBuilder\Services\PublicTokenService;
 use Modules\TemplateBuilder\Services\RegistryService;
 use Modules\TemplateBuilder\Services\SurveyRuntimeService;
 use Modules\TemplateBuilder\Services\TemplateContentSanitiser;
+use Modules\TemplateBuilder\Support\CanonicalRegistrations;
 
 class TemplateBuilderServiceProvider extends ServiceProvider
 {
@@ -86,16 +91,20 @@ class TemplateBuilderServiceProvider extends ServiceProvider
     {
         // Invoices dispatch after the posting transaction commits.
         Event::listen(InvoicePosted::class, function (InvoicePosted $event): void {
-            app(DocumentSnapshotService::class)->snapshot('invoice', (string) $event->invoice->id);
+            app(DocumentSnapshotService::class)->snapshot(
+                CanonicalRegistrations::renderableKeyFor('ar_invoice'),
+                (string) $event->invoice->id,
+            );
         });
 
-        // Customer credit notes dispatch after commit too. No 'credit_note'
-        // data source / starter template exists on this branch (no credit-note
-        // render path at all), so snapshot() is a no-op for them today; the
-        // hook is wired so the immutable store follows automatically once a
-        // render path is registered.
+        // Customer credit notes dispatch after commit too. Issue #615
+        // registers the 'credit_note' data source/starter, so this #613 hook
+        // is now active: a posted credit note gets its immutable copy.
         Event::listen(CreditNotePosted::class, function (CreditNotePosted $event): void {
-            app(DocumentSnapshotService::class)->snapshot('credit_note', (string) $event->creditNote->id);
+            app(DocumentSnapshotService::class)->snapshot(
+                CanonicalRegistrations::renderableKeyFor('ar_credit_note'),
+                (string) $event->creditNote->id,
+            );
         });
 
         // Receipts and delivery orders have no posting event of their own:
@@ -119,6 +128,11 @@ class TemplateBuilderServiceProvider extends ServiceProvider
             \Modules\TemplateBuilder\Services\DataSource\PaymentReceiptDataSource::class,
             \Modules\TemplateBuilder\Services\DataSource\DeliveryOrderDataSource::class,
             \Modules\TemplateBuilder\Services\DataSource\CustomerStatementDataSource::class,
+            // Issue #615 (TP5): sales order family + credit note.
+            SalesOrderDataSource::class,
+            SalesOrderConfirmationDataSource::class,
+            SalesProformaInvoiceDataSource::class,
+            CreditNoteDataSource::class,
         ];
 
         foreach ($sources as $sourceClass) {

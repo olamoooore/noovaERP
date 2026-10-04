@@ -135,7 +135,20 @@ export interface LayoutConfig {
   blocks: Block[]
 }
 
-export type DocumentType = 'invoice' | 'quotation' | 'purchase_order' | 'receipt' | 'delivery_order' | 'customer_statement'
+// Renderable document types only. Types registered in the ADR-004 registry
+// without a data source (issue #615 hide-list) must not appear here — the
+// backend completeness test keeps the two in sync.
+export type DocumentType =
+  | 'invoice'
+  | 'quotation'
+  | 'purchase_order'
+  | 'receipt'
+  | 'delivery_order'
+  | 'customer_statement'
+  | 'sales_order'
+  | 'sales_order_confirmation'
+  | 'sales_proforma_invoice'
+  | 'credit_note'
 export type TemplateMode = 'block' | 'code' | 'blade'
 
 // ADR-004 §9 — 5-state editorial lifecycle (supersedes the legacy 3-state).
@@ -260,6 +273,10 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   receipt: 'Receipt',
   delivery_order: 'Delivery Order',
   customer_statement: 'Customer Statement',
+  sales_order: 'Sales Order',
+  sales_order_confirmation: 'Order Confirmation',
+  sales_proforma_invoice: 'Pro Forma Invoice',
+  credit_note: 'Credit Note',
 }
 
 // ─── ADR-004 §7 — Universal Registry ────────────────────────────────────────

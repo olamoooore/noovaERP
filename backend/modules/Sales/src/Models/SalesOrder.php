@@ -67,7 +67,7 @@ class SalesOrder extends Model
      * #378 (O9) / #371 (O2): canonical transition map + invoice progress,
      * exposed so the UI never re-implements either.
      */
-    protected $appends = ['allowed_transitions', 'invoice_status'];
+    protected $appends = ['allowed_transitions', 'invoice_status', 'has_backorder'];
 
     protected $casts = [
         'subtotal' => 'decimal:2',
@@ -352,5 +352,15 @@ class SalesOrder extends Model
                 ->pluck('sales_order_number')
                 ->all(),
         );
+    }
+
+    /**
+     * #379 (O10): any line that could not be reserved at confirmation.
+     */
+    public function getHasBackorderAttribute(): bool
+    {
+        $lines = $this->relationLoaded('lines') ? $this->lines : $this->lines()->get();
+
+        return $lines->contains(fn ($line) => (float) ($line->backorder_quantity ?? 0) > 0);
     }
 }

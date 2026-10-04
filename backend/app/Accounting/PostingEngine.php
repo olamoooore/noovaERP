@@ -1244,7 +1244,8 @@ class PostingEngine implements PostingEngineInterface
             'vendor_credit_note', 'vendor_debit_note' => 'accounting.write',
             // Accountant-owned ledger operations.
             'opening_balance', 'period_close', 'bank_adjustment',
-            'fx_revaluation', 'intercompany', 'asset_disposal', 'payroll_run' => 'accounting.write',
+            'fx_revaluation', 'intercompany', 'asset_disposal',
+            'payroll_run', 'payroll_payment' => 'accounting.write',
             // Retail / ecommerce sales posting — coarse module permission held
             // by the actors who create these documents (module-level RBAC aligned).
             'pos_order', 'pos_refund_payment' => 'pos.create',

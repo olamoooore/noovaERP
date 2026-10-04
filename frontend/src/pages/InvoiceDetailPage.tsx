@@ -9,11 +9,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { cn, formatCurrency, formatDate } from '@/lib/utils'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { ChatterDock } from '@/components/chatter'
+import { AuditTab } from '@/components/audit/AuditTab'
 import { TagEditor } from '@/components/tags/TagEditor'
 import { DocumentLinkChip } from '@/components/documents/DocumentLinkChip'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -831,6 +833,18 @@ export function InvoiceDetailPage() {
         </div>
       )}
 
+      <Tabs defaultValue="document" className="space-y-6">
+        <TabsList className="h-10 w-fit rounded-full print:hidden">
+          <TabsTrigger value="document" className="gap-2 rounded-full px-4">
+            Document
+          </TabsTrigger>
+          <TabsTrigger value="audit" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:shield-check-bold-duotone" className="h-4 w-4" />
+            Audit
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="document" className="space-y-6 mt-6">
       {/* Linked documents */}
       <div className="flex flex-wrap items-center gap-2 print:hidden">
         <TagEditor subjectType="invoice" subjectId={id as string} />
@@ -1537,6 +1551,12 @@ export function InvoiceDetailPage() {
       <div className="text-center text-sm text-muted-foreground print:hidden">
         <p>Thank you for your business!</p>
       </div>
+        </TabsContent>
+
+        <TabsContent value="audit" className="mt-6">
+          <AuditTab endpoint={`/invoices/${id}/audit`} permission="invoices.view" />
+        </TabsContent>
+      </Tabs>
 
       {/* Odoo-style inline Chatter — sticky at bottom of viewport, click header to expand */}
       <ChatterDock

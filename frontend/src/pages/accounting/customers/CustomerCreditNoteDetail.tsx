@@ -5,7 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { AuditTab } from '@/components/audit/AuditTab';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import EInvoicePanel from '../components/EInvoicePanel';
@@ -90,6 +92,18 @@ export const CustomerCreditNoteDetail: React.FC = () => {
         </div>
       </div>
 
+      <Tabs defaultValue="document" className="space-y-6">
+        <TabsList className="h-10 w-fit rounded-full">
+          <TabsTrigger value="document" className="gap-2 rounded-full px-4">
+            Document
+          </TabsTrigger>
+          <TabsTrigger value="audit" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:shield-check-bold-duotone" className="h-4 w-4" />
+            Audit
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="document" className="space-y-6 mt-6">
       {/* Details */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card>
@@ -227,6 +241,12 @@ export const CustomerCreditNoteDetail: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="audit" className="mt-6">
+          <AuditTab endpoint={`/accounting/customers/credit-notes/${id}/audit`} permission="accounting.view" />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

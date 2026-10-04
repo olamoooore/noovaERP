@@ -4,7 +4,11 @@ namespace Modules\HRM\Http\Controllers;
 
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
+use Modules\HRM\Exceptions\PayrollPostingException;
 use Modules\HRM\Http\Requests\StorePayrollRunRequest;
 use Modules\HRM\Http\Resources\PayrollRunResource;
 use Modules\HRM\Models\PayrollRun;
@@ -109,13 +113,34 @@ class PayrollController extends Controller
             ], 403);
         }
 
-        $payrollRun->update([
-            'status' => 'approved',
-            'approved_by' => $currentUserId,
-            'approved_at' => now(),
-        ]);
+        // #793 (Y4): the accrual posting is part of the approval transition.
+        // The status change and the journal entry commit together or not at
+        // all — a failed posting must never leave a run looking approved
+        // without its accrual in the ledger.
+        try {
+            $run = DB::transaction(function () use ($payrollRun, $currentUserId) {
+                $posting = $this->journalService->postPayrollRun($payrollRun);
 
-        return (new PayrollRunResource($payrollRun->fresh()))->response();
+                if (! $posting->success) {
+                    throw new PayrollPostingException($posting->error ?? 'Unknown posting error.');
+                }
+
+                $payrollRun->update([
+                    'status' => 'approved',
+                    'approved_by' => $currentUserId,
+                    'approved_at' => now(),
+                ]);
+
+                return $payrollRun->fresh();
+            });
+        } catch (PayrollPostingException $e) {
+            return response()->json([
+                'message' => 'Payroll approval was rolled back — the accrual could not be posted: '.$e->getMessage(),
+                'reason_code' => 'PAYROLL_POSTING_FAILED',
+            ], 422);
+        }
+
+        return (new PayrollRunResource($run))->response();
     }
 
     public function recalculate(PayrollRun $payrollRun): JsonResponse
@@ -132,7 +157,7 @@ class PayrollController extends Controller
         return (new PayrollRunResource($payrollRun))->response();
     }
 
-    public function markPaid(PayrollRun $payrollRun): JsonResponse
+    public function markPaid(Request $request, PayrollRun $payrollRun): JsonResponse
     {
         if ($payrollRun->status !== 'approved') {
             return response()->json([
@@ -157,23 +182,39 @@ class PayrollController extends Controller
             ], 403);
         }
 
-        $payrollRun->update(['status' => 'paid']);
+        $data = $request->validate([
+            'bank_account_id' => ['nullable', 'integer', Rule::exists('bank_accounts', 'id')],
+            'payment_date' => ['nullable', 'date'],
+        ]);
 
-        // Post to the general ledger (DR Salary Expense, CR Payroll Payable)
-        $postingResult = $this->journalService->postPayrollRun($payrollRun);
+        // #793 (Y4): "Mark paid" posts the PAYMENT (DR Payroll Payable /
+        // CR Bank), not the accrual — the accrual is posted at approval.
+        // Posting and status change share one transaction: if the payment
+        // cannot be posted the run stays approved and the caller gets an
+        // error, never a 200 with an accounting_warning.
+        try {
+            $run = DB::transaction(function () use ($payrollRun, $data) {
+                $posting = $this->journalService->postPayrollPayment(
+                    $payrollRun,
+                    isset($data['bank_account_id']) ? (int) $data['bank_account_id'] : null,
+                    $data['payment_date'] ?? null,
+                );
 
-        $run = $payrollRun->fresh();
+                if (! $posting->success) {
+                    throw new PayrollPostingException($posting->error ?? 'Unknown posting error.');
+                }
 
-        $response = (new PayrollRunResource($run))->response();
+                $payrollRun->update(['status' => 'paid']);
 
-        if (! $postingResult->success) {
-            // Payroll is marked paid but journal posting failed — include warning
-            $data = $response->getData(true);
-            $data['accounting_warning'] = $postingResult->error;
-
-            return response()->json($data);
+                return $payrollRun->fresh();
+            });
+        } catch (PayrollPostingException $e) {
+            return response()->json([
+                'message' => 'Mark paid was rolled back — the payment could not be posted: '.$e->getMessage(),
+                'reason_code' => 'PAYROLL_POSTING_FAILED',
+            ], 422);
         }
 
-        return $response;
+        return (new PayrollRunResource($run))->response();
     }
 }
