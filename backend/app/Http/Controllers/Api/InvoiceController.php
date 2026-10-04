@@ -1678,9 +1678,10 @@ class InvoiceController extends Controller
         ]);
 
         $channel = $validated['channel'];
-        $documentType = $validated['document_type'] ?? ($invoice->status === 'posted'
-            ? 'final_invoice'
-            : 'acceptance_copy');
+        // Issue #617: leave the document type unset when the caller did not
+        // choose one so InvoiceDeliveryService can apply the #539
+        // "document type on send" setting (falling back to invoice status).
+        $documentType = $validated['document_type'] ?? null;
 
         try {
             if (! empty($validated['resend'])) {
@@ -1918,7 +1919,10 @@ class InvoiceController extends Controller
 
         $expiresDays = $validated['expires_in_days'] ?? 30;
         $sendEmail = $validated['send_email'] ?? true;
-        $documentType = $validated['document_type'] ?? 'final_invoice';
+        // Issue #617: null lets InvoiceDeliveryService apply the #539
+        // "document type on send" setting / invoice-status default instead of
+        // this endpoint hardcoding the final invoice.
+        $documentType = $validated['document_type'] ?? null;
         $recipientOverride = $validated['recipient_email'] ?? null;
 
         if ($sendEmail && $recipientOverride && ! empty($validated['save_customer_email']) && $invoice->customer) {
