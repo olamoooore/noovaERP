@@ -16,6 +16,7 @@ use App\Models\Quotation;
 use App\Models\Setting;
 use App\Models\User;
 use Modules\Sales\Models\SalesOrder;
+use Modules\TemplateBuilder\Contracts\PdfGenerationServiceContract;
 use Modules\TemplateBuilder\Services\DataSource\InvoiceDataSource;
 use Modules\TemplateBuilder\Services\DataSource\QuotationDataSource;
 use Modules\TemplateBuilder\Services\DataSource\SalesOrderDataSource;
@@ -344,11 +345,12 @@ class Issue333CashRoundingIncotermsTest extends TenantTestCase
         $this->assertContains('sales_order.incoterm_code', $tokens((new SalesOrderDataSource)->fieldCatalog()));
         $this->assertContains('invoice.incoterm_code', $tokens((new QuotationDataSource)->fieldCatalog()));
 
-        // Printed on the quotation PDF (Blade render, the DomPDF view).
-        $html = view('sales.quotation-pdf', [
-            'quotation' => $quotation->fresh(['customer', 'lines.product']),
-            'company' => ['name' => 'Issue333 Co'],
-        ])->render();
+        // Printed on the quotation PDF through the LIVE template pipeline.
+        // (The dead DomPDF Blade `sales.quotation-pdf` was removed by #616;
+        // every quotation renders through the tenant template service, and
+        // the default quotation starter carries the conditional Incoterm row.)
+        $html = app(PdfGenerationServiceContract::class)
+            ->render('quotation', (string) $quotation->id, ['format' => 'html'])['html'];
 
         $this->assertStringContainsString('FOB', $html);
         $this->assertStringContainsString('Port Klang', $html);
