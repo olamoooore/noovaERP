@@ -29,7 +29,7 @@ class OrderLifecycleService
      *   cancelOrder   -> !isInvoiced()   -> cancelled
      *   resetToDraft  -> isCancelled()   -> draft
      */
-    private const TRANSITIONS = [
+    public const TRANSITIONS = [
         'draft' => ['confirmed', 'cancelled'],
         'confirmed' => ['allocated', 'cancelled', 'invoiced'],
         'allocated' => ['fulfilled', 'cancelled', 'invoiced'],
@@ -37,6 +37,22 @@ class OrderLifecycleService
         'invoiced' => ['invoiced'],   // repeated/partial invoicing
         'cancelled' => ['draft'],     // reset-to-draft
     ];
+
+    /**
+     * #378 (O9): the single source of truth for allowed status transitions.
+     * The SalesOrder model, controllers and the exposed API all read this map.
+     *
+     * @return string[]
+     */
+    public static function allowedTransitions(string $fromStatus): array
+    {
+        return self::TRANSITIONS[$fromStatus] ?? [];
+    }
+
+    public static function canTransition(string $fromStatus, string $toStatus): bool
+    {
+        return in_array($toStatus, self::allowedTransitions($fromStatus), true);
+    }
 
     public function transition(
         SalesOrder $order,

@@ -4,8 +4,14 @@ declare(strict_types=1);
 
 namespace Modules\TemplateBuilder\Services\DataSource;
 
+use App\Models\Accounting\ComplianceDocument;
+use App\Models\Accounting\ComplianceSubmission;
 use App\Models\Invoice;
+use App\Models\LegalEntity;
+use App\Services\QrCodeService;
+use Illuminate\Support\Facades\DB;
 use Modules\TemplateBuilder\Contracts\DataSourceContract;
+use Modules\TemplateBuilder\Support\AmountInWords;
 
 class InvoiceDataSource implements DataSourceContract
 {
@@ -55,7 +61,10 @@ class InvoiceDataSource implements DataSourceContract
     public function toArray(): array
     {
         $invoice = $this->invoice ?? throw new \RuntimeException('Invoice not loaded.');
-        $company = CompanyDataSource::forDocument($invoice);
+        // Issue #614: the selling entity's jurisdiction decides the statutory
+        // labels (TIN/SST/GST) and is passed down to the company block.
+        $jurisdiction = $this->documentJurisdiction($invoice);
+        $company = CompanyDataSource::forDocument($invoice, $jurisdiction);
         // MRD pricelist-multicurrency FR-8.5: the DOCUMENT currency drives
         // the printed figures when the invoice carries a snapshot; the base
         // currency equivalent is exposed as a secondary token.
@@ -63,6 +72,16 @@ class InvoiceDataSource implements DataSourceContract
         $currencyCode = $invoice->currency_code ?: $companyCurrency;
         $baseCurrencyCode = $invoice->base_currency_code ?: $companyCurrency;
         $exchangeRate = $invoice->exchange_rate !== null ? (float) $invoice->exchange_rate : 1.0;
+
+        // Issue #614 (TP4): statutory tokens — tax summary per posted tax
+        // line, e-invoice reference and amount in words.
+        $taxSummary = $this->taxSummary($invoice);
+        $einvoice = $this->einvoice($invoice);
+        $amountInWords = AmountInWords::format(
+            (float) $invoice->total,
+            $currencyCode,
+            $invoice->customer?->language,
+        );
 
         $lines = [];
         $salesperson = $invoice->customer?->salesperson?->name ?? '';
@@ -153,6 +172,11 @@ class InvoiceDataSource implements DataSourceContract
                 'billing_address' => $this->formatAddress($invoice->billing_address_snapshot),
             ],
             'company' => $company,
+            // Issue #614 (TP4): per-tax-code/rate summary derived from the
+            // POSTED tax lines (see taxSummary()), e-invoice reference and
+            // the amount in words in the document currency/language.
+            'tax_summary' => $taxSummary,
+            'einvoice' => $einvoice,
             'lines' => $lines,
             'totals' => [
                 'subtotal' => (float) $invoice->subtotal,
@@ -162,6 +186,7 @@ class InvoiceDataSource implements DataSourceContract
                 'total' => (float) $invoice->total,
                 'paid' => (float) ($invoice->paid_amount ?? 0),
                 'balance' => (float) $invoice->balance,
+                'amount_in_words' => $amountInWords,
                 // Dual display (FR-5.4/FR-8.5): base-currency equivalents at
                 // the document's immutable snapshot rate.
                 'base_total' => round((float) $invoice->total * $exchangeRate, 2),
@@ -176,8 +201,188 @@ class InvoiceDataSource implements DataSourceContract
                 'currency_symbol' => self::currencySymbol($currencyCode),
                 'number_format' => '1,234.56',
                 'locale' => 'en',
+                'language' => strtolower((string) ($invoice->customer?->language ?: 'en')),
             ],
         ];
+    }
+
+    /**
+     * Issue #614 (TP4): the statutory jurisdiction for this document — the
+     * invoice's own tax jurisdiction when stamped, else the selling entity's
+     * country. Null lets CompanyDataSource fall back to the tenant's pack.
+     */
+    private function documentJurisdiction(Invoice $invoice): ?string
+    {
+        $explicit = strtoupper(trim((string) ($invoice->tax_jurisdiction ?? '')));
+        if ($explicit !== '') {
+            return $explicit;
+        }
+
+        $entityId = $invoice->legal_entity_id ?? $invoice->customer?->legal_entity_id;
+        if ($entityId !== null) {
+            $country = LegalEntity::query()->whereKey($entityId)->value('country_code');
+            if (is_string($country) && trim($country) !== '') {
+                return strtoupper(trim($country));
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Issue #614 (TP4): the tax summary equals the DOCUMENT'S POSTED tax
+     * lines (`tax_transaction_details`, written by PostingEngine from the
+     * TaxDeterminationResult), grouped by tax code + rate. It never
+     * recomputes tax from rates.
+     *
+     * A document not yet posted has no tax trail; its own booked tax columns
+     * (line tax_rate/tax_amount/tax_type) are the only available source and
+     * are used as-is, grouped the same way.
+     *
+     * @return list<array{code:string, rate:float, taxable:float, tax:float}>
+     */
+    private function taxSummary(Invoice $invoice): array
+    {
+        $posted = DB::table('tax_transaction_details')
+            ->where('source_document_type', 'invoice')
+            ->where('source_document_id', $invoice->id)
+            ->orderBy('id')
+            ->get(['tax_code', 'tax_rate', 'taxable_amount', 'tax_amount']);
+
+        if ($posted->isNotEmpty()) {
+            return $posted
+                ->groupBy(fn ($row) => ((string) $row->tax_code).'|'.number_format((float) $row->tax_rate, 2, '.', ''))
+                ->map(fn ($rows) => [
+                    'code' => (string) $rows->first()->tax_code,
+                    'rate' => (float) $rows->first()->tax_rate,
+                    'taxable' => round($rows->sum(fn ($row) => (float) $row->taxable_amount), 2),
+                    'tax' => round($rows->sum(fn ($row) => (float) $row->tax_amount), 2),
+                ])
+                ->values()
+                ->all();
+        }
+
+        return $invoice->lines
+            ->reject(fn ($line) => in_array($line->line_type ?? 'product', ['note', 'section'], true))
+            ->groupBy(fn ($line) => ((string) ($line->tax_type ?? '')).'|'.number_format((float) $line->tax_rate, 2, '.', ''))
+            ->map(fn ($lines) => [
+                'code' => (string) ($lines->first()->tax_type ?? ''),
+                'rate' => (float) $lines->first()->tax_rate,
+                // line_total always includes tax (InvoiceLine::calculateTotals).
+                'taxable' => round($lines->sum(fn ($line) => (float) $line->line_total - (float) $line->tax_amount), 2),
+                'tax' => round($lines->sum(fn ($line) => (float) $line->tax_amount), 2),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Issue #614 (TP4): the e-invoice reference for this invoice. The UUID,
+     * validation date and link come from the stored compliance document /
+     * submission (MyInvois records) — nothing is synthesised. The QR image is
+     * only rendered from a STORED payload (qr_payload, then validation_link);
+     * when only the UUID exists, `qr` stays empty.
+     *
+     * @return array<string,string>
+     */
+    private function einvoice(Invoice $invoice): array
+    {
+        $document = ComplianceDocument::query()
+            ->where('document_type', 'invoice')
+            ->where('document_id', $invoice->id)
+            ->orderByDesc('id')
+            ->first();
+
+        $submission = $document?->submissions()->orderByDesc('id')->first();
+
+        $uuid = (string) ($submission?->external_document_uuid ?? '');
+        $status = (string) ($submission?->submission_status ?? $document?->compliance_status ?? '');
+        $validationLink = (string) ($submission?->validation_link ?? $document?->validation_link ?? '');
+
+        $qrPayload = $this->qrPayload($document?->qr_payload, $validationLink);
+        $qr = $qrPayload !== '' ? app(QrCodeService::class)->dataUri($qrPayload) : '';
+
+        $explicitValidation = $this->validationDateFrom($submission);
+        $validatedAt = $explicitValidation
+            ?? (in_array($status, ['accepted', 'valid'], true) && $submission?->submitted_at
+                ? $submission->submitted_at->toIso8601String()
+                : '');
+
+        return [
+            'uuid' => $uuid,
+            'validated_at' => (string) $validatedAt,
+            'qr' => $qr,
+            'status' => $status,
+            'validation_link' => $validationLink,
+        ];
+    }
+
+    private function qrPayload(mixed $stored, string $validationLink): string
+    {
+        if (is_array($stored)) {
+            foreach (['payload', 'url', 'link', 'qr'] as $key) {
+                if (isset($stored[$key]) && is_string($stored[$key]) && trim($stored[$key]) !== '') {
+                    return trim($stored[$key]);
+                }
+            }
+            foreach ($stored as $value) {
+                if (is_string($value) && trim($value) !== '') {
+                    return trim($value);
+                }
+            }
+
+            return '';
+        }
+
+        if (is_string($stored) && trim($stored) !== '') {
+            return trim($stored);
+        }
+
+        return $validationLink;
+    }
+
+    private function validationDateFrom(?ComplianceSubmission $submission): ?string
+    {
+        if ($submission === null) {
+            return null;
+        }
+
+        $keys = ['dateTimeValidated', 'validatedAt', 'validationDate', 'validation_datetime', 'dateTimeValidatedUtc'];
+
+        foreach (['status_details', 'provider_response'] as $attribute) {
+            $found = $this->findDateValue($submission->{$attribute}, $keys);
+            if ($found !== null) {
+                return $found;
+            }
+        }
+
+        return null;
+    }
+
+    /** @param list<string> $keys */
+    private function findDateValue(mixed $node, array $keys): ?string
+    {
+        if (! is_array($node)) {
+            return null;
+        }
+
+        foreach ($keys as $key) {
+            $value = $node[$key] ?? null;
+            if (is_string($value) && trim($value) !== '') {
+                return trim($value);
+            }
+        }
+
+        foreach ($node as $value) {
+            if (is_array($value)) {
+                $found = $this->findDateValue($value, $keys);
+                if ($found !== null) {
+                    return $found;
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -323,7 +528,23 @@ class InvoiceDataSource implements DataSourceContract
                 ['token' => 'company.address', 'label' => 'Address'],
                 ['token' => 'company.email', 'label' => 'Email'],
                 ['token' => 'company.phone', 'label' => 'Phone'],
-                ['token' => 'company.tax_id', 'label' => 'Tax Registration No.'],
+                ['token' => 'company.registration_number', 'label' => 'Company Registration No.'],
+                ['token' => 'company.tax_id', 'label' => 'Tax Registration No. (legacy, may collapse TIN and SST/GST)'],
+                // Issue #614: statutory registration numbers are separate
+                // tokens; the *_label/*_required tokens resolve from the
+                // document jurisdiction's country pack.
+                ['token' => 'company.tin', 'label' => 'Tax Identification No. (TIN / UEN)'],
+                ['token' => 'company.tin_label', 'label' => 'TIN Label (country pack)'],
+                ['token' => 'company.sst_number', 'label' => 'SST Registration No.'],
+                ['token' => 'company.sst_number_label', 'label' => 'SST Label (country pack)'],
+                ['token' => 'company.gst_number', 'label' => 'GST Registration No.'],
+                ['token' => 'company.gst_number_label', 'label' => 'GST Label (country pack)'],
+                ['token' => 'company.tax_number', 'label' => 'Regime Registration No. (SST/GST per pack)'],
+                ['token' => 'company.tax_number_label', 'label' => 'Regime Registration Label (per pack)'],
+                ['token' => 'company.bank.name', 'label' => 'Bank Name'],
+                ['token' => 'company.bank.account_name', 'label' => 'Bank Account Name'],
+                ['token' => 'company.bank.account_number', 'label' => 'Bank Account Number'],
+                ['token' => 'company.bank.swift_code', 'label' => 'Bank SWIFT Code'],
             ]],
             ['group' => 'Totals', 'fields' => [
                 ['token' => 'totals.subtotal', 'label' => 'Subtotal'],
@@ -333,6 +554,21 @@ class InvoiceDataSource implements DataSourceContract
                 ['token' => 'totals.total', 'label' => 'Grand Total'],
                 ['token' => 'totals.paid', 'label' => 'Amount Paid'],
                 ['token' => 'totals.balance', 'label' => 'Balance Due'],
+                ['token' => 'totals.amount_in_words', 'label' => 'Amount in Words'],
+            ]],
+            ['group' => 'Tax Summary', 'fields' => [
+                ['token' => 'tax_summary', 'label' => 'Tax summary table (binds a Table block)'],
+                ['token' => 'tax_summary.code', 'label' => 'Tax Code'],
+                ['token' => 'tax_summary.rate', 'label' => 'Tax Rate'],
+                ['token' => 'tax_summary.taxable', 'label' => 'Taxable Amount'],
+                ['token' => 'tax_summary.tax', 'label' => 'Tax Amount'],
+            ]],
+            ['group' => 'E-Invoice', 'fields' => [
+                ['token' => 'einvoice.uuid', 'label' => 'E-Invoice UUID'],
+                ['token' => 'einvoice.validated_at', 'label' => 'E-Invoice Validation Date'],
+                ['token' => 'einvoice.qr', 'label' => 'E-Invoice QR (image)'],
+                ['token' => 'einvoice.status', 'label' => 'E-Invoice Status'],
+                ['token' => 'einvoice.validation_link', 'label' => 'E-Invoice Validation Link'],
             ]],
             ['group' => 'Line Items', 'fields' => [
                 ['token' => 'lines', 'label' => 'Line items table (binds a Table block)'],
@@ -384,6 +620,16 @@ class InvoiceDataSource implements DataSourceContract
                 'billing_address' => "Globex Corporation\n1 Infinite Loop\nSan Francisco, CA 94102",
             ],
             'company' => CompanyDataSource::sample(),
+            'tax_summary' => [
+                ['code' => 'SG-GST-6', 'rate' => 6.0, 'taxable' => 7600.00, 'tax' => 456.00],
+            ],
+            'einvoice' => [
+                'uuid' => '0f8fad5b-d9cb-469f-a165-70867728950e',
+                'validated_at' => '2026-07-08T09:30:00Z',
+                'qr' => 'data:image/svg+xml;base64,'.base64_encode('<svg xmlns="http://www.w3.org/2000/svg" width="90" height="90"><rect width="90" height="90" fill="#fff"/></svg>'),
+                'status' => 'valid',
+                'validation_link' => 'https://myinvois.example/0f8fad5b-d9cb-469f-a165-70867728950e/share/LONGID',
+            ],
             'lines' => [
                 ['index' => 1, 'sku' => 'SKU-1001', 'description' => 'Enterprise licence — 50 seats', 'quantity' => 1, 'unit_price' => 4500.00, 'tax_rate' => 6.0, 'discount' => 0, 'line_total' => 4770.00, 'lot_number' => 'LOT-2607A', 'expiry_date' => '2029-06-07'],
                 ['index' => 2, 'sku' => 'SKU-2099', 'description' => 'On-site training (2 days)',     'quantity' => 2, 'unit_price' => 1200.00, 'tax_rate' => 6.0, 'discount' => 0, 'line_total' => 2544.00, 'lot_number' => '', 'expiry_date' => ''],
@@ -392,8 +638,9 @@ class InvoiceDataSource implements DataSourceContract
             'totals' => [
                 'subtotal' => 7600.00, 'tax' => 456.00, 'discount' => 100.00, 'shipping' => 0.00,
                 'total' => 8056.00, 'paid' => 0.00, 'balance' => 8056.00,
+                'amount_in_words' => AmountInWords::format(8056.00, 'SGD', 'en'),
             ],
-            'meta' => ['currency_code' => 'SGD', 'currency_symbol' => 'S$', 'number_format' => '1,234.56', 'locale' => 'en'],
+            'meta' => ['currency_code' => 'SGD', 'currency_symbol' => 'S$', 'number_format' => '1,234.56', 'locale' => 'en', 'language' => 'en'],
         ];
     }
 

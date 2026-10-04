@@ -31,6 +31,15 @@ return [
         'version' => 1,
         // #741 T8: period shapes this pack can be filed under.
         'period_shapes' => ['monthly', 'quarterly'],
+        // #614 (TP4): statutory invoice field labels + requiredness as pack
+        // DATA. `required` mirrors the existing enforcement: Peppol supplier
+        // registration requires the UEN (ComplianceConfig::singaporeSFRS()).
+        'invoice_fields' => [
+            'tin' => ['label' => 'Unique Entity Number (UEN)', 'required' => true],
+            'sst_number' => ['label' => 'SST Registration No.', 'required' => false],
+            'gst_number' => ['label' => 'GST Registration No.', 'required' => false],
+            'bank' => ['label' => 'Bank Details', 'required' => false],
+        ],
         // #743 T10: registration thresholds as DATA (amount, currency, sector
         // category, backward/forward test, effective window, source). Values
         // are PENDING tax-agent confirmation (verified:false) — no release
@@ -186,6 +195,17 @@ return [
         // #738 T5: MY classifies lines as service vs sales; SG has a single
         // GST type and must not be filtered by a MY-specific 'service' type.
         'line_type_map' => ['service' => 'service'],
+        // #614 (TP4): statutory invoice field labels + requiredness as pack
+        // DATA, so the default template prints the pack's label instead of a
+        // hardcoded "GST Reg". `required` mirrors the existing enforcement:
+        // the MyInvois mapper rejects a supplier payload without a TIN
+        // (MyInvoiceMapper::validatePayload).
+        'invoice_fields' => [
+            'tin' => ['label' => 'Tax Identification No. (TIN)', 'required' => true],
+            'sst_number' => ['label' => 'SST Registration No.', 'required' => false],
+            'gst_number' => ['label' => 'GST Registration No.', 'required' => false],
+            'bank' => ['label' => 'Bank Details', 'required' => false],
+        ],
         // #665 EI3: LHDN MyInvois line classification + UN/ECE unit codes.
         // Per-product overrides live on products; these are the declared pack
         // defaults so an unmapped line is NOT a silent hardcode. The full code
