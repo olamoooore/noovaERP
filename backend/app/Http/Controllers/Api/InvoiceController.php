@@ -533,6 +533,9 @@ class InvoiceController extends Controller
             'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'lines.*.tax_inclusive' => 'nullable|boolean',
+            // #309 (X9): a per-line exemption reason travels with an exempt
+            // line (the customer profile supplies the default).
+            'lines.*.tax_exemption_reason' => 'nullable|string|max:120',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
             // MRD pricelist-multicurrency FR-5.1/5.2: document currency +
             // optional explicit price list for this document.
@@ -778,6 +781,15 @@ class InvoiceController extends Controller
             ], fn ($v) => $v !== null));
 
             // Recreate lines
+            // #309 (X9): a re-imported draft honours the customer's tax
+            // exemption exactly like a freshly created invoice.
+            $draftCustomerId = $existingInvoice->customer_id !== null ? (int) $existingInvoice->customer_id : null;
+            $draftDate = $existingInvoice->invoice_date?->toDateString();
+            $draftCustomerExempt = \App\Support\CustomerTaxProfileResolver::isExempt($draftCustomerId, $draftDate);
+            $draftExemptionReason = $draftCustomerExempt
+                ? \App\Support\CustomerTaxProfileResolver::exemptionReason($draftCustomerId, $draftDate)
+                : null;
+
             foreach ($data['lines'] as $line) {
                 $lineProduct = ($line['line_type'] ?? 'product') === 'product' && ! empty($line['product_id'])
                     ? \App\Models\Product::find($line['product_id'])
@@ -818,12 +830,13 @@ class InvoiceController extends Controller
                     'uom_id' => $lineUom?->id,
                     'unit' => $lineUom?->abbreviation,
                     'unit_price' => $line['unit_price'] ?? 0,
-                    'tax_rate' => $line['tax_rate'] ?? 0,
+                    'tax_rate' => $draftCustomerExempt ? 0 : ($line['tax_rate'] ?? 0),
                     'tax_inclusive' => array_key_exists('tax_inclusive', $line)
                         ? (bool) $line['tax_inclusive']
                         : ($lineProduct !== null
                             && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $data['invoice_date'] ?? null)),
                     'discount_amount' => $line['discount_amount'] ?? 0,
+                    'tax_exemption_reason' => $line['tax_exemption_reason'] ?? $draftExemptionReason,
                 ], array_filter($priced, fn ($v) => $v !== null)));
             }
 
@@ -1287,6 +1300,9 @@ class InvoiceController extends Controller
             'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'lines.*.tax_inclusive' => 'nullable|boolean',
+            // #309 (X9): a per-line exemption reason travels with an exempt
+            // line (the customer profile supplies the default).
+            'lines.*.tax_exemption_reason' => 'nullable|string|max:120',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
         ], [
             'invoice_number.unique' => 'This invoice number is already used by another invoice (including deleted ones). Choose a different number.',
@@ -1368,6 +1384,15 @@ class InvoiceController extends Controller
                         'base_currency_code' => $invoice->base_currency_code,
                     ]);
 
+                    // #309 (X9): an edited draft honours the customer's tax
+                    // exemption exactly like a freshly created invoice.
+                    $editCustomerId = $invoice->customer_id !== null ? (int) $invoice->customer_id : null;
+                    $editDate = $invoice->invoice_date?->toDateString();
+                    $editCustomerExempt = \App\Support\CustomerTaxProfileResolver::isExempt($editCustomerId, $editDate);
+                    $editExemptionReason = $editCustomerExempt
+                        ? \App\Support\CustomerTaxProfileResolver::exemptionReason($editCustomerId, $editDate)
+                        : null;
+
                     $invoice->lines()->delete();
                     foreach ($lines as $line) {
                         $lineProduct = ($line['line_type'] ?? 'product') === 'product' && ! empty($line['product_id'])
@@ -1390,12 +1415,13 @@ class InvoiceController extends Controller
                             'expiry_date' => $line['expiry_date'] ?? null,
                             'quantity' => $line['quantity'],
                             'unit_price' => $line['unit_price'] ?? 0,
-                            'tax_rate' => $line['tax_rate'] ?? 0,
+                            'tax_rate' => $editCustomerExempt ? 0 : ($line['tax_rate'] ?? 0),
                             'tax_inclusive' => array_key_exists('tax_inclusive', $line)
                                 ? (bool) $line['tax_inclusive']
                                 : ($lineProduct !== null
                                     && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $invoice->invoice_date?->toDateString())),
                             'discount_amount' => $line['discount_amount'] ?? 0,
+                            'tax_exemption_reason' => $line['tax_exemption_reason'] ?? $editExemptionReason,
                         ], array_filter($priced, fn ($v) => $v !== null)));
                     }
                 }
