@@ -167,6 +167,115 @@ class MedicalCaseBonusAccrualService
     }
 
     /**
+     * Issue #606 — project the customer's next FOC entitlement from the
+     * accrual rows this service already writes.
+     *
+     * The #559 bonus counter does not exist on main, so the digest's "earns
+     * N × Product FOC in ~M cases" line is derived here, in the shared
+     * accrual service, from the same data `accrueForItem()` maintains:
+     *
+     *   - a `buy_x_get_y` rule grants `foc_qty` per `minimum_purchase_qty`
+     *     qualifying units (BonusSchemeProduct::calculateDiscount());
+     *   - accrued qualifying units = sum of non-reversed usages'
+     *     `qualifying_qty`;
+     *   - the next entitlement lands `minimum_purchase_qty - (accrued mod
+     *     minimum_purchase_qty)` qualifying units from now;
+     *   - "cases" approximates that quantity at the customer's average
+     *     qualifying units per case so far (1 unit/case when there is no
+     *     history) — hence the `~` in the digest line.
+     *
+     * The most imminent rule across the given customers wins (smallest
+     * remaining quantity; lowest customer id breaks a tie). Returns null when
+     * no active rule is in progress.
+     *
+     * @param  int[]  $customerIds
+     * @return array{customer_id: int, customer_name: string, product_id: ?int, product_name: string, foc_qty: float, remaining_qty: float, cases: int}|null
+     */
+    public function nextFocDueForCustomers(array $customerIds): ?array
+    {
+        if ($customerIds === []) {
+            return null;
+        }
+
+        $assignments = CustomerBonusScheme::query()
+            ->with(['bonusScheme', 'customer'])
+            ->whereIn('customer_id', $customerIds)
+            ->where('status', 'active')
+            ->orderBy('id')
+            ->get()
+            ->filter(fn (CustomerBonusScheme $assignment): bool => $this->assignmentCoversDate($assignment, Carbon::today()));
+
+        if ($assignments->isEmpty()) {
+            return null;
+        }
+
+        $usagesByAssignment = BonusSchemeUsage::query()
+            ->whereIn('customer_bonus_scheme_id', $assignments->pluck('id')->all())
+            ->where('status', '!=', 'reversed')
+            ->get(['customer_bonus_scheme_id', 'qualifying_qty'])
+            ->groupBy('customer_bonus_scheme_id');
+
+        $best = null;
+
+        foreach ($assignments as $assignment) {
+            $rules = BonusSchemeProduct::query()
+                ->with(['focProduct', 'qualifyingProduct'])
+                ->where('bonus_scheme_id', $assignment->bonus_scheme_id)
+                ->where('scheme_type', 'buy_x_get_y')
+                ->where('foc_qty', '>', 0)
+                ->where(function ($query) {
+                    $query->where('status', 'active')->orWhereNull('status');
+                })
+                ->orderBy('priority')
+                ->get();
+
+            if ($rules->isEmpty()) {
+                continue;
+            }
+
+            $usages = $usagesByAssignment->get($assignment->id, collect());
+            $accrued = (float) $usages->sum('qualifying_qty');
+            $qualifyingCases = $usages->filter(fn ($usage): bool => (float) $usage->qualifying_qty > 0)->count();
+
+            foreach ($rules as $rule) {
+                $minimum = (float) ($rule->minimum_purchase_qty ?? 0);
+
+                if ($minimum <= 0) {
+                    continue;
+                }
+
+                $remainder = fmod($accrued, $minimum);
+                $remainingQty = $remainder > 0 ? $minimum - $remainder : $minimum;
+                $averagePerCase = $qualifyingCases > 0 ? $accrued / $qualifyingCases : 1.0;
+                $cases = (int) max(1, (int) ceil($remainingQty / max($averagePerCase, 0.0001)));
+
+                $candidate = [
+                    'customer_id' => (int) $assignment->customer_id,
+                    'customer_name' => $assignment->customer?->name ?? 'Customer',
+                    'product_id' => $rule->foc_product_id !== null
+                        ? (int) $rule->foc_product_id
+                        : (int) $rule->qualifying_product_id,
+                    'product_name' => $rule->focProduct?->name
+                        ?? $rule->qualifyingProduct?->name
+                        ?? 'Product',
+                    'foc_qty' => (float) $rule->foc_qty,
+                    'remaining_qty' => round($remainingQty, 4),
+                    'cases' => $cases,
+                ];
+
+                if ($best === null
+                    || $candidate['remaining_qty'] < $best['remaining_qty']
+                    || ($candidate['remaining_qty'] === $best['remaining_qty']
+                        && $candidate['customer_id'] < $best['customer_id'])) {
+                    $best = $candidate;
+                }
+            }
+        }
+
+        return $best;
+    }
+
+    /**
      * Issue #572 (BS6): the usage date validity is judged against — the case's
      * own business date when set, else the linked delivery order's delivery
      * date, else today. Never `today` when the document carries a date, so
