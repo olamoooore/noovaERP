@@ -103,10 +103,15 @@ class CustomerStatementController extends Controller
         // Every statement path renders through the tenant's own template
         // (lazily seeding the system-default starter when none is assigned).
         // The previous catch-fallback to the accounting.customer-statement-pdf
-        // Blade was a second, divergent layout outside the template platform.
+        // Blade was a second, divergent layout outside the template platform (#616).
+        //
+        // Issue #618: an explicit template selection from the shared print/send
+        // menu is forwarded so "Choose template" actually renders that template
+        // (the menu's Preview/Print pass the resolver's pick the same way).
         $pdfService = app(PdfGenerationServiceContract::class);
         $result = $pdfService->render('customer_statement', (string) $statement->id, [
             'format' => 'pdf',
+            'template_id' => $request->input('template'),
         ]);
         $bytes = $result['bytes'];
 

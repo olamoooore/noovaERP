@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AuditTab } from '@/components/audit/AuditTab';
+import { PrintSendMenu } from '@/components/documents/PrintSendMenu';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -978,10 +979,21 @@ const ViewPaymentDialog: React.FC<{
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Icon icon="solar:wallet-money-bold-duotone" className="h-5 w-5 text-primary" />
-            Payment {detail.payment_number || `PAY-${detail.id}`}
-          </DialogTitle>
+          <div className="flex items-center justify-between gap-3 pr-6">
+            <DialogTitle className="flex items-center gap-2">
+              <Icon icon="solar:wallet-money-bold-duotone" className="h-5 w-5 text-primary" />
+              Payment {detail.payment_number || `PAY-${detail.id}`}
+            </DialogTitle>
+            {/* #618: the receipt print/send menu. Payments have no customer
+                send endpoint, so Email/WhatsApp are hidden. */}
+            <PrintSendMenu
+              documentType="receipt"
+              pdfPath={`/payments/${detail.id}/pdf`}
+              filename={`receipt-${detail.payment_number || detail.id}.pdf`}
+              title="Payment Receipt"
+              resolutionPath={`/documents/receipt/resolution?document_id=${detail.id}`}
+            />
+          </div>
         </DialogHeader>
         {isLoading ? (
           <div className="py-8 text-center text-muted-foreground">Loading payment details…</div>

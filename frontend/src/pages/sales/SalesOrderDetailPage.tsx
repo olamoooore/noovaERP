@@ -25,6 +25,7 @@ import { ChatterDialog } from '@/components/chatter'
 import { AuditTab } from '@/components/audit/AuditTab'
 import api from '@/lib/api'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import { PrintSendMenu } from '@/components/documents/PrintSendMenu'
 import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
 import { fetchBulkStockAvailability } from '@/components/sales/stockAvailability'
 import { StockShortageDialog, type ShortageLine } from '@/components/sales/StockShortageDialog'
@@ -790,6 +791,14 @@ export function SalesOrderDetailPage() {
               Cancel
             </HeaderActionButton>
           )}
+          {/* #618: the one print/send menu, matching every other sales document. */}
+          <PrintSendMenu
+            documentType="sales_order"
+            pdfPath={`/sales/orders/${id}/pdf`}
+            filename={`SO-${order.sales_order_number}.pdf`}
+            title="Sales Order"
+            resolutionPath={`/documents/sales_order/resolution?document_id=${id}`}
+          />
           <ChatterDialog
             open={chatterOpen}
             onOpenChange={setChatterOpen}

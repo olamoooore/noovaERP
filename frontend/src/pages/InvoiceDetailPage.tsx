@@ -18,12 +18,12 @@ import { ChatterDock } from '@/components/chatter'
 import { AuditTab } from '@/components/audit/AuditTab'
 import { TagEditor } from '@/components/tags/TagEditor'
 import { DocumentLinkChip } from '@/components/documents/DocumentLinkChip'
+import { PrintSendMenu } from '@/components/documents/PrintSendMenu'
 import { PageHeader } from '@/components/layout/PageHeader'
 import api from '@/lib/api'
 import { getVisibleInvoiceNotes } from '@/lib/invoicePresentation'
 import { useAuthStore } from '@/store/authStore'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { DocumentTemplateDialog } from '@/components/documents/DocumentTemplateDialog'
 import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Textarea } from '@/components/ui/textarea'
@@ -191,7 +191,6 @@ export function InvoiceDetailPage() {
   // never post.
   const canPost = hasPermission('accounting.post')
   const queryClient = useQueryClient()
-  const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [chatterOpen, setChatterOpen] = useState(false)
 
   const { data: invoice, isLoading } = useQuery({
@@ -388,6 +387,28 @@ export function InvoiceDetailPage() {
       toast({
         variant: 'destructive',
         title: 'Failed to send invoice',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
+  // #618: the shared print/send menu reuses the existing invoice delivery
+  // service for its Email and WhatsApp actions (channel-selectable endpoint).
+  const deliverInvoiceMutation = useMutation({
+    mutationFn: async (channel: 'email' | 'whatsapp') => {
+      const response = await api.post(`/invoices/${id}/deliver`, { channel })
+      return response.data
+    },
+    onSuccess: (_data, channel) => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] })
+      toast({
+        title: channel === 'whatsapp' ? 'Invoice sent via WhatsApp' : 'Invoice emailed to the customer',
+      })
+    },
+    onError: (error: any, channel) => {
+      toast({
+        variant: 'destructive',
+        title: channel === 'whatsapp' ? 'Failed to send via WhatsApp' : 'Failed to email invoice',
         description: error.response?.data?.message || 'An error occurred',
       })
     },
@@ -707,14 +728,16 @@ export function InvoiceDetailPage() {
                 Record Payment
               </HeaderActionButton>
             )}
-            <HeaderActionButton
-              variant="outline"
-              icon="solar:download-minimalistic-bold-duotone"
-              title="Download PDF"
-              onClick={() => setTemplateDialogOpen(true)}
-            >
-              PDF
-            </HeaderActionButton>
+            {/* #618: one print/send menu shared with every sales document. */}
+            <PrintSendMenu
+              documentType="invoice"
+              pdfPath={`/invoices/${id}/pdf`}
+              filename={`invoice-${invoice?.invoice_number || id}.pdf`}
+              title="Invoice"
+              resolutionPath={`/documents/invoice/resolution?document_id=${id}`}
+              onEmail={() => deliverInvoiceMutation.mutate('email')}
+              onWhatsApp={() => deliverInvoiceMutation.mutate('whatsapp')}
+            />
             {/* Reverses the GL entry + restores stock — Owner/Admin only,
                 mirroring the documents.reset_to_draft permission. */}
             {(role === 'Owner' || role === 'Admin') &&
@@ -1057,15 +1080,6 @@ export function InvoiceDetailPage() {
               )}
             </div>
           </div>
-
-          <DocumentTemplateDialog
-            open={templateDialogOpen}
-            onOpenChange={setTemplateDialogOpen}
-            documentType="invoice"
-            pdfPath={`/invoices/${id}/pdf`}
-            filename={`invoice-${invoice?.invoice_number || id}.pdf`}
-            title="Invoice"
-          />
 
           <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
             <DialogContent className="max-w-md">

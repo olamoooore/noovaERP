@@ -13,6 +13,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\TemplateBuilder\Models\DocumentTemplate;
+use Modules\TemplateBuilder\Models\DocumentTemplateAssignment;
 use Tests\TenantTestCase;
 
 /**
@@ -277,5 +278,85 @@ class DocumentRenderAccessTest extends TenantTestCase
 
         $response->assertStatus(403);
         $response->assertJsonPath('required_permission', 'customers.view');
+    }
+
+    // ─── Issue #618: shared print/send menu resolution preview ──────────────
+
+    private function entityScopedTemplate(string $documentType, string $name): DocumentTemplate
+    {
+        $template = DocumentTemplate::create([
+            'document_type' => $documentType,
+            'code' => 'RES-'.Str::random(8),
+            'name' => $name,
+            'mode' => DocumentTemplate::MODE_BLOCK,
+            'status' => DocumentTemplate::STATUS_PUBLISHED,
+            'published_version' => 1,
+            'layout_config' => [
+                'blocks' => [
+                    ['type' => 'text', 'content' => 'Resolved template'],
+                ],
+            ],
+        ]);
+
+        DocumentTemplateAssignment::create([
+            'document_type' => $documentType,
+            'template_id' => $template->id,
+            'scope_type' => 'entity',
+            'scope_value' => (string) $this->entityA,
+            'priority' => 20,
+            'is_active' => true,
+        ]);
+
+        return $template;
+    }
+
+    public function test_resolution_reports_the_resolved_template_and_rule_for_a_document(): void
+    {
+        $template = $this->entityScopedTemplate('invoice', 'Entity A Invoice');
+
+        $response = $this->actingAs($this->cashier)
+            ->withHeader('X-Entity-Id', (string) $this->entityA)
+            ->getJson("/api/v1/documents/invoice/resolution?document_id={$this->invoiceA->id}");
+
+        $response->assertOk();
+        $response->assertJsonPath('data.template_id', $template->id);
+        $response->assertJsonPath('data.template_name', 'Entity A Invoice');
+        $response->assertJsonPath('data.rule.scope_type', 'entity');
+        $response->assertJsonPath('data.rule_label', 'entity rule');
+    }
+
+    public function test_resolution_reuses_the_source_documents_permission_and_entity_scope(): void
+    {
+        $this->entityScopedTemplate('invoice', 'Entity A Invoice');
+
+        // The cashier holds document.view (route gate) but not accounting.view,
+        // so receipt resolution must be denied exactly like receipt rendering.
+        $receiptDenied = $this->actingAs($this->cashier)
+            ->withHeader('X-Entity-Id', (string) $this->entityA)
+            ->getJson("/api/v1/documents/receipt/resolution?document_id={$this->paymentA->id}");
+
+        $receiptDenied->assertStatus(403);
+        $receiptDenied->assertJsonPath('required_permission', 'accounting.view');
+
+        // Cross-entity invoice resolution answers like a missing document.
+        $crossEntity = $this->actingAs($this->cashier)
+            ->withHeader('X-Entity-Id', (string) $this->entityA)
+            ->getJson("/api/v1/documents/invoice/resolution?document_id={$this->invoiceB->id}");
+
+        $crossEntity->assertStatus(403);
+    }
+
+    public function test_resolution_accepts_explicit_context_for_documents_not_persisted_yet(): void
+    {
+        $template = $this->entityScopedTemplate('customer_statement', 'Entity A Statement');
+
+        $response = $this->actingAs($this->manager)
+            ->withHeader('X-Entity-Id', (string) $this->entityA)
+            ->getJson("/api/v1/documents/customer_statement/resolution?entity_id={$this->entityA}");
+
+        $response->assertOk();
+        $response->assertJsonPath('data.template_id', $template->id);
+        $response->assertJsonPath('data.template_name', 'Entity A Statement');
+        $response->assertJsonPath('data.rule_label', 'entity rule');
     }
 }

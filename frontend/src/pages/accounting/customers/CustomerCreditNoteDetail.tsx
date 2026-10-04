@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { AuditTab } from '@/components/audit/AuditTab';
+import { PrintSendMenu } from '@/components/documents/PrintSendMenu';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import EInvoicePanel from '../components/EInvoicePanel';
@@ -89,6 +90,16 @@ export const CustomerCreditNoteDetail: React.FC = () => {
           <Badge className={statusColors[creditNote.status] || 'bg-gray-100 text-gray-800'}>
             {creditNote.status?.charAt(0).toUpperCase() + creditNote.status?.slice(1)}
           </Badge>
+          {/* #618: one print/send menu shared with every sales document. A
+              credit note has no customer send endpoint, so Email/WhatsApp are
+              hidden rather than faked. */}
+          <PrintSendMenu
+            documentType="credit_note"
+            pdfPath={`/credit-notes/${id}/pdf`}
+            filename={`credit-note-${creditNote.credit_note_number || id}.pdf`}
+            title="Credit Note"
+            resolutionPath={`/documents/credit_note/resolution?document_id=${id}`}
+          />
         </div>
       </div>
 
