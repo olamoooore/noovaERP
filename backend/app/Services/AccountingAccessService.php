@@ -134,6 +134,16 @@ class AccountingAccessService
      */
     public function userHasPermission(int $userId, string $permission, ?string $tenantId = null): bool
     {
+        // #878 (SA4): the dedicated per-tenant system actor is the platform's
+        // non-interactive identity. It deliberately carries no human role, so
+        // the human RBAC chain below can never pass for it — without this the
+        // queued/scheduled/webhook postings the actor exists to serve would
+        // fail closed. Identity is verified in the tenant DB (is_system),
+        // never from caller-supplied context.
+        if ($this->isTenantSystemActor($userId)) {
+            return true;
+        }
+
         // Authority gates run after tenant middleware changes PostgreSQL's
         // search_path. The actor ID is a central-user ID, so an unqualified
         // User::find() can resolve a tenant user (or no user) instead.
@@ -348,6 +358,18 @@ class AccountingAccessService
             ->where('tenant_id', $tenantId)
             ->whereIn('role', $roles)
             ->exists();
+    }
+
+    /**
+     * #878 (SA4): is the actor the current tenant's dedicated system actor?
+     */
+    private function isTenantSystemActor(int $userId): bool
+    {
+        try {
+            return DB::table('users')->where('id', $userId)->where('is_system', true)->exists();
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     private function isCoreFeature(string $featureKey): bool

@@ -174,7 +174,9 @@ class SalesCoreBridgeTest extends TenantTestCase
 
     public function test_tenant_user_helper_resolve_orders_tenant_user_first(): void
     {
-        $source = file_get_contents(base_path('modules/OCRBookkeeping/src/Helpers/TenantUserHelper.php'));
+        // #878 / SOP §4: the implementation is platform-owned now; the
+        // OCRBookkeeping class is a deprecated alias.
+        $source = file_get_contents(app_path('Support/TenantUserHelper.php'));
 
         $this->assertStringContainsString('getTenantUserId', $source,
             'resolveTenantUserId must call getTenantUserId.');

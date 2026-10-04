@@ -20,6 +20,13 @@ use Illuminate\Support\Facades\Log;
 class AutoMatchingService
 {
     /**
+     * Issue #840 (BK8): only these statement rows may participate in matching.
+     * Mirrors BankStatementMatchingService's availability gate so a row
+     * compensated by a failed import (reversed) can never be matched here.
+     */
+    private const MATCHABLE_STATUSES = ['unmatched', 'suggested', 'partially_matched'];
+
+    /**
      * Find matching suggestions for bank reconciliation.
      *
      * @param  array  $bankTransactions  Array of bank statement transactions. Each item should
@@ -132,7 +139,7 @@ class AutoMatchingService
         }
 
         $transaction = BankStatementTransaction::find($statementTransactionId);
-        if (! $transaction) {
+        if (! $transaction || ! in_array($transaction->status, self::MATCHABLE_STATUSES, true)) {
             return;
         }
 
@@ -415,12 +422,24 @@ class AutoMatchingService
 
                     // When the caller supplies a real statement transaction id,
                     // accept the underlying statement match too so both sides of
-                    // the reconciliation agree.
+                    // the reconciliation agree. Issue #840 (BK8): only rows
+                    // still available for matching may be accepted — a row
+                    // compensated by a failed import (reversed) must be rejected.
+                    $statementTransaction = null;
                     $statementMatch = null;
 
                     if ($bankTransactionId
-                        && (\Illuminate\Support\Str::isUuid((string) $bankTransactionId) || is_numeric($bankTransactionId))
-                        && BankStatementTransaction::whereKey($bankTransactionId)->exists()) {
+                        && (\Illuminate\Support\Str::isUuid((string) $bankTransactionId) || is_numeric($bankTransactionId))) {
+                        $statementTransaction = BankStatementTransaction::find($bankTransactionId);
+                        if ($statementTransaction && ! in_array($statementTransaction->status, self::MATCHABLE_STATUSES, true)) {
+                            $results['failed']++;
+                            $results['errors'][] = "Statement transaction {$bankTransactionId} is not available for matching.";
+
+                            continue;
+                        }
+                    }
+
+                    if ($statementTransaction) {
                         $statementMatch = BankStatementMatch::updateOrCreate(
                             [
                                 'bank_statement_transaction_id' => $bankTransactionId,

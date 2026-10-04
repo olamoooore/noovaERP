@@ -122,6 +122,23 @@ class BankStatementImportService
                     ]);
 
                     continue;
+                } catch (RowFieldException $e) {
+                    // BK8: the error names the offending field and keeps a safe
+                    // preview of the raw value, so the operator can fix the file.
+                    $errors++;
+                    DB::table('bank_statement_import_errors')->insert([
+                        'id' => (string) Str::uuid(),
+                        'import_id' => $import->id,
+                        'source_row' => $row['source_row'],
+                        'field' => $e->field,
+                        'code' => $e->errorCode,
+                        'severity' => 'error',
+                        'message' => $e->getMessage(),
+                        'safe_value' => $e->raw === '' ? null : mb_substr($e->raw, 0, 255),
+                        'created_at' => now(),
+                    ]);
+
+                    continue;
                 } catch (\Throwable) {
                     $errors++;
                     DB::table('bank_statement_import_errors')->insert([
@@ -166,6 +183,13 @@ class BankStatementImportService
             $duplicates = 0;
             foreach ($groups as $group) {
                 $data = $group['transaction'];
+                // BK8: a row error makes the import all-or-nothing for matching.
+                // Valid rows are still recorded for traceability, but they are
+                // compensated (reversed) in the same run, so a failed import
+                // never leaves a matchable transaction behind.
+                if ($errors > 0) {
+                    $data['status'] = 'reversed';
+                }
                 $allocationReference = $data['allocation_reference'];
                 $allocationAmount = $data['allocation_amount'];
                 unset($data['allocation_reference'], $data['allocation_amount']);
@@ -184,8 +208,8 @@ class BankStatementImportService
                     BankStatementAllocation::create(['bank_statement_transaction_id' => $transaction->id, 'allocation_type' => 'invoice_reference', 'external_reference' => $allocationReference, 'amount' => $allocationAmount, 'sequence' => 1, 'raw_data' => $data['raw_data']]);
                 }
             }
-            $import->update(['status' => $errors ? 'failed' : 'imported', 'transaction_count' => $created, 'duplicate_count' => $duplicates, 'error_count' => $errors, 'imported_at' => $errors ? null : now(), 'metadata' => array_merge($import->metadata ?? [], ['zero_amount_rows' => $zeroRows])]);
-            $this->audit->record($errors ? 'import_failed' : 'import_completed', ['actor_id' => $userId, 'bank_account_id' => $import->bank_account_id, 'import_id' => $import->id, 'after_state' => ['status' => $errors ? 'failed' : 'imported', 'row_count' => count($parsed['rows']), 'transaction_count' => $created, 'duplicate_count' => $duplicates, 'error_count' => $errors]]);
+            $import->update(['status' => $errors ? 'failed' : 'imported', 'transaction_count' => $errors ? 0 : $created, 'duplicate_count' => $duplicates, 'error_count' => $errors, 'imported_at' => $errors ? null : now(), 'metadata' => array_merge($import->metadata ?? [], ['zero_amount_rows' => $zeroRows, 'compensated_transaction_count' => $errors ? $created : 0])]);
+            $this->audit->record($errors ? 'import_failed' : 'import_completed', ['actor_id' => $userId, 'bank_account_id' => $import->bank_account_id, 'import_id' => $import->id, 'after_state' => ['status' => $errors ? 'failed' : 'imported', 'row_count' => count($parsed['rows']), 'transaction_count' => $errors ? 0 : $created, 'compensated_transaction_count' => $errors ? $created : 0, 'duplicate_count' => $duplicates, 'error_count' => $errors]]);
             Cache::forget($key);
 
             return $import->fresh();
@@ -231,7 +255,7 @@ class BankStatementImportService
             : $numeric($get('credit'), 'credit') - abs($numeric($get('debit'), 'debit'));
         $description = $get('description');
         if ($description === '') {
-            throw new \InvalidArgumentException('Missing description.');
+            throw new RowFieldException('description', 'DESCRIPTION_MISSING', '', 'Missing description.');
         }
         $reference = $get('bank_reference');
         $running = $get('running_balance');
@@ -257,50 +281,56 @@ class BankStatementImportService
     {
         $raw = trim($rawDate);
 
-        // ISO dates carry a 4-digit year first — never ambiguous.
-        if (preg_match('/^\\d{4}-\\d{2}-\\d{2}(?:[T ].*)?$/', $raw)) {
-            return Carbon::createFromFormat('!Y-m-d', substr($raw, 0, 10));
-        }
+        try {
+            // ISO dates carry a 4-digit year first — never ambiguous.
+            if (preg_match('/^\\d{4}-\\d{2}-\\d{2}(?:[T ].*)?$/', $raw)) {
+                return Carbon::createFromFormat('!Y-m-d', substr($raw, 0, 10));
+            }
 
-        // BK1: slash/dot numeric dates must come from the profile or the
-        // column inference — Carbon::parse would read them m/d/Y and swap
-        // 3/4/2026 (3 April) into 4 March with no warning.
-        if (preg_match('#^(\\d{1,2})[/.](\\d{1,2})[/.](\\d{4})$#', $raw)) {
-            $pattern = $dateFormat ?: match ($inferredDateOrder) {
-                'd/m' => 'd/m/Y',
-                'm/d' => 'm/d/Y',
-                default => null,
-            };
-            if ($pattern === null) {
-                throw new \InvalidArgumentException(
-                    'Ambiguous transaction date "'.$raw.'": day/month order unknown — provide the statement date format.'
+            // BK1: slash/dot numeric dates must come from the profile or the
+            // column inference — Carbon::parse would read them m/d/Y and swap
+            // 3/4/2026 (3 April) into 4 March with no warning.
+            if (preg_match('#^(\\d{1,2})[/.](\\d{1,2})[/.](\\d{4})$#', $raw)) {
+                $pattern = $dateFormat ?: match ($inferredDateOrder) {
+                    'd/m' => 'd/m/Y',
+                    'm/d' => 'm/d/Y',
+                    default => null,
+                };
+                if ($pattern === null) {
+                    throw new RowFieldException('transaction_date', 'AMBIGUOUS_TRANSACTION_DATE', $raw, 'Ambiguous transaction date "'.$raw.'": day/month order unknown — provide the statement date format.');
+                }
+
+                // Accept profile spellings (dd/mm/yyyy) and any ./- separators.
+                $fmt = str_replace(
+                    ['yyyy', 'yy', 'dd', 'mm', 'YYYY', 'YY', 'DD', 'MM'],
+                    ['Y', 'y', 'd', 'm', 'Y', 'y', 'd', 'm'],
+                    $pattern,
                 );
+                $fmt = str_replace(['.', '-'], '/', $fmt);
+                $rawNormalized = str_replace(['.', '-'], '/', $raw);
+                $parts = explode('/', $rawNormalized);
+                $parts[0] = str_pad($parts[0], 2, '0', STR_PAD_LEFT);
+                $parts[1] = str_pad($parts[1], 2, '0', STR_PAD_LEFT);
+                $padded = implode('/', $parts);
+
+                $date = Carbon::createFromFormat('!'.$fmt, $padded);
+                if ($date === false || $date->format($fmt) !== $padded) {
+                    throw new RowFieldException('transaction_date', 'INVALID_TRANSACTION_DATE', $raw, 'Invalid transaction date "'.$raw.'".');
+                }
+
+                return $date;
             }
 
-            // Accept profile spellings (dd/mm/yyyy) and any ./- separators.
-            $fmt = str_replace(
-                ['yyyy', 'yy', 'dd', 'mm', 'YYYY', 'YY', 'DD', 'MM'],
-                ['Y', 'y', 'd', 'm', 'Y', 'y', 'd', 'm'],
-                $pattern,
-            );
-            $fmt = str_replace(['.', '-'], '/', $fmt);
-            $rawNormalized = str_replace(['.', '-'], '/', $raw);
-            $parts = explode('/', $rawNormalized);
-            $parts[0] = str_pad($parts[0], 2, '0', STR_PAD_LEFT);
-            $parts[1] = str_pad($parts[1], 2, '0', STR_PAD_LEFT);
-            $padded = implode('/', $parts);
-
-            $date = Carbon::createFromFormat('!'.$fmt, $padded);
-            if ($date === false || $date->format($fmt) !== $padded) {
-                throw new \InvalidArgumentException('Invalid transaction date "'.$rawDate.'".');
-            }
-
-            return $date;
+            // Non-numeric formats (e.g. "3 Apr 2026") keep the existing parser —
+            // the m/d ambiguity this issue targets only applies to slash/dot dates.
+            return Carbon::parse($raw);
+        } catch (RowFieldException $e) {
+            throw $e;
+        } catch (\Throwable) {
+            // BK8: an unreadable date is a field-named row error with a safe
+            // preview — never a generic "row could not be normalized" message.
+            throw new RowFieldException('transaction_date', 'INVALID_TRANSACTION_DATE', $raw, 'Invalid transaction date "'.$raw.'".');
         }
-
-        // Non-numeric formats (e.g. "3 Apr 2026") keep the existing parser —
-        // the m/d ambiguity this issue targets only applies to slash/dot dates.
-        return Carbon::parse($raw);
     }
 
     /**

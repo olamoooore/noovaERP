@@ -5,7 +5,6 @@ namespace App\Console\Commands;
 use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Tenant;
-use App\Models\User;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Modules\POS\Models\PosOrder;
@@ -69,15 +68,10 @@ class GenerateMissingPosInvoices extends Command
     {
         $this->info('Finding paid POS orders without invoices...');
 
-        // Authenticate as system user for proper audit trail (required by SalesOrderService)
-        $systemUser = User::first();
-        if ($systemUser) {
-            auth()->login($systemUser);
-        } else {
-            $this->error('No users found in the system. Cannot run without an authenticated user.');
-
-            return;
-        }
+        // #878 (SA4): no longer logs in as User::first(). With no
+        // authenticated user, TenantUserHelper attributes the non-interactive
+        // work to the tenant's dedicated system actor (is_system = true)
+        // instead of silently borrowing the lowest-ID user's identity.
 
         // Get all paid POS orders
         $paidOrders = PosOrder::where('status', 'paid')

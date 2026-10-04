@@ -2,6 +2,7 @@
 
 namespace App\Services\Reconciliation;
 
+use App\Models\AccountMapping;
 use App\Models\ARTransaction;
 use App\Models\ChartOfAccount;
 use App\Models\JournalEntryLine;
@@ -27,6 +28,11 @@ use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
  *   - Fixed view column names: id → transaction_id, reference → document_number,
  *     balance → amount (ar_transactions is a VIEW, not a table)
  *   - Created missing ARTransaction Eloquent model for the ar_transactions view
+ *
+ * Issue #881 (SA8): reconciliation is per legal entity, the control account is
+ * mapping-driven with no code/name fallback (a missing mapping is a setup
+ * error), the difference threshold is a parameter, and a variance beyond it is
+ * logged as an alert.
  */
 class ARGLReconciliationService
 {
@@ -34,47 +40,55 @@ class ARGLReconciliationService
      * Run AR to GL reconciliation control
      *
      * @param  string  $asOfDate  Date to reconcile as of (YYYY-MM-DD)
-     * @param  int|null  $controlAccountId  Optional specific AR control account
+     * @param  int|null  $controlAccountId  Optional explicit AR control account
+     * @param  int|null  $legalEntityId  Reconcile only this legal entity (null = tenant-wide)
+     * @param  float  $tolerance  Absolute difference treated as reconciled
+     *
+     * @throws ARControlAccountNotConfiguredException when no active mapping exists
      */
-    public function reconcile(string $asOfDate, ?int $controlAccountId = null): ReconciliationControlResult
-    {
+    public function reconcile(
+        string $asOfDate,
+        ?int $controlAccountId = null,
+        ?int $legalEntityId = null,
+        float $tolerance = 0.01,
+    ): ReconciliationControlResult {
         $asOfDate = Carbon::parse($asOfDate);
 
-        // Get AR control account if not specified
+        // An explicit control account is a caller decision; otherwise the
+        // configured mapping is the only source — never a guessed code.
         if (! $controlAccountId) {
-            $controlAccount = $this->getARControlAccount();
-            $controlAccountId = $controlAccount?->id;
-        }
-
-        if (! $controlAccountId) {
-            throw new \Exception('AR control account not found');
+            $controlAccountId = $this->getARControlAccount()->id;
         }
 
         // Get subledger balance
-        $subledgerBalance = $this->getSubledgerBalance($asOfDate);
+        $subledgerBalance = $this->getSubledgerBalance($asOfDate, $legalEntityId);
 
         // Get GL control account balance
-        $glBalance = $this->getGLBalance($controlAccountId, $asOfDate);
+        $glBalance = $this->getGLBalance($controlAccountId, $asOfDate, $legalEntityId);
 
         // Calculate difference
         $difference = round($subledgerBalance - $glBalance, 2);
+        $withinTolerance = abs($difference) < $tolerance;
 
         // Identify discrepancies if any
         $discrepancies = [];
-        if (abs($difference) > 0.01) {
-            $discrepancies = $this->identifyDiscrepancies($asOfDate, $controlAccountId);
+        if (! $withinTolerance) {
+            $discrepancies = $this->identifyDiscrepancies($asOfDate, $controlAccountId, $legalEntityId);
         }
 
         // Create control result record
         $result = ReconciliationControlResult::create([
             'control_name' => 'ar_gl_reconciliation',
+            'legal_entity_id' => $legalEntityId,
             'as_of_date' => $asOfDate->toDateString(),
             'subledger_balance' => $subledgerBalance,
             'gl_balance' => $glBalance,
             'difference' => $difference,
-            'status' => abs($difference) < 0.01 ? 'passed' : 'failed',
+            'status' => $withinTolerance ? 'passed' : 'failed',
             'discrepancies' => $discrepancies,
-            'executed_by' => TenantUserHelper::requireTenantUserId(),
+            // Console/scheduled runs may have no authenticated user; the
+            // column is nullable and must not abort the reconciliation.
+            'executed_by' => TenantUserHelper::resolveTenantUserId(),
             'notes' => null,
         ]);
 
@@ -83,7 +97,21 @@ class ARGLReconciliationService
             $this->createExceptionsFromDiscrepancies($result, $discrepancies);
         }
 
+        // Alert: a variance beyond tolerance is an operational alarm, not just
+        // an info line. The scheduled command additionally fails its run.
+        if (! $withinTolerance) {
+            Log::warning('AR to GL reconciliation variance exceeds tolerance', [
+                'legal_entity_id' => $legalEntityId,
+                'as_of_date' => $asOfDate->toDateString(),
+                'subledger_balance' => $subledgerBalance,
+                'gl_balance' => $glBalance,
+                'difference' => $difference,
+                'tolerance' => $tolerance,
+            ]);
+        }
+
         Log::info('AR to GL reconciliation completed', [
+            'legal_entity_id' => $legalEntityId,
             'as_of_date' => $asOfDate->toDateString(),
             'subledger_balance' => $subledgerBalance,
             'gl_balance' => $glBalance,
@@ -95,28 +123,31 @@ class ARGLReconciliationService
     }
 
     /**
-     * Get AR control account from chart of accounts.
+     * Resolve the AR control account from account_mappings.
      *
-     * Resolution order:
-     *   1. account_mappings table (mapping_key = 'accounts_receivable')
-     *   2. COA code '1100' (seeded default for AR)
-     *   3. Name-based fallback
+     * Issue #881: mapping-driven only. The historical COA code '1100' /
+     * name-match fallbacks are deliberately gone — on the MY CoA the AR
+     * control account is 124000, so guessing 1100 reconciled against the
+     * wrong account.
+     *
+     * @throws ARControlAccountNotConfiguredException
      */
-    private function getARControlAccount(): ?ChartOfAccount
+    private function getARControlAccount(): ChartOfAccount
     {
-        // Prefer the configured AR mapping
-        $mapping = \App\Models\AccountMapping::where('mapping_key', 'accounts_receivable')
+        $mapping = AccountMapping::where('mapping_key', 'accounts_receivable')
             ->whereNull('document_type')
             ->where('is_active', true)
+            ->with('account')
             ->first();
 
-        if ($mapping) {
-            return $mapping->account;
+        if (! $mapping || ! $mapping->account || ! $mapping->account->is_active) {
+            throw new ARControlAccountNotConfiguredException(
+                "AR control account is not configured: no active 'accounts_receivable' account mapping exists. ".
+                'Configure it via Accounting Settings > Default Accounts (account-mappings health) before reconciling.'
+            );
         }
 
-        return ChartOfAccount::where('code', '1100')
-            ->orWhere('name', 'like', '%Accounts Receivable%')
-            ->first();
+        return $mapping->account;
     }
 
     /**
@@ -125,23 +156,31 @@ class ARGLReconciliationService
      * Uses the ar_transactions view which exposes debit/credit columns.
      * For AR: balance = SUM(debit) - SUM(credit) = net receivable outstanding.
      */
-    private function getSubledgerBalance(Carbon $asOfDate): float
+    private function getSubledgerBalance(Carbon $asOfDate, ?int $legalEntityId = null): float
     {
-        return ARTransaction::whereIn('status', ['sent', 'posted', 'partial', 'overdue', 'paid'])
-            ->where('transaction_date', '<=', $asOfDate)
-            ->selectRaw('SUM(debit - credit) as balance')
-            ->value('balance') ?? 0.0;
+        $query = ARTransaction::whereIn('status', ['sent', 'posted', 'partial', 'overdue', 'paid'])
+            ->where('transaction_date', '<=', $asOfDate);
+
+        if ($legalEntityId) {
+            $query->where('legal_entity_id', $legalEntityId);
+        }
+
+        return $query->selectRaw('SUM(debit - credit) as balance')->value('balance') ?? 0.0;
     }
 
     /**
      * Get GL control account balance as of date
      */
-    private function getGLBalance(int $controlAccountId, Carbon $asOfDate): float
+    private function getGLBalance(int $controlAccountId, Carbon $asOfDate, ?int $legalEntityId = null): float
     {
         return JournalEntryLine::where('account_id', $controlAccountId)
-            ->whereHas('journalEntry', function ($q) use ($asOfDate) {
+            ->whereHas('journalEntry', function ($q) use ($asOfDate, $legalEntityId) {
                 $q->where('entry_date', '<=', $asOfDate)
                     ->where('status', 'posted');
+
+                if ($legalEntityId) {
+                    $q->where('legal_entity_id', $legalEntityId);
+                }
             })
             ->selectRaw('SUM(debit - credit) as balance')
             ->value('balance') ?? 0.0;
@@ -150,12 +189,12 @@ class ARGLReconciliationService
     /**
      * Identify specific discrepancies between subledger and GL
      */
-    private function identifyDiscrepancies(Carbon $asOfDate, int $controlAccountId): array
+    private function identifyDiscrepancies(Carbon $asOfDate, int $controlAccountId, ?int $legalEntityId = null): array
     {
         $discrepancies = [];
 
         // 1. Find unposted invoices
-        $unpostedInvoices = $this->findUnpostedInvoices($asOfDate);
+        $unpostedInvoices = $this->findUnpostedInvoices($asOfDate, $legalEntityId);
         if (! empty($unpostedInvoices)) {
             $discrepancies[] = [
                 'type' => 'unposted_invoices',
@@ -167,7 +206,7 @@ class ARGLReconciliationService
         }
 
         // 2. Find unposted payments
-        $unpostedPayments = $this->findUnpostedPayments($asOfDate);
+        $unpostedPayments = $this->findUnpostedPayments($asOfDate, $legalEntityId);
         if (! empty($unpostedPayments)) {
             $discrepancies[] = [
                 'type' => 'unposted_payments',
@@ -179,7 +218,7 @@ class ARGLReconciliationService
         }
 
         // 3. Find GL entries without subledger record
-        $missingSubledger = $this->findGLEntriesWithoutSubledger($asOfDate, $controlAccountId);
+        $missingSubledger = $this->findGLEntriesWithoutSubledger($asOfDate, $controlAccountId, $legalEntityId);
         if (! empty($missingSubledger)) {
             $discrepancies[] = [
                 'type' => 'missing_subledger',
@@ -191,7 +230,7 @@ class ARGLReconciliationService
         }
 
         // 4. Find timing differences (posted in different periods)
-        $timingDifferences = $this->findTimingDifferences($asOfDate, $controlAccountId);
+        $timingDifferences = $this->findTimingDifferences($asOfDate, $controlAccountId, $legalEntityId);
         if (! empty($timingDifferences)) {
             $discrepancies[] = [
                 'type' => 'timing_differences',
@@ -209,11 +248,12 @@ class ARGLReconciliationService
      *
      * View columns: transaction_id, document_number, customer_id, debit, transaction_date, status
      */
-    private function findUnpostedInvoices(Carbon $asOfDate): array
+    private function findUnpostedInvoices(Carbon $asOfDate, ?int $legalEntityId = null): array
     {
         return ARTransaction::where('transaction_type', 'invoice')
             ->where('transaction_date', '<=', $asOfDate)
             ->where('status', 'sent') // Not posted
+            ->when($legalEntityId, fn ($q) => $q->where('legal_entity_id', $legalEntityId))
             ->select('transaction_id', 'customer_id', 'document_number', 'debit as amount', 'transaction_date')
             ->limit(100)
             ->get()
@@ -226,15 +266,25 @@ class ARGLReconciliationService
      * We look for AR payment records whose document_number does not appear as
      * a reference on any journal_entry_line hitting the AR control account.
      */
-    private function findUnpostedPayments(Carbon $asOfDate): array
+    private function findUnpostedPayments(Carbon $asOfDate, ?int $legalEntityId = null): array
     {
         return ARTransaction::where('transaction_type', 'payment')
             ->where('transaction_date', '<=', $asOfDate)
             ->where('status', 'posted')
-            ->whereNotExists(function ($query) {
+            ->when($legalEntityId, fn ($q) => $q->where('legal_entity_id', $legalEntityId))
+            ->whereNotExists(function ($query) use ($legalEntityId) {
                 $query->select(DB::raw(1))
                     ->from('journal_entry_lines')
                     ->whereColumn('journal_entry_lines.reference', 'ar_transactions.document_number');
+
+                if ($legalEntityId) {
+                    $query->whereExists(function ($je) use ($legalEntityId) {
+                        $je->select(DB::raw(1))
+                            ->from('journal_entries')
+                            ->whereColumn('journal_entries.id', 'journal_entry_lines.journal_entry_id')
+                            ->where('journal_entries.legal_entity_id', $legalEntityId);
+                    });
+                }
             })
             ->select('transaction_id', 'customer_id', 'document_number', 'credit as amount', 'transaction_date')
             ->limit(100)
@@ -247,22 +297,31 @@ class ARGLReconciliationService
      *
      * Joins through journal_entries to get entry_date (journal_entry_lines has no date column).
      */
-    private function findGLEntriesWithoutSubledger(Carbon $asOfDate, int $controlAccountId): array
+    private function findGLEntriesWithoutSubledger(Carbon $asOfDate, int $controlAccountId, ?int $legalEntityId = null): array
     {
         return JournalEntryLine::where('account_id', $controlAccountId)
-            ->whereHas('journalEntry', function ($q) use ($asOfDate) {
+            ->whereHas('journalEntry', function ($q) use ($asOfDate, $legalEntityId) {
                 $q->where('entry_date', '<=', $asOfDate)
                     ->where('status', 'posted');
+
+                if ($legalEntityId) {
+                    $q->where('legal_entity_id', $legalEntityId);
+                }
             })
-            ->where(function ($q) {
-                $q->whereNull('reference')
-                    ->orWhereNotExists(function ($sub) {
+            ->where(function ($q) use ($legalEntityId) {
+                $q->whereNull('journal_entry_lines.reference')
+                    ->orWhereNotExists(function ($sub) use ($legalEntityId) {
                         $sub->select(DB::raw(1))
                             ->from('ar_transactions')
                             ->whereColumn('ar_transactions.document_number', 'journal_entry_lines.reference');
+
+                        if ($legalEntityId) {
+                            $sub->where('ar_transactions.legal_entity_id', $legalEntityId);
+                        }
                     });
             })
             ->join('journal_entries as je', 'je.id', '=', 'journal_entry_lines.journal_entry_id')
+            ->when($legalEntityId, fn ($q) => $q->where('je.legal_entity_id', $legalEntityId))
             ->select(
                 'journal_entry_lines.id',
                 'journal_entry_lines.journal_entry_id',
@@ -291,9 +350,9 @@ class ARGLReconciliationService
      * PostgreSQL-compatible: uses (date1 - date2) which returns an integer (days).
      * Joins journal_entry_lines → journal_entries for the GL posting date.
      */
-    private function findTimingDifferences(Carbon $asOfDate, int $controlAccountId): array
+    private function findTimingDifferences(Carbon $asOfDate, int $controlAccountId, ?int $legalEntityId = null): array
     {
-        return DB::select("
+        $sql = "
             SELECT 
                 ar.transaction_id as ar_transaction_id,
                 ar.document_number,
@@ -307,8 +366,19 @@ class ARGLReconciliationService
                 AND jel.account_id = ?
                 AND je.status = 'posted'
                 AND ABS(ar.transaction_date::date - je.entry_date::date) > 0
-            LIMIT 100
-        ", [$asOfDate->toDateString(), $controlAccountId]);
+        ";
+
+        $bindings = [$asOfDate->toDateString(), $controlAccountId];
+
+        if ($legalEntityId) {
+            $sql .= ' AND ar.legal_entity_id = ? AND je.legal_entity_id = ?';
+            $bindings[] = $legalEntityId;
+            $bindings[] = $legalEntityId;
+        }
+
+        $sql .= ' LIMIT 100';
+
+        return DB::select($sql, $bindings);
     }
 
     /**
@@ -316,19 +386,20 @@ class ARGLReconciliationService
      *
      * @return array Report data
      */
-    public function generateReport(string $asOfDate): array
+    public function generateReport(string $asOfDate, ?int $legalEntityId = null): array
     {
-        $result = $this->reconcile($asOfDate);
+        $result = $this->reconcile($asOfDate, null, $legalEntityId);
 
         // Get aging summary
-        $agingSummary = $this->getAgingSummary(Carbon::parse($asOfDate));
+        $agingSummary = $this->getAgingSummary(Carbon::parse($asOfDate), $legalEntityId);
 
         // Get customer balances
-        $customerBalances = $this->getCustomerBalances(Carbon::parse($asOfDate));
+        $customerBalances = $this->getCustomerBalances(Carbon::parse($asOfDate), $legalEntityId);
 
         return [
             'report_date' => now()->toDateTimeString(),
             'as_of_date' => $asOfDate,
+            'legal_entity_id' => $legalEntityId,
             'reconciliation_result' => [
                 'subledger_balance' => $result->subledger_balance,
                 'gl_balance' => $result->gl_balance,
@@ -348,11 +419,11 @@ class ARGLReconciliationService
      * PostgreSQL-compatible: uses (date - INTERVAL 'N days') syntax.
      * Uses 'amount' column from the ar_transactions view (not 'balance').
      */
-    private function getAgingSummary(Carbon $asOfDate): array
+    private function getAgingSummary(Carbon $asOfDate, ?int $legalEntityId = null): array
     {
         $date = $asOfDate->toDateString();
 
-        return DB::select("
+        $sql = "
             SELECT 
                 COALESCE(SUM(CASE WHEN due_date >= ?::date THEN amount ELSE 0 END), 0) as current,
                 COALESCE(SUM(CASE WHEN due_date BETWEEN (?::date - INTERVAL '30 days') AND (?::date - INTERVAL '1 day') THEN amount ELSE 0 END), 0) as days_1_30,
@@ -364,16 +435,26 @@ class ARGLReconciliationService
             WHERE status IN ('sent', 'posted', 'partial', 'overdue')
                 AND transaction_type = 'invoice'
                 AND transaction_date <= ?::date
-        ", [$date, $date, $date, $date, $date, $date, $date, $date, $date]);
+        ";
+
+        $bindings = [$date, $date, $date, $date, $date, $date, $date, $date, $date];
+
+        if ($legalEntityId) {
+            $sql .= ' AND legal_entity_id = ?';
+            $bindings[] = $legalEntityId;
+        }
+
+        return DB::select($sql, $bindings);
     }
 
     /**
      * Get customer balances
      */
-    private function getCustomerBalances(Carbon $asOfDate): array
+    private function getCustomerBalances(Carbon $asOfDate, ?int $legalEntityId = null): array
     {
         return ARTransaction::whereIn('status', ['sent', 'posted', 'partial', 'overdue'])
             ->where('transaction_date', '<=', $asOfDate)
+            ->when($legalEntityId, fn ($q) => $q->where('legal_entity_id', $legalEntityId))
             ->selectRaw('customer_id, SUM(debit - credit) as balance')
             ->groupBy('customer_id')
             ->havingRaw('ABS(SUM(debit - credit)) > 0.01')
@@ -389,9 +470,10 @@ class ARGLReconciliationService
      *
      * @param  int  $limit  Number of historical results
      */
-    public function getHistory(int $limit = 12): array
+    public function getHistory(int $limit = 12, ?int $legalEntityId = null): array
     {
         return ReconciliationControlResult::where('control_name', 'ar_gl_reconciliation')
+            ->when($legalEntityId, fn ($q) => $q->where('legal_entity_id', $legalEntityId))
             ->orderByDesc('as_of_date')
             ->limit($limit)
             ->get()
