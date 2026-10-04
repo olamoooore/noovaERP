@@ -2,10 +2,12 @@
 
 namespace Modules\Sales\Models;
 
+use App\Models\ApprovalRequest;
 use App\Models\Warehouse;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class SalesOrder extends Model
@@ -153,6 +155,18 @@ class SalesOrder extends Model
     public function warehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class, 'warehouse_id');
+    }
+
+    /**
+     * #402 (SU4): the latest approval-gate request for this order, so the
+     * detail payload carries the approval state the header chip shows.
+     */
+    public function latestApprovalRequest(): HasOne
+    {
+        return $this->hasOne(ApprovalRequest::class, 'subject_id')
+            ->where('subject_type', static::class)
+            ->where('request_type', \App\Services\SalesApprovalGate::REQUEST_TYPE_SALES_ORDER)
+            ->latestOfMany();
     }
 
     public function statusHistory(): HasMany

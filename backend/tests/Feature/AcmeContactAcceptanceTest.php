@@ -125,7 +125,9 @@ class AcmeContactAcceptanceTest extends TenantTestCase
 
     public function test_ven_at_03_canonical_organisation_contact_created(): void
     {
-        $csv = "name,code\nAcme Corp,VC0001";
+        // Issue #432 (CU4): individuals now map to a PERSON contact, so an
+        // organisation customer must declare its type explicitly.
+        $csv = "name,code,type\nAcme Corp,VC0001,company";
 
         $stageRes = $this->as($this->admin(), 'post', '/api/v1/accounting/customers/import', [
             'file' => $this->createCsvFile($csv),

@@ -44,30 +44,14 @@ class MedicalCaseBonusAccrualService
             return 0;
         }
 
-        $today = Carbon::today();
+        $usageDate = $this->usageDateFor($item, $case);
 
         $assignments = CustomerBonusScheme::query()
             ->with('bonusScheme')
             ->where('customer_id', $case->customer_id)
             ->where('status', 'active')
             ->get()
-            ->filter(function (CustomerBonusScheme $assignment) use ($today): bool {
-                $scheme = $assignment->bonusScheme;
-
-                if (! $scheme || $scheme->status !== 'active') {
-                    return false;
-                }
-
-                if ($scheme->start_date && $scheme->start_date->gt($today)) {
-                    return false;
-                }
-
-                if ($scheme->end_date && $scheme->end_date->lt($today)) {
-                    return false;
-                }
-
-                return true;
-            });
+            ->filter(fn (CustomerBonusScheme $assignment): bool => $this->assignmentCoversDate($assignment, $usageDate));
 
         $created = 0;
 
@@ -136,7 +120,7 @@ class MedicalCaseBonusAccrualService
             return null;
         }
 
-        $today = Carbon::today();
+        $usageDate = $this->usageDateFor($item, $case);
 
         $assignments = CustomerBonusScheme::query()
             ->with('bonusScheme')
@@ -146,22 +130,7 @@ class MedicalCaseBonusAccrualService
             ->get();
 
         foreach ($assignments as $assignment) {
-            if ($assignment->start_date && $assignment->start_date->gt($today)) {
-                continue;
-            }
-            if ($assignment->end_date && $assignment->end_date->lt($today)) {
-                continue;
-            }
-
-            $scheme = $assignment->bonusScheme;
-
-            if (! $scheme || $scheme->status !== 'active') {
-                continue;
-            }
-            if ($scheme->start_date && $scheme->start_date->gt($today)) {
-                continue;
-            }
-            if ($scheme->end_date && $scheme->end_date->lt($today)) {
+            if (! $this->assignmentCoversDate($assignment, $usageDate)) {
                 continue;
             }
 
@@ -195,5 +164,56 @@ class MedicalCaseBonusAccrualService
         }
 
         return null;
+    }
+
+    /**
+     * Issue #572 (BS6): the usage date validity is judged against — the case's
+     * own business date when set, else the linked delivery order's delivery
+     * date, else today. Never `today` when the document carries a date, so
+     * back-dated and imported usage is judged by the scheme in force then.
+     */
+    private function usageDateFor(MedicalCaseItem $item, MedicalCase $case): Carbon
+    {
+        if ($case->case_date) {
+            return $case->case_date->copy()->startOfDay();
+        }
+
+        $order = $item->deliveryOrderItem?->deliveryOrder;
+
+        if ($order?->delivery_date) {
+            return $order->delivery_date->copy()->startOfDay();
+        }
+
+        if ($order?->delivered_at) {
+            return Carbon::parse($order->delivered_at)->startOfDay();
+        }
+
+        return Carbon::today();
+    }
+
+    /**
+     * Issue #572 (BS6): a rule applies only when the scheme is active and both
+     * the scheme's and the customer's assignment date windows contain the
+     * usage date — the assignment dates were previously ignored.
+     */
+    private function assignmentCoversDate(CustomerBonusScheme $assignment, Carbon $usageDate): bool
+    {
+        $scheme = $assignment->bonusScheme;
+
+        if (! $scheme || $scheme->status !== 'active') {
+            return false;
+        }
+
+        foreach ([$assignment, $scheme] as $window) {
+            if ($window->start_date && $window->start_date->gt($usageDate)) {
+                return false;
+            }
+
+            if ($window->end_date && $window->end_date->lt($usageDate)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

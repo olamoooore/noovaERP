@@ -22,6 +22,12 @@ class CustomerController extends Controller
 {
     private const NUMERIC_PHONE_RULE = 'nullable|regex:/^[0-9]+$/|max:50';
 
+    /**
+     * Customer columns mirrored onto the canonical Contact Master contact
+     * (issue #432 / CU4). Editing any of these must refresh the contact.
+     */
+    private const CONTACT_MIRROR_FIELDS = ['name', 'type', 'email', 'phone', 'mobile', 'website'];
+
     public function index(Request $request): JsonResponse
     {
         $query = Customer::withCount(['invoices'])
@@ -440,12 +446,21 @@ class CustomerController extends Controller
         $categoryIds = $validated['category_ids'] ?? null;
         unset($validated['category_ids']);
 
-        $customer->update($validated);
+        // Issue #432 (CU4): the customer profile and its canonical Contact
+        // Master contact are edited in the same transaction. Without this the
+        // Contact Master keeps the pre-edit name/email/phone/website forever.
+        \Illuminate\Support\Facades\DB::transaction(function () use ($customer, $validated, $categoryIds) {
+            $customer->update($validated);
 
-        // Sync categories if provided
-        if ($categoryIds !== null) {
-            $customer->categories()->sync($categoryIds);
-        }
+            // Sync categories if provided
+            if ($categoryIds !== null) {
+                $customer->categories()->sync($categoryIds);
+            }
+
+            if (! $customer->core_contact_uuid || $customer->wasChanged(self::CONTACT_MIRROR_FIELDS)) {
+                app(CustomerContactSyncService::class)->ensureOrganisationContact($customer);
+            }
+        });
 
         return response()->json(
             $customer->load(['categories', 'addresses', 'customerContacts', 'priceList', 'salesperson'])
