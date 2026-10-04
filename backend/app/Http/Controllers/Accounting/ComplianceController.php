@@ -1102,8 +1102,14 @@ class ComplianceController extends Controller
         $validated = $request->validate([
             'as_of_date' => 'required|date',
             'start_date' => 'date',
+            'legal_entity_id' => 'nullable|integer|exists:legal_entities,id',
             'format' => 'string|in:json,xbrl,xml',
         ]);
+
+        // #767 (A7): a statutory statement is one entity's — never a sum.
+        if ($error = $this->statutoryEntityError($validated, (string) $countryCode)) {
+            return $error;
+        }
 
         $result = $this->complianceService->exportStatutoryReport(
             $countryCode,
@@ -1124,9 +1130,15 @@ class ComplianceController extends Controller
         $validated = $request->validate([
             'as_of_date' => 'required|date',
             'start_date' => 'date',
+            'legal_entity_id' => 'nullable|integer|exists:legal_entities,id',
             'strict_schema_validation' => 'boolean',
             'format' => 'string|in:xbrl,excel,xlsx',
         ]);
+
+        // #767 (A7): a statutory statement is one entity's — never a sum.
+        if ($error = $this->statutoryEntityError($validated, (string) $countryCode)) {
+            return $error;
+        }
 
         $strict = (bool) ($validated['strict_schema_validation'] ?? false);
         $downloadFormat = strtolower((string) ($validated['format'] ?? 'xbrl'));
@@ -1534,5 +1546,42 @@ class ComplianceController extends Controller
             ->get();
 
         return response()->json(['success' => true, 'data' => $events]);
+    }
+
+    /**
+     * #767 (A7): statutory exports are per legal entity — required when the
+     * tenant has entities, and the export country must match the entity.
+     */
+    private function statutoryEntityError(array $validated, string $countryCode): ?\Illuminate\Http\JsonResponse
+    {
+        $entityId = isset($validated['legal_entity_id']) ? (int) $validated['legal_entity_id'] : null;
+
+        if ($entityId === null) {
+            if (\Illuminate\Support\Facades\DB::table('legal_entities')->exists()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => ['legal_entity_id is required for statutory exports when the tenant has legal entities.'],
+                ], 422);
+            }
+
+            return null;
+        }
+
+        $entity = \App\Models\LegalEntity::query()->find($entityId);
+        if (! $entity) {
+            return response()->json([
+                'success' => false,
+                'errors' => ['The selected legal entity does not exist.'],
+            ], 422);
+        }
+
+        if ($entity->country_code && strtoupper((string) $entity->country_code) !== strtoupper($countryCode)) {
+            return response()->json([
+                'success' => false,
+                'errors' => ["The export country {$countryCode} does not match the entity's country {$entity->country_code}."],
+            ], 422);
+        }
+
+        return null;
     }
 }

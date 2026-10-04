@@ -27,7 +27,7 @@ class XBRLReportExporter implements StatutoryReportExporterContract
 
     public function exportTrialBalance(\DateTime $asOfDate, array $options = []): array
     {
-        $balances = $this->buildAsOfBalances(Carbon::instance($asOfDate));
+        $balances = $this->buildAsOfBalances(Carbon::instance($asOfDate), $this->entityScope($options)[0], $this->entityScope($options)[1]);
         $trialBalance = [];
         $totalDebits = 0.0;
         $totalCredits = 0.0;
@@ -74,7 +74,7 @@ class XBRLReportExporter implements StatutoryReportExporterContract
         \DateTime $endDate,
         array $options = []
     ): array {
-        $lines = $this->buildPeriodMovements(Carbon::instance($startDate), Carbon::instance($endDate), ['revenue', 'expense']);
+        $lines = $this->buildPeriodMovements(Carbon::instance($startDate), Carbon::instance($endDate), ['revenue', 'expense'], $this->entityScope($options)[0], $this->entityScope($options)[1]);
         $grouped = $this->groupLinesByTaxonomySection($lines, 'income_statement');
 
         $revenue = $grouped['revenue']['total'] ?? 0.0;
@@ -107,7 +107,7 @@ class XBRLReportExporter implements StatutoryReportExporterContract
 
     public function exportBalanceSheet(\DateTime $asOfDate, array $options = []): array
     {
-        $balances = $this->buildAsOfBalances(Carbon::instance($asOfDate));
+        $balances = $this->buildAsOfBalances(Carbon::instance($asOfDate), $this->entityScope($options)[0], $this->entityScope($options)[1]);
         $grouped = $this->groupLinesByTaxonomySection($balances, 'balance_sheet');
 
         $currentAssets = $grouped['assets.current_assets'] ?? ['items' => [], 'total' => 0.0];
@@ -116,7 +116,7 @@ class XBRLReportExporter implements StatutoryReportExporterContract
         $nonCurrentLiabilities = $grouped['liabilities.non_current_liabilities'] ?? ['items' => [], 'total' => 0.0];
         $capitalAndReserves = $grouped['equity.capital_and_reserves'] ?? ['items' => [], 'total' => 0.0];
 
-        $retainedEarnings = $this->calculateRetainedEarnings(Carbon::instance($asOfDate));
+        $retainedEarnings = $this->calculateRetainedEarnings(Carbon::instance($asOfDate), $this->entityScope($options)[0], $this->entityScope($options)[1]);
         $totalAssets = $currentAssets['total'] + $nonCurrentAssets['total'];
         $totalLiabilities = $currentLiabilities['total'] + $nonCurrentLiabilities['total'];
         $totalEquity = $capitalAndReserves['total'] + $retainedEarnings;
@@ -335,7 +335,7 @@ class XBRLReportExporter implements StatutoryReportExporterContract
         return $this->lastXbrlValidation;
     }
 
-    private function buildAsOfBalances(Carbon $asOfDate): array
+    private function buildAsOfBalances(Carbon $asOfDate, ?int $legalEntityId = null, ?int $entityBookId = null): array
     {
         $accounts = ChartOfAccount::query()
             ->where('is_active', true)
@@ -345,6 +345,8 @@ class XBRLReportExporter implements StatutoryReportExporterContract
         $debitTotals = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->where('je.status', 'posted')
+            ->when($legalEntityId !== null, fn ($q) => $q->where('je.legal_entity_id', $legalEntityId))
+            ->when($entityBookId !== null, fn ($q) => $q->where('je.entity_book_id', $entityBookId))
             ->whereDate('je.entry_date', '<=', $asOfDate->toDateString())
             ->groupBy('jel.account_id')
             ->selectRaw('jel.account_id, COALESCE(SUM(jel.debit), 0) as debit_total, COALESCE(SUM(jel.credit), 0) as credit_total')
@@ -353,6 +355,8 @@ class XBRLReportExporter implements StatutoryReportExporterContract
         $creditTotals = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->where('je.status', 'posted')
+            ->when($legalEntityId !== null, fn ($q) => $q->where('je.legal_entity_id', $legalEntityId))
+            ->when($entityBookId !== null, fn ($q) => $q->where('je.entity_book_id', $entityBookId))
             ->whereDate('je.entry_date', '<=', $asOfDate->toDateString())
             ->groupBy('jel.account_id')
             ->selectRaw('jel.account_id, COALESCE(SUM(jel.credit), 0) as credit_total')
@@ -386,12 +390,14 @@ class XBRLReportExporter implements StatutoryReportExporterContract
         })->all();
     }
 
-    private function buildPeriodMovements(Carbon $startDate, Carbon $endDate, array $types): array
+    private function buildPeriodMovements(Carbon $startDate, Carbon $endDate, array $types, ?int $legalEntityId = null, ?int $entityBookId = null): array
     {
         $rows = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
             ->where('je.status', 'posted')
+            ->when($legalEntityId !== null, fn ($q) => $q->where('je.legal_entity_id', $legalEntityId))
+            ->when($entityBookId !== null, fn ($q) => $q->where('je.entity_book_id', $entityBookId))
             ->whereBetween('je.entry_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->whereIn('coa.type', $types)
             ->groupBy('coa.id', 'coa.code', 'coa.name', 'coa.type', 'coa.subtype')
@@ -427,9 +433,9 @@ class XBRLReportExporter implements StatutoryReportExporterContract
         })->filter(fn (array $row) => abs($row['amount']) >= 0.01)->values()->all();
     }
 
-    private function calculateRetainedEarnings(Carbon $asOfDate): float
+    private function calculateRetainedEarnings(Carbon $asOfDate, ?int $legalEntityId = null, ?int $entityBookId = null): float
     {
-        $income = $this->buildPeriodMovements(Carbon::create(2000, 1, 1), $asOfDate, ['revenue', 'expense']);
+        $income = $this->buildPeriodMovements(Carbon::create(2000, 1, 1), $asOfDate, ['revenue', 'expense'], $legalEntityId, $entityBookId);
         $revenue = collect($income)->where('account_type', 'revenue')->sum('amount');
         $expenses = collect($income)->where('account_type', 'expense')->sum('amount');
 
@@ -802,5 +808,19 @@ class XBRLReportExporter implements StatutoryReportExporterContract
         }
 
         return $messages;
+    }
+
+    /**
+     * #767 (A7): statutory exports are scoped to one legal entity (and its
+     * book) — the figures must never mix entities.
+     *
+     * @return array{0: int|null, 1: int|null}
+     */
+    private function entityScope(array $options): array
+    {
+        return [
+            isset($options['legal_entity_id']) ? (int) $options['legal_entity_id'] : null,
+            isset($options['entity_book_id']) ? (int) $options['entity_book_id'] : null,
+        ];
     }
 }
