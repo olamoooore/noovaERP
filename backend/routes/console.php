@@ -35,6 +35,19 @@ Schedule::command('audit:prune')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Issue #912 - tamper-evident audit hash chain: capture a signed anchor of
+// the chain head per tenant/day, then verify the whole chain and raise
+// platform exceptions on any break.
+Schedule::command('audit:anchor')
+    ->dailyAt('01:30')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('audit:verify-chain')
+    ->dailyAt('01:45')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // POS Reconciliation - Daily reconciliation report (fail-on-exceptions for alerting)
 Schedule::command('pos:reconciliation-report --fail-on-exceptions')
     ->dailyAt('06:00')
