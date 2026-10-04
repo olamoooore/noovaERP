@@ -514,6 +514,16 @@ class TaxReportingService
             ->orderByDesc('filed_at')
             ->get(['id', 'country', 'form', 'period', 'entity_key', 'filed_at', 'filed_by']);
 
+        // #857 RP5 AC2: with exactly one legal entity, a legacy tenant-wide
+        // filing (entity_key 0) and that entity are the same filer — otherwise
+        // a pre-#736 filing never closes the entity's activity and the period
+        // stays open forever.
+        $entityIds = \App\Models\LegalEntity::query()->pluck('id');
+        $singleEntityId = $entityIds->count() === 1 ? (int) $entityIds->first() : null;
+        $canonicalKey = static function (int $key) use ($singleEntityId): int {
+            return ($singleEntityId !== null && $key === 0) ? $singleEntityId : $key;
+        };
+
         // G-29 (#274): a filing period covers every month it spans — a
         // quarterly filing (YYYY-Qn) must close its three monthly activity
         // periods, not just match an exact string. Entity key is the filing's
@@ -523,7 +533,7 @@ class TaxReportingService
 
         foreach ($filings as $filing) {
             foreach (self::expandFilingPeriod((string) $filing->period, (string) $filing->country) as $month) {
-                $filedKeys[strtolower((string) $filing->country).'|'.$month.'|'.(int) $filing->entity_key] = true;
+                $filedKeys[strtolower((string) $filing->country).'|'.$month.'|'.$canonicalKey((int) $filing->entity_key)] = true;
             }
         }
 
@@ -556,7 +566,7 @@ class TaxReportingService
             $country = strtoupper(trim((string) ($row->jurisdiction ?? '')));
             $country = $country === '' ? 'UNSPECIFIED' : $country;
 
-            $entityKey = (int) ($row->entity_id ?? 0);
+            $entityKey = $canonicalKey((int) ($row->entity_id ?? 0));
 
             if (! isset($filedKeys[strtolower($country).'|'.$period.'|'.$entityKey])) {
                 $open[] = [
