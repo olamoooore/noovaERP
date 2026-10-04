@@ -29,9 +29,9 @@ class Sst02ReturnService
         //
         // MRD D9 / R5.2: buckets are classified by the RESOLVED RULE's type
         // (`taxes.type === 'service'|'sales'`, carried via tax_rule_id), NOT
-        // by a substring guess on the code. Rows with no rule reference fall
-        // back to the legacy heuristic and are surfaced so an accountant can
-        // remap them to a coded rule.
+        // by a substring guess on the code. A ruleless row is classified only
+        // when its regime explicitly declares the category; otherwise it is
+        // surfaced as an unclassified exception for an accountant to remap.
         $ruleTypes = \App\Models\Tax::query()
             ->whereIn('id', array_values(array_unique(array_filter(array_map(
                 fn (array $r) => $r['tax_rule_id'] ?? null,
@@ -44,8 +44,9 @@ class Sst02ReturnService
         // #741 T8: EXPLICIT classification — sales -> sales tax, service ->
         // service tax, anything else (gst, tax, withholding, ...) is
         // unclassified and blocks filing; it is never guessed into a bucket.
-        // Rows with no rule reference keep the legacy heuristic (#308 owns
-        // the matched-rule gap) and are counted separately.
+        // #308 (X8): rows with no rule reference are treated the same way —
+        // only a regime that explicitly declares the category classifies,
+        // otherwise the row is an unclassified exception and blocks filing.
         $unclassifiedRows = 0;
         $unclassifiedLegacyRows = 0;
 
@@ -62,15 +63,20 @@ class Sst02ReturnService
                 continue;
             }
 
-            // Legacy fallback: no rule reference on the trail row.
+            // #308 (X8): no rule reference on the trail row — never guess the
+            // category from code substrings (a synthetic code such as
+            // MY-SST-8 says nothing about sales vs service tax). Only a
+            // regime that explicitly declares the category is classified;
+            // anything else is an unclassified exception that blocks filing
+            // until an accountant maps the row to a coded rule.
             $unclassifiedLegacyRows++;
-            $regime = strtolower((string) ($row['tax_regime'] ?? '').' '.(string) ($row['tax_code'] ?? ''));
+            $regime = strtolower(trim((string) ($row['tax_regime'] ?? '')));
 
-            if (str_contains($regime, 'service') || str_contains($regime, 'svc')) {
-                $serviceTaxRows[] = $row;
-            } else {
-                $salesTaxRows[] = $row;
-            }
+            match ($regime) {
+                'service', 'service_tax' => $serviceTaxRows[] = $row,
+                'sales', 'sales_tax' => $salesTaxRows[] = $row,
+                default => $unclassifiedRows++,
+            };
         }
 
         $byRate = function (array $rows): array {
