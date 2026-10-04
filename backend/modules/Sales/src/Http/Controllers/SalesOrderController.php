@@ -192,7 +192,9 @@ class SalesOrderController extends Controller
 
     public function show(Request $request, $id)
     {
-        $query = SalesOrder::with(['customer', 'lines.product', 'statusHistory.actor', 'channelReferences', 'quotation', 'invoices', 'deliveryOrders.lines']);
+        // #402 (SU4): warehouse name + approval state are needed by the
+        // detail header chips; both are loaded here rather than invented.
+        $query = SalesOrder::with(['customer', 'lines.product', 'statusHistory.actor', 'channelReferences', 'quotation', 'invoices', 'deliveryOrders.lines', 'warehouse', 'latestApprovalRequest']);
 
         // Issue #140: a user must not read another legal entity's order.
         $this->applyEntityScope($request, $query);
