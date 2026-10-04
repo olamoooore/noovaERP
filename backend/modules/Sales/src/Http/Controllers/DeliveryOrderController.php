@@ -166,6 +166,10 @@ class DeliveryOrderController extends Controller
             ->orderByRaw('delivery_date DESC NULLS LAST')
             ->orderBy('id', 'desc');
 
+        // Issue #462 (DO10): scope the list to the user's accessible legal
+        // entities, same as SalesOrderController (#140/#237).
+        $this->applyEntityScope($request, $query);
+
         // MRD pricelist-multicurrency FR-8: filter/sort by document currency.
         if ($request->filled('currency_code')) {
             $query->where('currency_code', strtoupper((string) $request->currency_code));
@@ -224,6 +228,39 @@ class DeliveryOrderController extends Controller
         }
 
         return $query;
+    }
+
+    /**
+     * Issue #462 (DO10): scope a delivery-order query to the user's accessible
+     * legal entities. Users with no entity grants keep the historical unscoped
+     * view (same fail-open default as EnsureEntityAccess / #113 / #140).
+     */
+    private function applyEntityScope(Request $request, $query): void
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return;
+        }
+
+        $entityIds = app(\App\Services\EntityAccessService::class)->accessibleEntityIds((int) $user->id);
+
+        if ($entityIds !== []) {
+            $query->accessibleBy($entityIds);
+        }
+    }
+
+    /**
+     * Issue #462: resolve a delivery order inside the requester's entity scope.
+     * Out-of-scope or missing ids return null -> the caller keeps its existing
+     * 404 path (same behaviour as SalesOrderController::findScopedOrder).
+     */
+    private function findScopedDeliveryOrder(Request $request, $id): ?DeliveryOrder
+    {
+        $query = DeliveryOrder::query();
+        $this->applyEntityScope($request, $query);
+
+        return $query->find($id);
     }
 
     public function store(Request $request)
@@ -426,7 +463,7 @@ class DeliveryOrderController extends Controller
 
     public function show(Request $request, $id)
     {
-        $deliveryOrder = DeliveryOrder::with([
+        $query = DeliveryOrder::with([
             'customer',
             'salesOrder.quotation',
             'lines.product',
@@ -436,7 +473,12 @@ class DeliveryOrderController extends Controller
             'invoice',
             'invoices:id,invoice_number,invoice_date,due_date,total,balance,status,lifecycle_status',
             'quotation',
-        ])->find($id);
+        ]);
+
+        // Issue #462: a user must not read another legal entity's delivery order.
+        $this->applyEntityScope($request, $query);
+
+        $deliveryOrder = $query->find($id);
 
         if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
@@ -504,9 +546,10 @@ class DeliveryOrderController extends Controller
      * invoice through the accounting-origin path (no second Sales Order, no
      * stock reservation / credit re-check) and links it back on the DO.
      */
-    public function createInvoice($id)
+    public function createInvoice(Request $request, $id)
     {
-        $deliveryOrder = DeliveryOrder::with(['customer', 'lines.product'])->find($id);
+        // Issue #462: resolve through the entity scope, not a bare find.
+        $deliveryOrder = $this->findScopedDeliveryOrder($request, $id)?->load(['customer', 'lines.product']);
 
         if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
@@ -646,7 +689,7 @@ class DeliveryOrderController extends Controller
 
     public function update(Request $request, $id)
     {
-        $deliveryOrder = DeliveryOrder::find($id);
+        $deliveryOrder = $this->findScopedDeliveryOrder($request, $id);
 
         if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
@@ -775,7 +818,7 @@ class DeliveryOrderController extends Controller
 
     public function confirm(Request $request, $id)
     {
-        $deliveryOrder = DeliveryOrder::find($id);
+        $deliveryOrder = $this->findScopedDeliveryOrder($request, $id);
 
         if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
@@ -816,7 +859,7 @@ class DeliveryOrderController extends Controller
      */
     public function approve(Request $request, $id)
     {
-        $deliveryOrder = DeliveryOrder::find($id);
+        $deliveryOrder = $this->findScopedDeliveryOrder($request, $id);
 
         if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
@@ -853,7 +896,7 @@ class DeliveryOrderController extends Controller
      */
     public function rejectApproval(Request $request, $id)
     {
-        $deliveryOrder = DeliveryOrder::find($id);
+        $deliveryOrder = $this->findScopedDeliveryOrder($request, $id);
 
         if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
@@ -897,7 +940,7 @@ class DeliveryOrderController extends Controller
      */
     public function issueCustomerLink(Request $request, $id)
     {
-        $deliveryOrder = DeliveryOrder::with('customer')->find($id);
+        $deliveryOrder = $this->findScopedDeliveryOrder($request, $id)?->load('customer');
 
         if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
@@ -995,7 +1038,7 @@ class DeliveryOrderController extends Controller
      */
     public function uploadSignedDocument(Request $request, $id)
     {
-        $deliveryOrder = DeliveryOrder::find($id);
+        $deliveryOrder = $this->findScopedDeliveryOrder($request, $id);
 
         if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
@@ -1034,9 +1077,9 @@ class DeliveryOrderController extends Controller
     /**
      * Issue #153: download the signed POD file (referenced by Invoice.proofOfDelivery()).
      */
-    public function downloadSignedDocument($id)
+    public function downloadSignedDocument(Request $request, $id)
     {
-        $deliveryOrder = DeliveryOrder::find($id);
+        $deliveryOrder = $this->findScopedDeliveryOrder($request, $id);
 
         if (! $deliveryOrder || ! $deliveryOrder->signed_document_path) {
             return response()->json(['message' => 'Signed document not found.'], 404);
@@ -1056,7 +1099,7 @@ class DeliveryOrderController extends Controller
      */
     public function complete(Request $request, $id)
     {
-        $deliveryOrder = DeliveryOrder::find($id);
+        $deliveryOrder = $this->findScopedDeliveryOrder($request, $id);
 
         if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
@@ -1101,7 +1144,7 @@ class DeliveryOrderController extends Controller
      */
     public function reverse(Request $request, $id)
     {
-        $deliveryOrder = DeliveryOrder::find($id);
+        $deliveryOrder = $this->findScopedDeliveryOrder($request, $id);
 
         if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
@@ -1141,7 +1184,7 @@ class DeliveryOrderController extends Controller
 
     public function cancel(Request $request, $id)
     {
-        $deliveryOrder = DeliveryOrder::find($id);
+        $deliveryOrder = $this->findScopedDeliveryOrder($request, $id);
 
         if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
@@ -1182,7 +1225,7 @@ class DeliveryOrderController extends Controller
      */
     public function reject(Request $request, $id)
     {
-        $deliveryOrder = DeliveryOrder::find($id);
+        $deliveryOrder = $this->findScopedDeliveryOrder($request, $id);
 
         if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
@@ -1243,9 +1286,9 @@ class DeliveryOrderController extends Controller
         }
     }
 
-    public function resetToDraft($id)
+    public function resetToDraft(Request $request, $id)
     {
-        $deliveryOrder = DeliveryOrder::find($id);
+        $deliveryOrder = $this->findScopedDeliveryOrder($request, $id);
 
         if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
@@ -1273,9 +1316,9 @@ class DeliveryOrderController extends Controller
         }
     }
 
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
-        $deliveryOrder = DeliveryOrder::find($id);
+        $deliveryOrder = $this->findScopedDeliveryOrder($request, $id);
         if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
         }
@@ -1317,8 +1360,13 @@ class DeliveryOrderController extends Controller
             'ids.*' => 'integer|exists:delivery_orders,id',
         ]);
 
+        // Issue #462: bulk operations must resolve inside the requester's
+        // entity scope — never inspect, delete or audit another entity's rows.
+        $scopedQuery = DeliveryOrder::whereIn('id', $validated['ids']);
+        $this->applyEntityScope($request, $scopedQuery);
+
         // Block deletion of confirmed, done, and cancelled orders
-        $blocked = DeliveryOrder::whereIn('id', $validated['ids'])
+        $blocked = (clone $scopedQuery)
             ->whereIn('status', ['confirmed', 'done', 'cancelled'])
             ->count();
 
@@ -1328,11 +1376,12 @@ class DeliveryOrderController extends Controller
             ], 422);
         }
 
-        $ordersToDelete = DeliveryOrder::whereIn('id', $validated['ids'])->get();
+        $ordersToDelete = $scopedQuery->get();
+        $deletableIds = $ordersToDelete->pluck('id')->all();
 
         $result = $this->bulkDeleteService->delete(
             'delivery_orders',
-            $validated['ids'],
+            $deletableIds,
             tenant()?->id,
             ['soft_deletes' => true, 'check_fk' => false, 'user_id' => Auth::id()]
         );
@@ -1446,6 +1495,14 @@ class DeliveryOrderController extends Controller
                     }
 
                     unset($header['customer_name']);
+
+                    // Issue #462: the CSV importer writes via the query builder
+                    // (bypassing the model), so stamp the owning legal entity
+                    // here from the resolved customer.
+                    if (empty($header['legal_entity_id'])) {
+                        $header['legal_entity_id'] = \App\Models\Customer::whereKey($header['customer_id'])
+                            ->value('legal_entity_id');
+                    }
 
                     // Resolve warehouse_id from the customer's default or first active warehouse
                     if (empty($header['warehouse_id'])) {
@@ -1718,9 +1775,15 @@ class DeliveryOrderController extends Controller
     /**
      * Get delivery status summary for a sales order.
      */
-    public function forSalesOrder($salesOrderId)
+    public function forSalesOrder(Request $request, $salesOrderId)
     {
-        $order = SalesOrder::with(['lines.product', 'deliveryOrders.lines'])->find($salesOrderId);
+        $query = SalesOrder::with(['lines.product', 'deliveryOrders.lines']);
+
+        // Issue #462: the delivery orders shown here belong to the order, so
+        // the sales order itself must be inside the requester's entity scope.
+        $this->applyEntityScope($request, $query);
+
+        $order = $query->find($salesOrderId);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);

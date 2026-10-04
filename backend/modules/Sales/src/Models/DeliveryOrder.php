@@ -16,6 +16,8 @@ class DeliveryOrder extends Model
         'delivery_order_number',
         'sales_order_id',
         'customer_id',
+        // Issue #462: the legal entity that owns this document (inherited).
+        'legal_entity_id',
         'warehouse_id',
         'status',
         // Issue #177: dual confirmation path audit trail.
@@ -101,6 +103,21 @@ class DeliveryOrder extends Model
             if (empty($order->delivery_order_number)) {
                 $order->delivery_order_number = static::generateNumber();
             }
+            // Issue #462 (DO10): a delivery order inherits the legal entity of
+            // its sales order (when linked), else its customer — the same
+            // source of truth #140 used for sales orders. The column is
+            // resolved here so every creation path (services, replacement
+            // drafts, imports going through the model) is stamped.
+            if (! $order->legal_entity_id) {
+                $order->legal_entity_id = $order->sales_order_id
+                    ? SalesOrder::whereKey($order->sales_order_id)->value('legal_entity_id')
+                    : null;
+
+                if (! $order->legal_entity_id && $order->customer_id) {
+                    $order->legal_entity_id = \App\Models\Customer::whereKey($order->customer_id)
+                        ->value('legal_entity_id');
+                }
+            }
             // MRD pricelist-multicurrency FR-5.6: DOs inherit the SO/quote
             // currency; this hook guarantees non-NULL for any other creator.
             if (! $order->currency_code) {
@@ -130,6 +147,24 @@ class DeliveryOrder extends Model
     public function salesOrder(): BelongsTo
     {
         return $this->belongsTo(SalesOrder::class);
+    }
+
+    /**
+     * Issue #462 (DO10): scope to an explicit set of legal entities. Fail-closed
+     * when the set is empty (no accessible entities means no rows visible),
+     * mirroring SalesOrder::scopeAccessibleBy.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
+     * @param  int[]  $accessibleEntityIds
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopeAccessibleBy($query, array $accessibleEntityIds)
+    {
+        if (empty($accessibleEntityIds)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->whereIn('legal_entity_id', $accessibleEntityIds);
     }
 
     public function customer(): BelongsTo
