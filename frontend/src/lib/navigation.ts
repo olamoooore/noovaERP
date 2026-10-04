@@ -18,6 +18,17 @@ export const baseNavItems: NavItem[] = [
     icon: 'solar:home-2-bold-duotone',
   },
   {
+    // Issue #914: the operations console over the platform exception queue.
+    // Visible to any role that can read at least one exception type
+    // (accountant → accounting.view, sales → sales.view, Owner/Admin →
+    // settings.view), matching the per-exception-type backend policy.
+    title: 'Operations Console',
+    href: '/operations/console',
+    icon: 'solar:server-square-bold-duotone',
+    requiredPermission: 'accounting.view|sales.view|settings.view',
+    keywords: ['exceptions', 'exception queue', 'retry', 'failed postings', 'e-invoice rejection', 'sla', 'operations'],
+  },
+  {
     title: 'Contacts',
     href: '/master-contacts',
     icon: 'solar:users-group-two-rounded-bold-duotone',

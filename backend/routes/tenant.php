@@ -388,6 +388,20 @@ Route::middleware([
             });
     }
 
+    // ─── Operations Console (#914) ─────────────────────────────────────────
+    // Listing/assignment/retry over #902's platform exception queue. The
+    // route group itself is open to authenticated tenant users because the
+    // permission is PER EXCEPTION TYPE (derived from the row's owner_role by
+    // ExceptionAccessPolicy); the controller scopes list/stats in SQL and
+    // answers 403 on show/assign/retry for a type the caller does not own.
+    Route::prefix('platform/exceptions')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\OperationsConsoleController::class, 'index']);
+        Route::get('/stats', [\App\Http\Controllers\Api\OperationsConsoleController::class, 'stats']);
+        Route::get('/{id}', [\App\Http\Controllers\Api\OperationsConsoleController::class, 'show'])->whereUuid('id');
+        Route::post('/{id}/assign', [\App\Http\Controllers\Api\OperationsConsoleController::class, 'assign'])->whereUuid('id');
+        Route::post('/{id}/retry', [\App\Http\Controllers\Api\OperationsConsoleController::class, 'retry'])->whereUuid('id');
+    });
+
     $modules = app(\App\Modules\ModuleManager::class);
 
     foreach ($modules->tenantApiRouteFiles() as $routesFile) {

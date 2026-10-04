@@ -67,6 +67,16 @@ export const useAuthStore = create<AuthState>()(
         const state = get()
         if (!state.role) return false
         if (state.role === 'Owner' || state.role === 'Admin') return true
+        // Permission families may be expressed as alternatives separated by
+        // '|', mirroring the backend RequirePermission middleware (e.g.
+        // 'accounting.view|sales.view' passes when the role holds any of them).
+        if (permission.includes('|')) {
+          return permission
+            .split('|')
+            .map((candidate) => candidate.trim())
+            .filter(Boolean)
+            .some((candidate) => state.permissions.includes(candidate))
+        }
         return state.permissions.includes(permission)
       },
       hasAnyPermission: (permissions: string[]) => {
