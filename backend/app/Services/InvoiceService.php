@@ -407,27 +407,40 @@ class InvoiceService
             }
 
             // §9.4 / FR-7.4: the sum of independently rounded legs can drift
-            // a cent from the AR base. The residual is absorbed at REVENUE so
-            // the entry balances exactly and no hidden gap survives to the
-            // ledger.
+            // a cent from the AR base. Issue #880 (SA7): the revenue leg keeps
+            // its EXACT converted amount and the residual is posted to the
+            // existing FX gain/loss role account (MRD pricelist-multicurrency
+            // FR-7.4 — "posted to the same FX account (or a rounding account
+            // if configured)"). It is never absorbed at revenue.
             $arBase = $toBase((float) $invoice->total);
-            $revenueBase = round($arBase - $taxBaseTotal - $shippingBase, 2);
+            $revenueExactBase = $toBase($salesRevenue);
 
-            if ($foreign && abs($revenueBase - $toBase($salesRevenue)) > 0.02) {
-                \Illuminate\Support\Facades\Log::warning('FX posting: revenue absorbed rounding residual beyond 0.02', [
+            if ($foreign) {
+                $residual = round($arBase - $revenueExactBase - $taxBaseTotal - $shippingBase, 2);
+                $revenueBase = $revenueExactBase;
+            } else {
+                // Same-currency documents (rate 1.0) have no FX residual to
+                // classify; a tampered-inconsistent header keeps the legacy
+                // balance-through-revenue arithmetic.
+                $residual = 0.0;
+                $revenueBase = round($arBase - $taxBaseTotal - $shippingBase, 2);
+            }
+
+            if ($foreign && abs($residual) > 0.02) {
+                \Illuminate\Support\Facades\Log::warning('FX posting: rounding residual beyond 0.02 posted to the FX account', [
                     'invoice_id' => $invoice->id,
-                    'expected_revenue_base' => $toBase($salesRevenue),
+                    'expected_revenue_base' => $revenueExactBase,
                     'posted_revenue_base' => $revenueBase,
-                    'residual' => round($revenueBase - $toBase($salesRevenue), 2),
+                    'residual' => $residual,
                 ]);
 
-                // Issue #902: the entry balances, but the revenue leg no
-                // longer matches the document's subtotal × snapshot rate —
-                // an accountant must review the rate/rounding.
+                // Issue #902: the entry balances, but the residual no longer
+                // matches a cent-level rounding drift — an accountant must
+                // review the rate/document.
                 app(\App\Platform\Exceptions\ExceptionService::class)->report(
                     new \App\Platform\Exceptions\ExceptionReport(
                         type: \App\Platform\Exceptions\ExceptionType::SALES_INVOICE_FX_RESIDUAL,
-                        message: "Invoice {$invoice->invoice_number}: FX rounding residual ".number_format(round($revenueBase - $toBase($salesRevenue), 2), 2).' absorbed at revenue',
+                        message: "Invoice {$invoice->invoice_number}: FX rounding residual ".number_format($residual, 2).' posted to the FX rounding account',
                         documentId: $invoice->id,
                         documentType: 'invoice',
                         legalEntityId: $this->invoiceLegalEntityId($invoice),
@@ -435,9 +448,9 @@ class InvoiceService
                             'currency_code' => $docCurrency,
                             'base_currency_code' => $baseCurrency,
                             'exchange_rate' => $fxRate,
-                            'expected_revenue_base' => $toBase($salesRevenue),
+                            'expected_revenue_base' => $revenueExactBase,
                             'posted_revenue_base' => $revenueBase,
-                            'residual' => round($revenueBase - $toBase($salesRevenue), 2),
+                            'residual' => $residual,
                         ],
                     ),
                 );
@@ -462,6 +475,19 @@ class InvoiceService
                     originalAmount: $foreign ? round((float) $invoice->shipping_cost, 2) : null,
                     exchangeRate: $foreign ? $fxRate : null,
                     description: "Shipping - Invoice {$invoice->invoice_number}",
+                );
+            }
+
+            // Issue #880 (SA7): the independently rounded legs rarely drift
+            // from the AR base by more than a cent. That residual belongs to
+            // the FX gain/loss role (FR-7.4), split by direction so a gain is
+            // a credit and a loss is a debit.
+            if ($foreign && abs($residual) >= 0.01) {
+                $lines[] = new DomainPostingLine(
+                    accountRole: $residual > 0 ? 'realized_fx_gain' : 'realized_fx_loss',
+                    amount: abs($residual),
+                    currencyCode: $baseCurrency,
+                    description: "FX rounding difference - Invoice {$invoice->invoice_number}",
                 );
             }
 

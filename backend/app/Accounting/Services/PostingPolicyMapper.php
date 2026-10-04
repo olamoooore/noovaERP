@@ -223,6 +223,11 @@ class PostingPolicyMapper
                         'sales_tax_payable' => ['account_id' => null, 'direction' => 'credit'],
                         'cogs' => ['account_id' => null, 'direction' => 'debit'],
                         'inventory' => ['account_id' => null, 'direction' => 'credit'],
+                        // Issue #880 (SA7) / MRD FR-7.4: the FX rounding
+                        // residual posts to the existing FX gain/loss role
+                        // accounts, split by direction.
+                        'realized_fx_gain' => ['account_id' => null, 'direction' => 'credit'],
+                        'realized_fx_loss' => ['account_id' => null, 'direction' => 'debit'],
                     ],
                 ],
                 'AR_PAYMENT_RECEIPT' => [
