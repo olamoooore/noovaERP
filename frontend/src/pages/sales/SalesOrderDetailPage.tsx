@@ -56,6 +56,7 @@ interface SalesOrder {
 
 interface SalesOrderLine {
   id: number
+  line_type?: string
   product_id: number
   product?: {
     id: number
@@ -68,6 +69,8 @@ interface SalesOrderLine {
   description: string
   product_notes?: string
   quantity: number
+  quantity_delivered?: number | string
+  quantity_cancelled?: number | string
   unit_price: number
   tax_rate: number
   tax_amount: number
@@ -76,6 +79,48 @@ interface SalesOrderLine {
 }
 
 type OrderAction = 'confirm' | 'allocate' | 'invoice' | 'reset-to-draft' | null
+
+// #375 (O6): delivery orders are created from orders that are committed but
+// not yet fully delivered. The backend (DeliveryOrderService) accepts
+// confirmed / allocated / fulfilled / invoiced orders; `partially_delivered`
+// is kept because the page's status badge already knows it.
+const DELIVERY_ORDER_STATUSES = ['confirmed', 'allocated', 'partially_delivered', 'fulfilled', 'invoiced']
+
+const pluralize = (count: number, noun: string) => `${count} ${noun}${count === 1 ? '' : 's'}`
+
+/**
+ * #375 (O6): an order is "Delivered" once every deliverable product line has
+ * its ordered (minus cancelled) quantity fully delivered; otherwise there is
+ * still something "To Deliver".
+ */
+function isFullyDelivered(lines: SalesOrderLine[]) {
+  const deliverable = lines.filter(
+    (line) =>
+      (line.line_type ?? 'product') === 'product' &&
+      Number(line.quantity) - Number(line.quantity_cancelled ?? 0) > 0,
+  )
+
+  return (
+    deliverable.length > 0 &&
+    deliverable.every(
+      (line) =>
+        Number(line.quantity_delivered ?? 0) + 0.0001 >=
+        Number(line.quantity) - Number(line.quantity_cancelled ?? 0),
+    )
+  )
+}
+
+function getInvoiceStatusLabel(invoices: NonNullable<SalesOrder['invoices']>) {
+  if (invoices.length === 0) return 'Not Invoiced'
+
+  const statuses = invoices.map((invoice) => String(invoice.status || '').toLowerCase())
+  if (statuses.every((status) => status === 'paid')) return 'Paid'
+  if (statuses.some((status) => ['posted', 'sent', 'partial', 'overdue', 'paid'].includes(status))) {
+    return 'Invoiced'
+  }
+
+  return 'Draft'
+}
 
 export function SalesOrderDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -184,6 +229,11 @@ export function SalesOrderDetailPage() {
     )
   }
 
+  const showFulfilmentSmartButtons = !['draft', 'cancelled'].includes(order.status)
+  const fullyDelivered = isFullyDelivered(order.lines ?? [])
+  const deliveryOrdersCount = order.delivery_orders?.length ?? 0
+  const linkedInvoices = order.invoices ?? []
+
   return (
     <div className="container mx-auto py-6 space-y-6">
       {/* Header */}
@@ -238,6 +288,15 @@ export function SalesOrderDetailPage() {
               Allocate
             </HeaderActionButton>
           )}
+          {DELIVERY_ORDER_STATUSES.includes(order.status) && (
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:delivery-bold-duotone"
+              onClick={() => navigate(`/delivery-orders/create?sales_order_id=${order.id}`)}
+            >
+              Create Delivery Order
+            </HeaderActionButton>
+          )}
           {(order.allowed_transitions ?? []).includes('invoiced') && order.invoice_status !== 'fully_invoiced' && (
             <HeaderActionButton
               variant="outline"
@@ -281,7 +340,33 @@ export function SalesOrderDetailPage() {
       </div>
 
       {/* Smart Buttons */}
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-3">
+        {showFulfilmentSmartButtons && (
+          <button
+            onClick={() => navigate(`/delivery-orders?sales_order_id=${order.id}`)}
+            title={`${pluralize(deliveryOrdersCount, 'delivery order')} — open the sales order's deliveries`}
+            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
+          >
+            <Icon icon="solar:delivery-bold-duotone" className="h-5 w-5 text-orange-600" />
+            <div className="text-left">
+              <div className="font-bold text-foreground">{fullyDelivered ? 'Delivered' : 'To Deliver'}</div>
+              <div className="text-xs text-muted-foreground">{pluralize(deliveryOrdersCount, 'Delivery Order')}</div>
+            </div>
+          </button>
+        )}
+        {showFulfilmentSmartButtons && (
+          <button
+            onClick={() => navigate(`/invoices?sales_order_id=${order.id}`)}
+            title={`${pluralize(linkedInvoices.length, 'invoice')} — open the sales order's invoices`}
+            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
+          >
+            <Icon icon="solar:bill-list-bold-duotone" className="h-5 w-5 text-blue-600" />
+            <div className="text-left">
+              <div className="font-bold text-foreground">{getInvoiceStatusLabel(linkedInvoices)}</div>
+              <div className="text-xs text-muted-foreground">{pluralize(linkedInvoices.length, 'Invoice')}</div>
+            </div>
+          </button>
+        )}
         {order.quotation && (
           <button
             onClick={() => navigate(`/quotations/${order.quotation!.id}`)}
