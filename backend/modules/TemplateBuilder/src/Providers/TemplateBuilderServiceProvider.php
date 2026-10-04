@@ -4,16 +4,24 @@ declare(strict_types=1);
 
 namespace Modules\TemplateBuilder\Providers;
 
+use App\Accounting\Events\CreditNotePosted;
+use App\Accounting\Events\InvoicePosted;
+use App\Models\Payment;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
+use Modules\Sales\Models\DeliveryOrder;
 use Modules\TemplateBuilder\Contracts\DataSourceContract;
 use Modules\TemplateBuilder\Contracts\DocumentTemplateServiceContract;
 use Modules\TemplateBuilder\Contracts\PdfGenerationServiceContract;
+use Modules\TemplateBuilder\Observers\DeliveryOrderSnapshotObserver;
+use Modules\TemplateBuilder\Observers\PaymentSnapshotObserver;
 use Modules\TemplateBuilder\Renderers\BlockRenderer;
 use Modules\TemplateBuilder\Renderers\CodeRenderer;
 use Modules\TemplateBuilder\Services\AssignmentResolver;
 use Modules\TemplateBuilder\Services\AuditWriter;
 use Modules\TemplateBuilder\Services\CommunicationTemplateBridge;
 use Modules\TemplateBuilder\Services\DataSource\DataSourceRegistry;
+use Modules\TemplateBuilder\Services\DocumentSnapshotService;
 use Modules\TemplateBuilder\Services\DocumentTemplateService;
 use Modules\TemplateBuilder\Services\EditorialLifecycleService;
 use Modules\TemplateBuilder\Services\EligibilityEngine;
@@ -55,6 +63,9 @@ class TemplateBuilderServiceProvider extends ServiceProvider
         $this->app->singleton(FormRuntimeService::class);
         $this->app->singleton(SurveyRuntimeService::class);
         $this->app->singleton(CommunicationTemplateBridge::class);
+
+        // Issue #613: immutable snapshots of issued documents.
+        $this->app->singleton(DocumentSnapshotService::class);
     }
 
     public function boot(): void
@@ -62,6 +73,35 @@ class TemplateBuilderServiceProvider extends ServiceProvider
         $this->loadViewsFrom(__DIR__.'/../../resources/views', 'templatebuilder');
 
         $this->registerDataSources();
+        $this->registerDocumentSnapshotLifecycle();
+    }
+
+    /**
+     * Issue #613 (TP3): store an immutable copy whenever a document is issued.
+     * The document is already durable when these run; DocumentSnapshotService
+     * reports (never swallows) a render/storage failure without turning it
+     * into a posting failure.
+     */
+    private function registerDocumentSnapshotLifecycle(): void
+    {
+        // Invoices dispatch after the posting transaction commits.
+        Event::listen(InvoicePosted::class, function (InvoicePosted $event): void {
+            app(DocumentSnapshotService::class)->snapshot('invoice', (string) $event->invoice->id);
+        });
+
+        // Customer credit notes dispatch after commit too. No 'credit_note'
+        // data source / starter template exists on this branch (no credit-note
+        // render path at all), so snapshot() is a no-op for them today; the
+        // hook is wired so the immutable store follows automatically once a
+        // render path is registered.
+        Event::listen(CreditNotePosted::class, function (CreditNotePosted $event): void {
+            app(DocumentSnapshotService::class)->snapshot('credit_note', (string) $event->creditNote->id);
+        });
+
+        // Receipts and delivery orders have no posting event of their own:
+        // observe the exact transition that issues them.
+        Payment::observe(PaymentSnapshotObserver::class);
+        DeliveryOrder::observe(DeliveryOrderSnapshotObserver::class);
     }
 
     /**

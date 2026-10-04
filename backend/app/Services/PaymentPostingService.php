@@ -341,6 +341,28 @@ class PaymentPostingService
                     'payment_id' => $id,
                     'error' => $e->getMessage(),
                 ]);
+
+                // Issue #902: the bulk UI reports the row as skipped and the
+                // failure otherwise only reaches the log. Queue it with the
+                // payment document, its legal entity and the post retry so an
+                // accountant can see and re-drive it.
+                app(\App\Platform\Exceptions\ExceptionService::class)->report(
+                    new \App\Platform\Exceptions\ExceptionReport(
+                        type: \App\Platform\Exceptions\ExceptionType::SALES_PAYMENT_POSTING_FAILED,
+                        message: "Payment {$payment->payment_number} could not be posted: {$e->getMessage()}",
+                        documentId: $payment->id,
+                        documentType: 'payment',
+                        legalEntityId: $payment->legal_entity_id ? (int) $payment->legal_entity_id : null,
+                        payload: [
+                            'payment_number' => $payment->payment_number,
+                            'amount' => (float) $payment->amount,
+                            'invoice_id' => $payment->invoice_id ? (int) $payment->invoice_id : null,
+                            'method' => $payment->method,
+                            'error' => $e->getMessage(),
+                        ],
+                    ),
+                );
+
                 $skipped[] = ['id' => $id, 'reason' => $e->getMessage()];
             }
         }

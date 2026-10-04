@@ -59,6 +59,69 @@ class CompliancePluginServiceProvider extends ServiceProvider
     {
         // Register event listeners for accounting events
         $this->registerEventListeners();
+
+        // Issue #902: re-submit a queued e-invoice auto-submit failure.
+        $this->registerRetryHandlers();
+    }
+
+    /**
+     * Issue #902: the retry path behind the queue's
+     * `compliance.einvoice.submit` handler key. A failed logical result is
+     * raised as an exception so the queue records the retry as failed.
+     */
+    private function registerRetryHandlers(): void
+    {
+        app(\App\Platform\Exceptions\ExceptionRetryRegistry::class)->register(
+            'compliance.einvoice.submit',
+            function (\App\Platform\Exceptions\ExceptionQueue $exception): void {
+                $documentType = (string) $exception->document_type;
+                $documentId = (int) $exception->document_id;
+                $countryCode = (string) ($exception->context['country_code'] ?? '');
+
+                if ($documentId === 0 || $countryCode === '') {
+                    throw new \RuntimeException('Queued e-invoice exception is missing its document or country code.');
+                }
+
+                // A retry may run outside the original request (ops console
+                // retry / queued work). Restore the tenant context the row
+                // carries so every compliance write stays tenant-scoped —
+                // same object-only restore the auto-submit path uses.
+                $tenancy = app(\Stancl\Tenancy\Tenancy::class);
+                $previousTenant = $tenancy->tenant;
+                $previousInitialized = $tenancy->initialized;
+                $restoredTenant = false;
+
+                if (! $tenancy->tenant && $exception->tenant_id) {
+                    $tenant = \App\Models\Tenant::find($exception->tenant_id);
+
+                    if ($tenant) {
+                        $tenancy->tenant = $tenant;
+                        $tenancy->initialized = true;
+                        app()->instance(\Stancl\Tenancy\Contracts\Tenant::class, $tenant);
+                        $restoredTenant = true;
+                    }
+                }
+
+                try {
+                    $service = app(ComplianceService::class);
+
+                    $result = match ($documentType) {
+                        'credit_note' => $service->submitCreditNote(\App\Models\CustomerCreditNote::findOrFail($documentId), $countryCode),
+                        'refund_note' => $service->submitRefundNote(\App\Models\Payment::findOrFail($documentId), $countryCode),
+                        default => $service->submitInvoice(\App\Models\Invoice::findOrFail($documentId), $countryCode),
+                    };
+
+                    if (($result['success'] ?? false) !== true) {
+                        throw new \RuntimeException((string) ($result['message'] ?? 'E-invoice submission failed.'));
+                    }
+                } finally {
+                    if ($restoredTenant) {
+                        $tenancy->tenant = $previousTenant;
+                        $tenancy->initialized = $previousInitialized;
+                    }
+                }
+            },
+        );
     }
 
     /**
@@ -103,6 +166,7 @@ class CompliancePluginServiceProvider extends ServiceProvider
                 fn (ComplianceService $service, string $countryCode) => $service->submitInvoice($event->invoice, $countryCode),
                 'invoice',
                 (int) $event->invoice->id,
+                $event->tenantId,
             );
         });
 
@@ -212,7 +276,28 @@ class CompliancePluginServiceProvider extends ServiceProvider
             try {
                 /** @var ComplianceService $complianceService */
                 $complianceService = app(ComplianceService::class);
-                $submit($complianceService, $config->country_code);
+                $result = $submit($complianceService, $config->country_code);
+
+                // Issue #902: the provider path reports logical failures as
+                // `success => false` (validation rejected, provider refused)
+                // without throwing. Auto-submit must not silently drop those
+                // documents — queue them for the accountant.
+                if (is_array($result) && ($result['success'] ?? true) === false) {
+                    \Log::error('Compliance auto-submit failed', [
+                        'document_type' => $documentType,
+                        'document_id' => $documentId,
+                        'country_code' => $config->country_code,
+                        'error' => $result['message'] ?? 'unknown error',
+                    ]);
+
+                    $this->raiseAutoSubmitException(
+                        $documentType,
+                        $documentId,
+                        $config->country_code,
+                        (string) ($result['message'] ?? 'Unknown e-invoice submission failure'),
+                        $result,
+                    );
+                }
             } catch (\Throwable $e) {
                 \Log::error('Compliance auto-submit failed', [
                     'document_type' => $documentType,
@@ -220,7 +305,56 @@ class CompliancePluginServiceProvider extends ServiceProvider
                     'country_code' => $config->country_code,
                     'error' => $e->getMessage(),
                 ]);
+
+                $this->raiseAutoSubmitException(
+                    $documentType,
+                    $documentId,
+                    $config->country_code,
+                    $e->getMessage(),
+                    null,
+                );
             }
         }
+    }
+
+    /**
+     * Issue #902: queue a failed e-invoice auto-submit with the affected
+     * document, its legal entity, a payload snapshot and the re-submit retry.
+     */
+    private function raiseAutoSubmitException(
+        string $documentType,
+        int $documentId,
+        string $countryCode,
+        string $error,
+        ?array $result,
+    ): void {
+        $source = match ($documentType) {
+            'credit_note' => \App\Models\CustomerCreditNote::find($documentId),
+            'refund_note' => \App\Models\Payment::find($documentId),
+            default => \App\Models\Invoice::find($documentId),
+        };
+
+        $documentNumber = $source?->credit_note_number
+            ?? $source?->invoice_number
+            ?? $source?->payment_number
+            ?? null;
+
+        app(\App\Platform\Exceptions\ExceptionService::class)->report(
+            new \App\Platform\Exceptions\ExceptionReport(
+                type: \App\Platform\Exceptions\ExceptionType::SALES_EINVOICE_AUTO_SUBMIT_FAILED,
+                message: "Auto-submit of {$documentType} ".($documentNumber ? "#{$documentNumber}" : "#{$documentId}")
+                    ." to {$countryCode} failed: {$error}",
+                documentId: $documentId,
+                documentType: $documentType,
+                legalEntityId: $source?->legal_entity_id ? (int) $source->legal_entity_id : null,
+                payload: [
+                    'country_code' => $countryCode,
+                    'document_number' => $documentNumber,
+                    'error' => $error,
+                    'submission_id' => $result['submission_id'] ?? null,
+                    'error_code' => $result['error_code'] ?? null,
+                ],
+            ),
+        );
     }
 }

@@ -22,7 +22,11 @@ class GeneratedDocument extends Model
         'template_version',
         'render_hash',
         'output_format',
+        'disk',
         'disk_path',
+        'checksum',
+        'is_immutable',
+        'superseded_at',
         'size_bytes',
         'generated_at',
         'expires_at',
@@ -31,7 +35,9 @@ class GeneratedDocument extends Model
     protected $casts = [
         'template_version' => 'integer',
         'size_bytes' => 'integer',
+        'is_immutable' => 'boolean',
         'generated_at' => 'datetime',
+        'superseded_at' => 'datetime',
         'expires_at' => 'datetime',
     ];
 

@@ -71,6 +71,7 @@ const FinancialReportsPage = lazy(() => import('@/pages/reports/FinancialReports
 const InventoryReportsPage = lazy(() => import('@/pages/reports/InventoryReportsPage').then(m => ({ default: m.InventoryReportsPage })))
 const SalesAnalyticsPage = lazy(() => import('@/pages/reports/SalesAnalyticsPage').then(m => ({ default: m.SalesAnalyticsPage })))
 const ExpenseAnalyticsPage = lazy(() => import('@/pages/reports/ExpenseAnalyticsPage').then(m => ({ default: m.ExpenseAnalyticsPage })))
+const LotTraceabilityPage = lazy(() => import('@/pages/reports/LotTraceabilityPage'))
 
 // Lazy load dashboard pages (heavy with charts)
 const ExecutiveDashboard = lazy(() => import('@/pages/dashboards/ExecutiveDashboard').then(m => ({ default: m.ExecutiveDashboard })))
@@ -521,6 +522,7 @@ function App() {
                 <Route path="/ocr/documents/:uuid" element={<OCRDocumentReviewPage />} />
                 <Route path="/reports/financial" element={<ReportsGate><FinancialReportsPage /></ReportsGate>} />
                 <Route path="/reports/inventory" element={<ReportsGate><InventoryReportsPage /></ReportsGate>} />
+                <Route path="/reports/traceability" element={<ReportsGate><LotTraceabilityPage /></ReportsGate>} />
                 <Route path="/products/report" element={<ReportsGate><SalesAnalyticsPage productOnly /></ReportsGate>} />
                 <Route path="/reports/sales-analytics" element={<ReportsGate><SalesAnalyticsPage /></ReportsGate>} />
                 <Route path="/reports/expense-analytics" element={<ReportsGate><ExpenseAnalyticsPage /></ReportsGate>} />
