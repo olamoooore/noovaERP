@@ -45,9 +45,50 @@ class MalaysiaCountrySeeder extends Seeder
     {
         $this->ensureCountryCodeColumn();
         $this->seedChartOfAccounts();
+        $this->seedAccountMappings();
         $this->seedTaxRates();
         // #486: contribute MY payment rails (DuitNow/FPX/GrabPay) to the master.
         $this->callWith(PaymentMethodRailsSeeder::class, ['countryCode' => 'MY']);
+    }
+
+    /**
+     * #763 (A3): the template wires its own accounts to the posting roles, so
+     * the generic auto-seeded 1100/2200/4100 accounts never win. Roles the
+     * template has no account for stay unmapped and are surfaced by the
+     * account-mapping health check / resolve() setup error.
+     */
+    private const ACCOUNT_ROLE_MAPPINGS = [
+        'cash' => '121001',
+        'bank' => '120001',
+        'accounts_receivable' => '124000',
+        'accounts_payable' => '221100',
+        'sales_tax_payable' => '221300',
+        'sales_revenue' => '410000',
+        'cogs' => '510100',
+        'general_expense' => '520000',
+    ];
+
+    private function seedAccountMappings(): void
+    {
+        foreach (self::ACCOUNT_ROLE_MAPPINGS as $role => $code) {
+            $account = DB::table('chart_of_accounts')->where('code', $code)->first();
+
+            if (! $account) {
+                continue;
+            }
+
+            DB::table('account_mappings')->updateOrInsert(
+                ['mapping_key' => $role, 'document_type' => null],
+                [
+                    'account_id' => $account->id,
+                    'is_active' => true,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]
+            );
+        }
+
+        \App\Models\Setting::setValue('accounting.coa_template', 'MY');
     }
 
     /**

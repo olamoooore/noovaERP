@@ -270,6 +270,14 @@ class AccountMappingService
         foreach (self::FALLBACKS as $key => $code) {
             $account = ChartOfAccount::where('code', $code)->first();
 
+            // #763 (A3 AC2): a tenant that applied a CoA template must never
+            // accrue generic accounts — the template owns the mapping set. A
+            // role the template does not cover stays unmapped and resolve()
+            // raises its setup error instead of creating a generic account.
+            if (! $account && \App\Models\Setting::getValue('accounting.coa_template') !== null) {
+                continue;
+            }
+
             if (! $account) {
                 $type = self::CODE_TYPES[$key] ?? 'asset';
                 $account = ChartOfAccount::create([
