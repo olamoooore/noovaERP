@@ -218,6 +218,33 @@ class ChatterService
         return $activity->fresh(['assignee', 'createdBy']);
     }
 
+    /**
+     * Issue #637: postpone an open activity to a new due date.
+     *
+     * The status stays `planned`; only the due date moves, so the activity
+     * stays in the open buckets of "My Activities" — just under a later one.
+     */
+    public function snoozeActivity(string $subjectType, int|string $subjectId, int $activityId, string $dueDate): ChatterActivity
+    {
+        $normalizedId = (int) $subjectId;
+        $activity = ChatterActivity::query()
+            ->where('subject_type', $subjectType)
+            ->where('subject_id', (string) $normalizedId)
+            ->where('id', $activityId)
+            ->firstOrFail();
+
+        $activity->update([
+            'due_date' => $dueDate,
+        ]);
+
+        $this->logEvent($subjectType, $normalizedId, 'activity_snoozed', 'Activity snoozed', [
+            'activity_id' => $activity->id,
+            'due_date' => optional($activity->due_date)->toIso8601String(),
+        ]);
+
+        return $activity->fresh(['assignee', 'createdBy']);
+    }
+
     public function markActivityDone(string $subjectType, int|string $subjectId, int $activityId): ChatterActivity
     {
         $normalizedId = (int) $subjectId;
