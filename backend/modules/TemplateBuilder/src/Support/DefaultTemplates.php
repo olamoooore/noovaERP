@@ -68,6 +68,15 @@ final class DefaultTemplates
                         ['label' => 'Unit Price', 'field' => 'unit_price', 'width' => '13%', 'align' => 'right', 'format' => 'money'],
                         ['label' => 'Amount', 'field' => 'line_total', 'width' => '13%', 'align' => 'right', 'format' => 'money'],
                     ]],
+                    // Issue #614 (TP4): statutory tax summary per posted tax
+                    // code/rate. paginate=false keeps its rows out of the
+                    // line-item page subtotals.
+                    ['type' => 'table', 'source' => 'tax_summary', 'paginate' => false, 'columns' => [
+                        ['label' => 'Tax Code', 'field' => 'code', 'width' => '34%'],
+                        ['label' => 'Rate (%)', 'field' => 'rate', 'width' => '22%', 'align' => 'right'],
+                        ['label' => 'Taxable', 'field' => 'taxable', 'width' => '22%', 'align' => 'right', 'format' => 'money'],
+                        ['label' => 'Tax', 'field' => 'tax', 'width' => '22%', 'align' => 'right', 'format' => 'money'],
+                    ]],
                     ['type' => 'spacer', 'height' => 10],
                     ['type' => 'conditional', 'condition' => '{{ totals.paid }} > 0', 'children' => [
                         ['type' => 'totals', 'rows' => [
@@ -93,12 +102,39 @@ final class DefaultTemplates
                             ['label' => 'Total Due', 'field' => 'totals.total', 'format' => 'money', 'bold' => true],
                         ]],
                     ]],
+                    // Issue #614 (TP4): amount in words in the document
+                    // currency/language, then the bank details a payer needs.
+                    ['type' => 'conditional', 'condition' => "{{ totals.amount_in_words }} != ''", 'children' => [
+                        ['type' => 'text', 'size' => 9, 'color' => '#374151', 'content' => '<b>Amount in Words:</b> {{ totals.amount_in_words }}'],
+                    ]],
+                    ['type' => 'conditional', 'condition' => "{{ company.bank.account_number }} != ''", 'children' => [
+                        ['type' => 'text', 'size' => 9, 'color' => '#374151', 'content' => '<b>Bank:</b> {{ company.bank.name }} · A/C Name: {{ company.bank.account_name }} · A/C No: {{ company.bank.account_number }} · SWIFT: {{ company.bank.swift_code }}'],
+                    ]],
                     ['type' => 'spacer', 'height' => 16],
                     ['type' => 'text', 'size' => 9, 'color' => '#6b7280', 'content' => '{{ invoice.terms }}'],
                     ['type' => 'spacer', 'height' => 8],
                     ['type' => 'footer', 'children' => [
                         ['type' => 'divider'],
-                        ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => '{{ company.name }} · GST Reg: {{ company.tax_id }} · {{ company.email }} · {{ company.phone }} · {{ company.website }}'],
+                        ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => '{{ company.name }} · {{ company.email }} · {{ company.phone }} · {{ company.website }}'],
+                        // Issue #614: TIN is its own token, labelled by the
+                        // document jurisdiction's country pack.
+                        ['type' => 'conditional', 'condition' => "{{ company.tin }} != ''", 'children' => [
+                            ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => '{{ company.tin_label }}: {{ company.tin }}'],
+                        ]],
+                        // Issue #614: the registration line follows the
+                        // document jurisdiction's pack label (SST for MY,
+                        // GST for SG, generic otherwise) instead of a
+                        // hardcoded "GST Reg".
+                        ['type' => 'conditional', 'condition' => "{{ company.tax_regime }} == 'GST'", 'children' => [
+                            ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => '{{ company.gst_number_label }}: {{ company.gst_number }}'],
+                        ]],
+                        ['type' => 'conditional', 'condition' => "{{ company.tax_regime }} != 'GST'", 'children' => [
+                            ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => '{{ company.sst_number_label }}: {{ company.sst_number }}'],
+                        ]],
+                        ['type' => 'conditional', 'condition' => "{{ einvoice.uuid }} != ''", 'children' => [
+                            ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => 'E-Invoice: {{ einvoice.uuid }} · Validated: {{ einvoice.validated_at }}'],
+                            ['type' => 'image', 'url' => '{{ einvoice.qr }}', 'width' => 70, 'align' => 'center'],
+                        ]],
                     ]],
                 ],
             ],
