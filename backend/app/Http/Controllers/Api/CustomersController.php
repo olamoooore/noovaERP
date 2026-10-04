@@ -3,12 +3,20 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Services\AcmeCustomerImportService;
+use App\Services\CustomerImportService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Validation\ValidationException;
 
+/**
+ * Accounting-prefixed customer surface (/accounting/customers).
+ *
+ * Issue #433 (CU5) decision: this route stays as the accounting-scoped
+ * facade (ledger list/detail and the staged import used by the accounting
+ * UI). It is NOT a second customer creation path — the import delegates to
+ * the generic CustomerImportService, whose authoritative writes go through
+ * CanonicalCustomerService. Primary customer CRUD stays on /customers.
+ */
 class CustomersController extends Controller
 {
     /**
@@ -96,7 +104,7 @@ class CustomersController extends Controller
      *
      * @return \Illuminate\Http\JsonResponse
      */
-    public function import(Request $request, AcmeCustomerImportService $importService)
+    public function import(Request $request, CustomerImportService $importService)
     {
         $request->validate([
             'file' => 'required|file|mimes:csv,txt|max:10240',
@@ -206,10 +214,9 @@ class CustomersController extends Controller
     /**
      * Commit a staged import batch (COMMIT phase).
      *
-     * @param  string  $batchId
      * @return \Illuminate\Http\JsonResponse
      */
-    public function commitImport(string $batchId, AcmeCustomerImportService $importService)
+    public function commitImport(string $batchId, CustomerImportService $importService)
     {
         try {
             $result = $importService->commitBatch(

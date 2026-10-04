@@ -158,7 +158,7 @@ export function CustomerImportPage() {
   const handleDownloadTemplate = () => {
     const headers = TEMPLATE_COLUMNS.map((column) => column.name).join(',')
     const sampleRow = [
-      'VC0026',
+      'CUST-0001',
       'Acme Corp',
       'company',
       'VIP',

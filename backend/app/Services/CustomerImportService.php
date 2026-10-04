@@ -14,7 +14,11 @@ use Modules\Contact\src\Support\LegacyContactTypeMapping;
 use Ramsey\Uuid\Uuid;
 
 /**
- * ADR-003A Import Contract v1 — staged, validated Acme customer import.
+ * ADR-003A Import Contract v1 — generic, mapping-driven, staged customer import.
+ *
+ * Issue #433 (CU5): this service is client-agnostic. Source systems and
+ * client-specific column mappings are import profiles in
+ * config/customer_import.php, selected by name — never class names.
  *
  * The flat CSV is a compatibility input, not the target domain model. Rows
  * are staged and validated before any authoritative write (CT-VEN-016):
@@ -23,25 +27,34 @@ use Ramsey\Uuid\Uuid;
  *              mapping exists. Canonical taxonomy codes are never invented.
  *
  * Deduplication uses deterministic tiers and never auto-merges name-only
- * matches (CT-VEN-017). Customer codes keep their original VCxxxx value;
+ * matches (CT-VEN-017). Customer codes keep their original value;
  * conflicts are reported, never silently renumbered (CT-VEN-011).
+ *
+ * Customer creation is delegated to CanonicalCustomerService so the importer
+ * is not a parallel creation path (SOP §4).
  */
-class AcmeCustomerImportService
+class CustomerImportService
 {
     /**
      * Staging row statuses.
      */
     public const STATUS_VALID = 'valid';          // commit-ready
+
     public const STATUS_WARNING = 'warning';      // unknown controlled value; not commit-ready (DRY_RUN)
+
     public const STATUS_DUPLICATE = 'duplicate';  // strong dedupe match; commit-ready as link/reuse
+
     public const STATUS_CANDIDATE = 'candidate';  // name-only candidate; not auto-merged, needs review
+
     public const STATUS_ERROR = 'error';          // hard validation failure
+
     public const STATUS_IMPORTED = 'imported';
 
     public function __construct(
         private readonly ContactMasterService $contacts,
         private readonly CustomerContactSyncService $sync,
         private readonly AuditLogger $audit,
+        private readonly CanonicalCustomerService $canonicalCustomers,
     ) {}
 
     /**
@@ -55,8 +68,12 @@ class AcmeCustomerImportService
         string $fileHash,
         ?array $mapping = null,
         ?int $legalEntityId = null,
-        string $sourceSystem = 'acme_customer_master'
+        ?string $profile = null
     ): array {
+        $profileConfig = $this->resolveProfile($profile);
+        $mapping ??= $profileConfig['mapping'];
+        $sourceSystem = $profileConfig['source_system'];
+
         $batch = ContactImportBatch::create([
             'id' => Str::uuid(),
             'tenant_id' => $tenantId,
@@ -309,11 +326,7 @@ class AcmeCustomerImportService
             ->when(! $code, fn ($q) => $q->whereRaw('LOWER(name) = ?', [strtolower($name)]))
             ->first();
 
-        if (! $customer) {
-            $customer = new Customer;
-        }
-
-        $customer->fill([
+        $attributes = [
             'code' => $code ?: Customer::generateCode(),
             'name' => $name,
             'type' => $isCompany ? 'company' : 'individual',
@@ -323,19 +336,19 @@ class AcmeCustomerImportService
             'company' => $mapped['company'] ?? null,
             'tax_number' => $mapped['tax_number'] ?? null,
             'website' => $mapped['website'] ?? null,
-            'billing_address' => $mapped['billing_address'] ?? $customer->billing_address,
-            'shipping_address' => $mapped['shipping_address'] ?? $customer->shipping_address,
-            'notes' => $mapped['notes'] ?? $customer->notes,
+            'billing_address' => $mapped['billing_address'] ?? $customer?->billing_address,
+            'shipping_address' => $mapped['shipping_address'] ?? $customer?->shipping_address,
+            'notes' => $mapped['notes'] ?? $customer?->notes,
             'is_active' => true,
-        ]);
+        ];
         if ($legalEntityId) {
-            $customer->legal_entity_id = $legalEntityId;
+            $attributes['legal_entity_id'] = $legalEntityId;
         }
         if (isset($mapped['credit_limit']) && $mapped['credit_limit'] !== '') {
-            $customer->credit_limit = (float) $mapped['credit_limit'];
+            $attributes['credit_limit'] = (float) $mapped['credit_limit'];
         }
         if (isset($mapped['payment_terms']) && $mapped['payment_terms'] !== '') {
-            $customer->payment_terms = (int) $mapped['payment_terms'];
+            $attributes['payment_terms'] = (int) $mapped['payment_terms'];
         }
 
         // ADR-003A CT-VEN-012/029: differing billing legal party is preserved
@@ -345,10 +358,17 @@ class AcmeCustomerImportService
             'billing_address' => $mapped['billing_address'] ?? null,
         ]);
         if ($billingParty) {
-            $customer->billing_party = array_merge($customer->billing_party ?? [], $billingParty);
+            $attributes['billing_party'] = array_merge($customer?->billing_party ?? [], $billingParty);
         }
 
-        $customer->save();
+        if ($customer) {
+            $customer->fill($attributes)->save();
+        } else {
+            // Issue #433 (CU5) / SOP §4: a new customer is always created
+            // through the single canonical creation service. The importer is
+            // not a second creation implementation.
+            $customer = $this->canonicalCustomers->create($attributes);
+        }
 
         // Canonical identity link + relationship-scoped semantics.
         $contact = $this->sync->ensureOrganisationContact($customer);
@@ -388,6 +408,28 @@ class AcmeCustomerImportService
                 $this->sync->setPrimaryContact($customer, $customerContact->id);
             }
         }
+    }
+
+    // ─── Import profiles (issue #433) ─────────────────────────────
+
+    /**
+     * Resolve an import profile from config/customer_import.php.
+     *
+     * Client-specific source systems and column mappings are configuration
+     * (a profile), never class names or hardcoded defaults in this service.
+     *
+     * @return array{source_system: string, mapping: ?array<string, string>}
+     */
+    private function resolveProfile(?string $profile): array
+    {
+        $config = config('customer_import', []);
+        $name = $profile ?? ($config['default_profile'] ?? 'generic');
+        $resolved = $config['profiles'][$name] ?? $config['profiles']['generic'] ?? [];
+
+        return [
+            'source_system' => (string) ($resolved['source_system'] ?? 'customer_import'),
+            'mapping' => $resolved['mapping'] ?? null,
+        ];
     }
 
     // ─── Mapping (ADR-003A §8) ────────────────────────────────────

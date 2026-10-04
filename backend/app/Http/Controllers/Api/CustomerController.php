@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\CustomerCategory;
 use App\Models\CustomerLoyaltyProgram;
+use App\Services\CanonicalCustomerService;
 use App\Services\CustomerContactSyncService;
 use App\Services\CustomerWideSearchService;
 use App\Services\TagService;
@@ -192,7 +193,7 @@ class CustomerController extends Controller
         );
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, CanonicalCustomerService $canonicalCustomers): JsonResponse
     {
         $validated = $request->validate([
             // Basic
@@ -284,52 +285,15 @@ class CustomerController extends Controller
         $contacts = $validated['contacts'] ?? [];
         unset($validated['category_ids'], $validated['addresses'], $validated['contacts']);
 
-        // ADR-003A: Wrap customer + contact creation in a single transaction.
-        // If any step fails, the entire operation rolls back — no partial state.
-        $customer = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $categoryIds, $addresses, $contacts) {
-            $customer = Customer::create($validated);
-
-            // Attach categories
-            if (! empty($categoryIds)) {
-                $customer->categories()->attach($categoryIds);
-            }
-
-            // Create addresses
-            foreach ($addresses as $address) {
-                $customer->addresses()->create($address);
-            }
-
-            // ADR-003A CT-VEN-003/004: Every customer creation must route through
-            // Contact Master to ensure canonical identity linkage.
-            $sync = app(CustomerContactSyncService::class);
-            $sync->ensureOrganisationContact($customer);
-
-            // Create contacts via Contact Master sync (ensures core_contact_uuid is set).
-            foreach ($contacts as $contact) {
-                $legacy = $sync->transformLegacyPayload(
-                    $contact['contact_category'] ?? null,
-                    $contact['contact_type'] ?? null
-                );
-                $canonical = [
-                    'functional_category_code' => $contact['functional_category_code'] ?? $legacy['functional_category_code'],
-                    'classification_code' => $contact['classification_code'] ?? $legacy['classification_code'],
-                    'persistent_role_codes' => $contact['persistent_role_codes'] ?? $legacy['persistent_role_codes'],
-                    'department_name' => $contact['department_name'] ?? null,
-                ];
-                $contactModel = $customer->customerContacts()->create(collect($contact)->only([
-                    'name', 'job_title', 'email', 'phone', 'mobile',
-                    'street', 'street2', 'city', 'state', 'zip', 'country', 'notes',
-                    'contact_category', 'contact_type', 'department_name',
-                ])->all());
-                $sync->syncPersonForCustomerContact($customer, $contactModel, $canonical);
-
-                if ((bool) ($contact['is_primary'] ?? false) || $legacy['is_primary']) {
-                    $sync->setPrimaryContact($customer, $contactModel->id);
-                }
-            }
-
-            return $customer;
-        });
+        // Issue #433 (CU5): customer creation goes through the single canonical
+        // service (SOP §4). It wraps customer + Contact Master organisation
+        // contact + related records in one transaction, so a failure rolls the
+        // whole operation back — no partial state.
+        $customer = $canonicalCustomers->create($validated, [
+            'category_ids' => $categoryIds,
+            'addresses' => $addresses,
+            'contacts' => $contacts,
+        ]);
 
         // Initialize loyalty if program exists
         $program = CustomerLoyaltyProgram::where('is_active', true)->first();

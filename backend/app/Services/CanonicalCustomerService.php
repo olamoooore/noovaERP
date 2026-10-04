@@ -35,25 +35,73 @@ class CanonicalCustomerService
     }
 
     /**
-     * Create a customer with their canonical organisation contact.
+     * Create a customer with their canonical organisation contact and any
+     * related CRM records (categories, addresses, contacts).
      *
-     * Both are created in the same database transaction.
-     * If either fails, the entire operation rolls back.
+     * All of it is created in the same database transaction.
+     * If any step fails, the entire operation rolls back.
+     *
+     * Issue #433 (CU5): this is the ONE customer creation implementation.
+     * CustomerController::store() and the customer importer both call it
+     * instead of writing Customer rows themselves (SOP §4).
      *
      * @param  array{code?: string, name: string, email?: string, phone?: string, ...}  $customerData
+     * @param  array{category_ids?: list<int|string>, addresses?: list<array<string, mixed>>, contacts?: list<array<string, mixed>>}  $relations
      * @return Customer The created customer with core_contact_uuid set
      *
      * @throws \Exception If customer or contact creation fails
      */
-    public function create(array $customerData): Customer
+    public function create(array $customerData, array $relations = []): Customer
     {
-        return DB::transaction(function () use ($customerData) {
+        return DB::transaction(function () use ($customerData, $relations) {
             $customer = Customer::create($customerData);
 
             $this->syncService->ensureOrganisationContact($customer);
 
+            $this->applyRelations($customer, $relations);
+
             return $customer->fresh();
         });
+    }
+
+    /**
+     * Apply a new customer's related records inside the creation transaction.
+     *
+     * @param  array{category_ids?: list<int|string>, addresses?: list<array<string, mixed>>, contacts?: list<array<string, mixed>>}  $relations
+     */
+    private function applyRelations(Customer $customer, array $relations): void
+    {
+        $categoryIds = $relations['category_ids'] ?? [];
+        if (! empty($categoryIds)) {
+            $customer->categories()->attach($categoryIds);
+        }
+
+        foreach ($relations['addresses'] ?? [] as $address) {
+            $customer->addresses()->create($address);
+        }
+
+        foreach ($relations['contacts'] ?? [] as $contact) {
+            $legacy = $this->syncService->transformLegacyPayload(
+                $contact['contact_category'] ?? null,
+                $contact['contact_type'] ?? null
+            );
+            $canonical = [
+                'functional_category_code' => $contact['functional_category_code'] ?? $legacy['functional_category_code'],
+                'classification_code' => $contact['classification_code'] ?? $legacy['classification_code'],
+                'persistent_role_codes' => $contact['persistent_role_codes'] ?? $legacy['persistent_role_codes'],
+                'department_name' => $contact['department_name'] ?? null,
+            ];
+            $contactModel = $customer->customerContacts()->create(collect($contact)->only([
+                'name', 'job_title', 'email', 'phone', 'mobile',
+                'street', 'street2', 'city', 'state', 'zip', 'country', 'notes',
+                'contact_category', 'contact_type', 'department_name',
+            ])->all());
+            $this->syncService->syncPersonForCustomerContact($customer, $contactModel, $canonical);
+
+            if ((bool) ($contact['is_primary'] ?? false) || $legacy['is_primary']) {
+                $this->syncService->setPrimaryContact($customer, $contactModel->id);
+            }
+        }
     }
 
     /**
