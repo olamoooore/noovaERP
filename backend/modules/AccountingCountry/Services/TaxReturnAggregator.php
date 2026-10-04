@@ -35,6 +35,23 @@ class TaxReturnAggregator
      * @return array{output: array<int, array<string, mixed>>, input: array<int, array<string, mixed>>}
      */
     /**
+     * #742 T9 / #860 RP6: the ONE lifecycle rule every tax report shares —
+     * originals are kept (including `reversed`; the reversal engine writes
+     * signed offsetting rows), and only voided/superseded documents leave the
+     * numbers. Exposed statically so TaxReportingService's GL queries use the
+     * exact same scope as this aggregator instead of their own.
+     */
+    public const EXCLUDED_LIFECYCLE = ['voided', 'superseded'];
+
+    public static function applyLiveLifecycle($query, string $alias = 'je'): void
+    {
+        $query->where(function ($q) use ($alias) {
+            $q->whereNull("{$alias}.lifecycle_status")
+                ->orWhereNotIn("{$alias}.lifecycle_status", self::EXCLUDED_LIFECYCLE);
+        });
+    }
+
+    /**
      * #742 T9: the ONE lifecycle filter shared by the return aggregate and
      * the period list. Voided/superseded documents leave the return (they
      * have no offsetting signed trail), reversed originals stay because the
@@ -43,8 +60,7 @@ class TaxReturnAggregator
     private function liveLifecycleFilter(): \Closure
     {
         return function ($query) {
-            $query->whereNull('je.lifecycle_status')
-                ->orWhereNotIn('je.lifecycle_status', ['voided', 'superseded']);
+            self::applyLiveLifecycle($query);
         };
     }
 

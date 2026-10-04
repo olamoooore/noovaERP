@@ -183,8 +183,18 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract, SupportsPayloadDef
                 ->latestDeterminationLines('invoice', (int) $invoice->id);
         }
 
-        $lineItems = $lineCollection->map(function ($line, int $index) use ($determinationLines) {
-            return $this->mapLineItem($line, $index + 1, $determinationLines[$line->id] ?? null);
+        // #305 (X5): a document-level discount is pro-rated across the lines
+        // (same maths as Invoice::calculateTotals) so line amounts/taxes and
+        // header totals reconcile with the invoice and the ledger.
+        $discountAllocation = $this->allocateDocumentDiscount($invoice, $lineCollection);
+
+        $lineItems = $lineCollection->map(function ($line, int $index) use ($determinationLines, $discountAllocation) {
+            return $this->mapLineItem(
+                $line,
+                $index + 1,
+                $determinationLines[$line->id] ?? null,
+                $discountAllocation[$line->id] ?? null,
+            );
         })->toArray();
 
         if (empty($lineItems)) {
@@ -973,7 +983,7 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract, SupportsPayloadDef
     /**
      * Map line item
      */
-    private function mapLineItem($line, int $lineNumber, ?array $determinationLine = null): array
+    private function mapLineItem($line, int $lineNumber, ?array $determinationLine = null, ?array $allocation = null): array
     {
         $quantity = (float) ($line->quantity ?? 1);
         $unitPrice = (float) ($line->unit_price ?? 0);
@@ -986,9 +996,20 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract, SupportsPayloadDef
             $lineSubtotal = 0.0;
         }
 
+        if ($allocation !== null) {
+            // #305 (X5): the line carries its share of the document discount.
+            $discountAmount = round($discountAmount + (float) $allocation['discount_share'], 2);
+            $lineSubtotal = round(max($lineSubtotal - (float) $allocation['discount_share'], 0), 2);
+        }
+
         if ($taxAmount <= 0 && $taxRate > 0 && $determinationLine === null) {
             // MRD R3.1: single tax arithmetic via TaxEngineService::calculate().
             $taxAmount = \App\Services\TaxEngineService::calculate((float) $lineSubtotal, (float) $taxRate, false)['tax'];
+        }
+
+        if ($allocation !== null) {
+            // #305 (X5): the pro-rated share of the booked document tax.
+            $taxAmount = (float) $allocation['tax'];
         }
 
         // G-37 (#274): LHDN tax type per line — standard-rated sales uses 01,
@@ -1073,7 +1094,20 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract, SupportsPayloadDef
 
         $subtotal = $computedSubtotal > 0 ? $computedSubtotal : (float) ($invoice->subtotal ?? 0);
         $discount = (float) ($invoice->discount_amount ?? 0);
-        $tax = $computedTax > 0 ? $computedTax : (float) ($invoice->tax_amount ?? 0);
+        $bookedTax = (float) ($invoice->tax_amount ?? 0);
+
+        if ($discount > 0 && $computedTax > 0 && $subtotal > 0) {
+            // #305 (X5): the invoice pro-rates the tax for the document
+            // discount; the payload must not charge more than the ledger.
+            $tax = round($computedTax * max(($subtotal - $discount) / $subtotal, 0), 2);
+
+            if ($bookedTax > 0 && abs($bookedTax - $tax) <= 0.02) {
+                $tax = $bookedTax;
+            }
+        } else {
+            $tax = $computedTax > 0 ? $computedTax : $bookedTax;
+        }
+
         $total = $subtotal - $discount + $tax;
         $paid = (float) ($invoice->paid_amount ?? 0);
 
@@ -1086,6 +1120,69 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract, SupportsPayloadDef
             'paid_amount' => round($paid, 2),
             'amount_due' => round($total - $paid, 2),
         ];
+    }
+
+    /**
+     * #305 (X5): allocate a document-level discount across the lines exactly
+     * as Invoice::calculateTotals does (pro-rata by line net; the last line
+     * absorbs rounding) and pro-rate each line's tax. Returns [] when the
+     * document has no discount.
+     *
+     * @return array<int, array{discount_share: float, tax: float}>
+     */
+    private function allocateDocumentDiscount($invoice, $lineCollection): array
+    {
+        $discount = (float) ($invoice->discount_amount ?? 0);
+
+        if ($discount <= 0 || $lineCollection->isEmpty()) {
+            return [];
+        }
+
+        $subtotals = [];
+        $lineTaxes = [];
+
+        foreach ($lineCollection as $line) {
+            $subtotal = round(
+                ((float) ($line->quantity ?? 1) * (float) ($line->unit_price ?? 0)) - (float) ($line->discount_amount ?? 0),
+                2,
+            );
+            $subtotals[] = ['id' => $line->id, 'amount' => max($subtotal, 0.0)];
+            $lineTaxes[] = ['id' => $line->id, 'tax' => (float) ($line->tax_amount ?? 0)];
+        }
+
+        $total = round(array_sum(array_column($subtotals, 'amount')), 2);
+
+        if ($total <= 0) {
+            return [];
+        }
+
+        $ratio = max(($total - $discount) / $total, 0.0);
+        $bookedTax = (float) ($invoice->tax_amount ?? 0);
+        $targetTax = $bookedTax > 0
+            ? $bookedTax
+            : round(array_sum(array_column($lineTaxes, 'tax')) * $ratio, 2);
+
+        $allocation = [];
+        $runningDiscount = 0.0;
+        $runningTax = 0.0;
+        $lastIndex = count($subtotals) - 1;
+
+        foreach ($subtotals as $index => $row) {
+            if ($index === $lastIndex) {
+                $share = round($discount - $runningDiscount, 2);
+                $tax = round($targetTax - $runningTax, 2);
+            } else {
+                $share = round($row['amount'] * ($discount / $total), 2);
+                $tax = round($lineTaxes[$index]['tax'] * $ratio, 2);
+            }
+
+            $runningDiscount = round($runningDiscount + $share, 2);
+            $runningTax = round($runningTax + $tax, 2);
+
+            $allocation[$row['id']] = ['discount_share' => $share, 'tax' => $tax];
+        }
+
+        return $allocation;
     }
 
     /**

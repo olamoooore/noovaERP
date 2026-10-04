@@ -55,6 +55,13 @@ Route::middleware([
         ->middleware($perm('document.view'));
     Route::get('/customer-statements/{id}/pdf', [DocumentRenderController::class, 'customerStatementPdf'])
         ->middleware($perm('document.view'));
+
+    // Issue #613: explicit, permissioned re-issue with the current template.
+    // Stores a new immutable version and keeps the previously issued copy.
+    // Uses the already-seeded document.regenerate permission (Owner/Admin/
+    // Manager — RolePermissionSeeder), not a new string.
+    Route::post('/documents/{documentType}/{id}/regenerate', [DocumentRenderController::class, 'regenerate'])
+        ->middleware($perm('document.regenerate'));
 });
 
 // ─── Template management (ADR-004 §14) ─────────────────────────────────────

@@ -172,6 +172,12 @@ export const baseNavItems: NavItem[] = [
         href: '/inventory/tracking',
         icon: 'solar:qr-code-bold-duotone',
       },
+      {
+        title: 'Traceability',
+        href: '/reports/traceability',
+        icon: 'solar:routing-2-bold-duotone',
+        requiredPermission: 'reports.view',
+      },
       // {
       //   title: 'Stock Movements',
       //   href: '/inventory/movements',

@@ -95,6 +95,45 @@ class DocumentRenderController extends Controller
         return $this->renderDocument('customer_statement', $id, $request, 'statement-'.$id.'.pdf');
     }
 
+    /**
+     * Issue #613 (TP3): explicit re-issue with the CURRENT published template.
+     *
+     * This is the only path that may change an issued document's bytes. It
+     * creates a new immutable version (checksummed) and keeps the original
+     * (superseded), so the copy the customer received is never destroyed.
+     */
+    public function regenerate(Request $request, string $documentType, string $id): JsonResponse
+    {
+        if (! $this->dataSources->has($documentType)) {
+            return response()->json(['message' => "No render path for document type '{$documentType}'."], 404);
+        }
+
+        $denied = $this->authorizeRender($documentType, $id, $request);
+        if ($denied !== null) {
+            return $denied;
+        }
+
+        try {
+            $document = $this->pdf->regenerate($documentType, $id);
+        } catch (ModelNotFoundException) {
+            return response()->json(['message' => 'Document not found.'], 404);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => 'Document regenerated with the current template; the previous issued copy is retained.',
+            'id' => $document->id,
+            'document_type' => $document->document_type,
+            'document_id' => $document->document_id,
+            'template_id' => $document->template_id,
+            'template_version' => $document->template_version,
+            'checksum' => $document->checksum,
+            'size_bytes' => $document->size_bytes,
+            'generated_at' => $document->generated_at?->toIso8601String(),
+        ], 201);
+    }
+
     private function renderDocument(string $type, string $id, Request $request, ?string $filename, string $format = 'pdf'): Response
     {
         // An invoice endpoint can render the quotation projection; the

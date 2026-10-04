@@ -8,6 +8,7 @@ use Modules\FinancialReporting\Controllers\InventoryReportController;
 use Modules\FinancialReporting\Controllers\ReportExportController;
 use Modules\FinancialReporting\Controllers\ReportScheduleController;
 use Modules\FinancialReporting\Controllers\ReportTemplateController;
+use Modules\FinancialReporting\Controllers\TraceabilityReportController;
 
 /*
 |--------------------------------------------------------------------------
@@ -45,6 +46,14 @@ Route::middleware([
         Route::get('/reorder', [InventoryReportController::class, 'reorder'])->name('reorder');
         Route::get('/aging', [InventoryReportController::class, 'aging'])->name('aging');
         Route::get('/turnover', [InventoryReportController::class, 'turnover'])->name('turnover');
+    });
+
+    // Issue #583: lot/serial traceability report (upstream receipt → stock
+    // moves → delivery → medical case → invoice). reports.view comes from the
+    // group; PHI masking is enforced in the controller/service.
+    Route::prefix('reports/traceability')->name('reports.traceability.')->group(function () {
+        Route::get('/', [TraceabilityReportController::class, 'show'])->name('show');
+        Route::get('/export', [TraceabilityReportController::class, 'exportCsv'])->name('export');
     });
 
     // Analytics

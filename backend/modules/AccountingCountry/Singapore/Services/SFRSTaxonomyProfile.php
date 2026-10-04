@@ -2,6 +2,8 @@
 
 namespace Modules\AccountingCountry\Singapore\Services;
 
+use App\Accounting\AccountSubtypeMap;
+
 class SFRSTaxonomyProfile
 {
     public const TAXONOMY_VERSION = 'ACRA-SFRS-2024';
@@ -71,30 +73,39 @@ class SFRSTaxonomyProfile
 
     private function mapAsset(string $code, string $subtype): array
     {
-        if ($subtype === 'current_asset') {
-            if ($code >= '1000' && $code <= '1099') {
-                return $this->concept('balance_sheet', 'assets.current_assets', 'CashAndCashEquivalents', 'Cash and cash equivalents', 'debit');
-            }
-            if ($code >= '1100' && $code <= '1199') {
-                return $this->concept('balance_sheet', 'assets.current_assets', 'TradeAndOtherReceivables', 'Trade and other receivables', 'debit');
-            }
-            if ($code >= '1200' && $code <= '1299') {
-                return $this->concept('balance_sheet', 'assets.current_assets', 'Inventories', 'Inventories', 'debit');
-            }
+        // #766 (A6): the subtype is resolved through the shared alias map so
+        // Odoo-style values (asset_cash, asset_receivable, …) reach the right
+        // statement line instead of falling through to non-current assets.
+        return match (AccountSubtypeMap::resolve($subtype)) {
+            AccountSubtypeMap::CASH => $this->concept('balance_sheet', 'assets.current_assets', 'CashAndCashEquivalents', 'Cash and cash equivalents', 'debit'),
+            AccountSubtypeMap::RECEIVABLE => $this->concept('balance_sheet', 'assets.current_assets', 'TradeAndOtherReceivables', 'Trade and other receivables', 'debit'),
+            AccountSubtypeMap::INVENTORY => $this->concept('balance_sheet', 'assets.current_assets', 'Inventories', 'Inventories', 'debit'),
+            AccountSubtypeMap::FIXED_ASSET => $this->concept('balance_sheet', 'assets.non_current_assets', 'PropertyPlantAndEquipment', 'Property, plant and equipment', 'debit'),
+            AccountSubtypeMap::CURRENT_ASSET => $this->mapCurrentAssetByCode($code),
+            default => $this->concept('balance_sheet', 'assets.non_current_assets', 'OtherNonCurrentAssets', 'Other non-current assets', 'debit'),
+        };
+    }
 
-            return $this->concept('balance_sheet', 'assets.current_assets', 'OtherCurrentAssets', 'Other current assets', 'debit');
+    private function mapCurrentAssetByCode(string $code): array
+    {
+        if ($code >= '1000' && $code <= '1099') {
+            return $this->concept('balance_sheet', 'assets.current_assets', 'CashAndCashEquivalents', 'Cash and cash equivalents', 'debit');
+        }
+        if ($code >= '1100' && $code <= '1199') {
+            return $this->concept('balance_sheet', 'assets.current_assets', 'TradeAndOtherReceivables', 'Trade and other receivables', 'debit');
+        }
+        if ($code >= '1200' && $code <= '1299') {
+            return $this->concept('balance_sheet', 'assets.current_assets', 'Inventories', 'Inventories', 'debit');
         }
 
-        if ($subtype === 'fixed_asset') {
-            return $this->concept('balance_sheet', 'assets.non_current_assets', 'PropertyPlantAndEquipment', 'Property, plant and equipment', 'debit');
-        }
-
-        return $this->concept('balance_sheet', 'assets.non_current_assets', 'OtherNonCurrentAssets', 'Other non-current assets', 'debit');
+        return $this->concept('balance_sheet', 'assets.current_assets', 'OtherCurrentAssets', 'Other current assets', 'debit');
     }
 
     private function mapLiability(string $code, string $subtype): array
     {
-        if ($subtype === 'current_liability') {
+        $group = AccountSubtypeMap::resolve($subtype);
+
+        if (in_array($group, [AccountSubtypeMap::CURRENT_LIABILITY, AccountSubtypeMap::PAYABLE], true)) {
             if ($code >= '2200' && $code <= '2299') {
                 return $this->concept('balance_sheet', 'liabilities.current_liabilities', 'TaxPayables', 'Tax payables', 'credit');
             }
@@ -116,7 +127,7 @@ class SFRSTaxonomyProfile
 
     private function mapRevenue(string $code, string $subtype): array
     {
-        if ($subtype === 'other_revenue') {
+        if (AccountSubtypeMap::resolve($subtype) === AccountSubtypeMap::OTHER_INCOME) {
             return $this->concept('income_statement', 'other_income', 'OtherIncome', 'Other income', 'credit');
         }
 
@@ -125,11 +136,11 @@ class SFRSTaxonomyProfile
 
     private function mapExpense(string $code, string $subtype): array
     {
-        if ($subtype === 'cost_of_goods_sold') {
+        if (AccountSubtypeMap::resolve($subtype) === AccountSubtypeMap::COST_OF_SALES) {
             return $this->concept('income_statement', 'cost_of_goods_sold', 'CostOfSales', 'Cost of sales', 'debit');
         }
 
-        if ($subtype === 'other_expense') {
+        if (AccountSubtypeMap::resolve($subtype) === AccountSubtypeMap::OTHER_EXPENSE) {
             return $this->concept('income_statement', 'other_expenses', 'OtherExpenses', 'Other expenses', 'debit');
         }
 

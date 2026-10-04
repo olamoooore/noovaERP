@@ -3,7 +3,6 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use Modules\HRM\Database\Seeders\HRMPermissionSeeder;
 use Modules\Loyalty\Database\Seeders\LoyaltyTierSeeder;
 use Modules\TemplateBuilder\Services\RegistryService;
 
@@ -18,7 +17,6 @@ class DatabaseSeeder extends Seeder
         if (function_exists('tenant') && tenant()) {
             $seeders[] = PaymentMethodsSeeder::class; // #486 generic method master
             $seeders[] = DepartmentLocationSeeder::class;
-            $seeders[] = HRMPermissionSeeder::class;
             $seeders[] = AccountingPermissionSeeder::class;
             $seeders[] = LoyaltyTierSeeder::class;
             $seeders[] = FiscalPeriodSeeder::class; // Seed fiscal periods for accounting

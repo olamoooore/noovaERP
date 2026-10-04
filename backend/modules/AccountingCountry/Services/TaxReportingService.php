@@ -377,16 +377,7 @@ class TaxReportingService
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->whereNotNull('jel.tax_code')
             ->where('je.status', 'posted')
-            ->where(function ($q) {
-                $q->whereNull('je.lifecycle_status')
-                    ->orWhereNotIn('je.lifecycle_status', ['reversed', 'voided', 'superseded']);
-            })
-            ->whereNotExists(function ($q) {
-                $q->select(DB::raw(1))
-                    ->from('journal_entries as rev')
-                    ->whereColumn('rev.reversed_entry_id', 'je.id')
-                    ->where('rev.status', 'posted');
-            })
+            ->tap(fn ($liveQuery) => TaxReturnAggregator::applyLiveLifecycle($liveQuery))
             ->whereRaw("to_char(je.entry_date, 'YYYY-MM') IN (".implode(',', array_fill(0, count($months), '?')).')', $months)
             ->when($legalEntityId !== null, fn ($q) => $q->where('je.legal_entity_id', $legalEntityId))
             ->groupBy('jel.tax_code')
@@ -542,16 +533,7 @@ class TaxReportingService
         $activity = DB::table('tax_transaction_details as ttd')
             ->join('journal_entries as je', 'je.id', '=', 'ttd.journal_entry_id')
             ->where('je.status', 'posted')
-            ->where(function ($query) {
-                $query->whereNull('je.lifecycle_status')
-                    ->orWhereNotIn('je.lifecycle_status', ['reversed', 'voided', 'superseded']);
-            })
-            ->whereNotExists(function ($query) {
-                $query->select(DB::raw(1))
-                    ->from('journal_entries as rev')
-                    ->whereColumn('rev.reversed_entry_id', 'ttd.journal_entry_id')
-                    ->where('rev.status', 'posted');
-            })
+            ->tap(fn ($liveQuery) => TaxReturnAggregator::applyLiveLifecycle($liveQuery))
             ->groupBy('ttd.reporting_period', 'ttd.jurisdiction', 'je.legal_entity_id')
             ->get([
                 'ttd.reporting_period as period',
@@ -691,16 +673,7 @@ class TaxReportingService
             ->whereIn('ttd.tax_rule_id', $ruleIds)
             ->whereIn('ttd.reporting_period', $months)
             ->where('je.status', 'posted')
-            ->where(function ($q) {
-                $q->whereNull('je.lifecycle_status')
-                    ->orWhereNotIn('je.lifecycle_status', ['reversed', 'voided', 'superseded']);
-            })
-            ->whereNotExists(function ($q) {
-                $q->select(DB::raw(1))
-                    ->from('journal_entries as rev')
-                    ->whereColumn('rev.reversed_entry_id', 'ttd.journal_entry_id')
-                    ->where('rev.status', 'posted');
-            })
+            ->tap(fn ($liveQuery) => TaxReturnAggregator::applyLiveLifecycle($liveQuery))
             ->when($legalEntityId !== null, fn ($q) => $q->where('je.legal_entity_id', $legalEntityId))
             ->groupBy('ttd.tax_code')
             ->get(['ttd.tax_code', DB::raw('sum(ttd.tax_amount) as withheld')]);
@@ -736,16 +709,7 @@ class TaxReportingService
             ->join('journal_entries as je', 'je.id', '=', 'ttd.journal_entry_id')
             ->whereIn('ttd.tax_rule_id', $ruleIds)
             ->where('je.status', 'posted')
-            ->where(function ($q) {
-                $q->whereNull('je.lifecycle_status')
-                    ->orWhereNotIn('je.lifecycle_status', ['reversed', 'voided', 'superseded']);
-            })
-            ->whereNotExists(function ($q) {
-                $q->select(DB::raw(1))
-                    ->from('journal_entries as rev')
-                    ->whereColumn('rev.reversed_entry_id', 'ttd.journal_entry_id')
-                    ->where('rev.status', 'posted');
-            })
+            ->tap(fn ($liveQuery) => TaxReturnAggregator::applyLiveLifecycle($liveQuery))
             ->groupBy('ttd.reporting_period')
             ->orderByDesc('ttd.reporting_period')
             ->limit($months)
@@ -800,16 +764,7 @@ class TaxReportingService
             // Authority follows the withholding RULE's jurisdiction (the trail
             // row carries the document's jurisdiction, which may differ).
             ->whereRaw("upper(coalesce(t.jurisdiction, ttd.jurisdiction, '')) = ?", [$authority])
-            ->where(function ($q) {
-                $q->whereNull('je.lifecycle_status')
-                    ->orWhereNotIn('je.lifecycle_status', ['reversed', 'voided', 'superseded']);
-            })
-            ->whereNotExists(function ($q) {
-                $q->select(DB::raw(1))
-                    ->from('journal_entries as rev')
-                    ->whereColumn('rev.reversed_entry_id', 'ttd.journal_entry_id')
-                    ->where('rev.status', 'posted');
-            })
+            ->tap(fn ($liveQuery) => TaxReturnAggregator::applyLiveLifecycle($liveQuery))
             ->groupBy('ttd.tax_code')
             ->get(['ttd.tax_code', DB::raw('sum(ttd.tax_amount) as withheld')]);
 
@@ -884,16 +839,7 @@ class TaxReportingService
             ->join('journal_entries as je', 'je.id', '=', 'ttd.journal_entry_id')
             ->whereIn('ttd.tax_rule_id', $ruleIds)
             ->where('je.status', 'posted')
-            ->where(function ($q) {
-                $q->whereNull('je.lifecycle_status')
-                    ->orWhereNotIn('je.lifecycle_status', ['reversed', 'voided', 'superseded']);
-            })
-            ->whereNotExists(function ($q) {
-                $q->select(DB::raw(1))
-                    ->from('journal_entries as rev')
-                    ->whereColumn('rev.reversed_entry_id', 'ttd.journal_entry_id')
-                    ->where('rev.status', 'posted');
-            })
+            ->tap(fn ($liveQuery) => TaxReturnAggregator::applyLiveLifecycle($liveQuery))
             ->sum('ttd.tax_amount'), 2);
     }
 
@@ -909,10 +855,7 @@ class TaxReportingService
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->where('jel.account_id', $whtAccountId)
             ->where('je.status', 'posted')
-            ->where(function ($q) {
-                $q->whereNull('je.lifecycle_status')
-                    ->orWhereNotIn('je.lifecycle_status', ['reversed', 'voided', 'superseded']);
-            })
+            ->tap(fn ($liveQuery) => TaxReturnAggregator::applyLiveLifecycle($liveQuery))
             ->selectRaw('coalesce(sum(jel.credit - jel.debit), 0) as balance')
             ->value('balance');
 
