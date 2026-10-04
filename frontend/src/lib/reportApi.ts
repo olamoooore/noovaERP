@@ -365,6 +365,7 @@ class ReportApiClient {
     opening_balance?: number;
     closing_balance: number;
     date_format?: string;
+    import_duplicates?: boolean;
   }): Promise<any> {
     const response = await api.post('/accounting/reconciliation/statement-imports', request);
     return response.data.data;

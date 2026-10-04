@@ -42,6 +42,13 @@ class BankStatementImportService
         $parsed = $this->parser->read(Storage::disk('local')->path($path), $type, $headerRow, $worksheet);
         $proposedMapping = $this->parser->proposeMapping($parsed['headers']);
         $dateOrder = $this->inferSlashDateOrder($parsed['rows'], (string) ($proposedMapping['transaction_date'] ?? ''));
+        // BK7: an overlapping export (or a re-download with a different file
+        // hash) is not a whole-file duplicate, so flag the rows whose content
+        // key already exists — the operator can skip them (default) or choose
+        // to import anyway.
+        $duplicateRows = $this->findExistingRows($parsed['rows'], [
+            'mapping' => $proposedMapping, 'currency_code' => $account->currency_code,
+        ], $bankAccountId, $dateOrder);
         $token = Str::random(64);
         $safeName = preg_replace('/[^A-Za-z0-9._ -]/', '_', basename($file->getClientOriginalName()));
         Cache::put('bank-statement-preview:'.$token, ['tenant_id' => $tenantId, 'user_id' => $userId, 'bank_account_id' => $bankAccountId, 'path' => $path, 'type' => $type, 'hash' => $hash, 'file_name' => $safeName, 'header_row' => $headerRow, 'worksheet' => $parsed['worksheet']], now()->addHour());
@@ -55,6 +62,10 @@ class BankStatementImportService
             // the operator can see (and override) it before importing.
             'date_column_format' => $dateOrder === 'd/m' ? 'd/m/Y' : ($dateOrder === 'm/d' ? 'm/d/Y' : null),
             'date_column_ambiguous' => $this->hasSlashDate($parsed['rows'], (string) ($proposedMapping['transaction_date'] ?? '')) && $dateOrder === null,
+            // BK7: rows of this file that already exist for the account, so the
+            // preview can offer "skip / import anyway".
+            'duplicate_row_count' => count($duplicateRows),
+            'duplicate_rows' => array_slice($duplicateRows, 0, 100),
         ];
     }
 
@@ -104,9 +115,10 @@ class BankStatementImportService
             $groups = [];
             $errors = 0;
             $zeroRows = 0;
+            $occurrences = [];
             foreach ($parsed['rows'] as $row) {
                 try {
-                    $normal = $this->normalize($row, [...$input, 'source_file_hash' => $preview['hash']], $preview['bank_account_id'], $inferredOrder);
+                    $normal = $this->normalize($row, $input, $preview['bank_account_id'], $inferredOrder);
                 } catch (UnparsableAmountException $e) {
                     $errors++;
                     DB::table('bank_statement_import_errors')->insert([
@@ -174,6 +186,14 @@ class BankStatementImportService
 
                     continue;
                 }
+                // BK7: the file-independent content key identifies the money
+                // movement; the occurrence counter keeps identical same-day
+                // rows inside this file apart (and reproduces the same
+                // occurrence order when an overlapping export is imported).
+                $occurrence = ($occurrences[$normal['content_key']] ?? 0) + 1;
+                $occurrences[$normal['content_key']] = $occurrence;
+                $normal['transaction_key'] = $this->transactionKey($normal['content_key'], $occurrence);
+                unset($normal['content_key']);
                 $groups[$normal['transaction_key']] ??= ['transaction' => $normal, 'allocations' => []];
                 if ($normal['allocation_reference']) {
                     $groups[$normal['transaction_key']]['allocations'][] = $normal;
@@ -181,6 +201,8 @@ class BankStatementImportService
             }
             $created = 0;
             $duplicates = 0;
+            $duplicatesImported = 0;
+            $importDuplicates = (bool) ($input['import_duplicates'] ?? false);
             foreach ($groups as $group) {
                 $data = $group['transaction'];
                 // BK8: a row error makes the import all-or-nothing for matching.
@@ -195,9 +217,16 @@ class BankStatementImportService
                 unset($data['allocation_reference'], $data['allocation_amount']);
                 $transaction = BankStatementTransaction::where('bank_account_id', $preview['bank_account_id'])->where('transaction_key', $data['transaction_key'])->where('status', '!=', 'reversed')->first();
                 if ($transaction) {
-                    $duplicates++;
+                    if (! $importDuplicates) {
+                        $duplicates++;
 
-                    continue;
+                        continue;
+                    }
+                    // BK7: the operator explicitly chose "import anyway"; the
+                    // kept copy earns a unique key so both records stay side
+                    // by side without weakening the content key of either.
+                    $data['transaction_key'] = hash('sha256', $data['transaction_key'].'|'.$import->id);
+                    $duplicatesImported++;
                 }
                 $transaction = BankStatementTransaction::create(['import_id' => $import->id, ...$data]);
                 $created++;
@@ -208,8 +237,8 @@ class BankStatementImportService
                     BankStatementAllocation::create(['bank_statement_transaction_id' => $transaction->id, 'allocation_type' => 'invoice_reference', 'external_reference' => $allocationReference, 'amount' => $allocationAmount, 'sequence' => 1, 'raw_data' => $data['raw_data']]);
                 }
             }
-            $import->update(['status' => $errors ? 'failed' : 'imported', 'transaction_count' => $errors ? 0 : $created, 'duplicate_count' => $duplicates, 'error_count' => $errors, 'imported_at' => $errors ? null : now(), 'metadata' => array_merge($import->metadata ?? [], ['zero_amount_rows' => $zeroRows, 'compensated_transaction_count' => $errors ? $created : 0])]);
-            $this->audit->record($errors ? 'import_failed' : 'import_completed', ['actor_id' => $userId, 'bank_account_id' => $import->bank_account_id, 'import_id' => $import->id, 'after_state' => ['status' => $errors ? 'failed' : 'imported', 'row_count' => count($parsed['rows']), 'transaction_count' => $errors ? 0 : $created, 'compensated_transaction_count' => $errors ? $created : 0, 'duplicate_count' => $duplicates, 'error_count' => $errors]]);
+            $import->update(['status' => $errors ? 'failed' : 'imported', 'transaction_count' => $errors ? 0 : $created, 'duplicate_count' => $duplicates, 'error_count' => $errors, 'imported_at' => $errors ? null : now(), 'metadata' => array_merge($import->metadata ?? [], ['zero_amount_rows' => $zeroRows, 'compensated_transaction_count' => $errors ? $created : 0, 'duplicates_imported' => $duplicatesImported])]);
+            $this->audit->record($errors ? 'import_failed' : 'import_completed', ['actor_id' => $userId, 'bank_account_id' => $import->bank_account_id, 'import_id' => $import->id, 'after_state' => ['status' => $errors ? 'failed' : 'imported', 'row_count' => count($parsed['rows']), 'transaction_count' => $errors ? 0 : $created, 'compensated_transaction_count' => $errors ? $created : 0, 'duplicate_count' => $duplicates, 'duplicates_imported' => $duplicatesImported, 'error_count' => $errors]]);
             Cache::forget($key);
 
             return $import->fresh();
@@ -259,22 +288,89 @@ class BankStatementImportService
         }
         $reference = $get('bank_reference');
         $running = $get('running_balance');
-        // Every source row is an independently matchable allocation. The file hash and
-        // source row preserve repeated amounts/references without weakening whole-file
-        // duplicate protection at preview time.
-        $canonical = implode('|', [
+        $runningBalance = $running === '' ? null : $numeric($running, 'running_balance');
+        // BK7: every source row is an independently matchable allocation, but a
+        // row's identity is the money movement itself — never the file hash or
+        // the row number, which change between overlapping exports. The content
+        // key therefore carries account + date + amount + bank reference
+        // (+ running balance where the export has one); confirm() appends an
+        // occurrence counter for identical same-day rows within one file.
+        $contentKey = $this->contentKey(
             $bankAccountId,
-            $input['source_file_hash'] ?? '',
-            $row['source_row'],
             strtoupper($input['currency_code']),
             $date->format('Y-m-d'),
+            $amount,
+            $reference,
+            $runningBalance,
+        );
+
+        return ['bank_account_id' => $bankAccountId, 'content_key' => $contentKey, 'source_row' => $row['source_row'], 'value_date' => $get('value_date') ?: null, 'transaction_date' => $date->format('Y-m-d'), 'transaction_time' => $get('transaction_time') ?: null, 'description' => $description, 'bank_reference' => $reference ?: null, 'customer_reference' => $get('customer_reference') ?: null, 'customer_code' => $get('customer_code') ?: null, 'amount' => $amount, 'currency_code' => strtoupper($input['currency_code']), 'running_balance' => $runningBalance, 'status' => 'unmatched', 'matched_amount' => 0, 'residual_amount' => $amount, 'needs_review' => $reference === '', 'raw_data' => $v, 'allocation_reference' => $get('invoice_reference') ?: null, 'allocation_amount' => $get('allocation_amount') === '' ? null : $numeric($get('allocation_amount'), 'allocation_amount')];
+    }
+
+    /**
+     * BK7: file-independent identity of one money movement.
+     */
+    private function contentKey(int $bankAccountId, string $currencyCode, string $date, float $amount, string $reference, ?float $runningBalance): string
+    {
+        return implode('|', [
+            $bankAccountId,
+            strtoupper($currencyCode),
+            $date,
             number_format($amount, 8, '.', ''),
             strtolower(preg_replace('/\s+/', '', $reference)),
-            strtolower(preg_replace('/\s+/', ' ', $description)),
-            $running,
+            $runningBalance === null ? '' : number_format($runningBalance, 8, '.', ''),
         ]);
+    }
 
-        return ['bank_account_id' => $bankAccountId, 'transaction_key' => hash('sha256', $canonical), 'source_row' => $row['source_row'], 'value_date' => $get('value_date') ?: null, 'transaction_date' => $date->format('Y-m-d'), 'transaction_time' => $get('transaction_time') ?: null, 'description' => $description, 'bank_reference' => $reference ?: null, 'customer_reference' => $get('customer_reference') ?: null, 'customer_code' => $get('customer_code') ?: null, 'amount' => $amount, 'currency_code' => strtoupper($input['currency_code']), 'running_balance' => $running === '' ? null : $numeric($running, 'running_balance'), 'status' => 'unmatched', 'matched_amount' => 0, 'residual_amount' => $amount, 'needs_review' => $reference === '', 'raw_data' => $v, 'allocation_reference' => $get('invoice_reference') ?: null, 'allocation_amount' => $get('allocation_amount') === '' ? null : $numeric($get('allocation_amount'), 'allocation_amount')];
+    private function transactionKey(string $contentKey, int $occurrence): string
+    {
+        return hash('sha256', $contentKey.'|'.$occurrence);
+    }
+
+    /**
+     * BK7: source rows of a preview whose content key already exists as an
+     * active transaction for the account. Rows that cannot be normalized or
+     * whose date column is still ambiguous are left to confirm() to report.
+     */
+    private function findExistingRows(array $rows, array $input, int $bankAccountId, ?string $inferredDateOrder): array
+    {
+        $occurrences = [];
+        $computed = [];
+        foreach ($rows as $row) {
+            try {
+                $normal = $this->normalize($row, $input, $bankAccountId, $inferredDateOrder);
+            } catch (\Throwable) {
+                continue;
+            }
+            if ((float) $normal['amount'] === 0.0) {
+                continue;
+            }
+            $occurrence = ($occurrences[$normal['content_key']] ?? 0) + 1;
+            $occurrences[$normal['content_key']] = $occurrence;
+            $computed[$this->transactionKey($normal['content_key'], $occurrence)] = [
+                'source_row' => $row['source_row'],
+                'transaction_date' => $normal['transaction_date'],
+                'amount' => $normal['amount'],
+                'description' => $normal['description'],
+                'bank_reference' => $normal['bank_reference'],
+            ];
+        }
+        if ($computed === []) {
+            return [];
+        }
+        $existing = array_flip(BankStatementTransaction::where('bank_account_id', $bankAccountId)
+            ->where('status', '!=', 'reversed')
+            ->whereIn('transaction_key', array_keys($computed))
+            ->pluck('transaction_key')
+            ->all());
+        $duplicates = [];
+        foreach ($computed as $key => $info) {
+            if (isset($existing[$key])) {
+                $duplicates[] = $info;
+            }
+        }
+
+        return $duplicates;
     }
 
     private function parseTransactionDate(string $rawDate, ?string $dateFormat, ?string $inferredDateOrder = null): Carbon
