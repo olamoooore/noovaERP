@@ -79,6 +79,13 @@ Schedule::command('inventory:reconcile-gl')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Issue #881 - AR subledger vs GL AR control account, per legal entity.
+// --fail-on-variance makes an out-of-tolerance day a failed run (alertable).
+Schedule::command('accounting:reconcile-ar-gl --fail-on-variance')
+    ->dailyAt('05:50')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Issue #102 - Exchange-rate sync. The FX revaluation side of the same issue
 // is wired into PeriodCloseService::runAutomaticAdjustments(), so closing a
 // period with open FX balances posts the unrealised gain/loss automatically.

@@ -18,6 +18,7 @@ class ReconciliationControlResult extends Model
 
     protected $fillable = [
         'control_name',
+        'legal_entity_id',
         'as_of_date',
         'subledger_balance',
         'gl_balance',
@@ -52,6 +53,14 @@ class ReconciliationControlResult extends Model
     public function executedBy()
     {
         return $this->belongsTo(User::class, 'executed_by');
+    }
+
+    /**
+     * Legal entity this result reconciled (issue #881); null = tenant-wide.
+     */
+    public function legalEntity()
+    {
+        return $this->belongsTo(LegalEntity::class, 'legal_entity_id');
     }
 
     /**
