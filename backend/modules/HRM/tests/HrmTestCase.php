@@ -47,6 +47,15 @@ abstract class HrmTestCase extends TenantTestCase
         $roleMock->shouldReceive('hasPermission')->andReturn(true);
         $roleMock->shouldReceive('hasAnyPermission')->andReturn(true);
         app()->instance(\App\Services\TenantRoleService::class, $roleMock);
+
+        // #793: approval/mark-paid now post accrual/payment entries, whose
+        // authority gate (PermissionGate → AccountingAccessService) would
+        // otherwise block these non-RBAC suites. Accounting-gate behaviour
+        // has dedicated coverage (Adr005PostingEngineWiringTest,
+        // HR37PostingAuthorityFailClosedTest, Issue37PostingFailClosedTest).
+        $accessMock = \Mockery::mock(\App\Services\AccountingAccessService::class);
+        $accessMock->shouldReceive('userHasPermission')->andReturn(true);
+        app()->instance(\App\Services\AccountingAccessService::class, $accessMock);
     }
 
     protected function mockFeatureGate(bool $isEntitled): void
