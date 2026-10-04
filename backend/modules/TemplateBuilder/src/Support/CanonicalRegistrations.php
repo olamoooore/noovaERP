@@ -18,6 +18,147 @@ use Modules\TemplateBuilder\Platform\RuntimeMode;
 final class CanonicalRegistrations
 {
     /**
+     * Issue #615 (TP5) — the single canonical-to-data-source key map.
+     *
+     * The ADR-004 registry speaks canonical `template_type_code`s while the
+     * render pipeline (data sources, render routes, immutable snapshots)
+     * speaks runtime keys. This is the only place the correspondence is
+     * declared; the resolver, snapshot hooks and completeness tests all read
+     * it instead of hard-coding either form.
+     *
+     * @var array<string,string> canonical type code => runtime data-source key
+     */
+    private const DATA_SOURCE_KEY_BY_TYPE_CODE = [
+        'ar_invoice' => 'invoice',
+        'ar_credit_note' => 'credit_note',
+        'ar_official_receipt' => 'receipt',
+        'sales_quotation' => 'quotation',
+        'sales_order' => 'sales_order',
+        'sales_order_confirmation' => 'sales_order_confirmation',
+        'sales_proforma_invoice' => 'sales_proforma_invoice',
+        'customer_statement' => 'customer_statement',
+    ];
+
+    /**
+     * Renderable data sources that predate the ADR-004 registry (no canonical
+     * registration row). Listed here so the key map describes the complete
+     * renderable set in one place.
+     *
+     * @var list<string>
+     */
+    private const LEGACY_DATA_SOURCE_KEYS = ['purchase_order', 'delivery_order'];
+
+    /**
+     * Issue #615 (TP5) — registered business-document types that deliberately
+     * have no render data source on this branch. They are hidden from the
+     * template editor until a source exists; the completeness test fails when
+     * a registered type is neither here nor in DATA_SOURCE_KEY_BY_TYPE_CODE.
+     *
+     * @var array<string,string> canonical type code => why it is not renderable
+     */
+    private const UNSUPPORTED_BUSINESS_DOCUMENT_TYPES = [
+        'sales_revised_quotation' => 'No runtime source/route; revised quotations are not distinct printable documents on this branch.',
+        'sales_delivery_instruction' => 'No runtime source/route; delivery execution prints the delivery order source.',
+        'sales_return' => 'No runtime source/route; returns are not a printable document on this branch.',
+        'sales_price_list' => 'No runtime source/route; price lists are not a printable document on this branch.',
+        'crm_lead_summary' => 'No runtime source/route; CRM business documents are not renderable on this branch.',
+        'crm_customer_profile' => 'No runtime source/route; CRM business documents are not renderable on this branch.',
+        'crm_account_review' => 'No runtime source/route; CRM business documents are not renderable on this branch.',
+        'crm_sales_visit_report' => 'No runtime source/route; CRM business documents are not renderable on this branch.',
+        'crm_pipeline_report' => 'No runtime source/route; CRM business documents are not renderable on this branch.',
+        'ar_debit_note' => 'No runtime source/route; only the customer credit note has a render path on this branch.',
+        'voucher' => 'No runtime source/route; vouchers are not renderable on this branch.',
+        'supplier_statement' => 'No runtime source/route; only the customer statement is renderable on this branch.',
+        'ageing_report' => 'No runtime source/route; reports are not renderable on this branch.',
+        'gl_report' => 'No runtime source/route; reports are not renderable on this branch.',
+        'tb_report' => 'No runtime source/route; reports are not renderable on this branch.',
+        'pl_report' => 'No runtime source/route; reports are not renderable on this branch.',
+        'bs_report' => 'No runtime source/route; reports are not renderable on this branch.',
+        'cf_report' => 'No runtime source/route; reports are not renderable on this branch.',
+        'tax_report' => 'No runtime source/route; reports are not renderable on this branch.',
+        'close_report' => 'No runtime source/route; reports are not renderable on this branch.',
+        'comm_email_template' => 'Authored for delivery by the Communication engine (bridge), not a document render source.',
+        'comm_sms_template' => 'Authored for delivery by the Communication engine (bridge), not a document render source.',
+        'comm_letter_template' => 'Authored for delivery by the Communication engine (bridge), not a document render source.',
+        'comm_notice_template' => 'Authored for delivery by the Communication engine (bridge), not a document render source.',
+    ];
+
+    /**
+     * The data-source key for a canonical ADR-004 type code (null when the
+     * type is not renderable).
+     */
+    public static function dataSourceKeyFor(string $templateTypeCode): ?string
+    {
+        return self::DATA_SOURCE_KEY_BY_TYPE_CODE[$templateTypeCode] ?? null;
+    }
+
+    /**
+     * The data-source key for a canonical type that MUST be renderable —
+     * fails loudly instead of silently rendering with a null key.
+     */
+    public static function renderableKeyFor(string $templateTypeCode): string
+    {
+        return self::DATA_SOURCE_KEY_BY_TYPE_CODE[$templateTypeCode]
+            ?? throw new \InvalidArgumentException(
+                "Template type '{$templateTypeCode}' has no registered data source (#615)."
+            );
+    }
+
+    /**
+     * The canonical ADR-004 type code for a runtime data-source key (null for
+     * legacy-only renderable sources).
+     */
+    public static function canonicalTypeCodeFor(string $dataSourceKey): ?string
+    {
+        $canonical = array_search($dataSourceKey, self::DATA_SOURCE_KEY_BY_TYPE_CODE, true);
+
+        return $canonical === false ? null : $canonical;
+    }
+
+    /**
+     * Every key equivalent to the given type code — canonical and
+     * data-source forms. An unknown code resolves to itself so
+     * tenant-registered types keep matching their own assignments.
+     *
+     * @return list<string>
+     */
+    public static function keysFor(string $typeCode): array
+    {
+        if (isset(self::DATA_SOURCE_KEY_BY_TYPE_CODE[$typeCode])) {
+            return [$typeCode, self::DATA_SOURCE_KEY_BY_TYPE_CODE[$typeCode]];
+        }
+
+        $canonical = self::canonicalTypeCodeFor($typeCode);
+        if ($canonical !== null) {
+            return [$canonical, $typeCode];
+        }
+
+        return [$typeCode];
+    }
+
+    /**
+     * Every renderable data-source key, in one place (canonical type codes
+     * plus documented legacy renderable sources).
+     *
+     * @return list<string>
+     */
+    public static function dataSourceKeys(): array
+    {
+        return [...array_values(self::DATA_SOURCE_KEY_BY_TYPE_CODE), ...self::LEGACY_DATA_SOURCE_KEYS];
+    }
+
+    /**
+     * Business-document types hidden from the template editor because no data
+     * source exists for them yet (#615 hide-list).
+     *
+     * @return array<string,string>
+     */
+    public static function unsupportedBusinessDocumentTypes(): array
+    {
+        return self::UNSUPPORTED_BUSINESS_DOCUMENT_TYPES;
+    }
+
+    /**
      * @return list<array<string,mixed>>
      */
     public static function definitions(): array

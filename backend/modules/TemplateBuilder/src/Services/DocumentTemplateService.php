@@ -13,6 +13,7 @@ use Modules\TemplateBuilder\Models\DocumentTemplateVersion;
 use Modules\TemplateBuilder\Platform\ResolutionContext;
 use Modules\TemplateBuilder\Platform\ResolutionResult;
 use Modules\TemplateBuilder\Services\DataSource\DataSourceRegistry;
+use Modules\TemplateBuilder\Support\CanonicalRegistrations;
 use Modules\TemplateBuilder\Support\DefaultTemplates;
 
 final class DocumentTemplateService implements DocumentTemplateServiceContract
@@ -289,7 +290,9 @@ final class DocumentTemplateService implements DocumentTemplateServiceContract
 
     public function activeDefaults(): array
     {
-        $types = ['invoice', 'quotation', 'purchase_order', 'receipt', 'delivery_order', 'customer_statement'];
+        // Issue #615: the renderable set is owned by the single key map, not a
+        // second hard-coded list here.
+        $types = CanonicalRegistrations::dataSourceKeys();
 
         return collect($types)
             ->mapWithKeys(fn (string $type) => [$type => $this->resolveFor($type)?->id])

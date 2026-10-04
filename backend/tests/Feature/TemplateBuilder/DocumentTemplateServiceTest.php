@@ -241,15 +241,25 @@ class DocumentTemplateServiceTest extends TenantTestCase
         $starters = $this->service->listStarters();
         $types = array_column($starters, 'document_type');
 
-        // One starter per canonical document type — must stay in sync with
-        // DocumentTemplateService::activeDefaults() and DefaultTemplates::definitions().
-        $this->assertCount(6, $starters);
-        foreach (['invoice', 'quotation', 'purchase_order', 'receipt', 'delivery_order', 'customer_statement'] as $type) {
+        // One starter per renderable document type — must stay in sync with
+        // DocumentTemplateService::activeDefaults(), DefaultTemplates::definitions()
+        // and the canonical ⇄ data-source key map (#615).
+        $this->assertCount(10, $starters);
+        foreach ([
+            'invoice', 'quotation', 'purchase_order', 'receipt', 'delivery_order',
+            'customer_statement', 'sales_order', 'sales_order_confirmation',
+            'sales_proforma_invoice', 'credit_note',
+        ] as $type) {
             $this->assertContains($type, $types);
         }
 
         // No duplicate document types.
-        $this->assertCount(6, array_unique($types));
+        $this->assertCount(10, array_unique($types));
+
+        // Types on the #615 hide-list stay hidden from the editor (no starter).
+        foreach (array_keys(\Modules\TemplateBuilder\Support\CanonicalRegistrations::unsupportedBusinessDocumentTypes()) as $hidden) {
+            $this->assertNotContains($hidden, $types, "Hidden type '{$hidden}' must not be offered as a starter.");
+        }
     }
 
     public function test_create_from_starter_makes_user_owned_draft(): void
