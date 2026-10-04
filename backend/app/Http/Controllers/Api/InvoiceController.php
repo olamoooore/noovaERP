@@ -10,6 +10,7 @@ use App\Models\Invoice;
 use App\Models\InvoiceActivityLog;
 use App\Models\InvoiceEvidence;
 use App\Models\Product;
+use App\Models\Setting;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Platform\Locking\RecordVersionConflictException;
@@ -31,6 +32,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Sales\Services\DeliveryOrderService;
 use Modules\Sales\Services\SalesOrderService;
@@ -545,6 +547,15 @@ class InvoiceController extends Controller
             'tags.*' => 'string|max:100',
         ]);
 
+        // #315: sales.invoice.allow_custom_number gates hand-typed numbers. A
+        // client-supplied number is rejected (not silently ignored or
+        // renumbered) so the UI and the API agree on the tenant policy.
+        if (trim((string) ($validated['invoice_number'] ?? '')) !== '' && ! $this->customInvoiceNumberingAllowed()) {
+            throw ValidationException::withMessages([
+                'invoice_number' => 'Custom invoice numbers are disabled by the sales setting sales.invoice.allow_custom_number. Clear the number to use the automatic one.',
+            ]);
+        }
+
         // Lock-date check: block creating invoice dated in a closed period
         $invoiceDate = $validated['invoice_date'] ?? now()->toDateString();
         $lockResult = $this->lockDateValidator->validateTransactionDate('sales', $invoiceDate);
@@ -670,6 +681,15 @@ class InvoiceController extends Controller
 
             return $e->getMessage();
         }
+    }
+
+    /**
+     * #315: tenant policy for hand-typed invoice numbers. Defaults to allowed
+     * so tenants that never touched the setting keep the historical behaviour.
+     */
+    private function customInvoiceNumberingAllowed(): bool
+    {
+        return (bool) Setting::getValue('sales.invoice.allow_custom_number', true);
     }
 
     /**
@@ -1307,6 +1327,19 @@ class InvoiceController extends Controller
         ], [
             'invoice_number.unique' => 'This invoice number is already used by another invoice (including deleted ones). Choose a different number.',
         ]);
+
+        // #315: renumbering is a custom-number action too. An unchanged number
+        // echoed back by the edit form is not a renumber and stays allowed.
+        $requestedNumber = trim((string) ($validated['invoice_number'] ?? ''));
+        if (
+            $requestedNumber !== ''
+            && $requestedNumber !== (string) $invoice->invoice_number
+            && ! $this->customInvoiceNumberingAllowed()
+        ) {
+            throw ValidationException::withMessages([
+                'invoice_number' => 'Custom invoice numbers are disabled by the sales setting sales.invoice.allow_custom_number. Keep the current number.',
+            ]);
+        }
 
         foreach (['doctor', 'requestor', 'billing', 'shipping'] as $contactType) {
             $nameKey = $contactType.'_contact_name';

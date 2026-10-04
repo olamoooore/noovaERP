@@ -841,16 +841,26 @@ export const CreateInvoicePage: React.FC = () => {
   // fields render. 'medical' preserves the pre-setting behaviour.
   const fieldProfile = ((salesSettings as any)?.invoice?.field_profile ?? 'medical') as
     'general' | 'medical' | 'trading' | 'services';
+  // #315: the tenant setting gates the hand-typed invoice number. Until the
+  // settings resolve (or if that request fails) the historical behaviour
+  // (allowed) is kept — the server remains the enforcement point either way.
+  const allowCustomNumber = (salesSettings as any)?.invoice?.allow_custom_number !== false;
   useEffect(() => {
     if (isEditMode || defaultsApplied || !salesSettings) return;
     const inv = salesSettings.invoice;
     if (inv?.default_requires_approval) {
       setRequiresApproval(true);
     }
-    // Roadmap Phase 2: honour the configured default payment terms, unless
-    // the user already overrode terms on this document.
+    // Roadmap Phase 2 / #315 precedence: customer-specific terms beat the
+    // tenant default, which beats the 30-day fallback. If the chosen customer
+    // already carries authoritative terms (possibly applied before this
+    // settings response arrived), the setting must not clobber them.
+    const customerTerms = Number(selectedCustomer?.payment_terms);
+    const customerHasTerms = selectedCustomer != null
+      && Number.isFinite(customerTerms)
+      && customerTerms >= 0;
     const defaultTermsDays = Number((inv as any)?.default_payment_terms_days);
-    if (!termsOverridden && Number.isFinite(defaultTermsDays) && defaultTermsDays >= 0) {
+    if (!termsOverridden && !customerHasTerms && Number.isFinite(defaultTermsDays) && defaultTermsDays >= 0) {
       setPaymentTerms(defaultTermsDays);
       setDueDate(calcDueDate(invoiceDate, defaultTermsDays));
     }
@@ -867,7 +877,7 @@ export const CreateInvoicePage: React.FC = () => {
       );
     }
     setDefaultsApplied(true);
-  }, [salesSettings, isEditMode, defaultsApplied, defaultTaxRate]);
+  }, [salesSettings, isEditMode, defaultsApplied, defaultTaxRate, selectedCustomer]);
 
   // Customer changes re-resolve the default document currency and prices
   // (FR-2.3/FR-5.2). Existing hand-typed prices are kept (FR-6.3).
@@ -1832,7 +1842,7 @@ export const CreateInvoicePage: React.FC = () => {
       ...(priceListId ? { price_list_id: Number(priceListId) } : {}),
       requires_approval: requiresApproval,
       ...(!isEditMode && tags.length ? { tags } : {}),
-      ...(customInvoiceNumber ? { invoice_number: customInvoiceNumber } : {}),
+      ...(customInvoiceNumber && (isQuoteMode || allowCustomNumber) ? { invoice_number: customInvoiceNumber } : {}),
       ...documentSnapshot,
       lines: submissionLines
         .filter((line) => line.description || line.product_id)
@@ -2218,20 +2228,22 @@ export const CreateInvoicePage: React.FC = () => {
                     ))}
                   </select>
                 </label>
-                <HeaderChip
-                  icon="solar:document-text-bold-duotone"
-                  label="Number"
-                  value={customInvoiceNumber || 'Auto'}
-                  title={`${documentLabel} number`}
-                >
-                  <input
-                    type="text"
-                    value={customInvoiceNumber}
-                    onChange={(e) => setCustomInvoiceNumber(e.target.value)}
-                    placeholder={`INV-${new Date().getFullYear()}-XXXX`}
-                    className="h-8 w-full rounded-md border border-input bg-background px-2.5 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </HeaderChip>
+                {(isQuoteMode || allowCustomNumber) && (
+                  <HeaderChip
+                    icon="solar:document-text-bold-duotone"
+                    label="Number"
+                    value={customInvoiceNumber || 'Auto'}
+                    title={`${documentLabel} number`}
+                  >
+                    <input
+                      type="text"
+                      value={customInvoiceNumber}
+                      onChange={(e) => setCustomInvoiceNumber(e.target.value)}
+                      placeholder={`INV-${new Date().getFullYear()}-XXXX`}
+                      className="h-8 w-full rounded-md border border-input bg-background px-2.5 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </HeaderChip>
+                )}
                 {!isQuoteMode && requiresApproval && (
                   <StaticChip
                     icon="solar:checklist-bold-duotone"
