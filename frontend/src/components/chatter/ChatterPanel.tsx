@@ -14,6 +14,7 @@ import chatterApi, {
   type ChatterAttachment,
   type ChatterMessageEntry,
 } from '@/lib/chatterApi'
+import { ChatterFollowers } from '@/components/chatter/ChatterFollowers'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -223,6 +224,10 @@ export function ChatterPanel({
           </button>
         ))}
       </div>
+
+      {/* Issue #639: shared follower strip — rendered here so every page that
+          already embeds ChatterPanel gets followers with no page-level edit. */}
+      <ChatterFollowers subjectType={subjectType} subjectId={subjectId} />
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-4 py-3">

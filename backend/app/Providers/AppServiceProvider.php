@@ -12,6 +12,7 @@ use App\Accounting\Services\RevisionPolicyResolver;
 use App\Accounting\Services\StateTransitionService;
 use App\Accounting\Services\StructuredObservabilityService;
 use App\Listeners\DeliveryOrderApprovalDecisionListener;
+use App\Listeners\DocumentFollowerApprovalListener;
 use App\Listeners\InvoiceApprovalDecisionListener;
 use App\Listeners\PreventDangerousMigrations;
 use App\Listeners\SalesApprovalDecisionListener;
@@ -89,6 +90,8 @@ class AppServiceProvider extends ServiceProvider
         // the requester of the decision and record the one-click Continue
         // (the gate keeps documents in draft by design — #180/#646).
         Event::listen(ApprovalDecisionEvent::class, SalesApprovalDecisionListener::class);
+        // Issue #639: whoever approves a document auto-follows it.
+        Event::listen(ApprovalDecisionEvent::class, DocumentFollowerApprovalListener::class);
 
         // Register the approval-flow communication subtypes. Without this the
         // Communication engine rejects 'invoice.approval_submitted' with
