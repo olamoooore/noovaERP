@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
@@ -29,11 +29,51 @@ import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
 import { fetchBulkStockAvailability } from '@/components/sales/stockAvailability'
 import { StockShortageDialog, type ShortageLine } from '@/components/sales/StockShortageDialog'
 
+interface AddressSnapshot {
+  address?: string
+  city?: string
+  state?: string
+  zip?: string
+  country?: string
+}
+
+interface CreditPreview {
+  approved: boolean
+  reason: string
+  creditLimit: number
+  currentBalance: number
+  availableCredit: number | null
+  orderTotal: number
+}
+
+interface ApprovalRequestSummary {
+  id: number
+  status: string
+  request_number?: string
+  requested_at?: string
+  reviewed_at?: string
+}
+
 interface SalesOrder {
   id: number
   sales_order_number: string
   customer_id: number
+  // #402 (SU4): the order's commitment warehouse (name/code loaded by the API).
   warehouse_id?: number | null
+  warehouse?: { id: number; name?: string; code?: string } | null
+  // #402 (SU4): document currency + FX snapshot.
+  currency_code?: string | null
+  exchange_rate?: number | string | null
+  base_currency_code?: string | null
+  // #402 (SU4): origin of the order.
+  channel?: string | null
+  source_document_type?: string | null
+  // #402 (SU4): address snapshots captured at creation time.
+  billing_address_snapshot?: AddressSnapshot | null
+  shipping_address_snapshot?: AddressSnapshot | null
+  // #402 (SU4): approval-gate state for this order.
+  latest_approval_request?: ApprovalRequestSummary | null
+  has_backorder?: boolean
   customer?: {
     id: number
     name: string
@@ -42,7 +82,11 @@ interface SalesOrder {
     code?: string
   }
   order_date: string
-  expected_delivery_date?: string
+  // Issue #408: promise dates + partial-delivery policy.
+  commitment_date?: string | null
+  expected_date?: string | null
+  shipping_policy?: 'asap' | 'when_all_ready' | string
+  is_late?: boolean
   status: string
   allowed_transitions?: string[]
   invoice_status?: string
@@ -160,6 +204,68 @@ function isBackordered(line: SalesOrderLine): boolean {
   return line.is_backordered === true || quantityValue(line.backorder_quantity) > 0
 }
 
+/** #402 (SU4): compact chip used by the order header. */
+function OrderInfoChip({
+  icon,
+  title,
+  className,
+  children,
+}: {
+  icon: string
+  title?: string
+  className?: string
+  children: ReactNode
+}) {
+  return (
+    <Badge
+      variant="outline"
+      title={title}
+      className={`gap-1.5 bg-muted/40 font-normal text-muted-foreground ${className ?? ''}`}
+    >
+      <Icon icon={icon} className="h-3.5 w-3.5" />
+      {children}
+    </Badge>
+  )
+}
+
+/** #402 (SU4): keep the FX rate readable ("2.500000" -> "2.5"). */
+function formatExchangeRate(rate: number | string | null | undefined): string {
+  const parsed = Number(rate)
+  if (!Number.isFinite(parsed) || parsed <= 0) return '1'
+
+  return parsed.toLocaleString(undefined, { maximumFractionDigits: 6 })
+}
+
+/** #402 (SU4): snapshot arrays carry address/city/state/zip/country. */
+function formatSnapshotAddress(snapshot: AddressSnapshot | null | undefined): string {
+  if (!snapshot) return ''
+
+  return [snapshot.address, snapshot.city, snapshot.state, snapshot.zip, snapshot.country]
+    .filter(Boolean)
+    .join(', ')
+}
+
+const CHANNEL_LABELS: Record<string, string> = {
+  admin: 'Admin',
+  pos: 'POS',
+  ecommerce: 'E-commerce',
+  storefront: 'Web',
+}
+
+const SOURCE_DOCUMENT_LABELS: Record<string, string> = {
+  PosOrder: 'POS order',
+  StorefrontOrder: 'Web order',
+  Quotation: 'Quotation',
+}
+
+const APPROVAL_STATUS_LABELS: Record<string, string> = {
+  pending: 'Approval pending',
+  approved: 'Approved',
+  rejected: 'Approval rejected',
+  expired: 'Approval expired',
+  withdrawn: 'Approval withdrawn',
+}
+
 function getInvoiceStatusLabel(invoices: NonNullable<SalesOrder['invoices']>) {
   if (invoices.length === 0) return 'Not Invoiced'
 
@@ -178,6 +284,10 @@ export function SalesOrderDetailPage() {
   const [action, setAction] = useState<OrderAction>(null)
   const [cancelOpen, setCancelOpen] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
+  // Issue #408: draft orders can edit the commitment date + shipping policy.
+  const [promiseOpen, setPromiseOpen] = useState(false)
+  const [commitmentDraft, setCommitmentDraft] = useState('')
+  const [policyDraft, setPolicyDraft] = useState<'asap' | 'when_all_ready'>('asap')
   // Issue #687 (UX1): confirm preflights the order's lines against the shared
   // stock availability; when short, the explicit-choice dialog replaces the
   // silent backorder path (#379).
@@ -193,6 +303,17 @@ export function SalesOrderDetailPage() {
     queryFn: async () => {
       const response = await api.get(`/sales/orders/${id}`)
       return response.data as SalesOrder
+    },
+    enabled: !!id,
+  })
+
+  // #402 (SU4): the credit-preview endpoint already computes the customer's
+  // exposure; the header reports it instead of re-deriving credit locally.
+  const { data: creditPreview, isError: creditPreviewFailed } = useQuery({
+    queryKey: ['sales-order-credit-preview', id],
+    queryFn: async () => {
+      const response = await api.get(`/sales/orders/${id}/credit-preview`)
+      return response.data as CreditPreview
     },
     enabled: !!id,
   })
@@ -348,8 +469,35 @@ export function SalesOrderDetailPage() {
     },
   })
 
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
+  // Issue #408: commitment date + shipping policy edit for draft orders.
+  const promiseMutation = useMutation({
+    mutationFn: async () => {
+      await api.put(`/sales/orders/${id}`, {
+        commitment_date: commitmentDraft || null,
+        shipping_policy: policyDraft,
+      })
+    },
+    onSuccess: () => {
+      refresh()
+      setPromiseOpen(false)
+      toast({ title: 'Success', description: 'Promise date and shipping policy updated' })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || 'Failed to update the promise dates',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const openPromiseDialog = () => {
+    setCommitmentDraft(order?.commitment_date ? String(order.commitment_date).split('T')[0] : '')
+    setPolicyDraft(order?.shipping_policy === 'when_all_ready' ? 'when_all_ready' : 'asap')
+    setPromiseOpen(true)
+  }
+
+  const getStatusBadge = (status: string) => {    const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
       draft: { variant: 'secondary', label: 'Draft' },
       confirmed: { variant: 'default', label: 'Confirmed' },
       partially_delivered: { variant: 'outline', label: 'Partial' },
@@ -393,6 +541,32 @@ export function SalesOrderDetailPage() {
   const deliveryOrdersCount = order.delivery_orders?.length ?? 0
   const linkedInvoices = order.invoices ?? []
 
+  // #402 (SU4): compact order-info chips. Every value comes from the order
+  // payload (snapshots/columns) or the existing credit-preview endpoint.
+  const productLines = (order.lines ?? []).filter((line) => (line.line_type ?? 'product') === 'product')
+  const orderedQuantity = productLines.reduce((sum, line) => sum + quantityValue(line.quantity), 0)
+  const reservedQuantity = productLines.reduce((sum, line) => sum + quantityValue(line.quantity_allocated), 0)
+  const orderHasBackorder = order.has_backorder === true || productLines.some(isBackordered)
+
+  const warehouseLabel = order.warehouse?.name || (order.warehouse_id != null ? `Warehouse #${order.warehouse_id}` : null)
+  const exchangeRate = Number(order.exchange_rate)
+  const showExchangeRate =
+    order.currency_code != null && Number.isFinite(exchangeRate) && exchangeRate > 0 && exchangeRate !== 1
+  const channelLabel = order.channel ? (CHANNEL_LABELS[order.channel] ?? order.channel) : null
+  const sourceLabel = order.source_document_type
+    ? (SOURCE_DOCUMENT_LABELS[order.source_document_type] ?? order.source_document_type)
+    : order.quotation
+      ? `Quotation ${order.quotation.quotation_number}`
+      : null
+  const channelSourceLabel = [channelLabel, sourceLabel].filter(Boolean).join(' · ')
+  const approval = order.latest_approval_request
+  const approvalLabel = approval
+    ? (APPROVAL_STATUS_LABELS[String(approval.status).toLowerCase()] ?? `Approval ${approval.status}`)
+    : null
+  const hasCreditResult = creditPreview != null && typeof creditPreview.approved === 'boolean'
+  const billingAddress = formatSnapshotAddress(order.billing_address_snapshot)
+  const shippingAddress = formatSnapshotAddress(order.shipping_address_snapshot)
+
   return (
     <div className="container mx-auto py-6 space-y-6">
       {/* Header */}
@@ -415,10 +589,96 @@ export function SalesOrderDetailPage() {
             >
               Created on {formatDate(order.created_at)} for {order.customer?.name || 'Unknown Customer'}
             </p>
+            {/* #402 (SU4): compact order-info chips. */}
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {warehouseLabel && (
+                <OrderInfoChip
+                  icon="solar:warehouse-bold-duotone"
+                  title={order.warehouse?.code ? `Warehouse code ${order.warehouse.code}` : 'Commitment warehouse'}
+                >
+                  {warehouseLabel}
+                </OrderInfoChip>
+              )}
+              {order.currency_code && (
+                <OrderInfoChip
+                  icon="solar:wallet-money-bold-duotone"
+                  title={
+                    order.base_currency_code && order.base_currency_code !== order.currency_code
+                      ? `1 ${order.currency_code} = ${formatExchangeRate(order.exchange_rate)} ${order.base_currency_code}`
+                      : undefined
+                  }
+                >
+                  {order.currency_code}
+                  {showExchangeRate && <> @ {formatExchangeRate(order.exchange_rate)}</>}
+                </OrderInfoChip>
+              )}
+              {channelSourceLabel && (
+                <OrderInfoChip icon="solar:routing-bold-duotone" title="How this order was created">
+                  {channelSourceLabel}
+                </OrderInfoChip>
+              )}
+              {approvalLabel && (
+                <OrderInfoChip
+                  icon="solar:shield-check-bold-duotone"
+                  title={
+                    approval?.request_number
+                      ? `Approval request ${approval.request_number}`
+                      : 'Approval request for this order'
+                  }
+                  className={approval?.status === 'pending' ? 'border-orange-500/60 text-orange-600' : undefined}
+                >
+                  {approvalLabel}
+                </OrderInfoChip>
+              )}
+              {hasCreditResult && (
+                <OrderInfoChip
+                  icon="solar:card-bold-duotone"
+                  title={creditPreview.reason}
+                  className={creditPreview.approved ? undefined : 'border-destructive/50 text-destructive'}
+                >
+                  {creditPreview.approved
+                    ? creditPreview.availableCredit == null
+                      ? 'Credit unlimited'
+                      : 'Credit OK'
+                    : 'Over credit limit'}
+                </OrderInfoChip>
+              )}
+              {creditPreviewFailed && (
+                <OrderInfoChip icon="solar:danger-triangle-bold-duotone">Credit check unavailable</OrderInfoChip>
+              )}
+              {orderHasBackorder && (
+                <OrderInfoChip
+                  icon="solar:danger-triangle-bold-duotone"
+                  title="At least one line has stock that could not be reserved"
+                  className="border-destructive/50 text-destructive"
+                >
+                  Backordered
+                </OrderInfoChip>
+              )}
+              {reservedQuantity > 0 && (
+                <OrderInfoChip icon="solar:box-bold-duotone" title="Quantity reserved from stock">
+                  Reserved {formatQuantity(reservedQuantity)} of {formatQuantity(orderedQuantity)}
+                </OrderInfoChip>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           {getStatusBadge(order.status)}
+          {order.is_late && (
+            <Badge variant="destructive" className="shrink-0" title="Commitment date has passed and the order is not fully delivered">
+              Late
+            </Badge>
+          )}
+          {order.status === 'draft' && (
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:calendar-mark-bold-duotone"
+              onClick={openPromiseDialog}
+            >
+              Promise Date
+            </HeaderActionButton>
+          )}
           <TagEditor subjectType="sales_order" subjectId={id!} />
           <HeaderActionButton
             variant="outline"
@@ -601,12 +861,23 @@ export function SalesOrderDetailPage() {
                 <span className="text-sm text-muted-foreground">Order Date:</span>
                 <span className="text-sm">{formatDate(order.order_date)}</span>
               </div>
-              {order.expected_delivery_date && (
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Expected Delivery:</span>
-                  <span className="text-sm">{formatDate(order.expected_delivery_date)}</span>
-                </div>
-              )}
+              {/* Issue #408: promise date + computed expected date + policy. */}
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">Commitment Date:</span>
+                <span className="text-sm">{order.commitment_date ? formatDate(order.commitment_date) : '-'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">Expected Date:</span>
+                <span className="text-sm" title="Computed from the product/supplier lead times">
+                  {order.expected_date ? formatDate(order.expected_date) : '-'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">Shipping Policy:</span>
+                <span className="text-sm">
+                  {order.shipping_policy === 'when_all_ready' ? 'When all products are ready' : 'As soon as possible'}
+                </span>
+              </div>
               {order.customer_reference && (
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Customer Ref:</span>
@@ -652,6 +923,32 @@ export function SalesOrderDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* #402 (SU4): address snapshots captured with the order */}
+      {(billingAddress || shippingAddress) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {billingAddress && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Billing Address</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm whitespace-pre-wrap">{billingAddress}</p>
+              </CardContent>
+            </Card>
+          )}
+          {shippingAddress && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Shipping Address</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm whitespace-pre-wrap">{shippingAddress}</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       {/* Line Items */}
       <Card>
@@ -802,6 +1099,49 @@ export function SalesOrderDetailPage() {
         onDeliverPartially={() => chooseShortageAction('partial')}
         onChangeWarehouse={changeShortageWarehouse}
       />
+      <Dialog open={promiseOpen} onOpenChange={setPromiseOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Commitment Date &amp; Shipping Policy</DialogTitle>
+            <DialogDescription>
+              The commitment date is the date promised to the customer. The expected date is computed
+              from product/supplier lead times. With &quot;when all products are ready&quot;, delivery orders
+              must cover every remaining line in full.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="commitment-date">Commitment Date</Label>
+              <Input
+                id="commitment-date"
+                type="date"
+                value={commitmentDraft}
+                onChange={(event) => setCommitmentDraft(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="shipping-policy">Shipping Policy</Label>
+              <select
+                id="shipping-policy"
+                value={policyDraft}
+                onChange={(event) => setPolicyDraft(event.target.value as 'asap' | 'when_all_ready')}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="asap">As soon as possible (partial deliveries allowed)</option>
+                <option value="when_all_ready">When all products are ready (no partials)</option>
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPromiseOpen(false)}>
+              Keep
+            </Button>
+            <Button disabled={promiseMutation.isPending} onClick={() => promiseMutation.mutate()}>
+              {promiseMutation.isPending ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
         <DialogContent>
           <DialogHeader>

@@ -7,6 +7,7 @@ namespace Tests\Feature;
 use App\Models\Tenant;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use PDO;
 use Tests\TenantTestCase;
 
 /**
@@ -67,5 +68,51 @@ class MyCoaEquityClassificationTest extends TenantTestCase
         $row = DB::table('chart_of_accounts')->where('id', $accountId)->first();
         $this->assertSame('equity', $row->type);
         $this->assertSame('equity', $row->subtype);
+    }
+
+    /**
+     * Production hit `character varying = integer` on tenants whose PDO driver
+     * sends the numeric-string array keys as int4 parameters. Emulated prepares
+     * reproduce that strict binding exactly, independent of the local driver.
+     */
+    public function test_the_migration_reclassifies_when_integer_bindings_are_strict(): void
+    {
+        $original = DB::getDefaultConnection();
+        $strictName = 'pgsql_strict_binding';
+        $config = config('database.connections.pgsql');
+        $config['options'] = [PDO::ATTR_EMULATE_PREPARES => true];
+        $config['search_path'] = DB::selectOne('select current_schema() as schema')->schema;
+        config(["database.connections.{$strictName}" => $config]);
+        DB::purge($strictName);
+
+        $strict = DB::connection($strictName);
+        $strict->beginTransaction();
+
+        try {
+            $strict->table('chart_of_accounts')->insert([
+                'code' => '310000', 'name' => 'Paid Capital', 'type' => 'liability',
+                'subtype' => 'liability_current', 'is_active' => true,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+
+            DB::setDefaultConnection($strictName);
+
+            $migration = require database_path('migrations/tenant/2026_10_04_000004_reclassify_my_coa_equity_accounts.php');
+            $migration->up();
+
+            $row = $strict->table('chart_of_accounts')->where('code', '310000')->first();
+            $this->assertSame('equity', $row->type);
+            $this->assertSame('equity', $row->subtype);
+        } finally {
+            DB::setDefaultConnection($original);
+
+            try {
+                $strict->rollBack();
+            } catch (\Throwable) {
+                // Connection already closed by the failure path.
+            }
+
+            DB::purge($strictName);
+        }
     }
 }

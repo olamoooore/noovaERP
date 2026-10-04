@@ -6,6 +6,7 @@ use App\Mail\CustomerEmail;
 use App\Models\Invoice;
 use App\Models\InvoiceActivityLog;
 use App\Models\InvoiceDelivery;
+use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -35,7 +36,15 @@ class InvoiceDeliveryService
             throw new \InvalidArgumentException("Invalid delivery channel: {$channel}. Allowed: ".implode(', ', InvoiceDelivery::CHANNELS));
         }
 
-        $documentType = $options['document_type'] ?? InvoiceDelivery::DOCUMENT_ACCEPTANCE_COPY;
+        // Issue #617: when the caller does not pick a document type, the #539
+        // "document type on send" setting decides. Without a configured
+        // setting the existing status rule applies: a draft being sent is an
+        // acceptance copy, a posted invoice is the final invoice.
+        $documentType = $options['document_type']
+            ?? Setting::getValue('sales.delivery.document_type_on_send')
+            ?? ($invoice->status === 'posted'
+                ? InvoiceDelivery::DOCUMENT_FINAL_INVOICE
+                : InvoiceDelivery::DOCUMENT_ACCEPTANCE_COPY);
         $recipient = $options['recipient'] ?? $invoice->contact_email ?? $invoice->customer?->email;
 
         if (! $recipient) {
@@ -269,10 +278,15 @@ class InvoiceDeliveryService
     private function generatePdfData(Invoice $invoice, string $documentType): string
     {
         // Render the invoice through the TemplateBuilder PDF service and return
-        // the raw binary so it can be attached to the delivery email.
+        // the raw binary so it can be attached to the delivery email. Issue
+        // #617: the selected document type must reach the renderer, otherwise
+        // the acceptance copy and the final invoice are the same attachment.
         $pdfService = app(\Modules\TemplateBuilder\Contracts\PdfGenerationServiceContract::class);
 
-        $result = $pdfService->render('invoice', (string) $invoice->id, ['format' => 'pdf']);
+        $result = $pdfService->render('invoice', (string) $invoice->id, [
+            'format' => 'pdf',
+            'document_variant' => $documentType,
+        ]);
 
         return $result['bytes'];
     }

@@ -129,9 +129,13 @@ export const QuotationCreatePage: React.FC = () => {
   // UTC day — before 08:00 in MY/SG the old defaults were yesterday.
   const [quotationDate, setQuotationDate] = useState(todayDateOnly());
   const [validUntil, setValidUntil] = useState(
-    addCalendarDays(todayDateOnly(), DEFAULT_QUOTE_VALIDITY_DAYS)
+    () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
   );
   const [validUntilManuallyEdited, setValidUntilManuallyEdited] = useState(false);
+  // Issue #408: commitment (promised) date + shipping policy. The expected
+  // date is computed by the server from product/supplier lead times.
+  const [commitmentDate, setCommitmentDate] = useState('');
+  const [shippingPolicy, setShippingPolicy] = useState<'asap' | 'when_all_ready'>('asap');
   const [notes, setNotes] = useState('');
   const [discountAmount, setDiscountAmount] = useState<number | ''>('');
   const [discountMode, setDiscountMode] = useState<'fixed' | 'percentage'>('fixed');
@@ -546,6 +550,9 @@ export const QuotationCreatePage: React.FC = () => {
       ...(customQuoteNumber.trim() ? { quotation_number: customQuoteNumber.trim() } : {}),
       quotation_date: quotationDate,
       valid_until: validUntil,
+      // Issue #408: promised date + partial-delivery policy.
+      commitment_date: commitmentDate || undefined,
+      shipping_policy: shippingPolicy,
       customer_reference: customerReference || undefined,
       internal_reference: internalReference || undefined,
       credit_terms: creditTerms || undefined,
@@ -710,6 +717,30 @@ export const QuotationCreatePage: React.FC = () => {
                       {list.name} · {list.currency_code}
                     </option>
                   ))}
+                </select>
+              </label>
+              {/* Issue #408: commitment date + shipping policy (Odoo promise
+                  date). Expected date is computed server-side from lead times. */}
+              <label className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background px-3 text-xs" title="Commitment (promised) delivery date">
+                <span className="text-muted-foreground">Commitment</span>
+                <input
+                  type="date"
+                  value={commitmentDate}
+                  onChange={(event) => setCommitmentDate(event.target.value)}
+                  aria-label="Commitment Date"
+                  className="bg-transparent text-xs font-medium focus:outline-none"
+                />
+              </label>
+              <label className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background px-3 text-xs" title="Shipping policy for delivery orders">
+                <span className="text-muted-foreground">Shipping</span>
+                <select
+                  value={shippingPolicy}
+                  onChange={(event) => setShippingPolicy(event.target.value as 'asap' | 'when_all_ready')}
+                  aria-label="Shipping Policy"
+                  className="bg-transparent text-xs font-medium focus:outline-none"
+                >
+                  <option value="asap">As soon as possible</option>
+                  <option value="when_all_ready">When all products are ready</option>
                 </select>
               </label>
               <HeaderChip

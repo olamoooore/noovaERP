@@ -19,7 +19,14 @@ final class WebsiteDomainController extends Controller
     public function index(Request $request, int $website): JsonResponse
     {
         $site = Website::findOrFail($website);
-        return response()->json(['data' => $this->query($site)->orderByDesc('created_at')->get()->map(fn (Hostname $h) => $this->resource($h))]);
+
+        return response()->json([
+            'data' => $this->query($site)
+                ->whereNotIn('serving_status', ['release_requested', 'quarantined', 'released'])
+                ->orderByDesc('created_at')
+                ->get()
+                ->map(fn (Hostname $hostname) => $this->resource($hostname, true)),
+        ]);
     }
 
     public function store(Request $request, int $website): JsonResponse
@@ -36,6 +43,7 @@ final class WebsiteDomainController extends Controller
     {
         $site = Website::findOrFail($website);
         $record = $this->query($site)->findOrFail($hostname);
+
         return response()->json(['data' => $this->resource($record, true)]);
     }
 
@@ -44,6 +52,7 @@ final class WebsiteDomainController extends Controller
         $site = Website::findOrFail($website);
         $record = $this->query($site)->findOrFail($hostname);
         $this->service->queueVerification($record);
+
         return response()->json(['message' => 'DNS verification queued.', 'data' => $this->resource($record)], 202);
     }
 
@@ -51,7 +60,7 @@ final class WebsiteDomainController extends Controller
     {
         $site = Website::findOrFail($website);
         $tenantId = (string) tenant('id');
-        $record = DB::transaction(function () use ($site, $hostname, $tenantId) {
+        $record = DB::transaction(function () use ($site, $hostname) {
             $records = $this->query($site)->lockForUpdate()->get();
             $target = $records->firstWhere('id', $hostname);
             abort_unless($target, 404);
@@ -63,8 +72,10 @@ final class WebsiteDomainController extends Controller
             }
             $target->lock_version++;
             $target->save();
+
             return $target->fresh();
         });
+
         return response()->json(['data' => $this->resource($record)]);
     }
 
@@ -76,6 +87,7 @@ final class WebsiteDomainController extends Controller
         abort_if($destination->status !== 'published', 422, 'Destination website must be published.');
         $record = $this->query($source)->findOrFail($hostname);
         $record->update(['website_uuid' => $destination->uuid, 'primary_requested' => false, 'primary_effective' => false, 'lock_version' => $record->lock_version + 1]);
+
         return response()->json(['data' => $this->resource($record->fresh())]);
     }
 
@@ -84,6 +96,7 @@ final class WebsiteDomainController extends Controller
         $site = Website::findOrFail($website);
         $record = $this->query($site)->findOrFail($hostname);
         $this->service->requestRelease($record, RequirePermission::resolveCentralUserId($request->user()));
+
         return response()->json(['message' => 'Domain disabled and queued for release.'], 202);
     }
 
@@ -98,6 +111,7 @@ final class WebsiteDomainController extends Controller
         if ($instructions && $hostname->serving_status === 'pending') {
             $data['dns_instructions'] = $this->service->dnsInstructions($hostname);
         }
+
         return $data;
     }
 }

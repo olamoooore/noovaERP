@@ -2,11 +2,15 @@
 
 namespace App\Platform\SystemLog;
 
+use App\Platform\Audit\AuditHashChain;
 use App\Platform\SystemLog\Contracts\SystemLogServiceContract;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class SystemLogService implements SystemLogServiceContract
 {
+    public function __construct(private ?AuditHashChain $hashChain = null) {}
+
     public function log(string $level, string $category, string $message, ?array $context = null, ?string $correlationId = null): object
     {
         // In test/CLI contexts (no HTTP request, no tenant initialized), skip
@@ -27,19 +31,44 @@ class SystemLogService implements SystemLogServiceContract
             ];
         }
 
-        $record = SystemLog::create([
-            'id' => Str::uuid(),
-            'tenant_id' => $currentTenant->id,
-            'level' => $level,
-            'category' => $category,
-            'message' => $message,
-            'context' => $context,
-            'correlation_id' => $correlationId ?? Str::uuid(),
-            'source' => request()->headers->get('User-Agent', 'system'),
-            'user_id' => auth()->id(),
-        ]);
+        // Created-at is truncated to the database's timestamp precision so the
+        // hash computed here matches the value read back during verification.
+        $createdAt = now()->startOfSecond();
+        $userId = auth()->id();
+        $correlationId ??= (string) Str::uuid();
+        $source = request()->headers->get('User-Agent', 'system');
 
-        return (object) $record->toArray();
+        // Issue #912: hash-chain the audit row and the chain head update in
+        // one transaction — a failed insert rolls the head back with it.
+        return DB::transaction(function () use ($currentTenant, $level, $category, $message, $context, $correlationId, $source, $userId, $createdAt) {
+            $seal = ($this->hashChain ??= app(AuditHashChain::class))->seal([
+                'tenant_id' => $currentTenant->id,
+                'actor_id' => $userId,
+                'operation' => $category,
+                'subject' => $message,
+                'payload' => $context,
+                'created_at' => $createdAt,
+            ]);
+
+            $record = SystemLog::create([
+                'id' => Str::uuid(),
+                'tenant_id' => $currentTenant->id,
+                'level' => $level,
+                'category' => $category,
+                'message' => $message,
+                'context' => $context,
+                'correlation_id' => $correlationId,
+                'source' => $source,
+                'user_id' => $userId,
+                'created_at' => $createdAt,
+                'updated_at' => $createdAt,
+                'chain_sequence' => $seal['chain_sequence'],
+                'previous_hash' => $seal['previous_hash'],
+                'entry_hash' => $seal['entry_hash'],
+            ]);
+
+            return (object) $record->toArray();
+        });
     }
 
     public function query(array $filters): array

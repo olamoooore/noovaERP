@@ -71,7 +71,7 @@ class BonusSchemeProduct extends Model
 
         switch ($this->scheme_type) {
             case 'fixed_discount':
-                $discount = $this->discount_amount * $qty;
+                $discount = (float) $this->discount_amount;
                 break;
 
             case 'percentage_discount':

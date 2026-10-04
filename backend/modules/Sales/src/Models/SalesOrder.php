@@ -2,15 +2,26 @@
 
 namespace Modules\Sales\Models;
 
+use App\Models\ApprovalRequest;
 use App\Models\Warehouse;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class SalesOrder extends Model
 {
     use SoftDeletes;
+
+    /** Issue #408: deliver each line as soon as it is available (partial OK). */
+    public const SHIPPING_POLICY_ASAP = 'asap';
+
+    /** Issue #408: only ship once every remaining line is ready (no partials). */
+    public const SHIPPING_POLICY_WHEN_ALL_READY = 'when_all_ready';
+
+    /** @var string[] */
+    public const SHIPPING_POLICIES = [self::SHIPPING_POLICY_ASAP, self::SHIPPING_POLICY_WHEN_ALL_READY];
 
     protected $fillable = [
         'sales_order_number',
@@ -37,6 +48,9 @@ class SalesOrder extends Model
         'base_currency_code',
         'order_date',
         'required_date',
+        // Issue #408: commitment (promised) date + shipping policy.
+        'commitment_date',
+        'shipping_policy',
         'cancellation_reason',
         'cancelled_by',
         'cancelled_at',
@@ -66,8 +80,12 @@ class SalesOrder extends Model
     /**
      * #378 (O9) / #371 (O2): canonical transition map + invoice progress,
      * exposed so the UI never re-implements either.
+     *
+     * Issue #408: expected_date (computed from lead times) and is_late (past
+     * the commitment date and not fully delivered) are appended so the lists
+     * and the #365 action queue read them without recomputing.
      */
-    protected $appends = ['allowed_transitions', 'invoice_status', 'has_backorder'];
+    protected $appends = ['allowed_transitions', 'invoice_status', 'has_backorder', 'expected_date', 'is_late'];
 
     protected $casts = [
         'subtotal' => 'decimal:2',
@@ -77,6 +95,8 @@ class SalesOrder extends Model
         'exchange_rate' => 'decimal:6',
         'order_date' => 'date',
         'required_date' => 'date',
+        // Issue #408
+        'commitment_date' => 'date',
         'cancelled_at' => 'datetime',
         'acceptance_expires_at' => 'datetime',
         'accepted_at' => 'datetime',
@@ -135,6 +155,18 @@ class SalesOrder extends Model
     public function warehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class, 'warehouse_id');
+    }
+
+    /**
+     * #402 (SU4): the latest approval-gate request for this order, so the
+     * detail payload carries the approval state the header chip shows.
+     */
+    public function latestApprovalRequest(): HasOne
+    {
+        return $this->hasOne(ApprovalRequest::class, 'subject_id')
+            ->where('subject_type', static::class)
+            ->where('request_type', \App\Services\SalesApprovalGate::REQUEST_TYPE_SALES_ORDER)
+            ->latestOfMany();
     }
 
     public function statusHistory(): HasMany
@@ -362,5 +394,88 @@ class SalesOrder extends Model
         $lines = $this->relationLoaded('lines') ? $this->lines : $this->lines()->get();
 
         return $lines->contains(fn ($line) => (float) ($line->backorder_quantity ?? 0) > 0);
+    }
+
+    /**
+     * Issue #408: every deliverable product line has its ordered (minus
+     * cancelled) quantity delivered. Note/section rows never block delivery.
+     */
+    public function isFullyDelivered(): bool
+    {
+        $lines = $this->relationLoaded('lines') ? $this->lines : $this->lines()->get();
+
+        $deliverable = $lines->filter(function ($line) {
+            if (in_array($line->line_type ?? 'product', ['note', 'section'], true)) {
+                return false;
+            }
+
+            return (float) $line->quantity - (float) $line->quantity_cancelled > 0.0001;
+        });
+
+        if ($deliverable->isEmpty()) {
+            return true;
+        }
+
+        return $deliverable->every(
+            fn ($line) => (float) $line->quantity_delivered + 0.0001 >= (float) $line->quantity - (float) $line->quantity_cancelled
+        );
+    }
+
+    /**
+     * Issue #408: expected (scheduled) date computed from the product lead
+     * times: order date + the longest product/supplier lead time. Null when no
+     * line has lead-time data (never invented).
+     */
+    public function getExpectedDateAttribute(): ?string
+    {
+        $lines = $this->relationLoaded('lines') ? $this->lines : $this->lines()->get();
+
+        $productIds = $lines
+            ->reject(fn ($line) => in_array($line->line_type ?? 'product', ['note', 'section'], true))
+            ->pluck('product_id');
+
+        $baseDate = $this->order_date?->toDateString()
+            ?? $this->created_at?->toDateString()
+            ?? now()->toDateString();
+
+        return app(\App\Services\SalesLeadTimeService::class)
+            ->expectedDate($productIds, $baseDate)
+            ?->toDateString();
+    }
+
+    /**
+     * Issue #408: the order is late when its commitment date has passed and it
+     * is not fully delivered (cancelled orders are never late). Exposed to the
+     * lists and the #365 dashboard action queue.
+     */
+    public function isLate(): bool
+    {
+        if ($this->commitment_date === null) {
+            return false;
+        }
+
+        if ($this->isCancelled()) {
+            return false;
+        }
+
+        if (! $this->commitment_date->isBefore(now()->startOfDay())) {
+            return false;
+        }
+
+        return ! $this->isFullyDelivered();
+    }
+
+    public function getIsLateAttribute(): bool
+    {
+        return $this->isLate();
+    }
+
+    /**
+     * Issue #408: 'when_all_ready' forbids partial deliveries; every other
+     * value (including legacy null) keeps the permissive 'asap' behaviour.
+     */
+    public function requiresAllProductsReady(): bool
+    {
+        return $this->shipping_policy === self::SHIPPING_POLICY_WHEN_ALL_READY;
     }
 }

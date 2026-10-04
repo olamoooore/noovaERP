@@ -24,6 +24,9 @@ class AuditLog extends Model
         'metadata',
         'ip_address',
         'user_agent',
+        'previous_hash',
+        'entry_hash',
+        'chain_sequence',
     ];
 
     protected $casts = [

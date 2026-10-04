@@ -36,33 +36,65 @@ class CustomerContactSyncService
     // ─── Organisation identity ────────────────────────────────────
 
     /**
-     * Ensure the customer account has a canonical ORGANISATION contact and
-     * return its core_contact_uuid (CT-VEN-003). Idempotent.
+     * Ensure the customer account has a canonical contact and return its
+     * core_contact_uuid (CT-VEN-003). Idempotent.
+     *
+     * Issue #432 (CU4): an existing link is refreshed from the customer row on
+     * every call — customer edits must sync display name, email, phone and
+     * website (clearing removed values) instead of returning stale data.
+     * Company customers map to an ORGANISATION contact; individual customers
+     * map to a PERSON contact.
      */
     public function ensureOrganisationContact(Customer $customer): string
     {
+        $tenantId = tenant()->id;
+        $identity = $this->customerIdentityPayload($customer);
+
         if ($customer->core_contact_uuid) {
-            $existing = $this->contacts->find($customer->core_contact_uuid, tenant()->id);
+            $existing = $this->contacts->find($customer->core_contact_uuid, $tenantId);
             if ($existing) {
+                $this->contacts->syncProfile($existing->id, $identity, $tenantId);
+
                 return $existing->id;
             }
         }
 
-        $contact = $this->contacts->create([
-            'contact_type' => 'company',
-            'company_name' => $customer->name,
-            'display_name' => $customer->name,
-            'email' => $customer->email,
-            'phone' => $customer->phone,
-            'mobile' => $customer->mobile,
-            'website' => $customer->website,
+        $contact = $this->contacts->create($identity + [
             'source' => 'crm_customer',
             'legacy_id' => (string) $customer->id,
-        ], tenant()->id);
+        ], $tenantId);
 
         $customer->forceFill(['core_contact_uuid' => $contact->id])->save();
 
         return $contact->id;
+    }
+
+    /**
+     * Canonical identity payload for a customer account (ADR-003A §4.1):
+     * company customers are ORGANISATION contacts, individual customers are
+     * PERSON contacts (CU4). Explicit nulls clear stale Contact Master data.
+     *
+     * @return array<string, mixed>
+     */
+    private function customerIdentityPayload(Customer $customer): array
+    {
+        // `customers.type` defaults to `individual` in the schema; an
+        // in-memory model created without an explicit type has it null until
+        // refreshed, so normalise through the canonical vocabulary instead of
+        // assuming "not individual = company".
+        $isIndividual = ContactMasterService::normalizeEntityType($customer->type) === 'individual';
+
+        return [
+            'contact_type' => $isIndividual ? 'individual' : 'company',
+            'display_name' => $customer->name,
+            'company_name' => $isIndividual ? null : $customer->name,
+            'first_name' => $isIndividual ? $customer->name : null,
+            'last_name' => null,
+            'email' => $customer->email,
+            'phone' => $customer->phone,
+            'mobile' => $customer->mobile,
+            'website' => $customer->website,
+        ];
     }
 
     // ─── Person identity + org-person relationship ────────────────

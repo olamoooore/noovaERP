@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\BonusScheme;
 use App\Models\BonusSchemeProduct;
-use App\Models\CustomerBonusScheme;
 use App\Models\Product;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -37,22 +36,13 @@ class BonusSchemeController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $validated = $request->validate([
+        $validated = $request->validate(array_merge([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
             'start_date' => 'required|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'status' => 'sometimes|in:draft,active,inactive,expired',
-            'products' => 'nullable|array',
-            'products.*.qualifying_product_id' => 'required_with:products|exists:products,id',
-            'products.*.scheme_type' => 'required_with:products|in:fixed_discount,percentage_discount,buy_x_get_y',
-            'products.*.discount_amount' => 'nullable|numeric|min:0',
-            'products.*.discount_percentage' => 'nullable|numeric|min:0|max:100',
-            'products.*.minimum_purchase_qty' => 'nullable|numeric|min:0',
-            'products.*.foc_product_id' => 'nullable|exists:products,id',
-            'products.*.foc_qty' => 'nullable|numeric|min:0',
-            'products.*.priority' => 'nullable|integer|min:0',
-        ]);
+        ], $this->productValidationRules()));
 
         try {
             $scheme = DB::transaction(function () use ($validated, $request) {
@@ -65,8 +55,10 @@ class BonusSchemeController extends Controller
                     'created_by' => $request->user()->id,
                 ]);
 
-                if (!empty($validated['products'])) {
+                if (! empty($validated['products'])) {
                     foreach ($validated['products'] as $product) {
+                        $product = $this->normalizeProductRule($product);
+
                         BonusSchemeProduct::create([
                             'bonus_scheme_id' => $scheme->id,
                             'qualifying_product_id' => $product['qualifying_product_id'],
@@ -96,6 +88,73 @@ class BonusSchemeController extends Controller
         }
     }
 
+    /**
+     * Issue #571 (BS4): validation is per scheme type — buy_x_get_y needs its
+     * X (minimum_purchase_qty) and Y (foc_qty) and owns the FOC product, while
+     * the discount types need their own amount field and must not carry FOC
+     * fields.
+     */
+    private function productValidationRules(): array
+    {
+        return [
+            'products' => 'nullable|array',
+            'products.*.id' => 'nullable|integer',
+            'products.*.qualifying_product_id' => 'required_with:products|exists:products,id',
+            'products.*.scheme_type' => 'required_with:products|in:fixed_discount,percentage_discount,buy_x_get_y',
+            'products.*.discount_amount' => [
+                'nullable', 'numeric', 'gt:0',
+                'required_if:products.*.scheme_type,fixed_discount',
+                'prohibited_unless:products.*.scheme_type,fixed_discount',
+            ],
+            'products.*.discount_percentage' => [
+                'nullable', 'numeric', 'gt:0', 'max:100',
+                'required_if:products.*.scheme_type,percentage_discount',
+                'prohibited_unless:products.*.scheme_type,percentage_discount',
+            ],
+            'products.*.minimum_purchase_qty' => [
+                'nullable', 'numeric', 'gt:0',
+                'required_if:products.*.scheme_type,buy_x_get_y',
+            ],
+            'products.*.foc_product_id' => [
+                'nullable', 'exists:products,id',
+                'prohibited_unless:products.*.scheme_type,buy_x_get_y',
+            ],
+            'products.*.foc_qty' => [
+                'nullable', 'numeric', 'gt:0',
+                'required_if:products.*.scheme_type,buy_x_get_y',
+                'prohibited_unless:products.*.scheme_type,buy_x_get_y',
+            ],
+            'products.*.priority' => 'nullable|integer|min:0',
+        ];
+    }
+
+    /**
+     * Keep each rule's columns consistent with its type: buy_x_get_y defaults
+     * its FOC product to the qualifying product, and switching type clears the
+     * fields the new type does not use.
+     */
+    private function normalizeProductRule(array $product): array
+    {
+        if (($product['scheme_type'] ?? null) === 'buy_x_get_y') {
+            $product['foc_product_id'] = ! empty($product['foc_product_id'])
+                ? $product['foc_product_id']
+                : $product['qualifying_product_id'];
+            $product['discount_amount'] = null;
+            $product['discount_percentage'] = null;
+        } else {
+            $product['foc_product_id'] = null;
+            $product['foc_qty'] = null;
+
+            if (($product['scheme_type'] ?? null) === 'fixed_discount') {
+                $product['discount_percentage'] = null;
+            } elseif (($product['scheme_type'] ?? null) === 'percentage_discount') {
+                $product['discount_amount'] = null;
+            }
+        }
+
+        return $product;
+    }
+
     public function show($id): JsonResponse
     {
         $scheme = BonusScheme::with([
@@ -105,7 +164,7 @@ class BonusSchemeController extends Controller
             'createdBy',
         ])->find($id);
 
-        if (!$scheme) {
+        if (! $scheme) {
             return response()->json(['message' => 'Bonus scheme not found'], 404);
         }
 
@@ -116,7 +175,7 @@ class BonusSchemeController extends Controller
     {
         $scheme = BonusScheme::find($id);
 
-        if (!$scheme) {
+        if (! $scheme) {
             return response()->json(['message' => 'Bonus scheme not found'], 404);
         }
 
@@ -124,23 +183,13 @@ class BonusSchemeController extends Controller
             return response()->json(['message' => 'Cannot edit an active or expired scheme'], 403);
         }
 
-        $validated = $request->validate([
+        $validated = $request->validate(array_merge([
             'name' => 'sometimes|required|string|max:255',
             'description' => 'nullable|string',
             'start_date' => 'sometimes|required|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'status' => 'sometimes|in:draft,active,inactive,expired',
-            'products' => 'nullable|array',
-            'products.*.id' => 'nullable|integer',
-            'products.*.qualifying_product_id' => 'required_with:products|exists:products,id',
-            'products.*.scheme_type' => 'required_with:products|in:fixed_discount,percentage_discount,buy_x_get_y',
-            'products.*.discount_amount' => 'nullable|numeric|min:0',
-            'products.*.discount_percentage' => 'nullable|numeric|min:0|max:100',
-            'products.*.minimum_purchase_qty' => 'nullable|numeric|min:0',
-            'products.*.foc_product_id' => 'nullable|exists:products,id',
-            'products.*.foc_qty' => 'nullable|numeric|min:0',
-            'products.*.priority' => 'nullable|integer|min:0',
-        ]);
+        ], $this->productValidationRules()));
 
         try {
             DB::transaction(function () use ($scheme, $validated) {
@@ -151,7 +200,9 @@ class BonusSchemeController extends Controller
                     $scheme->products()->whereNotIn('id', $existingIds)->delete();
 
                     foreach ($validated['products'] as $productData) {
-                        if (!empty($productData['id'])) {
+                        $productData = $this->normalizeProductRule($productData);
+
+                        if (! empty($productData['id'])) {
                             $product = BonusSchemeProduct::find($productData['id']);
                             if ($product) {
                                 $product->update(collect($productData)->except(['id'])->toArray());
@@ -182,7 +233,7 @@ class BonusSchemeController extends Controller
     {
         $scheme = BonusScheme::find($id);
 
-        if (!$scheme) {
+        if (! $scheme) {
             return response()->json(['message' => 'Bonus scheme not found'], 404);
         }
 
@@ -206,7 +257,7 @@ class BonusSchemeController extends Controller
     {
         $scheme = BonusScheme::find($id);
 
-        if (!$scheme) {
+        if (! $scheme) {
             return response()->json(['message' => 'Bonus scheme not found'], 404);
         }
 
@@ -233,7 +284,7 @@ class BonusSchemeController extends Controller
     {
         $scheme = BonusScheme::find($id);
 
-        if (!$scheme) {
+        if (! $scheme) {
             return response()->json(['message' => 'Bonus scheme not found'], 404);
         }
 

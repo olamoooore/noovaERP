@@ -666,7 +666,10 @@ class CompanySettingsController extends Controller
                     return [
                         'default_tax_rate' => $defaultRate,
                         'prices_include_tax' => ($tax['pricing_mode'] ?? 'exclusive') === 'inclusive',
-                        'default_tax_treatment' => 'standard',
+                        // #451: the tenant-level treatment default is a real
+                        // persisted choice; 'standard' is only the display
+                        // default until the tenant saves one.
+                        'default_tax_treatment' => (string) ($tax['default_tax_treatment'] ?? 'standard'),
                     ];
                 })(),
                 'delivery' => [
@@ -777,14 +780,17 @@ class CompanySettingsController extends Controller
 
         // MRD R10.3: tax writes go to the ONE canonical Setting tax block
         // the engine reads. default_tax_rate re-points default_tax_id to a
-        // matching active rule (never invents one); treatment is a per-rule
-        // property now and is ignored here (kept in the payload for UI
-        // compatibility).
+        // matching active rule (never invents one); #451 persists the
+        // tenant-level treatment default the resolver falls back to.
         if (array_key_exists('tax', $validated) && is_array($validated['tax'])) {
             $taxSetting = \App\Models\Setting::getValue('tax', []);
 
             if (array_key_exists('prices_include_tax', $validated['tax'])) {
                 $taxSetting['pricing_mode'] = $validated['tax']['prices_include_tax'] ? 'inclusive' : 'exclusive';
+            }
+
+            if (array_key_exists('default_tax_treatment', $validated['tax'])) {
+                $taxSetting['default_tax_treatment'] = $validated['tax']['default_tax_treatment'];
             }
 
             if (array_key_exists('default_tax_rate', $validated['tax'])) {

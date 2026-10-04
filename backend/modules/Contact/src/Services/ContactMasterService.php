@@ -143,6 +143,58 @@ class ContactMasterService
         return $contact->fresh();
     }
 
+    /**
+     * ADR-003A mirror sync: apply the complete profile held by an
+     * authoritative source row (e.g. a CRM customer) onto the contact.
+     *
+     * `update()` is PATCH-shaped — null values are ignored so a partial API
+     * payload never erases fields. A mirror sync is the opposite: every key
+     * present in $data is applied, and an explicit null clears a value the
+     * source no longer holds (e.g. a removed customer email/website), so the
+     * Contact Master can never keep stale source data.
+     */
+    public function syncProfile(string $id, array $data, string $tenantId): ?CoreContact
+    {
+        $contact = CoreContact::where('tenant_id', $tenantId)->where('id', $id)->first();
+        if (! $contact) {
+            return null;
+        }
+
+        $old = $contact->toArray();
+
+        $updates = [];
+        foreach ([
+            'entity_id', 'legal_entity_id', 'first_name', 'last_name',
+            'company_name', 'display_name', 'email', 'phone', 'mobile',
+            'website', 'notes', 'is_active', 'metadata',
+        ] as $field) {
+            if (array_key_exists($field, $data)) {
+                $updates[$field] = $data[$field];
+            }
+        }
+
+        if (array_key_exists('contact_type', $data) || array_key_exists('entity_type', $data)) {
+            $updates['contact_type'] = self::normalizeEntityType(
+                $data['contact_type'] ?? $data['entity_type']
+            );
+        }
+
+        if ($updates !== []) {
+            $contact->update($updates);
+        }
+
+        $this->rebuildSearchIndex($contact);
+
+        ContactUpdated::dispatch($tenantId, $id, null, $old, $contact->fresh()->toArray());
+
+        if ($this->eventDispatcher) {
+            $event = new ContactUpdated($tenantId, $id, null, $old, $contact->fresh()->toArray());
+            $this->eventDispatcher->dispatch($event);
+        }
+
+        return $contact->fresh();
+    }
+
     public function delete(string $id, string $tenantId): bool
     {
         $contact = CoreContact::where('tenant_id', $tenantId)->where('id', $id)->first();

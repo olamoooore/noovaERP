@@ -46,6 +46,9 @@ class Quotation extends Model
         'customer_id',
         'quotation_date',
         'valid_until',
+        // Issue #408: commitment (promised) date + shipping policy.
+        'commitment_date',
+        'shipping_policy',
         'status',
         'subtotal',
         'tax_amount',
@@ -102,6 +105,8 @@ class Quotation extends Model
         'patient_name_encrypted' => \App\Casts\EncryptedOrLegacyString::class,
         'quotation_date' => 'date',
         'valid_until' => 'date',
+        // Issue #408
+        'commitment_date' => 'date',
         'subtotal' => 'decimal:2',
         'tax_amount' => 'decimal:2',
         'discount_amount' => 'decimal:2',
@@ -240,9 +245,65 @@ class Quotation extends Model
 
     // Issue #222: patient name is PHI — encrypted at rest, exposed as the
     // virtual patient_name attribute so existing callers keep working.
-    protected $appends = ['patient_name'];
+    //
+    // Issue #408: expected_date (computed from lead times) and is_late (past
+    // the commitment date on an open quotation) ride along for the lists.
+    protected $appends = ['patient_name', 'expected_date', 'is_late'];
 
     protected $hidden = ['patient_name_encrypted'];
+
+    /**
+     * Issue #408: expected (scheduled) date computed from the product lead
+     * times: quotation date + the longest product/supplier lead time. Null when
+     * no line has lead-time data.
+     */
+    public function getExpectedDateAttribute(): ?string
+    {
+        $lines = $this->relationLoaded('lines') ? $this->lines : $this->lines()->get();
+
+        $productIds = $lines
+            ->reject(fn ($line) => in_array($line->line_type ?? 'product', ['note', 'section'], true))
+            ->pluck('product_id');
+
+        $baseDate = $this->quotation_date?->toDateString()
+            ?? $this->created_at?->toDateString()
+            ?? now()->toDateString();
+
+        return app(\App\Services\SalesLeadTimeService::class)
+            ->expectedDate($productIds, $baseDate)
+            ?->toDateString();
+    }
+
+    /**
+     * Issue #408: an open quotation whose commitment date has passed is late to
+     * convert. Confirmed (already converted) and cancelled quotations are not
+     * late.
+     */
+    public function isLate(): bool
+    {
+        if ($this->commitment_date === null) {
+            return false;
+        }
+
+        if (in_array((string) $this->status, ['confirmed', 'cancelled'], true)) {
+            return false;
+        }
+
+        return $this->commitment_date->isBefore(now()->startOfDay());
+    }
+
+    public function getIsLateAttribute(): bool
+    {
+        return $this->isLate();
+    }
+
+    /**
+     * Issue #408: mirrors SalesOrder::requiresAllProductsReady() for the quote.
+     */
+    public function requiresAllProductsReady(): bool
+    {
+        return $this->shipping_policy === \Modules\Sales\Models\SalesOrder::SHIPPING_POLICY_WHEN_ALL_READY;
+    }
 
     public function getPatientNameAttribute(): ?string
     {

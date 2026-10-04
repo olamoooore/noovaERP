@@ -124,6 +124,10 @@ class TaxDeterminationService
 
         $defaultTaxId = ! empty(\App\Models\Setting::getValue('tax', [])['default_tax_id']);
 
+        // #451: the tenant-level treatment default is the fallback for lines
+        // no rule, product or override classifies.
+        $tenantTreatment = $this->engine->defaultTreatment();
+
         // Build per-line tax determinations.
         $taxLines = [];
 
@@ -191,8 +195,11 @@ class TaxDeterminationService
 
             $treatment = match (true) {
                 $taxRate > 0 => 'standard_rated',
+                // A document-level manual override always beats the tenant default.
                 ($overrides['treatment'] ?? null) === 'exempt' || $customerExempt => 'exempt',
-                default => 'zero_rated',
+                ($overrides['treatment'] ?? null) !== null => 'zero_rated',
+                $taxRate === 0.0 => $tenantTreatment ?? 'zero_rated',
+                default => 'exempt',
             };
 
             $taxCode = $this->resolveTaxCode(
@@ -277,6 +284,8 @@ class TaxDeterminationService
         $jurisdiction = $overrides['jurisdiction'] ?? $billEngineJurisdiction;
         $regime = $overrides['tax_regime'] ?? $this->packs->regime($jurisdiction);
         $date = $bill->bill_date?->toDateString() ?? now()->toDateString();
+        // #451: tenant-level treatment default for unclassified purchase lines.
+        $tenantTreatment = $this->engine->defaultTreatment();
         $taxLines = [];
 
         foreach ($bill->lines as $line) {
@@ -311,7 +320,7 @@ class TaxDeterminationService
                 'taxable_base' => round($taxableBase, 2),
                 'tax_rate' => $rate,
                 'tax_amount' => $tax,
-                'treatment' => $rateMatches ? $resolved['treatment'] : ($rate > 0 ? 'standard_rated' : 'zero_rated'),
+                'treatment' => $rateMatches ? $resolved['treatment'] : ($rate > 0 ? 'standard_rated' : ($tenantTreatment ?? 'zero_rated')),
                 'tax_id' => $rateMatches ? ($resolved['tax_id'] ?? null) : null,
                 'tax_type' => $rateMatches ? ($resolved['tax_type'] ?? null) : null,
                 'creditable' => $rateMatches ? ($resolved['creditable'] ?? true) : true,
@@ -354,6 +363,8 @@ class TaxDeterminationService
             ?? $this->jurisdictionForVendor($vendorId)
             ?? $this->engine->tenantJurisdiction());
         $regime = $this->packs->regime($jurisdiction);
+        // #451: tenant-level treatment default for unclassified lines.
+        $tenantTreatment = $this->engine->defaultTreatment();
 
         $taxLines = [];
 
@@ -370,7 +381,7 @@ class TaxDeterminationService
 
             if (! empty($line['tax_code_override'])) {
                 $taxCode = (string) $line['tax_code_override'];
-                $treatment = (string) ($line['treatment_override'] ?? ($rate > 0 ? 'standard_rated' : 'zero_rated'));
+                $treatment = (string) ($line['treatment_override'] ?? ($rate > 0 ? 'standard_rated' : ($tenantTreatment ?? 'zero_rated')));
                 $taxId = $line['tax_id_override'] ?? null;
             } else {
                 $rateMatchesEngine = $resolved && $rate > 0 && abs((float) $resolved['rate'] - $rate) < 0.005;
@@ -386,7 +397,7 @@ class TaxDeterminationService
                     $taxId = ($rateMatchesEngine || $withholdingOverride) ? ($resolved['tax_id'] ?? null) : null;
                 } else {
                     $taxCode = $this->resolveTaxCode($product, $jurisdiction, $regime, $rate);
-                    $treatment = $rate > 0 ? 'standard_rated' : 'zero_rated';
+                    $treatment = $rate > 0 ? 'standard_rated' : ($tenantTreatment ?? 'zero_rated');
                     $taxId = null;
                 }
             }

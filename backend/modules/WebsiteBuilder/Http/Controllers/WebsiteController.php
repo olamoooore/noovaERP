@@ -3,13 +3,13 @@
 namespace Modules\WebsiteBuilder\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Models\Hostname;
+use App\PublicSites\WebsitePublicationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Modules\WebsiteBuilder\Http\Resources\WebsiteResource;
 use Modules\WebsiteBuilder\Models\Website;
-use App\Models\Hostname;
-use App\PublicSites\WebsitePublicationService;
 
 class WebsiteController extends Controller
 {
@@ -33,6 +33,22 @@ class WebsiteController extends Controller
 
         $perPage = $request->input('per_page', 20);
         $websites = $query->paginate($perPage);
+
+        $primaryHosts = Hostname::query()
+            ->where('tenant_id', (string) tenant('id'))
+            ->where('purpose', 'website')
+            ->where('serving_status', 'active')
+            ->where('primary_effective', true)
+            ->whereIn('website_uuid', $websites->getCollection()->pluck('uuid'))
+            ->pluck('hostname', 'website_uuid');
+
+        $websites->getCollection()->each(function (Website $website) use ($primaryHosts) {
+            $hostname = $primaryHosts->get($website->uuid);
+            $website->setAttribute(
+                'public_url',
+                $hostname ? 'https://'.$hostname : url('/site/'.$website->uuid),
+            );
+        });
 
         return response()->json($websites);
     }

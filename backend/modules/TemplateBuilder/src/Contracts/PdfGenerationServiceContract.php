@@ -22,7 +22,13 @@ interface PdfGenerationServiceContract
      * a template (`template_id`) or asks for a signed render (`signature`),
      * both of which are intentional one-off renders.
      *
-     * @param  array{template_id?: ?string, format?: string, locale?: ?string, signature?: ?array, immutable?: bool}  $options
+     * Issue #617: `document_variant` asks for a non-canonical presentation of
+     * the SAME record (e.g. `acceptance_copy` for an invoice sent for
+     * approval). A variant is always rendered live — it never reuses the
+     * immutable issued copy — and its display text is exposed to the template
+     * as the `document_variant` token.
+     *
+     * @param  array{template_id?: ?string, format?: string, locale?: ?string, signature?: ?array, immutable?: bool, document_variant?: ?string}  $options
      * @param  array<string,mixed>|null  $context
      * @return array{bytes: string, html: string, mime: string, hash: string, template: DocumentTemplate|null, document?: GeneratedDocument, immutable?: bool}
      */

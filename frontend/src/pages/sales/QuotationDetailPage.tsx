@@ -403,6 +403,11 @@ export function QuotationDetailPage() {
               <Badge variant="secondary" className={cn('shrink-0 capitalize', getStatusBadge(quotation.status))}>
                 {quotation.status}
               </Badge>
+              {quotation.is_late && (
+                <Badge variant="destructive" className="shrink-0" title="Commitment date has passed and the quotation is not converted">
+                  Late
+                </Badge>
+              )}
             </div>
             <p
               className="mt-1 max-w-lg truncate text-muted-foreground"
@@ -715,6 +720,25 @@ export function QuotationDetailPage() {
               <div>
                 <div className="text-muted-foreground">Valid Until</div>
                 <div className="font-medium">{quotation.valid_until ? formatDate(quotation.valid_until) : '-'}</div>
+              </div>
+              {/* Issue #408: promise date + computed expected date + policy. */}
+              <div>
+                <div className="text-muted-foreground">Commitment Date</div>
+                <div className="font-medium">{quotation.commitment_date ? formatDate(quotation.commitment_date) : '-'}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Expected Date</div>
+                <div className="font-medium" title="Computed from the product/supplier lead times">
+                  {quotation.expected_date ? formatDate(quotation.expected_date) : '-'}
+                </div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Shipping Policy</div>
+                <div className="font-medium">
+                  {quotation.shipping_policy === 'when_all_ready'
+                    ? 'When all products are ready'
+                    : 'As soon as possible'}
+                </div>
               </div>
               <div>
                 <div className="text-muted-foreground">Customer Reference</div>

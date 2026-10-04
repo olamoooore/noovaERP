@@ -91,6 +91,12 @@ interface CustomerFormData {
   company: string
   tax_number: string
   website: string
+  billing_street: string
+  billing_street2: string
+  billing_city: string
+  billing_state: string
+  billing_zip: string
+  billing_country: string
   billing_address: string
   shipping_address: string
   credit_limit: string
@@ -111,6 +117,12 @@ const initialFormData: CustomerFormData = {
   company: '',
   tax_number: '',
   website: '',
+  billing_street: '',
+  billing_street2: '',
+  billing_city: '',
+  billing_state: '',
+  billing_zip: '',
+  billing_country: '',
   billing_address: '',
   shipping_address: '',
   credit_limit: '',
@@ -355,6 +367,12 @@ export function CustomersPage() {
         company: customerDetail.company || '',
         tax_number: customerDetail.tax_number || '',
         website: customerDetail.website || '',
+        billing_street: '',
+        billing_street2: '',
+        billing_city: '',
+        billing_state: '',
+        billing_zip: '',
+        billing_country: '',
         billing_address: formatAddress(customerDetail.billing_address),
         shipping_address: formatAddress(customerDetail.shipping_address),
         credit_limit: customerDetail.credit_limit?.toString() || '',
@@ -528,15 +546,60 @@ export function CustomersPage() {
                 </TabsContent>
 
                 <TabsContent value="addresses" className="space-y-4 mt-4">
+                  <p className="text-sm font-medium">Billing Address</p>
                   <div className="space-y-2">
-                    <Label htmlFor="billing_address">Billing Address (full text)</Label>
-                    <Textarea
-                      id="billing_address"
-                      rows={2}
-                      value={formData.billing_address}
-                      onChange={(e) => setFormData({ ...formData, billing_address: e.target.value })}
-                      placeholder="Auto-populated from structured fields, or enter manually"
+                    <Label htmlFor="billing-street">Street</Label>
+                    <Input
+                      id="billing-street"
+                      value={formData.billing_street}
+                      onChange={(e) => setFormData({ ...formData, billing_street: e.target.value })}
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="billing-street2">Street 2</Label>
+                    <Input
+                      id="billing-street2"
+                      value={formData.billing_street2}
+                      onChange={(e) => setFormData({ ...formData, billing_street2: e.target.value })}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="billing-city">City</Label>
+                      <Input
+                        id="billing-city"
+                        value={formData.billing_city}
+                        onChange={(e) => setFormData({ ...formData, billing_city: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="billing-state">State / Province</Label>
+                      <Input
+                        id="billing-state"
+                        value={formData.billing_state}
+                        onChange={(e) => setFormData({ ...formData, billing_state: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="billing-zip">Postal Code</Label>
+                      <Input
+                        id="billing-zip"
+                        value={formData.billing_zip}
+                        onChange={(e) => setFormData({ ...formData, billing_zip: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="billing-country">Country (ISO code)</Label>
+                      <Input
+                        id="billing-country"
+                        maxLength={2}
+                        placeholder="e.g. MY"
+                        value={formData.billing_country}
+                        onChange={(e) => setFormData({ ...formData, billing_country: e.target.value.toUpperCase() })}
+                      />
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="shipping_address">Shipping Address (full text)</Label>
@@ -545,7 +608,7 @@ export function CustomersPage() {
                       rows={2}
                       value={formData.shipping_address}
                       onChange={(e) => setFormData({ ...formData, shipping_address: e.target.value })}
-                      placeholder="Auto-populated from structured fields, or enter manually"
+                      placeholder="Optional — enter the shipping address manually"
                     />
                   </div>
                 </TabsContent>
