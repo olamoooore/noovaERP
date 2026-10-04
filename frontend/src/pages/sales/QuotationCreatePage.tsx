@@ -159,6 +159,9 @@ export const QuotationCreatePage: React.FC = () => {
   const [shippingOpen, setShippingOpen] = useState(false);
   const [customerMatch, setCustomerMatch] = useState<{ contacts: string[]; tags: string[]; addresses: string[] } | null>(null);
   const autofilledCustomerRef = useRef<string | null>(null);
+  // #296: id of the newest async price resolution. A response may only apply
+  // if no newer request has superseded it.
+  const pricingRequestSeqRef = useRef(0);
 
   const { data: products } = useQuery({
     queryKey: ['products-list'],
@@ -285,6 +288,10 @@ export const QuotationCreatePage: React.FC = () => {
       .filter(({ line }) => (line.line_type ?? 'product') === 'product' && !!line.product_id);
     if (productLines.length === 0) return;
 
+    // #296: stamp the request before awaiting; a stale response must never
+    // apply after a newer resolution has been started.
+    const requestId = ++pricingRequestSeqRef.current;
+
     try {
       const result = await pricingApi.resolveBatch(
         {
@@ -302,6 +309,10 @@ export const QuotationCreatePage: React.FC = () => {
           quantity: Number(line.quantity) || 1,
         })),
       );
+
+      // A newer resolve was started while this one was in flight — drop it.
+      if (requestId !== pricingRequestSeqRef.current) return;
+
       setCurrencyCode(result.currency_code);
       setPricingMeta({
         base_currency_code: result.base_currency_code,
@@ -317,14 +328,26 @@ export const QuotationCreatePage: React.FC = () => {
       const lineError = (result.lines ?? []).map((quote: any) => quote?.error).find(Boolean) ?? null;
       setPricingError(lineError);
 
-      const updated = [...nextLines];
-      result.lines.forEach((quote: any, quoteIndex: number) => {
-        const target = productLines[quoteIndex]?.index;
-        if (target === undefined || quote?.error) return;
-        if (updated[target].price_mode === 'manual') return;
-        updated[target] = { ...updated[target], unit_price: quote.unit_price, price_mode: 'auto' };
+      // Apply against the CURRENT lines, not the request snapshot, and only to
+      // the line that still is the product/quantity the quote was requested
+      // for — edits made while the request was in flight survive.
+      setLines((current) => {
+        const updated = [...current];
+        result.lines.forEach((quote: any, quoteIndex: number) => {
+          const requested = productLines[quoteIndex];
+          const target = requested?.index;
+          if (target === undefined || quote?.error) return;
+          const existing = updated[target];
+          if (!existing) return;
+          if (String(existing.product_id) !== String(requested.line.product_id)) return;
+          const requestedQty = Number(requested.line.quantity) || 1;
+          const currentQty = Number(existing.quantity) || 1;
+          if (currentQty !== requestedQty) return;
+          if (existing.price_mode === 'manual') return;
+          updated[target] = { ...existing, unit_price: quote.unit_price, price_mode: 'auto' };
+        });
+        return updated;
       });
-      setLines(updated);
     } catch {
       // Engine errors surface on save with actionable messages.
     }
@@ -1215,7 +1238,8 @@ export const QuotationCreatePage: React.FC = () => {
                           value={line.product_id}
                           onValueChange={(val, product) => {
                             const productChanged = val !== lines[index].product_id
-                            updateLine(index, 'product_id', val)
+                            // #296: one state update per pick — the pricing
+                            // resolver runs on the same array, never a stale one.
                             if (product) {
                               const updated = [...lines]
                               updated[index] = {
@@ -1235,7 +1259,10 @@ export const QuotationCreatePage: React.FC = () => {
                                 tax_rate: productChanged ? resolveLineTaxRate(product) : updated[index].tax_rate,
                               }
                               setLines(updated)
+                              void resolvePricingForLines(updated)
+                              return
                             }
+                            updateLine(index, 'product_id', val)
                           }}
                           placeholder="Search product..."
                           wrapText
