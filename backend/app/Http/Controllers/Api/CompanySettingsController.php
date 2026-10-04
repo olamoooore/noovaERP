@@ -3,14 +3,35 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AccountMapping;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 
 class CompanySettingsController extends Controller
 {
+    /**
+     * #877 (SA3): the Default Accounts screen fields and the account-role
+     * mapping keys posting actually resolves through AccountMappingService.
+     * This screen used to write company_settings.default_* columns that
+     * nothing on the posting path read.
+     */
+    private const DEFAULT_ACCOUNT_MAPPINGS = [
+        'accounts_receivable' => 'accounts_receivable',
+        'accounts_payable' => 'accounts_payable',
+        'bank_account' => 'bank',
+        'sales_revenue' => 'sales_revenue',
+        'shipping_revenue' => 'shipping_revenue',
+        'sales_tax' => 'sales_tax_payable',
+        'purchase_expense' => 'general_expense',
+        'purchase_tax' => 'input_tax',
+        'inventory' => 'inventory',
+        'cost_of_goods_sold' => 'cogs',
+        'retained_earnings' => 'retained_earnings',
+        'bank_charges' => 'bank_charges',
+    ];
+
     /**
      * Lightweight tenant branding for documents/PDFs that don't use the
      * Template Builder (report exports). Deliberately NOT gated behind
@@ -311,51 +332,10 @@ class CompanySettingsController extends Controller
     public function accounts(): JsonResponse
     {
         try {
-            $settings = DB::table('company_settings')->first();
-
-            if (! $settings) {
-                // Auto-create a default row so the frontend has something to bind to
-                DB::table('company_settings')->insert([
-                    'base_currency' => 'SGD',
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-                $settings = DB::table('company_settings')->first();
-            }
-
-            $accounts = [
-                'accounts_receivable' => $settings->default_receivable_account_id ?? null,
-                'accounts_payable' => $settings->default_payable_account_id ?? null,
-                'bank_account' => $settings->default_bank_account_id ?? null,
-                'sales_revenue' => $settings->default_revenue_account_id ?? null,
-                'shipping_revenue' => $settings->shipping_revenue_account_id ?? null,
-                'sales_tax' => $settings->default_tax_account_id ?? null,
-                'purchase_expense' => $settings->default_expense_account_id ?? null,
-                'purchase_tax' => $settings->default_purchase_tax_account_id ?? null,
-                'inventory' => $settings->default_inventory_account_id ?? null,
-                'cost_of_goods_sold' => $settings->default_cogs_account_id ?? null,
-                'retained_earnings' => $settings->default_retained_earnings_account_id ?? null,
-                'bank_charges' => $settings->default_bank_charges_account_id ?? null,
-            ];
-
-            // Defensive: null out extended fields if the DB columns don't exist yet
-            $extendedColumns = ['bank_account', 'shipping_revenue', 'purchase_tax', 'inventory', 'cost_of_goods_sold', 'retained_earnings', 'bank_charges'];
-            foreach ($extendedColumns as $key) {
-                $dbColumn = match ($key) {
-                    'bank_account' => 'default_bank_account_id',
-                    'shipping_revenue' => 'shipping_revenue_account_id',
-                    'purchase_tax' => 'default_purchase_tax_account_id',
-                    'inventory' => 'default_inventory_account_id',
-                    'cost_of_goods_sold' => 'default_cogs_account_id',
-                    'retained_earnings' => 'default_retained_earnings_account_id',
-                    'bank_charges' => 'default_bank_charges_account_id',
-                };
-                if (! Schema::hasColumn('company_settings', $dbColumn)) {
-                    $accounts[$key] = null;
-                }
-            }
-
-            return response()->json(['success' => true, 'data' => $accounts]);
+            // #877 (SA3): read the account-role mapping posting resolves
+            // through. No company_settings row is auto-created (the previous
+            // behaviour silently inserted base_currency 'SGD').
+            return response()->json(['success' => true, 'data' => $this->defaultAccountMappings()]);
         } catch (\Exception $e) {
             \Log::error('Failed to fetch default accounts', ['error' => $e->getMessage()]);
 
@@ -396,75 +376,54 @@ class CompanySettingsController extends Controller
         }
 
         try {
-            $settings = DB::table('company_settings')->first();
-
-            $data = [
-                'default_receivable_account_id' => $input['accounts_receivable'] ?? null,
-                'default_payable_account_id' => $input['accounts_payable'] ?? null,
-                'default_revenue_account_id' => $input['sales_revenue'] ?? null,
-                'default_expense_account_id' => $input['purchase_expense'] ?? null,
-                'default_tax_account_id' => $input['sales_tax'] ?? null,
-                'updated_at' => now(),
-            ];
-
-            // Defensive: only include extended default-account columns if they exist in DB.
-            // Some tenants may not have run the migration that added these columns.
-            $extendedColumns = [
-                'default_bank_account_id' => $input['bank_account'] ?? null,
-                'shipping_revenue_account_id' => $input['shipping_revenue'] ?? null,
-                'default_purchase_tax_account_id' => $input['purchase_tax'] ?? null,
-                'default_inventory_account_id' => $input['inventory'] ?? null,
-                'default_cogs_account_id' => $input['cost_of_goods_sold'] ?? null,
-                'default_retained_earnings_account_id' => $input['retained_earnings'] ?? null,
-                'default_bank_charges_account_id' => $input['bank_charges'] ?? null,
-            ];
-
-            foreach ($extendedColumns as $column => $value) {
-                $exists = DB::selectOne("
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_schema = current_schema()
-                    AND table_name = 'company_settings'
-                    AND column_name = ?
-                ", [$column]);
-                if ($exists) {
-                    $data[$column] = $value;
+            // #877 (SA3): one source of truth — write the same
+            // account_mappings rows AccountMappingService::resolve() reads.
+            // Fields absent from the payload are left untouched; a null
+            // (cleared) field does not remove a mapping posting depends on.
+            foreach (self::DEFAULT_ACCOUNT_MAPPINGS as $field => $mappingKey) {
+                if (! array_key_exists($field, $input) || $input[$field] === null) {
+                    continue;
                 }
-            }
 
-            if ($settings) {
-                DB::table('company_settings')->update($data);
-            } else {
-                $data['created_at'] = now();
-                $data['company_name'] = $request->company_name ?? null;
-                $data['base_currency'] = $request->base_currency ?? 'SGD';
-                DB::table('company_settings')->insert($data);
+                AccountMapping::updateOrCreate(
+                    ['mapping_key' => $mappingKey, 'document_type' => null],
+                    ['account_id' => (int) $input[$field], 'is_active' => true],
+                );
             }
-
-            $fresh = DB::table('company_settings')->first();
 
             return response()->json([
                 'success' => true,
                 'message' => 'Default accounts updated successfully',
-                'data' => [
-                    'accounts_receivable' => $fresh->default_receivable_account_id ?? null,
-                    'accounts_payable' => $fresh->default_payable_account_id ?? null,
-                    'bank_account' => $fresh->default_bank_account_id ?? null,
-                    'sales_revenue' => $fresh->default_revenue_account_id ?? null,
-                    'shipping_revenue' => $fresh->shipping_revenue_account_id ?? null,
-                    'sales_tax' => $fresh->default_tax_account_id ?? null,
-                    'purchase_expense' => $fresh->default_expense_account_id ?? null,
-                    'purchase_tax' => $fresh->default_purchase_tax_account_id ?? null,
-                    'inventory' => $fresh->default_inventory_account_id ?? null,
-                    'cost_of_goods_sold' => $fresh->default_cogs_account_id ?? null,
-                    'retained_earnings' => $fresh->default_retained_earnings_account_id ?? null,
-                    'bank_charges' => $fresh->default_bank_charges_account_id ?? null,
-                ],
+                'data' => $this->defaultAccountMappings(),
             ]);
         } catch (\Exception $e) {
             \Log::error('Failed to update default accounts', ['error' => $e->getMessage()]);
 
             return response()->json(['success' => false, 'message' => 'Failed to update default accounts: '.$e->getMessage()], 500);
         }
+    }
+
+    /**
+     * #877 (SA3): the screen's fields, resolved from the account-role
+     * mappings posting uses (company_settings.default_* is legacy and no
+     * longer written by this controller).
+     *
+     * @return array<string, int|null>
+     */
+    private function defaultAccountMappings(): array
+    {
+        $accountIds = AccountMapping::query()
+            ->whereNull('document_type')
+            ->where('is_active', true)
+            ->pluck('account_id', 'mapping_key');
+
+        $accounts = [];
+
+        foreach (self::DEFAULT_ACCOUNT_MAPPINGS as $field => $mappingKey) {
+            $accounts[$field] = isset($accountIds[$mappingKey]) ? (int) $accountIds[$mappingKey] : null;
+        }
+
+        return $accounts;
     }
 
     private function getDefaultSettings()
