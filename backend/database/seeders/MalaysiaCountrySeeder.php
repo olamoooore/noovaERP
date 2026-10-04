@@ -37,6 +37,8 @@ class MalaysiaCountrySeeder extends Seeder
         'Other Income' => ['type' => 'revenue',   'subtype' => 'income_other'],
         'Expenses' => ['type' => 'expense',   'subtype' => 'expense'],
         'Current Year Earnings' => ['type' => 'equity',    'subtype' => 'equity'],
+        // #762 A2: equity accounts and equity distributions.
+        'Equity' => ['type' => 'equity',    'subtype' => 'equity'],
     ];
 
     public function run(): void
@@ -102,12 +104,14 @@ class MalaysiaCountrySeeder extends Seeder
             ['code' => '221200', 'name' => 'Receipt in Advance (Customer Prepayments)', 'excel_type' => 'Current Liabilities'],
             ['code' => '221300', 'name' => 'SST Control Account',                   'excel_type' => 'Current Liabilities'],
             ['code' => '221400', 'name' => 'Provision for Taxation',                'excel_type' => 'Current Liabilities'],
-            ['code' => '221500', 'name' => 'Proposed Dividend',                     'excel_type' => 'Current Liabilities'],
+            // #762 A2: dividends declared after the reporting date are not liabilities (MFRS 110).
+            ['code' => '221500', 'name' => 'Proposed Dividend',                     'excel_type' => 'Equity'],
             ['code' => '221600', 'name' => 'Other Payable',                         'excel_type' => 'Payable'],
-            ['code' => '310000', 'name' => 'Paid Capital',                          'excel_type' => 'Current Liabilities'],
-            ['code' => '320000', 'name' => 'Accumulated Profit & Loss',             'excel_type' => 'Current Liabilities'],
-            ['code' => '330000', 'name' => 'Profit & Loss Account',                 'excel_type' => 'Current Liabilities'],
-            ['code' => '340000', 'name' => 'Short-term Borrowing',                  'excel_type' => 'Current Liabilities'],
+            ['code' => '310000', 'name' => 'Paid Capital',                          'excel_type' => 'Equity'],
+            ['code' => '320000', 'name' => 'Accumulated Profit & Loss',             'excel_type' => 'Equity'],
+            ['code' => '330000', 'name' => 'Profit & Loss Account',                 'excel_type' => 'Equity'],
+            // #762 A2: a borrowing, numbered in the liability range rather than the equity block.
+            ['code' => '240000', 'name' => 'Short-term Borrowing',                  'excel_type' => 'Current Liabilities'],
             ['code' => '410000', 'name' => 'Trade Income',                          'excel_type' => 'Income'],
             ['code' => '420000', 'name' => 'Other Income and Gains',                'excel_type' => 'Income'],
             ['code' => '421000', 'name' => 'Sundry Income',                         'excel_type' => 'Income'],
@@ -136,7 +140,8 @@ class MalaysiaCountrySeeder extends Seeder
             ['code' => '521600', 'name' => 'Overseas Traveling',                    'excel_type' => 'Expenses'],
             ['code' => '521800', 'name' => 'Wages & Salaries',                      'excel_type' => 'Expenses'],
             ['code' => '521810', 'name' => 'KWSP Contribution',                     'excel_type' => 'Expenses'],
-            ['code' => '521820', 'name' => 'PCB Contribution',                      'excel_type' => 'Expenses'],
+            // #762 A2: PCB is employee tax withheld — a liability accrual, not an employer cost.
+            ['code' => '521820', 'name' => 'PCB Contribution',                      'excel_type' => 'Current Liabilities'],
             ['code' => '521830', 'name' => 'EIS Contribution',                      'excel_type' => 'Expenses'],
             ['code' => '521900', 'name' => 'Bonus Payment',                         'excel_type' => 'Expenses'],
             ['code' => '522100', 'name' => 'SST',                                   'excel_type' => 'Expenses'],
@@ -146,7 +151,7 @@ class MalaysiaCountrySeeder extends Seeder
             ['code' => '522500', 'name' => 'Audit Fees',                            'excel_type' => 'Expenses'],
             ['code' => '522600', 'name' => 'Bad Debts',                             'excel_type' => 'Expenses'],
             ['code' => '522800', 'name' => 'Legal & Professional Fees',             'excel_type' => 'Expenses'],
-            ['code' => '522900', 'name' => 'Dividend',                              'excel_type' => 'Expenses'],
+            ['code' => '522900', 'name' => 'Dividend',                              'excel_type' => 'Equity'],
             ['code' => '523100', 'name' => 'Disposal',                              'excel_type' => 'Expenses'],
             ['code' => '523400', 'name' => 'Repair and Maintenance',                'excel_type' => 'Expenses'],
             ['code' => '523500', 'name' => 'Advertising',                           'excel_type' => 'Expenses'],
