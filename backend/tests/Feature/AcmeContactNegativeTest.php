@@ -364,9 +364,12 @@ class AcmeContactNegativeTest extends TenantTestCase
 
         // Prove canonical linkage: create a customer via Contact Master
         // and verify core_contact_uuid is populated (not null).
+        // Issue #432 (CU4): declare the type — otherwise the schema default
+        // (individual) correctly maps to a PERSON contact.
         $customer = Customer::create([
             'code' => 'VC001',
             'name' => 'Test Org',
+            'type' => 'company',
             'is_active' => true,
             'total_outstanding' => 0,
         ]);
