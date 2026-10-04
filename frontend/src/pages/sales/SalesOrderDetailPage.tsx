@@ -37,6 +37,8 @@ interface SalesOrder {
   order_date: string
   expected_delivery_date?: string
   status: string
+  allowed_transitions?: string[]
+  invoice_status?: string
   subtotal: number
   tax_amount: number
   discount_amount: number
@@ -226,7 +228,7 @@ export function SalesOrderDetailPage() {
               Confirm
             </HeaderActionButton>
           )}
-          {order.status === 'confirmed' && (
+          {(order.allowed_transitions ?? []).includes('allocated') && (
             <HeaderActionButton
               icon="solar:box-bold-duotone"
               loading={actionMutation.isPending}
@@ -236,7 +238,7 @@ export function SalesOrderDetailPage() {
               Allocate
             </HeaderActionButton>
           )}
-          {['confirmed', 'allocated', 'fulfilled', 'invoiced'].includes(order.status) && (
+          {(order.allowed_transitions ?? []).includes('invoiced') && order.invoice_status !== 'fully_invoiced' && (
             <HeaderActionButton
               variant="outline"
               icon="solar:file-text-bold-duotone"
@@ -247,7 +249,7 @@ export function SalesOrderDetailPage() {
               Create Invoice
             </HeaderActionButton>
           )}
-          {order.status === 'cancelled' && (
+          {(order.allowed_transitions ?? []).includes('draft') && (
             <HeaderActionButton
               variant="outline"
               icon="solar:undo-left-round-bold-duotone"
@@ -258,7 +260,7 @@ export function SalesOrderDetailPage() {
               Reset to Draft
             </HeaderActionButton>
           )}
-          {['draft', 'confirmed', 'allocated', 'fulfilled'].includes(order.status) && (
+          {(order.allowed_transitions ?? []).includes('cancelled') && (
             <HeaderActionButton
               variant="outline"
               icon="solar:close-circle-bold-duotone"
