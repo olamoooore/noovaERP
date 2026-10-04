@@ -441,6 +441,44 @@ export interface SalesByCategoryData {
   comparison?: ReportComparison;
 }
 
+/**
+ * Issue #604 (RPT-D1): one document explaining a report-vs-GL difference,
+ * linkable from the reconciliation footer.
+ */
+export interface SalesReconciliationDocument {
+  type: 'invoice' | 'journal_entry' | string;
+  id: number;
+  label: string;
+  url: string;
+}
+
+/** Issue #604: one named cause of the difference, with its documents. */
+export interface SalesReconciliationCause {
+  code: 'unposted_invoice' | 'manual_journal' | 'other_difference' | string;
+  label: string;
+  direction: 'report_only' | 'gl_only' | string;
+  amount: number;
+  document_count: number;
+  documents: SalesReconciliationDocument[];
+}
+
+/**
+ * Issue #604: the sales reports' ties-to-GL footer payload — the report's net
+ * revenue, the posted GL revenue for the same filters, and (when they differ)
+ * the difference broken down by cause.
+ */
+export interface SalesReconciliationData {
+  period: { start_date: string; end_date: string };
+  base_currency: string;
+  report_net_revenue: number;
+  gl_revenue: number;
+  difference: number;
+  reconciled: boolean;
+  report_breakdown: { invoice: number; pos: number; credit_note: number; booking: number };
+  causes: SalesReconciliationCause[];
+  notes: string[];
+}
+
 export interface ExpensesByCategoryData {
   categories: Array<{
     account_id: number;

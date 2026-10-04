@@ -69,6 +69,17 @@ vi.mock('@/lib/reportApi', () => ({
     getSalesByCurrency: vi.fn(async () => ({ currencies: [], summary: {} })),
     getSalesByCategory: vi.fn(async () => ({ categories: [] })),
     getSalesTrends: vi.fn(async () => ({ trends: [] })),
+    getSalesReconciliation: vi.fn(async () => ({
+      period: { start_date: '2026-10-01', end_date: '2026-10-31' },
+      base_currency: 'MYR',
+      report_net_revenue: 0,
+      gl_revenue: 0,
+      difference: 0,
+      reconciled: true,
+      report_breakdown: { invoice: 0, pos: 0, credit_note: 0, booking: 0 },
+      causes: [],
+      notes: [],
+    })),
     getSalesByCustomer: vi.fn(async (filters: any) => ({
       customers: [
         {

@@ -10,13 +10,15 @@ use Modules\FinancialReporting\DTOs\ReportFilter;
 use Modules\FinancialReporting\Services\Analytics\CustomerAnalyticsService;
 use Modules\FinancialReporting\Services\Analytics\ExpenseAnalyticsService;
 use Modules\FinancialReporting\Services\Analytics\SalesAnalyticsService;
+use Modules\FinancialReporting\Services\Analytics\SalesGlReconciliationService;
 
 class AnalyticsController extends Controller
 {
     public function __construct(
         protected SalesAnalyticsService $salesAnalyticsService,
         protected ExpenseAnalyticsService $expenseAnalyticsService,
-        protected CustomerAnalyticsService $customerAnalyticsService
+        protected CustomerAnalyticsService $customerAnalyticsService,
+        protected SalesGlReconciliationService $salesGlReconciliationService
     ) {}
 
     /**
@@ -133,6 +135,33 @@ class AnalyticsController extends Controller
         }
 
         return $data;
+    }
+
+    /**
+     * Issue #604 (RPT-D1): ties-to-GL reconciliation for the sales reports'
+     * footer. Same filter contract as the other sales reports (#593), same
+     * period and dimensions on both sides.
+     */
+    public function salesReconciliation(Request $request): JsonResponse
+    {
+        $filter = $this->salesFilter($request);
+
+        try {
+            return response()->json([
+                'success' => true,
+                'data' => $this->salesGlReconciliationService->reconcile($filter),
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Sales reconciliation failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to generate analytics. Please try again.',
+            ], 500);
+        }
     }
 
     /**

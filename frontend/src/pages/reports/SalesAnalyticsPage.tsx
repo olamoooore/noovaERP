@@ -18,6 +18,7 @@ import api from '@/lib/api';
 import pricingApi from '@/lib/pricingApi';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
 import { ReportExportToolbar } from '@/components/reports/ReportExportToolbar';
+import { GlReconciliationFooter } from '@/components/reports/GlReconciliationFooter';
 import { ReportTable, Column } from '@/components/reports/ReportTable';
 import { StatCard } from '@/components/ui/stat-card';
 import { BarChart } from '@/components/charts/BarChart';
@@ -1018,6 +1019,8 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
               </Card>
             </>
           )}
+
+          <GlReconciliationFooter filters={queryFilters} />
         </div>
       </div>
     );
@@ -1428,6 +1431,8 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
           )}
         </TabsContent>
       </Tabs>
+
+      <GlReconciliationFooter filters={queryFilters} />
     </div>
   );
 }

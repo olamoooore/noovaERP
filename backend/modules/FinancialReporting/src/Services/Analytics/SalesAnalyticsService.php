@@ -602,6 +602,34 @@ class SalesAnalyticsService
     }
 
     /**
+     * Issue #604: the same net revenue, split by revenue stream
+     * (invoice / pos / credit_note / booking) for the reconciliation footer's
+     * breakdown. Sums to the report's total_revenue for the same filters.
+     *
+     * @return array{invoice: float, pos: float, credit_note: float, booking: float}
+     */
+    public function getSalesChannelBreakdown(ReportFilter $filter): array
+    {
+        [$salesOrderIds, $invoiceIds] = $this->documentIdsForTag($filter->tag ?? null);
+
+        $breakdown = ['invoice' => 0.0, 'pos' => 0.0, 'credit_note' => 0.0, 'booking' => 0.0];
+
+        $rows = DB::query()
+            ->fromSub($this->lineItemsUnion($filter, $salesOrderIds, $invoiceIds), 'li')
+            ->selectRaw('li.channel, SUM(li.base_revenue) as total_revenue')
+            ->groupBy('li.channel')
+            ->get();
+
+        foreach ($rows as $row) {
+            if (array_key_exists((string) $row->channel, $breakdown)) {
+                $breakdown[(string) $row->channel] = round((float) $row->total_revenue, 2);
+            }
+        }
+
+        return $breakdown;
+    }
+
+    /**
      * Document ids carrying the requested tag: [sales-order ids, invoice ids].
      *
      * Both are null when no tag filter is active. An empty array means "the tag
