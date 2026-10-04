@@ -41,4 +41,17 @@ return [
         'VN' => 'VAT',
         'IN' => 'GST',
     ],
+
+    /*
+    | #614 (TP4): generic statutory invoice field labels. Jurisdiction packs
+    | (config/tax_packs.php 'invoice_fields') override these; a jurisdiction
+    | with no pack keeps the generic wording. Labels/requiredness only — no
+    | rates or thresholds live here.
+    */
+    'document_field_labels' => [
+        'tin' => ['label' => 'Tax Identification No.', 'required' => false],
+        'sst_number' => ['label' => 'Sales/Service Tax Registration No.', 'required' => false],
+        'gst_number' => ['label' => 'GST Registration No.', 'required' => false],
+        'bank' => ['label' => 'Bank Details', 'required' => false],
+    ],
 ];

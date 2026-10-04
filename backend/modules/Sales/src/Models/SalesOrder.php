@@ -63,6 +63,12 @@ class SalesOrder extends Model
         'tax_registration_number',
     ];
 
+    /**
+     * #378 (O9) / #371 (O2): canonical transition map + invoice progress,
+     * exposed so the UI never re-implements either.
+     */
+    protected $appends = ['allowed_transitions', 'invoice_status'];
+
     protected $casts = [
         'subtotal' => 'decimal:2',
         'tax_amount' => 'decimal:2',
@@ -272,18 +278,38 @@ class SalesOrder extends Model
         return $this->status === 'cancelled';
     }
 
+    /**
+     * #378 (O9): delegate to the lifecycle service — the model used to carry a
+     * divergent copy of this map (missing confirmed/allocated→invoiced,
+     * fulfilled→cancelled, invoiced→invoiced and cancelled→draft).
+     */
     public function canTransitionTo(string $newStatus): bool
     {
-        $allowed = [
-            'draft' => ['confirmed', 'cancelled'],
-            'confirmed' => ['allocated', 'cancelled'],
-            'allocated' => ['fulfilled', 'cancelled'],
-            'fulfilled' => ['invoiced'],
-            'invoiced' => [],
-            'cancelled' => [],
-        ];
+        return \Modules\Sales\Services\OrderLifecycleService::canTransition((string) $this->status, $newStatus);
+    }
 
-        return in_array($newStatus, $allowed[$this->status] ?? []);
+    /**
+     * @return string[]
+     */
+    public function allowedStatusTransitions(): array
+    {
+        return \Modules\Sales\Services\OrderLifecycleService::allowedTransitions((string) $this->status);
+    }
+
+    public function getInvoiceStatusAttribute(): string
+    {
+        return $this->invoiceStatus();
+    }
+
+    /**
+     * #378 (O9): exposed to the frontend so the UI never re-implements the
+     * transition map (button visibility = allowed transitions).
+     *
+     * @return string[]
+     */
+    public function getAllowedTransitionsAttribute(): array
+    {
+        return $this->allowedStatusTransitions();
     }
 
     public function calculateTotals(): void

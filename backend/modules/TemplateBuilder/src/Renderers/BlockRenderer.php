@@ -174,6 +174,10 @@ final class BlockRenderer implements TemplateRendererInterface
         $body = '';
         $subtotalField = (string) ($block['subtotal_field'] ?? 'line_total');
         $lastIndex = array_key_last($rows);
+        // Issue #614: only the paginated line-items table carries the
+        // per-row page-subtotal markers — a supplementary table (tax summary)
+        // must not be summed into the page subtotals.
+        $trackPageSubtotals = ($block['paginate'] ?? true) !== false;
         foreach ($rows as $index => $row) {
             $lineType = (string) ($row['line_type'] ?? 'product');
             if (in_array($lineType, ['note', 'section'], true)) {
@@ -205,7 +209,10 @@ final class BlockRenderer implements TemplateRendererInterface
             }
             $amount = is_numeric($row[$subtotalField] ?? null) ? (float) $row[$subtotalField] : 0.0;
             $class = $index === $lastIndex ? 'tb-line-row tb-line-row-last' : 'tb-line-row';
-            $body .= '<tr class="'.$class.'" data-tb-line-index="'.((int) $index).'" data-tb-line-amount="'.$amount.'">';
+            $markers = $trackPageSubtotals
+                ? ' data-tb-line-index="'.((int) $index).'" data-tb-line-amount="'.$amount.'"'
+                : '';
+            $body .= '<tr class="'.$class.'"'.$markers.'>';
             foreach ($columns as $col) {
                 $body .= '<td style="'.$this->tdStyle($col).'">'.$this->renderCell($col, $row).'</td>';
             }
