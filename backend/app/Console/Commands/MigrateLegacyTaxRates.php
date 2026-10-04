@@ -19,7 +19,17 @@ class MigrateLegacyTaxRates extends Command
 {
     protected $signature = 'taxes:migrate-legacy-rates {--dry-run}';
 
-    protected $description = 'Copy legacy tax_rates rules into the tax engine store (idempotent; skips compound)';
+    protected $description = 'Copy legacy tax_rates rules into the tax engine store (idempotent; skips compound and seeder-created rows)';
+
+    /**
+     * #771 A11: rows the country seeders created — wrong tax types (service
+     * tax as sales) and unsourced WHT rates. They must never reach the live
+     * engine; re-create them from the tax pack (#733/#739) instead.
+     */
+    private const SEEDER_CREATED_CODES = [
+        'MY-SST10', 'MY-SST5', 'MY-SVT8', 'MY-SVT6', 'MY-SST0', 'MY-WHT10', 'MY-WHT15',
+        'SG-GST9', 'SG-GST0', 'SG-GSTEX', 'SG-GSTOS', 'SG-WHT15', 'SG-WHT10',
+    ];
 
     public function handle(): int
     {
@@ -43,8 +53,16 @@ class MigrateLegacyTaxRates extends Command
         $migrated = 0;
         $skipped = 0;
         $compoundSkipped = 0;
+        $seederSkipped = 0;
 
         foreach ($legacy as $rate) {
+            if (in_array((string) $rate->code, self::SEEDER_CREATED_CODES, true)) {
+                $seederSkipped++;
+                $this->warn("SKIPPED (seeder-created legacy row — re-create from the tax pack): {$rate->code} {$rate->name}");
+
+                continue;
+            }
+
             if ((bool) ($rate->is_compound ?? false)) {
                 $compoundSkipped++;
                 $this->warn("SKIPPED (compound not supported by the engine yet): {$rate->code} {$rate->name} {$rate->rate}%");
@@ -84,8 +102,8 @@ class MigrateLegacyTaxRates extends Command
         }
 
         $this->info($this->option('dry-run')
-            ? "Dry run: {$migrated} would migrate, {$skipped} existing codes skipped, {$compoundSkipped} compound skipped."
-            : "Migrated {$migrated}, skipped {$skipped} existing, {$compoundSkipped} compound skipped. Review scope/jurisdiction of migrated rules in Accounting → Tax → Tax Engine.");
+            ? "Dry run: {$migrated} would migrate, {$skipped} existing codes skipped, {$compoundSkipped} compound skipped, {$seederSkipped} seeder-created skipped."
+            : "Migrated {$migrated}, skipped {$skipped} existing, {$compoundSkipped} compound skipped, {$seederSkipped} seeder-created skipped. Review scope/jurisdiction of migrated rules in Accounting → Tax → Tax Engine.");
 
         return self::SUCCESS;
     }

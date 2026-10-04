@@ -209,78 +209,10 @@ class MalaysiaCountrySeeder extends Seeder
             return;
         }
 
-        $myTaxRates = [
-            [
-                'name' => 'SST Sales Tax 10%',
-                'code' => 'MY-SST10',
-                'rate' => 10.00,
-                'type' => 'sales',
-                'description' => 'Malaysia Sales Tax (SST) — standard 10% rate on taxable goods',
-            ],
-            [
-                'name' => 'SST Sales Tax 5%',
-                'code' => 'MY-SST5',
-                'rate' => 5.00,
-                'type' => 'sales',
-                'description' => 'Malaysia Sales Tax (SST) — reduced 5% rate on specified goods',
-            ],
-            [
-                'name' => 'SST Service Tax 8%',
-                'code' => 'MY-SVT8',
-                'rate' => 8.00,
-                'type' => 'sales',
-                'description' => 'Malaysia Service Tax (SST) — 8% on taxable services (effective 2024)',
-            ],
-            [
-                'name' => 'SST Service Tax 6%',
-                'code' => 'MY-SVT6',
-                'rate' => 6.00,
-                'type' => 'sales',
-                'description' => 'Malaysia Service Tax (SST) — 6% on standard services',
-            ],
-            [
-                'name' => 'SST Exempt',
-                'code' => 'MY-SST0',
-                'rate' => 0.00,
-                'type' => 'sales',
-                'description' => 'Malaysia SST — zero-rated / exempt supply',
-            ],
-            [
-                'name' => 'Withholding Tax 10% (MY)',
-                'code' => 'MY-WHT10',
-                'rate' => 10.00,
-                'type' => 'withholding',
-                'description' => 'Malaysia Withholding Tax — 10% on royalties, technical fees',
-            ],
-            [
-                'name' => 'Withholding Tax 15% (MY)',
-                'code' => 'MY-WHT15',
-                'rate' => 15.00,
-                'type' => 'withholding',
-                'description' => 'Malaysia Withholding Tax — 15% on contract payments to non-residents',
-            ],
-        ];
-
-        $inserted = 0;
-        $skipped = 0;
-
-        foreach ($myTaxRates as $rate) {
-            if (DB::table('tax_rates')->where('code', $rate['code'])->exists()) {
-                $skipped++;
-
-                continue;
-            }
-
-            DB::table('tax_rates')->insert(array_merge($rate, [
-                'tax_account_id' => $taxAccount->id,
-                'is_compound' => false,
-                'is_active' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]));
-            $inserted++;
-        }
-
-        $this->command?->info("MY Tax Rates: {$inserted} inserted, {$skipped} skipped.");
+        // #771 A11: tax rules come from the tax pack (#733/#739). This seeder
+        // no longer writes the retired tax_rates table, which created a third
+        // tax store with wrong types (service tax as sales) and unsourced WHT
+        // rates that MigrateLegacyTaxRates could copy into the live engine.
+        $this->command?->info('MY tax rates: skipped — tax rules come from the tax pack.');
     }
 }
