@@ -7,12 +7,17 @@ use App\Models\BonusSchemeUsage;
 use App\Models\Customer;
 use App\Models\MedicalCase;
 use App\Models\MedicalCaseItem;
+use App\Models\ProductBatch;
+use App\Models\ProductLot;
 use App\Services\CustomerWideSearchService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Modules\Inventory\Models\StockReservation;
+use Modules\Inventory\Services\StockReservationService;
 use Modules\Sales\Models\DeliveryOrderLine;
 use Modules\Sales\Models\SalesOrderLine;
 
@@ -92,7 +97,11 @@ class MedicalCaseController extends Controller
             'items' => 'nullable|array',
             'items.*.sales_order_item_id' => 'required_with:items|exists:sales_order_lines,id',
             'items.*.product_id' => 'required_with:items|exists:products,id',
-            'items.*.lot_id' => 'nullable|exists:product_lots,id',
+            // Issue #565 (MC3): the line is cross-checked against the linked
+            // sales order line below (customer, product, lot, open quantity).
+            // The legacy `product_lots` table has no migration in this repo, so
+            // the inline `exists` rule is gone — it 500s when lot_id is sent.
+            'items.*.lot_id' => 'nullable|integer',
             'items.*.allocated_qty' => 'required_with:items|numeric|min:0',
             // Issue #563 (MC2): the client value is ignored — the case line
             // price is derived below from the linked sales order line.
@@ -101,7 +110,7 @@ class MedicalCaseController extends Controller
             'items.*.notes' => 'nullable|string',
         ]);
 
-        $items = $this->deriveItemPrices($validated['items'] ?? []);
+        $items = $this->prepareItems($validated['items'] ?? [], (int) $validated['customer_id']);
         unset($validated['items']);
 
         try {
@@ -164,6 +173,12 @@ class MedicalCaseController extends Controller
      * `sales_order_line_id`. FOC lines are free of charge and always
      * snapshot 0 (module spec §9 rule 8: is_foc = true, unit_price = 0).
      *
+     * Issue #565 (MC3): the same pass cross-checks the line against its sales
+     * order: the order must belong to the case customer, the product must be
+     * the line's product, the lot must belong to that product, and the
+     * allocated quantity may not exceed the line's open quantity after every
+     * other case's allocation (and earlier lines of the same payload).
+     *
      * Fails closed: without a resolvable linked line there is no approved
      * price to snapshot, so the case is rejected.
      *
@@ -172,16 +187,29 @@ class MedicalCaseController extends Controller
      *
      * @throws ValidationException
      */
-    private function deriveItemPrices(array $items): array
+    private function prepareItems(array $items, int $customerId): array
     {
         if ($items === []) {
             return [];
         }
 
+        $lineIds = array_column($items, 'sales_order_item_id');
+
         $lines = SalesOrderLine::query()
-            ->whereIn('id', array_column($items, 'sales_order_item_id'))
+            ->with('salesOrder')
+            ->whereIn('id', $lineIds)
             ->get()
             ->keyBy('id');
+
+        // Allocated quantities already held by other, non-cancelled cases.
+        $allocatedElsewhere = MedicalCaseItem::query()
+            ->whereIn('sales_order_item_id', $lineIds)
+            ->whereHas('medicalCase', fn ($query) => $query->where('status', '!=', 'cancelled'))
+            ->groupBy('sales_order_item_id')
+            ->selectRaw('sales_order_item_id, SUM(allocated_qty) as total_allocated')
+            ->pluck('total_allocated', 'sales_order_item_id');
+
+        $allocatedInPayload = [];
 
         foreach ($items as $index => $item) {
             $line = $lines->get($item['sales_order_item_id']);
@@ -192,6 +220,41 @@ class MedicalCaseController extends Controller
                 ]);
             }
 
+            $order = $line->salesOrder;
+
+            if (! $order || (int) $order->customer_id !== $customerId) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.sales_order_item_id" => 'The linked sales order line must belong to the case customer.',
+                ]);
+            }
+
+            if (($line->line_type ?? 'product') !== 'product' || (int) $line->product_id !== (int) $item['product_id']) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.product_id" => 'The product must match the linked sales order line.',
+                ]);
+            }
+
+            $lotId = $item['lot_id'] ?? null;
+
+            if ($lotId !== null && ! $this->lotBelongsToProduct((int) $lotId, (int) $item['product_id'])) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.lot_id" => 'The selected lot does not belong to the case line product.',
+                ]);
+            }
+
+            $alreadyAllocated = (float) ($allocatedElsewhere[$line->id] ?? 0)
+                + (float) ($allocatedInPayload[$line->id] ?? 0);
+            $openQty = round((float) $line->quantity - $alreadyAllocated, 4);
+
+            if (round((float) $item['allocated_qty'], 4) > $openQty) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.allocated_qty" => "The allocated quantity exceeds the linked sales order line's open quantity of {$openQty}.",
+                ]);
+            }
+
+            $allocatedInPayload[$line->id] = (float) ($allocatedInPayload[$line->id] ?? 0)
+                + (float) $item['allocated_qty'];
+
             $items[$index]['unit_price'] = ($item['is_foc'] ?? false)
                 ? 0.0
                 : (float) $line->unit_price;
@@ -200,22 +263,55 @@ class MedicalCaseController extends Controller
         return $items;
     }
 
+    /**
+     * Issue #565 (MC3): `medical_case_items.lot_id` documents a `product_lots`
+     * (ProductLot) row, but that legacy table has no migration in this repo.
+     * When it exists, the lot must belong to the product. Otherwise the real
+     * `product_batches` (ProductBatch) ledger is the lot source. If neither
+     * exists the lot cannot be proven, so the line is rejected (fail closed).
+     */
+    private function lotBelongsToProduct(int $lotId, int $productId): bool
+    {
+        if (Schema::hasTable('product_lots')) {
+            return ProductLot::query()
+                ->whereKey($lotId)
+                ->where('product_id', $productId)
+                ->exists();
+        }
+
+        if (Schema::hasTable('product_batches')) {
+            return ProductBatch::query()
+                ->whereKey($lotId)
+                ->where('product_id', $productId)
+                ->exists();
+        }
+
+        return false;
+    }
+
     public function show($id): JsonResponse
     {
-        $case = MedicalCase::with([
+        $with = [
             'customer',
             'invoice',
             'items.product',
             'items.salesOrderItem',
             'items.invoiceItem',
             'items.deliveryOrderItem',
-            'items.lot',
             'doctorContact',
             'requestorContact',
             'buyerContact',
             'deliveryAddress',
             'createdBy',
-        ])->find($id);
+        ];
+
+        // The lot relation reads the legacy `product_lots` table, which may not
+        // exist; eager loading it with non-null lot ids would 500 the request.
+        if (Schema::hasTable('product_lots')) {
+            $with[] = 'items.lot';
+        }
+
+        $case = MedicalCase::with($with)->find($id);
 
         if (! $case) {
             return response()->json(['message' => 'Medical case not found'], 404);
@@ -313,12 +409,57 @@ class MedicalCaseController extends Controller
 
         try {
             DB::transaction(function () use ($case, $validated) {
-                foreach ($validated['items'] as $itemData) {
-                    $item = MedicalCaseItem::where('medical_case_id', $case->id)
+                $items = collect($validated['items'])->map(function ($itemData) use ($case) {
+                    return MedicalCaseItem::where('medical_case_id', $case->id)
                         ->where('id', $itemData['id'])
                         ->firstOrFail();
+                });
+
+                $lineIds = $items->pluck('sales_order_item_id')->unique()->values()->all();
+
+                $lines = SalesOrderLine::query()
+                    ->whereIn('id', $lineIds)
+                    ->get()
+                    ->keyBy('id');
+
+                // Quantities held by every line not being re-allocated in this
+                // payload (other cases and this case's untouched items).
+                $allocatedElsewhere = MedicalCaseItem::query()
+                    ->whereIn('sales_order_item_id', $lineIds)
+                    ->whereNotIn('id', $items->pluck('id')->all())
+                    ->whereHas('medicalCase', fn ($query) => $query->where('status', '!=', 'cancelled'))
+                    ->groupBy('sales_order_item_id')
+                    ->selectRaw('sales_order_item_id, SUM(allocated_qty) as total_allocated')
+                    ->pluck('total_allocated', 'sales_order_item_id');
+
+                $allocatedInPayload = [];
+
+                foreach ($validated['items'] as $index => $itemData) {
+                    $item = $items[$index];
+                    $line = $lines->get($item->sales_order_item_id);
+                    $quantity = (float) $itemData['allocated_qty'];
+
+                    if (! $line) {
+                        throw ValidationException::withMessages([
+                            "items.{$index}.allocated_qty" => 'The linked sales order line could not be found.',
+                        ]);
+                    }
+
+                    $alreadyAllocated = (float) ($allocatedElsewhere[$line->id] ?? 0)
+                        + (float) ($allocatedInPayload[$line->id] ?? 0);
+                    $openQty = round((float) $line->quantity - $alreadyAllocated, 4);
+
+                    if (round($quantity, 4) > $openQty) {
+                        throw ValidationException::withMessages([
+                            "items.{$index}.allocated_qty" => "The allocated quantity exceeds the linked sales order line's open quantity of {$openQty}.",
+                        ]);
+                    }
+
+                    $allocatedInPayload[$line->id] = (float) ($allocatedInPayload[$line->id] ?? 0) + $quantity;
 
                     $item->update(['allocated_qty' => $itemData['allocated_qty']]);
+
+                    $this->reserveCaseItem($case, $item, $quantity, $index);
                 }
 
                 $case->update(['status' => 'allocated']);
@@ -328,11 +469,53 @@ class MedicalCaseController extends Controller
                 'message' => 'Medical case allocated successfully',
                 'data' => $case->fresh()->load(['customer', 'items.product']),
             ]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             return response()->json([
                 'message' => 'Failed to allocate medical case',
                 'error' => $e->getMessage(),
             ], 500);
+        }
+    }
+
+    /**
+     * Issue #565 (MC3): allocation now holds stock through the platform
+     * StockReservationService instead of only writing `allocated_qty`.
+     *
+     * The warehouse comes from the linked sales order (the case has none).
+     * Products that do not track inventory, or orders without a warehouse,
+     * have nothing to reserve against — mirroring SalesOrderService's
+     * confirmation path. Insufficient stock fails the allocation as a 422.
+     */
+    private function reserveCaseItem(MedicalCase $case, MedicalCaseItem $item, float $quantity, int $index): void
+    {
+        if (round($quantity, 4) <= 0) {
+            return;
+        }
+
+        $item->loadMissing(['product', 'salesOrderItem.salesOrder']);
+
+        $order = $item->salesOrderItem?->salesOrder;
+
+        if (! $item->product || ! (bool) $item->product->track_inventory || ! $order?->warehouse_id) {
+            return;
+        }
+
+        try {
+            app(StockReservationService::class)->reserve(
+                productId: (int) $item->product_id,
+                warehouseId: (int) $order->warehouse_id,
+                quantity: $quantity,
+                sourceDocumentType: 'MedicalCase',
+                sourceDocumentId: (int) $case->id,
+                sourceDocumentLineId: (int) $item->id,
+                notes: "Reserved for medical case {$case->case_no}",
+            );
+        } catch (\Exception $e) {
+            throw ValidationException::withMessages([
+                "items.{$index}.allocated_qty" => $e->getMessage(),
+            ]);
         }
     }
 
@@ -558,6 +741,19 @@ class MedicalCaseController extends Controller
             // counting delivered/invoiced quantities for a case the business
             // considers reversed.
             DB::transaction(function () use ($case) {
+                // Issue #565 (MC3): allocation holds stock via
+                // StockReservationService; cancelling the case must give the
+                // hold back or it leaks forever.
+                $reservations = StockReservation::where('source_document_type', 'MedicalCase')
+                    ->where('source_document_id', $case->id)
+                    ->whereIn('status', ['open', 'allocated'])
+                    ->get();
+
+                foreach ($reservations as $reservation) {
+                    app(StockReservationService::class)
+                        ->release($reservation, "Medical case {$case->case_no} cancelled");
+                }
+
                 if (in_array($case->status, ['delivered', 'invoiced'], true)) {
                     $itemIds = $case->items->pluck('id')->all();
 
