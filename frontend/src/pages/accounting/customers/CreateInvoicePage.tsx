@@ -32,6 +32,7 @@ import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard';
 import { CustomerContextStrip } from '@/components/sales/CustomerContextStrip';
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
 import { ProductTrackingSelector } from '@/components/inventory/ProductTrackingSelector';
+import { StockAvailabilityChip } from '@/components/sales/StockAvailabilityChip';
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
 import { LineItemsTable } from '@/components/sales/LineItemsTable'
 import { TagEditor } from '@/components/tags/TagEditor'
@@ -494,7 +495,7 @@ export const CreateInvoicePage: React.FC = () => {
   const [tags, setTags] = useState<string[]>([]);
   const [originalCustomerId, setOriginalCustomerId] = useState('');
   const [visibleLineColumns, setVisibleLineColumns] = useState<Record<string, boolean>>(() => {
-    const defaults = { sku: true, description: true, model_number: true, product_notes: false, lot_number: true, expiry_date: true, tax_rate: true };
+    const defaults = { sku: true, description: true, model_number: true, product_notes: false, lot_number: true, expiry_date: true, tax_rate: true, stock: true };
     try {
       return { ...defaults, ...JSON.parse(localStorage.getItem('invoice-line-columns-v4') || '{}') };
     } catch {
@@ -2849,7 +2850,7 @@ export const CreateInvoicePage: React.FC = () => {
                       {[
                         ['sku', 'SKU'], ['description', 'Description'], ['model_number', 'Model #'],
                         ['product_notes', 'Product Notes'], ['lot_number', 'Lot Number'],
-                        ['expiry_date', 'Expiry Date'], ['tax_rate', 'Tax %'],
+                        ['expiry_date', 'Expiry Date'], ['tax_rate', 'Tax %'], ['stock', 'Available'],
                       ].map(([key, label]) => (
                         <label key={key} className="flex cursor-pointer items-center gap-2 py-1 text-sm">
                           <input type="checkbox" checked={visibleLineColumns[key]} onChange={() => toggleLineColumn(key)} />
@@ -2899,11 +2900,12 @@ export const CreateInvoicePage: React.FC = () => {
                     lotNumber: visibleLineColumns.lot_number,
                     expiryDate: visibleLineColumns.expiry_date,
                     taxRate: visibleLineColumns.tax_rate,
+                    stock: visibleLineColumns.stock,
                   })}
                 >
                     {lines.map((line, index) => (
                       <tr key={index} className="doc-line-row border-b transition-colors hover:bg-muted/20" draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }}>
-                        {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={13} total={line.line_type === 'section' ? money(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }} /> : <>
+                        {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={13 + (visibleLineColumns.stock ? 1 : 0)} total={line.line_type === 'section' ? money(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }} /> : <>
                         <td data-label="#" className={cn(LINE_CELL, 'w-10')}>
                           <div className={cn(LINE_CELL_BOX, 'justify-center text-xs font-medium text-muted-foreground')}>
                             {lines.slice(0, index + 1).filter((item) => (item.line_type ?? 'product') === 'product').length}
@@ -3005,6 +3007,15 @@ export const CreateInvoicePage: React.FC = () => {
                             />
                           </div>
                         </td>
+                        {visibleLineColumns.stock && <td data-label="Available" className={cn(LINE_CELL, 'w-[8.5rem] min-w-[7.5rem]')}>
+                          <div className={cn(LINE_CELL_BOX, 'justify-end')}>
+                            <StockAvailabilityChip
+                              productId={line.product_id}
+                              warehouseId={warehouseId}
+                              requested={Number(line.quantity) || 0}
+                            />
+                          </div>
+                        </td>}
                         <td data-label="Unit price" className={cn(LINE_CELL, 'w-[7rem] min-w-[6rem]')}>
                           <div className={LINE_CELL_BOX}>
                             <div className="flex w-full flex-col gap-0.5">

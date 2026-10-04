@@ -364,6 +364,7 @@ class DeliveryOrderController extends Controller
      * page. Reports on-hand, the quantity reserved by other documents' active
      * holds and the resulting available quantity, so the user sees the hold
      * before submitting (the creation guard uses the same shared formula).
+     * Issue #687: also exposes incoming supply for the line-editor chip.
      */
     public function stockCheck(Request $request)
     {
@@ -376,6 +377,30 @@ class DeliveryOrderController extends Controller
             $this->deliveryService->stockAvailability(
                 (int) $validated['product_id'],
                 (int) $validated['warehouse_id'],
+            )
+        );
+    }
+
+    /**
+     * Issue #687 (UX1): bulk available-to-promise for a document's product
+     * lines (quotation / sales order / invoice editors and the order-confirm
+     * shortage summary). Each row reports on hand / reserved / available /
+     * incoming; the response also carries the count of short lines. Reuses the
+     * shared #465/#686 availability computation through the service layer.
+     */
+    public function bulkStockCheck(Request $request)
+    {
+        $validated = $request->validate([
+            'warehouse_id' => 'required|integer|exists:warehouses,id',
+            'lines' => 'required|array|min:1',
+            'lines.*.product_id' => 'required|integer|exists:products,id',
+            'lines.*.quantity' => 'nullable|numeric|min:0',
+        ]);
+
+        return response()->json(
+            $this->deliveryService->bulkStockAvailability(
+                (int) $validated['warehouse_id'],
+                $validated['lines'],
             )
         );
     }

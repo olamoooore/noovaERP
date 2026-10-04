@@ -348,6 +348,154 @@ class InventoryService
     }
 
     /**
+     * Issue #687: available-to-promise for a whole document's lines.
+     *
+     * Reuses the #465/#686 stockAvailability() formula per line — the bulk
+     * path must never fork the on-hand / reserved / available arithmetic —
+     * and adds forthcoming supply from open purchase orders and inbound
+     * warehouse transfers. Returns one row per requested line plus the
+     * shortage summary the sales-order confirm dialog shows.
+     *
+     * @param  array<int, array{product_id?: int|string|null, quantity?: int|float|string|null}>  $lines
+     * @return array{warehouse_id: int, lines: array<int, array<string, mixed>>, summary: array{line_count: int, lines_short: int}, incoming_note: ?string}
+     */
+    public function bulkStockAvailability(int $warehouseId, array $lines): array
+    {
+        $result = [];
+        $shortCount = 0;
+        $anyIncoming = false;
+
+        foreach ($lines as $line) {
+            $productId = (int) ($line['product_id'] ?? 0);
+            if ($productId <= 0) {
+                continue;
+            }
+
+            $requested = (float) ($line['quantity'] ?? 0);
+
+            $availability = $this->stockAvailability($productId, $warehouseId);
+            $incoming = $this->incomingStock($productId, $warehouseId);
+            $incomingQuantity = array_sum(array_column($incoming, 'quantity'));
+
+            if ($incoming !== []) {
+                $anyIncoming = true;
+            }
+
+            $sufficient = $requested <= $availability['available'] + 0.0000001;
+            if (! $sufficient) {
+                $shortCount++;
+            }
+
+            $result[] = [
+                'product_id' => $productId,
+                'requested' => $requested,
+                'on_hand' => $availability['on_hand'],
+                'reserved' => $availability['reserved'],
+                'available' => $availability['available'],
+                'incoming' => $incoming,
+                'incoming_quantity' => (float) $incomingQuantity,
+                'shortage' => $sufficient ? 0.0 : $requested - $availability['available'],
+                'sufficient' => $sufficient,
+            ];
+        }
+
+        return [
+            'warehouse_id' => $warehouseId,
+            'lines' => $result,
+            'summary' => [
+                'line_count' => count($result),
+                'lines_short' => $shortCount,
+            ],
+            // Disclose an empty incoming list instead of letting the UI imply
+            // that no supply is scheduled for certain.
+            'incoming_note' => ($result !== [] && ! $anyIncoming)
+                ? 'No open purchase orders or inbound transfers found for the requested products in this warehouse.'
+                : null,
+        ];
+    }
+
+    /**
+     * Issue #687: forthcoming supply for a product in a warehouse.
+     *
+     * Sources: open purchase orders (approved / ordered / partial, remaining
+     * received quantity) and inbound warehouse transfers (pending / in
+     * transit, heading TO this warehouse). Returns an empty list when the
+     * tenant's schema has no such tables or no open document supplies the
+     * product; callers disclose that empty list rather than inventing dates.
+     *
+     * @return array<int, array{source_type: string, source_id: int, reference: ?string, quantity: float, expected_date: ?string, status: ?string}>
+     */
+    public function incomingStock(int $productId, int $warehouseId): array
+    {
+        $incoming = [];
+
+        if (Schema::hasTable('purchase_orders') && Schema::hasTable('purchase_order_items')) {
+            $poItems = \Modules\Inventory\Models\PurchaseOrderItem::query()
+                ->where('product_id', $productId)
+                ->whereHas('purchaseOrder', function ($query) use ($warehouseId) {
+                    $query->where('warehouse_id', $warehouseId)
+                        ->whereIn('status', ['approved', 'ordered', 'partial']);
+                })
+                ->with(['purchaseOrder' => function ($query) {
+                    $query->select('id', 'po_number', 'expected_date', 'status');
+                }])
+                ->get();
+
+            foreach ($poItems as $item) {
+                $remaining = max(0.0, (float) $item->quantity_ordered - (float) $item->quantity_received);
+                if ($remaining <= 0) {
+                    continue;
+                }
+
+                $incoming[] = [
+                    'source_type' => 'purchase_order',
+                    'source_id' => (int) $item->purchase_order_id,
+                    'reference' => $item->purchaseOrder?->po_number,
+                    'quantity' => $remaining,
+                    'expected_date' => $item->purchaseOrder?->expected_date?->toDateString(),
+                    'status' => $item->purchaseOrder?->status,
+                ];
+            }
+        }
+
+        if (Schema::hasTable('warehouse_transfers') && Schema::hasTable('warehouse_transfer_items')) {
+            $transferItems = \Modules\Inventory\Models\WarehouseTransferItem::query()
+                ->where('product_id', $productId)
+                ->whereHas('warehouseTransfer', function ($query) use ($warehouseId) {
+                    $query->where('to_warehouse_id', $warehouseId)
+                        ->whereIn('status', ['pending', 'in_transit']);
+                })
+                ->with(['warehouseTransfer' => function ($query) {
+                    $query->select('id', 'transfer_number', 'expected_date', 'status');
+                }])
+                ->get();
+
+            foreach ($transferItems as $item) {
+                // In transit, only what was actually shipped is expected to
+                // arrive; a pending transfer is still expected in full.
+                $expected = $item->warehouseTransfer?->status === 'in_transit'
+                    ? (float) $item->quantity_sent
+                    : (float) $item->quantity_requested;
+                $remaining = max(0.0, $expected - (float) $item->quantity_received);
+                if ($remaining <= 0) {
+                    continue;
+                }
+
+                $incoming[] = [
+                    'source_type' => 'warehouse_transfer',
+                    'source_id' => (int) $item->warehouse_transfer_id,
+                    'reference' => $item->warehouseTransfer?->transfer_number,
+                    'quantity' => $remaining,
+                    'expected_date' => $item->warehouseTransfer?->expected_date?->toDateString(),
+                    'status' => $item->warehouseTransfer?->status,
+                ];
+            }
+        }
+
+        return $incoming;
+    }
+
+    /**
      * Issue #686: active reservation quantity held by OTHER documents for a
      * product/warehouse. The caller's own document (source type + id) is
      * excluded: its hold counts as available to it. Rows are the source of

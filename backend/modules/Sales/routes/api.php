@@ -81,6 +81,10 @@ Route::middleware([
             // for the standalone DO create page. Must precede the apiResource
             // below so "stock-check" is not captured by the {id} show route.
             Route::get('/sales/delivery-orders/stock-check', [DeliveryOrderController::class, 'stockCheck']);
+            // Issue #687 (UX1): bulk per-line availability for document line
+            // editors and the order-confirm shortage summary. Same path as the
+            // #465 check, bulk POST body (warehouse_id + product lines).
+            Route::post('/sales/delivery-orders/stock-check', [DeliveryOrderController::class, 'bulkStockCheck']);
             Route::get('/sales/orders/{id}/deliveries', [DeliveryOrderController::class, 'forSalesOrder']);
         });
 

@@ -218,11 +218,36 @@ class DeliveryOrderService
      * active hold is somebody else's — the same shared calculation the
      * creation guard uses.
      *
-     * @return array{on_hand: float, reserved: float, available: float}
+     * Issue #687: incoming supply (open POs / inbound transfers) is attached
+     * for the line-editor chip's hover details. The availability arithmetic
+     * itself stays in InventoryService::stockAvailability() (#465/#686).
+     *
+     * @return array{on_hand: float, reserved: float, available: float, incoming: array<int, array<string, mixed>>, incoming_quantity: float}
      */
     public function stockAvailability(int $productId, int $warehouseId): array
     {
-        return $this->inventoryService->stockAvailability($productId, $warehouseId);
+        $availability = $this->inventoryService->stockAvailability($productId, $warehouseId);
+        $incoming = $this->inventoryService->incomingStock($productId, $warehouseId);
+
+        return [
+            ...$availability,
+            'incoming' => $incoming,
+            'incoming_quantity' => (float) array_sum(array_column($incoming, 'quantity')),
+        ];
+    }
+
+    /**
+     * Issue #687 (UX1): bulk availability for a document's product lines and
+     * the order-confirm shortage summary. Delegates to the shared
+     * InventoryService computation so every sales path reports the same
+     * on-hand / reserved / available figures as the #465 pre-submit check.
+     *
+     * @param  array<int, array{product_id?: int|string|null, quantity?: int|float|string|null}>  $lines
+     * @return array{warehouse_id: int, lines: array<int, array<string, mixed>>, summary: array{line_count: int, lines_short: int}, incoming_note: ?string}
+     */
+    public function bulkStockAvailability(int $warehouseId, array $lines): array
+    {
+        return $this->inventoryService->bulkStockAvailability($warehouseId, $lines);
     }
 
     // ════════════════════════════════════════════════════════════════════════
