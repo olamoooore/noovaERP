@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,8 @@ import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/De
 import { Pagination } from '@/components/ui/Pagination'
 import { SortableHead } from '@/components/ui/SortableHead'
 import { useSort } from '@/hooks/useSort'
+import { fetchBulkStockAvailability } from '@/components/sales/stockAvailability'
+import { StockShortageDialog, type ShortageLine } from '@/components/sales/StockShortageDialog'
 
 const STATUS_FILTERS = [
   { value: 'all', label: 'All Statuses' },
@@ -47,6 +49,12 @@ export function SalesOrdersPage() {
   }, [searchQuery])
   const [statusFilter, setStatusFilter] = useState('all')
   const [channelFilter, setChannelFilter] = useState('all')
+  // Issue #687 (UX1): confirm preflights the order's lines and, when short,
+  // asks explicitly (deliver partially / backorder / change warehouse)
+  // instead of silently creating backorders (#379).
+  const [shortage, setShortage] = useState<{ orderId: number; lines: ShortageLine[] } | null>(null)
+  const [preflightPending, setPreflightPending] = useState(false)
+  const confirmIntentRef = useRef<'backorder' | 'partial' | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['sales-orders', { page, pageSize, debouncedSearchQuery, statusFilter, channelFilter }],
@@ -65,12 +73,30 @@ export function SalesOrdersPage() {
       const response = await api.post(`/sales/orders/${id}/confirm`)
       return response.data
     },
-    onSuccess: (data) => {
+    onSuccess: (data, id) => {
       queryClient.invalidateQueries({ queryKey: ['sales-orders'] })
       if (data?.requires_approval) {
         toast({
           title: 'Approval required',
           description: data?.message || 'An approval request has been submitted for this order.',
+        })
+        return
+      }
+
+      const intent = confirmIntentRef.current
+      confirmIntentRef.current = null
+      if (intent === 'partial') {
+        toast({
+          title: 'Order confirmed',
+          description: 'Create the delivery order for the available quantity; short lines stay backordered.',
+        })
+        navigate(`/delivery-orders/create?sales_order_id=${id}`)
+        return
+      }
+      if (intent === 'backorder') {
+        toast({
+          title: 'Order confirmed',
+          description: 'Short lines continue as backorders until stock arrives.',
         })
         return
       }
@@ -84,6 +110,75 @@ export function SalesOrdersPage() {
       })
     },
   })
+
+  /**
+   * Issue #687: the list's Confirm action preflights the order's lines in its
+   * commitment warehouse. Advisory only — a failed availability service
+   * surfaces a warning and the confirm still proceeds.
+   */
+  const beginConfirm = async (order: any) => {
+    const warehouseId = order?.warehouse_id
+    const productLines = (order?.lines ?? []).filter(
+      (line: any) =>
+        (line.line_type ?? 'product') === 'product' &&
+        line.product_id &&
+        Number(line.quantity) > 0,
+    )
+
+    if (!warehouseId || productLines.length === 0) {
+      confirmMutation.mutate(order.id)
+      return
+    }
+
+    setPreflightPending(true)
+    try {
+      const availability = await fetchBulkStockAvailability(
+        warehouseId,
+        productLines.map((line: any) => ({
+          product_id: line.product_id,
+          quantity: Number(line.quantity),
+        })),
+      )
+
+      const short = (availability.lines ?? []).filter((line) => !line.sufficient)
+      if (short.length > 0) {
+        setShortage({
+          orderId: order.id,
+          lines: short.map((line) => {
+            const orderLine = productLines.find(
+              (candidate: any) => Number(candidate.product_id) === Number(line.product_id),
+            )
+            return {
+              product_id: line.product_id,
+              product_name: orderLine?.product?.name ?? null,
+              requested: Number(line.requested),
+              available: Number(line.available),
+              incoming_quantity: Number(line.incoming_quantity ?? 0),
+            }
+          }),
+        })
+        return
+      }
+    } catch {
+      toast({
+        title: 'Stock check unavailable',
+        description: 'Confirming without the availability summary — the order may include backorders.',
+        variant: 'destructive',
+      })
+    } finally {
+      setPreflightPending(false)
+    }
+
+    confirmMutation.mutate(order.id)
+  }
+
+  const chooseShortageAction = (intent: 'backorder' | 'partial') => {
+    const orderId = shortage?.orderId
+    setShortage(null)
+    if (!orderId) return
+    confirmIntentRef.current = intent
+    confirmMutation.mutate(orderId)
+  }
 
   const cancelMutation = useMutation({
     mutationFn: async ({ id, reason }: { id: number; reason: string }) => {
@@ -261,8 +356,8 @@ export function SalesOrdersPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => confirmMutation.mutate(order.id)}
-                              disabled={confirmMutation.isPending}
+                              onClick={() => void beginConfirm(order)}
+                              disabled={confirmMutation.isPending || preflightPending}
                             >
                               Confirm
                             </Button>
@@ -306,6 +401,24 @@ export function SalesOrdersPage() {
           )}
         </CardContent>
       </Card>
+
+      <StockShortageDialog
+        open={shortage !== null}
+        onOpenChange={(open) => {
+          if (!open) setShortage(null)
+        }}
+        lines={shortage?.lines ?? []}
+        pending={confirmMutation.isPending}
+        onBackorder={() => chooseShortageAction('backorder')}
+        onDeliverPartially={() => chooseShortageAction('partial')}
+        onChangeWarehouse={() => {
+          setShortage(null)
+          toast({
+            title: 'Not confirmed',
+            description: 'Change the commitment warehouse, then confirm the order again.',
+          })
+        }}
+      />
     </div>
   )
 }

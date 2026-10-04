@@ -11,6 +11,7 @@ use Modules\TemplateBuilder\Models\DocumentTemplateAssignment;
 use Modules\TemplateBuilder\Platform\AssignmentOutcome;
 use Modules\TemplateBuilder\Platform\ResolutionContext;
 use Modules\TemplateBuilder\Platform\ResolutionResult;
+use Modules\TemplateBuilder\Support\CanonicalRegistrations;
 
 /**
  * ADR-004 section 11 - Deterministic Template Assignment Resolver.
@@ -93,13 +94,18 @@ final class AssignmentResolver
      */
     private function matchingAssignments(ResolutionContext $context, array &$explanation): Collection
     {
+        // Issue #615: canonical ADR-004 codes and runtime data-source keys
+        // name the same type (e.g. ar_credit_note ⇄ credit_note). Match every
+        // equivalent key in one place, via the single key map.
+        $typeKeys = CanonicalRegistrations::keysFor($context->templateTypeCode);
+
         $query = DocumentTemplateAssignment::query()
             ->active()
             ->with('template')
-            ->where(function ($q) use ($context) {
+            ->where(function ($q) use ($typeKeys) {
                 // Match by document_type (legacy) OR template_type_code (ADR-004).
-                $q->where('document_type', $context->templateTypeCode)
-                    ->orWhere('template_type_code', $context->templateTypeCode);
+                $q->whereIn('document_type', $typeKeys)
+                    ->orWhereIn('template_type_code', $typeKeys);
             });
 
         if ($context->interactionType !== null) {
@@ -205,11 +211,13 @@ final class AssignmentResolver
             );
         }
 
+        $typeKeys = CanonicalRegistrations::keysFor($context->templateTypeCode);
+
         $default = DocumentTemplate::query()
             ->resolvable()
-            ->where(function ($q) use ($context) {
-                $q->where('document_type', $context->templateTypeCode)
-                    ->orWhereHas('registration', fn ($rq) => $rq->where('template_type_code', $context->templateTypeCode));
+            ->where(function ($q) use ($typeKeys) {
+                $q->whereIn('document_type', $typeKeys)
+                    ->orWhereHas('registration', fn ($rq) => $rq->whereIn('template_type_code', $typeKeys));
             })
             ->where('is_system_default', true)
             ->latest()

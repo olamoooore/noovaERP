@@ -2,6 +2,7 @@
 
 namespace Modules\FinancialReporting\Controllers;
 
+use App\Models\LegalEntity;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -46,6 +47,13 @@ class FinancialReportController extends Controller
         ]);
 
         try {
+            // #855 (RP4): never sum different base currencies. With more than
+            // one base currency in scope the caller must pick a legal entity;
+            // translation to a presentation currency is a separate feature.
+            if ($scopeError = $this->multiCurrencyScopeError($validated['legal_entity_id'] ?? null)) {
+                return $scopeError;
+            }
+
             $filter = ReportFilter::fromRequest($validated);
 
             // Validate date range
@@ -105,6 +113,7 @@ class FinancialReportController extends Controller
     public function balanceSheet(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'legal_entity_id' => 'nullable|integer',
             'as_of_date' => 'required|date',
             'compare_date' => 'nullable|date',
             'department_id' => 'nullable|integer|exists:departments,id',
@@ -118,6 +127,13 @@ class FinancialReportController extends Controller
         }
 
         try {
+            // #855 (RP4): never sum different base currencies. With more than
+            // one base currency in scope the caller must pick a legal entity;
+            // translation to a presentation currency is a separate feature.
+            if ($scopeError = $this->multiCurrencyScopeError($validated['legal_entity_id'] ?? null)) {
+                return $scopeError;
+            }
+
             $filter = ReportFilter::fromRequest($validated);
 
             $reportData = $this->balanceSheetService->generate($filter);
@@ -350,6 +366,7 @@ class FinancialReportController extends Controller
     public function cashFlow(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'legal_entity_id' => 'nullable|integer',
             'start_date' => 'required|date',
             'end_date' => 'required|date|after_or_equal:start_date',
             'method' => 'nullable|in:direct,indirect',
@@ -359,6 +376,13 @@ class FinancialReportController extends Controller
         ]);
 
         try {
+            // #855 (RP4): never sum different base currencies. With more than
+            // one base currency in scope the caller must pick a legal entity;
+            // translation to a presentation currency is a separate feature.
+            if ($scopeError = $this->multiCurrencyScopeError($validated['legal_entity_id'] ?? null)) {
+                return $scopeError;
+            }
+
             $filter = ReportFilter::fromRequest($validated);
 
             // Set method in interval field (reusing existing field)
@@ -426,6 +450,7 @@ class FinancialReportController extends Controller
     public function trialBalance(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'legal_entity_id' => 'nullable|integer',
             'as_of_date' => 'required|date',
             'compare_date' => 'nullable|date',
             'account_type' => 'nullable|in:asset,liability,equity,revenue,expense',
@@ -438,6 +463,13 @@ class FinancialReportController extends Controller
         }
 
         try {
+            // #855 (RP4): never sum different base currencies. With more than
+            // one base currency in scope the caller must pick a legal entity;
+            // translation to a presentation currency is a separate feature.
+            if ($scopeError = $this->multiCurrencyScopeError($validated['legal_entity_id'] ?? null)) {
+                return $scopeError;
+            }
+
             $filter = ReportFilter::fromRequest($validated);
 
             // Store account_type in the filter's interval field (reusing existing field)
@@ -512,6 +544,7 @@ class FinancialReportController extends Controller
     public function generalLedger(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'legal_entity_id' => 'nullable|integer',
             'account_id' => 'nullable|integer',  // Made optional
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
@@ -523,6 +556,13 @@ class FinancialReportController extends Controller
         ]);
 
         try {
+            // #855 (RP4): never sum different base currencies. With more than
+            // one base currency in scope the caller must pick a legal entity;
+            // translation to a presentation currency is a separate feature.
+            if ($scopeError = $this->multiCurrencyScopeError($validated['legal_entity_id'] ?? null)) {
+                return $scopeError;
+            }
+
             $filter = ReportFilter::fromRequest($validated);
 
             // If no account_id provided, show multi-account summary
@@ -643,5 +683,35 @@ class FinancialReportController extends Controller
                 'error' => 'Failed to generate report. Please try again.',
             ], 500);
         }
+    }
+
+    /**
+     * #855 (RP4): a tenant-scoped report is only meaningful when every legal
+     * entity in scope shares one base currency. Returns a 422 response when
+     * the tenant's entities differ and no entity was selected; null when the
+     * scope is safe (one currency, or a selected entity).
+     */
+    private function multiCurrencyScopeError(?int $legalEntityId): ?JsonResponse
+    {
+        if ($legalEntityId !== null) {
+            return null;
+        }
+
+        $currencies = LegalEntity::query()
+            ->whereNotNull('base_currency')
+            ->pluck('base_currency')
+            ->map(static fn ($currency) => strtoupper((string) $currency))
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($currencies->count() <= 1) {
+            return null;
+        }
+
+        return response()->json([
+            'error' => 'This tenant has legal entities with different base currencies ('
+                .$currencies->implode(', ').'). Select a legal entity for the report — amounts are never summed across currencies.',
+        ], 422);
     }
 }

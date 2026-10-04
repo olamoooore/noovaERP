@@ -56,6 +56,26 @@ Route::middleware([
     Route::get('/customer-statements/{id}/pdf', [DocumentRenderController::class, 'customerStatementPdf'])
         ->middleware($perm('document.view'));
 
+    // Issue #615 (TP5): sales order family + credit note. The controller
+    // additionally enforces each source document's own permission
+    // (sales.view / accounting.view) and legal entity.
+    Route::get('/sales/orders/{id}/pdf', [DocumentRenderController::class, 'salesOrderPdf'])
+        ->middleware($perm('document.view'));
+    Route::get('/sales/orders/{id}/html', [DocumentRenderController::class, 'salesOrderHtml'])
+        ->middleware($perm('document.view'));
+    Route::get('/sales/orders/{id}/confirmation/pdf', [DocumentRenderController::class, 'orderConfirmationPdf'])
+        ->middleware($perm('document.view'));
+    Route::get('/sales/orders/{id}/confirmation/html', [DocumentRenderController::class, 'orderConfirmationHtml'])
+        ->middleware($perm('document.view'));
+    Route::get('/sales/orders/{id}/proforma/pdf', [DocumentRenderController::class, 'proformaInvoicePdf'])
+        ->middleware($perm('document.view'));
+    Route::get('/sales/orders/{id}/proforma/html', [DocumentRenderController::class, 'proformaInvoiceHtml'])
+        ->middleware($perm('document.view'));
+    Route::get('/credit-notes/{id}/pdf', [DocumentRenderController::class, 'creditNotePdf'])
+        ->middleware($perm('document.view'));
+    Route::get('/credit-notes/{id}/html', [DocumentRenderController::class, 'creditNoteHtml'])
+        ->middleware($perm('document.view'));
+
     // Issue #613: explicit, permissioned re-issue with the current template.
     // Stores a new immutable version and keeps the previously issued copy.
     // Uses the already-seeded document.regenerate permission (Owner/Admin/

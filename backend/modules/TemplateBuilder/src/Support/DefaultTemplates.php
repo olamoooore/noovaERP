@@ -24,6 +24,13 @@ final class DefaultTemplates
             self::receipt(),
             self::deliveryOrder(),
             self::customerStatement(),
+            // Issue #615 (TP5): sales order family + credit note now have data
+            // sources and render routes, so they are editor-visible with a
+            // starter each.
+            self::salesOrder(),
+            self::orderConfirmation(),
+            self::proformaInvoice(),
+            self::creditNote(),
         ];
     }
 
@@ -351,6 +358,157 @@ final class DefaultTemplates
                     ['type' => 'footer', 'children' => [
                         ['type' => 'divider'],
                         ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => '{{ company.name }} · {{ company.email }} · {{ company.phone }}'],
+                    ]],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * Issue #615 (TP5) — sales order family starter. Order confirmation and
+     * pro forma invoice share this layout through thin data-source variants;
+     * only the document heading and registered type differ.
+     *
+     * @return array<string,mixed>
+     */
+    private static function salesDocument(string $documentType, string $code, string $name, string $title): array
+    {
+        return [
+            'document_type' => $documentType,
+            'code' => $code,
+            'name' => $name,
+            'mode' => 'block',
+            'format' => 'A4',
+            'orientation' => 'portrait',
+            'default_font' => 'DejaVu Sans',
+            'status' => 'published',
+            'is_system_default' => true,
+            'layout_config' => [
+                'blocks' => [
+                    ['type' => 'columns', 'gap' => 8, 'children' => [
+                        ['type' => 'columns', 'gap' => 4, 'children' => [
+                            ['type' => 'image', 'url' => '{{ company.logo_url }}', 'width' => 120, 'align' => 'left'],
+                            ['type' => 'text', 'content' => '<div style="font-size:20px;font-weight:bold;color:#111827;">{{ company.name }}</div><div style="font-size:10px;color:#6b7280;">{{ company.address }}</div><div style="font-size:10px;color:#6b7280;">{{ company.website }}</div>'],
+                        ]],
+                        ['type' => 'text', 'align' => 'right', 'content' => '<div style="font-size:24px;font-weight:bold;color:#111827;">'.$title.'</div><div style="font-size:10px;color:#6b7280;">{{ company.email }} · {{ company.phone }}</div>'],
+                    ]],
+                    ['type' => 'divider'],
+                    ['type' => 'columns', 'gap' => 8, 'children' => [
+                        ['type' => 'text', 'content' => '<b style="color:#6b7280;font-size:9px;text-transform:uppercase;">Bill To</b><br/><b>{{ customer.name }}</b><br/><span style="font-size:10px;color:#374151;">{{ sales_order.billing_address }}</span><br/><span style="font-size:10px;color:#6b7280;">{{ customer.email }}</span><br/><span style="font-size:10px;color:#6b7280;">{{ customer.tax_id }}</span>'],
+                        ['type' => 'text', 'align' => 'right', 'content' => '<b>Order #:</b> {{ sales_order.number }}<br/><b>Date:</b> {{ sales_order.order_date }}<br/><b>Required:</b> {{ sales_order.required_date }}<br/><b>PO No:</b> {{ sales_order.po_number }}<br/><b>Reference:</b> {{ sales_order.customer_reference }}'],
+                    ]],
+                    ['type' => 'columns', 'gap' => 8, 'children' => [
+                        ['type' => 'text', 'content' => '<b style="color:#6b7280;font-size:9px;text-transform:uppercase;">Ship To</b><br/><span style="font-size:10px;color:#374151;">{{ sales_order.shipping_address }}</span>'],
+                        ['type' => 'text', 'align' => 'right', 'content' => '<b>Attention:</b> {{ sales_order.attention_to }}<br/><b>Warehouse:</b> {{ sales_order.warehouse }}'],
+                    ]],
+                    ['type' => 'spacer', 'height' => 12],
+                    ['type' => 'table', 'source' => 'lines', 'paginate' => false, 'columns' => [
+                        ['label' => '#', 'field' => 'index', 'width' => '5%', 'align' => 'center'],
+                        ['label' => 'SKU', 'field' => 'sku', 'width' => '12%'],
+                        ['label' => 'Description', 'field' => 'description', 'width' => '37%'],
+                        ['label' => 'Qty', 'field' => 'quantity', 'width' => '10%', 'align' => 'right'],
+                        ['label' => 'Unit Price', 'field' => 'unit_price', 'width' => '17%', 'align' => 'right', 'format' => 'money'],
+                        ['label' => 'Amount', 'field' => 'line_total', 'width' => '19%', 'align' => 'right', 'format' => 'money'],
+                    ]],
+                    ['type' => 'spacer', 'height' => 10],
+                    ['type' => 'totals', 'rows' => [
+                        ['label' => 'Subtotal', 'field' => 'totals.subtotal', 'format' => 'money'],
+                        ['label' => 'Discount', 'field' => 'totals.discount', 'format' => 'money'],
+                        ['label' => 'Tax', 'field' => 'totals.tax', 'format' => 'money'],
+                        ['label' => 'Total', 'field' => 'totals.total', 'format' => 'money', 'bold' => true],
+                    ]],
+                    ['type' => 'conditional', 'condition' => "{{ totals.amount_in_words }} != ''", 'children' => [
+                        ['type' => 'text', 'size' => 9, 'color' => '#374151', 'content' => '<b>Amount in Words:</b> {{ totals.amount_in_words }}'],
+                    ]],
+                    ['type' => 'spacer', 'height' => 8],
+                    ['type' => 'text', 'size' => 9, 'color' => '#6b7280', 'content' => '{{ sales_order.notes }}'],
+                    ['type' => 'spacer', 'height' => 8],
+                    ['type' => 'footer', 'children' => [
+                        ['type' => 'divider'],
+                        ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => '{{ company.name }} · {{ company.email }} · {{ company.phone }} · {{ company.website }}'],
+                    ]],
+                ],
+            ],
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    public static function salesOrder(): array
+    {
+        return self::salesDocument('sales_order', 'SO-TPL-DEFAULT', 'Default Sales Order', 'SALES ORDER');
+    }
+
+    /** @return array<string,mixed> */
+    public static function orderConfirmation(): array
+    {
+        return self::salesDocument('sales_order_confirmation', 'SOC-TPL-DEFAULT', 'Default Order Confirmation', 'ORDER CONFIRMATION');
+    }
+
+    /** @return array<string,mixed> */
+    public static function proformaInvoice(): array
+    {
+        return self::salesDocument('sales_proforma_invoice', 'PRO-TPL-DEFAULT', 'Default Pro Forma Invoice', 'PRO FORMA INVOICE');
+    }
+
+    /**
+     * Issue #615 (TP5) — customer credit note starter (#531). Statutory facts
+     * (original invoice, reason, credited amount) come from the
+     * CreditNoteDataSource; the runtime template type is `credit_note` while
+     * the ADR-004 registration is `ar_credit_note`.
+     *
+     * @return array<string,mixed>
+     */
+    public static function creditNote(): array
+    {
+        return [
+            'document_type' => 'credit_note',
+            'code' => 'CN-TPL-DEFAULT',
+            'name' => 'Default Credit Note',
+            'mode' => 'block',
+            'format' => 'A4',
+            'orientation' => 'portrait',
+            'default_font' => 'DejaVu Sans',
+            'status' => 'published',
+            'is_system_default' => true,
+            'layout_config' => [
+                'blocks' => [
+                    ['type' => 'columns', 'gap' => 8, 'children' => [
+                        ['type' => 'columns', 'gap' => 4, 'children' => [
+                            ['type' => 'image', 'url' => '{{ company.logo_url }}', 'width' => 120, 'align' => 'left'],
+                            ['type' => 'text', 'content' => '<div style="font-size:20px;font-weight:bold;color:#111827;">{{ company.name }}</div><div style="font-size:10px;color:#6b7280;">{{ company.address }}</div><div style="font-size:10px;color:#6b7280;">{{ company.website }}</div>'],
+                        ]],
+                        ['type' => 'text', 'align' => 'right', 'content' => '<div style="font-size:24px;font-weight:bold;color:#111827;">CREDIT NOTE</div><div style="font-size:10px;color:#6b7280;">{{ company.email }} · {{ company.phone }}</div>'],
+                    ]],
+                    ['type' => 'divider'],
+                    ['type' => 'columns', 'gap' => 8, 'children' => [
+                        ['type' => 'text', 'content' => '<b style="color:#6b7280;font-size:9px;text-transform:uppercase;">Credit To</b><br/><b>{{ customer.name }}</b><br/><span style="font-size:10px;color:#374151;">{{ credit_note.billing_address }}</span><br/><span style="font-size:10px;color:#6b7280;">{{ customer.email }}</span><br/><span style="font-size:10px;color:#6b7280;">{{ customer.tax_id }}</span>'],
+                        ['type' => 'text', 'align' => 'right', 'content' => '<b>Credit Note #:</b> {{ credit_note.number }}<br/><b>Date:</b> {{ credit_note.issue_date }}<br/><b>Original Invoice:</b> {{ credit_note.invoice_number }}<br/><b>Invoice Date:</b> {{ credit_note.invoice_date }}<br/><b>Reason:</b> {{ credit_note.reason }}'],
+                    ]],
+                    ['type' => 'spacer', 'height' => 12],
+                    ['type' => 'table', 'source' => 'lines', 'paginate' => false, 'columns' => [
+                        ['label' => '#', 'field' => 'index', 'width' => '6%', 'align' => 'center'],
+                        ['label' => 'SKU', 'field' => 'sku', 'width' => '12%'],
+                        ['label' => 'Description', 'field' => 'description', 'width' => '36%'],
+                        ['label' => 'Qty', 'field' => 'quantity', 'width' => '10%', 'align' => 'right'],
+                        ['label' => 'Unit Price', 'field' => 'unit_price', 'width' => '17%', 'align' => 'right', 'format' => 'money'],
+                        ['label' => 'Amount', 'field' => 'line_total', 'width' => '19%', 'align' => 'right', 'format' => 'money'],
+                    ]],
+                    ['type' => 'spacer', 'height' => 10],
+                    ['type' => 'totals', 'rows' => [
+                        ['label' => 'Subtotal', 'field' => 'totals.subtotal', 'format' => 'money'],
+                        ['label' => 'Discount', 'field' => 'totals.discount', 'format' => 'money'],
+                        ['label' => 'Tax', 'field' => 'totals.tax', 'format' => 'money'],
+                        ['label' => 'Credit Amount', 'field' => 'totals.total', 'format' => 'money', 'bold' => true],
+                    ]],
+                    ['type' => 'conditional', 'condition' => "{{ totals.amount_in_words }} != ''", 'children' => [
+                        ['type' => 'text', 'size' => 9, 'color' => '#374151', 'content' => '<b>Amount in Words:</b> {{ totals.amount_in_words }}'],
+                    ]],
+                    ['type' => 'spacer', 'height' => 8],
+                    ['type' => 'text', 'size' => 9, 'color' => '#6b7280', 'content' => '{{ credit_note.notes }}'],
+                    ['type' => 'spacer', 'height' => 8],
+                    ['type' => 'footer', 'children' => [
+                        ['type' => 'divider'],
+                        ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => '{{ company.name }} · {{ company.email }} · {{ company.phone }} · {{ company.website }}'],
                     ]],
                 ],
             ],

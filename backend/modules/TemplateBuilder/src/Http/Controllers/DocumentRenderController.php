@@ -21,6 +21,12 @@ use Symfony\Component\HttpFoundation\Response;
  *   GET /purchase-orders/{id}/pdf
  *   GET /payments/{id}/pdf
  *
+ * Issue #615 (TP5) adds the sales order family and credit note:
+ *   GET /sales/orders/{id}/pdf (+ /html)
+ *   GET /sales/orders/{id}/confirmation/pdf (+ /html)
+ *   GET /sales/orders/{id}/proforma/pdf (+ /html)
+ *   GET /credit-notes/{id}/pdf (+ /html)
+ *
  * Issue #611: every render authorizes against the SOURCE document's own
  * permission and legal entity before generating output. document.view alone
  * (the coarse route gate) is not enough — a cashier/viewer holding it must
@@ -93,6 +99,48 @@ class DocumentRenderController extends Controller
     public function customerStatementPdf(Request $request, string $id): Response
     {
         return $this->renderDocument('customer_statement', $id, $request, 'statement-'.$id.'.pdf');
+    }
+
+    // ─── Issue #615 (TP5): sales order family + credit note ─────────────────
+
+    public function salesOrderPdf(Request $request, string $id): Response
+    {
+        return $this->renderDocument('sales_order', $id, $request, 'so-'.$id.'.pdf');
+    }
+
+    public function salesOrderHtml(Request $request, string $id): Response
+    {
+        return $this->renderDocument('sales_order', $id, $request, null, 'html');
+    }
+
+    public function orderConfirmationPdf(Request $request, string $id): Response
+    {
+        return $this->renderDocument('sales_order_confirmation', $id, $request, 'so-confirmation-'.$id.'.pdf');
+    }
+
+    public function orderConfirmationHtml(Request $request, string $id): Response
+    {
+        return $this->renderDocument('sales_order_confirmation', $id, $request, null, 'html');
+    }
+
+    public function proformaInvoicePdf(Request $request, string $id): Response
+    {
+        return $this->renderDocument('sales_proforma_invoice', $id, $request, 'proforma-'.$id.'.pdf');
+    }
+
+    public function proformaInvoiceHtml(Request $request, string $id): Response
+    {
+        return $this->renderDocument('sales_proforma_invoice', $id, $request, null, 'html');
+    }
+
+    public function creditNotePdf(Request $request, string $id): Response
+    {
+        return $this->renderDocument('credit_note', $id, $request, 'credit-note-'.$id.'.pdf');
+    }
+
+    public function creditNoteHtml(Request $request, string $id): Response
+    {
+        return $this->renderDocument('credit_note', $id, $request, null, 'html');
     }
 
     /**

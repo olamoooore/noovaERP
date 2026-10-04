@@ -29,6 +29,7 @@ use App\Http\Controllers\Api\CustomerCreditNotesController;
 use App\Http\Controllers\Api\CustomersController;
 use App\Http\Controllers\Api\CustomerStatementController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\DocumentAuditController;
 use App\Http\Controllers\Api\DocumentCurrencyController;
 use App\Http\Controllers\Api\EntityManagementController;
 use App\Http\Controllers\Api\ExchangeRatesController;
@@ -323,6 +324,16 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
     Route::post('customers/{customer}/contacts/{contact}/set-primary', [CustomerController::class, 'setPrimaryContact'])
         ->middleware(RequirePermission::using('customers.write'));
 
+    // Issue #905 (PCU1): read-only audit tab under the customer view gate.
+    Route::get('customers/{subjectId}/audit', [DocumentAuditController::class, 'index'])
+        ->whereNumber('subjectId')
+        ->defaults('auditSubject', 'customer')
+        ->middleware(RequirePermission::using('customers.view'));
+    Route::get('customers/{subjectId}/audit/export', [DocumentAuditController::class, 'export'])
+        ->whereNumber('subjectId')
+        ->defaults('auditSubject', 'customer')
+        ->middleware(RequirePermission::using('customers.view'));
+
     Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class, EnsureAccountingWriteAccess::class])->group(function () {
         // Invoices
         Route::post('/invoices/import', [InvoiceController::class, 'import'])
@@ -417,6 +428,17 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::get('/invoices/{invoice}/timeline', [InvoiceController::class, 'getTimeline'])
             ->middleware(RequirePermission::using('invoices.view'));
 
+        // Issue #905 (PCU1): read-only audit tab. GET-only, and gated by the
+        // same view permission that opens the invoice.
+        Route::get('/invoices/{subjectId}/audit', [DocumentAuditController::class, 'index'])
+            ->whereNumber('subjectId')
+            ->defaults('auditSubject', 'invoice')
+            ->middleware(RequirePermission::using('invoices.view'));
+        Route::get('/invoices/{subjectId}/audit/export', [DocumentAuditController::class, 'export'])
+            ->whereNumber('subjectId')
+            ->defaults('auditSubject', 'invoice')
+            ->middleware(RequirePermission::using('invoices.view'));
+
         Route::post('/invoices/{invoice}/cancel', [InvoiceController::class, 'cancel'])
             ->middleware(RequirePermission::using('accounting.post'));
         // Reverses the ledger and restores stock — admin/owner only.
@@ -463,6 +485,17 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::get('/payments/{payment}/allocations', [PaymentController::class, 'allocations'])
             ->middleware(RequirePermission::using('accounting.view')); // #481
         Route::post('/payments/{payment}/allocations', [PaymentController::class, 'allocate']);
+
+        // Issue #905 (PCU1): read-only audit tab, gated by the payments read
+        // permission (#481 uses accounting.view for every payment read).
+        Route::get('/payments/{subjectId}/audit', [DocumentAuditController::class, 'index'])
+            ->whereNumber('subjectId')
+            ->defaults('auditSubject', 'payment')
+            ->middleware(RequirePermission::using('accounting.view'));
+        Route::get('/payments/{subjectId}/audit/export', [DocumentAuditController::class, 'export'])
+            ->whereNumber('subjectId')
+            ->defaults('auditSubject', 'payment')
+            ->middleware(RequirePermission::using('accounting.view'));
     });
 
     // Quotations — sales documents guarded by the sales permission family
@@ -488,6 +521,16 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::post('/quotations/{id}/reset-to-draft', [QuotationController::class, 'resetToDraft'])->middleware(RequirePermission::using('documents.reset_to_draft'));
         Route::post('/quotations/{id}/create-invoice', [QuotationController::class, 'createInvoice'])->middleware(RequirePermission::using('quotations.write'));
         Route::post('/quotations/{id}/create-delivery-order', [QuotationController::class, 'createDeliveryOrder'])->middleware(RequirePermission::using('quotations.write'));
+
+        // Issue #905 (PCU1): read-only audit tab under the quotation view gate.
+        Route::get('/quotations/{subjectId}/audit', [DocumentAuditController::class, 'index'])
+            ->whereNumber('subjectId')
+            ->defaults('auditSubject', 'quotation')
+            ->middleware(RequirePermission::using('quotations.view'));
+        Route::get('/quotations/{subjectId}/audit/export', [DocumentAuditController::class, 'export'])
+            ->whereNumber('subjectId')
+            ->defaults('auditSubject', 'quotation')
+            ->middleware(RequirePermission::using('quotations.view'));
     });
 
     // ── Price Lists & Multi-Currency Document Pricing ──────────────────────
@@ -952,6 +995,17 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.view'));
         Route::post('/customers/credit-notes/validate', [CustomerCreditNotesController::class, 'validateCreditNote'])
             ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.write'));
+
+        // Issue #905 (PCU1): read-only audit tab under the credit note's view
+        // gate (accounting.view, same as the credit note show route).
+        Route::get('/customers/credit-notes/{subjectId}/audit', [DocumentAuditController::class, 'index'])
+            ->whereNumber('subjectId')
+            ->defaults('auditSubject', 'credit_note')
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.view'));
+        Route::get('/customers/credit-notes/{subjectId}/audit/export', [DocumentAuditController::class, 'export'])
+            ->whereNumber('subjectId')
+            ->defaults('auditSubject', 'credit_note')
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.view'));
 
         // Customers List
         Route::get('/customers', [CustomersController::class, 'index'])

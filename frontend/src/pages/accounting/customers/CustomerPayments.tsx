@@ -13,6 +13,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Pagination } from '@/components/ui/Pagination';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { AuditTab } from '@/components/audit/AuditTab';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -988,6 +990,18 @@ const ViewPaymentDialog: React.FC<{
             Could not load full details. Showing cached row data.
           </div>
         ) : (
+        <Tabs defaultValue="details" className="space-y-4">
+          <TabsList className="h-9 w-fit rounded-full">
+            <TabsTrigger value="details" className="rounded-full px-4 text-xs">
+              Details
+            </TabsTrigger>
+            <TabsTrigger value="audit" className="gap-1.5 rounded-full px-4 text-xs">
+              <Icon icon="solar:shield-check-bold-duotone" className="h-3.5 w-3.5" />
+              Audit
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="details" className="space-y-4 mt-4">
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Status</span>
@@ -1125,6 +1139,12 @@ const ViewPaymentDialog: React.FC<{
             </div>
           )}
         </div>
+          </TabsContent>
+
+          <TabsContent value="audit" className="mt-4">
+            <AuditTab endpoint={`/payments/${detail.id}/audit`} permission="accounting.view" />
+          </TabsContent>
+        </Tabs>
         )}
       </DialogContent>
     </Dialog>

@@ -8,8 +8,10 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { ChatterDock } from '@/components/chatter'
+import { AuditTab } from '@/components/audit/AuditTab'
 import { TagEditor } from '@/components/tags/TagEditor'
 import { DocumentLinkChip } from '@/components/documents/DocumentLinkChip'
 import api from '@/lib/api'
@@ -615,6 +617,18 @@ export function DeliveryOrderDetailPage() {
         </div>
       )}
 
+      <Tabs defaultValue="document" className="space-y-6">
+        <TabsList className="h-10 w-fit rounded-full">
+          <TabsTrigger value="document" className="gap-2 rounded-full px-4">
+            Document
+          </TabsTrigger>
+          <TabsTrigger value="audit" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:shield-check-bold-duotone" className="h-4 w-4" />
+            Audit
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="document" className="space-y-6 mt-6">
       {/* Odoo-style smart buttons */}
       <div className="flex flex-wrap gap-3">
         {deliveryOrder.invoices && deliveryOrder.invoices.length > 0 && (
@@ -971,6 +985,13 @@ export function DeliveryOrderDetailPage() {
           )}
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="audit" className="mt-6">
+          <AuditTab endpoint={`/sales/delivery-orders/${id}/audit`} permission="sales.view" />
+        </TabsContent>
+      </Tabs>
+
       <ConfirmDialog
         open={confirmAction === 'delete'}
         onOpenChange={(open) => !open && setConfirmAction(null)}
