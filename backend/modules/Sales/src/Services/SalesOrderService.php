@@ -897,6 +897,14 @@ class SalesOrderService
         }
 
         $lines = [];
+        $orderDate = now()->toDateString();
+
+        // #306 (X6): these lines used to be booked at a hard-coded 0%, so
+        // service tax / GST was never charged on the resulting invoice.
+        // Labour is a service and resolves through the shared engine as the
+        // pack's service tax type (MY SST service rules; single-type packs
+        // like SG stay unfiltered); the fallback job line is a service too.
+        $labourTax = $this->resolveWorkOrderLineTax(true, null, $orderDate);
 
         foreach ($workOrder->timeLogs->where('is_billable', true) as $log) {
             $amount = (float) $log->duration_hours * (float) $log->hourly_rate;
@@ -914,7 +922,8 @@ class SalesOrderService
                 'quantity' => (float) $log->duration_hours,
                 'unit' => 'hour',
                 'unit_price' => (float) $log->hourly_rate,
-                'tax_rate' => 0,
+                'tax_rate' => $labourTax['rate'],
+                'tax_inclusive' => $labourTax['tax_inclusive'],
                 'discount_amount' => 0,
                 'source_line_type' => 'WorkOrderTimeLog',
                 'source_line_id' => $log->id,
@@ -928,6 +937,7 @@ class SalesOrderService
             }
 
             $description = $part->description ?: ($part->product->name ?? 'Part/Material');
+            $partTax = $this->resolveWorkOrderLineTax(false, $part->product, $orderDate);
 
             $lines[] = [
                 'product_id' => $part->product_id,
@@ -935,7 +945,8 @@ class SalesOrderService
                 'quantity' => (float) $part->quantity,
                 'unit' => 'pcs',
                 'unit_price' => (float) $part->unit_price,
-                'tax_rate' => 0,
+                'tax_rate' => $partTax['rate'],
+                'tax_inclusive' => $partTax['tax_inclusive'],
                 'discount_amount' => 0,
                 'source_line_type' => 'WorkOrderPart',
                 'source_line_id' => $part->id,
@@ -948,7 +959,8 @@ class SalesOrderService
                 'quantity' => 1,
                 'unit' => 'job',
                 'unit_price' => 0.00,
-                'tax_rate' => 0,
+                'tax_rate' => $labourTax['rate'],
+                'tax_inclusive' => $labourTax['tax_inclusive'],
                 'discount_amount' => 0,
             ];
         }
@@ -957,6 +969,7 @@ class SalesOrderService
             'customer_id' => $workOrder->customer_id,
             'channel' => 'admin',
             'created_by' => $workOrder->created_by,
+            'order_date' => $orderDate,
             'source_document_type' => 'WorkOrder',
             'source_document_id' => $workOrder->id,
             'notes' => "Generated from Work Order {$workOrder->reference}: {$workOrder->title}",
@@ -966,6 +979,43 @@ class SalesOrderService
         $workOrder->forceFill(['sales_order_id' => $order->id])->saveQuietly();
 
         return $order;
+    }
+
+    /**
+     * #306 (X6): resolve one Field Service line's tax on the shared engine.
+     * A part resolves from its product through TaxResolutionService (the
+     * canonical product resolver); labour and the fallback job line have no
+     * product and resolve as the country pack's declared service tax type —
+     * MY maps 'service' to its SST service rules, packs without a line-type
+     * map (SG, single GST type) stay unfiltered. No rate is ever hard-coded.
+     *
+     * @return array{rate: float, tax_inclusive: bool}
+     */
+    private function resolveWorkOrderLineTax(bool $isService, ?\App\Models\Product $product, string $orderDate): array
+    {
+        $engine = app(\App\Services\TaxEngineService::class);
+        $jurisdiction = $engine->tenantJurisdiction();
+
+        if (! $isService && $product !== null) {
+            $resolved = app(\App\Services\TaxResolutionService::class)->resolveTaxForProduct(
+                $product,
+                null,
+                $jurisdiction,
+                'output',
+                $orderDate,
+            );
+        } else {
+            $serviceTaxType = $isService
+                ? app(\App\Services\TaxCountryPackService::class)->lineTaxType($jurisdiction, 'service')
+                : null;
+
+            $resolved = $engine->resolve(null, $jurisdiction, 'output', $serviceTaxType, $orderDate);
+        }
+
+        return [
+            'rate' => (float) ($resolved['rate'] ?? 0),
+            'tax_inclusive' => (bool) ($resolved['is_inclusive'] ?? false),
+        ];
     }
 
     private function createChannelReference(SalesOrder $order, array $ref): SalesChannelReference
