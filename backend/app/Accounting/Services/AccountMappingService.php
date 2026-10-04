@@ -183,6 +183,84 @@ class AccountMappingService
     ];
 
     /**
+     * #775 (AU2): read-only health of the tenant's account-role mappings —
+     * unmapped roles, roles mapped to a wrong-typed account or to an inactive
+     * account. (Duplicate-control-account detection waits for the #763
+     * decision on what makes two control accounts duplicates.)
+     *
+     * @return array{unmapped: array<int, array<string, string>>, wrong_type: array<int, array<string, mixed>>, inactive_account: array<int, array<string, mixed>>, summary: array<string, int>}
+     */
+    public function health(): array
+    {
+        $expected = self::CODE_TYPES;
+
+        $mappings = AccountMapping::query()
+            ->whereNull('document_type')
+            ->with('account')
+            ->get()
+            ->keyBy('mapping_key');
+
+        $unmapped = [];
+        $wrongType = [];
+        $inactive = [];
+
+        foreach ($expected as $key => $type) {
+            $mapping = $mappings->get($key);
+
+            if (! $mapping || ! $mapping->is_active || ! $mapping->account) {
+                $unmapped[] = ['mapping_key' => $key, 'expected_type' => $type];
+
+                continue;
+            }
+
+            if ($mapping->account->type !== $type) {
+                $wrongType[] = [
+                    'mapping_key' => $key,
+                    'expected_type' => $type,
+                    'account_id' => $mapping->account->id,
+                    'account_code' => $mapping->account->code,
+                    'account_type' => $mapping->account->type,
+                ];
+            }
+
+            if (! $mapping->account->is_active) {
+                $inactive[] = [
+                    'mapping_key' => $key,
+                    'account_id' => $mapping->account->id,
+                    'account_code' => $mapping->account->code,
+                ];
+            }
+        }
+
+        return [
+            'unmapped' => $unmapped,
+            'wrong_type' => $wrongType,
+            'inactive_account' => $inactive,
+            'summary' => [
+                'expected_roles' => count($expected),
+                'unmapped' => count($unmapped),
+                'wrong_type' => count($wrongType),
+                'inactive_account' => count($inactive),
+            ],
+        ];
+    }
+
+    /**
+     * #775: point a role at an account (the one-click "map" fix). Explicit
+     * confirmation is the caller's contract; the write itself is a settings
+     * change, not a posting.
+     */
+    public function map(string $key, int $accountId): AccountMapping
+    {
+        $account = ChartOfAccount::query()->findOrFail($accountId);
+
+        return AccountMapping::updateOrCreate(
+            ['mapping_key' => $key, 'document_type' => null],
+            ['account_id' => $account->id, 'is_active' => true],
+        );
+    }
+
+    /**
      * Seed default mappings for a new tenant based on existing COA codes.
      * If a well-known COA code is missing, creates it first (so a tenant
      * with a stripped-down COA can still post through the engine).

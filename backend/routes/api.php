@@ -262,4 +262,10 @@ Route::prefix('v1/accounting')->middleware([
         ->middleware(\App\Http\Middleware\RequirePermission::class.':accounting.view');
     Route::put('/tenant/country-plugin-settings', [\App\Http\Controllers\Accounting\CountryPluginSettingsController::class, 'update'])
         ->middleware(\App\Http\Middleware\RequirePermission::class.':accounting.settings');
+
+    // #775 (AU2): account-role mapping health + the explicit remap fix.
+    Route::get('/account-mappings/health', [\App\Http\Controllers\Api\AccountMappingController::class, 'health'])
+        ->middleware(\App\Http\Middleware\RequirePermission::class.':accounting.view');
+    Route::put('/account-mappings/{mappingKey}', [\App\Http\Controllers\Api\AccountMappingController::class, 'update'])
+        ->middleware(\App\Http\Middleware\RequirePermission::class.':accounting.settings');
 });
