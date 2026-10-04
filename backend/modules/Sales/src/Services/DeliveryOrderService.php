@@ -443,7 +443,9 @@ class DeliveryOrderService
             'exchange_rate' => $order->exchange_rate,
             'base_currency_code' => $order->base_currency_code,
             'delivery_date' => $data['delivery_date'] ?? now()->toDateString(),
-            'expected_date' => $data['expected_date'] ?? null,
+            // Issue #408: the order's commitment (promised) date is carried to
+            // the delivery order unless the caller supplied its own date.
+            'expected_date' => $data['expected_date'] ?? $order->commitment_date?->toDateString(),
             'payment_terms' => $data['payment_terms'] ?? null,
             'carrier' => $data['carrier'] ?? null,
             'tracking_number' => $data['tracking_number'] ?? null,
@@ -466,6 +468,23 @@ class DeliveryOrderService
         ]);
 
         $lines = $data['lines'] ?? [];
+
+        // Issue #408: snapshot each order line's remaining-to-deliver under the
+        // #458 formula BEFORE this DO's lines exist, so the when-all-ready
+        // policy check and the over-delivery guard judge against the same
+        // quantities (a DO's own open lines never count against themselves).
+        $order->loadMissing('lines');
+        $remainingByLine = [];
+        foreach ($order->lines as $orderLine) {
+            $remainingByLine[(int) $orderLine->id] = $this->remainingQuantityForLine($orderLine);
+        }
+
+        // Issue #408: 'when_all_ready' means no partial shipments — every line
+        // with a remainder must be covered in full by this one delivery order.
+        if ($order->requiresAllProductsReady()) {
+            $this->assertAllRemainingLinesCovered($order, $lines, $remainingByLine);
+        }
+
         $hasDeliverableProduct = false;
         foreach ($lines as $lineData) {
             $soLineId = $lineData['sales_order_line_id'];
@@ -502,16 +521,9 @@ class DeliveryOrderService
             // #458 (DO6): quantities committed to OPEN (draft/confirmed)
             // delivery orders are not reflected in quantity_delivered yet —
             // subtract them so several open delivery orders cannot each pass
-            // this check and over-deliver the order.
-            $openCommitted = (float) DeliveryOrderLine::query()
-                ->where('sales_order_line_id', $soLine->id)
-                ->whereHas('deliveryOrder', fn ($query) => $query->whereNotIn('status', ['cancelled', 'done']))
-                ->sum('quantity_delivered');
-
-            $remainingForThisLine = (float) $soLine->quantity
-                - (float) $soLine->quantity_delivered
-                - (float) $soLine->quantity_cancelled
-                - $openCommitted;
+            // this check and over-deliver the order. Issue #408: shared
+            // remainingQuantityForLine() so the policy check cannot diverge.
+            $remainingForThisLine = $remainingByLine[(int) $soLine->id] ?? 0.0;
 
             if ($quantityDelivered > $remainingForThisLine + 0.0001) {
                 throw new \Exception(
@@ -519,6 +531,11 @@ class DeliveryOrderService
                     ."Only {$remainingForThisLine} remaining to deliver."
                 );
             }
+
+            // Consume what this line takes so duplicate entries for the same
+            // sales-order line in one request stay checked cumulatively
+            // (the #458 guard's original behaviour).
+            $remainingByLine[(int) $soLine->id] = max($remainingForThisLine - $quantityDelivered, 0.0);
 
             $lineProduct = $lineType === 'product' && $soLine->product_id
                 ? \App\Models\Product::find($soLine->product_id)
@@ -569,6 +586,86 @@ class DeliveryOrderService
         $this->submitForApproval($deliveryOrder);
 
         return $deliveryOrder;
+    }
+
+    /**
+     * Issue #408: the single remainder formula shared by the over-delivery
+     * guard (#458) and the when-all-ready policy check. Open (draft/confirmed)
+     * delivery orders already committed against the line are subtracted, so
+     * neither guard can be satisfied twice by two open DOs.
+     */
+    private function remainingQuantityForLine(SalesOrderLine $soLine): float
+    {
+        $openCommitted = (float) DeliveryOrderLine::query()
+            ->where('sales_order_line_id', $soLine->id)
+            ->whereHas('deliveryOrder', fn ($query) => $query->whereNotIn('status', ['cancelled', 'done']))
+            ->sum('quantity_delivered');
+
+        return max(
+            (float) $soLine->quantity
+                - (float) $soLine->quantity_delivered
+                - (float) $soLine->quantity_cancelled
+                - $openCommitted,
+            0.0
+        );
+    }
+
+    /**
+     * Issue #408: enforce an order's `when_all_ready` shipping policy — the
+     * delivery order must cover every order line with a remaining quantity, in
+     * full. Fail closed: a missing or short line refuses the DO (the controller
+     * maps the exception to 422) instead of silently creating a backorder.
+     *
+     * @param  array<int, array<string, mixed>>  $lines  DO lines as submitted
+     * @param  array<int, float>  $remainingByLine  remaining-to-deliver per SO line, from remainingQuantityForLine()
+     */
+    private function assertAllRemainingLinesCovered(SalesOrder $order, array $lines, array $remainingByLine): void
+    {
+        $submittedByLine = [];
+
+        foreach ($lines as $lineData) {
+            if (($lineData['line_type'] ?? 'product') !== 'product') {
+                continue;
+            }
+
+            $soLineId = (int) ($lineData['sales_order_line_id'] ?? 0);
+            if ($soLineId <= 0 || ! array_key_exists($soLineId, $remainingByLine)) {
+                continue;
+            }
+
+            // Same sales-UoM conversion as the write path below, so the policy
+            // check and the persisted stock-unit quantity agree.
+            $soLine = $order->lines->firstWhere('id', $soLineId);
+            $quantity = (float) ($lineData['quantity_delivered'] ?? 0);
+            $lineUom = (($lineData['uom_id'] ?? null) && $soLine?->product_id)
+                ? app(\App\Services\ProductUomConverter::class)->resolveOrNull(
+                    (int) $soLine->product_id,
+                    (int) $lineData['uom_id'],
+                )
+                : null;
+
+            if ($lineUom && ! $lineUom->isStockUnit()) {
+                $quantity = app(\App\Services\ProductUomConverter::class)->toStock($lineUom, $quantity);
+            }
+
+            $submittedByLine[$soLineId] = ($submittedByLine[$soLineId] ?? 0.0) + $quantity;
+        }
+
+        foreach ($remainingByLine as $soLineId => $remaining) {
+            if ($remaining <= 0.0001) {
+                continue; // fully delivered (or cancelled) lines impose nothing
+            }
+
+            $submitted = $submittedByLine[$soLineId] ?? 0.0;
+
+            if (abs($submitted - $remaining) > 0.0001) {
+                throw new \Exception(
+                    "This order's shipping policy is 'when all products are ready' — "
+                    ."line #{$soLineId} must deliver all {$remaining} remaining units in this delivery order "
+                    ."({$submitted} submitted). Partial deliveries are not allowed."
+                );
+            }
+        }
     }
 
     /**
@@ -874,7 +971,10 @@ class DeliveryOrderService
                 'base_currency_code' => $pricingContext['base_currency'],
                 'external_reference' => $data['external_reference'] ?? null,
                 'delivery_date' => $data['delivery_date'] ?? now()->toDateString(),
-                'expected_date' => $data['expected_date'] ?? null,
+                // Issue #408: a standalone DO created from a quotation carries
+                // the quote's commitment date as the expected date.
+                'expected_date' => $data['expected_date']
+                    ?? ($quotationId ? \App\Models\Quotation::whereKey($quotationId)->value('commitment_date') : null),
                 'payment_terms' => $data['payment_terms'] ?? null,
                 'carrier' => $data['carrier'] ?? null,
                 'tracking_number' => $data['tracking_number'] ?? null,

@@ -1813,7 +1813,10 @@ class DeliveryOrderController extends Controller
         });
 
         return response()->json([
-            'sales_order' => $order->only(['id', 'sales_order_number', 'status']),
+            // Issue #408: the linked DO form shows the order's promise dates
+            // and its partial-delivery policy, and enforces the latter.
+            'sales_order' => $order->only(['id', 'sales_order_number', 'status', 'commitment_date', 'shipping_policy'])
+                + ['expected_date' => $order->expected_date],
             'lines' => $summary,
             'delivery_orders' => $order->deliveryOrders->map(fn ($do) => [
                 'id' => $do->id,

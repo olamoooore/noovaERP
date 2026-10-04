@@ -394,7 +394,7 @@ export function QuotesPage() {
               <div className="overflow-x-auto">
                 <SalesLineColumnVisibility
                   tableClass="quotes-listing-columns"
-                  columns={listingColumns(['Select', 'Quote #', 'Customer', 'Quote Date', 'Created Date', 'Valid Until', 'Reference', 'Total', 'Status', 'Actions'])}
+                  columns={listingColumns(['Select', 'Quote #', 'Customer', 'Quote Date', 'Created Date', 'Valid Until', 'Commitment', 'Expected', 'Reference', 'Total', 'Status', 'Actions'])}
                   hiddenColumns={hiddenQuoteColumns}
                   onHiddenColumnsChange={setHiddenQuoteColumns}
                   showMenu={false}
@@ -416,6 +416,9 @@ export function QuotesPage() {
                       <SortableHead label="Quote Date" sortKey="quote_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                       <SortableHead label="Created Date" sortKey="created_at" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                       <SortableHead label="Valid Until" sortKey="valid_until" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                      {/* Issue #408: promise date, computed expected date and late flag. */}
+                      <SortableHead label="Commitment" sortKey="commitment_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                      <SortableHead label="Expected" sortKey="expected_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                       <SortableHead label="Reference" sortKey="reference" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                       <SortableHead label="Total" sortKey="total" activeKey={sortKey} direction={sortDir} onSort={toggleSort} align="right" />
                       <SortableHead label="Status" sortKey="status" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
@@ -473,6 +476,18 @@ export function QuotesPage() {
                         <TableCell>{formatDate(quote.quotation_date || quote.created_at)}</TableCell>
                         <TableCell>{formatDate(quote.created_at)}</TableCell>
                         <TableCell>{quote.valid_until ? formatDate(quote.valid_until) : '-'}</TableCell>
+                        {/* Issue #408: late quotes (past the promise, still open). */}
+                        <TableCell>
+                          <div className="flex items-center gap-1.5">
+                            <span>{quote.commitment_date ? formatDate(quote.commitment_date) : '-'}</span>
+                            {quote.is_late && (
+                              <Badge variant="destructive" className="shrink-0" title="Commitment date has passed and the quotation is not converted">
+                                Late
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>{quote.expected_date ? formatDate(quote.expected_date) : '-'}</TableCell>
                         <TableCell>{quote.customer_reference || quote.internal_reference || '-'}</TableCell>
                         <TableCell className="text-right">{formatCurrency(quote.total)}</TableCell>
                         <TableCell>

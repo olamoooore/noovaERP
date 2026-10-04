@@ -159,6 +159,30 @@ export function DeliveryOrderCreatePage() {
     enabled: !!salesOrderId && mode === 'linked',
   })
 
+  // Issue #408: carry the sales order's commitment (promised) date onto the
+  // delivery order form, and when the policy is "when all products are ready"
+  // pre-fill every remaining line (partial deliveries are refused server-side).
+  useEffect(() => {
+    if (mode !== 'linked' || !soData?.sales_order) return
+
+    const promise = soData.sales_order.commitment_date || soData.sales_order.expected_date
+    if (promise) {
+      setExpectedDate((current) => current || String(promise).split('T')[0])
+    }
+
+    if (soData.sales_order.shipping_policy === 'when_all_ready') {
+      const prefill: Record<number, number> = {}
+      for (const line of soData.lines || []) {
+        if ((line.line_type || 'product') !== 'product') continue
+        const remaining = Number(line.quantity_ordered) - Number(line.quantity_delivered)
+        if (remaining > 0) prefill[line.sales_order_line_id] = remaining
+      }
+      setLineQuantities((current) =>
+        Object.values(current).some((quantity) => Number(quantity) > 0) ? current : prefill,
+      )
+    }
+  }, [soData, mode])
+
   const referenceCustomerId = mode === 'standalone'
     ? customerId
     : String(soData?.sales_order?.customer_id || soData?.customer?.id || '')
@@ -574,7 +598,7 @@ export function DeliveryOrderCreatePage() {
               <Input type="date" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} />
             </div>
             <div>
-              <Label>Due Date</Label>
+              <Label>Expected Date</Label>
               <Input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} />
             </div>
             <div>
@@ -655,6 +679,17 @@ export function DeliveryOrderCreatePage() {
             />
           </CardHeader>
           <CardContent>
+            {/* Issue #408: the order's policy decides whether this delivery may
+                be partial; the backend refuses partials for when-all-ready. */}
+            {soData.sales_order?.shipping_policy === 'when_all_ready' && (
+              <div className="mb-3 flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+                <Icon icon="solar:box-bold-duotone" className="h-4 w-4 shrink-0" />
+                <span>
+                  Shipping policy: <strong>When all products are ready</strong> — this delivery order must cover
+                  every remaining line in full; partial deliveries are refused.
+                </span>
+              </div>
+            )}
             <div className="overflow-x-auto">
             <DeliveryOrderColumnVisibility
               tableClass="do-create-linked-columns"

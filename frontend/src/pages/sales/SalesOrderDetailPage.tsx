@@ -42,7 +42,11 @@ interface SalesOrder {
     code?: string
   }
   order_date: string
-  expected_delivery_date?: string
+  // Issue #408: promise dates + partial-delivery policy.
+  commitment_date?: string | null
+  expected_date?: string | null
+  shipping_policy?: 'asap' | 'when_all_ready' | string
+  is_late?: boolean
   status: string
   allowed_transitions?: string[]
   invoice_status?: string
@@ -178,6 +182,10 @@ export function SalesOrderDetailPage() {
   const [action, setAction] = useState<OrderAction>(null)
   const [cancelOpen, setCancelOpen] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
+  // Issue #408: draft orders can edit the commitment date + shipping policy.
+  const [promiseOpen, setPromiseOpen] = useState(false)
+  const [commitmentDraft, setCommitmentDraft] = useState('')
+  const [policyDraft, setPolicyDraft] = useState<'asap' | 'when_all_ready'>('asap')
   // Issue #687 (UX1): confirm preflights the order's lines against the shared
   // stock availability; when short, the explicit-choice dialog replaces the
   // silent backorder path (#379).
@@ -348,8 +356,35 @@ export function SalesOrderDetailPage() {
     },
   })
 
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
+  // Issue #408: commitment date + shipping policy edit for draft orders.
+  const promiseMutation = useMutation({
+    mutationFn: async () => {
+      await api.put(`/sales/orders/${id}`, {
+        commitment_date: commitmentDraft || null,
+        shipping_policy: policyDraft,
+      })
+    },
+    onSuccess: () => {
+      refresh()
+      setPromiseOpen(false)
+      toast({ title: 'Success', description: 'Promise date and shipping policy updated' })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || 'Failed to update the promise dates',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const openPromiseDialog = () => {
+    setCommitmentDraft(order?.commitment_date ? String(order.commitment_date).split('T')[0] : '')
+    setPolicyDraft(order?.shipping_policy === 'when_all_ready' ? 'when_all_ready' : 'asap')
+    setPromiseOpen(true)
+  }
+
+  const getStatusBadge = (status: string) => {    const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
       draft: { variant: 'secondary', label: 'Draft' },
       confirmed: { variant: 'default', label: 'Confirmed' },
       partially_delivered: { variant: 'outline', label: 'Partial' },
@@ -419,6 +454,20 @@ export function SalesOrderDetailPage() {
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           {getStatusBadge(order.status)}
+          {order.is_late && (
+            <Badge variant="destructive" className="shrink-0" title="Commitment date has passed and the order is not fully delivered">
+              Late
+            </Badge>
+          )}
+          {order.status === 'draft' && (
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:calendar-mark-bold-duotone"
+              onClick={openPromiseDialog}
+            >
+              Promise Date
+            </HeaderActionButton>
+          )}
           <TagEditor subjectType="sales_order" subjectId={id!} />
           <HeaderActionButton
             variant="outline"
@@ -601,12 +650,23 @@ export function SalesOrderDetailPage() {
                 <span className="text-sm text-muted-foreground">Order Date:</span>
                 <span className="text-sm">{formatDate(order.order_date)}</span>
               </div>
-              {order.expected_delivery_date && (
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Expected Delivery:</span>
-                  <span className="text-sm">{formatDate(order.expected_delivery_date)}</span>
-                </div>
-              )}
+              {/* Issue #408: promise date + computed expected date + policy. */}
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">Commitment Date:</span>
+                <span className="text-sm">{order.commitment_date ? formatDate(order.commitment_date) : '-'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">Expected Date:</span>
+                <span className="text-sm" title="Computed from the product/supplier lead times">
+                  {order.expected_date ? formatDate(order.expected_date) : '-'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">Shipping Policy:</span>
+                <span className="text-sm">
+                  {order.shipping_policy === 'when_all_ready' ? 'When all products are ready' : 'As soon as possible'}
+                </span>
+              </div>
               {order.customer_reference && (
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Customer Ref:</span>
@@ -802,6 +862,49 @@ export function SalesOrderDetailPage() {
         onDeliverPartially={() => chooseShortageAction('partial')}
         onChangeWarehouse={changeShortageWarehouse}
       />
+      <Dialog open={promiseOpen} onOpenChange={setPromiseOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Commitment Date &amp; Shipping Policy</DialogTitle>
+            <DialogDescription>
+              The commitment date is the date promised to the customer. The expected date is computed
+              from product/supplier lead times. With &quot;when all products are ready&quot;, delivery orders
+              must cover every remaining line in full.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="commitment-date">Commitment Date</Label>
+              <Input
+                id="commitment-date"
+                type="date"
+                value={commitmentDraft}
+                onChange={(event) => setCommitmentDraft(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="shipping-policy">Shipping Policy</Label>
+              <select
+                id="shipping-policy"
+                value={policyDraft}
+                onChange={(event) => setPolicyDraft(event.target.value as 'asap' | 'when_all_ready')}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="asap">As soon as possible (partial deliveries allowed)</option>
+                <option value="when_all_ready">When all products are ready (no partials)</option>
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPromiseOpen(false)}>
+              Keep
+            </Button>
+            <Button disabled={promiseMutation.isPending} onClick={() => promiseMutation.mutate()}>
+              {promiseMutation.isPending ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
         <DialogContent>
           <DialogHeader>
