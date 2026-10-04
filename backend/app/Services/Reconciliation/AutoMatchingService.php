@@ -7,6 +7,7 @@ use App\Models\BankStatementMatch;
 use App\Models\BankStatementTransaction;
 use App\Models\JournalEntryLine;
 use App\Models\ReconciliationItem;
+use App\Services\BankStatements\BankStatementMatchingService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -19,6 +20,10 @@ use Illuminate\Support\Facades\Log;
  */
 class AutoMatchingService
 {
+    public function __construct(
+        private BankStatementMatchingService $matchingService,
+    ) {}
+
     /**
      * Issue #840 (BK8): only these statement rows may participate in matching.
      * Mirrors BankStatementMatchingService's availability gate so a row
@@ -461,6 +466,13 @@ class AutoMatchingService
                                 'accepted_at' => now(),
                             ]
                         );
+
+                        // Issue #841 (BK9): an accepted auto-match must be
+                        // visible to the statement engine's controls — they
+                        // read residual_amount/status, which previously never
+                        // moved here, so validate() kept blocking the very
+                        // statement this match belonged to.
+                        $this->matchingService->refreshStatement($statementTransaction);
                     }
 
                     // Create reconciliation item
@@ -480,11 +492,22 @@ class AutoMatchingService
                     // method previously created bookkeeping rows without ever
                     // changing journal_entry_lines, so accepted matches had no
                     // effect on the reconciliation state.
-                    $glLine->update([
-                        'reconciliation_id' => $reconciliation->id,
-                        'reconciled' => true,
-                        'reconciliation_date' => $reconciliation->statement_date,
-                    ]);
+                    //
+                    // Issue #841 (BK9): statement-backed matches are the
+                    // statement engine's business — the GL line is finalised
+                    // (stamped with the completed reconciliation) by
+                    // BankStatementReconciliationService::complete(), not at
+                    // accept time. Stamping here both raced that completion
+                    // (MatchConflict) and let a legacy completion see the line
+                    // as already reconciled while the statement flow could
+                    // never finish: neither flow could finalise it.
+                    if (! $statementTransaction) {
+                        $glLine->update([
+                            'reconciliation_id' => $reconciliation->id,
+                            'reconciled' => true,
+                            'reconciliation_date' => $reconciliation->statement_date,
+                        ]);
+                    }
 
                     $results['accepted']++;
 
