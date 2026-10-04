@@ -229,6 +229,13 @@ class InvoiceService
      */
     public function postInvoice(Invoice $invoice): Invoice
     {
+        // Issue #902: capture the tenant before the posting work runs. A sync
+        // BI job dispatched from JournalEntryObserver tears the tenancy
+        // context down mid-posting, so the post-commit InvoicePosted dispatch
+        // below would otherwise hand listeners a null tenant — silently
+        // skipping the e-invoice auto-submit (and its failure reporting).
+        $tenantId = function_exists('tenant') && tenant() ? tenant()->id : null;
+
         DB::beginTransaction();
 
         try {
@@ -275,6 +282,26 @@ class InvoiceService
                     'determination_tax' => $determinationTaxTotal,
                     'variance' => round($bookedTaxTotal - $determinationTaxTotal, 2),
                 ]);
+
+                // Issue #902: the divergence is exactly the class of drift the
+                // tax reconciliation exists to surface — queue it so an
+                // accountant can see, own and resolve it instead of it dying
+                // in the log.
+                app(\App\Platform\Exceptions\ExceptionService::class)->report(
+                    new \App\Platform\Exceptions\ExceptionReport(
+                        type: \App\Platform\Exceptions\ExceptionType::SALES_INVOICE_TAX_VARIANCE,
+                        message: "Invoice {$invoice->invoice_number}: booked tax {$bookedTaxTotal} differs from determination {$determinationTaxTotal}",
+                        documentId: $invoice->id,
+                        documentType: 'invoice',
+                        legalEntityId: $this->invoiceLegalEntityId($invoice),
+                        payload: [
+                            'booked_tax' => $bookedTaxTotal,
+                            'determination_tax' => $determinationTaxTotal,
+                            'variance' => round($bookedTaxTotal - $determinationTaxTotal, 2),
+                            'result_status' => $taxDetermination['result_status'] ?? null,
+                        ],
+                    ),
+                );
             }
 
             // ── MRD pricelist-multicurrency FR-5.7/FR-7.1/AC-3 ───────────
@@ -381,6 +408,27 @@ class InvoiceService
                     'posted_revenue_base' => $revenueBase,
                     'residual' => round($revenueBase - $toBase($salesRevenue), 2),
                 ]);
+
+                // Issue #902: the entry balances, but the revenue leg no
+                // longer matches the document's subtotal × snapshot rate —
+                // an accountant must review the rate/rounding.
+                app(\App\Platform\Exceptions\ExceptionService::class)->report(
+                    new \App\Platform\Exceptions\ExceptionReport(
+                        type: \App\Platform\Exceptions\ExceptionType::SALES_INVOICE_FX_RESIDUAL,
+                        message: "Invoice {$invoice->invoice_number}: FX rounding residual ".number_format(round($revenueBase - $toBase($salesRevenue), 2), 2).' absorbed at revenue',
+                        documentId: $invoice->id,
+                        documentType: 'invoice',
+                        legalEntityId: $this->invoiceLegalEntityId($invoice),
+                        payload: [
+                            'currency_code' => $docCurrency,
+                            'base_currency_code' => $baseCurrency,
+                            'exchange_rate' => $fxRate,
+                            'expected_revenue_base' => $toBase($salesRevenue),
+                            'posted_revenue_base' => $revenueBase,
+                            'residual' => round($revenueBase - $toBase($salesRevenue), 2),
+                        ],
+                    ),
+                );
             }
 
             if ($salesRevenue > 0 || $revenueBase != 0) {
@@ -675,7 +723,7 @@ class InvoiceService
 
             DB::commit();
 
-            \App\Accounting\Events\InvoicePosted::dispatch($invoice->fresh());
+            \App\Accounting\Events\InvoicePosted::dispatch($invoice->fresh(), $tenantId);
 
             return $invoice->fresh(['journalEntry', 'lines']);
 
@@ -904,6 +952,25 @@ class InvoiceService
             })(),
             default => $salesOrder->warehouse_id ? (int) $salesOrder->warehouse_id : null,
         };
+    }
+
+    /**
+     * Issue #902: the legal entity for a queued invoice exception, resolved
+     * best-effort (the posting itself stamps it later — reporting must not
+     * depend on that ordering).
+     */
+    private function invoiceLegalEntityId(Invoice $invoice): ?int
+    {
+        try {
+            return app(\App\Services\LegalEntityContextResolver::class)->resolveEntity(
+                explicit: $invoice->legal_entity_id ? (int) $invoice->legal_entity_id : null,
+                salesOrderId: $invoice->sales_order_id ? (int) $invoice->sales_order_id : null,
+                customerId: $invoice->customer_id ? (int) $invoice->customer_id : null,
+                required: false,
+            );
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function synchronizeSalesOrderPosting(Invoice $invoice): void

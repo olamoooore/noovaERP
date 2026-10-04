@@ -46,55 +46,60 @@ class CountryPluginSettingsController extends Controller
         $enabled = $validated['country_plugin_enabled'];
         $seedData = $validated['seed_country_data'] ?? false;
 
-        DB::connection('pgsql')->table('tenants')
-            ->where('id', $tenantId)
-            ->update([
-                'tenant_country_code' => $countryCode,
-                'country_plugin_enabled' => $enabled,
-                'updated_at' => now(),
-            ]);
+        try {
+            // #769 (A9) AC2/AC4: applying a country pack is one transaction.
+            // Failures propagate to the caller instead of being logged away —
+            // the old catch-and-continue returned 200 with seeded=false while
+            // the tenant row and CountryConfiguration had already changed.
+            // Postgres DDL is transactional, so the seeders' schema steps roll
+            // back with everything else (no half-applied pack).
+            return DB::connection('pgsql')->transaction(function () use ($tenantId, $countryCode, $enabled, $seedData) {
+                DB::connection('pgsql')->table('tenants')
+                    ->where('id', $tenantId)
+                    ->update([
+                        'tenant_country_code' => $countryCode,
+                        'country_plugin_enabled' => $enabled,
+                        'updated_at' => now(),
+                    ]);
 
-        $seeded = false;
-        if ($seedData && $enabled) {
-            try {
-                if ($countryCode === 'MY') {
-                    $seeder = new \Database\Seeders\MalaysiaCountrySeeder;
-                    $seeder->run();
-                    $seeded = true;
-                } elseif ($countryCode === 'SG') {
-                    $seeder = new \Database\Seeders\SingaporeCountrySeeder;
+                $seeded = false;
+                if ($seedData && $enabled) {
+                    // Container-resolved: the seeding step is swappable and
+                    // testable, and its failures are not swallowed.
+                    $seeder = app(match ($countryCode) {
+                        'MY' => \Database\Seeders\MalaysiaCountrySeeder::class,
+                        'SG' => \Database\Seeders\SingaporeCountrySeeder::class,
+                    });
                     $seeder->run();
                     $seeded = true;
                 }
-            } catch (\Throwable $e) {
-                Log::warning('Country data seeding failed', [
-                    'tenant_id' => $tenantId,
-                    'country_code' => $countryCode,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
 
-        if ($enabled) {
-            try {
-                \App\Models\Accounting\CountryConfiguration::updateOrCreate(
-                    ['tenant_id' => $tenantId, 'country_code' => $countryCode, 'provider_name' => 'default'],
-                    ['is_enabled' => true, 'settings' => ['auto_submit' => false]]
-                );
-            } catch (\Throwable $e) {
-                Log::warning('CountryConfiguration seed failed', [
-                    'tenant_id' => $tenantId,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
+                if ($enabled) {
+                    \App\Models\Accounting\CountryConfiguration::updateOrCreate(
+                        ['tenant_id' => $tenantId, 'country_code' => $countryCode, 'provider_name' => 'default'],
+                        ['is_enabled' => true, 'settings' => ['auto_submit' => false]]
+                    );
+                }
 
-        return response()->json([
-            'data' => [
-                'tenant_country_code' => $countryCode,
-                'country_plugin_enabled' => $enabled,
-                'seeded' => $seeded,
-            ],
-        ]);
+                return response()->json([
+                    'data' => [
+                        'tenant_country_code' => $countryCode,
+                        'country_plugin_enabled' => $enabled,
+                        'seeded' => $seeded,
+                    ],
+                ]);
+            });
+        } catch (\Throwable $e) {
+            Log::error('Country plugin settings update failed', [
+                'tenant_id' => $tenantId,
+                'country_code' => $countryCode,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Country data could not be applied; nothing was changed.',
+                'detail' => $e->getMessage(),
+            ], 422);
+        }
     }
 }

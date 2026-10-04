@@ -48,40 +48,100 @@ class DeliveryOrderService
         }
 
         try {
-            $submitterId = Auth::id();
-            $reviewers = $this->resolveReviewers($submitterId);
-
-            if ($reviewers->isEmpty()) {
-                Log::warning('Delivery order approval: no reviewers configured', [
-                    'delivery_order_id' => $deliveryOrder->id,
-                ]);
-
-                return;
-            }
-
-            $notificationService = app(\App\Platform\Notifications\NotificationService::class);
-            $amount = number_format((float) $deliveryOrder->total, 2);
-            $customer = $deliveryOrder->customer?->name;
-            $number = $deliveryOrder->delivery_order_number;
-
-            foreach ($reviewers as $reviewer) {
-                $notificationService->dispatch('approval.requested', $reviewer, array_merge([
-                    'subject' => "Delivery order {$number} requires approval",
-                    'body' => "Delivery order {$number}"
-                        .($customer ? " for {$customer}" : '')
-                        ." totalling {$amount} requires your approval.",
-                    'type' => 'delivery_order_approval',
-                    'amount' => (float) $deliveryOrder->total,
-                    'delivery_order_id' => $deliveryOrder->id,
-                    'delivery_order_number' => $number,
-                    'requested_by' => Auth::user()?->name,
-                ], \App\Platform\Notifications\NotificationReferences::forDeliveryOrder($deliveryOrder)));
-            }
+            $this->dispatchApprovalNotifications($deliveryOrder);
         } catch (\Throwable $e) {
             Log::warning('Failed to notify approvers for delivery order approval', [
                 'delivery_order_id' => $deliveryOrder->id,
                 'error' => $e->getMessage(),
             ]);
+
+            // Issue #902: a DO waiting on approvers nobody was told about is
+            // a business failure, not just a log line — queue it with the
+            // affected document and the re-notify retry.
+            app(\App\Platform\Exceptions\ExceptionService::class)->report(
+                new \App\Platform\Exceptions\ExceptionReport(
+                    type: \App\Platform\Exceptions\ExceptionType::SALES_DO_APPROVAL_NOTIFICATION_FAILED,
+                    message: "Failed to notify approvers for delivery order {$deliveryOrder->delivery_order_number}: {$e->getMessage()}",
+                    documentId: $deliveryOrder->id,
+                    documentType: 'delivery_order',
+                    legalEntityId: $this->resolveNotificationLegalEntityId($deliveryOrder),
+                    payload: [
+                        'delivery_order_number' => $deliveryOrder->delivery_order_number,
+                        'approval_status' => $deliveryOrder->approval_status,
+                        'error' => $e->getMessage(),
+                    ],
+                ),
+            );
+        }
+    }
+
+    /**
+     * Issue #902: the retry path for a failed approver notification. Unlike
+     * notifyApprovers(), a notification failure here propagates so the
+     * exception queue records the retry as failed.
+     */
+    public function retryApprovalNotification(DeliveryOrder $deliveryOrder): void
+    {
+        if ($deliveryOrder->approval_status !== 'pending') {
+            throw new \RuntimeException(
+                "Delivery order {$deliveryOrder->delivery_order_number} is no longer pending approval."
+            );
+        }
+
+        $this->dispatchApprovalNotifications($deliveryOrder);
+    }
+
+    /**
+     * The part of notifyApprovers() that can actually fail — kept separate so
+     * the retry handler is not swallowed by the reporting catch.
+     */
+    private function dispatchApprovalNotifications(DeliveryOrder $deliveryOrder): void
+    {
+        $submitterId = Auth::id();
+        $reviewers = $this->resolveReviewers($submitterId);
+
+        if ($reviewers->isEmpty()) {
+            Log::warning('Delivery order approval: no reviewers configured', [
+                'delivery_order_id' => $deliveryOrder->id,
+            ]);
+
+            return;
+        }
+
+        $notificationService = app(\App\Platform\Notifications\NotificationService::class);
+        $amount = number_format((float) $deliveryOrder->total, 2);
+        $customer = $deliveryOrder->customer?->name;
+        $number = $deliveryOrder->delivery_order_number;
+
+        foreach ($reviewers as $reviewer) {
+            $notificationService->dispatch('approval.requested', $reviewer, array_merge([
+                'subject' => "Delivery order {$number} requires approval",
+                'body' => "Delivery order {$number}"
+                    .($customer ? " for {$customer}" : '')
+                    ." totalling {$amount} requires your approval.",
+                'type' => 'delivery_order_approval',
+                'amount' => (float) $deliveryOrder->total,
+                'delivery_order_id' => $deliveryOrder->id,
+                'delivery_order_number' => $number,
+                'requested_by' => Auth::user()?->name,
+            ], \App\Platform\Notifications\NotificationReferences::forDeliveryOrder($deliveryOrder)));
+        }
+    }
+
+    /**
+     * Issue #902: the legal entity for a queued DO notification failure,
+     * resolved best-effort so reporting can never break the flow.
+     */
+    private function resolveNotificationLegalEntityId(DeliveryOrder $deliveryOrder): ?int
+    {
+        try {
+            return app(\App\Services\LegalEntityContextResolver::class)->resolveEntity(
+                salesOrderId: $deliveryOrder->sales_order_id ? (int) $deliveryOrder->sales_order_id : null,
+                customerId: $deliveryOrder->customer_id ? (int) $deliveryOrder->customer_id : null,
+                required: false,
+            );
+        } catch (\Throwable) {
+            return null;
         }
     }
 

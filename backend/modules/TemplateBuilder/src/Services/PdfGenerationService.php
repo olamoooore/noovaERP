@@ -10,6 +10,8 @@ use Dompdf\Canvas;
 use Dompdf\FontMetrics;
 use Dompdf\Frame;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Modules\TemplateBuilder\Contracts\DocumentTemplateServiceContract;
 use Modules\TemplateBuilder\Contracts\PdfGenerationServiceContract;
 use Modules\TemplateBuilder\Models\DocumentTemplate;
@@ -27,6 +29,43 @@ final class PdfGenerationService implements PdfGenerationServiceContract
 
     public function render(string $documentType, string $documentId, array $options = [], ?array $context = null): array
     {
+        $format = $options['format'] ?? 'pdf';
+
+        // Issue #613 (TP3): a posted/issued document is reprinted from its
+        // stored immutable copy — never re-rendered against the current
+        // template or current company data. An explicit template selection or
+        // a signed render is an intentional one-off and bypasses the snapshot.
+        if (! isset($options['template_id']) && ! isset($options['signature'])) {
+            $stored = $this->storedCopy($documentType, $documentId, $format);
+
+            if ($stored !== null) {
+                $bytes = $this->readStoredBytes($stored);
+
+                if ($bytes !== null) {
+                    return [
+                        'bytes' => $bytes,
+                        'html' => $format === 'html' ? $bytes : '',
+                        'mime' => $format === 'html' ? 'text/html' : 'application/pdf',
+                        'hash' => (string) $stored->render_hash,
+                        'template' => $stored->template,
+                        'document' => $stored,
+                        'immutable' => true,
+                    ];
+                }
+
+                // The row survives but its bytes are gone. Serve a live render
+                // rather than failing the reprint, but report the missing file
+                // — never hide it.
+                Log::warning('Immutable generated document file missing; falling back to live render', [
+                    'generated_document_id' => $stored->id,
+                    'document_type' => $documentType,
+                    'document_id' => $documentId,
+                    'disk' => $stored->disk,
+                    'disk_path' => $stored->disk_path,
+                ]);
+            }
+        }
+
         // Issue #612: resolve the template against the DOCUMENT's context
         // (selling entity, branch, currency, customer language/group,
         // channel) — not as an anonymous tenant render. Callers may override
@@ -61,12 +100,11 @@ final class PdfGenerationService implements PdfGenerationServiceContract
         }
 
         $data = $this->dataSources->loadPayload($documentType, $documentId);
-        $format = $options['format'] ?? 'pdf';
         $built = $this->build($template, $data, $format, $options['signature'] ?? null);
 
         $ttl = (int) config('templatebuilder.pdf.cache_ttl_min', 1440);
 
-        GeneratedDocument::create([
+        $document = GeneratedDocument::create([
             'document_type' => $documentType,
             'document_id' => $documentId,
             'template_id' => $template->id,
@@ -78,7 +116,67 @@ final class PdfGenerationService implements PdfGenerationServiceContract
             'expires_at' => Carbon::now()->addMinutes($ttl),
         ]);
 
-        return $built + ['template' => $template];
+        if (($options['immutable'] ?? false) === true) {
+            $this->persistImmutable($document, $built);
+        }
+
+        return $built + ['template' => $template, 'document' => $document];
+    }
+
+    public function snapshot(string $documentType, string $documentId, array $options = []): GeneratedDocument
+    {
+        // Idempotent: once a posted document is snapshotted, later triggers
+        // (re-sent, re-posted, observer re-entry) must never re-render it.
+        $existing = $this->storedCopy($documentType, $documentId, 'pdf');
+
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        $result = $this->render(
+            $documentType,
+            $documentId,
+            array_merge($options, ['format' => 'pdf', 'immutable' => true]),
+        );
+
+        return $result['document'];
+    }
+
+    public function regenerate(string $documentType, string $documentId, array $options = []): GeneratedDocument
+    {
+        // "Regenerate with current template" creates a NEW version and keeps
+        // the original: previous immutable copies are marked superseded, never
+        // overwritten or deleted. All inside one transaction so a failed
+        // re-render leaves the previously issued copy current.
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($documentType, $documentId, $options) {
+            GeneratedDocument::query()
+                ->where('document_type', $documentType)
+                ->where('document_id', (string) $documentId)
+                ->where('output_format', 'pdf')
+                ->where('is_immutable', true)
+                ->whereNull('superseded_at')
+                ->update(['superseded_at' => now()]);
+
+            $result = $this->render(
+                $documentType,
+                $documentId,
+                array_merge($options, ['format' => 'pdf', 'immutable' => true]),
+            );
+
+            return $result['document'];
+        });
+    }
+
+    public function storedCopy(string $documentType, string $documentId, string $format = 'pdf'): ?GeneratedDocument
+    {
+        return GeneratedDocument::query()
+            ->where('document_type', $documentType)
+            ->where('document_id', (string) $documentId)
+            ->where('output_format', $format)
+            ->where('is_immutable', true)
+            ->whereNull('superseded_at')
+            ->orderByDesc('generated_at')
+            ->first();
     }
 
     public function renderData(string $documentType, array $data, ?string $templateId = null, string $format = 'pdf'): array
@@ -97,6 +195,64 @@ final class PdfGenerationService implements PdfGenerationServiceContract
         }
 
         return $this->build($template, $data, $format);
+    }
+
+    /**
+     * Persist the rendered bytes as an immutable copy: object storage +
+     * checksum, linked to the source document and template version.
+     *
+     * @param  array{bytes: string, html: string, mime: string, hash: string}  $built
+     */
+    private function persistImmutable(GeneratedDocument $document, array $built): void
+    {
+        $disk = (string) config('templatebuilder.pdf.snapshot_disk', 'local');
+        $extension = ($built['mime'] ?? '') === 'text/html' ? 'html' : 'pdf';
+        $path = 'generated-documents/'.$document->document_type.'/'.$document->document_id.'/'.$document->id.'.'.$extension;
+
+        Storage::disk($disk)->put($path, $built['bytes']);
+
+        $document->forceFill([
+            'disk' => $disk,
+            'disk_path' => $path,
+            'checksum' => hash('sha256', $built['bytes']),
+            'is_immutable' => true,
+            'size_bytes' => strlen($built['bytes']),
+            // An issued copy never expires with the render cache.
+            'expires_at' => null,
+        ])->save();
+    }
+
+    /**
+     * Read a stored immutable copy. Returns null when the bytes are gone;
+     * throws when the bytes no longer match their recorded checksum (serving
+     * tampered output as an issued document would be worse than failing).
+     */
+    private function readStoredBytes(GeneratedDocument $document): ?string
+    {
+        $path = (string) $document->disk_path;
+
+        if ($path === '') {
+            return null;
+        }
+
+        $disk = Storage::disk($document->disk ?: (string) config('templatebuilder.pdf.snapshot_disk', 'local'));
+
+        if (! $disk->exists($path)) {
+            return null;
+        }
+
+        $bytes = $disk->get($path);
+
+        if ($bytes === null) {
+            return null;
+        }
+
+        if ($document->checksum !== null
+            && ! hash_equals((string) $document->checksum, hash('sha256', $bytes))) {
+            throw new \RuntimeException('The stored copy of this document failed its checksum and was not served.');
+        }
+
+        return $bytes;
     }
 
     /**
