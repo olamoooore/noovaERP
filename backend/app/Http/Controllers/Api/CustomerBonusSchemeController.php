@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\BonusSchemeProduct;
 use App\Models\Customer;
 use App\Models\CustomerBonusScheme;
 use App\Services\CustomerWideSearchService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -65,6 +67,17 @@ class CustomerBonusSchemeController extends Controller
             return response()->json([
                 'message' => 'This customer is already assigned to this bonus scheme',
             ], 422);
+        }
+
+        // Issue #572 (BS6): only one active assignment may cover a given
+        // product at a time — a second scheme overlapping the first is
+        // rejected and the conflict is named. Reactivating the same scheme
+        // row is excluded by the scheme-id filter, so it reaches the branch
+        // below unchanged.
+        $conflict = $this->overlappingAssignment($validated);
+
+        if ($conflict) {
+            return response()->json(['message' => $this->overlapMessage($conflict)], 422);
         }
 
         // Issue #190: a suspended/expired assignment could never be re-enrolled
@@ -134,6 +147,20 @@ class CustomerBonusSchemeController extends Controller
             'status' => 'sometimes|in:active,suspended,expired',
             'remarks' => 'nullable|string',
         ]);
+
+        // Issue #572 (BS6): an update must not move an assignment into an
+        // overlap with another active scheme covering the same product.
+        $conflict = $this->overlappingAssignment([
+            'customer_id' => $assignment->customer_id,
+            'bonus_scheme_id' => $assignment->bonus_scheme_id,
+            'start_date' => $validated['start_date'] ?? $assignment->start_date,
+            'end_date' => array_key_exists('end_date', $validated) ? $validated['end_date'] : $assignment->end_date,
+            'status' => $validated['status'] ?? $assignment->status,
+        ], (int) $assignment->id);
+
+        if ($conflict) {
+            return response()->json(['message' => $this->overlapMessage($conflict)], 422);
+        }
 
         try {
             $assignment->update($validated);
@@ -213,6 +240,20 @@ class CustomerBonusSchemeController extends Controller
             return response()->json(['message' => 'Only suspended assignments can be reactivated'], 403);
         }
 
+        // Issue #572 (BS6): reactivating must not overlap another active
+        // scheme covering the same product.
+        $conflict = $this->overlappingAssignment([
+            'customer_id' => $assignment->customer_id,
+            'bonus_scheme_id' => $assignment->bonus_scheme_id,
+            'start_date' => $assignment->start_date,
+            'end_date' => $assignment->end_date,
+            'status' => 'active',
+        ], (int) $assignment->id);
+
+        if ($conflict) {
+            return response()->json(['message' => $this->overlapMessage($conflict)], 422);
+        }
+
         try {
             $assignment->update(['status' => 'active']);
 
@@ -226,5 +267,82 @@ class CustomerBonusSchemeController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Issue #572 (BS6): one active rule per customer × product at any date.
+     * Returns the conflicting assignment when the proposed assignment terms
+     * would leave the customer with two active assignments whose date windows
+     * overlap and whose schemes cover a common qualifying product.
+     * Suspended/expired proposals never stack, so they are not checked.
+     */
+    private function overlappingAssignment(array $terms, ?int $ignoreId = null): ?CustomerBonusScheme
+    {
+        if (($terms['status'] ?? 'active') !== 'active') {
+            return null;
+        }
+
+        $startDate = Carbon::parse($terms['start_date'])->startOfDay();
+        $endDate = ! empty($terms['end_date']) ? Carbon::parse($terms['end_date'])->endOfDay() : null;
+
+        $productIds = BonusSchemeProduct::query()
+            ->where('bonus_scheme_id', $terms['bonus_scheme_id'])
+            ->where(function ($query) {
+                $query->where('status', 'active')->orWhereNull('status');
+            })
+            ->pluck('qualifying_product_id')
+            ->unique();
+
+        if ($productIds->isEmpty()) {
+            return null;
+        }
+
+        $candidates = CustomerBonusScheme::query()
+            ->with('bonusScheme')
+            ->where('customer_id', $terms['customer_id'])
+            ->where('status', 'active')
+            ->where('bonus_scheme_id', '!=', $terms['bonus_scheme_id'])
+            ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
+            ->get();
+
+        foreach ($candidates as $candidate) {
+            if ($endDate && $candidate->start_date && $candidate->start_date->gt($endDate)) {
+                continue;
+            }
+
+            if ($candidate->end_date && $candidate->end_date->lt($startDate)) {
+                continue;
+            }
+
+            $sharesProduct = BonusSchemeProduct::query()
+                ->where('bonus_scheme_id', $candidate->bonus_scheme_id)
+                ->whereIn('qualifying_product_id', $productIds)
+                ->where(function ($query) {
+                    $query->where('status', 'active')->orWhereNull('status');
+                })
+                ->exists();
+
+            if ($sharesProduct) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Issue #572 (BS6): name the scheme an overlapping assignment blocks on.
+     */
+    private function overlapMessage(CustomerBonusScheme $conflict): string
+    {
+        $scheme = $conflict->bonusScheme;
+        $label = $scheme
+            ? "{$scheme->name} ({$scheme->scheme_code})"
+            : "scheme #{$conflict->bonus_scheme_id}";
+
+        $window = ($conflict->start_date?->toDateString() ?? 'open start')
+            .($conflict->end_date ? ' to '.$conflict->end_date->toDateString() : ' onwards');
+
+        return "This customer already has an overlapping assignment to {$label} ({$window}) covering the same product. End or suspend that assignment before assigning another scheme.";
     }
 }
