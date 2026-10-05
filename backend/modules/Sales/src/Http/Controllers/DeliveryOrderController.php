@@ -443,6 +443,29 @@ class DeliveryOrderController extends Controller
     }
 
     /**
+     * Issue #456: payment terms on the delivery order are free text (e.g.
+     * "15", "Net 30"); fall back to the customer's terms, then 30 days.
+     */
+    private function deliveryPaymentTermDays(DeliveryOrder $deliveryOrder): int
+    {
+        foreach ([$deliveryOrder->payment_terms, $deliveryOrder->customer?->payment_terms] as $term) {
+            if ($term === null || $term === '') {
+                continue;
+            }
+
+            if (is_numeric($term)) {
+                return max(0, (int) $term);
+            }
+
+            if (preg_match('/\d+/', (string) $term, $matches) === 1) {
+                return max(0, (int) $matches[0]);
+            }
+        }
+
+        return 30;
+    }
+
+    /**
      * Attach tags supplied on a create request to the freshly created document.
      */
     private function attachTags(DeliveryOrder $deliveryOrder, array $tags, ?int $userId): void
@@ -549,7 +572,7 @@ class DeliveryOrderController extends Controller
     public function createInvoice(Request $request, $id)
     {
         // Issue #462: resolve through the entity scope, not a bare find.
-        $deliveryOrder = $this->findScopedDeliveryOrder($request, $id)?->load(['customer', 'lines.product']);
+        $deliveryOrder = $this->findScopedDeliveryOrder($request, $id)?->load(['customer', 'salesOrder', 'lines.product', 'lines.salesOrderLine']);
 
         if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
@@ -558,6 +581,15 @@ class DeliveryOrderController extends Controller
         if ($deliveryOrder->status === 'cancelled') {
             return response()->json(['message' => 'Cancelled delivery orders cannot be invoiced'], 403);
         }
+
+        // Issue #456 (DO4): the physical delivery already happened, so the
+        // invoice must inherit the delivery's commercial terms — not rebuild
+        // them from defaults. Tax is resolved server-side through the shared
+        // engine (the SO line's browser-sent rate may be stale), discounts
+        // come from the originating order line, and the currency snapshot and
+        // payment terms travel with the conversion.
+        $invoiceDate = now()->toDateString();
+        $taxResolver = app(\App\Services\TaxResolutionService::class);
 
         // A delivery order may be billed across several invoices: bill only the
         // quantity earlier invoices have not already covered (Odoo-style
@@ -569,12 +601,30 @@ class DeliveryOrderController extends Controller
             if ($quantity <= 0) {
                 continue; // note/section row, or nothing left to invoice
             }
+
+            $soLine = $line->salesOrderLine;
+
+            $taxRate = 0.0;
+            if ($line->product !== null) {
+                $resolved = $taxResolver->resolveTaxForProduct(
+                    $line->product,
+                    null,
+                    null,
+                    'output',
+                    $invoiceDate,
+                );
+                $taxRate = (float) ($resolved['rate'] ?? 0.0);
+            }
+
             $lines[] = new AccountingDocumentLineData(
                 lineType: 'product',
                 description: $line->description ?: 'Delivered item',
                 quantity: $quantity,
                 unitPrice: (float) $line->unit_price,
                 productId: $line->product_id,
+                taxRate: $taxRate,
+                discountAmount: (float) ($soLine?->discount_amount ?? 0),
+                salesOrderLineId: $line->sales_order_line_id !== null ? (int) $line->sales_order_line_id : null,
             );
             $invoicedByLine[$line->id] = $quantity;
         }
@@ -612,15 +662,23 @@ class DeliveryOrderController extends Controller
         }
 
         try {
-            $invoice = DB::transaction(function () use ($deliveryOrder, $lines, $invoicedByLine) {
+            $termDays = $this->deliveryPaymentTermDays($deliveryOrder);
+
+            $invoice = DB::transaction(function () use ($deliveryOrder, $lines, $invoicedByLine, $invoiceDate, $termDays) {
                 $invoice = $this->accountingOriginInvoices->create(new AccountingOriginInvoiceData(
                     customerId: (int) $deliveryOrder->customer_id,
                     lines: $lines,
-                    invoiceDate: now()->toDateString(),
-                    dueDate: now()->addDays(30)->toDateString(),
+                    invoiceDate: $invoiceDate,
+                    dueDate: \Illuminate\Support\Carbon::parse($invoiceDate)->addDays($termDays)->toDateString(),
                     notes: "Delivery Order #{$deliveryOrder->delivery_order_number}",
                     customerReference: $deliveryOrder->customer_reference ?: $deliveryOrder->po_number,
                     internalReference: $deliveryOrder->internal_reference,
+                    // Issue #456: keep the delivery's currency snapshot and
+                    // sales-order link on the converted invoice.
+                    currencyCode: $deliveryOrder->currency_code,
+                    baseCurrencyCode: $deliveryOrder->base_currency_code,
+                    exchangeRate: $deliveryOrder->exchange_rate !== null ? (float) $deliveryOrder->exchange_rate : null,
+                    salesOrderId: $deliveryOrder->sales_order_id !== null ? (int) $deliveryOrder->sales_order_id : null,
                     originContext: [
                         'delivery_order_id' => $deliveryOrder->id,
                         'delivery_order_number' => $deliveryOrder->delivery_order_number,

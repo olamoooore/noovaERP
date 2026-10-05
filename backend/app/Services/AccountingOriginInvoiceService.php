@@ -50,6 +50,8 @@ class AccountingOriginInvoiceService
                 'project_id' => $line->projectId,
                 'department_id' => $line->departmentId,
                 'branch_id' => $line->branchId,
+                // Issue #456: preserve the originating sales-order line link.
+                'sales_order_line_id' => $line->salesOrderLineId,
             ], $data->lines);
 
             $invoiceData = [
@@ -68,6 +70,21 @@ class AccountingOriginInvoiceService
                 'created_via_role' => $data->createdViaRole,
                 'lines' => $lines,
             ];
+
+            // Issue #456: carry the source document's currency snapshot and
+            // sales-order link; nulls keep the existing resolver behaviour.
+            if ($data->currencyCode !== null) {
+                $invoiceData['currency_code'] = $data->currencyCode;
+            }
+            if ($data->baseCurrencyCode !== null) {
+                $invoiceData['base_currency_code'] = $data->baseCurrencyCode;
+            }
+            if ($data->exchangeRate !== null) {
+                $invoiceData['exchange_rate'] = $data->exchangeRate;
+            }
+            if ($data->salesOrderId !== null) {
+                $invoiceData['sales_order_id'] = $data->salesOrderId;
+            }
 
             // Use the token-based creation pattern
             $token = $this->invoiceService->issueCreationToken();
