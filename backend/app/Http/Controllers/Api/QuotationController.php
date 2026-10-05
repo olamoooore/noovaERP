@@ -294,6 +294,11 @@ class QuotationController extends Controller
             'lines' => 'required|array|min:1',
             'lines.*.line_type' => 'nullable|in:product,note,section',
             'lines.*.product_id' => 'nullable|exists:products,id',
+            // Issue #884 (UX2): optional line income account + analytic
+            // dimensions — overridable per line, defaulted from the product.
+            'lines.*.income_account_id' => 'nullable|exists:chart_of_accounts,id',
+            'lines.*.project_id' => 'nullable|integer',
+            'lines.*.department_id' => 'nullable|integer',
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
             'lines.*.product_notes' => 'nullable|string',
@@ -431,6 +436,11 @@ class QuotationController extends Controller
                         'line_type' => $lineType,
                         'sequence' => $lineData['sequence'] ?? $lineIndex,
                         'product_id' => $lineData['product_id'] ?? null,
+                        // Issue #884 (UX2): the line's income account and
+                        // dimensions are accepted (and later flow to the order).
+                        'income_account_id' => $lineData['income_account_id'] ?? null,
+                        'project_id' => $lineData['project_id'] ?? null,
+                        'department_id' => $lineData['department_id'] ?? null,
                         'model_number' => $lineData['model_number'] ?? null,
                         'description' => $lineData['description'],
                         'product_notes' => $lineData['product_notes'] ?? null,
@@ -569,6 +579,11 @@ class QuotationController extends Controller
             'lines.*.line_type' => 'nullable|in:product,note,section',
             'lines.*.sequence' => 'nullable|integer|min:0',
             'lines.*.product_id' => 'nullable|exists:products,id',
+            // Issue #884 (UX2): optional line income account + analytic
+            // dimensions, same rule as create.
+            'lines.*.income_account_id' => 'nullable|exists:chart_of_accounts,id',
+            'lines.*.project_id' => 'nullable|integer',
+            'lines.*.department_id' => 'nullable|integer',
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required_with:lines|string',
             'lines.*.product_notes' => 'nullable|string',
@@ -646,6 +661,10 @@ class QuotationController extends Controller
                             'line_type' => $lineType,
                             'sequence' => $lineData['sequence'] ?? $lineIndex,
                             'product_id' => $lineData['product_id'] ?? null,
+                            // Issue #884 (UX2): same as create.
+                            'income_account_id' => $lineData['income_account_id'] ?? null,
+                            'project_id' => $lineData['project_id'] ?? null,
+                            'department_id' => $lineData['department_id'] ?? null,
                             'model_number' => $lineData['model_number'] ?? null,
                             'description' => $lineData['description'] ?? '',
                             'product_notes' => $lineData['product_notes'] ?? null,
@@ -806,6 +825,12 @@ class QuotationController extends Controller
                     // #303 (X3): the accepted price mode travels with the line.
                     'tax_inclusive' => (bool) $line->tax_inclusive,
                     'discount_amount' => $line->discount_amount,
+                    // Issue #884 (UX2): the accepted line income account and
+                    // analytic dimensions travel with the order (and from
+                    // there to the invoice) — a null keeps the product default.
+                    'income_account_id' => $line->income_account_id,
+                    'project_id' => $line->project_id,
+                    'department_id' => $line->department_id,
                 ], fn ($v) => $v !== null);
             })->toArray();
 

@@ -6,6 +6,8 @@ use App\Models\LegalEntity;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Modules\FinancialReporting\DTOs\ReportFilter;
 use Modules\FinancialReporting\Services\Cache\ReportCacheService;
 use Modules\FinancialReporting\Services\Reports\BalanceSheetService;
@@ -24,6 +26,35 @@ class FinancialReportController extends Controller
         protected GeneralLedgerService $generalLedgerService,
         protected ReportCacheService $cacheService
     ) {}
+
+    /**
+     * Issue #768 (A8): the configured 365-day cap must not reject a legal
+     * entity's own fiscal year — MY/SG first financial years may run up to
+     * 18 months. The cap for an entity follows the longest fiscal year it
+     * has periods for, still bounded to 18 months (the statutory maximum).
+     */
+    private function maxRangeDays(?int $legalEntityId): int
+    {
+        $configured = (int) config('financialreporting.reports.max_date_range', 365);
+
+        if (! $legalEntityId || ! Schema::hasTable('fiscal_periods')) {
+            return $configured;
+        }
+
+        $row = DB::table('fiscal_periods')
+            ->where('legal_entity_id', $legalEntityId)
+            ->selectRaw('fiscal_year, MAX(period_end) - MIN(period_start) AS days')
+            ->groupBy('fiscal_year')
+            ->orderByRaw('MAX(period_end) - MIN(period_start) DESC')
+            ->first();
+
+        if (! $row || $row->days === null) {
+            return $configured;
+        }
+
+        // 18 months = ~548 days; +1 to keep an end-of-month range inclusive.
+        return max($configured, min((int) $row->days + 1, 549));
+    }
 
     /**
      * Generate Profit & Loss report
@@ -57,7 +88,7 @@ class FinancialReportController extends Controller
             $filter = ReportFilter::fromRequest($validated);
 
             // Validate date range
-            $maxDays = config('financialreporting.reports.max_date_range', 365);
+            $maxDays = $this->maxRangeDays($filter->legalEntityId);
             if (! $filter->validateDateRange($maxDays)) {
                 return response()->json([
                     'error' => "Date range cannot exceed {$maxDays} days",
@@ -389,7 +420,7 @@ class FinancialReportController extends Controller
             $filter->interval = $validated['method'] ?? 'indirect';
 
             // Validate date range
-            $maxDays = config('financialreporting.reports.max_date_range', 365);
+            $maxDays = $this->maxRangeDays($filter->legalEntityId);
             if (! $filter->validateDateRange($maxDays)) {
                 return response()->json([
                     'error' => "Date range cannot exceed {$maxDays} days",
@@ -629,7 +660,7 @@ class FinancialReportController extends Controller
 
             // Validate date range if provided
             if ($filter->startDate && $filter->endDate) {
-                $maxDays = config('financialreporting.reports.max_date_range', 365);
+                $maxDays = $this->maxRangeDays($filter->legalEntityId);
                 if (! $filter->validateDateRange($maxDays)) {
                     return response()->json([
                         'error' => "Date range cannot exceed {$maxDays} days",

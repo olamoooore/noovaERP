@@ -73,6 +73,14 @@ Schedule::command('sales:generate-recurring-orders')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Issue #882 - deferred revenue: release the portion of each active schedule
+// earned by the first of the month to the line's income account. The posting
+// goes through PostingEngine and accumulates the schedule's recognized amount.
+Schedule::command('accounting:recognize-deferred-revenue')
+    ->monthlyOn(1, '03:30')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Issue #606 - weekly per-salesperson sales digest. The command iterates every
 // tenant (IteratesTenants) and sends only to users who opted in.
 Schedule::command('sales:send-weekly-digest')

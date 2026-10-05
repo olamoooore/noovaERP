@@ -184,6 +184,12 @@ class InvoiceCancellationService
             ->where('source_document_id', $invoice->id)
             ->where('relation_type', 'post')
             ->delete();
+
+        // Issue #882 (SA9): the reversal mirrors the original entry —
+        // including its deferred-revenue credit. Close the schedule so the
+        // recognition job never releases against a reversed posting; a repost
+        // replaces the closed schedule with a fresh one.
+        app(\App\Services\DeferredRevenueRecognitionService::class)->cancelForInvoice($invoice);
     }
 
     /**

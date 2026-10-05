@@ -26,30 +26,37 @@ class FiscalPeriodValidator
      *
      * @param  string|Carbon  $date  The transaction date
      * @param  User|null  $user  The user attempting to post (null = current user)
+     * @param  int|null  $legalEntityId  Legal entity the post is bound to (issue #768)
      * @return array ['allowed' => bool, 'reason' => string|null, 'period' => FiscalPeriod|null]
      */
-    public function validateDate($date, ?User $user = null): array
+    public function validateDate($date, ?User $user = null, ?int $legalEntityId = null): array
     {
         $date = Carbon::parse($date);
         $user = $user ?? auth()->user();
 
-        // Get the period for this date
-        $period = FiscalPeriod::getPeriodForDate($date);
+        // Get the period for this date — entity-scoped first, legacy global next.
+        $period = $this->findPeriodFor($date, $legalEntityId);
 
-        // Auto-provision fiscal periods if none exist for this year
+        // Auto-provision fiscal periods if none exist for the containing fiscal
+        // year. Issue #768: the fiscal year is computed from the legal entity's
+        // fiscal_year_start, so a July-start entity is provisioned July→June.
         if (! $period) {
-            $year = $date->year;
+            $entity = $legalEntityId ? \App\Models\LegalEntity::find($legalEntityId) : null;
+            $startMonth = FiscalPeriod::parseFiscalYearStart($entity?->fiscal_year_start)[0];
+            $fiscalYear = FiscalPeriod::fiscalYearForDate($date, $startMonth);
 
-            // Only auto-create if there are NO periods at all for this year
-            // (avoids creating gaps if user intentionally deleted one month)
-            $hasAnyPeriodForYear = FiscalPeriod::forYear($year)->exists();
+            // Only auto-create if there are NO periods at all for this fiscal
+            // year (avoids creating gaps if user intentionally deleted one month)
+            $hasAnyPeriodForYear = FiscalPeriod::forYear($fiscalYear)
+                ->when($entity !== null, fn ($q) => $q->where('legal_entity_id', $entity->id))
+                ->exists();
 
             if (! $hasAnyPeriodForYear) {
-                Log::info("Auto-creating fiscal periods for year {$year} because none exist.");
-                FiscalPeriod::createMonthlyPeriodsForYear($year);
+                Log::info("Auto-creating fiscal periods for fiscal year {$fiscalYear} because none exist.");
+                FiscalPeriod::createMonthlyPeriodsForYear($fiscalYear, $entity);
 
                 // Re-fetch the period now that it exists
-                $period = FiscalPeriod::getPeriodForDate($date);
+                $period = $this->findPeriodFor($date, $legalEntityId);
             }
         }
 
@@ -117,6 +124,23 @@ class FiscalPeriodValidator
             'reason' => null,
             'period' => $period,
         ];
+    }
+
+    /**
+     * Find the period for a date. Entity-scoped periods win; legacy
+     * tenant-wide periods remain valid during the transition (issue #768).
+     */
+    private function findPeriodFor(Carbon $date, ?int $legalEntityId): ?FiscalPeriod
+    {
+        if ($legalEntityId !== null) {
+            $period = FiscalPeriod::forDate($date)->where('legal_entity_id', $legalEntityId)->first();
+            if ($period) {
+                return $period;
+            }
+        }
+
+        return FiscalPeriod::forDate($date)->whereNull('legal_entity_id')->first()
+            ?? FiscalPeriod::forDate($date)->first();
     }
 
     /**

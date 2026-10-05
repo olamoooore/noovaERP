@@ -45,6 +45,10 @@ class InvoiceLine extends Model
         'tax_amount',
         'discount_amount',
         'line_total',
+        // Issue #882 (SA9): deferred revenue — optional service period.
+        'is_deferred',
+        'service_start_date',
+        'service_end_date',
     ];
 
     protected $casts = [
@@ -58,6 +62,9 @@ class InvoiceLine extends Model
         'discount_amount' => 'decimal:2',
         'line_total' => 'decimal:2',
         'expiry_date' => 'date',
+        'is_deferred' => 'boolean',
+        'service_start_date' => 'date',
+        'service_end_date' => 'date',
     ];
 
     protected static function boot()
@@ -112,6 +119,15 @@ class InvoiceLine extends Model
     public function salesOrderLine(): BelongsTo
     {
         return $this->belongsTo(\Modules\Sales\Models\SalesOrderLine::class, 'sales_order_line_id');
+    }
+
+    /**
+     * Issue #882 (SA9): the deferred-revenue schedule that carries this
+     * line's unearned balance until the recognition job releases it.
+     */
+    public function deferredRevenueSchedule(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(DeferredRevenueSchedule::class, 'invoice_line_id');
     }
 
     /**

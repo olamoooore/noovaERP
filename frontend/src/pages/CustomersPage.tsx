@@ -4,7 +4,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog'
@@ -12,8 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { TagFilterSelect } from '@/components/tags/TagFilterSelect'
 import { Badge } from '@/components/ui/badge'
-import { Textarea } from '@/components/ui/textarea'
-import { buildCustomerPayload } from '@/lib/customerPayload'
+import { CustomerForm } from '@/components/customers/CustomerForm'
+import { customerFormToCreatePayload, emptyCustomerFormValues, type CustomerFormValues } from '@/lib/customerPayload'
 import { useToast } from '@/hooks/use-toast'
 import { formatCurrency, formatDate, getApiErrorMessage } from '@/lib/utils'
 import api from '@/lib/api'
@@ -81,57 +80,7 @@ interface Customer {
   matched_addresses?: string[]
 }
 
-interface CustomerFormData {
-  code: string
-  type: 'individual' | 'company'
-  name: string
-  email: string
-  phone: string
-  mobile: string
-  company: string
-  tax_number: string
-  website: string
-  billing_street: string
-  billing_street2: string
-  billing_city: string
-  billing_state: string
-  billing_zip: string
-  billing_country: string
-  billing_address: string
-  shipping_address: string
-  credit_limit: string
-  payment_terms: string
-  preferred_contact: string
-  marketing_opt_in: boolean
-  notes: string
-  category_ids: number[]
-}
-
-const initialFormData: CustomerFormData = {
-  code: '',
-  type: 'individual',
-  name: '',
-  email: '',
-  phone: '',
-  mobile: '',
-  company: '',
-  tax_number: '',
-  website: '',
-  billing_street: '',
-  billing_street2: '',
-  billing_city: '',
-  billing_state: '',
-  billing_zip: '',
-  billing_country: '',
-  billing_address: '',
-  shipping_address: '',
-  credit_limit: '',
-  payment_terms: '30',
-  preferred_contact: 'email',
-  marketing_opt_in: false,
-  notes: '',
-  category_ids: [],
-}
+const initialFormData: CustomerFormValues = emptyCustomerFormValues()
 
 // Helper function to format address (handles both string and JSON formats)
 function formatAddress(address: string | null | undefined): string {
@@ -170,8 +119,7 @@ export function CustomersPage() {
   const [tagFilter, setTagFilter] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
-  const [editMode, setEditMode] = useState(false)
-  const [formData, setFormData] = useState<CustomerFormData>(initialFormData)
+  const [formData, setFormData] = useState<CustomerFormValues>(initialFormData)
   const [customerInvoicesPage, setCustomerInvoicesPage] = useState(1)
   const [customerInvoicesPageSize, setCustomerInvoicesPageSize] = useState(10)
 
@@ -254,9 +202,9 @@ export function CustomersPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: async (data: Partial<CustomerFormData>) => {
+    mutationFn: async (data: CustomerFormValues) => {
       // #429 (CU1): 0 stays 0 — only an emptied field falls back.
-      const response = await api.post('/customers', buildCustomerPayload(data))
+      const response = await api.post('/customers', customerFormToCreatePayload(data))
       return response.data
     },
     onSuccess: () => {
@@ -269,27 +217,6 @@ export function CustomersPage() {
       toast({
         variant: 'destructive',
         title: 'Failed to create customer',
-        description: getApiErrorMessage(error),
-      })
-    },
-  })
-
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: Partial<CustomerFormData> }) => {
-      // #429 (CU1): 0 stays 0 — only an emptied field falls back.
-      const response = await api.put(`/customers/${id}`, buildCustomerPayload(data))
-      return response.data
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['customers'] })
-      queryClient.invalidateQueries({ queryKey: ['customer', selectedCustomer?.id] })
-      setEditMode(false)
-      toast({ title: 'Customer updated successfully' })
-    },
-    onError: (error: any) => {
-      toast({
-        variant: 'destructive',
-        title: 'Failed to update customer',
         description: getApiErrorMessage(error),
       })
     },
@@ -341,49 +268,13 @@ export function CustomersPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (editMode && selectedCustomer) {
-      updateMutation.mutate({ id: selectedCustomer.id, data: formData })
-    } else {
-      createMutation.mutate(formData)
-    }
+    createMutation.mutate(formData)
   }
 
   const openCustomerDetail = (customer: Customer) => {
     setSelectedCustomer(customer)
     setCustomerInvoicesPage(1)
     setDetailOpen(true)
-    setEditMode(false)
-  }
-
-  const startEdit = () => {
-    if (customerDetail) {
-      setFormData({
-        code: customerDetail.code || '',
-        type: customerDetail.type || 'individual',
-        name: customerDetail.name || '',
-        email: customerDetail.email || '',
-        phone: customerDetail.phone || '',
-        mobile: customerDetail.mobile || '',
-        company: customerDetail.company || '',
-        tax_number: customerDetail.tax_number || '',
-        website: customerDetail.website || '',
-        billing_street: '',
-        billing_street2: '',
-        billing_city: '',
-        billing_state: '',
-        billing_zip: '',
-        billing_country: '',
-        billing_address: formatAddress(customerDetail.billing_address),
-        shipping_address: formatAddress(customerDetail.shipping_address),
-        credit_limit: customerDetail.credit_limit?.toString() || '',
-        payment_terms: customerDetail.payment_terms?.toString() || '30',
-        preferred_contact: customerDetail.preferred_contact || 'email',
-        marketing_opt_in: customerDetail.marketing_opt_in || false,
-        notes: customerDetail.notes || '',
-        category_ids: customerDetail.categories?.map((c: any) => c.id) || [],
-      })
-      setEditMode(true)
-    }
   }
 
   const categories = categoriesData || []
@@ -418,248 +309,12 @@ export function CustomersPage() {
               <DialogTitle>Add New Customer</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-6">
-              <Tabs defaultValue="basic" className="w-full">
-                <TabsList className="w-fit max-w-full">
-                  <TabsTrigger value="basic">Basic Info</TabsTrigger>
-                  <TabsTrigger value="addresses">Addresses</TabsTrigger>
-                  <TabsTrigger value="financial">Financial</TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="basic" className="space-y-4 mt-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="code">Customer Code</Label>
-                    <Input
-                      id="code"
-                      value={formData.code}
-                      onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                      placeholder="Auto-generated if left empty"
-                      className="font-mono"
-                    />
-                    <p className="text-xs text-muted-foreground">Your own ID format — leave empty to auto-generate</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Customer Type</Label>
-                      <Select 
-                        value={formData.type} 
-                        onValueChange={(v) => setFormData({ ...formData, type: v as 'individual' | 'company' })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="individual">Individual</SelectItem>
-                          <SelectItem value="company">Company</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="name">{formData.type === 'company' ? 'Contact / Trading Name *' : 'Name *'}</Label>
-                      <Input
-                        id="name"
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  {formData.type === 'company' && (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="company">Registered Company Name</Label>
-                        <Input
-                          id="company"
-                          value={formData.company}
-                          onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="tax_number">Tax Number</Label>
-                        <Input
-                          id="tax_number"
-                          value={formData.tax_number}
-                          onChange={(e) => setFormData({ ...formData, tax_number: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="email">Email</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="phone">Phone</Label>
-                      <Input
-                        id="phone"
-                        value={formData.phone}
-                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="mobile">Mobile</Label>
-                      <Input
-                        id="mobile"
-                        value={formData.mobile}
-                        onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="website">Website</Label>
-                      <Input
-                        id="website"
-                        type="url"
-                        placeholder="https://"
-                        value={formData.website}
-                        onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Preferred Contact Method</Label>
-                    <Select 
-                      value={formData.preferred_contact} 
-                      onValueChange={(v) => setFormData({ ...formData, preferred_contact: v })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="email">Email</SelectItem>
-                        <SelectItem value="phone">Phone</SelectItem>
-                        <SelectItem value="sms">SMS</SelectItem>
-                        <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="addresses" className="space-y-4 mt-4">
-                  <p className="text-sm font-medium">Billing Address</p>
-                  <div className="space-y-2">
-                    <Label htmlFor="billing-street">Street</Label>
-                    <Input
-                      id="billing-street"
-                      value={formData.billing_street}
-                      onChange={(e) => setFormData({ ...formData, billing_street: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="billing-street2">Street 2</Label>
-                    <Input
-                      id="billing-street2"
-                      value={formData.billing_street2}
-                      onChange={(e) => setFormData({ ...formData, billing_street2: e.target.value })}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="billing-city">City</Label>
-                      <Input
-                        id="billing-city"
-                        value={formData.billing_city}
-                        onChange={(e) => setFormData({ ...formData, billing_city: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="billing-state">State / Province</Label>
-                      <Input
-                        id="billing-state"
-                        value={formData.billing_state}
-                        onChange={(e) => setFormData({ ...formData, billing_state: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="billing-zip">Postal Code</Label>
-                      <Input
-                        id="billing-zip"
-                        value={formData.billing_zip}
-                        onChange={(e) => setFormData({ ...formData, billing_zip: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="billing-country">Country (ISO code)</Label>
-                      <Input
-                        id="billing-country"
-                        maxLength={2}
-                        placeholder="e.g. MY"
-                        value={formData.billing_country}
-                        onChange={(e) => setFormData({ ...formData, billing_country: e.target.value.toUpperCase() })}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="shipping_address">Shipping Address (full text)</Label>
-                    <Textarea
-                      id="shipping_address"
-                      rows={2}
-                      value={formData.shipping_address}
-                      onChange={(e) => setFormData({ ...formData, shipping_address: e.target.value })}
-                      placeholder="Optional — enter the shipping address manually"
-                    />
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="financial" className="space-y-4 mt-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="credit_limit">Credit Limit</Label>
-                      <Input
-                        id="credit_limit"
-                        type="number"
-                        step="0.01"
-                        value={formData.credit_limit}
-                        onChange={(e) => setFormData({ ...formData, credit_limit: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="payment_terms">Payment Terms (days)</Label>
-                      <Input
-                        id="payment_terms"
-                        type="number"
-                        value={formData.payment_terms}
-                        onChange={(e) => setFormData({ ...formData, payment_terms: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="notes">Notes</Label>
-                    <Textarea
-                      id="notes"
-                      rows={3}
-                      value={formData.notes}
-                      onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="marketing_opt_in"
-                      checked={formData.marketing_opt_in}
-                      onChange={(e) => setFormData({ ...formData, marketing_opt_in: e.target.checked })}
-                      className="h-4 w-4 rounded border-gray-300"
-                    />
-                    <Label htmlFor="marketing_opt_in" className="font-normal">
-                      Opt-in for marketing communications
-                    </Label>
-                  </div>
-                </TabsContent>
-              </Tabs>
+              <CustomerForm
+                value={formData}
+                onChange={setFormData}
+                idPrefix="create-customer"
+                disabled={createMutation.isPending}
+              />
 
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setOpen(false)}>
@@ -966,19 +621,15 @@ export function CustomersPage() {
       </Card>
 
       {/* Customer Detail Dialog */}
-      <Dialog open={detailOpen} onOpenChange={(o) => { setDetailOpen(o); if (!o) { setEditMode(false); setSelectedCustomer(null); } }}>
+      <Dialog open={detailOpen} onOpenChange={(o) => { setDetailOpen(o); if (!o) { setSelectedCustomer(null) } }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
-              <span>{editMode ? 'Edit Customer' : 'Customer Details'}</span>
-              {!editMode && customerDetail && (
+              <span>Customer Details</span>
+              {customerDetail && (
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={startEdit}>
-                    <Icon icon="solar:pen-bold" className="mr-2 h-4 w-4" />
-                    Edit
-                  </Button>
-                  <Button 
-                    variant="destructive" 
+                  <Button
+                    variant="destructive"
                     size="sm"
                     onClick={() => setConfirmAction({ type: 'delete', id: customerDetail.id })}
                   >
@@ -990,7 +641,7 @@ export function CustomersPage() {
             </DialogTitle>
           </DialogHeader>
 
-          {customerDetail && !editMode ? (
+          {customerDetail ? (
             <Tabs defaultValue="overview" className="w-full">
               <TabsList>
                 <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -1200,182 +851,6 @@ export function CustomersPage() {
                 </div>
               </TabsContent>
             </Tabs>
-          ) : editMode ? (
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Same form as create but for editing */}
-              <Tabs defaultValue="basic" className="w-full">
-                <TabsList className="w-fit max-w-full">
-                  <TabsTrigger value="basic">Basic Info</TabsTrigger>
-                  <TabsTrigger value="addresses">Addresses</TabsTrigger>
-                  <TabsTrigger value="financial">Financial</TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="basic" className="space-y-4 mt-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-code">Customer Code</Label>
-                    <Input
-                      id="edit-code"
-                      value={formData.code}
-                      onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                      placeholder="e.g., CUST-001"
-                      className="font-mono"
-                    />
-                    <p className="text-xs text-muted-foreground">Your own ID format — leave empty to keep auto-generated</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Customer Type</Label>
-                      <Select 
-                        value={formData.type} 
-                        onValueChange={(v) => setFormData({ ...formData, type: v as 'individual' | 'company' })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="individual">Individual</SelectItem>
-                          <SelectItem value="company">Company</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-name">{formData.type === 'company' ? 'Contact / Trading Name *' : 'Name *'}</Label>
-                      <Input
-                        id="edit-name"
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  {formData.type === 'company' && (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-company">Registered Company Name</Label>
-                        <Input
-                          id="edit-company"
-                          value={formData.company}
-                          onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-tax">Tax Number</Label>
-                        <Input
-                          id="edit-tax"
-                          value={formData.tax_number}
-                          onChange={(e) => setFormData({ ...formData, tax_number: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-email">Email</Label>
-                      <Input
-                        id="edit-email"
-                        type="email"
-                        value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-phone">Phone</Label>
-                      <Input
-                        id="edit-phone"
-                        value={formData.phone}
-                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-mobile">Mobile</Label>
-                      <Input
-                        id="edit-mobile"
-                        value={formData.mobile}
-                        onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-website">Website</Label>
-                      <Input
-                        id="edit-website"
-                        type="url"
-                        value={formData.website}
-                        onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="addresses" className="space-y-4 mt-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-billing">Billing Address</Label>
-                    <Textarea
-                      id="edit-billing"
-                      rows={3}
-                      value={formData.billing_address}
-                      onChange={(e) => setFormData({ ...formData, billing_address: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-shipping">Shipping Address</Label>
-                    <Textarea
-                      id="edit-shipping"
-                      rows={3}
-                      value={formData.shipping_address}
-                      onChange={(e) => setFormData({ ...formData, shipping_address: e.target.value })}
-                    />
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="financial" className="space-y-4 mt-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-credit">Credit Limit</Label>
-                      <Input
-                        id="edit-credit"
-                        type="number"
-                        step="0.01"
-                        value={formData.credit_limit}
-                        onChange={(e) => setFormData({ ...formData, credit_limit: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-terms">Payment Terms (days)</Label>
-                      <Input
-                        id="edit-terms"
-                        type="number"
-                        value={formData.payment_terms}
-                        onChange={(e) => setFormData({ ...formData, payment_terms: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-notes">Notes</Label>
-                    <Textarea
-                      id="edit-notes"
-                      rows={3}
-                      value={formData.notes}
-                      onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    />
-                  </div>
-                </TabsContent>
-              </Tabs>
-
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setEditMode(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={updateMutation.isPending}>
-                  {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
-                </Button>
-              </DialogFooter>
-            </form>
           ) : (
             <div className="flex items-center justify-center py-10">
               <Icon icon="solar:refresh-bold" className="h-8 w-8 animate-spin text-muted-foreground" />

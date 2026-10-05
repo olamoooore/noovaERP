@@ -9,6 +9,7 @@ use App\Accounting\DTOs\ReversalRequest;
 use App\Accounting\Events\CreditNotePosted;
 use App\Models\CustomerCreditNote;
 use App\Models\CustomerCreditNoteLine;
+use App\Models\DeferredRevenueSchedule;
 use App\Models\Invoice;
 use App\Models\InvoiceLine;
 use App\Models\Product;
@@ -325,6 +326,9 @@ class CustomerCreditNoteService
 
                 $cnLines[] = [
                     'source_line_id' => $line->id,
+                    // Issue #882 (SA9): the source invoice line lets the
+                    // reversal find the deferred-revenue schedule (if any).
+                    'invoice_line_id' => $line->invoice_line_id,
                     'product' => $line->product,
                     'base' => $calc['net'],
                     'rate' => $rate,
@@ -414,16 +418,19 @@ class CustomerCreditNoteService
             $cnArBase = $cnToBase((float) $creditNote->total_amount);
             $cnRevenueBase = round($cnArBase - $cnTaxBaseTotal, 2);
 
-            $lines[] = new PostingRequestLine(
-                accountMappingKey: 'sales_revenue',
-                accountId: null,
-                debit: $cnRevenueBase,
-                credit: 0,
-                description: "Credit Note {$creditNote->credit_note_number}",
-                currencyCode: $cnForeign ? $cnBaseCurrency : null,
-                originalAmount: $cnForeign ? round((float) $creditNote->subtotal, 2) : null,
-                exchangeRate: $cnForeign ? $cnRate : null,
-            );
+            // Issue #882 (SA9): reverse the UNRELEASED balance from deferred
+            // revenue first; only the already-recognised portion is debited
+            // to income.
+            foreach ($this->buildRevenueReversalLines(
+                $creditNote,
+                $cnLines,
+                $cnRevenueBase,
+                $cnForeign,
+                $cnBaseCurrency,
+                $cnRate,
+            ) as $revenueLine) {
+                $lines[] = $revenueLine;
+            }
 
             // CR Accounts Receivable (total)
             $lines[] = new PostingRequestLine(
@@ -506,6 +513,122 @@ class CustomerCreditNoteService
             DB::rollBack();
             throw $e;
         }
+    }
+
+    /**
+     * Issue #882 (SA9): build the revenue-side debit lines of a credit note.
+     *
+     * For a line linked to an open deferred-revenue schedule, the reversal
+     * debits the schedule's deferred account for its still-unreleased balance;
+     * only the already-recognised portion hits income. Shares are allocated
+     * over the credit note's lines with the same whole-cent arithmetic invoice
+     * posting uses (#876), so the debits sum EXACTLY to the revenue reversal
+     * and the entry stays balanced.
+     *
+     * When no line is linked to an open schedule the single legacy
+     * `sales_revenue` debit is posted byte-identically to before.
+     *
+     * @param  array<int, array<string, mixed>>  $cnLines
+     * @return PostingRequestLine[]
+     */
+    private function buildRevenueReversalLines(
+        CustomerCreditNote $creditNote,
+        array $cnLines,
+        float $revenueBase,
+        bool $foreign,
+        string $baseCurrency,
+        float $exchangeRate,
+    ): array {
+        $revenueBase = round($revenueBase, 2);
+
+        if ($revenueBase == 0.0) {
+            return [];
+        }
+
+        $weights = [];
+        $scheduledLines = [];
+
+        foreach ($cnLines as $index => $cnLine) {
+            $weights[$index] = max(round((float) ($cnLine['base'] ?? 0), 2), 0.0);
+
+            $schedule = ! empty($cnLine['invoice_line_id'])
+                ? DeferredRevenueSchedule::where('invoice_line_id', $cnLine['invoice_line_id'])->first()
+                : null;
+
+            if ($schedule && $schedule->remainingAmount() > 0) {
+                $scheduledLines[$index] = $schedule;
+            }
+        }
+
+        if ($scheduledLines === []) {
+            return [new PostingRequestLine(
+                accountMappingKey: 'sales_revenue',
+                accountId: null,
+                debit: $revenueBase,
+                credit: 0,
+                description: "Credit Note {$creditNote->credit_note_number}",
+                currencyCode: $foreign ? $baseCurrency : null,
+                originalAmount: $foreign ? round((float) $creditNote->subtotal, 2) : null,
+                exchangeRate: $foreign ? $exchangeRate : null,
+            )];
+        }
+
+        $weights = array_values($weights);
+        $shares = \App\Support\CentsAllocation::allocate((int) round($revenueBase * 100), $weights);
+        $documentShares = $foreign
+            ? \App\Support\CentsAllocation::allocate(
+                (int) round(round((float) $creditNote->subtotal - (float) $creditNote->discount_amount, 2) * 100),
+                $weights,
+            )
+            : [];
+
+        $recognition = app(DeferredRevenueRecognitionService::class);
+        $lines = [];
+        $deferredBase = 0.0;
+        $deferredDocument = 0.0;
+
+        foreach ($scheduledLines as $index => $schedule) {
+            $share = round($shares[$index] / 100, 2);
+            $release = $recognition->applyCreditReversal($schedule, $share);
+
+            if ($release <= 0) {
+                continue;
+            }
+
+            $documentShare = $foreign ? round($documentShares[$index] / 100, 2) : null;
+            $deferredBase = round($deferredBase + $release, 2);
+            $deferredDocument = $foreign ? round($deferredDocument + $documentShare, 2) : 0.0;
+
+            $lines[] = new PostingRequestLine(
+                accountMappingKey: 'deferred_revenue',
+                accountId: (int) $schedule->deferred_account_id,
+                debit: $release,
+                credit: 0,
+                description: "Credit Note {$creditNote->credit_note_number} - deferred revenue reversal",
+                currencyCode: $foreign ? $baseCurrency : null,
+                originalAmount: $documentShare,
+                exchangeRate: $foreign ? $exchangeRate : null,
+            );
+        }
+
+        $incomeBase = round($revenueBase - $deferredBase, 2);
+
+        if ($incomeBase != 0.0) {
+            $lines[] = new PostingRequestLine(
+                accountMappingKey: 'sales_revenue',
+                accountId: null,
+                debit: $incomeBase,
+                credit: 0,
+                description: "Credit Note {$creditNote->credit_note_number}",
+                currencyCode: $foreign ? $baseCurrency : null,
+                originalAmount: $foreign
+                    ? round((float) $creditNote->subtotal - $deferredDocument, 2)
+                    : null,
+                exchangeRate: $foreign ? $exchangeRate : null,
+            );
+        }
+
+        return $lines;
     }
 
     /**

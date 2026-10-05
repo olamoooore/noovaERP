@@ -90,6 +90,10 @@ class Product extends Model
         'income_account_id',
         'expense_account_id',
 
+        // Issue #882 (SA9): deferred revenue defaults for sales lines.
+        'is_deferred',
+        'deferred_months',
+
         // Inventory
         'track_inventory',
         'tracking_method',
@@ -196,6 +200,8 @@ class Product extends Model
         'is_digital' => 'boolean',
         'is_subscription' => 'boolean',
         'is_bundle' => 'boolean',
+        'is_deferred' => 'boolean',
+        'deferred_months' => 'integer',
 
         // Dates
         'preorder_available_at' => 'date:Y-m-d',

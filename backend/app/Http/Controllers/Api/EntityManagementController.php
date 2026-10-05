@@ -28,7 +28,7 @@ class EntityManagementController extends Controller
             'name' => 'required|string|max:255',
             'code' => 'required|string|max:50|unique:'.self::GROUPS_TABLE.',code',
             'base_currency' => 'required|string|size:3|exists:currencies,code',
-            'fiscal_year_start' => 'sometimes|string|max:5',
+            'fiscal_year_start' => ['sometimes', 'string', 'date_format:m-d'],
         ]);
 
         $id = DB::table(self::GROUPS_TABLE)->insertGetId(array_merge($data, [
@@ -57,7 +57,7 @@ class EntityManagementController extends Controller
             'name' => 'sometimes|string|max:255',
             'code' => 'sometimes|string|max:50',
             'base_currency' => 'sometimes|string|size:3|exists:currencies,code',
-            'fiscal_year_start' => 'sometimes|string|max:5',
+            'fiscal_year_start' => ['sometimes', 'string', 'date_format:m-d'],
         ]);
 
         // Ensure code uniqueness if changing
@@ -115,7 +115,7 @@ class EntityManagementController extends Controller
             'code' => 'required|string|max:50|unique:legal_entities,code',
             'country_code' => 'sometimes|string|size:2',
             'base_currency' => 'required|string|size:3|exists:currencies,code',
-            'fiscal_year_start' => 'sometimes|string|max:5',
+            'fiscal_year_start' => ['sometimes', 'string', 'date_format:m-d'],
         ]);
 
         $id = DB::table('legal_entities')->insertGetId(array_merge($data, [
@@ -145,7 +145,7 @@ class EntityManagementController extends Controller
             'code' => 'sometimes|string|max:50',
             'country_code' => 'sometimes|string|size:2',
             'base_currency' => 'sometimes|string|size:3|exists:currencies,code',
-            'fiscal_year_start' => 'sometimes|string|max:5',
+            'fiscal_year_start' => ['sometimes', 'string', 'date_format:m-d'],
             'status' => 'sometimes|in:active,inactive',
         ]);
 

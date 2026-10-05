@@ -41,6 +41,7 @@ class TaxDeterminationService
     public function determineForInvoice(
         Invoice $invoice,
         ?array $overrides = null,
+        bool $persist = true,
     ): array {
         $invoice->loadMissing('lines.product', 'customer');
 
@@ -61,15 +62,20 @@ class TaxDeterminationService
         // clear warning status, never a fallback country. An explicit manual
         // jurisdiction override is a human decision and still wins (#277).
         if ($legalEntityId !== null && $registration === null && $overrideJurisdiction === null) {
-            [$resultId, $resultVersion] = $this->persistResult(
-                'invoice',
-                (int) $invoice->id,
-                '',
-                '',
-                [],
-                $transactionDate,
-                'NO_REGISTRATION',
-            );
+            // Issue #883 (SAU1): the journal PREVIEW computes the same
+            // determination without persisting it — a preview must never
+            // write, including the central determination rows.
+            [$resultId, $resultVersion] = $persist
+                ? $this->persistResult(
+                    'invoice',
+                    (int) $invoice->id,
+                    '',
+                    '',
+                    [],
+                    $transactionDate,
+                    'NO_REGISTRATION',
+                )
+                : [(string) Str::uuid(), 1];
             $result = $this->buildResult($resultId, $resultVersion, '', '', [], []);
             $result['result_status'] = 'NO_REGISTRATION';
             $result['warning'] = "No active tax registration for legal entity {$legalEntityId} on {$transactionDate}; no tax was charged.";
@@ -82,7 +88,9 @@ class TaxDeterminationService
             ? strtoupper((string) $registration->jurisdiction)
             : $this->resolveJurisdiction($invoice);
 
-        if ($overrides !== null && $overrides !== []) {
+        // Issue #883 (SAU1): a preview computes the same override treatment
+        // without recording the audit row (the preview never writes).
+        if ($persist && $overrides !== null && $overrides !== []) {
             app(\App\Services\TaxOverrideService::class)->guardAndRecordDocumentOverride(
                 'invoice',
                 (int) $invoice->id,
@@ -241,7 +249,10 @@ class TaxDeterminationService
         $aggregated = $this->aggregateTaxLines($taxLines);
 
         $resultStatus = $expiredRuleWarnings !== [] ? 'TAX_RULE_EXPIRED' : 'DETERMINED';
-        [$id, $version] = $this->persistResult('invoice', (int) $invoice->id, $jurisdiction, $regime, $taxLines, $transactionDate, $resultStatus);
+        // Issue #883 (SAU1): persist only when the caller is actually posting.
+        [$id, $version] = $persist
+            ? $this->persistResult('invoice', (int) $invoice->id, $jurisdiction, $regime, $taxLines, $transactionDate, $resultStatus)
+            : [(string) Str::uuid(), 1];
 
         $result = $this->buildResult($id, $version, $jurisdiction, $regime, $taxLines, $aggregated);
         $result['result_status'] = $resultStatus;

@@ -395,6 +395,11 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::get('/invoices/{invoice}/preflight', [InvoiceController::class, 'preflight'])
             ->middleware(RequirePermission::using('invoices.view'));
 
+        // Issue #883 (SAU1): the Journal tab — draft preview (same builder as
+        // posting, never written) or the actual posted entry with drill-down.
+        Route::get('/invoices/{invoice}/journal', [InvoiceController::class, 'journal'])
+            ->middleware(RequirePermission::using('invoices.view'));
+
         // Evidence
         Route::post('/invoices/{invoice}/evidence', [InvoiceController::class, 'uploadEvidence'])
             ->middleware(RequirePermission::using('invoices.evidence.manage'));
@@ -451,6 +456,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             Route::get('/accounting/budgets', [\App\Http\Controllers\Api\BudgetController::class, 'index']);
             Route::get('/accounting/budgets/{budget}', [\App\Http\Controllers\Api\BudgetController::class, 'show']);
             Route::get('/accounting/budgets/{budget}/variance', [\App\Http\Controllers\Api\BudgetController::class, 'variance']);
+            // Issue #882 (SA9): the deferred-revenue schedule report, per entity.
+            Route::get('/accounting/deferred-revenue', [\App\Http\Controllers\Api\DeferredRevenueReportController::class, 'index']);
         });
         Route::middleware(RequirePermission::using('accounting.write'))->group(function () {
             Route::post('/accounting/budgets', [\App\Http\Controllers\Api\BudgetController::class, 'store']);

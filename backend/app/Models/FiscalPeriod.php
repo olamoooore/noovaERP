@@ -50,6 +50,11 @@ class FiscalPeriod extends Model
         return $this->belongsTo(User::class, 'locked_by');
     }
 
+    public function legalEntity(): BelongsTo
+    {
+        return $this->belongsTo(LegalEntity::class, 'legal_entity_id');
+    }
+
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
@@ -90,6 +95,17 @@ class FiscalPeriod extends Model
     public function scopeForYear($query, int $year)
     {
         return $query->where('fiscal_year', $year);
+    }
+
+    /**
+     * Scope: periods that belong to a legal entity. A null $legalEntityId
+     * targets the legacy tenant-wide periods (legal_entity_id IS NULL).
+     */
+    public function scopeForEntity($query, ?int $legalEntityId)
+    {
+        return $legalEntityId === null
+            ? $query->whereNull('legal_entity_id')
+            : $query->where('legal_entity_id', $legalEntityId);
     }
 
     /**
@@ -224,39 +240,115 @@ class FiscalPeriod extends Model
     }
 
     /**
-     * Static helper: Create monthly periods for a year
+     * Parse a legal entity's `fiscal_year_start` (MM-DD) into [month, day].
+     * Anything malformed falls back to the calendar year (01-01).
+     *
+     * @return array{0: int, 1: int}
+     */
+    public static function parseFiscalYearStart(?string $value): array
+    {
+        if ($value && preg_match('/^(\d{1,2})-(\d{1,2})$/', $value, $matches)) {
+            $month = (int) $matches[1];
+            $day = (int) $matches[2];
+
+            if ($month >= 1 && $month <= 12 && $day >= 1 && $day <= 31) {
+                return [$month, $day];
+            }
+        }
+
+        return [1, 1];
+    }
+
+    /**
+     * The first day of a legal entity's fiscal year. Periods are monthly, so
+     * the year starts on the first day of the configured month.
+     */
+    public static function entityFiscalYearStart(LegalEntity $entity, int $year): Carbon
+    {
+        [$month] = static::parseFiscalYearStart($entity->fiscal_year_start);
+
+        return Carbon::create($year, $month, 1)->startOfDay();
+    }
+
+    /**
+     * The fiscal year (as labelled) that contains the given date for a
+     * fiscal year starting in $startMonth.
+     */
+    public static function fiscalYearForDate(Carbon $date, int $startMonth): int
+    {
+        $startThisYear = Carbon::create($date->year, $startMonth, 1);
+
+        return $date->lt($startThisYear) ? $date->year - 1 : $date->year;
+    }
+
+    /**
+     * Static helper: Create monthly periods for a fiscal year.
+     *
+     * Issue #768: when a legal entity is given the periods start at that
+     * entity's fiscal_year_start and run for a full year (July→June for an
+     * FYE 30 June), scoped to the entity. Explicit $periodStart/$periodEnd
+     * support a first financial year of up to 18 months and later changes
+     * of year end. Without an entity the legacy tenant-wide January
+     * calendar is preserved.
      *
      * @return int Number of periods created
      */
-    public static function createMonthlyPeriodsForYear(int $year): int
-    {
+    public static function createMonthlyPeriodsForYear(
+        int $year,
+        ?LegalEntity $entity = null,
+        ?Carbon $periodStart = null,
+        ?Carbon $periodEnd = null,
+    ): int {
+        $start = $periodStart
+            ? Carbon::parse($periodStart)->startOfDay()
+            : ($entity
+                ? static::entityFiscalYearStart($entity, $year)
+                : Carbon::create($year, 1, 1)->startOfDay());
+
+        $end = $periodEnd
+            ? Carbon::parse($periodEnd)->endOfDay()
+            : $start->copy()->addYear()->subDay();
+
+        $entityId = $entity?->id;
         $count = 0;
 
-        for ($month = 1; $month <= 12; $month++) {
-            $start = Carbon::create($year, $month, 1);
-            $end = $start->copy()->endOfMonth();
+        $cursor = $start->copy()->startOfMonth();
+        $first = true;
 
-            $code = $start->format('Y-m');
-            $name = $start->format('F Y');
-
-            // Check if period already exists
-            if (static::where('code', $code)->exists()) {
-                continue;
+        while ($cursor->lte($end)) {
+            $monthStart = $first ? $start->copy() : $cursor->copy();
+            $monthEnd = $cursor->copy()->endOfMonth();
+            if ($monthEnd->gt($end)) {
+                $monthEnd = $end->copy();
             }
 
-            static::create([
-                'name' => $name,
-                'code' => $code,
-                'period_start' => $start,
-                'period_end' => $end,
-                'period_type' => 'monthly',
-                'fiscal_year' => $year,
-                'is_locked' => false,
-                'status' => 'open',
-                'created_by' => TenantUserHelper::resolveTenantUserId(),
-            ]);
+            $code = $monthStart->format('Y-m');
+            $name = $monthStart->format('F Y');
 
-            $count++;
+            $exists = static::query()
+                ->where('code', $code)
+                ->forEntity($entityId)
+                ->exists();
+
+            if (! $exists) {
+                static::create([
+                    'name' => $name,
+                    'legal_entity_id' => $entityId,
+                    'code' => $code,
+                    'period_start' => $monthStart,
+                    'period_end' => $monthEnd,
+                    'period_type' => 'monthly',
+                    'fiscal_year' => $year,
+                    'is_locked' => false,
+                    'status' => 'open',
+                    'created_by' => TenantUserHelper::resolveTenantUserId(),
+                ]);
+
+                $count++;
+            }
+
+            $first = false;
+            $cursor->addMonth()->startOfMonth();
         }
 
         return $count;

@@ -522,6 +522,12 @@ class InvoiceController extends Controller
             'lines' => 'required|array|min:1',
             'lines.*.line_type' => 'nullable|in:product,note,section',
             'lines.*.product_id' => 'nullable|exists:products,id',
+            // Issue #884 (UX2): optional line income-account override and
+            // analytic dimensions — overridable per line, defaulted from the
+            // product when omitted.
+            'lines.*.gl_account_id' => 'nullable|exists:chart_of_accounts,id',
+            'lines.*.project_id' => 'nullable|integer',
+            'lines.*.department_id' => 'nullable|integer',
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
             'lines.*.product_notes' => 'nullable|string',
@@ -543,6 +549,11 @@ class InvoiceController extends Controller
             // line (the customer profile supplies the default).
             'lines.*.tax_exemption_reason' => 'nullable|string|max:120',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
+            // Issue #882 (SA9): optional service period for deferred revenue;
+            // absent flags default from the product's deferred setting.
+            'lines.*.is_deferred' => 'nullable|boolean',
+            'lines.*.service_start_date' => 'nullable|date',
+            'lines.*.service_end_date' => 'nullable|date|after_or_equal:lines.*.service_start_date',
             // MRD pricelist-multicurrency FR-5.1/5.2: document currency +
             // optional explicit price list for this document.
             'currency_code' => 'nullable|string|size:3',
@@ -842,6 +853,11 @@ class InvoiceController extends Controller
                     'line_type' => $line['line_type'] ?? 'product',
                     'sequence' => $line['sequence'] ?? 0,
                     'product_id' => $line['product_id'] ?? null,
+                    // Issue #884 (UX2): the draft keeps its line override and
+                    // dimensions on re-import.
+                    'gl_account_id' => $line['gl_account_id'] ?? null,
+                    'project_id' => $line['project_id'] ?? null,
+                    'department_id' => $line['department_id'] ?? null,
                     'model_number' => $line['model_number'] ?? null,
                     'description' => $line['description'],
                     'product_notes' => $line['product_notes'] ?? null,
@@ -900,6 +916,12 @@ class InvoiceController extends Controller
                 'line_type' => $lineType,
                 'sequence' => $line['sequence'] ?? 0,
                 'product_id' => $line['product_id'] ?? null,
+                // Issue #884 (UX2): the invoice line's income-account override
+                // is the order line's income account; the dimensions travel
+                // with it so the created invoice line carries them.
+                'income_account_id' => $line['gl_account_id'] ?? null,
+                'project_id' => $line['project_id'] ?? null,
+                'department_id' => $line['department_id'] ?? null,
                 'model_number' => $line['model_number'] ?? null,
                 'description' => $line['description'],
                 'product_notes' => $line['product_notes'] ?? null,
@@ -915,6 +937,12 @@ class InvoiceController extends Controller
                 // then resolves it through the engine (product override included).
                 'tax_inclusive' => $line['tax_inclusive'] ?? null,
                 'discount_amount' => $line['discount_amount'] ?? 0,
+                // Issue #882 (SA9): the service period travels with the line
+                // so the invoice can carry it (the Sales Order has no service
+                // columns; the invoice update below stamps it after creation).
+                'is_deferred' => $line['is_deferred'] ?? null,
+                'service_start_date' => $line['service_start_date'] ?? null,
+                'service_end_date' => $line['service_end_date'] ?? null,
             ], fn ($v) => $v !== null);
         }
 
@@ -1033,13 +1061,37 @@ class InvoiceController extends Controller
             $sourceLine = $sourceBySequence[(string) ($invoiceLine->sequence ?? '')]
                 ?? $sourceLines[$index]
                 ?? [];
-            $invoiceLine->update([
+
+            // Issue #882 (SA9): the deferred period belongs to the invoice
+            // line (the Sales Order line has no service columns). The service
+            // has already applied the product default; explicit payload
+            // values win, and an explicit "not deferred" clears the defaults.
+            $deferredFields = [];
+
+            if (array_key_exists('is_deferred', $sourceLine) && $sourceLine['is_deferred'] !== null) {
+                $deferredFields['is_deferred'] = (bool) $sourceLine['is_deferred'];
+
+                if (! (bool) $sourceLine['is_deferred']) {
+                    $deferredFields['service_start_date'] = null;
+                    $deferredFields['service_end_date'] = null;
+                }
+            }
+
+            if (! empty($sourceLine['service_start_date'])) {
+                $deferredFields['service_start_date'] = $sourceLine['service_start_date'];
+            }
+
+            if (! empty($sourceLine['service_end_date'])) {
+                $deferredFields['service_end_date'] = $sourceLine['service_end_date'];
+            }
+
+            $invoiceLine->update(array_merge([
                 'lot_number' => $sourceLine['lot_number'] ?? null,
                 'serial_number' => $sourceLine['serial_number'] ?? null,
                 'product_batch_id' => $sourceLine['product_batch_id'] ?? null,
                 'product_serial_id' => $sourceLine['product_serial_id'] ?? null,
                 'expiry_date' => $sourceLine['expiry_date'] ?? null,
-            ]);
+            ], $deferredFields));
         }
 
         return $invoice;
@@ -1315,6 +1367,12 @@ class InvoiceController extends Controller
             'lines' => 'sometimes|array|min:1',
             'lines.*.line_type' => 'nullable|in:product,note,section',
             'lines.*.product_id' => 'nullable|exists:products,id',
+            // Issue #884 (UX2): optional line income-account override and
+            // analytic dimensions — overridable per line, defaulted from the
+            // product when omitted.
+            'lines.*.gl_account_id' => 'nullable|exists:chart_of_accounts,id',
+            'lines.*.project_id' => 'nullable|integer',
+            'lines.*.department_id' => 'nullable|integer',
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
             'lines.*.product_notes' => 'nullable|string',
@@ -1450,6 +1508,11 @@ class InvoiceController extends Controller
                             'line_type' => $line['line_type'] ?? 'product',
                             'sequence' => $line['sequence'] ?? 0,
                             'product_id' => $line['product_id'] ?? null,
+                            // Issue #884 (UX2): a draft edit keeps the line
+                            // income-account override and dimensions.
+                            'gl_account_id' => $line['gl_account_id'] ?? null,
+                            'project_id' => $line['project_id'] ?? null,
+                            'department_id' => $line['department_id'] ?? null,
                             'model_number' => $line['model_number'] ?? null,
                             'description' => $line['description'],
                             'product_notes' => $line['product_notes'] ?? null,
@@ -2048,6 +2111,23 @@ class InvoiceController extends Controller
         return response()->json(
             app(\App\Services\InvoicePreflightService::class)->run($invoice)
         );
+    }
+
+    /**
+     * Issue #883 (SAU1): the Journal tab — for a draft, the would-be entry
+     * computed by the same builder posting uses (never written); for a posted
+     * invoice, the actual journal entry with per-line account drill-down.
+     */
+    public function journal($id): JsonResponse
+    {
+        $invoice = Invoice::with(['customer', 'lines.product', 'lines.uom', 'lines.salesOrderLine', 'salesOrder'])
+            ->find($id);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        return response()->json($this->invoiceService->previewJournal($invoice));
     }
 
     public function sendBundle(Request $request, $id)

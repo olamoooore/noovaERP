@@ -773,11 +773,11 @@ class PostingEngine implements PostingEngineInterface
         // properly vetted override carries across both gates (issue #166).
         $actorId ??= TenantUserHelper::resolveTenantUserId($request->userId);
         $fiscalUser = $this->resolveFiscalOverrideUser($actorId, $request->approvedBy);
-        $fiscalResult = $this->fiscalValidator->validateDate($request->postingDate, $fiscalUser);
+        $fiscalResult = $this->fiscalValidator->validateDate($request->postingDate, $fiscalUser, $request->legalEntityId);
 
         if (! $fiscalResult['allowed'] && $fiscalUser && $actorId !== null && (int) $fiscalUser->id !== $actorId) {
             // Fall back to the actor's own override authority.
-            $fiscalResult = $this->fiscalValidator->validateDate($request->postingDate, User::find($actorId));
+            $fiscalResult = $this->fiscalValidator->validateDate($request->postingDate, User::find($actorId), $request->legalEntityId);
             $fiscalUser = User::find($actorId);
         }
 
@@ -927,7 +927,7 @@ class PostingEngine implements PostingEngineInterface
 
         // Issue #166: evaluate the resolved actor, not ambient auth()->user().
         $fiscalUser = $request->userId ? User::find($request->userId) : null;
-        $fiscalResult = $this->fiscalValidator->validateDate($request->entryDate, $fiscalUser);
+        $fiscalResult = $this->fiscalValidator->validateDate($request->entryDate, $fiscalUser, $request->legalEntityId);
         if (! $fiscalResult['allowed']) {
             return DraftJournalResult::failure($fiscalResult['reason']);
         }
@@ -1279,6 +1279,10 @@ class PostingEngine implements PostingEngineInterface
             'opening_balance', 'period_close', 'bank_adjustment',
             'fx_revaluation', 'intercompany', 'asset_disposal',
             'payroll_run', 'payroll_payment' => 'accounting.write',
+            // Issue #882 (SA9): the monthly deferred-revenue recognition job
+            // releases unearned revenue to income — an accountant-owned
+            // ledger operation.
+            'deferred_revenue_recognition' => 'accounting.write',
             // Retail / ecommerce sales posting — coarse module permission held
             // by the actors who create these documents (module-level RBAC aligned).
             'pos_order', 'pos_refund_payment' => 'pos.create',
