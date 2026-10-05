@@ -222,6 +222,19 @@ const priceInputOfRow = (container: HTMLElement, rowIndex: number) => {
   return row.querySelectorAll('input[type="number"]')[1] as HTMLInputElement
 }
 
+const DETAILS_TITLE = 'References, contacts, addresses, logistics and terms'
+
+// #323 moved notes/terms into the single details drawer; these helpers keep
+// the existing parity assertions working through the new (accepted) layout.
+async function editNotesInDrawer(value: string) {
+  fireEvent.click(await screen.findByTitle(DETAILS_TITLE))
+  const notes = (await screen.findByPlaceholderText('Internal notes...')) as HTMLTextAreaElement
+  fireEvent.change(notes, { target: { value } })
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+  await waitFor(() => expect(screen.queryByPlaceholderText('Internal notes...')).toBeNull())
+  return notes
+}
+
 describe('#314 quotation create/edit parity', () => {
   it('edit: renders the SKU column with the saved product SKU', async () => {
     renderEdit()
@@ -232,7 +245,7 @@ describe('#314 quotation create/edit parity', () => {
 
   it('edit: sends an explicit price_mode for saved lines (no engine bypass)', async () => {
     renderEdit()
-    await screen.findByPlaceholderText('Internal notes...')
+    await screen.findByRole('button', { name: /save changes/i })
 
     fireEvent.click(screen.getByRole('button', { name: /save changes/i }))
 
@@ -260,7 +273,7 @@ describe('#314 quotation create/edit parity', () => {
 
   it('edit: a hand-typed price is marked manual so the engine never overwrites it', async () => {
     const { container } = renderEdit()
-    await screen.findByPlaceholderText('Internal notes...')
+    await screen.findByRole('button', { name: /save changes/i })
 
     fireEvent.change(priceInputOfRow(container, 0), { target: { value: '77' } })
     fireEvent.click(screen.getByRole('button', { name: /save changes/i }))
@@ -273,9 +286,9 @@ describe('#314 quotation create/edit parity', () => {
 
   it('edit: selecting a price list resolves through the engine with that list', async () => {
     renderEdit()
-    await screen.findByPlaceholderText('Internal notes...')
+    const priceList = await screen.findByLabelText('Price list')
 
-    fireEvent.change(screen.getByLabelText('Price list'), { target: { value: '3' } })
+    fireEvent.change(priceList, { target: { value: '3' } })
 
     await waitFor(() => {
       expect(
@@ -341,7 +354,7 @@ describe('#314 quotation create/edit parity', () => {
       ],
     })
     const { container } = renderEdit()
-    await screen.findByPlaceholderText('Internal notes...')
+    await screen.findByRole('button', { name: /save changes/i })
 
     const rows = container.querySelectorAll('tbody tr')
     expect(rows.length).toBe(2)
@@ -369,8 +382,7 @@ describe('#314 quotation create/edit parity', () => {
       },
     })
     renderEdit()
-    const notes = (await screen.findByPlaceholderText('Internal notes...')) as HTMLTextAreaElement
-    fireEvent.change(notes, { target: { value: 'my note' } })
+    await editNotesInDrawer('my note')
     fireEvent.click(screen.getByRole('button', { name: /save changes/i }))
 
     const dialog = await screen.findByRole('dialog')

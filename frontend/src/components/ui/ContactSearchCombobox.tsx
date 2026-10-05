@@ -46,6 +46,8 @@ interface ContactSearchComboboxProps {
   customerId?: string | number
   source?: 'contacts' | 'customer_contacts' | 'addresses'
   addressType?: 'billing' | 'shipping'
+  /** Caller-owned trigger classes (e.g. the #323 sales-form control tokens). */
+  className?: string
 }
 
 export function ContactSearchCombobox({
@@ -56,6 +58,7 @@ export function ContactSearchCombobox({
   customerId,
   source = customerId ? 'customer_contacts' : 'contacts',
   addressType,
+  className,
 }: ContactSearchComboboxProps) {
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -158,7 +161,8 @@ export function ContactSearchCombobox({
           disabled={disabled}
           className={cn(
             'w-full justify-between font-normal',
-            !value && 'text-muted-foreground'
+            !value && 'text-muted-foreground',
+            className
           )}
         >
           <span className="truncate">{getDisplayValue()}</span>

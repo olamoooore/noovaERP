@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
+import { SALES_CONTROL } from '@/components/sales/salesDesignTokens'
 
 export interface DocumentTotalsCardProps {
   subtotal: number
@@ -62,9 +63,10 @@ export function DocumentTotalsCard({
               {interactive ? (
                 <div className="flex items-center gap-1.5">
                   <select
+                    aria-label="Document discount mode"
                     value={discountMode}
                     onChange={(event) => onDiscountModeChange?.(event.target.value as 'fixed' | 'percentage')}
-                    className="h-7 rounded-md border border-input bg-background px-1.5 text-xs"
+                    className={cn(SALES_CONTROL, 'h-9 w-auto pr-2')}
                   >
                     <option value="fixed">Fixed</option>
                     <option value="percentage">%</option>
@@ -75,11 +77,12 @@ export function DocumentTotalsCard({
                     max={discountMode === 'percentage' ? discountMax : undefined}
                     step="0.01"
                     placeholder="0"
+                    aria-label="Document discount amount"
                     value={discountAmount === '' ? '' : discountAmount}
                     onChange={(event) => onDiscountAmountChange?.(
                       event.target.value === '' ? '' : Number(event.target.value),
                     )}
-                    className="h-7 w-24 rounded-md border border-input bg-background px-2 text-right text-xs tabular-nums"
+                    className={cn(SALES_CONTROL, 'w-24 text-right tabular-nums')}
                   />
                 </div>
               ) : (
