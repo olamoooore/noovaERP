@@ -5,6 +5,7 @@ use Modules\FinancialReporting\Controllers\AnalyticsController;
 use Modules\FinancialReporting\Controllers\CacheController;
 use Modules\FinancialReporting\Controllers\FinancialReportController;
 use Modules\FinancialReporting\Controllers\InventoryReportController;
+use Modules\FinancialReporting\Controllers\ReportDashboardWidgetController;
 use Modules\FinancialReporting\Controllers\ReportExportController;
 use Modules\FinancialReporting\Controllers\ReportScheduleController;
 use Modules\FinancialReporting\Controllers\ReportTemplateController;
@@ -129,6 +130,18 @@ Route::middleware([
         Route::put('/{id}', [SavedReportViewController::class, 'update'])->name('update');
         Route::delete('/{id}', [SavedReportViewController::class, 'destroy'])->name('destroy');
         Route::post('/{id}/default', [SavedReportViewController::class, 'setDefault'])->name('default');
+        // Issue #603: one-click favourite (owner-only; enforced in the controller).
+        Route::post('/{id}/favourite', [SavedReportViewController::class, 'setFavourite'])->name('favourite');
+    });
+
+    // Issue #603: per-user Sales-cockpit widgets pinning a saved view (#598).
+    // reports.view (the group permission) guards these routes too.
+    Route::prefix('reports/dashboard/widgets')->name('reports.dashboard.widgets.')->group(function () {
+        Route::get('/', [ReportDashboardWidgetController::class, 'index'])->name('index');
+        Route::post('/', [ReportDashboardWidgetController::class, 'store'])->name('store');
+        Route::put('/reorder', [ReportDashboardWidgetController::class, 'reorder'])->name('reorder');
+        Route::get('/{id}/data', [ReportDashboardWidgetController::class, 'data'])->name('data');
+        Route::delete('/{id}', [ReportDashboardWidgetController::class, 'destroy'])->name('destroy');
     });
 
     // Cache Management

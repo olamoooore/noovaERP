@@ -586,9 +586,40 @@ export interface ReportSavedView {
   grouping: SalesViewGrouping | null;
   visibility: 'personal' | 'shared';
   is_default: boolean;
+  /** Issue #603: owner-only favourite flag; favourites list first. */
+  is_favourite?: boolean;
+  /** Issue #603: whether the current user pinned this view on the Sales cockpit. */
+  is_pinned?: boolean;
   is_owner: boolean;
   created_at?: string | null;
   updated_at?: string | null;
+}
+
+/**
+ * Issue #603: a per-user Sales-cockpit widget pinning one saved report view
+ * (#598 storage). `position` gives the minimal manual order.
+ */
+export interface ReportDashboardWidget {
+  id: number;
+  view_id: number;
+  position: number;
+  view: ReportSavedView;
+}
+
+/**
+ * Issue #603: the compact render of a pinned saved view, produced by the same
+ * server-side renderer as its CSV/PDF export (view's filters applied).
+ */
+export interface ReportWidgetData {
+  widget_id: number;
+  view: ReportSavedView;
+  title: string;
+  tab: SalesViewTab;
+  period: { start_date: string; end_date: string };
+  columns: string[];
+  rows: Array<Record<string, string | number | null>>;
+  row_count: number;
+  generated_at: string;
 }
 
 export type ReportViewFrequency = 'daily' | 'weekly' | 'monthly';

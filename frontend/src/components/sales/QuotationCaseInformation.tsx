@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { SALES_CONTROL } from '@/components/sales/salesDesignTokens'
 
 export interface QuotationCaseInformationValue {
   case_number: string
@@ -32,29 +33,35 @@ const labels: Array<[keyof QuotationCaseInformationValue, string, 'text' | 'date
   ['delivery_date', 'Delivery Date', 'date', ''],
 ]
 
-export function QuotationCaseInformation({ value, onChange }: {
+export function QuotationCaseInformation({ value, onChange, embedded = false }: {
   value: QuotationCaseInformationValue
   onChange: (value: QuotationCaseInformationValue) => void
+  /** #323: render without the Card chrome when inside the details drawer. */
+  embedded?: boolean
 }) {
+  const fields = (
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      {labels.map(([field, label, type, placeholder]) => (
+        <div key={field}>
+          <label className="mb-1 block text-xs font-medium">{label}</label>
+          <input
+            type={type}
+            value={value[field]}
+            onChange={(event) => onChange({ ...value, [field]: event.target.value })}
+            placeholder={placeholder}
+            className={SALES_CONTROL}
+          />
+        </div>
+      ))}
+    </div>
+  )
+
+  if (embedded) return fields
+
   return (
     <Card className="mb-6">
       <CardHeader><CardTitle>Case Information</CardTitle></CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {labels.map(([field, label, type, placeholder]) => (
-            <div key={field}>
-              <label className="mb-1 block text-sm font-medium">{label}</label>
-              <input
-                type={type}
-                value={value[field]}
-                onChange={(event) => onChange({ ...value, [field]: event.target.value })}
-                placeholder={placeholder}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
-              />
-            </div>
-          ))}
-        </div>
-      </CardContent>
+      <CardContent>{fields}</CardContent>
     </Card>
   )
 }

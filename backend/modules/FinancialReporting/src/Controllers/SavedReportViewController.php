@@ -12,7 +12,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Modules\FinancialReporting\Models\ReportDashboardWidget;
 use Modules\FinancialReporting\Models\ReportSavedView;
+use Modules\FinancialReporting\Support\SavedViewPresenter;
 
 /**
  * Issue #598 (RPT-UX3) — CRUD for saved sales-report views.
@@ -20,7 +22,11 @@ use Modules\FinancialReporting\Models\ReportSavedView;
  * Reuses the module's existing reports.view route permission (no new
  * permission is introduced). Personal views are visible only to their owner;
  * shared views are visible to every tenant user with reports.view but can
- * only be changed/deleted/defaulted by their owner.
+ * only be changed/deleted/defaulted/favourited by their owner.
+ *
+ * Issue #603 adds the owner-only `is_favourite` flag (favourites list before
+ * the default) and one-click toggling; dashboard pinning lives in
+ * ReportDashboardWidgetController against the same storage.
  */
 class SavedReportViewController extends Controller
 {
@@ -32,13 +38,20 @@ class SavedReportViewController extends Controller
             return $this->forbiddenResponse();
         }
 
+        $pinnedViewIds = ReportDashboardWidget::query()
+            ->forUser($userId)
+            ->pluck('view_id')
+            ->map(fn ($viewId) => (int) $viewId)
+            ->all();
+
         $views = ReportSavedView::query()
             ->where('report_key', 'sales-analytics')
             ->visibleTo($userId)
+            ->orderByDesc('is_favourite')
             ->orderByDesc('is_default')
             ->orderBy('name')
             ->get()
-            ->map(fn (ReportSavedView $view) => $this->resource($view, $userId))
+            ->map(fn (ReportSavedView $view) => $this->resource($view, $userId, in_array((int) $view->id, $pinnedViewIds, true)))
             ->values();
 
         $defaultViewId = ReportSavedView::query()
@@ -85,6 +98,7 @@ class SavedReportViewController extends Controller
                 'grouping' => $request->input('grouping'),
                 'visibility' => $request->input('visibility', 'personal'),
                 'is_default' => $isDefault,
+                'is_favourite' => $request->boolean('is_favourite'),
             ]);
         });
 
@@ -131,6 +145,10 @@ class SavedReportViewController extends Controller
 
             if ($request->has('is_default')) {
                 $view->is_default = $request->boolean('is_default');
+            }
+
+            if ($request->has('is_favourite')) {
+                $view->is_favourite = $request->boolean('is_favourite');
             }
 
             $view->save();
@@ -192,6 +210,36 @@ class SavedReportViewController extends Controller
     }
 
     /**
+     * Issue #603 — one-click favourite toggle (owner-only, like every other
+     * saved-view mutation).
+     */
+    public function setFavourite(int $id): JsonResponse
+    {
+        $userId = $this->currentUserId();
+
+        if ($userId === null) {
+            return $this->forbiddenResponse();
+        }
+
+        $view = ReportSavedView::findOrFail($id);
+
+        if (! $view->isOwnedBy($userId)) {
+            return $this->forbiddenResponse('Only the view owner can favourite this saved view.');
+        }
+
+        $view->is_favourite = ! (bool) $view->is_favourite;
+        $view->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => $view->is_favourite
+                ? 'Saved view added to favourites'
+                : 'Saved view removed from favourites',
+            'data' => $this->resource($view->refresh(), $userId),
+        ]);
+    }
+
+    /**
      * Active tenant users who can be chosen as schedule recipients.
      */
     public function recipients(): JsonResponse
@@ -238,6 +286,7 @@ class SavedReportViewController extends Controller
             'grouping' => 'nullable|array',
             'visibility' => ['nullable', 'string', Rule::in(ReportSavedView::VISIBILITIES)],
             'is_default' => 'boolean',
+            'is_favourite' => 'boolean',
         ];
     }
 
@@ -249,22 +298,14 @@ class SavedReportViewController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function resource(ReportSavedView $view, int $userId): array
+    private function resource(ReportSavedView $view, int $userId, ?bool $isPinned = null): array
     {
-        return [
-            'id' => (int) $view->id,
-            'user_id' => (int) $view->user_id,
-            'name' => (string) $view->name,
-            'report_key' => (string) $view->report_key,
-            'tab' => (string) $view->tab,
-            'filters' => $view->filters ?? [],
-            'grouping' => $view->grouping,
-            'visibility' => (string) $view->visibility,
-            'is_default' => (bool) $view->is_default,
-            'is_owner' => $view->isOwnedBy($userId),
-            'created_at' => $view->created_at?->toISOString(),
-            'updated_at' => $view->updated_at?->toISOString(),
-        ];
+        $pinned = $isPinned ?? ReportDashboardWidget::query()
+            ->forUser($userId)
+            ->where('view_id', $view->id)
+            ->exists();
+
+        return SavedViewPresenter::toArray($view, $userId, $pinned);
     }
 
     /**

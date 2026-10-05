@@ -40,6 +40,8 @@ interface CustomerSearchComboboxProps {
   disabled?: boolean
   /** Compact pill styling (h-8 / rounded-full) to match the header action row. */
   compact?: boolean
+  /** Caller-owned trigger classes (e.g. the #323 sales-form control tokens). */
+  className?: string
 }
 
 export function CustomerSearchCombobox({
@@ -48,6 +50,7 @@ export function CustomerSearchCombobox({
   placeholder = 'Search customers...',
   compact = false,
   disabled = false,
+  className,
 }: CustomerSearchComboboxProps) {
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -122,7 +125,8 @@ export function CustomerSearchCombobox({
               'w-full justify-between font-normal',
               compact && 'h-8 rounded-full px-3 text-xs',
               value && 'pr-16',
-              !value && 'text-muted-foreground'
+              !value && 'text-muted-foreground',
+              className
             )}
           >
             <span className="truncate">{getDisplayValue()}</span>

@@ -9,7 +9,8 @@ import { Icon } from '@iconify/react'
 import { addCalendarDays, isValidProductQuantity, todayDateOnly } from '@/lib/dateOnly'
 import { followValidUntil } from '@/lib/quotationDates'
 import { useToast } from '@/hooks/use-toast'
-import { formatCurrency, getApiErrorMessage } from '@/lib/utils'
+import { useDensity } from '@/hooks/useDensity'
+import { cn, formatCurrency, getApiErrorMessage } from '@/lib/utils'
 import api from '@/lib/api'
 import { computeDocumentTotals } from '@/lib/documentTotals'
 import pricingApi from '@/lib/pricingApi'
@@ -28,6 +29,16 @@ import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
 import { ContactSearchCombobox } from '@/components/ui/ContactSearchCombobox'
 import { HeaderChip } from '@/components/ui/HeaderChip'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import {
+  SALES_CONTROL,
+  SALES_CONTROL_HEIGHT,
+  SALES_FIELD_CONTROL,
+  SALES_FIELD_SHELL,
+  SALES_FORM_CLASS,
+  SALES_RADIUS,
+  SALES_TEXTAREA,
+  SALES_TEXT_SIZE,
+} from '@/components/sales/salesDesignTokens'
 import { emptySalesDocumentLine, isBlankSalesDocumentLine, type SalesDocumentLine } from '@/lib/salesDocumentLines'
 
 /**
@@ -76,6 +87,8 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
   const canViewPriceLists = useAuthStore((state) => state.hasPermission('pricelists.view'))
   const currentUserId = useAuthStore((state) => state.user?.id)
   const canOverwrite = useAuthStore((state) => state.hasPermission('quotations.write'))
+  // #323 (§8.3): Comfortable/Compact density, remembered per user.
+  const [density, setDensity] = useDensity()
 
   const [tags, setTags] = useState<string[]>([])
   const [customerId, setCustomerId] = useState('')
@@ -369,12 +382,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
   )
   const money = (value: number) => formatCurrency(value, currencyCode || undefined)
 
-  const detailsSummary = [
-    customerReference ? `PO ${customerReference}` : null,
-    attentionTo || null,
-    caseCount > 0 ? `cases ${caseCount}` : null,
-    notes ? 'notes' : null,
-  ].filter(Boolean).join(' · ')
+  const productLineCount = lines.filter((line) => (line.line_type ?? 'product') === 'product').length
 
   const documentTotals = computeDocumentTotals(lines, { mode: discountMode, amount: discountAmount })
   // The totals card shows the gross subtotal + line discounts separately.
@@ -385,6 +393,14 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
   const total = documentTotals.total
   const discountValue = discountAmount === '' ? 0 : discountAmount
   const quoteNumberPreview = `QUO-${new Date(quotationDate).getFullYear()}-XXXX`
+  // #323: the drawer trigger carries the live line/total summary.
+  const detailsSummary = [
+    `${productLineCount} line${productLineCount === 1 ? '' : 's'}`,
+    money(total),
+    customerReference ? `PO ${customerReference}` : null,
+    caseCount > 0 ? `cases ${caseCount}` : null,
+    notes ? 'notes' : null,
+  ].filter(Boolean).join(' · ')
 
   // #297 (Q11): changing the quote date moves Valid Until with it (unless the
   // operator edited Valid Until themselves) and re-runs auto pricing against
@@ -547,7 +563,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
   const isPending = mode === 'edit' ? updateMutation.isPending : createMutation.isPending
 
   return (
-    <div className="p-6 space-y-6">
+    <div className={cn('p-6 space-y-6', SALES_FORM_CLASS)} data-density={density}>
       {mode === 'create' ? (
         <PageHeader
           title="Create Quotation"
@@ -595,7 +611,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
               <div className="col-span-2 md:col-span-2 xl:col-span-6">
                 <label className="mb-1 block text-xs font-medium">Customer *</label>
                 <CustomerSearchCombobox
-                  compact
+                  className={cn(SALES_CONTROL, 'justify-between')}
                   value={customerId}
                   onValueChange={(id, customer) => {
                     autofilledCustomerRef.current = null
@@ -631,7 +647,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                   type="date"
                   value={quotationDate}
                   onChange={(event) => handleQuotationDateChange(event.target.value)}
-                  className="h-9 w-full min-w-0 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                  className={SALES_CONTROL}
                 />
               </div>
               <div className="col-span-1 md:col-span-1 xl:col-span-3">
@@ -640,14 +656,14 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                   type="date"
                   value={validUntil}
                   onChange={(event) => handleValidUntilChange(event.target.value)}
-                  className="h-9 w-full min-w-0 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                  className={SALES_CONTROL}
                 />
               </div>
             </div>
 
             {/* Row 2: direct dropdowns + chips, one compact strip. */}
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <label className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background px-3 text-xs" title="Document currency — auto follows the customer's price list">
+              <label className={SALES_FIELD_SHELL} title="Document currency — auto follows the customer's price list">
                 <span className="text-muted-foreground">Currency</span>
                 <select
                   aria-label="Document currency"
@@ -659,7 +675,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                     // the engine; manual lines keep their value.
                     void resolvePricingForLines(lines, { currencyOverride: next })
                   }}
-                  className="bg-transparent text-xs font-medium focus:outline-none"
+                  className={SALES_FIELD_CONTROL}
                 >
                   <option value="">Auto</option>
                   {currencyCode && !(sellableCurrencies as any[]).some((currency: any) => currency.code === currencyCode) && (
@@ -672,7 +688,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                   ))}
                 </select>
               </label>
-              <label className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background px-3 text-xs" title="Price list — Auto applies the customer's list">
+              <label className={SALES_FIELD_SHELL} title="Price list — Auto applies the customer's list">
                 <span className="text-muted-foreground">List</span>
                 <select
                   aria-label="Price list"
@@ -683,7 +699,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                     // Pass the selection explicitly — state has not committed.
                     void resolvePricingForLines(lines, { listOverride: next })
                   }}
-                  className="max-w-[18rem] bg-transparent text-xs font-medium focus:outline-none"
+                  className={cn(SALES_FIELD_CONTROL, 'max-w-[18rem]')}
                 >
                   <option value="">Auto</option>
                   {priceListRows.map((list: any) => (
@@ -695,23 +711,23 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
               </label>
               {/* Issue #408: commitment date + shipping policy (Odoo promise
                   date). Expected date is computed server-side from lead times. */}
-              <label className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background px-3 text-xs" title="Commitment (promised) delivery date">
+              <label className={SALES_FIELD_SHELL} title="Commitment (promised) delivery date">
                 <span className="text-muted-foreground">Commitment</span>
                 <input
                   type="date"
                   value={commitmentDate}
                   onChange={(event) => setCommitmentDate(event.target.value)}
                   aria-label="Commitment Date"
-                  className="bg-transparent text-xs font-medium focus:outline-none"
+                  className={SALES_FIELD_CONTROL}
                 />
               </label>
-              <label className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background px-3 text-xs" title="Shipping policy for delivery orders">
+              <label className={SALES_FIELD_SHELL} title="Shipping policy for delivery orders">
                 <span className="text-muted-foreground">Shipping</span>
                 <select
                   value={shippingPolicy}
                   onChange={(event) => setShippingPolicy(event.target.value as 'asap' | 'when_all_ready')}
                   aria-label="Shipping Policy"
-                  className="bg-transparent text-xs font-medium focus:outline-none"
+                  className={SALES_FIELD_CONTROL}
                 >
                   <option value="asap">As soon as possible</option>
                   <option value="when_all_ready">When all products are ready</option>
@@ -723,13 +739,14 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                   label="Number"
                   value={customQuoteNumber || 'Auto'}
                   title="Quotation number"
+                  className={cn(SALES_CONTROL_HEIGHT, SALES_RADIUS, SALES_TEXT_SIZE)}
                 >
                   <input
                     type="text"
                     value={customQuoteNumber}
                     onChange={(event) => setCustomQuoteNumber(event.target.value)}
                     placeholder={quoteNumberPreview}
-                    className="h-8 w-full rounded-md border border-input bg-background px-2.5 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                    className={cn(SALES_CONTROL, 'font-mono')}
                   />
                   <p className="mt-1 text-[11px] text-muted-foreground">Leave blank to use the next auto-generated number ({quoteNumberPreview}).</p>
                 </HeaderChip>
@@ -738,10 +755,28 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                 type="button"
                 onClick={() => setDetailsOpen(true)}
                 title="References, contacts, addresses, logistics and terms"
-                className="inline-flex h-8 max-w-[24rem] items-center gap-1.5 rounded-full border border-border bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60"
+                className={cn(
+                  SALES_FIELD_SHELL,
+                  'max-w-[24rem] font-medium text-muted-foreground transition-colors hover:bg-muted/60',
+                )}
               >
                 <Icon icon="solar:document-add-bold-duotone" className="h-3.5 w-3.5 shrink-0" />
                 <span className="truncate">Details{detailsSummary ? ` · ${detailsSummary}` : ''}</span>
+              </button>
+              {/* #323 (§8.3): Comfortable/Compact row density, per user. */}
+              <button
+                type="button"
+                data-testid="sales-density-toggle"
+                onClick={() => setDensity(density === 'compact' ? 'comfortable' : 'compact')}
+                title="Switch between comfortable and compact row density"
+                aria-pressed={density === 'compact'}
+                className={cn(
+                  SALES_FIELD_SHELL,
+                  'font-medium text-muted-foreground transition-colors hover:bg-muted/60',
+                )}
+              >
+                <Icon icon="solar:slider-vertical-bold" className="h-3.5 w-3.5 shrink-0" />
+                {density === 'compact' ? 'Compact' : 'Comfortable'}
               </button>
             </div>
 
@@ -770,33 +805,6 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                 )}
               </div>
             )}
-
-            {/* Notes and terms are inline (edit parity): the details drawer
-                holds references, contacts, addresses and logistics only. */}
-            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-xs font-medium">
-                  Notes <span className="font-normal text-slate-400">(internal — not printed on the quotation)</span>
-                </label>
-                <textarea
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  rows={2}
-                  className="w-full resize-y rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800"
-                  placeholder="Internal notes..."
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium">Terms</label>
-                <textarea
-                  value={terms}
-                  onChange={(event) => setTerms(event.target.value)}
-                  rows={2}
-                  className="w-full resize-y rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800"
-                  placeholder="Payment terms..."
-                />
-              </div>
-            </div>
 
             {/* One compact Quick Actions row (invoice parity, create only). */}
             {mode === 'create' && (
@@ -830,14 +838,38 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
         </Card>
 
         <Sheet open={detailsOpen} onOpenChange={setDetailsOpen}>
-          <SheetContent side="right" className="w-full overflow-y-auto p-0 sm:max-w-xl">
+          <SheetContent side="right" className="w-full overflow-y-auto p-0 sm:max-w-xl" data-density={density}>
             <div className="border-b px-5 py-4">
               <SheetHeader>
                 <SheetTitle>Quotation details</SheetTitle>
                 <SheetDescription>
-                  References, contacts, addresses, logistics and terms.
+                  References, contacts, addresses, logistics, notes, terms and case information.
                 </SheetDescription>
               </SheetHeader>
+              {/* #323: live line/total summary of the document being edited. */}
+              <div
+                data-testid="sales-details-summary"
+                className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border bg-muted/30 px-3 py-2 text-xs"
+              >
+                <span className="flex items-baseline gap-1">
+                  <span className="text-muted-foreground">Lines</span>
+                  <span className="font-semibold tabular-nums" data-testid="summary-line-count">
+                    {productLineCount}
+                  </span>
+                </span>
+                <span className="flex items-baseline gap-1">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span className="font-semibold tabular-nums" data-testid="summary-subtotal">
+                    {money(subtotal)}
+                  </span>
+                </span>
+                <span className="flex items-baseline gap-1">
+                  <span className="text-muted-foreground">Total</span>
+                  <span className="font-semibold tabular-nums" data-testid="summary-total">
+                    {money(total)}
+                  </span>
+                </span>
+              </div>
             </div>
             <div className="space-y-4 px-5 py-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -847,7 +879,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                     type="text"
                     value={customerReference}
                     onChange={(event) => setCustomerReference(event.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    className={SALES_CONTROL}
                     placeholder="PO / customer code"
                   />
                 </div>
@@ -861,7 +893,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                     type="text"
                     value={attentionTo}
                     onChange={(event) => setAttentionTo(event.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    className={SALES_CONTROL}
                     placeholder="Primary contact"
                   />
                 </div>
@@ -871,7 +903,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                     type="email"
                     value={contactEmail}
                     onChange={(event) => setContactEmail(event.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    className={SALES_CONTROL}
                     placeholder="billing@customer.com"
                   />
                 </div>
@@ -881,7 +913,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                     type="text"
                     value={contactPhone}
                     onChange={(event) => setContactPhone(event.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    className={SALES_CONTROL}
                     placeholder="Phone or mobile"
                   />
                 </div>
@@ -891,7 +923,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                     type="text"
                     value={salesperson}
                     onChange={(event) => setSalesperson(event.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    className={SALES_CONTROL}
                     placeholder="Assigned salesperson"
                   />
                 </div>
@@ -901,7 +933,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                     type="text"
                     value={deliveryLeadTime}
                     onChange={(event) => setDeliveryLeadTime(event.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    className={SALES_CONTROL}
                     placeholder="e.g. 2 weeks"
                   />
                 </div>
@@ -911,7 +943,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                     type="text"
                     value={shippingMethod}
                     onChange={(event) => setShippingMethod(event.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    className={SALES_CONTROL}
                     placeholder="e.g. Sea freight, Air"
                   />
                 </div>
@@ -921,7 +953,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                     type="text"
                     value={shippingTerms}
                     onChange={(event) => setShippingTerms(event.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    className={SALES_CONTROL}
                     placeholder="e.g. FOB, CIF, EXW"
                   />
                 </div>
@@ -932,7 +964,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                     aria-label="Incoterm Code"
                     value={incotermCode}
                     onChange={(event) => setIncotermCode(event.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    className={SALES_CONTROL}
                     placeholder="e.g. FOB, CIF, DDP"
                     maxLength={20}
                   />
@@ -944,7 +976,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                     aria-label="Incoterm Place"
                     value={incotermPlace}
                     onChange={(event) => setIncotermPlace(event.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    className={SALES_CONTROL}
                     placeholder="e.g. Port Klang"
                     maxLength={255}
                   />
@@ -955,7 +987,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                     type="text"
                     value={creditTerms}
                     onChange={(event) => setCreditTerms(event.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    className={SALES_CONTROL}
                     placeholder="e.g. Net 30 days"
                   />
                 </div>
@@ -965,7 +997,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                     type="text"
                     value={validity}
                     onChange={(event) => setValidity(event.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    className={SALES_CONTROL}
                     placeholder="e.g. 30 days"
                   />
                 </div>
@@ -1003,6 +1035,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                         <div>
                           <label className="mb-1 block text-xs font-medium text-slate-600">Contact</label>
                           <ContactSearchCombobox
+                            className={cn(SALES_CONTROL, 'justify-between')}
                             value={billingContactId}
                             onValueChange={(val, contact) => {
                               setBillingContactId(val)
@@ -1023,7 +1056,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                             type="text"
                             value={billingAddress.label}
                             onChange={(event) => updateAddress('billing', 'label', event.target.value)}
-                            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
+                            className={SALES_CONTROL}
                             placeholder="e.g. HQ"
                           />
                         </div>
@@ -1039,7 +1072,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                               type="text"
                               value={billingAddress[field]}
                               onChange={(event) => updateAddress('billing', field, event.target.value)}
-                              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
+                              className={SALES_CONTROL}
                               placeholder={label}
                             />
                           </div>
@@ -1076,6 +1109,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                         <div>
                           <label className="mb-1 block text-xs font-medium text-slate-600">Contact</label>
                           <ContactSearchCombobox
+                            className={cn(SALES_CONTROL, 'justify-between')}
                             value={shippingContactId}
                             onValueChange={(val) => setShippingContactId(val)}
                             placeholder="Select customer contact..."
@@ -1089,7 +1123,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                             type="text"
                             value={shippingAddress.label}
                             onChange={(event) => updateAddress('shipping', 'label', event.target.value)}
-                            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
+                            className={SALES_CONTROL}
                             placeholder="e.g. Site B"
                           />
                         </div>
@@ -1105,7 +1139,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                               type="text"
                               value={shippingAddress[field]}
                               onChange={(event) => updateAddress('shipping', field, event.target.value)}
-                              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
+                              className={SALES_CONTROL}
                               placeholder={label}
                             />
                           </div>
@@ -1122,7 +1156,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                       value={billingAddressSnapshot}
                       onChange={(event) => setBillingAddressSnapshot(event.target.value)}
                       rows={2}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                      className={SALES_TEXTAREA}
                       placeholder="Billing address"
                     />
                   </div>
@@ -1132,17 +1166,48 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                       value={shippingAddressSnapshot}
                       onChange={(event) => setShippingAddressSnapshot(event.target.value)}
                       rows={2}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                      className={SALES_TEXTAREA}
                       placeholder="Delivery address"
                     />
                   </div>
                 </div>
               )}
+
+              {/* #323: notes/terms no longer live inline — they are part of
+                  the single right-side details drawer. */}
+              <section className="space-y-3 border-t pt-4">
+                <h3 className="text-sm font-semibold">Notes and terms</h3>
+                <div>
+                  <label className="mb-1 block text-xs font-medium">
+                    Notes <span className="font-normal text-muted-foreground">(internal — not printed on the quotation)</span>
+                  </label>
+                  <textarea
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                    rows={2}
+                    className={SALES_TEXTAREA}
+                    placeholder="Internal notes..."
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium">Terms</label>
+                  <textarea
+                    value={terms}
+                    onChange={(event) => setTerms(event.target.value)}
+                    rows={2}
+                    className={SALES_TEXTAREA}
+                    placeholder="Payment terms..."
+                  />
+                </div>
+              </section>
+
+              <section className="space-y-3 border-t pt-4">
+                <h3 className="text-sm font-semibold">Case information</h3>
+                <QuotationCaseInformation value={caseInformation} onChange={setCaseInformation} embedded />
+              </section>
             </div>
           </SheetContent>
         </Sheet>
-
-        <QuotationCaseInformation value={caseInformation} onChange={setCaseInformation} />
 
         <Card className="mb-6">
           <CardHeader>

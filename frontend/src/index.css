@@ -102,6 +102,25 @@ h1.text-9xl { font-size: 7.8125rem; line-height: 1; } /* 127 → 125px */
    Two densities (per-user, applied via data-density on the document root)
    and stacked line cards below 768px instead of the 1,700px-wide table. */
 
+/* #323: shared sales-form tokens — 36px controls, 13px text, ONE radius.
+   The TS mirror lives in components/sales/salesDesignTokens.ts. */
+.sales-form {
+  --sales-control-height: 2.25rem; /* 36px */
+  --sales-text-size: 0.8125rem; /* 13px (densified text-sm) */
+  --sales-radius: var(--radius); /* one radius: rounded-lg */
+}
+
+[data-density='compact'] .sales-line-card {
+  padding: 0.375rem 0.5rem;
+}
+
+[data-density='compact'] .sales-line-card input,
+[data-density='compact'] .sales-line-card select,
+[data-density='compact'] .sales-line-card textarea {
+  font-size: 11px;
+  min-height: 1.75rem;
+}
+
 [data-density='compact'] .doc-line-row > td {
   padding-top: 0.125rem;
   padding-bottom: 0.125rem;

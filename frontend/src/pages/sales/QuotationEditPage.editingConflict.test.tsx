@@ -126,8 +126,12 @@ function renderPage() {
 }
 
 async function editNotes(value: string) {
+  // #323: notes/terms live in the single details drawer now.
+  fireEvent.click(await screen.findByTitle('References, contacts, addresses, logistics and terms'))
   const notes = (await screen.findByPlaceholderText('Internal notes...')) as HTMLTextAreaElement
   fireEvent.change(notes, { target: { value } })
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+  await waitFor(() => expect(screen.queryByPlaceholderText('Internal notes...')).toBeNull())
   return notes
 }
 
