@@ -167,6 +167,11 @@ class PaymentRefundService
                     'payment_status' => 'refunded',
                     'refunded_at' => now(),
                 ]);
+
+                // #901 (PC7): gateway-initiated customer refund — outbox event
+                // written inside this transaction, published after commit.
+                app(\Modules\Sales\Services\SalesDomainEventEmitter::class)
+                    ->emitPaymentRefunded($refundPayment);
             }
 
             // Step 4: Update customer outstanding balance

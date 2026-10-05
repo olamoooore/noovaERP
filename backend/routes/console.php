@@ -116,3 +116,11 @@ Schedule::command('accounting:publish-outbox')
     ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();
+
+// Sales Outbox (issue #901, PC7) - Publish written-but-unpublished sales
+// domain events onto the Domain Event Bus. Same contract as the accounting
+// outbox: withoutOverlapping + SKIP LOCKED make it safe to double-run.
+Schedule::command('sales:publish-outbox')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();

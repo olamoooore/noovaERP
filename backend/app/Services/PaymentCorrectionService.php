@@ -187,6 +187,14 @@ class PaymentCorrectionService
                 'refund_payment_id' => $refundPayment->id,
             ]);
 
+            // #901 (PC7): a refunded customer payment is a sales event. The
+            // outbox row is written inside this transaction and published only
+            // after it commits. Bill/vendor refunds carry no customer.
+            if ($refundPayment->customer_id !== null) {
+                app(\Modules\Sales\Services\SalesDomainEventEmitter::class)
+                    ->emitPaymentRefunded($refundPayment);
+            }
+
             // ── Subledger update through canonical service ──────────────────
             // Hostile re-review C-3 (#155): split payments refund through their
             // allocation ledger.

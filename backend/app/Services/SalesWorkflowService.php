@@ -60,11 +60,22 @@ class SalesWorkflowService
     /**
      * Apply a sales transition through the engine.
      *
+     * #901 (PC7): every applied transition also records the matching
+     * SalesEventCatalogue event in the transactional outbox, in the SAME
+     * transaction as the status write. Publication to the Domain Event Bus is
+     * deferred to after the surrounding transaction commits, so a rolled-back
+     * transition never emits an event.
+     *
      * @return array{success: bool, old_status: string, new_status: string|null, reason: string|null}
      */
     public function transition(WorkflowSubject $subject, string $action, array $context = [], ?string $reason = null): array
     {
-        return $this->engine->transitionSubject($subject, $action, $context, $reason);
+        $result = $this->engine->transitionSubject($subject, $action, $context, $reason);
+
+        app(\Modules\Sales\Services\SalesDomainEventEmitter::class)
+            ->emitForTransition($subject, $action, $result, $context);
+
+        return $result;
     }
 
     /**
