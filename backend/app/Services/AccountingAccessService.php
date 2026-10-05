@@ -292,6 +292,42 @@ class AccountingAccessService
         return $this->hasPermission($user, 'reconciliation.complete');
     }
 
+    /**
+     * Can the user run auto-matching (suggest / accept / bulk accept)?
+     *
+     * Issue #841 (BK9): the auto-match endpoints previously inherited only the
+     * generic accounting write gate. They are reconciliation writes, so they
+     * are governed by reconciliation.match like every other match endpoint.
+     */
+    public function canMatchReconciliation(User $user): bool
+    {
+        if ($user->is_super_admin ?? false) {
+            return true;
+        }
+
+        if ($this->hasRole($user, ['admin', 'super-admin', 'Owner'])) {
+            return true;
+        }
+
+        return $this->hasPermission($user, 'reconciliation.match');
+    }
+
+    /**
+     * Can the user read reconciliation state (auto-match statistics, ...)?
+     */
+    public function canViewReconciliation(User $user): bool
+    {
+        if ($user->is_super_admin ?? false) {
+            return true;
+        }
+
+        if ($this->hasRole($user, ['admin', 'super-admin', 'Owner'])) {
+            return true;
+        }
+
+        return $this->hasPermission($user, 'reconciliation.view');
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private function hasSpatiePermissionOrRole(User $user, string $permission, array $roles): bool

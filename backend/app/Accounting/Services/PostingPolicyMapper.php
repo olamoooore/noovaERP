@@ -118,11 +118,15 @@ class PostingPolicyMapper
      */
     private function mapLineThroughProfile(DomainPostingLine $line, array $profile, DomainPostingRequest $request): ?array
     {
-        // Issue #333: a line that pins its own account (the tenant's cash
-        // rounding account) is already fully specified — no profile role
-        // lookup applies. Direction must accompany the explicit account,
-        // otherwise the line is unmappable and the resolve() caller errors.
-        if ($line->accountId !== null) {
+        // Issue #333: a line that pins its own account AND its own
+        // direction (the tenant's cash rounding account) is already fully
+        // specified — no profile role lookup applies.
+        //
+        // Issue #876 (SA2): an account pin WITHOUT a direction (a document
+        // line's income/GL override) is not fully specified — it falls
+        // through to the profile mapping below, where the role supplies the
+        // direction and only the concrete account is overridden.
+        if ($line->accountId !== null && $line->direction !== null) {
             if (! in_array($line->direction, ['debit', 'credit'], true)) {
                 return null;
             }
@@ -167,11 +171,17 @@ class PostingPolicyMapper
         // forwarded as documentType so keys without a direct role mapping
         // (sales_revenue, shipping_revenue — KEY_TO_ROLE null entries)
         // resolve identically to the pre-migration manual-line path.
-        $accountId = null;
-        try {
-            $accountId = $this->roleResolver->resolveId($line->accountRole, $request->sourceRecordType);
-        } catch (\Throwable $e) {
-            // No-op — leave null, PostingEngine will surface error
+        //
+        // Issue #876 (SA2): a line that pinned its own account (a document
+        // line's income/GL override) wins over the role default — the
+        // profile mapping below still supplies the direction.
+        $accountId = $line->accountId;
+        if ($accountId === null) {
+            try {
+                $accountId = $this->roleResolver->resolveId($line->accountRole, $request->sourceRecordType);
+            } catch (\Throwable $e) {
+                // No-op — leave null, PostingEngine will surface error
+            }
         }
 
         return [
