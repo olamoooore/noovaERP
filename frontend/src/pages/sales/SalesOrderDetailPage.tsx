@@ -23,6 +23,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import { Progress } from '@/components/ui/progress'
 import { ChatterDialog } from '@/components/chatter'
 import { AuditTab } from '@/components/audit/AuditTab'
+import { StockMovesTab } from '@/components/inventory/StockMovesTab'
 import api from '@/lib/api'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { PrintSendMenu } from '@/components/documents/PrintSendMenu'
@@ -861,6 +862,10 @@ export function SalesOrderDetailPage() {
             <Icon icon="solar:shield-check-bold-duotone" className="h-4 w-4" />
             Audit
           </TabsTrigger>
+          <TabsTrigger value="stock-moves" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:box-bold-duotone" className="h-4 w-4" />
+            Stock moves
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="document" className="space-y-6 mt-6">
@@ -1189,6 +1194,10 @@ export function SalesOrderDetailPage() {
 
         <TabsContent value="audit" className="mt-6">
           <AuditTab endpoint={`/sales/orders/${id}/audit`} permission="sales.view" />
+        </TabsContent>
+
+        <TabsContent value="stock-moves" className="mt-6">
+          <StockMovesTab endpoint={`/sales/orders/${id}/stock-moves`} permission="sales.view" />
         </TabsContent>
       </Tabs>
 

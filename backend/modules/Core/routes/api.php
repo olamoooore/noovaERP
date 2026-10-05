@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\CustomerStatementController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DocumentAuditController;
 use App\Http\Controllers\Api\DocumentCurrencyController;
+use App\Http\Controllers\Api\DocumentStockMovesController;
 use App\Http\Controllers\Api\EntityManagementController;
 use App\Http\Controllers\Api\ExchangeRatesController;
 use App\Http\Controllers\Api\FeatureController;
@@ -444,6 +445,13 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             ->defaults('auditSubject', 'invoice')
             ->middleware(RequirePermission::using('invoices.view'));
 
+        // Issue #690 (INV-UX4): read-only "Stock moves" trail, gated by the
+        // same view permission that opens the invoice.
+        Route::get('/invoices/{subjectId}/stock-moves', [DocumentStockMovesController::class, 'index'])
+            ->whereNumber('subjectId')
+            ->defaults('stockMovesSubject', 'invoice')
+            ->middleware(RequirePermission::using('invoices.view'));
+
         Route::post('/invoices/{invoice}/cancel', [InvoiceController::class, 'cancel'])
             ->middleware(RequirePermission::using('accounting.post'));
         // Issue #879 (SA6): write off (part of) an open invoice as bad debt —
@@ -545,6 +553,12 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::get('/quotations/{subjectId}/audit/export', [DocumentAuditController::class, 'export'])
             ->whereNumber('subjectId')
             ->defaults('auditSubject', 'quotation')
+            ->middleware(RequirePermission::using('quotations.view'));
+
+        // Issue #690 (INV-UX4): the quotation's downstream warehouse trail.
+        Route::get('/quotations/{subjectId}/stock-moves', [DocumentStockMovesController::class, 'index'])
+            ->whereNumber('subjectId')
+            ->defaults('stockMovesSubject', 'quotation')
             ->middleware(RequirePermission::using('quotations.view'));
     });
 
@@ -1026,6 +1040,13 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::get('/customers/credit-notes/{subjectId}/audit/export', [DocumentAuditController::class, 'export'])
             ->whereNumber('subjectId')
             ->defaults('auditSubject', 'credit_note')
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.view'));
+
+        // Issue #690 (INV-UX4): read-only warehouse trail. A credit note moves
+        // no stock of its own; the service shows the credited invoice's trail.
+        Route::get('/customers/credit-notes/{subjectId}/stock-moves', [DocumentStockMovesController::class, 'index'])
+            ->whereNumber('subjectId')
+            ->defaults('stockMovesSubject', 'credit_note')
             ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.view'));
 
         // Customers List

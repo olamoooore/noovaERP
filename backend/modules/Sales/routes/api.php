@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\DocumentAuditController;
+use App\Http\Controllers\Api\DocumentStockMovesController;
 use Illuminate\Support\Facades\Route;
 use Modules\Sales\Http\Controllers\DeliveryOrderController;
 use Modules\Sales\Http\Controllers\SalesOrderController;
@@ -69,6 +70,11 @@ Route::middleware([
             Route::get('/sales/orders/{subjectId}/audit/export', [DocumentAuditController::class, 'export'])
                 ->whereNumber('subjectId')
                 ->defaults('auditSubject', 'sales_order');
+            // Issue #690 (INV-UX4): the order's warehouse trail, gated the
+            // same way as the audit tab (sales.view opens the record).
+            Route::get('/sales/orders/{subjectId}/stock-moves', [DocumentStockMovesController::class, 'index'])
+                ->whereNumber('subjectId')
+                ->defaults('stockMovesSubject', 'sales_order');
             // Issue #150: sales-pipeline analytics (pre-invoice).
             Route::get('/sales/analytics/pipeline', [\Modules\Sales\Http\Controllers\SalesPipelineAnalyticsController::class, 'index']);
 
@@ -107,6 +113,10 @@ Route::middleware([
             Route::get('/sales/delivery-orders/{subjectId}/audit/export', [DocumentAuditController::class, 'export'])
                 ->whereNumber('subjectId')
                 ->defaults('auditSubject', 'delivery_order');
+            // Issue #690 (INV-UX4): the delivery order's warehouse trail.
+            Route::get('/sales/delivery-orders/{subjectId}/stock-moves', [DocumentStockMovesController::class, 'index'])
+                ->whereNumber('subjectId')
+                ->defaults('stockMovesSubject', 'delivery_order');
         });
 
         Route::apiResource('sales/delivery-orders', DeliveryOrderController::class)
