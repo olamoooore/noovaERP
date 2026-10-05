@@ -17,6 +17,7 @@ import { SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColum
 import { ChatterDock } from '@/components/chatter'
 import { AuditTab } from '@/components/audit/AuditTab'
 import { InvoiceJournalTab } from '@/components/accounting/InvoiceJournalTab'
+import { InvoiceWriteOffDialog } from '@/components/accounting/InvoiceWriteOffDialog'
 import { TagEditor } from '@/components/tags/TagEditor'
 import { DocumentLinkChip } from '@/components/documents/DocumentLinkChip'
 import { PrintSendMenu } from '@/components/documents/PrintSendMenu'
@@ -43,13 +44,28 @@ interface Invoice {
   }
   invoice_date: string
   due_date: string
-  status: 'draft' | 'sent' | 'paid' | 'partial' | 'overdue' | 'cancelled'
+  status: 'draft' | 'posted' | 'sent' | 'paid' | 'partial' | 'overdue' | 'cancelled' | 'written_off'
   subtotal: number
   tax_amount: number
   discount_amount: number
   total: number
   paid_amount: number
   balance: number
+  // Issue #879/#886: bad-debt write-offs on this invoice, exposed by the
+  // detail endpoint so the page can chip and link each journal entry.
+  written_off_amount?: number
+  write_offs?: Array<{
+    id: number
+    invoice_id: number
+    amount: number
+    recovered_amount: number
+    reason: string
+    account_id: number
+    journal_entry_id: number | null
+    created_by: number | null
+    created_at: string
+    updated_at: string
+  }>
   // MRD pricelist-multicurrency FR-5.1/5.4: document currency + snapshot.
   currency_code?: string | null
   base_currency_code?: string | null
@@ -418,6 +434,7 @@ export function InvoiceDetailPage() {
   const [sendDialogOpen, setSendDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [resetDialogOpen, setResetDialogOpen] = useState(false)
+  const [writeOffDialogOpen, setWriteOffDialogOpen] = useState(false)
   const [sendDialogUrl, setSendDialogUrl] = useState<string | null>(null)
   const [sendDialogPaymentUrl, setSendDialogPaymentUrl] = useState<string | null>(null)
   const [sendRecipientEmail, setSendRecipientEmail] = useState('')
@@ -521,6 +538,7 @@ export function InvoiceDetailPage() {
       paid: { variant: 'default', label: 'Paid' },
       partial: { variant: 'outline', label: 'Partial' },
       overdue: { variant: 'destructive', label: 'Overdue' },
+      written_off: { variant: 'outline', label: 'Written off' },
       cancelled: { variant: 'destructive', label: 'Cancelled' },
     }
 
@@ -729,6 +747,18 @@ export function InvoiceDetailPage() {
                 Record Payment
               </HeaderActionButton>
             )}
+            {/* Issue #886 (UX4): write off (part of) an open receivable as bad
+                debt — accounting-only, mirrors the accounting.post API gate. */}
+            {canPost && ['posted', 'sent', 'partial', 'overdue'].includes(invoice.status) && invoice.balance > 0 && (
+              <HeaderActionButton
+                variant="outline"
+                icon="solar:danger-triangle-bold-duotone"
+                className="border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                onClick={() => setWriteOffDialogOpen(true)}
+              >
+                Write off
+              </HeaderActionButton>
+            )}
             {/* #618: one print/send menu shared with every sales document. */}
             <PrintSendMenu
               documentType="invoice"
@@ -890,6 +920,17 @@ export function InvoiceDetailPage() {
             label={d.delivery_order_number}
             onClick={() => navigate(`/delivery-orders/${d.id}`)}
           />
+        ))}
+        {(invoice.write_offs ?? []).filter((writeOff) => writeOff.journal_entry_id).map((writeOff) => (
+          <Link
+            key={`write-off-${writeOff.id}`}
+            to={`/accounting/core/journal-entries?entry_id=${writeOff.journal_entry_id}`}
+            title={writeOff.reason}
+            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-rose-300/60 bg-rose-50 px-3 text-xs font-medium text-rose-700 transition-colors hover:border-rose-400 hover:bg-rose-100 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300"
+          >
+            <Icon icon="solar:danger-triangle-bold-duotone" className="h-3.5 w-3.5" />
+            Written off {money(Number(writeOff.amount))}
+          </Link>
         ))}
       </div>
 
@@ -1142,6 +1183,15 @@ export function InvoiceDetailPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          <InvoiceWriteOffDialog
+            invoiceId={id as string}
+            invoiceNumber={invoice.invoice_number}
+            balance={Number(invoice.balance)}
+            currencyCode={invoice.currency_code}
+            open={writeOffDialogOpen}
+            onOpenChange={setWriteOffDialogOpen}
+          />
 
           <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
             <DialogContent className="max-w-md">

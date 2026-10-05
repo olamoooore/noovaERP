@@ -245,6 +245,68 @@ class Issue879InvoiceWriteOffTest extends TenantTestCase
         $this->assertSame(0.0, app(PaymentAllocationService::class)->unappliedAmount($payment->fresh()));
     }
 
+    /** Issue #886 (UX4): the preview returns the exact write-off lines and writes nothing. */
+    public function test_write_off_preview_returns_balanced_bad_debt_lines_without_posting(): void
+    {
+        $invoice = $this->createPostedInvoice(100.0);
+
+        $response = $this->actingAs($this->admin)->postJson(
+            "/api/v1/invoices/{$invoice->id}/write-off/preview",
+            ['amount' => 40, 'account_id' => $this->badDebt->id],
+        );
+
+        $response->assertOk($response->getContent());
+        $this->assertTrue($response->json('is_balanced'));
+        $this->assertSame(40.0, (float) $response->json('total_debit'));
+        $this->assertSame(40.0, (float) $response->json('total_credit'));
+
+        $lines = collect($response->json('lines'));
+        $debit = $lines->firstWhere('account_id', $this->badDebt->id);
+        $credit = $lines->firstWhere('account_id', $this->receivable->id);
+        $this->assertNotNull($debit, 'The preview must debit the supplied bad-debt expense account.');
+        $this->assertNotNull($credit, 'The preview must credit the AR control account.');
+        $this->assertSame(40.0, round((float) $debit['debit'], 2));
+        $this->assertSame(40.0, round((float) $credit['credit'], 2));
+        $this->assertSame($this->badDebt->code, $debit['account_code']);
+        $this->assertSame($this->receivable->code, $credit['account_code']);
+
+        // A preview is a read: nothing may be written.
+        $this->assertSame(0, DB::table('invoice_write_offs')->count());
+        $this->assertSame(0, JournalEntryLink::where('source_document_type', 'invoice_write_off')->count());
+        $this->assertSame(100.0, round((float) $invoice->fresh()->balance, 2));
+        $this->assertSame('posted', $invoice->fresh()->status);
+    }
+
+    /** Issue #886 (UX4): a preview above the outstanding balance is rejected with no lines. */
+    public function test_write_off_preview_rejects_an_amount_above_the_balance(): void
+    {
+        $invoice = $this->createPostedInvoice(100.0);
+
+        $response = $this->actingAs($this->admin)->postJson(
+            "/api/v1/invoices/{$invoice->id}/write-off/preview",
+            ['amount' => 150, 'account_id' => $this->badDebt->id],
+        );
+
+        $response->assertOk();
+        $this->assertNotNull($response->json('error'));
+        $this->assertSame([], $response->json('lines'));
+        $this->assertSame(0, DB::table('invoice_write_offs')->count());
+    }
+
+    /** Issue #886 (UX4): the detail payload exposes write-offs so the page can chip + link the entry. */
+    public function test_invoice_detail_exposes_write_offs_for_the_written_off_chip(): void
+    {
+        $invoice = $this->createPostedInvoice(100.0);
+        $this->writeOff($invoice, 40)->assertCreated();
+
+        $response = $this->actingAs($this->admin)->getJson("/api/v1/invoices/{$invoice->id}");
+
+        $response->assertOk($response->getContent());
+        $response->assertJsonCount(1, 'write_offs');
+        $this->assertNotNull($response->json('write_offs.0.journal_entry_id'));
+        $this->assertSame(40.0, round((float) $response->json('written_off_amount'), 2));
+    }
+
     private function writeOff(Invoice $invoice, ?float $amount = null, string $reason = 'Deemed uncollectible')
     {
         $payload = ['reason' => $reason, 'account_id' => $this->badDebt->id];

@@ -558,37 +558,7 @@ class InvoiceService
             $invoice = Invoice::whereKey($invoice->id)->lockForUpdate()->firstOrFail();
 
             $amount = round($amount, 2);
-            if ($amount <= 0) {
-                throw new \InvalidArgumentException('The write-off amount must be greater than zero.');
-            }
-
-            if ($invoice->journal_entry_id === null
-                || (string) $invoice->lifecycle_status !== 'posted'
-                || ! in_array((string) $invoice->status, ['posted', 'sent', 'partial', 'overdue'], true)) {
-                throw new \RuntimeException(
-                    "Invoice {$invoice->invoice_number} is not an open posted receivable and cannot be written off."
-                );
-            }
-
-            if ($amount > (float) $invoice->balance + 0.01) {
-                throw new \RuntimeException(
-                    "The write-off amount ({$amount}) exceeds the outstanding balance (".
-                    round((float) $invoice->balance, 2).") of invoice {$invoice->invoice_number}."
-                );
-            }
-
-            $account = ChartOfAccount::query()
-                ->whereKey($accountId)
-                ->where('is_active', true)
-                ->first();
-
-            if (! $account) {
-                throw new \RuntimeException('The write-off account is not an active chart-of-accounts account.');
-            }
-
-            if ($account->type !== 'expense') {
-                throw new \RuntimeException('The write-off account must be an expense account (bad-debt expense).');
-            }
+            $account = $this->assertWriteOffAllowed($invoice, $amount, $accountId);
 
             $userId = TenantUserHelper::requireTenantUserId($userId ?? Auth::id() ?? $invoice->created_by);
             [$legalEntityId, $entityBookId] = $this->resolvePostingEntityBinding($invoice);
@@ -649,6 +619,138 @@ class InvoiceService
 
             return $writeOff->fresh();
         });
+    }
+
+    /**
+     * Issue #886 (UX4): the write-off journal preview. The lines come from
+     * buildWriteOffLines() — the same builder writeOff() posts — and resolve
+     * through the same PostingPolicyMapper, so the dialog can never show an
+     * entry different from the one Confirm creates. Nothing is persisted.
+     */
+    public function previewWriteOff(Invoice $invoice, ?float $amount, int $accountId): array
+    {
+        $documentAmount = round((float) ($amount ?? $invoice->balance), 2);
+        $description = "Bad debt write-off - Invoice {$invoice->invoice_number}";
+        $lines = [];
+        $error = null;
+        $currency = $this->journalCurrency($invoice, null);
+        $legalEntityId = $invoice->legal_entity_id !== null ? (int) $invoice->legal_entity_id : null;
+        $entityBookId = $invoice->entity_book_id !== null ? (int) $invoice->entity_book_id : null;
+
+        try {
+            $account = $this->assertWriteOffAllowed($invoice, $documentAmount, $accountId);
+
+            [$postingLines, $foreign, $docCurrency, $baseCurrency, $rate] = $this->buildWriteOffLines(
+                invoice: $invoice,
+                documentAmountByAccount: [(int) $account->id => $documentAmount],
+                description: $description,
+            );
+
+            [$legalEntityId, $entityBookId] = $this->resolvePostingEntityBinding($invoice);
+            $currency = [
+                'document' => $docCurrency,
+                'base' => $baseCurrency,
+                'exchange_rate' => $foreign ? $rate : 1.0,
+            ];
+
+            $resolution = app(\App\Accounting\Services\PostingPolicyMapper::class)->resolve(new DomainPostingRequest(
+                postingRequestId: DomainPostingRequest::generateRequestId(),
+                idempotencyKey: "invoice:{$invoice->id}:write-off:preview",
+                tenantId: (string) (function_exists('tenant') && tenant() ? tenant('id') : ''),
+                entityId: $legalEntityId !== null ? (string) $legalEntityId : '',
+                accountingBookId: $entityBookId !== null ? (string) $entityBookId : '',
+                sourceCapability: 'ACC-003',
+                sourceRecordType: 'invoice_write_off',
+                sourceRecordId: 'preview',
+                sourceRecordVersion: 1,
+                postingProfileCode: 'AR_WRITE_OFF',
+                transactionDate: now()->toDateString(),
+                postingDate: now()->toDateString(),
+                lines: $postingLines,
+                currencyCode: $foreign ? $docCurrency : null,
+                exchangeRate: $foreign ? $rate : null,
+                ledgerDescription: $description,
+                reference: $invoice->invoice_number,
+            ));
+
+            if (! $resolution->success) {
+                $error = $resolution->error;
+            } else {
+                $unresolved = [];
+                foreach ($resolution->ledgerLines as $line) {
+                    if (empty($line['account_id'])) {
+                        $unresolved[] = $line['account_role'] ?? 'unknown';
+                    }
+                }
+
+                if ($unresolved !== []) {
+                    $error = 'Account role(s) could not be resolved to a chart_of_accounts.id: '.
+                        implode(', ', array_unique($unresolved)).
+                        '. Configure via Entity Account Roles or update the posting profile.';
+                } else {
+                    $lines = $this->decorateJournalLines($resolution->ledgerLines);
+                }
+            }
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        return $this->journalPayload(
+            status: 'draft',
+            source: 'preview',
+            entry: null,
+            postingDate: now()->toDateString(),
+            description: $description,
+            reference: $invoice->invoice_number,
+            legalEntity: $this->journalLegalEntity($legalEntityId),
+            accountingBookId: $entityBookId,
+            currency: $currency,
+            lines: $lines,
+            error: $error,
+        );
+    }
+
+    /**
+     * Issue #879 (SA6) / #886 (UX4): the shared write-off pre-checks — open
+     * posted receivable, non-zero amount within the balance, an active expense
+     * account. writeOff() runs them under its row lock; the journal preview
+     * enforces the same rules without writing.
+     */
+    private function assertWriteOffAllowed(Invoice $invoice, float $amount, int $accountId): ChartOfAccount
+    {
+        if ($amount <= 0) {
+            throw new \InvalidArgumentException('The write-off amount must be greater than zero.');
+        }
+
+        if ($invoice->journal_entry_id === null
+            || (string) $invoice->lifecycle_status !== 'posted'
+            || ! in_array((string) $invoice->status, ['posted', 'sent', 'partial', 'overdue'], true)) {
+            throw new \RuntimeException(
+                "Invoice {$invoice->invoice_number} is not an open posted receivable and cannot be written off."
+            );
+        }
+
+        if ($amount > (float) $invoice->balance + 0.01) {
+            throw new \RuntimeException(
+                "The write-off amount ({$amount}) exceeds the outstanding balance (".
+                round((float) $invoice->balance, 2).") of invoice {$invoice->invoice_number}."
+            );
+        }
+
+        $account = ChartOfAccount::query()
+            ->whereKey($accountId)
+            ->where('is_active', true)
+            ->first();
+
+        if (! $account) {
+            throw new \RuntimeException('The write-off account is not an active chart-of-accounts account.');
+        }
+
+        if ($account->type !== 'expense') {
+            throw new \RuntimeException('The write-off account must be an expense account (bad-debt expense).');
+        }
+
+        return $account;
     }
 
     /**

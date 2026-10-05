@@ -1233,7 +1233,7 @@ class InvoiceController extends Controller
 
     public function show(Request $request, $id)
     {
-        $invoice = Invoice::with(['customer', 'lines.product', 'lines.uom', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor', 'buyer', 'salesOrder', 'quotation', 'deliveryOrders', 'evidence.confirmedBy'])->find($id);
+        $invoice = Invoice::with(['customer', 'lines.product', 'lines.uom', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor', 'buyer', 'salesOrder', 'quotation', 'deliveryOrders', 'evidence.confirmedBy', 'writeOffs'])->find($id);
 
         if (! $invoice) {
             return response()->json(['message' => 'Invoice not found'], 404);
@@ -2647,6 +2647,33 @@ class InvoiceController extends Controller
             'data' => $invoice,
             'write_off' => $writeOff,
         ], 201);
+    }
+
+    /**
+     * Issue #886 (UX4): the write-off dialog's journal preview — the lines the
+     * write-off will post, from the same builder and policy mapper as posting.
+     * Nothing is written.
+     */
+    public function previewWriteOff(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'amount' => 'nullable|numeric|min:0.01',
+            'account_id' => 'required|integer|exists:chart_of_accounts,id',
+        ]);
+
+        $invoice = is_object($id) && $id instanceof Invoice ? $id : Invoice::find($id);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        return response()->json(
+            $this->invoiceService->previewWriteOff(
+                $invoice,
+                isset($validated['amount']) ? (float) $validated['amount'] : null,
+                (int) $validated['account_id'],
+            )
+        );
     }
 
     /**
