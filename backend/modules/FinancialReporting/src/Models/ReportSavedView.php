@@ -22,12 +22,14 @@ class ReportSavedView extends Model
         'grouping',
         'visibility',
         'is_default',
+        'is_favourite',
     ];
 
     protected $casts = [
         'filters' => 'array',
         'grouping' => 'array',
         'is_default' => 'boolean',
+        'is_favourite' => 'boolean',
     ];
 
     /** Tabs this view feature can save (the sales reports page tabs). */

@@ -59,6 +59,11 @@ export function SavedViewBar({ tab, filters, grouping, onApply }: SavedViewBarPr
   const views = Array.isArray(data?.views) ? data.views : [];
   const selected = views.find((view) => String(view.id) === selectedId) ?? null;
 
+  const favouriteMutation = useMutation({
+    mutationFn: (id: number) => reportViewsApi.setFavourite(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['saved-report-views'] }),
+  });
+
   const applyView = (view: ReportSavedView) => {
     onApply({
       tab: view.tab,
@@ -107,12 +112,35 @@ export function SavedViewBar({ tab, filters, grouping, onApply }: SavedViewBarPr
           <option value="">Custom (unsaved)</option>
           {views.map((view) => (
             <option key={view.id} value={String(view.id)}>
+              {view.is_favourite ? '★ ' : ''}
               {view.name}
               {view.visibility === 'shared' ? ' (shared)' : ''}
-              {view.is_default ? ' ★' : ''}
+              {view.is_default ? ' (default)' : ''}
             </option>
           ))}
         </select>
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9"
+          aria-label={selected?.is_favourite ? 'Remove from favourites' : 'Add to favourites'}
+          title={
+            selected && !selected.is_owner
+              ? 'Only the view owner can favourite this view'
+              : 'Favourite this view'
+          }
+          disabled={!selected || !selected.is_owner || favouriteMutation.isPending}
+          onClick={() => selected && favouriteMutation.mutate(selected.id)}
+        >
+          <Icon
+            icon={selected?.is_favourite ? 'solar:star-bold' : 'solar:star-line-duotone'}
+            className={`h-4 w-4 ${
+              selected?.is_favourite ? 'text-amber-500' : 'text-muted-foreground'
+            }`}
+          />
+        </Button>
 
         <HeaderActionButton
           variant="outline"
@@ -159,7 +187,10 @@ export function SavedViewBar({ tab, filters, grouping, onApply }: SavedViewBarPr
           views={views}
           defaultViewId={data?.default_view_id ?? null}
           onClose={() => setShowManage(false)}
-          onChanged={() => queryClient.invalidateQueries({ queryKey: ['saved-report-views'] })}
+          onChanged={() => {
+            queryClient.invalidateQueries({ queryKey: ['saved-report-views'] });
+            queryClient.invalidateQueries({ queryKey: ['report-dashboard-widgets'] });
+          }}
           onSchedule={(view) => {
             setShowManage(false);
             setSelectedId(String(view.id));
@@ -194,6 +225,7 @@ function SaveViewDialog({
   const [name, setName] = useState('');
   const [visibility, setVisibility] = useState<'personal' | 'shared'>('personal');
   const [isDefault, setIsDefault] = useState(false);
+  const [isFavourite, setIsFavourite] = useState(false);
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -205,6 +237,7 @@ function SaveViewDialog({
         grouping,
         visibility,
         is_default: isDefault,
+        is_favourite: isFavourite,
       }),
     onSuccess: (view) => onSaved(view),
   });
@@ -257,6 +290,17 @@ function SaveViewDialog({
             Set as my default view
           </label>
 
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              aria-label="Mark as favourite"
+              checked={isFavourite}
+              onChange={(event) => setIsFavourite(event.target.checked)}
+              className="h-4 w-4 rounded border-input"
+            />
+            Mark as favourite
+          </label>
+
           {saveMutation.isError && (
             <p className="text-sm text-destructive">
               {(saveMutation.error as Error)?.message ?? 'Failed to save the view.'}
@@ -302,8 +346,12 @@ function ManageViewsDialog({
     mutationFn: (id: number) => reportViewsApi.remove(id),
     onSuccess: onChanged,
   });
+  const pinMutation = useMutation({
+    mutationFn: (viewId: number) => reportViewsApi.addWidget(viewId),
+    onSuccess: onChanged,
+  });
 
-  const error = defaultMutation.error ?? deleteMutation.error;
+  const error = defaultMutation.error ?? deleteMutation.error ?? pinMutation.error;
 
   return (
     <Dialog open onOpenChange={(next) => { if (!next) onClose(); }}>
@@ -322,14 +370,33 @@ function ManageViewsDialog({
               <li key={view.id} className="flex flex-wrap items-center gap-2 py-3">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">
+                    {view.is_favourite ? '★ ' : ''}
                     {view.name}
-                    {view.id === defaultViewId ? ' ★' : ''}
+                    {view.id === defaultViewId ? ' (default)' : ''}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {view.visibility === 'shared' ? 'Shared' : 'Personal'} · {view.tab}
                     {!view.is_owner ? ' · owned by another user' : ''}
                   </p>
                 </div>
+
+                {view.is_pinned ? (
+                  <Button type="button" variant="ghost" size="sm" disabled>
+                    <Icon icon="solar:widget-5-bold" className="mr-1 h-3.5 w-3.5" />
+                    On dashboard
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`Add ${view.name} to dashboard`}
+                    onClick={() => pinMutation.mutate(view.id)}
+                  >
+                    <Icon icon="solar:widget-add-bold" className="mr-1 h-3.5 w-3.5" />
+                    Add to dashboard
+                  </Button>
+                )}
 
                 {view.is_owner && (
                   <>

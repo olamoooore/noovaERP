@@ -115,6 +115,32 @@ class SavedViewReportRenderer
     }
 
     /**
+     * Issue #603 — a compact form of the same rendered payload for a Sales
+     * cockpit widget: the label-keyed rows, capped, with the full row count so
+     * the widget can say "showing 5 of 132". Reuses renderExportPayload so the
+     * widget, the CSV and the PDF never diverge.
+     *
+     * @return array{title: string, tab: string, period: array{start_date: string, end_date: string}, columns: list<string>, rows: list<array<string, mixed>>, row_count: int, generated_at: string}
+     */
+    public function renderWidgetPayload(ReportSavedView $view, int $limit = 5): array
+    {
+        $payload = $this->renderExportPayload($view);
+        $rows = array_values($payload['data']);
+        $limit = max(1, min(20, $limit));
+        $firstRow = $rows[0] ?? [];
+
+        return [
+            'title' => $payload['title'],
+            'tab' => (string) $view->tab,
+            'period' => $payload['period'],
+            'columns' => array_keys($firstRow),
+            'rows' => array_slice($rows, 0, $limit),
+            'row_count' => count($rows),
+            'generated_at' => $payload['generated_at'],
+        ];
+    }
+
+    /**
      * Write the rendered view to a CSV or PDF file and return its full path.
      */
     public function exportFile(ReportSavedView $view, string $format): string

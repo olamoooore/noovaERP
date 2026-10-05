@@ -1,8 +1,10 @@
 import api from './api';
 import type {
+  ReportDashboardWidget,
   ReportFilters,
   ReportSavedView,
   ReportViewSchedule,
+  ReportWidgetData,
   SalesViewGrouping,
   SalesViewTab,
 } from '@/types/reports';
@@ -31,6 +33,7 @@ export interface SavedViewInput {
   grouping?: SalesViewGrouping | null;
   visibility?: 'personal' | 'shared';
   is_default?: boolean;
+  is_favourite?: boolean;
 }
 
 export interface SavedViewScheduleInput {
@@ -65,6 +68,37 @@ const reportViewsApi = {
 
   async setDefault(id: number): Promise<ReportSavedView> {
     const response = await api.post(`/reports/saved-views/${id}/default`);
+    return response.data.data;
+  },
+
+  /** Issue #603: one-click favourite toggle (owner-only, enforced server-side). */
+  async setFavourite(id: number): Promise<ReportSavedView> {
+    const response = await api.post(`/reports/saved-views/${id}/favourite`);
+    return response.data.data;
+  },
+
+  /** Issue #603: per-user Sales-cockpit widgets pinning a saved view. */
+  async dashboardWidgets(): Promise<ReportDashboardWidget[]> {
+    const response = await api.get('/reports/dashboard/widgets');
+    return response.data.data;
+  },
+
+  async addWidget(viewId: number): Promise<ReportDashboardWidget> {
+    const response = await api.post('/reports/dashboard/widgets', { view_id: viewId });
+    return response.data.data;
+  },
+
+  async removeWidget(id: number): Promise<void> {
+    await api.delete(`/reports/dashboard/widgets/${id}`);
+  },
+
+  async reorderWidgets(widgetIds: number[]): Promise<ReportDashboardWidget[]> {
+    const response = await api.put('/reports/dashboard/widgets/reorder', { widget_ids: widgetIds });
+    return response.data.data;
+  },
+
+  async widgetData(id: number): Promise<ReportWidgetData> {
+    const response = await api.get(`/reports/dashboard/widgets/${id}/data`);
     return response.data.data;
   },
 
