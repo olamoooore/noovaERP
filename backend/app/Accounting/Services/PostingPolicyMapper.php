@@ -177,8 +177,17 @@ class PostingPolicyMapper
         // profile mapping below still supplies the direction.
         $accountId = $line->accountId;
         if ($accountId === null) {
+            // #885 (UX3): the posting request carries its legal entity, so
+            // entity_account_roles assignments made on the per-entity Default
+            // Accounts screen are the accounts posting resolves. Without the
+            // entity the resolver could only guess at the tenant's first
+            // assignment for the role.
+            $legalEntityId = ($request->entityId !== null && $request->entityId !== '' && is_numeric($request->entityId))
+                ? (int) $request->entityId
+                : null;
+
             try {
-                $accountId = $this->roleResolver->resolveId($line->accountRole, $request->sourceRecordType);
+                $accountId = $this->roleResolver->resolveId($line->accountRole, $request->sourceRecordType, $legalEntityId);
             } catch (\Throwable $e) {
                 // No-op — leave null, PostingEngine will surface error
             }

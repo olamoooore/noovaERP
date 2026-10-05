@@ -138,6 +138,64 @@ class AccountRoleResolver
     }
 
     /**
+     * #885 (UX3): assign an account to an entity's role by role code — the
+     * shared write path behind the Default Accounts screen and the Account
+     * Roles API. Deactivates the entity's current assignment for the role
+     * first, so one entity has at most one active account per role.
+     */
+    public function assignByRoleCode(string $roleCode, int $accountId, int $legalEntityId, ?int $assignedBy = null): void
+    {
+        $roleId = DB::table('account_roles')->where('code', $roleCode)->value('id');
+
+        if (! $roleId) {
+            throw new \RuntimeException("Account role '{$roleCode}' is not defined for this tenant.");
+        }
+
+        $this->assignByRoleId((int) $roleId, $accountId, $legalEntityId, $assignedBy);
+    }
+
+    /**
+     * #885 (UX3): clear an entity's assignment for a role so resolution falls
+     * back to the tenant-wide mapping.
+     */
+    public function unassignByRoleCode(string $roleCode, int $legalEntityId): void
+    {
+        DB::table('entity_account_roles')
+            ->where('legal_entity_id', $legalEntityId)
+            ->whereIn('account_role_id', function ($query) use ($roleCode) {
+                $query->select('id')->from('account_roles')->where('code', $roleCode);
+            })
+            ->update(['is_active' => false, 'updated_at' => now()]);
+    }
+
+    /**
+     * #885 (UX3): assign by account_role_id (used by AccountRolesController).
+     */
+    public function assignByRoleId(int $roleId, int $accountId, int $legalEntityId, ?int $assignedBy = null): void
+    {
+        DB::transaction(function () use ($roleId, $accountId, $legalEntityId, $assignedBy) {
+            DB::table('entity_account_roles')
+                ->where('account_role_id', $roleId)
+                ->where('legal_entity_id', $legalEntityId)
+                ->update(['is_active' => false, 'updated_at' => now()]);
+
+            DB::table('entity_account_roles')->updateOrInsert(
+                [
+                    'legal_entity_id' => $legalEntityId,
+                    'account_role_id' => $roleId,
+                    'chart_of_account_id' => $accountId,
+                ],
+                [
+                    'is_active' => true,
+                    'assigned_by' => $assignedBy,
+                    'assigned_at' => now(),
+                    'updated_at' => now(),
+                ],
+            );
+        });
+    }
+
+    /**
      * Get all unassigned mandatory roles for a specific legal entity.
      */
     public function getUnassignedMandatoryRoles(?int $legalEntityId = null): array

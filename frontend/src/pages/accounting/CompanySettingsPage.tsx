@@ -20,6 +20,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import api from '@/lib/api';
 import chartOfAccountsApi from '@/lib/chartOfAccountsApi';
 import { CountryPluginSettings } from '@/pages/Settings/CountryPluginSettings';
@@ -87,6 +89,33 @@ const COMPANY_SECTIONS: SettingsSectionDef[] = [
   },
 ];
 
+/**
+ * Issue #885 (UX3): the Default Accounts screen is per entity. Each row is an
+ * account role the posting engine resolves; `role` is the entity-scoped role
+ * the back end writes to entity_account_roles (null = tenant-wide only), and
+ * `usedBy` tells the operator which documents post to it.
+ */
+const ACCOUNT_FIELDS: Array<{
+  field: string;
+  label: string;
+  accountType: string;
+  usedBy: string;
+  role: string | null;
+}> = [
+  { field: 'accounts_receivable', label: 'Accounts Receivable', accountType: 'asset', usedBy: 'Customer invoices and receipts (AR control)', role: 'AR_CONTROL' },
+  { field: 'accounts_payable', label: 'Accounts Payable', accountType: 'liability', usedBy: 'Vendor bills and payments (AP control)', role: 'AP_CONTROL' },
+  { field: 'bank_account', label: 'Bank Account', accountType: 'asset', usedBy: 'Payments, refunds and bank transactions', role: 'BANK_MAIN' },
+  { field: 'sales_revenue', label: 'Sales Revenue', accountType: 'revenue', usedBy: 'Invoice and credit-note revenue lines', role: null },
+  { field: 'shipping_revenue', label: 'Shipping Revenue', accountType: 'revenue', usedBy: 'Shipping charges on invoices', role: null },
+  { field: 'sales_tax', label: 'Sales Tax', accountType: 'liability', usedBy: 'Output tax on sales documents', role: 'TAX_OUTPUT' },
+  { field: 'purchase_expense', label: 'Purchase Expense', accountType: 'expense', usedBy: 'Default expense on vendor bills', role: null },
+  { field: 'purchase_tax', label: 'Purchase Tax', accountType: 'asset', usedBy: 'Input tax on purchases', role: 'TAX_INPUT' },
+  { field: 'inventory', label: 'Inventory', accountType: 'asset', usedBy: 'Goods issues, receipts and the COGS credit leg', role: 'INVENTORY' },
+  { field: 'cost_of_goods_sold', label: 'Cost of Goods Sold', accountType: 'expense', usedBy: 'COGS debit when goods are issued', role: 'COGS' },
+  { field: 'retained_earnings', label: 'Retained Earnings', accountType: 'equity', usedBy: 'Year-end close', role: 'RETAINED_EARNINGS' },
+  { field: 'bank_charges', label: 'Bank Charges', accountType: 'expense', usedBy: 'Bank fees on statements and payments', role: null },
+];
+
 export default function CompanySettingsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -131,6 +160,7 @@ export default function CompanySettingsPage() {
     accounts_payable: 'none',
     bank_account: 'none',
     sales_revenue: 'none',
+    shipping_revenue: 'none',
     sales_tax: 'none',
     purchase_expense: 'none',
     purchase_tax: 'none',
@@ -139,6 +169,10 @@ export default function CompanySettingsPage() {
     retained_earnings: 'none',
     bank_charges: 'none',
   });
+
+  // #885 (UX3): which legal entity the Default Accounts screen is editing.
+  // 'all' reads/writes the tenant-wide mappings.
+  const [selectedEntityId, setSelectedEntityId] = useState<string>('all');
 
   // Fetch company settings
   const { data: settings, isLoading } = useQuery({
@@ -172,14 +206,42 @@ export default function CompanySettingsPage() {
 
   const availableCurrencies = currenciesResponse?.available_currencies || [];
 
-  // Fetch default accounts
-  const { data: defaultAccounts } = useQuery({
-    queryKey: ['default-accounts'],
+  // #885 (UX3): legal entities power the Default Accounts entity selector.
+  const { data: legalEntities = [] } = useQuery({
+    queryKey: ['legal-entities-for-settings'],
+    enabled: activeTab === 'accounts',
     queryFn: async () => {
-      const response = await api.get('/accounting/settings/accounts');
-      return response.data.data;
+      const response = await api.get('/accounting/legal-entities');
+      return Array.isArray(response.data) ? response.data : [];
     },
   });
+
+  // Fetch default accounts for the selected entity — the full payload carries
+  // the values posting resolves, the source scope, the unmapped roles and the
+  // shared #775 health check.
+  const { data: defaultAccountsPayload } = useQuery({
+    queryKey: ['default-accounts', selectedEntityId],
+    enabled: activeTab === 'accounts',
+    queryFn: async () => {
+      const response = await api.get('/accounting/settings/accounts', {
+        params: selectedEntityId !== 'all' ? { entity_id: selectedEntityId } : undefined,
+      });
+      return response.data;
+    },
+  });
+
+  const defaultAccounts = defaultAccountsPayload?.data as Record<string, number | null> | undefined;
+
+  // Default to an entity once the list loads — the screen is per entity.
+  useEffect(() => {
+    if (activeTab !== 'accounts' || selectedEntityId !== 'all' || legalEntities.length === 0) {
+      return;
+    }
+    const firstActive = legalEntities.find((entity: any) => (entity.status ?? 'active') === 'active');
+    if (firstActive) {
+      setSelectedEntityId(String(firstActive.id));
+    }
+  }, [activeTab, selectedEntityId, legalEntities]);
 
   // Fetch chart of accounts for dropdowns
   const { data: accounts = [] } = useQuery({
@@ -189,6 +251,23 @@ export default function CompanySettingsPage() {
 
   const getAccountsByType = (type: string) =>
     accounts.filter((account: any) => account.type === type);
+
+  // #885 (UX3): which values on screen come from the entity's own assignment
+  // ("entity") and which are inherited from the tenant-wide mapping.
+  const accountScope = (defaultAccountsPayload?.scope ?? {}) as Record<string, 'entity' | 'default'>;
+  const unmappedFields = (defaultAccountsPayload?.unmapped ?? []) as string[];
+  const selectedEntityName: string | undefined = legalEntities.find(
+    (entity: any) => String(entity.id) === selectedEntityId,
+  )?.name;
+  const healthSummary = defaultAccountsPayload?.health?.summary as
+    | { unmapped?: number; wrong_type?: number; inactive_account?: number }
+    | undefined;
+  const healthIssues =
+    (healthSummary?.unmapped ?? 0) +
+    (healthSummary?.wrong_type ?? 0) +
+    (healthSummary?.inactive_account ?? 0);
+  const accountFieldLabel = (field: string) =>
+    ACCOUNT_FIELDS.find((definition) => definition.field === field)?.label ?? field;
 
   // Sync controlled state with fetched data
   useEffect(() => {
@@ -207,19 +286,11 @@ export default function CompanySettingsPage() {
 
   useEffect(() => {
     if (defaultAccounts) {
-      setAccountsForm({
-        accounts_receivable: defaultAccounts.accounts_receivable?.toString() || 'none',
-        accounts_payable: defaultAccounts.accounts_payable?.toString() || 'none',
-        bank_account: defaultAccounts.bank_account?.toString() || 'none',
-        sales_revenue: defaultAccounts.sales_revenue?.toString() || 'none',
-        sales_tax: defaultAccounts.sales_tax?.toString() || 'none',
-        purchase_expense: defaultAccounts.purchase_expense?.toString() || 'none',
-        purchase_tax: defaultAccounts.purchase_tax?.toString() || 'none',
-        inventory: defaultAccounts.inventory?.toString() || 'none',
-        cost_of_goods_sold: defaultAccounts.cost_of_goods_sold?.toString() || 'none',
-        retained_earnings: defaultAccounts.retained_earnings?.toString() || 'none',
-        bank_charges: defaultAccounts.bank_charges?.toString() || 'none',
-      });
+      const next: Record<string, string> = {};
+      for (const { field } of ACCOUNT_FIELDS) {
+        next[field] = defaultAccounts[field]?.toString() || 'none';
+      }
+      setAccountsForm(next);
     }
   }, [defaultAccounts]);
 
@@ -355,19 +426,13 @@ export default function CompanySettingsPage() {
   const handleAccountsSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const parseAccount = (val: string) => val && val !== 'none' ? parseInt(val) : null;
-    const data = {
-      accounts_receivable: parseAccount(accountsForm.accounts_receivable),
-      accounts_payable: parseAccount(accountsForm.accounts_payable),
-      bank_account: parseAccount(accountsForm.bank_account),
-      sales_revenue: parseAccount(accountsForm.sales_revenue),
-      sales_tax: parseAccount(accountsForm.sales_tax),
-      purchase_expense: parseAccount(accountsForm.purchase_expense),
-      purchase_tax: parseAccount(accountsForm.purchase_tax),
-      inventory: parseAccount(accountsForm.inventory),
-      cost_of_goods_sold: parseAccount(accountsForm.cost_of_goods_sold),
-      retained_earnings: parseAccount(accountsForm.retained_earnings),
-      bank_charges: parseAccount(accountsForm.bank_charges),
-    };
+    const data: Record<string, number | null> = {};
+    for (const { field } of ACCOUNT_FIELDS) {
+      data[field] = parseAccount(accountsForm[field]);
+    }
+    if (selectedEntityId !== 'all') {
+      data.entity_id = parseInt(selectedEntityId);
+    }
     updateAccountsMutation.mutate(data);
   };
 
@@ -757,188 +822,98 @@ export default function CompanySettingsPage() {
               description="Accounts selected automatically when creating transactions and running automatic postings."
             />
             <CardContent className="px-6 pb-6 pt-6">
-              <form id="default-accounts-form" onSubmit={handleAccountsSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="accounts_receivable">Accounts Receivable</Label>
-                  <Select value={accountsForm.accounts_receivable} onValueChange={(v) => setAccountsForm(prev => ({ ...prev, accounts_receivable: v }))}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select account" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {getAccountsByType('asset').map((acc: any) => (
-                        <SelectItem key={acc.id} value={acc.id.toString()}>
-                          {acc.code} - {acc.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="accounts_payable">Accounts Payable</Label>
-                  <Select value={accountsForm.accounts_payable} onValueChange={(v) => setAccountsForm(prev => ({ ...prev, accounts_payable: v }))}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select account" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {getAccountsByType('liability').map((acc: any) => (
-                        <SelectItem key={acc.id} value={acc.id.toString()}>
-                          {acc.code} - {acc.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="bank_account">Bank Account</Label>
-                  <Select value={accountsForm.bank_account} onValueChange={(v) => setAccountsForm(prev => ({ ...prev, bank_account: v }))}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select account" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {getAccountsByType('asset').map((acc: any) => (
-                        <SelectItem key={acc.id} value={acc.id.toString()}>
-                          {acc.code} - {acc.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Used for bank transfers and other payments without a specific bank account.
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="sales_revenue">Sales Revenue</Label>
-                  <Select value={accountsForm.sales_revenue} onValueChange={(v) => setAccountsForm(prev => ({ ...prev, sales_revenue: v }))}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select account" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {getAccountsByType('revenue').map((acc: any) => (
-                        <SelectItem key={acc.id} value={acc.id.toString()}>
-                          {acc.code} - {acc.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="sales_tax">Sales Tax</Label>
-                  <Select value={accountsForm.sales_tax} onValueChange={(v) => setAccountsForm(prev => ({ ...prev, sales_tax: v }))}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select account" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {getAccountsByType('liability').map((acc: any) => (
-                        <SelectItem key={acc.id} value={acc.id.toString()}>
-                          {acc.code} - {acc.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="purchase_expense">Purchase Expense</Label>
-                  <Select value={accountsForm.purchase_expense} onValueChange={(v) => setAccountsForm(prev => ({ ...prev, purchase_expense: v }))}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select account" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {getAccountsByType('expense').map((acc: any) => (
-                        <SelectItem key={acc.id} value={acc.id.toString()}>
-                          {acc.code} - {acc.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="purchase_tax">Purchase Tax</Label>
-                  <Select value={accountsForm.purchase_tax} onValueChange={(v) => setAccountsForm(prev => ({ ...prev, purchase_tax: v }))}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select account" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {getAccountsByType('asset').map((acc: any) => (
-                        <SelectItem key={acc.id} value={acc.id.toString()}>
-                          {acc.code} - {acc.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="inventory">Inventory</Label>
-                  <Select value={accountsForm.inventory} onValueChange={(v) => setAccountsForm(prev => ({ ...prev, inventory: v }))}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select account" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {getAccountsByType('asset').map((acc: any) => (
-                        <SelectItem key={acc.id} value={acc.id.toString()}>
-                          {acc.code} - {acc.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="cost_of_goods_sold">Cost of Goods Sold</Label>
-                  <Select value={accountsForm.cost_of_goods_sold} onValueChange={(v) => setAccountsForm(prev => ({ ...prev, cost_of_goods_sold: v }))}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select account" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {getAccountsByType('expense').map((acc: any) => (
-                        <SelectItem key={acc.id} value={acc.id.toString()}>
-                          {acc.code} - {acc.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="retained_earnings">Retained Earnings</Label>
-                  <Select value={accountsForm.retained_earnings} onValueChange={(v) => setAccountsForm(prev => ({ ...prev, retained_earnings: v }))}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select account" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {getAccountsByType('equity').map((acc: any) => (
-                        <SelectItem key={acc.id} value={acc.id.toString()}>
-                          {acc.code} - {acc.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="bank_charges">Bank Charges</Label>
-                  <Select value={accountsForm.bank_charges} onValueChange={(v) => setAccountsForm(prev => ({ ...prev, bank_charges: v }))}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select account" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {getAccountsByType('expense').map((acc: any) => (
-                        <SelectItem key={acc.id} value={acc.id.toString()}>
-                          {acc.code} - {acc.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="mb-5 space-y-2 sm:max-w-sm">
+                <Label htmlFor="default-accounts-entity">Legal Entity</Label>
+                <Select value={selectedEntityId} onValueChange={setSelectedEntityId}>
+                  <SelectTrigger id="default-accounts-entity">
+                    <SelectValue placeholder="Select entity" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All entities (tenant-wide defaults)</SelectItem>
+                    {legalEntities.map((entity: any) => (
+                      <SelectItem key={entity.id} value={String(entity.id)}>
+                        {entity.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {selectedEntityId === 'all'
+                    ? 'Tenant-wide defaults apply to every entity without its own assignment.'
+                    : `Values marked "This entity only" apply only to ${selectedEntityName ?? 'the selected entity'}; the rest inherit the tenant-wide defaults.`}
+                </p>
               </div>
+
+              {unmappedFields.length > 0 && (
+                <Alert variant="destructive" className="mb-4">
+                  <Icon icon="solar:danger-triangle-bold-duotone" className="h-4 w-4" />
+                  <AlertTitle>
+                    {unmappedFields.length} role{unmappedFields.length === 1 ? '' : 's'}{' '}
+                    {unmappedFields.length === 1 ? 'has' : 'have'} no account for{' '}
+                    {selectedEntityId === 'all' ? 'this tenant' : (selectedEntityName ?? 'this entity')}
+                  </AlertTitle>
+                  <AlertDescription>
+                    {unmappedFields.map(accountFieldLabel).join(', ')} — postings that need these accounts fail until one is chosen.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {healthIssues > 0 && (
+                <Alert className="mb-4">
+                  <Icon icon="solar:shield-warning-bold-duotone" className="h-4 w-4" />
+                  <AlertTitle>Account mapping health needs attention</AlertTitle>
+                  <AlertDescription>
+                    {healthSummary?.unmapped ?? 0} unmapped, {healthSummary?.wrong_type ?? 0} mapped to the wrong account type, {healthSummary?.inactive_account ?? 0} pointing at an inactive account.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <form id="default-accounts-form" onSubmit={handleAccountsSubmit}>
+                <div className="overflow-x-auto rounded-md border">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/40 text-left text-xs uppercase text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-3 font-medium">Account Role</th>
+                        <th className="px-4 py-3 font-medium">Used by</th>
+                        <th className="px-4 py-3 font-medium">Account</th>
+                        <th className="px-4 py-3 font-medium">Scope</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {ACCOUNT_FIELDS.map(({ field, label, accountType, usedBy, role }) => (
+                        <tr key={field}>
+                          <td className="px-4 py-3 align-top">
+                            <div className="font-medium">{label}</div>
+                            {role && <div className="text-[11px] text-muted-foreground">{role}</div>}
+                          </td>
+                          <td className="px-4 py-3 align-top text-muted-foreground">{usedBy}</td>
+                          <td className="px-4 py-3 align-top">
+                            <Select value={accountsForm[field] ?? 'none'} onValueChange={(v) => setAccountsForm(prev => ({ ...prev, [field]: v }))}>
+                              <SelectTrigger className="w-[220px]">
+                                <SelectValue placeholder="Select account" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">None</SelectItem>
+                                {getAccountsByType(accountType).map((acc: any) => (
+                                  <SelectItem key={acc.id} value={acc.id.toString()}>
+                                    {acc.code} - {acc.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </td>
+                          <td className="px-4 py-3 align-top">
+                            {accountScope[field] === 'entity' ? (
+                              <Badge>This entity only</Badge>
+                            ) : (
+                              <Badge variant="outline">All entities</Badge>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </form>
             </CardContent>
             <div className="flex items-center justify-end border-t bg-muted/20 px-6 py-3">

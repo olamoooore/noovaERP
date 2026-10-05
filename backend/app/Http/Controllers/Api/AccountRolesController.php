@@ -79,24 +79,12 @@ class AccountRolesController extends Controller
         }
 
         try {
-            // Deactivate existing assignment for this role within this entity
-            DB::table('entity_account_roles')
-                ->where('account_role_id', $request->account_role_id)
-                ->where('legal_entity_id', $entityId)
-                ->update(['is_active' => false]);
-
-            DB::table('entity_account_roles')->updateOrInsert(
-                [
-                    'legal_entity_id' => $entityId,
-                    'account_role_id' => $request->account_role_id,
-                    'chart_of_account_id' => $request->chart_of_account_id,
-                ],
-                [
-                    'is_active' => true,
-                    'assigned_by' => TenantUserHelper::requireTenantUserId(),
-                    'assigned_at' => now(),
-                    'updated_at' => now(),
-                ]
+            // #885 (UX3): shared write path with the Default Accounts screen.
+            $this->roleResolver->assignByRoleId(
+                (int) $request->account_role_id,
+                (int) $request->chart_of_account_id,
+                (int) $entityId,
+                TenantUserHelper::requireTenantUserId(),
             );
 
             return response()->json(['success' => true, 'message' => 'Account role assigned successfully']);
