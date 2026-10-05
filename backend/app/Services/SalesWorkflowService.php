@@ -213,6 +213,13 @@ class SalesWorkflowService
         $this->engine->defineSchema(self::QUOTATION, 'draft', [
             [
                 'from' => 'draft',
+                'to' => 'sent',
+                'action' => 'send',
+                'label' => 'Send quotation',
+                'permission' => 'quotations.write',
+            ],
+            [
+                'from' => 'draft',
                 'to' => 'confirmed',
                 'action' => 'confirm',
                 'label' => 'Confirm quotation',

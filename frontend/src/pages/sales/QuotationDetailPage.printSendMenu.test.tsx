@@ -37,12 +37,12 @@ if (!Element.prototype.hasPointerCapture) {
   Element.prototype.releasePointerCapture = () => {}
 }
 
-const { apiGet } = vi.hoisted(() => ({ apiGet: vi.fn() }))
+const { apiGet, apiPost } = vi.hoisted(() => ({ apiGet: vi.fn(), apiPost: vi.fn() }))
 
 vi.mock('@/lib/api', () => ({
   default: {
     get: apiGet,
-    post: vi.fn(async () => ({ data: {} })),
+    post: apiPost,
     put: vi.fn(async () => ({ data: {} })),
     patch: vi.fn(async () => ({ data: {} })),
     delete: vi.fn(async () => ({ data: {} })),
@@ -76,6 +76,8 @@ const RESOLUTION = {
 beforeEach(() => {
   useAuthStore.setState({ role: 'Admin', user: { id: 1, name: 'Admin', email: 'a@b.c' }, token: 't' })
   apiGet.mockReset()
+  apiPost.mockReset()
+  apiPost.mockResolvedValue({ data: { data: { delivery: { recipient: 'buyer@example.com' } } } })
   apiGet.mockImplementation(async (url: string) => {
     if (url === '/quotations/5') return { data: quotation }
     if (url.startsWith('/documents/quotation/resolution')) {
@@ -104,7 +106,7 @@ function renderPage() {
 }
 
 describe('QuotationDetailPage — shared print and send menu (#618)', () => {
-  it('replaces the old PDF button with the shared menu and no send actions', async () => {
+  it('offers the email send channel for quotations (#334)', async () => {
     renderPage()
     await screen.findAllByText(/QT-2026-0005/)
 
@@ -115,10 +117,29 @@ describe('QuotationDetailPage — shared print and send menu (#618)', () => {
     expect(screen.getByText('Download PDF')).toBeTruthy()
     expect(screen.getByText('Print')).toBeTruthy()
     expect(screen.getByText('Choose template')).toBeTruthy()
-    expect(screen.queryByText('Email')).toBeNull()
+    expect(screen.getByText('Email')).toBeTruthy()
     expect(screen.queryByText('WhatsApp')).toBeNull()
 
     expect(await screen.findByText('Using: Quotation Standard (tenant rule)')).toBeTruthy()
+  })
+
+  it('sends the quotation PDF + acceptance link through the send endpoint (#334)', async () => {
+    renderPage()
+    await screen.findAllByText(/QT-2026-0005/)
+
+    fireEvent.pointerDown(await screen.findByRole('button', { name: /print \/ send/i }), { button: 0, ctrlKey: false })
+    fireEvent.click(await screen.findByText('Email'))
+
+    // The dialog confirms the recipient before the send call.
+    fireEvent.change(await screen.findByLabelText('To'), { target: { value: 'buyer@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => {
+      expect(apiPost).toHaveBeenCalledWith('/quotations/5/send', {
+        recipient_email: 'buyer@example.com',
+        cc: undefined,
+      })
+    })
   })
 
   it('previews at the quotation PDF endpoint with the resolved template', async () => {

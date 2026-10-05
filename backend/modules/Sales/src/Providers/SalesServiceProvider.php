@@ -29,30 +29,45 @@ class SalesServiceProvider extends ServiceProvider
         $this->registerAuditObservers();
         $this->registerExceptionRetryHandlers();
         $this->registerDomainEventSubscriptions();
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                \Modules\Sales\Console\Commands\ScanOverdueInvoices::class,
+                \Modules\Sales\Console\Commands\ScanExpiringQuotations::class,
+            ]);
+        }
     }
 
     /**
-     * Issue #901 (PC7): subscribe the Sales event consumer to the versioned
-     * catalogue on the platform Domain Event Bus. Subscriptions live in the
-     * tenant schema, so register when tenancy initializes (and immediately if
-     * a tenant is already active, e.g. CLI/tests).
+     * Issue #901 (PC7): subscribe the Sales event consumers to the versioned
+     * catalogue on the platform Domain Event Bus. Issue #903 (PC9) adds the
+     * notification consumer; issue #913 wires the automation consumer onto
+     * the same catalogue (priority 250, after the audit consumer).
+     * Subscriptions live in the tenant schema, so register when tenancy
+     * initializes (and immediately if a tenant is already active, e.g.
+     * CLI/tests).
      */
     private function registerDomainEventSubscriptions(): void
     {
-        $this->app['events']->listen(\Stancl\Tenancy\Events\TenancyInitialized::class, function () {
+        $subscribe = function (): void {
+            $dispatcher = app(\App\Platform\EventBus\DomainEventDispatcher::class);
+            $dispatcher->subscribe(new \Modules\Sales\Subscriptions\SalesEventSubscription);
+            $dispatcher->subscribe(new \Modules\Sales\Subscriptions\SalesNotificationSubscription);
+            $dispatcher->subscribe(new \Modules\Sales\Subscriptions\SalesAutomationSubscription);
+        };
+
+        $this->app['events']->listen(\Stancl\Tenancy\Events\TenancyInitialized::class, function () use ($subscribe) {
             try {
-                app(\App\Platform\EventBus\DomainEventDispatcher::class)
-                    ->subscribe(new \Modules\Sales\Subscriptions\SalesEventSubscription);
+                $subscribe();
             } catch (\Throwable $e) {
-                // Subscription table not migrated for this tenant yet — the
+                // Subscription tables not migrated for this tenant yet — the
                 // event bus still persists events; the publisher retries.
             }
         });
 
         try {
             if (function_exists('tenant') && tenant()) {
-                app(\App\Platform\EventBus\DomainEventDispatcher::class)
-                    ->subscribe(new \Modules\Sales\Subscriptions\SalesEventSubscription);
+                $subscribe();
             }
         } catch (\Throwable $e) {
             // Tenancy not initialized yet — handled by the listener above.

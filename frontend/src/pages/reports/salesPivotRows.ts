@@ -12,6 +12,7 @@ import type {
   PivotMeasure,
   PivotRowNode,
   SalesPivotData,
+  SalesViewGrouping,
 } from '@/types/reports';
 
 export const ALL_PIVOT_DIMENSIONS: PivotDimension[] = [
@@ -79,6 +80,13 @@ export const DEFAULT_PIVOT_MEASURES: PivotMeasure[] = [
   'cost',
   'margin',
 ];
+
+/** Issue #598: the pivot's out-of-the-box grouping (saved by Save view). */
+export const DEFAULT_PIVOT_GROUPING: SalesViewGrouping = {
+  row_dims: ['product'],
+  col_dims: ['month'],
+  measures: DEFAULT_PIVOT_MEASURES,
+};
 
 /** Measures rendered as money; the rest are quantities. */
 const MONEY_MEASURES: PivotMeasure[] = [

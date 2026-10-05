@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Platform\Notifications;
 
+use App\Models\CustomerCreditNote;
 use App\Models\Invoice;
+use App\Models\Payment;
 use App\Models\Quotation;
 use Illuminate\Database\Eloquent\Model;
 use Modules\Sales\Models\DeliveryOrder;
@@ -167,6 +169,43 @@ class NotificationReferences
     }
 
     /**
+     * A payment links to the invoice it settles (payments have no page of
+     * their own, so the invoice is what the user can open).
+     *
+     * @return array{primary: array, links: array<int, array>}
+     */
+    public static function forPayment(Payment $payment): array
+    {
+        $primary = self::ref('payment', $payment->id, $payment->payment_number);
+
+        $links = self::compact([
+            $primary,
+            $payment->invoice_id ? self::ref('invoice', $payment->invoice_id, $payment->invoice?->invoice_number) : null,
+            $payment->customer_id ? self::ref('customer', $payment->customer_id, null, $payment->customer?->name) : null,
+        ]);
+
+        return ['primary' => $primary, 'links' => $links];
+    }
+
+    /**
+     * A credit note links to the invoice it credits.
+     *
+     * @return array{primary: array, links: array<int, array>}
+     */
+    public static function forCreditNote(CustomerCreditNote $creditNote): array
+    {
+        $primary = self::ref('credit_note', $creditNote->id, $creditNote->credit_note_number);
+
+        $links = self::compact([
+            $primary,
+            $creditNote->invoice_id ? self::ref('invoice', $creditNote->invoice_id, $creditNote->invoice?->invoice_number) : null,
+            $creditNote->customer_id ? self::ref('customer', $creditNote->customer_id, null, $creditNote->customer?->name) : null,
+        ]);
+
+        return ['primary' => $primary, 'links' => $links];
+    }
+
+    /**
      * Route a document model to its reference builder. Approval notifications
      * cover quotations and sales orders as well as invoices / delivery orders
      * (issue #650); an unknown model still gets a typed primary reference.
@@ -180,6 +219,8 @@ class NotificationReferences
             $document instanceof DeliveryOrder => self::forDeliveryOrder($document),
             $document instanceof Quotation => self::forQuotation($document),
             $document instanceof SalesOrder => self::forSalesOrder($document),
+            $document instanceof Payment => self::forPayment($document),
+            $document instanceof CustomerCreditNote => self::forCreditNote($document),
             default => [
                 'primary' => self::ref(strtolower(class_basename($document)), $document->getKey()),
                 'links' => [],

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Platform\Notifications\NotificationLog;
+use App\Platform\Notifications\NotificationPreference;
 use App\Platform\Notifications\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -27,6 +28,7 @@ class NotificationController extends Controller
 
         $query = NotificationLog::query()
             ->where('user_id', $request->user()->id)
+            ->whereNotIn('event', $this->inAppMutedEvents((int) $request->user()->id))
             ->orderBy('created_at', 'desc')
             ->limit($limit);
 
@@ -65,6 +67,7 @@ class NotificationController extends Controller
         $count = NotificationLog::query()
             ->where('user_id', $request->user()->id)
             ->whereNull('read_at')
+            ->whereNotIn('event', $this->inAppMutedEvents((int) $request->user()->id))
             ->count();
 
         return response()->json(['unread' => $count]);
@@ -96,6 +99,7 @@ class NotificationController extends Controller
         $count = NotificationLog::query()
             ->where('user_id', $request->user()->id)
             ->whereNull('read_at')
+            ->whereNotIn('event', $this->inAppMutedEvents((int) $request->user()->id))
             ->update(['read_at' => now()]);
 
         return response()->json([
@@ -117,5 +121,22 @@ class NotificationController extends Controller
         $log->delete();
 
         return response()->json(['message' => 'Notification deleted']);
+    }
+
+    /**
+     * Events whose in-app channel the user has explicitly disabled. The mail
+     * leg may still be delivered (the row records it), but the bell and the
+     * notifications page hide it — the user muted the event for that channel.
+     *
+     * @return array<int, string>
+     */
+    private function inAppMutedEvents(int $userId): array
+    {
+        return NotificationPreference::query()
+            ->where('user_id', $userId)
+            ->where('channel', 'in_app')
+            ->where('mail_enabled', false)
+            ->pluck('event')
+            ->all();
     }
 }

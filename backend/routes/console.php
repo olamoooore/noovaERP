@@ -88,6 +88,15 @@ Schedule::command('sales:send-weekly-digest')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Issue #598 (RPT-UX3) - scheduled saved report views. The command iterates
+// every tenant (IteratesTenants) and sends each due schedule (daily / weekly /
+// monthly next_run_at) to recipients who still hold reports.view and entity
+// scope; unauthorized recipients are logged as skipped, never emailed.
+Schedule::command('reports:send-scheduled-views')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Issue #109 - Inventory subledger vs GL control-account reconciliation.
 Schedule::command('inventory:reconcile-gl')
     ->dailyAt('05:45')
@@ -131,5 +140,20 @@ Schedule::command('accounting:publish-outbox')
 // outbox: withoutOverlapping + SKIP LOCKED make it safe to double-run.
 Schedule::command('sales:publish-outbox')
     ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Issue #903 (PC9) - time-based sales notifications. The #901 catalogue only
+// emits invoice.overdue on a settlement transition and quotation.expired on a
+// transition, so these daily scans notify the account owner when an invoice
+// passes its due date and warn quotation owners before validity lapses. Both
+// are idempotent per document through the notification dispatcher.
+Schedule::command('sales:scan-overdue-invoices')
+    ->dailyAt('06:10')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('sales:scan-expiring-quotations')
+    ->dailyAt('06:20')
     ->withoutOverlapping()
     ->runInBackground();

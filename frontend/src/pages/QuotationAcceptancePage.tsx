@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -66,6 +66,7 @@ const formatDate = (iso: string | null) => {
 export default function QuotationAcceptancePage() {
   const { token } = useParams<{ token: string }>()
   const { toast } = useToast()
+  const queryClient = useQueryClient()
 
   const [signerName, setSignerName] = useState('')
   const [signerEmail, setSignerEmail] = useState('')
@@ -93,7 +94,18 @@ export default function QuotationAcceptancePage() {
       })
       return res.data
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['quotation-acceptance', token] })
+      // Issue #334: an over-threshold quotation goes through the standard
+      // internal approval flow first — tell the customer it is pending rather
+      // than implying it is confirmed.
+      if (data?.requires_approval) {
+        toast({
+          title: 'Quotation accepted',
+          description: 'Thank you — it now awaits internal approval before it is confirmed.',
+        })
+        return
+      }
       toast({ title: 'Quotation accepted', description: 'Thank you — your acceptance has been recorded.' })
     },
     onError: (err: any) => {

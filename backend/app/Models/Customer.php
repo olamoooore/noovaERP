@@ -73,6 +73,12 @@ class Customer extends Model
         // Status
         'is_active',
         'notes',
+
+        // Issue #913: explicit hold state written by the automation
+        // `hold_customer` action (there was no credit-hold mechanism before).
+        'on_hold',
+        'hold_reason',
+        'held_at',
     ];
 
     protected $casts = [
@@ -88,6 +94,8 @@ class Customer extends Model
         'date_of_birth' => 'date',
         'customer_since' => 'date',
         'last_interaction_at' => 'datetime',
+        'on_hold' => 'boolean',
+        'held_at' => 'datetime',
     ];
 
     protected $hidden = [

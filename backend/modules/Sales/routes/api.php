@@ -4,7 +4,9 @@ use App\Http\Controllers\Api\DocumentAuditController;
 use App\Http\Controllers\Api\DocumentStockMovesController;
 use App\Http\Controllers\Api\StockCogsBadgeController;
 use Illuminate\Support\Facades\Route;
+use Modules\Sales\Http\Controllers\AutomationRuleController;
 use Modules\Sales\Http\Controllers\DeliveryOrderController;
+use Modules\Sales\Http\Controllers\SalesNotificationPreferenceController;
 use Modules\Sales\Http\Controllers\SalesOrderController;
 
 Route::middleware([
@@ -14,6 +16,12 @@ Route::middleware([
     \App\Http\Middleware\EnsureTenantSearchPath::class,
     \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,
 ])->group(function () {
+
+    // Issue #903: the user-facing mute surface for sales notifications.
+    // Self-scoped (always the authenticated user) and entity-independent, so
+    // it sits outside ResolveEntityContext/EnsureEntityAccess.
+    Route::get('/notifications/preferences', [SalesNotificationPreferenceController::class, 'index']);
+    Route::put('/notifications/preferences', [SalesNotificationPreferenceController::class, 'update']);
 
     Route::middleware([
         \App\Http\Middleware\ResolveEntityContext::class,
@@ -93,6 +101,24 @@ Route::middleware([
 
             // Credit preview
             Route::get('/sales/orders/{id}/credit-preview', [SalesOrderController::class, 'creditPreview']);
+        });
+
+        // Issue #913 (SALES-DIFF): no-code automation rules over the #901 sales
+        // event catalogue. Admin-surface: gated by the already-seeded
+        // sales.settings permission (Owner/Admin) — no new permission is
+        // introduced. Rules are scoped to the caller's legal entities.
+        Route::middleware(\App\Http\Middleware\RequirePermission::class.':sales.settings')->prefix('sales/automation')->group(function () {
+            Route::get('/catalog', [AutomationRuleController::class, 'catalog']);
+            Route::get('/executions', [AutomationRuleController::class, 'executions']);
+
+            Route::get('/rules', [AutomationRuleController::class, 'index']);
+            Route::post('/rules', [AutomationRuleController::class, 'store']);
+            Route::get('/rules/{rule}', [AutomationRuleController::class, 'show'])->whereNumber('rule');
+            Route::put('/rules/{rule}', [AutomationRuleController::class, 'update'])->whereNumber('rule');
+            Route::patch('/rules/{rule}', [AutomationRuleController::class, 'update'])->whereNumber('rule');
+            Route::delete('/rules/{rule}', [AutomationRuleController::class, 'destroy'])->whereNumber('rule');
+            Route::get('/rules/{rule}/versions', [AutomationRuleController::class, 'versions'])->whereNumber('rule');
+            Route::post('/rules/{rule}/dry-run', [AutomationRuleController::class, 'dryRun'])->whereNumber('rule');
         });
 
         // Delivery Orders — same read/write permission split as Sales Orders above

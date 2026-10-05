@@ -301,6 +301,12 @@ export const baseNavItems: NavItem[] = [
         href: '/sales/settings',
         icon: 'solar:settings-bold-duotone',
       },
+      {
+        title: 'Automation',
+        href: '/sales/automation-rules',
+        icon: 'solar:magic-stick-3-bold-duotone',
+        requiredPermission: 'sales.settings',
+      },
     ],
   },
   {
