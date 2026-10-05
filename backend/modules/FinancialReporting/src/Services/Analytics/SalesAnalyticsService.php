@@ -109,9 +109,16 @@ class SalesAnalyticsService
     /**
      * Issue #601: the only measures the pivot endpoint accepts, each mapped to
      * a fixed aggregate over the #355 read model in pivotMeasureSql().
+     *
+     * Issue #602 (SALES-ODOO) adds the Odoo Sales Analysis lifecycle measures
+     * (ordered / delivered / invoiced / to-invoice, quantity and amount), all
+     * computed from the same union's new per-line columns — see
+     * pivotMeasureSql() and lineItemsUnion().
      */
     private const PIVOT_MEASURES = [
         'paid_qty', 'foc_qty', 'net_revenue', 'cost', 'margin',
+        'qty_ordered', 'qty_delivered', 'qty_invoiced', 'qty_to_invoice',
+        'amount_ordered', 'amount_delivered', 'amount_invoiced', 'amount_to_invoice',
     ];
 
     /**
@@ -875,7 +882,8 @@ class SalesAnalyticsService
 
     /**
      * Round one measure collection for output: quantities at the report's
-     * 4-decimal scale (#592), money at 2.
+     * 4-decimal scale (#592), money at 2. Issue #602's lifecycle amounts are
+     * money too.
      *
      * @param  list<string>  $measures
      * @param  array<string, float>  $values
@@ -883,10 +891,15 @@ class SalesAnalyticsService
      */
     private function roundPivotMeasures(array $measures, array $values): array
     {
+        $moneyMeasures = [
+            'net_revenue', 'cost', 'margin',
+            'amount_ordered', 'amount_delivered', 'amount_invoiced', 'amount_to_invoice',
+        ];
+
         $rounded = [];
         foreach ($measures as $measure) {
             $value = (float) ($values[$measure] ?? 0.0);
-            $rounded[$measure] = in_array($measure, ['net_revenue', 'cost', 'margin'], true)
+            $rounded[$measure] = in_array($measure, $moneyMeasures, true)
                 ? round($value, 2)
                 : $this->roundQuantity($value);
         }
@@ -940,6 +953,22 @@ class SalesAnalyticsService
      * The fixed aggregate for each whitelisted pivot measure. Paid/FOC split
      * on the line's own document revenue, so #560's zero-net FOC line is
      * counted as FOC while its units still cost margin.
+     *
+     * Issue #602 lifecycle measures (per line, over the union's columns):
+     *   - qty_ordered      SUM(ordered_quantity) — SO line `quantity −
+     *                      quantity_cancelled`; POS / direct invoices fall
+     *                      back to their quantity (#590 immediate sale)
+     *   - qty_delivered    SUM(delivered_quantity) — mirrored by delivery
+     *                      completion; falls back to the invoice quantity
+     *   - qty_invoiced     SUM(invoiced_quantity) — invoice lines less
+     *                      credit-note lines
+     *   - qty_to_invoice   SUM(delivered − invoiced), NOT clamped: a negative
+     *                      value means more was invoiced than delivered
+     *                      (pre/over-invoicing), which must stay visible
+     *   - amount_*         base-currency, tax-excluded, header-discount-net
+     *                      values of the matching quantity, at the owning
+     *                      document's snapshot rate (#355); amount_to_invoice
+     *                      is delivered − invoiced under the same rule
      */
     private function pivotMeasureSql(string $measure): string
     {
@@ -949,6 +978,14 @@ class SalesAnalyticsService
             'net_revenue' => 'SUM(li.base_revenue)',
             'cost' => 'SUM(li.quantity * COALESCE(p.cost, 0))',
             'margin' => 'SUM(li.base_revenue - (li.quantity * COALESCE(p.cost, 0)))',
+            'qty_ordered' => 'SUM(li.ordered_quantity)',
+            'qty_delivered' => 'SUM(li.delivered_quantity)',
+            'qty_invoiced' => 'SUM(li.invoiced_quantity)',
+            'qty_to_invoice' => 'SUM(li.delivered_quantity - li.invoiced_quantity)',
+            'amount_ordered' => 'SUM(li.base_ordered_amount)',
+            'amount_delivered' => 'SUM(li.base_delivered_amount)',
+            'amount_invoiced' => 'SUM(li.base_invoiced_amount)',
+            'amount_to_invoice' => 'SUM(li.base_delivered_amount - li.base_invoiced_amount)',
             default => throw new \InvalidArgumentException("Unsupported pivot measure [{$measure}]."),
         };
     }
@@ -1053,6 +1090,188 @@ class SalesAnalyticsService
     }
 
     /**
+     * Issue #602: the "unbilled deliveries" view — completed delivery-order
+     * lines whose delivered quantity still exceeds what has been invoiced.
+     *
+     * This is the DO-side companion of the pivot's `qty_to_invoice` measure:
+     * every row here has `quantity_delivered > quantity_invoiced`, so the two
+     * views agree on what is still awaiting an invoice. Only completed
+     * deliveries count (status `done`); a draft/confirmed DO has not shipped
+     * yet even though its line already carries a planned delivered quantity.
+     *
+     * The same #593 filter contract as every other sales report scopes the
+     * list: period on the delivery date, customer, product, category,
+     * salesperson (the customer's), legal entity, channel (the linked sales
+     * order's) and currency. A tag filter restricts to delivery orders whose
+     * sales order carries the tag — standalone delivery orders cannot carry a
+     * tag and are therefore excluded while one is active.
+     *
+     * Amounts are tax-excluded, in the tenant BASE currency:
+     * (delivered − invoiced) × the line's unit price × the document snapshot
+     * rate. The price falls back to the sales-order line for delivery lines
+     * created before the DO carried its own price.
+     *
+     * @return array<string, mixed>
+     */
+    public function getUnbilledDeliveries(ReportFilter $filter): array
+    {
+        $startDate = $filter->startDate ?? Carbon::now()->startOfMonth();
+        $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
+
+        [$salesOrderIds] = $this->documentIdsForTag($filter->tag ?? null);
+
+        // Timestamps are UTC; delivery_date is already a tenant-local calendar
+        // date. The fallback keeps a completed DO without a delivery date in
+        // its completion day (#594's timezone rule).
+        $timezone = $this->tenantTimezone();
+        $deliveryDate = "COALESCE(d.delivery_date, (d.completed_at AT TIME ZONE 'UTC' AT TIME ZONE '{$timezone}')::date,"
+            ." (d.created_at AT TIME ZONE 'UTC' AT TIME ZONE '{$timezone}')::date)";
+
+        try {
+            $query = DB::table('delivery_order_lines as dol')
+                ->join('delivery_orders as d', 'd.id', '=', 'dol.delivery_order_id')
+                ->leftJoin('sales_order_lines as sol', 'sol.id', '=', 'dol.sales_order_line_id')
+                ->leftJoin('customers as c', 'c.id', '=', 'd.customer_id')
+                ->leftJoin('products as p', 'p.id', '=', 'dol.product_id')
+                ->whereNull('d.deleted_at')
+                ->where('d.status', 'done')
+                ->where(function ($line) {
+                    $line->whereNull('dol.line_type')->orWhere('dol.line_type', 'product');
+                })
+                ->whereRaw('dol.quantity_delivered > dol.quantity_invoiced')
+                ->whereRaw("{$deliveryDate} BETWEEN ? AND ?", [
+                    $startDate->toDateString(),
+                    $endDate->toDateString(),
+                ]);
+
+            if ($filter->customerId !== null) {
+                $query->where('d.customer_id', (int) $filter->customerId);
+            }
+
+            if ($filter->productId !== null) {
+                $query->where('dol.product_id', (int) $filter->productId);
+            }
+
+            if ($filter->categoryId !== null) {
+                $categoryId = (int) $filter->categoryId;
+                $query->whereIn('dol.product_id', function ($sub) use ($categoryId) {
+                    $sub->select('id')->from('products')->where('category_id', $categoryId);
+                });
+            }
+
+            if ($filter->salespersonId !== null) {
+                $salespersonId = (int) $filter->salespersonId;
+                $query->whereIn('d.customer_id', function ($sub) use ($salespersonId) {
+                    $sub->select('id')->from('customers')->where('salesperson_id', $salespersonId);
+                });
+            }
+
+            if ($filter->legalEntityId !== null) {
+                $query->where('d.legal_entity_id', (int) $filter->legalEntityId);
+            }
+
+            if ($filter->channel !== null && $filter->channel !== '') {
+                $channel = strtolower($filter->channel);
+                if (! in_array($channel, ['pos', 'admin', 'ecommerce', 'storefront'], true) || $channel === 'pos') {
+                    // Delivery orders only exist for order-backed channels.
+                    $query->whereRaw('1 = 0');
+                } else {
+                    $query->whereIn('d.sales_order_id', function ($sub) use ($channel) {
+                        $sub->select('id')->from('sales_orders')->where('channel', $channel);
+                    });
+                }
+            }
+
+            if ($filter->currencyCode !== null && $filter->currencyCode !== '') {
+                $safe = preg_replace('/[^A-Za-z]/', '', $filter->currencyCode);
+                $query->where('d.currency_code', $safe);
+            }
+
+            if ($filter->tag !== null) {
+                $soIds = array_map('intval', (array) $salesOrderIds);
+                if ($soIds === []) {
+                    $query->whereRaw('1 = 0');
+                } else {
+                    $query->whereIn('d.sales_order_id', $soIds);
+                }
+            }
+
+            $rows = $query
+                ->select([
+                    'd.id as delivery_order_id',
+                    'd.delivery_order_number',
+                    'd.delivery_date',
+                    'd.sales_order_id',
+                    'd.customer_id',
+                    'c.name as customer_name',
+                    'dol.id as delivery_order_line_id',
+                    'dol.product_id',
+                    'p.name as product_name',
+                    'p.sku',
+                    'dol.quantity_ordered',
+                    'dol.quantity_delivered',
+                    'dol.quantity_invoiced',
+                    'd.currency_code',
+                    DB::raw('(dol.quantity_delivered - dol.quantity_invoiced) as quantity_to_invoice'),
+                    DB::raw('COALESCE(dol.unit_price, sol.unit_price, 0) as unit_price'),
+                    DB::raw('ROUND((dol.quantity_delivered - dol.quantity_invoiced)'
+                        .' * COALESCE(dol.unit_price, sol.unit_price, 0)'
+                        .' * COALESCE(d.exchange_rate, 1.0), 2) as amount_to_invoice'),
+                ])
+                ->orderBy('d.delivery_date')
+                ->orderBy('dol.id')
+                ->get();
+        } catch (\Throwable $e) {
+            Log::error('SalesAnalyticsService getUnbilledDeliveries error', [
+                'error' => $e->getMessage(),
+            ]);
+
+            throw $e;
+        }
+
+        $deliveries = $rows->map(fn ($row) => [
+            'delivery_order_id' => (int) $row->delivery_order_id,
+            'delivery_order_number' => $row->delivery_order_number,
+            'delivery_date' => $row->delivery_date,
+            'sales_order_id' => $row->sales_order_id !== null ? (int) $row->sales_order_id : null,
+            'customer_id' => $row->customer_id !== null ? (int) $row->customer_id : null,
+            'customer_name' => $row->customer_name ?? 'Walk-in Customer',
+            'product_id' => $row->product_id !== null ? (int) $row->product_id : null,
+            'product_name' => $row->product_name ?? 'Unknown product',
+            'sku' => $row->sku,
+            'quantity_ordered' => $this->roundQuantity($row->quantity_ordered),
+            'quantity_delivered' => $this->roundQuantity($row->quantity_delivered),
+            'quantity_invoiced' => $this->roundQuantity($row->quantity_invoiced),
+            'quantity_to_invoice' => $this->roundQuantity($row->quantity_to_invoice),
+            'unit_price' => round((float) $row->unit_price, 2),
+            'amount_to_invoice' => round((float) $row->amount_to_invoice, 2),
+            'currency_code' => $row->currency_code,
+        ])->all();
+
+        return [
+            'title' => 'Unbilled Deliveries',
+            'pos_excluded_by_tag' => $filter->tag !== null,
+            'period' => [
+                'start_date' => $startDate->format('Y-m-d'),
+                'end_date' => $endDate->format('Y-m-d'),
+            ],
+            'deliveries' => $deliveries,
+            'summary' => $this->baseSummary([
+                'line_count' => count($deliveries),
+                'delivery_order_count' => $rows->pluck('delivery_order_id')->unique()->count(),
+                'total_quantity_delivered' => $this->roundQuantity($rows->sum('quantity_delivered')),
+                'total_quantity_invoiced' => $this->roundQuantity($rows->sum('quantity_invoiced')),
+                'total_quantity_to_invoice' => $this->roundQuantity(
+                    $rows->sum(fn ($row) => (float) $row->quantity_delivered - (float) $row->quantity_invoiced)
+                ),
+                'total_amount_to_invoice' => round((float) $rows->sum('amount_to_invoice'), 2),
+                'channels_included' => self::CHANNELS_INCLUDED,
+            ]),
+            'generated_at' => now()->toISOString(),
+        ];
+    }
+
+    /**
      * Document ids carrying the requested tag: [sales-order ids, invoice ids].
      *
      * Both are null when no tag filter is active. An empty array means "the tag
@@ -1118,9 +1337,11 @@ class SalesAnalyticsService
      * tenant base currency at the document's own snapshot rate (`base_revenue`),
      * which is the column every widget sums (#355).
      *
-     * Returned columns: product_id, customer_id, quantity, revenue_date,
-     * channel ('pos' | 'booking' | 'invoice' | 'credit_note'), order_ref,
-     * currency_code, exchange_rate, document_revenue, base_revenue.
+     * Returned columns: product_id, customer_id, quantity, ordered_quantity,
+     * delivered_quantity, invoiced_quantity, revenue_date, channel ('pos' |
+     * 'booking' | 'invoice' | 'credit_note'), order_ref, currency_code,
+     * exchange_rate, document_revenue, base_revenue, base_ordered_amount,
+     * base_delivered_amount, base_invoiced_amount (#602).
      *
      * Implemented as a raw SQL subquery rather than a query-builder union
      * because fromSub() with a QB union is fragile across PG versions.
@@ -1230,6 +1451,11 @@ class SalesAnalyticsService
                    po.customer_id,
                    {$posNet} AS document_revenue,
                    COALESCE(poi.quantity, 0) AS quantity,
+                   -- #602: an immediate sale is ordered, delivered and
+                   -- invoiced in the same instant.
+                   COALESCE(poi.quantity, 0) AS ordered_quantity,
+                   COALESCE(poi.quantity, 0) AS delivered_quantity,
+                   COALESCE(poi.quantity, 0) AS invoiced_quantity,
                    {$posRevenueDate} AS revenue_date,
                    'pos' AS channel,
                    'pos:' || po.id AS order_ref,
@@ -1247,6 +1473,13 @@ class SalesAnalyticsService
                    so.customer_id,
                    {$soNet} AS document_revenue,
                    COALESCE(sol.quantity, 0) AS quantity,
+                   -- #602: an un-invoiced booking's ordered quantity is what
+                   -- remains after cancellation; delivered is mirrored onto
+                   -- the line by delivery completion; nothing is invoiced yet
+                   -- (this arm only holds orders with no posted invoice).
+                   GREATEST(COALESCE(sol.quantity, 0) - COALESCE(sol.quantity_cancelled, 0), 0) AS ordered_quantity,
+                   COALESCE(sol.quantity_delivered, 0) AS delivered_quantity,
+                   0 AS invoiced_quantity,
                    {$soRevenueDate} AS revenue_date,
                    'booking' AS channel,
                    'so:' || so.id AS order_ref,
@@ -1283,6 +1516,21 @@ class SalesAnalyticsService
                    i.customer_id,
                    {$invoiceNet} AS document_revenue,
                    COALESCE(il.quantity, 0) AS quantity,
+                   -- #602: a line billed from a sales order inherits that
+                   -- line's ordered/delivered quantities (the order itself is
+                   -- dropped from the booking arm, so it still counts once);
+                   -- a direct invoice has no order/delivery to inherit, so it
+                   -- falls back to the #590 immediate-sale rule (ordered =
+                   -- delivered = invoiced = its quantity).
+                   CASE WHEN sol.id IS NULL
+                        THEN COALESCE(il.quantity, 0)
+                        ELSE GREATEST(COALESCE(sol.quantity, 0) - COALESCE(sol.quantity_cancelled, 0), 0)
+                   END AS ordered_quantity,
+                   CASE WHEN sol.id IS NULL
+                        THEN COALESCE(il.quantity, 0)
+                        ELSE COALESCE(sol.quantity_delivered, 0)
+                   END AS delivered_quantity,
+                   COALESCE(il.quantity, 0) AS invoiced_quantity,
                    i.invoice_date AS revenue_date,
                    'invoice' AS channel,
                    'inv:' || i.id AS order_ref,
@@ -1292,6 +1540,7 @@ class SalesAnalyticsService
                    (SELECT so.sales_team FROM sales_orders so WHERE so.id = i.sales_order_id) AS sales_team
             FROM invoice_lines il
             JOIN invoices i ON i.id = il.invoice_id
+            LEFT JOIN sales_order_lines sol ON sol.id = il.sales_order_line_id
             WHERE i.lifecycle_status IN ('posted', 'credited')
               AND i.status <> 'cancelled'
               AND i.deleted_at IS NULL
@@ -1309,6 +1558,12 @@ class SalesAnalyticsService
                    ccn.customer_id,
                    (-1 * COALESCE(cnl.line_total, 0)) AS document_revenue,
                    (-1 * COALESCE(cnl.quantity, 0)) AS quantity,
+                   -- #602: a credit note reverses invoiced quantity (and
+                   -- amount); it does not change what was ordered/delivered,
+                   -- so those stay 0 on this row.
+                   0 AS ordered_quantity,
+                   0 AS delivered_quantity,
+                   (-1 * COALESCE(cnl.quantity, 0)) AS invoiced_quantity,
                    ccn.credit_note_date AS revenue_date,
                    'credit_note' AS channel,
                    'cn:' || ccn.id AS order_ref,
@@ -1326,9 +1581,18 @@ class SalesAnalyticsService
         // Outer wrapper: convert each document-currency amount to the base
         // currency at the document's own snapshot rate. Every widget except the
         // by-currency view sums this column (#355).
+        //
+        // Issue #602: the lifecycle amounts are the same net line value
+        // apportioned to the ordered/delivered/invoiced quantity, so a partial
+        // delivery or invoice contributes its own share of the line's value
+        // at the same snapshot rate. A zero quantity contributes nothing
+        // (NULLIF), never a division error.
         $sql = "SELECT product_id,
                        customer_id,
                        quantity,
+                       ordered_quantity,
+                       delivered_quantity,
+                       invoiced_quantity,
                        revenue_date,
                        channel,
                        order_ref,
@@ -1337,7 +1601,10 @@ class SalesAnalyticsService
                        salesperson,
                        sales_team,
                        document_revenue,
-                       ROUND(document_revenue * exchange_rate, 2) AS base_revenue
+                       ROUND(document_revenue * exchange_rate, 2) AS base_revenue,
+                       ROUND(document_revenue * exchange_rate * ordered_quantity / NULLIF(quantity, 0), 2) AS base_ordered_amount,
+                       ROUND(document_revenue * exchange_rate * delivered_quantity / NULLIF(quantity, 0), 2) AS base_delivered_amount,
+                       ROUND(document_revenue * exchange_rate * invoiced_quantity / NULLIF(quantity, 0), 2) AS base_invoiced_amount
                 FROM ({$arms}) AS li_doc";
 
         return DB::table(DB::raw('('.$sql.') AS li'));
