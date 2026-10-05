@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use App\Platform\Workflow\Contracts\WorkflowSubject;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class Quotation extends Model
+class Quotation extends Model implements WorkflowSubject
 {
     use HasFactory, SoftDeletes;
 
@@ -321,5 +322,36 @@ class Quotation extends Model
         $this->attributes['patient_name_encrypted'] = ($value === null || $value === '')
             ? null
             : \Illuminate\Support\Facades\Crypt::encryptString((string) $value);
+    }
+
+    // ─── WorkflowEngine subject (#900, PC6) ───────────────────────
+
+    public function workflowEntityType(): string
+    {
+        return 'quotation';
+    }
+
+    public function workflowEntityId(): string
+    {
+        return (string) $this->getKey();
+    }
+
+    public function workflowCurrentStatus(): string
+    {
+        return (string) ($this->status ?? '');
+    }
+
+    public function workflowContext(): array
+    {
+        return [
+            'status' => $this->status,
+            'sales_order_id' => $this->sales_order_id,
+            'total' => (float) $this->total,
+        ];
+    }
+
+    public function applyWorkflowStatus(string $status, array $context = []): void
+    {
+        $this->forceFill(['status' => $status])->save();
     }
 }

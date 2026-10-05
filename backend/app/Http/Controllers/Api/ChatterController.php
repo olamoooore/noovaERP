@@ -7,7 +7,10 @@ namespace App\Http\Controllers\Api;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Models\ChatterAttachment;
+use App\Models\CustomerContact;
+use App\Models\DocumentFollower;
 use App\Services\Chatter\ChatterService;
+use App\Services\Chatter\DocumentFollowerService;
 use App\Services\TenantRoleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,6 +26,7 @@ class ChatterController extends Controller
         private readonly ChatterService $chatter,
         private readonly TenantRoleService $roleService,
         private readonly CommunicationEngine $communication,
+        private readonly DocumentFollowerService $followers,
     ) {}
 
     public function show(Request $request, string $subjectType, int|string $subjectId): JsonResponse
@@ -160,6 +164,217 @@ class ChatterController extends Controller
         ]);
     }
 
+    // ─── Issue #639: document followers ─────────────────────────────────────
+
+    /**
+     * List the followers of a document.
+     */
+    public function followers(Request $request, string $subjectType, int|string $subjectId): JsonResponse
+    {
+        $this->validateSubject($subjectType, $subjectId);
+        $this->authorizeSubjectAccess($request, $subjectType, $subjectId);
+
+        $followers = $this->followers->followers($subjectType, (int) $subjectId);
+
+        // Issue #639: the picker needs the customer's contacts; return them as
+        // meta so no document-specific page edit is required.
+        $record = $subjectType::find($subjectId);
+        $partnerContacts = [];
+
+        if ($record !== null && $record->customer_id !== null) {
+            $partnerContacts = CustomerContact::query()
+                ->where('customer_id', (int) $record->customer_id)
+                ->orderBy('name')
+                ->get(['id', 'name', 'email'])
+                ->map(fn (CustomerContact $contact) => [
+                    'id' => (int) $contact->id,
+                    'name' => $contact->name,
+                    'email' => $contact->email,
+                ])
+                ->all();
+        }
+
+        return response()->json([
+            'data' => $followers
+                ->map(fn (DocumentFollower $follower) => $this->serializeFollower($follower))
+                ->all(),
+            'meta' => [
+                'partner_contacts' => $partnerContacts,
+            ],
+        ]);
+    }
+
+    /**
+     * Follow a document (idempotent upsert), as the authenticated user
+     * (internal follower) or as a customer contact (partner follower).
+     */
+    public function follow(Request $request, string $subjectType, int|string $subjectId): JsonResponse
+    {
+        $this->validateSubject($subjectType, $subjectId);
+        // Followers are readable/writable by anyone who may read the record —
+        // the same view permission that gates the chatter endpoint itself.
+        $this->authorizeSubjectAccess($request, $subjectType, $subjectId);
+
+        $data = $request->validate([
+            'contact_id' => 'nullable|integer|exists:customer_contacts,id',
+            'subscribe_messages' => 'nullable|boolean',
+            'subscribe_activities' => 'nullable|boolean',
+            'subscribe_stage_changes' => 'nullable|boolean',
+        ]);
+
+        if (isset($data['contact_id'])) {
+            $contact = CustomerContact::find($data['contact_id']);
+
+            if (! $contact) {
+                abort(422, 'The selected contact does not exist.');
+            }
+
+            $record = $subjectType::find($subjectId);
+            if (! $record || $record->customer_id === null || (int) $record->customer_id !== (int) $contact->customer_id) {
+                abort(422, 'The contact does not belong to this document\'s customer.');
+            }
+
+            $follower = $this->followers->followContact(
+                $subjectType,
+                (int) $subjectId,
+                $contact,
+                $this->subscriptions($data),
+                DocumentFollower::SOURCE_CONTACT,
+            );
+        } else {
+            $follower = $this->followers->followUser(
+                $subjectType,
+                (int) $subjectId,
+                (int) $request->user()->id,
+                $this->subscriptions($data),
+                DocumentFollower::SOURCE_MANUAL,
+            );
+        }
+
+        return response()->json(['data' => $this->serializeFollower($follower)], 201);
+    }
+
+    /**
+     * Unfollow a document. A user may remove themselves; managers may remove
+     * anyone; partner contacts may be removed by anyone with record access.
+     */
+    public function unfollow(Request $request, string $subjectType, int|string $subjectId, int $followerId): JsonResponse
+    {
+        $this->validateSubject($subjectType, $subjectId);
+        $this->authorizeSubjectAccess($request, $subjectType, $subjectId);
+
+        $follower = DocumentFollower::query()
+            ->forDocument($subjectType, (int) $subjectId)
+            ->whereKey($followerId)
+            ->firstOrFail();
+
+        $this->authorizeFollowerRemoval($request, $follower);
+
+        $this->followers->remove($follower);
+
+        return response()->json(['data' => ['deleted' => true]]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, bool>
+     */
+    private function subscriptions(array $data): array
+    {
+        $subscriptions = [];
+
+        foreach (['subscribe_messages', 'subscribe_activities', 'subscribe_stage_changes'] as $flag) {
+            if (array_key_exists($flag, $data)) {
+                $subscriptions[$flag] = (bool) $data[$flag];
+            }
+        }
+
+        return $subscriptions;
+    }
+
+    private function serializeFollower(DocumentFollower $follower): array
+    {
+        return [
+            'id' => $follower->id,
+            'follower_type' => $follower->follower_type,
+            'follow_source' => $follower->follow_source,
+            'subscribe_messages' => (bool) $follower->subscribe_messages,
+            'subscribe_activities' => (bool) $follower->subscribe_activities,
+            'subscribe_stage_changes' => (bool) $follower->subscribe_stage_changes,
+            'created_at' => optional($follower->created_at)->toIso8601String(),
+            'user' => $follower->user ? [
+                'id' => $follower->user->id,
+                'name' => $follower->user->name,
+                'email' => $follower->user->email,
+                'avatar' => $follower->user->avatar ?? null,
+            ] : null,
+            'contact' => $follower->contact ? [
+                'id' => $follower->contact->id,
+                'name' => $follower->contact->name,
+                'email' => $follower->contact->email,
+            ] : null,
+        ];
+    }
+
+    private function authorizeFollowerRemoval(Request $request, DocumentFollower $follower): void
+    {
+        $user = $request->user();
+        if (! $user) {
+            abort(401, 'Unauthenticated.');
+        }
+
+        // The follower may always remove themselves.
+        if ($follower->user_id !== null && (int) $follower->user_id === (int) $user->id) {
+            return;
+        }
+
+        // Partner contacts have no login; anyone who may read the record may
+        // remove their subscription.
+        if ($follower->follower_type === DocumentFollower::TYPE_PARTNER) {
+            return;
+        }
+
+        $isSuperAdmin = ($user->is_super_admin ?? false) || ($user->role ?? null) === 'platform_super_admin';
+        if ($isSuperAdmin) {
+            return;
+        }
+
+        $tenantId = (function_exists('tenant') && tenant())
+            ? (string) tenant('id')
+            : (string) $request->header('X-Tenant-ID', '');
+        if ($tenantId === '') {
+            abort(403, 'Tenant context required.');
+        }
+
+        $centralUserId = (int) (DB::table('public.users')->where('email', $user->email)->value('id') ?? $user->id);
+        $role = $this->roleService->getRole($centralUserId, $tenantId);
+
+        if (! $role || ! in_array($role, [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER], true)) {
+            abort(403, 'Only the follower or a manager may remove this follower.');
+        }
+    }
+
+    /**
+     * Issue #639: follower fan-out is a side channel — a notification or
+     * mirror failure must never roll back the message/activity that was
+     * already stored. Failures are reported with context.
+     *
+     * @param  array<string, mixed>  $context
+     */
+    private function notifyFollowerSideEffect(string $event, string $subjectType, int $subjectId, ?int $actorId, array $context): void
+    {
+        try {
+            $this->followers->notifyFollowers($event, $subjectType, $subjectId, $actorId, $context);
+        } catch (\Throwable $e) {
+            Log::error('Chatter: follower notification failed', [
+                'event' => $event,
+                'subject_type' => $subjectType,
+                'subject_id' => $subjectId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     public function addMessage(Request $request, string $subjectType, int|string $subjectId): JsonResponse
     {
         $this->validateSubject($subjectType, $subjectId);
@@ -194,6 +409,16 @@ class ChatterController extends Controller
         }
 
         $author = $message->author ?? null;
+
+        // Issue #639: notify followers subscribed to messages (the author is
+        // excluded inside the service).
+        $this->notifyFollowerSideEffect(
+            DocumentFollowerService::EVENT_MESSAGE,
+            $subjectType,
+            (int) $subjectId,
+            (int) $request->user()->id,
+            ['body' => $data['body']],
+        );
 
         return response()->json(['data' => [
             'id' => $message->id,
@@ -237,6 +462,18 @@ class ChatterController extends Controller
         }
 
         $activity = $this->chatter->addActivity($subjectType, $subjectId, $data);
+
+        // Issue #639: notify followers subscribed to activities.
+        $this->notifyFollowerSideEffect(
+            DocumentFollowerService::EVENT_ACTIVITY,
+            $subjectType,
+            (int) $subjectId,
+            $actorId,
+            [
+                'activity_type' => $data['activity_type'],
+                'summary' => $data['summary'],
+            ],
+        );
 
         // Issue #83 priority 2: audit who assigned what to whom.
         if ($assigneeId !== null && $assigneeId !== $actorId) {

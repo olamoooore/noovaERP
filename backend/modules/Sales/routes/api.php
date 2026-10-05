@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\DocumentAuditController;
+use App\Http\Controllers\Api\DocumentStockMovesController;
 use Illuminate\Support\Facades\Route;
 use Modules\Sales\Http\Controllers\DeliveryOrderController;
 use Modules\Sales\Http\Controllers\SalesOrderController;
@@ -31,6 +32,9 @@ Route::middleware([
         Route::middleware(\App\Http\Middleware\RequirePermission::class.':sales.write')->group(function () {
             Route::post('/sales/orders/{id}/confirm', [SalesOrderController::class, 'confirm']);
             Route::post('/sales/orders/{id}/allocate', [SalesOrderController::class, 'allocate']);
+            // Issue #407: lock/unlock a confirmed order (Odoo parity).
+            Route::post('/sales/orders/{id}/lock', [SalesOrderController::class, 'lock']);
+            Route::post('/sales/orders/{id}/unlock', [SalesOrderController::class, 'unlock']);
             Route::post('/sales/orders/{id}/cancel', [SalesOrderController::class, 'cancel']);
             Route::post('/sales/orders/{id}/reset-to-draft', [SalesOrderController::class, 'resetToDraft'])
                 ->middleware(\App\Http\Middleware\RequirePermission::using('documents.reset_to_draft'));
@@ -66,6 +70,11 @@ Route::middleware([
             Route::get('/sales/orders/{subjectId}/audit/export', [DocumentAuditController::class, 'export'])
                 ->whereNumber('subjectId')
                 ->defaults('auditSubject', 'sales_order');
+            // Issue #690 (INV-UX4): the order's warehouse trail, gated the
+            // same way as the audit tab (sales.view opens the record).
+            Route::get('/sales/orders/{subjectId}/stock-moves', [DocumentStockMovesController::class, 'index'])
+                ->whereNumber('subjectId')
+                ->defaults('stockMovesSubject', 'sales_order');
             // Issue #150: sales-pipeline analytics (pre-invoice).
             Route::get('/sales/analytics/pipeline', [\Modules\Sales\Http\Controllers\SalesPipelineAnalyticsController::class, 'index']);
 
@@ -104,6 +113,10 @@ Route::middleware([
             Route::get('/sales/delivery-orders/{subjectId}/audit/export', [DocumentAuditController::class, 'export'])
                 ->whereNumber('subjectId')
                 ->defaults('auditSubject', 'delivery_order');
+            // Issue #690 (INV-UX4): the delivery order's warehouse trail.
+            Route::get('/sales/delivery-orders/{subjectId}/stock-moves', [DocumentStockMovesController::class, 'index'])
+                ->whereNumber('subjectId')
+                ->defaults('stockMovesSubject', 'delivery_order');
         });
 
         Route::apiResource('sales/delivery-orders', DeliveryOrderController::class)

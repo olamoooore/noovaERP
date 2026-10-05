@@ -89,6 +89,39 @@ export interface CreateMessageRequest {
   body: string
 }
 
+// ─── Issue #639: document followers ─────────────────────────────────────────
+
+export interface ChatterFollower {
+  id: number | string
+  follower_type: 'internal' | 'partner'
+  follow_source: string
+  subscribe_messages: boolean
+  subscribe_activities: boolean
+  subscribe_stage_changes: boolean
+  created_at?: string | null
+  user?: ChatterActor | null
+  contact?: { id: number; name?: string | null; email?: string | null } | null
+}
+
+export interface ChatterFollowerCandidate {
+  id: number
+  name?: string | null
+  email?: string | null
+}
+
+export interface ChatterFollowersResult {
+  followers: ChatterFollower[]
+  /** Contacts of the document's customer that may be added as partners. */
+  partnerContacts: ChatterFollowerCandidate[]
+}
+
+export interface FollowRequest {
+  contact_id?: number
+  subscribe_messages?: boolean
+  subscribe_activities?: boolean
+  subscribe_stage_changes?: boolean
+}
+
 // ─── API Client ──────────────────────────────────────────────────────────────
 
 class ChatterApiClient {
@@ -159,6 +192,45 @@ class ChatterApiClient {
   ): Promise<void> {
     await api.delete(
       `/chatter/${encodeURIComponent(subjectType)}/${subjectId}/attachments/${attachmentId}`
+    )
+  }
+
+  // ─── Issue #639: document followers ───────────────────────────────────────
+
+  async listFollowers(
+    subjectType: string,
+    subjectId: number | string
+  ): Promise<ChatterFollowersResult> {
+    const response = await api.get<{
+      data: ChatterFollower[]
+      meta?: { partner_contacts?: ChatterFollowerCandidate[] }
+    }>(`/chatter/${encodeURIComponent(subjectType)}/${subjectId}/followers`)
+
+    return {
+      followers: response.data.data ?? [],
+      partnerContacts: response.data.meta?.partner_contacts ?? [],
+    }
+  }
+
+  async follow(
+    subjectType: string,
+    subjectId: number | string,
+    payload: FollowRequest = {}
+  ): Promise<ChatterFollower> {
+    const response = await api.post<{ data: ChatterFollower }>(
+      `/chatter/${encodeURIComponent(subjectType)}/${subjectId}/followers`,
+      payload
+    )
+    return response.data.data
+  }
+
+  async unfollow(
+    subjectType: string,
+    subjectId: number | string,
+    followerId: number | string
+  ): Promise<void> {
+    await api.delete(
+      `/chatter/${encodeURIComponent(subjectType)}/${subjectId}/followers/${followerId}`
     )
   }
 }

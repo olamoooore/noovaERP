@@ -294,6 +294,11 @@ class QuotationController extends Controller
             'lines' => 'required|array|min:1',
             'lines.*.line_type' => 'nullable|in:product,note,section',
             'lines.*.product_id' => 'nullable|exists:products,id',
+            // Issue #884 (UX2): optional line income account + analytic
+            // dimensions — overridable per line, defaulted from the product.
+            'lines.*.income_account_id' => 'nullable|exists:chart_of_accounts,id',
+            'lines.*.project_id' => 'nullable|integer',
+            'lines.*.department_id' => 'nullable|integer',
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
             'lines.*.product_notes' => 'nullable|string',
@@ -431,6 +436,11 @@ class QuotationController extends Controller
                         'line_type' => $lineType,
                         'sequence' => $lineData['sequence'] ?? $lineIndex,
                         'product_id' => $lineData['product_id'] ?? null,
+                        // Issue #884 (UX2): the line's income account and
+                        // dimensions are accepted (and later flow to the order).
+                        'income_account_id' => $lineData['income_account_id'] ?? null,
+                        'project_id' => $lineData['project_id'] ?? null,
+                        'department_id' => $lineData['department_id'] ?? null,
                         'model_number' => $lineData['model_number'] ?? null,
                         'description' => $lineData['description'],
                         'product_notes' => $lineData['product_notes'] ?? null,
@@ -569,6 +579,11 @@ class QuotationController extends Controller
             'lines.*.line_type' => 'nullable|in:product,note,section',
             'lines.*.sequence' => 'nullable|integer|min:0',
             'lines.*.product_id' => 'nullable|exists:products,id',
+            // Issue #884 (UX2): optional line income account + analytic
+            // dimensions, same rule as create.
+            'lines.*.income_account_id' => 'nullable|exists:chart_of_accounts,id',
+            'lines.*.project_id' => 'nullable|integer',
+            'lines.*.department_id' => 'nullable|integer',
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required_with:lines|string',
             'lines.*.product_notes' => 'nullable|string',
@@ -646,6 +661,10 @@ class QuotationController extends Controller
                             'line_type' => $lineType,
                             'sequence' => $lineData['sequence'] ?? $lineIndex,
                             'product_id' => $lineData['product_id'] ?? null,
+                            // Issue #884 (UX2): same as create.
+                            'income_account_id' => $lineData['income_account_id'] ?? null,
+                            'project_id' => $lineData['project_id'] ?? null,
+                            'department_id' => $lineData['department_id'] ?? null,
                             'model_number' => $lineData['model_number'] ?? null,
                             'description' => $lineData['description'] ?? '',
                             'product_notes' => $lineData['product_notes'] ?? null,
@@ -806,6 +825,12 @@ class QuotationController extends Controller
                     // #303 (X3): the accepted price mode travels with the line.
                     'tax_inclusive' => (bool) $line->tax_inclusive,
                     'discount_amount' => $line->discount_amount,
+                    // Issue #884 (UX2): the accepted line income account and
+                    // analytic dimensions travel with the order (and from
+                    // there to the invoice) — a null keeps the product default.
+                    'income_account_id' => $line->income_account_id,
+                    'project_id' => $line->project_id,
+                    'department_id' => $line->department_id,
                 ], fn ($v) => $v !== null);
             })->toArray();
 
@@ -858,9 +883,20 @@ class QuotationController extends Controller
             // Confirm the SalesOrder
             $salesOrder = $this->salesOrderService->confirmOrder($salesOrder);
 
+            // #900 (PC6): status through the workflow engine; the sales order
+            // link keeps its own write. A quotation that is already confirmed
+            // (e.g. the DO is created later for an earlier confirmation) has
+            // nothing to transition — only the order link is added below.
+            if ($quotation->status !== 'confirmed') {
+                app(\App\Services\SalesWorkflowService::class)->transition(
+                    $quotation,
+                    'confirm',
+                    ['sales_order_id' => $salesOrder->id],
+                );
+            }
+
             // Link the SalesOrder to the quotation
             $quotation->update([
-                'status' => 'confirmed',
                 'sales_order_id' => $salesOrder->id,
             ]);
 
@@ -1770,14 +1806,10 @@ class QuotationController extends Controller
         $fromStatus = $quotation->status;
 
         $quotation = DB::transaction(function () use ($quotation) {
-            if ($quotation->salesOrder && $quotation->salesOrder->status !== 'cancelled') {
-                $this->salesOrderService->cancelOrder(
-                    $quotation->salesOrder,
-                    "Quotation {$quotation->quotation_number} cancelled"
-                );
-            }
-
-            $quotation->update(['status' => 'cancelled']);
+            // #900 (PC6): the workflow engine's cancel handler cancels the
+            // linked Sales Order (through SalesOrderService::cancelOrder)
+            // before the status is applied.
+            app(\App\Services\SalesWorkflowService::class)->transition($quotation, 'cancel');
 
             return $quotation->fresh(['customer', 'lines.product', 'salesOrder']);
         });
@@ -1893,26 +1925,19 @@ class QuotationController extends Controller
         // SECOND active order and the goods can be delivered/invoiced twice.
         // Cancel the linked order through the lifecycle guards first, and refuse
         // the reset when the order can no longer be cancelled (already invoiced).
-        if ($quotation->sales_order_id) {
-            $order = \Modules\Sales\Models\SalesOrder::find($quotation->sales_order_id);
-
-            if ($order && ! $order->isCancelled()) {
-                try {
-                    $this->salesOrderService->cancelOrder(
-                        $order,
-                        "Quotation {$quotation->quotation_number} reset to draft",
-                    );
-                } catch (\Throwable $e) {
-                    return response()->json([
-                        'message' => 'Cannot reset this quotation to draft: its linked Sales Order can no longer be cancelled. '
-                            .$e->getMessage(),
-                    ], 422);
-                }
-            }
+        try {
+            // #900 (PC6): the workflow engine's reset handler cancels the live
+            // linked Sales Order through SalesOrderService::cancelOrder (which
+            // keeps its own lifecycle guards) before applying draft.
+            app(\App\Services\SalesWorkflowService::class)->transition($quotation, 'reset_to_draft');
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Cannot reset this quotation to draft: its linked Sales Order can no longer be cancelled. '
+                    .$e->getMessage(),
+            ], 422);
         }
 
         $quotation->update([
-            'status' => 'draft',
             // The Sales Order has been cancelled above and remains as audit
             // history. Reconfirming the quotation creates and links a new order.
             'sales_order_id' => null,

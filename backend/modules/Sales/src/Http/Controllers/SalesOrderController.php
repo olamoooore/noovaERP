@@ -153,6 +153,9 @@ class SalesOrderController extends Controller
             'lines.*.discount_value' => 'nullable|numeric|min:0',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
             'lines.*.income_account_id' => 'nullable|exists:chart_of_accounts,id',
+            // Issue #884 (UX2): optional line analytic dimensions.
+            'lines.*.project_id' => 'nullable|integer',
+            'lines.*.department_id' => 'nullable|integer',
             'lines.*.source_line_type' => 'nullable|string|max:60',
             'lines.*.source_line_id' => 'nullable|integer',
             'channel_reference.channel' => 'nullable|in:pos,ecommerce,admin',
@@ -255,14 +258,22 @@ class SalesOrderController extends Controller
 
     public function update(Request $request, $id)
     {
-        $order = $this->findScopedOrder(request(), $id);
+        $order = $this->findScopedOrder($request, $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
         }
 
-        if (! $order->isDraft()) {
-            return response()->json(['message' => 'Only draft orders can be edited'], 403);
+        // Issue #407: a locked order refuses every change — header or lines —
+        // until it is explicitly unlocked.
+        if ($order->isLocked()) {
+            return response()->json([
+                'message' => 'This sales order is locked. Unlock it before making changes.',
+            ], 403);
+        }
+
+        if (! $order->isDraft() && ! $order->isConfirmed()) {
+            return response()->json(['message' => 'Only draft or confirmed orders can be edited'], 403);
         }
 
         $validated = $request->validate([
@@ -278,7 +289,39 @@ class SalesOrderController extends Controller
             'incoterm_code' => 'nullable|string|max:20',
             'incoterm_place' => 'nullable|string|max:255',
             'discount_amount' => 'nullable|numeric|min:0',
+            // Issue #407: lines may be added/changed on an unlocked confirmed
+            // order (drafts keep their existing header-only behaviour).
+            'lines' => 'nullable|array|min:1',
+            'lines.*.id' => 'nullable|integer',
+            'lines.*.line_type' => 'nullable|in:product,note,section',
+            'lines.*.sequence' => 'nullable|integer|min:0',
+            'lines.*.product_id' => 'nullable|exists:products,id',
+            'lines.*.variant_id' => 'nullable|integer',
+            // An edited line may be addressed by id alone (partial update);
+            // a NEW line must carry a description — enforced in the service.
+            'lines.*.description' => 'nullable|string',
+            'lines.*.model_number' => 'nullable|string|max:100',
+            'lines.*.product_notes' => 'nullable|string',
+            'lines.*.quantity' => 'nullable|numeric|min:0',
+            'lines.*.unit' => 'nullable|string|max:50',
+            'lines.*.uom_id' => 'nullable|integer|exists:product_uoms,id',
+            'lines.*.unit_price' => 'nullable|numeric|min:0',
+            'lines.*.discount_type' => 'nullable|in:percentage,fixed',
+            'lines.*.discount_value' => 'nullable|numeric|min:0',
+            'lines.*.discount_amount' => 'nullable|numeric|min:0',
+            'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            'lines.*.tax_inclusive' => 'nullable|boolean',
+            'lines.*.income_account_id' => 'nullable|exists:chart_of_accounts,id',
+            'lines.*.invoicing_policy' => 'nullable|in:ordered_qty,delivered_qty',
         ]);
+
+        // Issue #407: unlocked confirmed orders take the amendment path; the
+        // audited diff and the delivery/invoice remainders are produced there.
+        if ($order->isConfirmed()) {
+            return $this->amendConfirmedOrder($request, $order, $validated);
+        }
+
+        unset($validated['lines']);
 
         try {
             DB::transaction(function () use ($request, $order, $validated) {
@@ -309,6 +352,169 @@ class SalesOrderController extends Controller
         );
 
         return response()->json($order->fresh(['customer', 'lines.product']));
+    }
+
+    /**
+     * Issue #407: amend an unlocked confirmed order — header fields and/or
+     * line additions and changes. Writes the append-only before/after diff
+     * (#895) and a chatter entry, then updates the totals so the delivery and
+     * invoice remainders follow the amended quantities.
+     *
+     * @param  array<string, mixed>  $validated
+     */
+    private function amendConfirmedOrder(Request $request, SalesOrder $order, array $validated)
+    {
+        $lines = $validated['lines'] ?? null;
+        unset($validated['lines']);
+
+        // A confirmed order's identity (and legal entity, snapshots, pricing
+        // basis) is fixed; changing the customer would silently invalidate all
+        // of it. Refuse instead of ignoring the input.
+        if (array_key_exists('customer_id', $validated) && (int) $validated['customer_id'] !== (int) $order->customer_id) {
+            return response()->json(['message' => 'The customer cannot be changed on a confirmed order.'], 422);
+        }
+        unset($validated['customer_id']);
+
+        $beforeHeader = $order->getAttributes();
+        $beforeLines = $order->lines()->get()
+            ->mapWithKeys(fn ($line) => [$line->id => $this->auditLineSnapshot($line)])
+            ->all();
+
+        try {
+            DB::transaction(function () use ($request, $order, $validated, $lines) {
+                // Issue #896: the row lock + version check must cover the write.
+                $this->versionGuard->assertFresh($request, $order, 'sales_order');
+
+                if ($validated !== []) {
+                    $order->update($validated);
+                }
+
+                if (is_array($lines)) {
+                    $this->orderService->amendOrderLines($order, $lines);
+                }
+
+                $order->refresh();
+                $order->calculateTotals();
+
+                // Issue #896: the write succeeded — advance the concurrency token.
+                $this->versionGuard->advance($order);
+            });
+        } catch (RecordVersionConflictException $e) {
+            return $this->versionGuard->conflictResponse($e, ['customer', 'lines.product']);
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        // Optional soft lock: record who last saved so a later conflicting
+        // editor is told "being edited by …" (advisory only).
+        $this->versionGuard->recordEditing($request, $order, 'sales_order');
+
+        $changedFields = [];
+        foreach (array_keys($validated) as $field) {
+            if (! array_key_exists($field, $beforeHeader)) {
+                continue;
+            }
+            if ((string) $beforeHeader[$field] !== (string) ($order->getAttribute($field) ?? '')) {
+                $changedFields[] = $field;
+            }
+        }
+
+        if ($lines !== null || $changedFields !== []) {
+            $this->orderService->logChatter(
+                $order,
+                'updated',
+                "Amended sales order {$order->sales_order_number}",
+                ['fields' => $changedFields === [] ? 'line items' : implode(', ', $changedFields)],
+            );
+
+            // Issue #895: append-only, line-keyed before/after diff. Line ids
+            // are preserved for edits and present only in `after` for
+            // additions, so the change is unambiguous.
+            $this->writeAuditLog(
+                'sales_order_updated',
+                (int) $order->id,
+                [
+                    'fields' => array_intersect_key($beforeHeader, array_flip($changedFields)),
+                    'lines' => $beforeLines,
+                ],
+                [
+                    'fields' => array_intersect_key($order->fresh()->getAttributes(), array_flip($changedFields)),
+                    'lines' => $order->lines()->get()
+                        ->mapWithKeys(fn ($line) => [$line->id => $this->auditLineSnapshot($line)])
+                        ->all(),
+                ],
+                ['sales_order_number' => $order->sales_order_number],
+            );
+
+            // Issue #646: an amendment that changed approval-relevant content
+            // (total, discount, lines) invalidates the covering request.
+            $this->approvalGate->invalidateStaleApprovals(
+                $order,
+                SalesApprovalGate::REQUEST_TYPE_SALES_ORDER,
+                Auth::user(),
+            );
+        }
+
+        return response()->json($order->fresh(['customer', 'lines.product']));
+    }
+
+    /**
+     * Issue #407: audit snapshot of one order line. The before/after diffs are
+     * keyed by line id at the call site.
+     *
+     * @return array<string, mixed>
+     */
+    private function auditLineSnapshot($line): array
+    {
+        return [
+            'id' => $line->id !== null ? (int) $line->id : null,
+            'product_id' => $line->product_id !== null ? (int) $line->product_id : null,
+            'description' => $line->description,
+            'quantity' => (float) $line->quantity,
+            'unit_price' => (float) $line->unit_price,
+            'tax_rate' => (float) ($line->tax_rate ?? 0),
+            'discount_amount' => (float) ($line->discount_amount ?? 0),
+        ];
+    }
+
+    /**
+     * Issue #407: lock a confirmed order against amendments.
+     */
+    public function lock($id)
+    {
+        $order = $this->findScopedOrder(request(), $id);
+
+        if (! $order) {
+            return response()->json(['message' => 'Sales order not found'], 404);
+        }
+
+        try {
+            $order = $this->orderService->lockOrder($order);
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Order locked', 'order' => $order]);
+    }
+
+    /**
+     * Issue #407: unlock an order so it can be amended again.
+     */
+    public function unlock($id)
+    {
+        $order = $this->findScopedOrder(request(), $id);
+
+        if (! $order) {
+            return response()->json(['message' => 'Sales order not found'], 404);
+        }
+
+        try {
+            $order = $this->orderService->unlockOrder($order);
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Order unlocked', 'order' => $order]);
     }
 
     public function confirm($id)
@@ -741,15 +947,6 @@ class SalesOrderController extends Controller
         ?array $afterState = null,
         array $metadata = [],
     ): void {
-        app(\App\Services\AuditLogger::class)->log(
-            operation: $operation,
-            referenceType: 'sales_order',
-            referenceId: $orderId,
-            beforeState: $beforeState,
-            afterState: $afterState,
-            metadata: $metadata + [
-                'request_id' => request()?->header(\App\Http\Middleware\CorrelationIdMiddleware::HEADER),
-            ],
-        );
+        $this->orderService->writeAuditLog($operation, $orderId, $beforeState, $afterState, $metadata);
     }
 }

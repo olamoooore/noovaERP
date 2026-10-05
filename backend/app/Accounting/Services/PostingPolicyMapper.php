@@ -263,6 +263,9 @@ class PostingPolicyMapper
                     'mappings' => [
                         'accounts_receivable' => ['account_id' => null, 'direction' => 'debit'],
                         'sales_revenue' => ['account_id' => null, 'direction' => 'credit'],
+                        // Issue #882 (SA9): an invoice line whose service
+                        // period has not elapsed credits deferred revenue.
+                        'deferred_revenue' => ['account_id' => null, 'direction' => 'credit'],
                         'shipping_revenue' => ['account_id' => null, 'direction' => 'credit'],
                         'sales_tax_payable' => ['account_id' => null, 'direction' => 'credit'],
                         'cogs' => ['account_id' => null, 'direction' => 'debit'],
@@ -280,6 +283,25 @@ class PostingPolicyMapper
                     'mappings' => [
                         'bank' => ['account_id' => null, 'direction' => 'debit'],
                         'accounts_receivable' => ['account_id' => null, 'direction' => 'credit'],
+                    ],
+                ],
+                // Issue #879 (SA6): bad-debt write-off and its recovery. The
+                // expense account is always pinned by the caller (the tenant's
+                // chosen bad-debt account); AR resolves through its role.
+                'AR_WRITE_OFF' => [
+                    'id' => 'AR_WRITE_OFF',
+                    'version' => '1.0',
+                    'mappings' => [
+                        'accounts_receivable' => ['account_id' => null, 'direction' => 'credit'],
+                        'bad_debt_expense' => ['account_id' => null, 'direction' => 'debit'],
+                    ],
+                ],
+                'AR_WRITE_OFF_RECOVERY' => [
+                    'id' => 'AR_WRITE_OFF_RECOVERY',
+                    'version' => '1.0',
+                    'mappings' => [
+                        'accounts_receivable' => ['account_id' => null, 'direction' => 'debit'],
+                        'bad_debt_expense' => ['account_id' => null, 'direction' => 'credit'],
                     ],
                 ],
             ],

@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Models;
 
+use App\Platform\Workflow\Contracts\WorkflowSubject;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * Issue #151: recurrence definition for a recurring sales order.
  */
-class SalesOrderRecurrence extends Model
+class SalesOrderRecurrence extends Model implements WorkflowSubject
 {
     protected $table = 'sales_order_recurrences';
 
@@ -68,5 +69,35 @@ class SalesOrderRecurrence extends Model
             'annual' => $next->addYearsNoOverflow(1),
             default => $next->addMonthsNoOverflow(1),
         };
+    }
+
+    // ─── WorkflowEngine subject (#900, PC6) ───────────────────────
+
+    public function workflowEntityType(): string
+    {
+        return 'sales_order_recurrence';
+    }
+
+    public function workflowEntityId(): string
+    {
+        return (string) $this->getKey();
+    }
+
+    public function workflowCurrentStatus(): string
+    {
+        return (string) ($this->status ?? '');
+    }
+
+    public function workflowContext(): array
+    {
+        return [
+            'status' => $this->status,
+            'sales_order_id' => $this->sales_order_id,
+        ];
+    }
+
+    public function applyWorkflowStatus(string $status, array $context = []): void
+    {
+        $this->forceFill(['status' => $status])->save();
     }
 }

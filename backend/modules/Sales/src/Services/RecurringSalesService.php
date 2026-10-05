@@ -30,7 +30,7 @@ class RecurringSalesService
 
         $start = Carbon::parse($definition['start_date']);
 
-        return SalesOrderRecurrence::create([
+        $recurrence = SalesOrderRecurrence::create([
             'tenant_id' => $order->tenant_id ?? (function_exists('tenant') && tenant() ? tenant()->id : null),
             'sales_order_id' => $order->id,
             'customer_id' => $order->customer_id,
@@ -40,9 +40,14 @@ class RecurringSalesService
             'max_cycles' => $definition['max_cycles'] ?? null,
             'cycles_generated' => 0,
             'next_run_date' => $start->toDateString(),
-            'status' => 'active',
             'created_by' => $definition['created_by'] ?? null,
         ]);
+
+        // #900 (PC6): initial status ('active', DB default) is recorded on the
+        // workflow transition log rather than written by hand.
+        app(\App\Services\SalesWorkflowService::class)->initialize($recurrence, ['source' => 'create']);
+
+        return $recurrence;
     }
 
     /**
@@ -91,7 +96,12 @@ class RecurringSalesService
             $source = $recurrence->salesOrder()->with('lines.product')->first();
 
             if (! $source) {
-                $recurrence->update(['status' => 'cancelled']);
+                app(\App\Services\SalesWorkflowService::class)->transition(
+                    $recurrence,
+                    'cancel',
+                    ['reason' => 'Source sales order no longer exists'],
+                    'Source sales order no longer exists',
+                );
 
                 return null;
             }
@@ -100,7 +110,7 @@ class RecurringSalesService
                 'customer_id' => $recurrence->customer_id,
                 'order_date' => $asOf->toDateString(),
                 'currency' => $source->currency,
-                'notes' => "Recurring order (cycle ".($recurrence->cycles_generated + 1).") from {$source->sales_order_number}",
+                'notes' => 'Recurring order (cycle '.($recurrence->cycles_generated + 1).") from {$source->sales_order_number}",
                 // Issue #151 (hostile re-review): the generated order must
                 // reproduce the source lines exactly — pricing and tax fields
                 // (discount_type, discount_value, tax_rate, tax_inclusive,
@@ -141,9 +151,20 @@ class RecurringSalesService
                 'cycles_generated' => $cycles,
                 'next_run_date' => $nextRun->toDateString(),
                 'last_generated_at' => now(),
-                'status' => $finished ? 'completed' : 'active',
                 'generated_order_ids' => array_merge($recurrence->generated_order_ids ?? [], [$order->id]),
             ]);
+
+            // #900 (PC6): finishing the schedule is a status change; it goes
+            // through the engine (active → completed). A continuing schedule
+            // keeps its current status untouched.
+            if ($finished) {
+                app(\App\Services\SalesWorkflowService::class)->transition(
+                    $recurrence,
+                    'complete',
+                    ['cycles_generated' => $cycles],
+                    'All scheduled cycles generated',
+                );
+            }
 
             return $order;
         });
@@ -155,7 +176,7 @@ class RecurringSalesService
             throw new \RuntimeException('Only active recurrences can be paused.');
         }
 
-        $recurrence->update(['status' => 'paused']);
+        app(\App\Services\SalesWorkflowService::class)->transition($recurrence, 'pause');
 
         return $recurrence->fresh();
     }
@@ -166,7 +187,7 @@ class RecurringSalesService
             throw new \RuntimeException('Only paused recurrences can be resumed.');
         }
 
-        $recurrence->update(['status' => 'active']);
+        app(\App\Services\SalesWorkflowService::class)->transition($recurrence, 'resume');
 
         return $recurrence->fresh();
     }
@@ -177,7 +198,7 @@ class RecurringSalesService
             throw new \RuntimeException('This recurrence is already finished.');
         }
 
-        $recurrence->update(['status' => 'cancelled']);
+        app(\App\Services\SalesWorkflowService::class)->transition($recurrence, 'cancel');
 
         return $recurrence->fresh();
     }

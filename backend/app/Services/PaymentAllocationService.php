@@ -99,7 +99,13 @@ class PaymentAllocationService
                     );
                 }
 
-                if ($amount > (float) $invoice->balance + 0.01) {
+                // Issue #879 (SA6): a written-off invoice remains recoverable —
+                // cash can reinstate the receivable up to the amount written
+                // off — so the capacity is the open balance plus the
+                // not-yet-recovered write-off.
+                $recoverable = round((float) $invoice->balance + (float) $invoice->written_off_amount, 2);
+
+                if ($amount > $recoverable + 0.01) {
                     throw new \InvalidArgumentException(
                         "The allocation ({$amount}) exceeds the outstanding balance of invoice {$invoice->invoice_number}."
                     );

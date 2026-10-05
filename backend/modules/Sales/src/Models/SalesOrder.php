@@ -4,13 +4,14 @@ namespace Modules\Sales\Models;
 
 use App\Models\ApprovalRequest;
 use App\Models\Warehouse;
+use App\Platform\Workflow\Contracts\WorkflowSubject;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class SalesOrder extends Model
+class SalesOrder extends Model implements WorkflowSubject
 {
     use SoftDeletes;
 
@@ -31,6 +32,11 @@ class SalesOrder extends Model
         'legal_entity_id',
         'channel',
         'status',
+        // Issue #407: a confirmed order can be locked against amendments and
+        // unlocked to amend it again.
+        'is_locked',
+        'locked_at',
+        'locked_by',
         'accounting_status',
         'source_document_type',
         'source_document_id',
@@ -114,6 +120,9 @@ class SalesOrder extends Model
         'shipping_address_snapshot' => 'array',
         // Issue #896: optimistic-concurrency token.
         'lock_version' => 'integer',
+        // Issue #407: lock state of a confirmed order.
+        'is_locked' => 'boolean',
+        'locked_at' => 'datetime',
     ];
 
     protected static function boot()
@@ -229,6 +238,21 @@ class SalesOrder extends Model
     public function deliveryOrders()
     {
         return $this->hasMany(DeliveryOrder::class);
+    }
+
+    /**
+     * Issue #407: an order is locked when a user (or the tenant's
+     * auto-lock-on-confirm option) explicitly locked it after confirmation.
+     * Drafts are never lockable (see SalesOrderService::lockOrder).
+     */
+    public function isLocked(): bool
+    {
+        return (bool) ($this->is_locked ?? false);
+    }
+
+    public function lockedBy(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\User::class, 'locked_by');
     }
 
     public function isDraft(): bool
@@ -484,5 +508,36 @@ class SalesOrder extends Model
     public function requiresAllProductsReady(): bool
     {
         return $this->shipping_policy === self::SHIPPING_POLICY_WHEN_ALL_READY;
+    }
+
+    // ─── WorkflowEngine subject (#900, PC6) ───────────────────────
+
+    public function workflowEntityType(): string
+    {
+        return 'sales_order';
+    }
+
+    public function workflowEntityId(): string
+    {
+        return (string) $this->getKey();
+    }
+
+    public function workflowCurrentStatus(): string
+    {
+        return (string) ($this->status ?? '');
+    }
+
+    public function workflowContext(): array
+    {
+        return [
+            'status' => $this->status,
+            'sales_order_number' => $this->sales_order_number,
+            'total' => (float) $this->total,
+        ];
+    }
+
+    public function applyWorkflowStatus(string $status, array $context = []): void
+    {
+        $this->forceFill(['status' => $status])->save();
     }
 }

@@ -8,6 +8,7 @@ use App\Features\ActivityLogging\Models\ActivityLogEntry;
 use App\Models\ChatterActivity;
 use App\Models\ChatterAttachment;
 use App\Models\ChatterMessage;
+use App\Models\DocumentFollower;
 use App\Models\EsignRequest;
 use App\Models\InvoiceEvidence;
 use Illuminate\Database\Eloquent\Model;
@@ -569,15 +570,15 @@ class ChatterService
         int|string|null $actorId = null,
         ?string $actorType = null,
     ): void {
+        $causerType = $actorType ?? (Auth::check() ? get_class(Auth::user()) : null);
+        $causerId = $actorId ?? Auth::id();
+
+        if ($causerType === null || $causerId === null) {
+            $causerType = null;
+            $causerId = null;
+        }
+
         try {
-            $causerType = $actorType ?? (Auth::check() ? get_class(Auth::user()) : null);
-            $causerId = $actorId ?? Auth::id();
-
-            if ($causerType === null || $causerId === null) {
-                $causerType = null;
-                $causerId = null;
-            }
-
             $attributes = [
                 'log_name' => 'chatter',
                 'description' => $description,
@@ -600,6 +601,71 @@ class ChatterService
             ActivityLogEntry::create($attributes);
         } catch (\Throwable $e) {
             // never break user-visible flows because chatter logging failed
+            report($e);
+        }
+
+        // Issue #639: creation and stage-change chatter events also drive the
+        // document-follower rules (auto-follow + subscription-aware fan-out).
+        $this->applyFollowerRules($subjectType, (int) $subjectId, $event, $causerId, $properties);
+    }
+
+    /**
+     * Issue #639 (CHATTER-EPIC #628): document-follower side effects that ride
+     * on the canonical lifecycle events.
+     *
+     *  - `created`      → the actor (creator) and the resolved salesperson
+     *                     auto-follow the document;
+     *  - stage changes  → the actor auto-follows (`auto:stage_change`) and
+     *                     followers subscribed to stage changes are notified.
+     *
+     * Best-effort by design: the chatter row above is already written and the
+     * calling document transition must not fail because a follower row or a
+     * notification could not be written. Failures are reported, never hidden.
+     *
+     * @param  array<string, mixed>  $properties
+     */
+    private function applyFollowerRules(
+        string $subjectType,
+        int $subjectId,
+        string $event,
+        int|string|null $causerId,
+        array $properties,
+    ): void {
+        $isCreated = $event === DocumentFollowerService::CREATED_EVENT;
+        $isStageChange = in_array($event, DocumentFollowerService::STAGE_EVENTS, true);
+
+        if (! $isCreated && ! $isStageChange) {
+            return;
+        }
+
+        try {
+            $actorId = is_numeric($causerId) ? (int) $causerId : null;
+            $service = app(DocumentFollowerService::class);
+
+            if ($isCreated) {
+                $document = class_exists($subjectType) && is_subclass_of($subjectType, Model::class)
+                    ? $subjectType::find($subjectId)
+                    : null;
+
+                if ($document !== null) {
+                    $service->autoFollowOnCreate($document, $actorId);
+                }
+
+                return;
+            }
+
+            $service->autoFollowActor($subjectType, $subjectId, $actorId, DocumentFollower::SOURCE_STAGE_CHANGE);
+            $service->notifyFollowers(
+                DocumentFollowerService::EVENT_STAGE_CHANGE,
+                $subjectType,
+                $subjectId,
+                $actorId,
+                [
+                    'from_state' => $properties['from_state'] ?? null,
+                    'to_state' => $properties['to_state'] ?? null,
+                ],
+            );
+        } catch (\Throwable $e) {
             report($e);
         }
     }

@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\CustomerStatementController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DocumentAuditController;
 use App\Http\Controllers\Api\DocumentCurrencyController;
+use App\Http\Controllers\Api\DocumentStockMovesController;
 use App\Http\Controllers\Api\EntityManagementController;
 use App\Http\Controllers\Api\ExchangeRatesController;
 use App\Http\Controllers\Api\FeatureController;
@@ -395,6 +396,11 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::get('/invoices/{invoice}/preflight', [InvoiceController::class, 'preflight'])
             ->middleware(RequirePermission::using('invoices.view'));
 
+        // Issue #883 (SAU1): the Journal tab — draft preview (same builder as
+        // posting, never written) or the actual posted entry with drill-down.
+        Route::get('/invoices/{invoice}/journal', [InvoiceController::class, 'journal'])
+            ->middleware(RequirePermission::using('invoices.view'));
+
         // Evidence
         Route::post('/invoices/{invoice}/evidence', [InvoiceController::class, 'uploadEvidence'])
             ->middleware(RequirePermission::using('invoices.evidence.manage'));
@@ -439,7 +445,22 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             ->defaults('auditSubject', 'invoice')
             ->middleware(RequirePermission::using('invoices.view'));
 
+        // Issue #690 (INV-UX4): read-only "Stock moves" trail, gated by the
+        // same view permission that opens the invoice.
+        Route::get('/invoices/{subjectId}/stock-moves', [DocumentStockMovesController::class, 'index'])
+            ->whereNumber('subjectId')
+            ->defaults('stockMovesSubject', 'invoice')
+            ->middleware(RequirePermission::using('invoices.view'));
+
         Route::post('/invoices/{invoice}/cancel', [InvoiceController::class, 'cancel'])
+            ->middleware(RequirePermission::using('accounting.post'));
+        // Issue #879 (SA6): write off (part of) an open invoice as bad debt —
+        // an accounting release, posted through the PostingEngine.
+        Route::post('/invoices/{invoice}/write-off', [InvoiceController::class, 'writeOff'])
+            ->middleware(RequirePermission::using('accounting.post'));
+        // Issue #886 (UX4): the dialog's journal preview — same builder as the
+        // write-off posting, nothing written.
+        Route::post('/invoices/{invoice}/write-off/preview', [InvoiceController::class, 'previewWriteOff'])
             ->middleware(RequirePermission::using('accounting.post'));
         // Reverses the ledger and restores stock — admin/owner only.
         Route::post('/invoices/{invoice}/reset-to-draft', [InvoiceController::class, 'resetToDraft'])
@@ -451,6 +472,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             Route::get('/accounting/budgets', [\App\Http\Controllers\Api\BudgetController::class, 'index']);
             Route::get('/accounting/budgets/{budget}', [\App\Http\Controllers\Api\BudgetController::class, 'show']);
             Route::get('/accounting/budgets/{budget}/variance', [\App\Http\Controllers\Api\BudgetController::class, 'variance']);
+            // Issue #882 (SA9): the deferred-revenue schedule report, per entity.
+            Route::get('/accounting/deferred-revenue', [\App\Http\Controllers\Api\DeferredRevenueReportController::class, 'index']);
         });
         Route::middleware(RequirePermission::using('accounting.write'))->group(function () {
             Route::post('/accounting/budgets', [\App\Http\Controllers\Api\BudgetController::class, 'store']);
@@ -530,6 +553,12 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::get('/quotations/{subjectId}/audit/export', [DocumentAuditController::class, 'export'])
             ->whereNumber('subjectId')
             ->defaults('auditSubject', 'quotation')
+            ->middleware(RequirePermission::using('quotations.view'));
+
+        // Issue #690 (INV-UX4): the quotation's downstream warehouse trail.
+        Route::get('/quotations/{subjectId}/stock-moves', [DocumentStockMovesController::class, 'index'])
+            ->whereNumber('subjectId')
+            ->defaults('stockMovesSubject', 'quotation')
             ->middleware(RequirePermission::using('quotations.view'));
     });
 
@@ -1011,6 +1040,13 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::get('/customers/credit-notes/{subjectId}/audit/export', [DocumentAuditController::class, 'export'])
             ->whereNumber('subjectId')
             ->defaults('auditSubject', 'credit_note')
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.view'));
+
+        // Issue #690 (INV-UX4): read-only warehouse trail. A credit note moves
+        // no stock of its own; the service shows the credited invoice's trail.
+        Route::get('/customers/credit-notes/{subjectId}/stock-moves', [DocumentStockMovesController::class, 'index'])
+            ->whereNumber('subjectId')
+            ->defaults('stockMovesSubject', 'credit_note')
             ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.view'));
 
         // Customers List

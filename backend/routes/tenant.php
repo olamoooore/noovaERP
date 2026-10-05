@@ -273,6 +273,11 @@ Route::middleware([
     // Chatter (Odoo-style activity log + messages + activities + attachments)
     Route::prefix('chatter')->group(function () {
         Route::get('/{subjectType}/{subjectId}', [\App\Http\Controllers\Api\ChatterController::class, 'show']);
+        // Issue #639: document followers — follow / list / unfollow. Access is
+        // the same subject view permission the chatter endpoint itself checks.
+        Route::get('/{subjectType}/{subjectId}/followers', [\App\Http\Controllers\Api\ChatterController::class, 'followers']);
+        Route::post('/{subjectType}/{subjectId}/followers', [\App\Http\Controllers\Api\ChatterController::class, 'follow']);
+        Route::delete('/{subjectType}/{subjectId}/followers/{followerId}', [\App\Http\Controllers\Api\ChatterController::class, 'unfollow'])->whereNumber('followerId');
         // Issue #87: polling endpoint for the real-time chatter UX. Frontend
         // hits this every ~10s while the chatter tab is open.
         Route::get('/{subjectType}/{subjectId}/since', [\App\Http\Controllers\Api\ChatterController::class, 'since']);

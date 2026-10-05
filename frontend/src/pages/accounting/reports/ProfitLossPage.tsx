@@ -26,6 +26,8 @@ import reportApi from '@/lib/reportApi';
 import { formatCurrency } from '@/lib/utils';
 import { ComparisonTable } from '@/components/reports/ComparisonTable';
 import { ReportExportToolbar } from '@/components/reports/ReportExportToolbar';
+import { ReportScopeHeader } from '@/components/reports/ReportScopeHeader';
+import { useReportScope } from '@/hooks/useReportScope';
 import {
   type FiscalYearOption,
   type FiscalYearSettings,
@@ -45,6 +47,8 @@ export default function ProfitLossPage() {
   const [collapsedRows, setCollapsedRows] = useState<Set<string>>(new Set());
   const userEditedDates = useRef(false);
   const reportRef = useRef<HTMLDivElement>(null);
+  const scope = useReportScope();
+  const money = (value: number) => formatCurrency(value, scope.currencyCode);
 
   // Fiscal-year settings drive the default reporting period (e.g. 1 Aug –
   // 31 Jul) instead of the calendar year.
@@ -108,16 +112,17 @@ export default function ProfitLossPage() {
 
   // Fetch profit & loss
   const { data, isLoading, error } = useQuery({
-    queryKey: ['profit-loss', startDate, endDate, compareEnabled, compareStartDate, compareEndDate],
+    queryKey: ['profit-loss', startDate, endDate, compareEnabled, compareStartDate, compareEndDate, scope.entityId],
     queryFn: () => reportApi.getProfitLoss({
       start_date: startDate,
       end_date: endDate,
+      legal_entity_id: scope.legalEntityId,
       ...(compareEnabled && compareStartDate && compareEndDate ? {
         compare_start_date: compareStartDate,
         compare_end_date: compareEndDate,
       } : {}),
     }),
-    enabled: !!startDate && !!endDate,
+    enabled: !!startDate && !!endDate && !scope.missingScope,
   });
 
   // reportApi.getProfitLoss() already returns response.data.data
@@ -139,6 +144,9 @@ export default function ProfitLossPage() {
           </HeaderActionButton>
         </div>
       </div>
+
+      {/* Scope: entity + reporting currency */}
+      <ReportScopeHeader scope={scope} />
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
@@ -288,7 +296,7 @@ export default function ProfitLossPage() {
               { label: 'Other Income/Expenses', current: (profitLoss.other_income?.total || 0) - (profitLoss.other_expenses?.total || 0), compare: ((profitLoss.comparison.net_profit?.amount || 0) - (profitLoss.comparison.operating_profit?.amount || 0)), indent: true },
               { label: 'Net Profit/(Loss)', current: profitLoss.net_profit?.amount || 0, compare: profitLoss.comparison.net_profit?.amount || 0, bold: true },
             ]}
-            formatCurrency={formatCurrency}
+            formatCurrency={money}
           />
         </Card>
       )}
@@ -330,14 +338,22 @@ export default function ProfitLossPage() {
             <ReportExportToolbar
               targetRef={reportRef}
               title="Profit & Loss Statement"
-              subtitle={`${new Date(startDate).toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })} – ${new Date(endDate).toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })}`}
+              subtitle={`${new Date(startDate).toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })} – ${new Date(endDate).toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })} · ${scope.scopeLabel}`}
               filename={`profit-and-loss-${startDate}-to-${endDate}`}
             />
           </div>
         </CardHeader>
 
         <CardContent ref={reportRef} className="pt-6">
-        {isLoading ? (
+        {scope.missingScope ? (
+          <div className="py-12 text-center text-muted-foreground" data-testid="report-scope-required">
+            <Icon icon="solar:danger-triangle-bold-duotone" className="mx-auto mb-4 h-16 w-16 opacity-50" />
+            <p>Select a legal entity to run this report.</p>
+            <p className="text-sm">
+              Amounts in {scope.currencies.join(' and ')} are never summed together.
+            </p>
+          </div>
+        ) : isLoading ? (
           <div className="text-center py-12">
             <Icon icon="svg-spinners:ring-resize" className="w-8 h-8 mx-auto" />
             <p className="text-muted-foreground mt-2">Loading profit & loss statement...</p>
@@ -358,7 +374,9 @@ export default function ProfitLossPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Account</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead className="text-right">
+                    Amount{scope.currencyCode ? ` (${scope.currencyCode})` : ''}
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -375,14 +393,14 @@ export default function ProfitLossPage() {
                   >
                     <TableCell className="pl-6">{account.code ? `${account.code} - ` : ''}{account.name}</TableCell>
                     <TableCell className="text-right font-mono">
-                      {formatCurrency(account.amount || account.balance || 0)}
+                      {money(account.amount || account.balance || 0)}
                     </TableCell>
                   </TableRow>
                 ))}
                 <TableRow className="font-bold">
                   <TableCell>Total Revenue</TableCell>
                   <TableCell className="text-right font-mono">
-                    {formatCurrency(profitLoss.revenue?.total || 0)}
+                    {money(profitLoss.revenue?.total || 0)}
                   </TableCell>
                 </TableRow>
 
@@ -399,14 +417,14 @@ export default function ProfitLossPage() {
                   >
                     <TableCell className="pl-6">{account.code ? `${account.code} - ` : ''}{account.name}</TableCell>
                     <TableCell className="text-right font-mono">
-                      {formatCurrency(account.amount || account.balance || 0)}
+                      {money(account.amount || account.balance || 0)}
                     </TableCell>
                   </TableRow>
                 ))}
                 <TableRow className="font-bold">
                   <TableCell>Total COGS</TableCell>
                   <TableCell className="text-right font-mono">
-                    {formatCurrency(profitLoss.cost_of_goods_sold?.total || 0)}
+                    {money(profitLoss.cost_of_goods_sold?.total || 0)}
                   </TableCell>
                 </TableRow>
 
@@ -415,7 +433,7 @@ export default function ProfitLossPage() {
                   <TableRow className="font-bold border-t-2">
                     <TableCell>Gross Profit</TableCell>
                     <TableCell className="text-right font-mono">
-                      {formatCurrency(profitLoss.gross_profit.amount)}
+                      {money(profitLoss.gross_profit.amount)}
                     </TableCell>
                   </TableRow>
                 )}
@@ -435,14 +453,14 @@ export default function ProfitLossPage() {
                       >
                         <TableCell className="pl-6">{account.code ? `${account.code} - ` : ''}{account.name}</TableCell>
                         <TableCell className="text-right font-mono">
-                          {formatCurrency(account.amount || account.balance || 0)}
+                          {money(account.amount || account.balance || 0)}
                         </TableCell>
                       </TableRow>
                     ))}
                     <TableRow className="font-bold">
                       <TableCell>Total Operating Expenses</TableCell>
                       <TableCell className="text-right font-mono">
-                        {formatCurrency(profitLoss.operating_expenses.total || 0)}
+                        {money(profitLoss.operating_expenses.total || 0)}
                       </TableCell>
                     </TableRow>
                   </>
@@ -453,7 +471,7 @@ export default function ProfitLossPage() {
                   <TableRow className="font-bold border-t-2">
                     <TableCell>Operating Profit</TableCell>
                     <TableCell className="text-right font-mono">
-                      {formatCurrency(profitLoss.operating_profit.amount)}
+                      {money(profitLoss.operating_profit.amount)}
                     </TableCell>
                   </TableRow>
                 )}
@@ -473,14 +491,14 @@ export default function ProfitLossPage() {
                       >
                         <TableCell className="pl-6">{account.code ? `${account.code} - ` : ''}{account.name}</TableCell>
                         <TableCell className="text-right font-mono">
-                          {formatCurrency(account.amount || account.balance || 0)}
+                          {money(account.amount || account.balance || 0)}
                         </TableCell>
                       </TableRow>
                     ))}
                     <TableRow className="font-bold">
                       <TableCell>Total Other Expenses</TableCell>
                       <TableCell className="text-right font-mono">
-                        {formatCurrency(profitLoss.other_expenses.total || 0)}
+                        {money(profitLoss.other_expenses.total || 0)}
                       </TableCell>
                     </TableRow>
                   </>
@@ -492,7 +510,7 @@ export default function ProfitLossPage() {
                   <TableCell className={`text-right font-mono text-lg ${
                     (profitLoss.net_profit?.amount || 0) >= 0 ? 'text-green-600' : 'text-red-600'
                   }`}>
-                    {formatCurrency(profitLoss.net_profit?.amount || 0)}
+                    {money(profitLoss.net_profit?.amount || 0)}
                   </TableCell>
                 </TableRow>
               </TableBody>

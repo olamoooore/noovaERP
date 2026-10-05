@@ -115,12 +115,16 @@ class InvoiceCancellationService
 
             $this->restoreSalesOrderCommitments($invoice);
 
-            $invoice->update([
-                'status' => 'cancelled',
-                // Reports scope on lifecycle_status — leaving it 'posted' kept
-                // the cancelled sale in the posted/P&L figures.
-                'lifecycle_status' => 'cancelled',
-            ]);
+            // #900 (PC6): the status write goes through the workflow engine.
+            // The engine derives lifecycle_status ('cancelled') in the same
+            // single write — reports scope on it, so leaving it 'posted' kept
+            // the cancelled sale in the posted/P&L figures.
+            app(\App\Services\SalesWorkflowService::class)->transition(
+                $invoice,
+                'cancel',
+                ['reason' => 'Posted invoice cancelled with reversal and restock'],
+                'Posted invoice cancelled with reversal and restock',
+            );
 
             // Cancelling removes the invoice from receivables and purchase totals.
             $invoice->customer?->updateOutstanding();
@@ -184,6 +188,12 @@ class InvoiceCancellationService
             ->where('source_document_id', $invoice->id)
             ->where('relation_type', 'post')
             ->delete();
+
+        // Issue #882 (SA9): the reversal mirrors the original entry —
+        // including its deferred-revenue credit. Close the schedule so the
+        // recognition job never releases against a reversed posting; a repost
+        // replaces the closed schedule with a fresh one.
+        app(\App\Services\DeferredRevenueRecognitionService::class)->cancelForInvoice($invoice);
     }
 
     /**

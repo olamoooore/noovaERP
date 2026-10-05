@@ -5,9 +5,11 @@ namespace App\Services;
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\DomainPostingLine;
 use App\Accounting\DTOs\DomainPostingRequest;
+use App\Models\ChartOfAccount;
 use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\InvoiceLine;
+use App\Models\InvoiceWriteOff;
 use App\Models\Payment;
 use App\Models\ProductBatch;
 use App\Models\ProductSerial;
@@ -52,6 +54,45 @@ class InvoiceService
     }
 
     /**
+     * Issue #882/#888: resolve the deferred-revenue snapshot for ONE invoice
+     * line. This is the single rule shared by invoice creation and draft
+     * edit — an explicit payload flag wins, otherwise the product's deferred
+     * setting. A deferred line defaults its start to the invoice date and,
+     * when the product declares a deferred period, its end to start + that
+     * period. A missing period is not invented here: posting fails closed
+     * instead of recognising the revenue up front.
+     *
+     * @param  array<string, mixed>  $lineData
+     * @return array{is_deferred: bool, service_start_date: ?string, service_end_date: ?string}
+     */
+    public function resolveDeferredLineFields(?\App\Models\Product $product, array $lineData, string $invoiceDate): array
+    {
+        $isDeferred = array_key_exists('is_deferred', $lineData) && $lineData['is_deferred'] !== null
+            ? (bool) $lineData['is_deferred']
+            : (bool) ($product?->is_deferred ?? false);
+
+        if (! $isDeferred) {
+            return ['is_deferred' => false, 'service_start_date' => null, 'service_end_date' => null];
+        }
+
+        $serviceStart = $lineData['service_start_date'] ?? null;
+        $serviceStart = $serviceStart ?: \Illuminate\Support\Carbon::parse($invoiceDate)->toDateString();
+
+        $serviceEnd = $lineData['service_end_date'] ?? null;
+        if (! $serviceEnd && $product?->deferred_months) {
+            $serviceEnd = \Illuminate\Support\Carbon::parse($serviceStart)
+                ->addMonthsNoOverflow((int) $product->deferred_months)
+                ->toDateString();
+        }
+
+        return [
+            'is_deferred' => true,
+            'service_start_date' => $serviceStart,
+            'service_end_date' => $serviceEnd,
+        ];
+    }
+
+    /**
      * Create invoice with lines — structurally non-public.
      *
      * Callers must hold a valid InvoiceCreationToken obtained from issueCreationToken().
@@ -70,7 +111,6 @@ class InvoiceService
             $data['created_by'] = TenantUserHelper::requireTenantUserId($data['created_by'] ?? Auth::id());
             $data['invoice_date'] = $data['invoice_date'] ?? now();
             $data['due_date'] = $data['due_date'] ?? now()->addDays(30);
-            $data['status'] = 'draft';
 
             // #309 (X9): tax resolution consults the customer's tax profile —
             // an exemption valid on the document date suppresses the line tax
@@ -124,10 +164,27 @@ class InvoiceService
 
             $invoice = Invoice::create($data);
 
+            // #900 (PC6): the DB default owns the starting status; record it on
+            // the workflow transition log so creation is not a back-door write.
+            app(SalesWorkflowService::class)->initialize($invoice, ['source' => 'create']);
+
             foreach ($lines as $lineIndex => $lineData) {
                 $lineTaxInclusive = array_key_exists('tax_inclusive', $lineData)
                     ? (bool) $lineData['tax_inclusive']
                     : $this->resolveLineTaxInclusive($lineData['product_id'] ?? null, $data['invoice_date'] ?? null);
+
+                // Issue #882 (SA9): a line is deferred when the payload says so,
+                // else when its product carries the deferred setting. The
+                // defaulted service period comes from the shared #888 resolver
+                // so creation and draft edit can never drift.
+                $lineProduct = ! empty($lineData['product_id'])
+                    ? \App\Models\Product::find($lineData['product_id'])
+                    : null;
+                $deferredFields = $this->resolveDeferredLineFields(
+                    $lineProduct,
+                    $lineData,
+                    \Illuminate\Support\Carbon::parse($data['invoice_date'])->toDateString()
+                );
 
                 $invoice->lines()->create([
                     'line_type' => $lineData['line_type'] ?? 'product',
@@ -135,6 +192,15 @@ class InvoiceService
                     'sales_order_line_id' => $lineData['sales_order_line_id'] ?? null,
                     'sequence' => $lineData['sequence'] ?? $lineIndex,
                     'product_id' => $lineData['product_id'] ?? null,
+                    // Issue #884 (UX2): persist the line's income-account
+                    // override and analytic dimensions instead of dropping
+                    // them — accounting-origin creation and the direct API
+                    // have always supplied these fields.
+                    'gl_account_id' => $lineData['gl_account_id'] ?? null,
+                    'cost_center_id' => $lineData['cost_center_id'] ?? null,
+                    'project_id' => $lineData['project_id'] ?? null,
+                    'department_id' => $lineData['department_id'] ?? null,
+                    'branch_id' => $lineData['branch_id'] ?? null,
                     'model_number' => $lineData['model_number'] ?? null,
                     'description' => $lineData['description'],
                     'product_notes' => $lineData['product_notes'] ?? null,
@@ -159,6 +225,10 @@ class InvoiceService
                     // #309 (X9): the line records its exemption reason so the
                     // MyInvois E line carries it; an explicit line reason wins.
                     'tax_exemption_reason' => $lineData['tax_exemption_reason'] ?? $customerExemptionReason,
+                    // Issue #882 (SA9): deferred revenue period snapshot.
+                    'is_deferred' => $deferredFields['is_deferred'],
+                    'service_start_date' => $deferredFields['service_start_date'],
+                    'service_end_date' => $deferredFields['service_end_date'],
                 ]);
             }
 
@@ -266,415 +336,97 @@ class InvoiceService
                 throw new \RuntimeException('Only draft invoices can be posted');
             }
 
-            // ── Tax determination (Issue #42) ─────────────────
-            $taxOverrides = array_filter([
-                'jurisdiction' => $invoice->tax_jurisdiction,
-                'tax_regime' => $invoice->tax_regime,
-                'treatment' => $invoice->tax_treatment,
-            ], fn ($v) => $v !== null);
-
-            $taxDetermination = $this->taxDeterminationService->determineForInvoice(
-                $invoice,
-                $taxOverrides ?: null,
-            );
-            $primaryTaxCode = $taxDetermination['tax_lines'][0]['tax_code'] ?? null;
-
-            // MRD R3.3: named variance between the booked document tax and the
-            // determination. The GL stays booked-first (balance-safe), but the
-            // divergence is loudly recorded for the accountant to resolve —
-            // it is exactly the class of drift the tax report reconciliation
-            // is built to surface.
-            $determinationTaxTotal = round((float) $taxDetermination['tax_amount'], 2);
-            $bookedTaxTotal = round((float) $invoice->tax_amount, 2);
-
-            if (abs($determinationTaxTotal - $bookedTaxTotal) > 0.02) {
-                \Illuminate\Support\Facades\Log::warning('TAX_VARIANCE: booked invoice tax differs from determination', [
-                    'invoice_id' => $invoice->id,
-                    'booked_tax' => $bookedTaxTotal,
-                    'determination_tax' => $determinationTaxTotal,
-                    'variance' => round($bookedTaxTotal - $determinationTaxTotal, 2),
-                ]);
-
-                // Issue #902: the divergence is exactly the class of drift the
-                // tax reconciliation exists to surface — queue it so an
-                // accountant can see, own and resolve it instead of it dying
-                // in the log.
-                app(\App\Platform\Exceptions\ExceptionService::class)->report(
-                    new \App\Platform\Exceptions\ExceptionReport(
-                        type: \App\Platform\Exceptions\ExceptionType::SALES_INVOICE_TAX_VARIANCE,
-                        message: "Invoice {$invoice->invoice_number}: booked tax {$bookedTaxTotal} differs from determination {$determinationTaxTotal}",
-                        documentId: $invoice->id,
-                        documentType: 'invoice',
-                        legalEntityId: $this->invoiceLegalEntityId($invoice),
-                        payload: [
-                            'booked_tax' => $bookedTaxTotal,
-                            'determination_tax' => $determinationTaxTotal,
-                            'variance' => round($bookedTaxTotal - $determinationTaxTotal, 2),
-                            'result_status' => $taxDetermination['result_status'] ?? null,
-                        ],
-                    ),
-                );
-            }
-
-            // ── MRD pricelist-multicurrency FR-5.7/FR-7.1/AC-3 ───────────
-            // Posting converts the DOCUMENT amounts at the invoice's SNAPSHOT
-            // rate — never today's rate (FR-7.1). Missing snapshot → resolve
-            // at the invoice date and persist; still missing → BLOCK the
-            // posting with a distinct error so the invoice stays draft and no
-            // journal rows are written (AC-3).
-            $docCurrency = strtoupper((string) ($invoice->currency_code ?: \App\Services\DocumentCurrencyResolver::resolve()));
-            $baseCurrency = strtoupper((string) ($invoice->base_currency_code
-                ?: \App\Services\DocumentCurrencyResolver::baseFor(
-                    $invoice->salesOrder?->legal_entity_id,
-                    $invoice->customer_id
-                )));
-            $foreign = $docCurrency !== $baseCurrency;
-
-            $fxRate = $invoice->exchange_rate !== null ? (float) $invoice->exchange_rate : null;
-
-            if (! $foreign) {
-                $fxRate = 1.0;
-            } elseif ($fxRate === null || $fxRate <= 0) {
-                $snapshot = \App\Services\DocumentCurrencyResolver::snapshot(
-                    $docCurrency,
-                    $invoice->customer_id,
-                    $invoice->salesOrder?->legal_entity_id,
-                    $invoice->invoice_date->toDateString()
-                );
-                $fxRate = (float) $snapshot['exchange_rate'];
-                $baseCurrency = strtoupper((string) $snapshot['base_currency_code']);
-                $invoice->update([
-                    'exchange_rate' => $fxRate,
-                    'base_currency_code' => $baseCurrency,
-                ]);
-            }
-
-            // §9.3: base = round(document amount × snapshot rate, 2).
-            $toBase = static fn (float $docAmount): float => $foreign
-                ? round($docAmount * $fxRate, 2)
-                : round($docAmount, 2);
-
-            // ── Build business-value lines (ACC-RM-001: profile-resolved) ──
-            // Operational domains may not submit unrestricted DR/CR lines
-            // (ADR-005 §12). Invoice submits account-role + amount business
-            // values in BASE currency; currency_code/original_amount/
-            // exchange_rate carry the foreign side for dual display (FR-5.7).
-            $lines = [];
-
-            // Accounts Receivable (total) → profile direction: debit
-            $lines[] = new DomainPostingLine(
-                accountRole: 'accounts_receivable',
-                amount: $toBase((float) $invoice->total),
-                currencyCode: $foreign ? $baseCurrency : null,
-                originalAmount: $foreign ? round((float) $invoice->total, 2) : null,
-                exchangeRate: $foreign ? $fxRate : null,
-                description: "Invoice {$invoice->invoice_number}".($foreign ? " ({$invoice->total} {$docCurrency} @ {$fxRate})" : ''),
-            );
-
-            // Sales Revenue (subtotal minus discount) → profile direction: credit
-            $salesRevenue = (float) $invoice->subtotal - (float) $invoice->discount_amount;
-
-            // Shipping Revenue (if shipping cost > 0) → profile direction: credit
-            $shippingBase = (float) $invoice->shipping_cost > 0 ? $toBase((float) $invoice->shipping_cost) : 0.0;
-
-            // Sales Tax Payable → profile direction: credit; keeps tax-code evidence.
-            // MRD TAX-REQ-07: one credit line per determined tax_code (multi-rate
-            // documents get one tax_transaction_details row per code with the
-            // correct taxable base), while the invoice's booked tax total is
-            // preserved exactly so the journal stays balanced.
-            $bookedTax = round((float) $invoice->tax_amount, 2);
-            $taxBaseTotal = 0.0;
-            $taxLines = [];
-
-            if ($bookedTax > 0) {
-                foreach (TaxDeterminationService::allocateBookedTax($taxDetermination['tax_lines'] ?? [], $bookedTax) as $allocation) {
-                    if ($allocation['amount'] <= 0) {
-                        continue;
-                    }
-                    $taxBase = $toBase((float) $allocation['amount']);
-                    $taxBaseTotal += $taxBase;
-                    $taxLines[] = new DomainPostingLine(
-                        accountRole: 'sales_tax_payable',
-                        amount: $taxBase,
-                        currencyCode: $foreign ? $baseCurrency : null,
-                        originalAmount: $foreign ? round((float) $allocation['amount'], 2) : null,
-                        exchangeRate: $foreign ? $fxRate : null,
-                        description: "Tax - Invoice {$invoice->invoice_number}".($allocation['tax_code'] ? " [{$allocation['tax_code']}]" : ''),
-                        taxCode: $allocation['tax_code'] ?? $primaryTaxCode,
-                        taxId: $allocation['tax_id'],
+            // Issue #882 (SA9): a deferred line with no service end date has
+            // no period to release over. Fail the posting before any ledger
+            // or schedule row is written rather than silently recognising the
+            // revenue up front (the exact defect this issue fixes).
+            foreach ($invoice->lines as $deferredLine) {
+                if ($deferredLine->is_deferred && ! $deferredLine->service_end_date) {
+                    throw new \RuntimeException(
+                        "Deferred invoice line #{$deferredLine->id} has no service end date; ".
+                        'set a service period or a deferred period on the product before posting.'
                     );
                 }
             }
 
-            // §9.4 / FR-7.4: the sum of independently rounded legs can drift
-            // a cent from the AR base. Issue #880 (SA7): the revenue leg keeps
-            // its EXACT converted amount and the residual is posted to the
-            // existing FX gain/loss role account (MRD pricelist-multicurrency
-            // FR-7.4 — "posted to the same FX account (or a rounding account
-            // if configured)"). It is never absorbed at revenue.
-            //
-            // Issue #333: the cash-rounding delta persisted by
-            // Invoice::calculateTotals() is the ONE source of truth for the
-            // rounding leg — posting never re-derives it, so the document
-            // total and the ledger cannot disagree. Cash rounding posts as its
-            // own line, so the FX residual excludes it.
-            $roundingAmount = round((float) ($invoice->rounding_amount ?? 0), 2);
-            $roundingBase = abs($roundingAmount) > 0.0 ? $toBase($roundingAmount) : 0.0;
+            // #900 (PC6): pre-flight the registered transition guards
+            // (approval, period lock) through the engine BEFORE any posting
+            // work so a denied transition cannot leave a posted journal entry
+            // behind. The status itself is applied through the engine below.
+            $workflow = app(SalesWorkflowService::class);
+            $canPost = $workflow->can($invoice, 'post');
 
-            $arBase = $toBase((float) $invoice->total);
-            $revenueExactBase = $toBase($salesRevenue);
-
-            if ($foreign) {
-                $residual = round($arBase - $revenueExactBase - $taxBaseTotal - $shippingBase - $roundingBase, 2);
-                $revenueBase = $revenueExactBase;
-            } else {
-                // Same-currency documents (rate 1.0) have no FX residual to
-                // classify; a tampered-inconsistent header keeps the legacy
-                // balance-through-revenue arithmetic.
-                $residual = 0.0;
-                $revenueBase = round($arBase - $taxBaseTotal - $shippingBase - $roundingBase, 2);
+            if (! $canPost['allowed']) {
+                throw new \RuntimeException($canPost['reason'] ?? 'Invoice posting is not allowed.');
             }
 
-            if ($foreign && abs($residual) > 0.02) {
-                \Illuminate\Support\Facades\Log::warning('FX posting: rounding residual beyond 0.02 posted to the FX account', [
-                    'invoice_id' => $invoice->id,
-                    'expected_revenue_base' => $revenueExactBase,
-                    'posted_revenue_base' => $revenueBase,
-                    'residual' => $residual,
-                ]);
+            // Issue #883 (SAU1): the business-value lines, entity binding and
+            // posting request come from the ONE builder the draft Journal
+            // preview also calls (with persistence off), so the tab and the
+            // posting can never drift.
+            $draft = $this->buildPostingDraft($invoice, persist: true);
 
-                // Issue #902: the entry balances, but the residual no longer
-                // matches a cent-level rounding drift — an accountant must
-                // review the rate/document.
-                app(\App\Platform\Exceptions\ExceptionService::class)->report(
-                    new \App\Platform\Exceptions\ExceptionReport(
-                        type: \App\Platform\Exceptions\ExceptionType::SALES_INVOICE_FX_RESIDUAL,
-                        message: "Invoice {$invoice->invoice_number}: FX rounding residual ".number_format($residual, 2).' posted to the FX rounding account',
-                        documentId: $invoice->id,
-                        documentType: 'invoice',
-                        legalEntityId: $this->invoiceLegalEntityId($invoice),
-                        payload: [
-                            'currency_code' => $docCurrency,
-                            'base_currency_code' => $baseCurrency,
-                            'exchange_rate' => $fxRate,
-                            'expected_revenue_base' => $revenueExactBase,
-                            'posted_revenue_base' => $revenueBase,
-                            'residual' => $residual,
-                        ],
-                    ),
-                );
-            }
-
-            if ($salesRevenue > 0 || $revenueBase != 0) {
-                // Issue #876 (SA2): revenue is recognised per resolved income
-                // account (line GL override → sales-order line → product →
-                // the account_mappings sales_revenue default) and carries the
-                // line's department/project dimensions.
-                foreach ($this->buildRevenueLines(
-                    $invoice,
-                    baseTotal: $revenueBase,
-                    documentTotal: $salesRevenue,
-                    foreign: $foreign,
-                    exchangeRate: $fxRate,
-                    baseCurrency: $baseCurrency,
-                ) as $revenueLine) {
-                    $lines[] = $revenueLine;
-                }
-            }
-
-            if ((float) $invoice->shipping_cost > 0) {
-                $lines[] = new DomainPostingLine(
-                    accountRole: 'shipping_revenue',
-                    amount: $shippingBase,
-                    currencyCode: $foreign ? $baseCurrency : null,
-                    originalAmount: $foreign ? round((float) $invoice->shipping_cost, 2) : null,
-                    exchangeRate: $foreign ? $fxRate : null,
-                    description: "Shipping - Invoice {$invoice->invoice_number}",
-                );
-            }
-
-            if (abs($roundingAmount) > 0.0) {
-                // Issue #333: the cash-rounding adjustment is its own line on
-                // the tenant's configured rounding account. Rounding UP is a
-                // gain (credit); rounding DOWN is a loss (debit). The account
-                // resolves from the tenant setting — when it is missing the
-                // posting fails loudly (accountIdOrFail) rather than silently
-                // dropping the adjustment.
-                $lines[] = new DomainPostingLine(
-                    accountRole: 'rounding',
-                    amount: abs($roundingBase),
-                    currencyCode: $foreign ? $baseCurrency : null,
-                    originalAmount: $foreign ? abs($roundingAmount) : null,
-                    exchangeRate: $foreign ? $fxRate : null,
-                    description: "Cash rounding - Invoice {$invoice->invoice_number}",
-                    accountId: app(CashRoundingService::class)->accountIdOrFail(),
-                    direction: $roundingBase >= 0 ? 'credit' : 'debit',
-                );
-            }
-
-            // Issue #880 (SA7): the independently rounded legs rarely drift
-            // from the AR base by more than a cent. That residual belongs to
-            // the FX gain/loss role (FR-7.4), split by direction so a gain is
-            // a credit and a loss is a debit.
-            if ($foreign && abs($residual) >= 0.01) {
-                $lines[] = new DomainPostingLine(
-                    accountRole: $residual > 0 ? 'realized_fx_gain' : 'realized_fx_loss',
-                    amount: abs($residual),
-                    currencyCode: $baseCurrency,
-                    description: "FX rounding difference - Invoice {$invoice->invoice_number}",
-                );
-            }
-
-            foreach ($taxLines as $taxLine) {
-                $lines[] = $taxLine;
-            }
-
-            // ── COGS lines for inventory items ───────────────
-            // Issue #176/#682: COGS and the stock movement below are derived from
-            // ONE number per line — the quantity no document has issued yet
-            // (GoodsIssueLedger) — so they can no longer disagree about whether
-            // a delivery order already shipped these goods. A delivery order
-            // that issued them first leaves nothing to recognise here: the
-            // invoice only books revenue/AR.
-            $bundleDecomposition = app(\App\Services\BundleDecompositionService::class);
-            $batchConsumption = app(\App\Services\BatchSerialConsumptionService::class);
-            $goodsIssueLedger = app(\App\Services\GoodsIssueLedger::class);
-
-            // Issue #131: batch-tracked lines cost their FEFO layers (previewed
-            // here because GL posts before stock is deducted).
-            try {
-                $cogsWarehouseId = $this->resolveInventoryWarehouseId($invoice);
-            } catch (\Throwable) {
-                $cogsWarehouseId = null;
-            }
-
-            $unissuedQuantities = [];
-            $lineBatches = [];
-            $lineSerials = [];
-            $totalCogs = 0.0;
-
-            foreach ($invoice->lines as $line) {
-                if (($line->line_type ?? 'product') !== 'product' || ! $line->product) {
-                    continue;
-                }
-
-                // Issue #685: a line entered in a sales UoM (2 Box) keeps that
-                // quantity and per-sales-UoM price on the document, but every
-                // stock/COGS number below is in the product's STOCK UoM. The
-                // conversion goes through the shared ProductUomConverter.
-                $lineStockQty = (float) $line->quantity;
-                if ($line->uom_id && $line->uom && ! $line->uom->isStockUnit()) {
-                    $lineStockQty = app(ProductUomConverter::class)->toStock($line->uom, $lineStockQty);
-                }
-
-                $qty = $goodsIssueLedger->remainingForInvoiceLine($line, $lineStockQty);
-
-                if ($qty <= 0) {
-                    continue;
-                }
-
-                $unissuedQuantities[$line->id] = $qty;
-
-                // Issue #683: the line's lot and serial are not decoration —
-                // the lot is the layer that leaves the warehouse (and the one
-                // COGS is costed from), and the serial must be available now or
-                // the whole posting is refused before anything is written.
-                $lineBatch = $this->resolveInvoiceLineBatch($line);
-                if ($lineBatch) {
-                    $lineBatches[$line->id] = $lineBatch;
-                }
-
-                $lineSerial = $this->resolveInvoiceLineSerial($line);
-                if ($lineSerial) {
-                    $lineSerials[$line->id] = $lineSerial;
-                }
-
-                $totalCogs += $batchConsumption->costForLine($line->product, $qty, $cogsWarehouseId, $lineBatch?->id)
-                    ?? $bundleDecomposition->cost($line->product, $qty);
-            }
-
-            if ($totalCogs > 0) {
-                // Cost of Goods Sold → profile direction: debit.
-                // Valuation comes from stock layers, which are stored in
-                // the BASE currency — never converted (FR-12 §12).
-                $lines[] = new DomainPostingLine(
-                    accountRole: 'cogs',
-                    amount: round($totalCogs, 2),
-                    currencyCode: $foreign ? $baseCurrency : null,
-                    description: "COGS - Invoice {$invoice->invoice_number}",
-                );
-
-                // Inventory → profile direction: credit
-                $lines[] = new DomainPostingLine(
-                    accountRole: 'inventory',
-                    amount: round($totalCogs, 2),
-                    currencyCode: $foreign ? $baseCurrency : null,
-                    description: "Inventory - Invoice {$invoice->invoice_number}",
-                );
-            }
-
-            // ── Post via PostingEngine (domain contract) ─────
-            // Issue #875: bind the posting to the invoice's legal entity (and
-            // entity book). Legacy rows that predate the entity columns are
-            // resolved here from the sales order / customer / request context
-            // and stamped on the invoice so document and ledger agree.
-            $entityResolver = app(\App\Services\LegalEntityContextResolver::class);
-            $legalEntityId = $entityResolver->resolveEntity(
-                explicit: $invoice->legal_entity_id ? (int) $invoice->legal_entity_id : null,
-                salesOrderId: $invoice->sales_order_id ? (int) $invoice->sales_order_id : null,
-                customerId: $invoice->customer_id ? (int) $invoice->customer_id : null,
-                required: true,
-            );
-            $entityBookId = $invoice->entity_book_id
-                ? (int) $invoice->entity_book_id
-                : $entityResolver->resolveBookId($legalEntityId);
-
-            if ($legalEntityId && ((int) $invoice->legal_entity_id !== $legalEntityId || (int) $invoice->entity_book_id !== (int) $entityBookId)) {
-                $invoice->forceFill([
-                    'legal_entity_id' => $legalEntityId,
-                    'entity_book_id' => $entityBookId,
-                ])->save();
-            }
-
-            $result = $this->postingEngine->domainPosting(new DomainPostingRequest(
-                postingRequestId: DomainPostingRequest::generateRequestId(),
-                idempotencyKey: "invoice:{$invoice->id}:post",
-                tenantId: (string) (function_exists('tenant') && tenant() ? tenant('id') : ''),
-                entityId: $legalEntityId !== null ? (string) $legalEntityId : '',
-                accountingBookId: $entityBookId !== null ? (string) $entityBookId : '',
-                sourceCapability: 'ACC-003',
-                sourceRecordType: 'invoice',
-                sourceRecordId: (string) $invoice->id,
-                sourceRecordVersion: (int) ($invoice->version_number ?? 1),
-                postingProfileCode: 'AR_INVOICE_POST',
-                transactionDate: $invoice->invoice_date->toDateString(),
-                postingDate: $invoice->invoice_date->toDateString(),
-                // FR-5.7/§12: the header FX stamp on the journal entry comes
-                // from the document snapshot (PostingEngine writes the header
-                // columns when this is set).
-                currencyCode: $foreign ? $docCurrency : null,
-                exchangeRate: $foreign ? $fxRate : null,
-                lines: $lines,
-                userId: TenantUserHelper::requireTenantUserId($invoice->created_by),
-                taxDeterminationResult: $taxDetermination,
-                ledgerDescription: "Invoice #{$invoice->invoice_number} - {$invoice->customer->name}",
-                reference: $invoice->invoice_number,
-            ));
-
+            $result = $this->postingEngine->domainPosting($draft['domain_request']);
             if (! $result->success) {
                 throw new \Exception($result->error);
             }
 
-            // Status transitions to 'posted' (accounting released to GL).
-            // The operational 'sent' status is set separately via InvoiceController::send().
-            // lifecycle_status must also be set to 'posted' — resetToDraft leaves
-            // it as 'draft' on the invoice, and Invoice::scopePosted() (used by
-            // any invoice list / report) filters by lifecycle_status, not status.
-            $invoice->update([
-                'status' => 'posted',
-                'lifecycle_status' => 'posted',
+            // Issue #883 (SAU1): the write-side context the shared builder
+            // resolved — deferred shares, entity/book and the stock
+            // quantities, lots and serials COGS was costed from.
+            $deferredShares = $draft['deferred_shares'];
+            $legalEntityId = $draft['legal_entity_id'];
+            $unissuedQuantities = $draft['unissued_quantities'];
+            $lineBatches = $draft['line_batches'];
+            $lineSerials = $draft['line_serials'];
+
+            // Issue #882 (SA9): the deferred subledger rows are written in the
+            // same transaction as the journal entry, so a posting can never
+            // leave the ledger with an unearned balance no schedule tracks.
+            // A reset-to-draft releases the post link and leaves the previous
+            // schedules behind (its reversal closed them); the repost replaces
+            // them so the unique (invoice_line_id) row belongs to this posting.
+            if ($deferredShares !== []) {
+                \App\Models\DeferredRevenueSchedule::where('invoice_id', $invoice->id)->delete();
+            }
+
+            foreach ($deferredShares as $deferredShare) {
+                /** @var \App\Models\InvoiceLine|null $deferredLine */
+                $deferredLine = $deferredShare['line'];
+
+                if (! $deferredLine) {
+                    continue;
+                }
+
+                \App\Models\DeferredRevenueSchedule::create([
+                    'invoice_id' => $invoice->id,
+                    'invoice_line_id' => $deferredLine->id,
+                    'customer_id' => $invoice->customer_id,
+                    'legal_entity_id' => $legalEntityId,
+                    'deferred_account_id' => $deferredShare['deferred_account_id'],
+                    'income_account_id' => $deferredShare['income_account_id'],
+                    'amount' => $deferredShare['amount'],
+                    'recognized_amount' => 0,
+                    'reversed_amount' => 0,
+                    'start_date' => $deferredLine->service_start_date->toDateString(),
+                    'end_date' => $deferredLine->service_end_date->toDateString(),
+                    'department_id' => $deferredLine->department_id,
+                    'project_id' => $deferredLine->project_id,
+                    'status' => \App\Models\DeferredRevenueSchedule::STATUS_ACTIVE,
+                ]);
+            }
+
+            // Status transitions to 'posted' (accounting released to GL) through
+            // the shared workflow engine (#900, PC6). The engine writes the
+            // operational status and derives lifecycle_status ('posted') in the
+            // same single write — Invoice::scopePosted() (used by any invoice
+            // list / report) filters by lifecycle_status, not status.
+            $workflow->transition($invoice, 'post', [
                 'journal_entry_id' => $result->journalEntryId,
+                'reason' => 'Invoice posted',
             ]);
+
+            $invoice->update(['journal_entry_id' => $result->journalEntryId]);
 
             $this->synchronizeSalesOrderPosting($invoice->fresh(['salesOrder', 'lines']));
 
@@ -772,6 +524,8 @@ class InvoiceService
             // walk the same mark-sold mechanism the delivery-order path uses
             // (#131) so the serial belongs to this customer and cannot be sold
             // again.
+            $batchConsumption = app(\App\Services\BatchSerialConsumptionService::class);
+
             foreach ($lineSerials as $lineId => $serial) {
                 $line = $invoice->lines->firstWhere('id', $lineId);
 
@@ -803,6 +557,1019 @@ class InvoiceService
             DB::rollBack();
             throw $e;
         }
+    }
+
+    /**
+     * Issue #879 (SA6): write off (part of) an open invoice as bad debt.
+     * Posts DR bad-debt expense / CR AR through the PostingEngine (domain
+     * path), records the event for recovery/audit, and reduces the balance —
+     * writing off the whole balance sets status `written_off` and balance
+     * zero. The expense account is caller-supplied (no bad-debt role
+     * mapping exists yet, so no default account is invented).
+     */
+    public function writeOff(Invoice $invoice, float $amount, string $reason, int $accountId, ?int $userId = null): InvoiceWriteOff
+    {
+        return DB::transaction(function () use ($invoice, $amount, $reason, $accountId, $userId) {
+            $invoice = Invoice::whereKey($invoice->id)->lockForUpdate()->firstOrFail();
+
+            $amount = round($amount, 2);
+            $account = $this->assertWriteOffAllowed($invoice, $amount, $accountId);
+
+            $userId = TenantUserHelper::requireTenantUserId($userId ?? Auth::id() ?? $invoice->created_by);
+            [$legalEntityId, $entityBookId] = $this->resolvePostingEntityBinding($invoice);
+
+            $writeOff = InvoiceWriteOff::create([
+                'invoice_id' => $invoice->id,
+                'amount' => $amount,
+                'recovered_amount' => 0,
+                'reason' => $reason,
+                'account_id' => $account->id,
+                'created_by' => $userId,
+            ]);
+
+            [$lines, $foreign, $docCurrency, $baseCurrency, $rate] = $this->buildWriteOffLines(
+                invoice: $invoice,
+                documentAmountByAccount: [(int) $account->id => $amount],
+                description: "Bad debt write-off - Invoice {$invoice->invoice_number}",
+            );
+
+            $result = $this->postingEngine->domainPosting(new DomainPostingRequest(
+                postingRequestId: DomainPostingRequest::generateRequestId(),
+                idempotencyKey: "invoice:{$invoice->id}:write-off:{$writeOff->id}",
+                tenantId: (string) (function_exists('tenant') && tenant() ? tenant('id') : ''),
+                entityId: $legalEntityId !== null ? (string) $legalEntityId : '',
+                accountingBookId: $entityBookId !== null ? (string) $entityBookId : '',
+                sourceCapability: 'ACC-003',
+                sourceRecordType: 'invoice_write_off',
+                sourceRecordId: (string) $writeOff->id,
+                sourceRecordVersion: 1,
+                postingProfileCode: 'AR_WRITE_OFF',
+                transactionDate: now()->toDateString(),
+                postingDate: now()->toDateString(),
+                lines: $lines,
+                currencyCode: $foreign ? $docCurrency : null,
+                exchangeRate: $foreign ? $rate : null,
+                userId: $userId,
+                ledgerDescription: "Bad debt write-off - Invoice {$invoice->invoice_number}",
+                reference: $invoice->invoice_number,
+            ));
+
+            if (! $result->success) {
+                throw new \RuntimeException($result->error);
+            }
+
+            $writeOff->update(['journal_entry_id' => $result->journalEntryId]);
+
+            $newBalance = max(0.0, round((float) $invoice->balance - $amount, 2));
+
+            $invoice->update([
+                'written_off_amount' => round((float) $invoice->written_off_amount + $amount, 2),
+                'balance' => $newBalance,
+            ]);
+
+            // #900 (PC6): full write-off is a settlement state — through the
+            // engine like every other status change. A partial write-off
+            // leaves the status untouched (no transition to record).
+            $writeOffStatus = $newBalance <= 0 ? 'written_off' : $invoice->status;
+
+            if ($writeOffStatus !== $invoice->status) {
+                $this->syncInvoiceWorkflowStatus(
+                    $invoice,
+                    $writeOffStatus,
+                    ['reason' => 'Invoice written off', 'write_off_id' => $writeOff->id],
+                );
+            }
+
+            if ($invoice->customer) {
+                $invoice->customer->updateOutstanding();
+            }
+
+            return $writeOff->fresh();
+        });
+    }
+
+    /**
+     * Issue #886 (UX4): the write-off journal preview. The lines come from
+     * buildWriteOffLines() — the same builder writeOff() posts — and resolve
+     * through the same PostingPolicyMapper, so the dialog can never show an
+     * entry different from the one Confirm creates. Nothing is persisted.
+     */
+    public function previewWriteOff(Invoice $invoice, ?float $amount, int $accountId): array
+    {
+        $documentAmount = round((float) ($amount ?? $invoice->balance), 2);
+        $description = "Bad debt write-off - Invoice {$invoice->invoice_number}";
+        $lines = [];
+        $error = null;
+        $currency = $this->journalCurrency($invoice, null);
+        $legalEntityId = $invoice->legal_entity_id !== null ? (int) $invoice->legal_entity_id : null;
+        $entityBookId = $invoice->entity_book_id !== null ? (int) $invoice->entity_book_id : null;
+
+        try {
+            $account = $this->assertWriteOffAllowed($invoice, $documentAmount, $accountId);
+
+            [$postingLines, $foreign, $docCurrency, $baseCurrency, $rate] = $this->buildWriteOffLines(
+                invoice: $invoice,
+                documentAmountByAccount: [(int) $account->id => $documentAmount],
+                description: $description,
+            );
+
+            [$legalEntityId, $entityBookId] = $this->resolvePostingEntityBinding($invoice);
+            $currency = [
+                'document' => $docCurrency,
+                'base' => $baseCurrency,
+                'exchange_rate' => $foreign ? $rate : 1.0,
+            ];
+
+            $resolution = app(\App\Accounting\Services\PostingPolicyMapper::class)->resolve(new DomainPostingRequest(
+                postingRequestId: DomainPostingRequest::generateRequestId(),
+                idempotencyKey: "invoice:{$invoice->id}:write-off:preview",
+                tenantId: (string) (function_exists('tenant') && tenant() ? tenant('id') : ''),
+                entityId: $legalEntityId !== null ? (string) $legalEntityId : '',
+                accountingBookId: $entityBookId !== null ? (string) $entityBookId : '',
+                sourceCapability: 'ACC-003',
+                sourceRecordType: 'invoice_write_off',
+                sourceRecordId: 'preview',
+                sourceRecordVersion: 1,
+                postingProfileCode: 'AR_WRITE_OFF',
+                transactionDate: now()->toDateString(),
+                postingDate: now()->toDateString(),
+                lines: $postingLines,
+                currencyCode: $foreign ? $docCurrency : null,
+                exchangeRate: $foreign ? $rate : null,
+                ledgerDescription: $description,
+                reference: $invoice->invoice_number,
+            ));
+
+            if (! $resolution->success) {
+                $error = $resolution->error;
+            } else {
+                $unresolved = [];
+                foreach ($resolution->ledgerLines as $line) {
+                    if (empty($line['account_id'])) {
+                        $unresolved[] = $line['account_role'] ?? 'unknown';
+                    }
+                }
+
+                if ($unresolved !== []) {
+                    $error = 'Account role(s) could not be resolved to a chart_of_accounts.id: '.
+                        implode(', ', array_unique($unresolved)).
+                        '. Configure via Entity Account Roles or update the posting profile.';
+                } else {
+                    $lines = $this->decorateJournalLines($resolution->ledgerLines);
+                }
+            }
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        return $this->journalPayload(
+            status: 'draft',
+            source: 'preview',
+            entry: null,
+            postingDate: now()->toDateString(),
+            description: $description,
+            reference: $invoice->invoice_number,
+            legalEntity: $this->journalLegalEntity($legalEntityId),
+            accountingBookId: $entityBookId,
+            currency: $currency,
+            lines: $lines,
+            error: $error,
+        );
+    }
+
+    /**
+     * Issue #879 (SA6) / #886 (UX4): the shared write-off pre-checks — open
+     * posted receivable, non-zero amount within the balance, an active expense
+     * account. writeOff() runs them under its row lock; the journal preview
+     * enforces the same rules without writing.
+     */
+    private function assertWriteOffAllowed(Invoice $invoice, float $amount, int $accountId): ChartOfAccount
+    {
+        if ($amount <= 0) {
+            throw new \InvalidArgumentException('The write-off amount must be greater than zero.');
+        }
+
+        if ($invoice->journal_entry_id === null
+            || (string) $invoice->lifecycle_status !== 'posted'
+            || ! in_array((string) $invoice->status, ['posted', 'sent', 'partial', 'overdue'], true)) {
+            throw new \RuntimeException(
+                "Invoice {$invoice->invoice_number} is not an open posted receivable and cannot be written off."
+            );
+        }
+
+        if ($amount > (float) $invoice->balance + 0.01) {
+            throw new \RuntimeException(
+                "The write-off amount ({$amount}) exceeds the outstanding balance (".
+                round((float) $invoice->balance, 2).") of invoice {$invoice->invoice_number}."
+            );
+        }
+
+        $account = ChartOfAccount::query()
+            ->whereKey($accountId)
+            ->where('is_active', true)
+            ->first();
+
+        if (! $account) {
+            throw new \RuntimeException('The write-off account is not an active chart-of-accounts account.');
+        }
+
+        if ($account->type !== 'expense') {
+            throw new \RuntimeException('The write-off account must be an expense account (bad-debt expense).');
+        }
+
+        return $account;
+    }
+
+    /**
+     * Issue #879 (SA6): write-off / recovery lines: AR plus one bad-debt
+     * expense line per account, at the invoice's FX snapshot rate.
+     *
+     * @param  array<int, float>  $documentAmountByAccount  account id => document-currency amount
+     * @return array{0: array<int, DomainPostingLine>, 1: bool, 2: string, 3: string, 4: ?float}
+     */
+    private function buildWriteOffLines(Invoice $invoice, array $documentAmountByAccount, string $description): array
+    {
+        $docCurrency = strtoupper((string) ($invoice->currency_code ?: \App\Services\DocumentCurrencyResolver::resolve()));
+        $baseCurrency = strtoupper((string) ($invoice->base_currency_code
+            ?: \App\Services\DocumentCurrencyResolver::baseFor(
+                $invoice->salesOrder?->legal_entity_id,
+                $invoice->customer_id
+            )));
+        $foreign = $docCurrency !== $baseCurrency;
+        $rate = $invoice->exchange_rate !== null ? (float) $invoice->exchange_rate : null;
+
+        if ($foreign && ($rate === null || $rate <= 0)) {
+            throw new \RuntimeException(
+                "Invoice {$invoice->invoice_number} has no FX snapshot rate; cannot post the bad-debt entry."
+            );
+        }
+
+        $toBase = static fn (float $documentAmount): float => $foreign
+            ? round($documentAmount * $rate, 2)
+            : round($documentAmount, 2);
+
+        $totalDocument = round(array_sum($documentAmountByAccount), 2);
+
+        $lines = [
+            new DomainPostingLine(
+                accountRole: 'accounts_receivable',
+                amount: $toBase($totalDocument),
+                currencyCode: $foreign ? $baseCurrency : null,
+                originalAmount: $foreign ? $totalDocument : null,
+                exchangeRate: $foreign ? $rate : null,
+                description: $description,
+            ),
+        ];
+
+        foreach ($documentAmountByAccount as $accountId => $documentAmount) {
+            $lines[] = new DomainPostingLine(
+                accountRole: 'bad_debt_expense',
+                amount: $toBase((float) $documentAmount),
+                currencyCode: $foreign ? $baseCurrency : null,
+                originalAmount: $foreign ? (float) $documentAmount : null,
+                exchangeRate: $foreign ? $rate : null,
+                description: $description,
+                accountId: (int) $accountId,
+            );
+        }
+
+        return [$lines, $foreign, $docCurrency, $baseCurrency, $rate];
+    }
+
+    /**
+     * Issue #879 (SA6): the (entity, book) a write-off/recovery posting binds
+     * to — the same binding the invoice posting resolves.
+     *
+     * @return array{0: ?int, 1: ?int}
+     */
+    private function resolvePostingEntityBinding(Invoice $invoice): array
+    {
+        $entityResolver = app(\App\Services\LegalEntityContextResolver::class);
+        $legalEntityId = $entityResolver->resolveEntity(
+            explicit: $invoice->legal_entity_id ? (int) $invoice->legal_entity_id : null,
+            salesOrderId: $invoice->sales_order_id ? (int) $invoice->sales_order_id : null,
+            customerId: $invoice->customer_id ? (int) $invoice->customer_id : null,
+            required: true,
+        );
+
+        $entityBookId = $invoice->entity_book_id
+            ? (int) $invoice->entity_book_id
+            : $entityResolver->resolveBookId($legalEntityId);
+
+        return [$legalEntityId, $entityBookId];
+    }
+
+    /**
+     * Issue #883 (SAU1): the ONE builder behind an invoice journal.
+     *
+     * postInvoice() calls it with $persist = true and hands the returned
+     * DomainPostingRequest to PostingEngine; the draft Journal preview calls
+     * it with $persist = false and only resolves the request. Business lines,
+     * account resolution, tax determination, entity binding and the currency
+     * snapshot therefore come from one place — a preview cannot drift from
+     * posting, and persist=false suppresses every write in the build path
+     * (tax determination rows, override audits, FX/entity stamps, exception
+     * reports).
+     *
+     * @return array{domain_request: DomainPostingRequest, deferred_shares: array, legal_entity_id: ?int, entity_book_id: ?int, unissued_quantities: array, line_batches: array, line_serials: array, doc_currency: string, base_currency: string, fx_rate: ?float, foreign: bool}
+     */
+    private function buildPostingDraft(Invoice $invoice, bool $persist): array
+    {
+        // ── Tax determination (Issue #42) ─────────────────
+        $taxOverrides = array_filter([
+            'jurisdiction' => $invoice->tax_jurisdiction,
+            'tax_regime' => $invoice->tax_regime,
+            'treatment' => $invoice->tax_treatment,
+        ], fn ($v) => $v !== null);
+
+        $taxDetermination = $this->taxDeterminationService->determineForInvoice(
+            $invoice,
+            $taxOverrides ?: null,
+            $persist,
+        );
+        $primaryTaxCode = $taxDetermination['tax_lines'][0]['tax_code'] ?? null;
+
+        // MRD R3.3: named variance between the booked document tax and the
+        // determination. The GL stays booked-first (balance-safe), but the
+        // divergence is loudly recorded for the accountant to resolve —
+        // it is exactly the class of drift the tax report reconciliation
+        // is built to surface.
+        $determinationTaxTotal = round((float) $taxDetermination['tax_amount'], 2);
+        $bookedTaxTotal = round((float) $invoice->tax_amount, 2);
+
+        if ($persist && abs($determinationTaxTotal - $bookedTaxTotal) > 0.02) {
+            \Illuminate\Support\Facades\Log::warning('TAX_VARIANCE: booked invoice tax differs from determination', [
+                'invoice_id' => $invoice->id,
+                'booked_tax' => $bookedTaxTotal,
+                'determination_tax' => $determinationTaxTotal,
+                'variance' => round($bookedTaxTotal - $determinationTaxTotal, 2),
+            ]);
+
+            // Issue #902: the divergence is exactly the class of drift the
+            // tax reconciliation exists to surface — queue it so an
+            // accountant can see, own and resolve it instead of it dying
+            // in the log.
+            app(\App\Platform\Exceptions\ExceptionService::class)->report(
+                new \App\Platform\Exceptions\ExceptionReport(
+                    type: \App\Platform\Exceptions\ExceptionType::SALES_INVOICE_TAX_VARIANCE,
+                    message: "Invoice {$invoice->invoice_number}: booked tax {$bookedTaxTotal} differs from determination {$determinationTaxTotal}",
+                    documentId: $invoice->id,
+                    documentType: 'invoice',
+                    legalEntityId: $this->invoiceLegalEntityId($invoice),
+                    payload: [
+                        'booked_tax' => $bookedTaxTotal,
+                        'determination_tax' => $determinationTaxTotal,
+                        'variance' => round($bookedTaxTotal - $determinationTaxTotal, 2),
+                        'result_status' => $taxDetermination['result_status'] ?? null,
+                    ],
+                ),
+            );
+        }
+
+        // ── MRD pricelist-multicurrency FR-5.7/FR-7.1/AC-3 ───────────
+        // Posting converts the DOCUMENT amounts at the invoice's SNAPSHOT
+        // rate — never today's rate (FR-7.1). Missing snapshot → resolve
+        // at the invoice date and persist; still missing → BLOCK the
+        // posting with a distinct error so the invoice stays draft and no
+        // journal rows are written (AC-3).
+        $docCurrency = strtoupper((string) ($invoice->currency_code ?: \App\Services\DocumentCurrencyResolver::resolve()));
+        $baseCurrency = strtoupper((string) ($invoice->base_currency_code
+            ?: \App\Services\DocumentCurrencyResolver::baseFor(
+                $invoice->salesOrder?->legal_entity_id,
+                $invoice->customer_id
+            )));
+        $foreign = $docCurrency !== $baseCurrency;
+
+        $fxRate = $invoice->exchange_rate !== null ? (float) $invoice->exchange_rate : null;
+
+        if (! $foreign) {
+            $fxRate = 1.0;
+        } elseif ($fxRate === null || $fxRate <= 0) {
+            $snapshot = \App\Services\DocumentCurrencyResolver::snapshot(
+                $docCurrency,
+                $invoice->customer_id,
+                $invoice->salesOrder?->legal_entity_id,
+                $invoice->invoice_date->toDateString()
+            );
+            $fxRate = (float) $snapshot['exchange_rate'];
+            $baseCurrency = strtoupper((string) $snapshot['base_currency_code']);
+            if ($persist) {
+                $invoice->update([
+                    'exchange_rate' => $fxRate,
+                    'base_currency_code' => $baseCurrency,
+                ]);
+            }
+        }
+
+        // §9.3: base = round(document amount × snapshot rate, 2).
+        $toBase = static fn (float $docAmount): float => $foreign
+            ? round($docAmount * $fxRate, 2)
+            : round($docAmount, 2);
+
+        // ── Build business-value lines (ACC-RM-001: profile-resolved) ──
+        // Operational domains may not submit unrestricted DR/CR lines
+        // (ADR-005 §12). Invoice submits account-role + amount business
+        // values in BASE currency; currency_code/original_amount/
+        // exchange_rate carry the foreign side for dual display (FR-5.7).
+        $lines = [];
+
+        // Accounts Receivable (total) → profile direction: debit
+        $lines[] = new DomainPostingLine(
+            accountRole: 'accounts_receivable',
+            amount: $toBase((float) $invoice->total),
+            currencyCode: $foreign ? $baseCurrency : null,
+            originalAmount: $foreign ? round((float) $invoice->total, 2) : null,
+            exchangeRate: $foreign ? $fxRate : null,
+            description: "Invoice {$invoice->invoice_number}".($foreign ? " ({$invoice->total} {$docCurrency} @ {$fxRate})" : ''),
+        );
+
+        // Sales Revenue (subtotal minus discount) → profile direction: credit
+        $salesRevenue = (float) $invoice->subtotal - (float) $invoice->discount_amount;
+
+        // Shipping Revenue (if shipping cost > 0) → profile direction: credit
+        $shippingBase = (float) $invoice->shipping_cost > 0 ? $toBase((float) $invoice->shipping_cost) : 0.0;
+
+        // Sales Tax Payable → profile direction: credit; keeps tax-code evidence.
+        // MRD TAX-REQ-07: one credit line per determined tax_code (multi-rate
+        // documents get one tax_transaction_details row per code with the
+        // correct taxable base), while the invoice's booked tax total is
+        // preserved exactly so the journal stays balanced.
+        $bookedTax = round((float) $invoice->tax_amount, 2);
+        $taxBaseTotal = 0.0;
+        $taxLines = [];
+
+        if ($bookedTax > 0) {
+            foreach (TaxDeterminationService::allocateBookedTax($taxDetermination['tax_lines'] ?? [], $bookedTax) as $allocation) {
+                if ($allocation['amount'] <= 0) {
+                    continue;
+                }
+                $taxBase = $toBase((float) $allocation['amount']);
+                $taxBaseTotal += $taxBase;
+                $taxLines[] = new DomainPostingLine(
+                    accountRole: 'sales_tax_payable',
+                    amount: $taxBase,
+                    currencyCode: $foreign ? $baseCurrency : null,
+                    originalAmount: $foreign ? round((float) $allocation['amount'], 2) : null,
+                    exchangeRate: $foreign ? $fxRate : null,
+                    description: "Tax - Invoice {$invoice->invoice_number}".($allocation['tax_code'] ? " [{$allocation['tax_code']}]" : ''),
+                    taxCode: $allocation['tax_code'] ?? $primaryTaxCode,
+                    taxId: $allocation['tax_id'],
+                );
+            }
+        }
+
+        // §9.4 / FR-7.4: the sum of independently rounded legs can drift
+        // a cent from the AR base. Issue #880 (SA7): the revenue leg keeps
+        // its EXACT converted amount and the residual is posted to the
+        // existing FX gain/loss role account (MRD pricelist-multicurrency
+        // FR-7.4 — "posted to the same FX account (or a rounding account
+        // if configured)"). It is never absorbed at revenue.
+        //
+        // Issue #333: the cash-rounding delta persisted by
+        // Invoice::calculateTotals() is the ONE source of truth for the
+        // rounding leg — posting never re-derives it, so the document
+        // total and the ledger cannot disagree. Cash rounding posts as its
+        // own line, so the FX residual excludes it.
+        $roundingAmount = round((float) ($invoice->rounding_amount ?? 0), 2);
+        $roundingBase = abs($roundingAmount) > 0.0 ? $toBase($roundingAmount) : 0.0;
+
+        $arBase = $toBase((float) $invoice->total);
+        $revenueExactBase = $toBase($salesRevenue);
+
+        if ($foreign) {
+            $residual = round($arBase - $revenueExactBase - $taxBaseTotal - $shippingBase - $roundingBase, 2);
+            $revenueBase = $revenueExactBase;
+        } else {
+            // Same-currency documents (rate 1.0) have no FX residual to
+            // classify; a tampered-inconsistent header keeps the legacy
+            // balance-through-revenue arithmetic.
+            $residual = 0.0;
+            $revenueBase = round($arBase - $taxBaseTotal - $shippingBase - $roundingBase, 2);
+        }
+
+        if ($persist && $foreign && abs($residual) > 0.02) {
+            \Illuminate\Support\Facades\Log::warning('FX posting: rounding residual beyond 0.02 posted to the FX account', [
+                'invoice_id' => $invoice->id,
+                'expected_revenue_base' => $revenueExactBase,
+                'posted_revenue_base' => $revenueBase,
+                'residual' => $residual,
+            ]);
+
+            // Issue #902: the entry balances, but the residual no longer
+            // matches a cent-level rounding drift — an accountant must
+            // review the rate/document.
+            app(\App\Platform\Exceptions\ExceptionService::class)->report(
+                new \App\Platform\Exceptions\ExceptionReport(
+                    type: \App\Platform\Exceptions\ExceptionType::SALES_INVOICE_FX_RESIDUAL,
+                    message: "Invoice {$invoice->invoice_number}: FX rounding residual ".number_format($residual, 2).' posted to the FX rounding account',
+                    documentId: $invoice->id,
+                    documentType: 'invoice',
+                    legalEntityId: $this->invoiceLegalEntityId($invoice),
+                    payload: [
+                        'currency_code' => $docCurrency,
+                        'base_currency_code' => $baseCurrency,
+                        'exchange_rate' => $fxRate,
+                        'expected_revenue_base' => $revenueExactBase,
+                        'posted_revenue_base' => $revenueBase,
+                        'residual' => $residual,
+                    ],
+                ),
+            );
+        }
+
+        // Issue #882 (SA9): deferred lines credit the deferred-revenue
+        // role account and their allocated revenue share is recorded so a
+        // schedule row can be created once the posting succeeds.
+        $deferredShares = [];
+
+        if ($salesRevenue > 0 || $revenueBase != 0) {
+            // Issue #876 (SA2): revenue is recognised per resolved income
+            // account (line GL override → sales-order line → product →
+            // the account_mappings sales_revenue default) and carries the
+            // line's department/project dimensions.
+            foreach ($this->buildRevenueLines(
+                $invoice,
+                baseTotal: $revenueBase,
+                documentTotal: $salesRevenue,
+                foreign: $foreign,
+                exchangeRate: $fxRate,
+                baseCurrency: $baseCurrency,
+                deferredShares: $deferredShares,
+            ) as $revenueLine) {
+                $lines[] = $revenueLine;
+            }
+        }
+
+        if ((float) $invoice->shipping_cost > 0) {
+            $lines[] = new DomainPostingLine(
+                accountRole: 'shipping_revenue',
+                amount: $shippingBase,
+                currencyCode: $foreign ? $baseCurrency : null,
+                originalAmount: $foreign ? round((float) $invoice->shipping_cost, 2) : null,
+                exchangeRate: $foreign ? $fxRate : null,
+                description: "Shipping - Invoice {$invoice->invoice_number}",
+            );
+        }
+
+        if (abs($roundingAmount) > 0.0) {
+            // Issue #333: the cash-rounding adjustment is its own line on
+            // the tenant's configured rounding account. Rounding UP is a
+            // gain (credit); rounding DOWN is a loss (debit). The account
+            // resolves from the tenant setting — when it is missing the
+            // posting fails loudly (accountIdOrFail) rather than silently
+            // dropping the adjustment.
+            $lines[] = new DomainPostingLine(
+                accountRole: 'rounding',
+                amount: abs($roundingBase),
+                currencyCode: $foreign ? $baseCurrency : null,
+                originalAmount: $foreign ? abs($roundingAmount) : null,
+                exchangeRate: $foreign ? $fxRate : null,
+                description: "Cash rounding - Invoice {$invoice->invoice_number}",
+                accountId: app(CashRoundingService::class)->accountIdOrFail(),
+                direction: $roundingBase >= 0 ? 'credit' : 'debit',
+            );
+        }
+
+        // Issue #880 (SA7): the independently rounded legs rarely drift
+        // from the AR base by more than a cent. That residual belongs to
+        // the FX gain/loss role (FR-7.4), split by direction so a gain is
+        // a credit and a loss is a debit.
+        if ($foreign && abs($residual) >= 0.01) {
+            $lines[] = new DomainPostingLine(
+                accountRole: $residual > 0 ? 'realized_fx_gain' : 'realized_fx_loss',
+                amount: abs($residual),
+                currencyCode: $baseCurrency,
+                description: "FX rounding difference - Invoice {$invoice->invoice_number}",
+            );
+        }
+
+        foreach ($taxLines as $taxLine) {
+            $lines[] = $taxLine;
+        }
+
+        // ── COGS lines for inventory items ───────────────
+        // Issue #176/#682: COGS and the stock movement below are derived from
+        // ONE number per line — the quantity no document has issued yet
+        // (GoodsIssueLedger) — so they can no longer disagree about whether
+        // a delivery order already shipped these goods. A delivery order
+        // that issued them first leaves nothing to recognise here: the
+        // invoice only books revenue/AR.
+        $bundleDecomposition = app(\App\Services\BundleDecompositionService::class);
+        $batchConsumption = app(\App\Services\BatchSerialConsumptionService::class);
+        $goodsIssueLedger = app(\App\Services\GoodsIssueLedger::class);
+
+        // Issue #131: batch-tracked lines cost their FEFO layers (previewed
+        // here because GL posts before stock is deducted).
+        try {
+            $cogsWarehouseId = $this->resolveInventoryWarehouseId($invoice);
+        } catch (\Throwable) {
+            $cogsWarehouseId = null;
+        }
+
+        $unissuedQuantities = [];
+        $lineBatches = [];
+        $lineSerials = [];
+        $totalCogs = 0.0;
+
+        foreach ($invoice->lines as $line) {
+            if (($line->line_type ?? 'product') !== 'product' || ! $line->product) {
+                continue;
+            }
+
+            // Issue #685: a line entered in a sales UoM (2 Box) keeps that
+            // quantity and per-sales-UoM price on the document, but every
+            // stock/COGS number below is in the product's STOCK UoM. The
+            // conversion goes through the shared ProductUomConverter.
+            $lineStockQty = (float) $line->quantity;
+            if ($line->uom_id && $line->uom && ! $line->uom->isStockUnit()) {
+                $lineStockQty = app(ProductUomConverter::class)->toStock($line->uom, $lineStockQty);
+            }
+
+            $qty = $goodsIssueLedger->remainingForInvoiceLine($line, $lineStockQty);
+
+            if ($qty <= 0) {
+                continue;
+            }
+
+            $unissuedQuantities[$line->id] = $qty;
+
+            // Issue #683: the line's lot and serial are not decoration —
+            // the lot is the layer that leaves the warehouse (and the one
+            // COGS is costed from), and the serial must be available now or
+            // the whole posting is refused before anything is written.
+            $lineBatch = $this->resolveInvoiceLineBatch($line);
+            if ($lineBatch) {
+                $lineBatches[$line->id] = $lineBatch;
+            }
+
+            $lineSerial = $this->resolveInvoiceLineSerial($line);
+            if ($lineSerial) {
+                $lineSerials[$line->id] = $lineSerial;
+            }
+
+            $totalCogs += $batchConsumption->costForLine($line->product, $qty, $cogsWarehouseId, $lineBatch?->id)
+                ?? $bundleDecomposition->cost($line->product, $qty);
+        }
+
+        if ($totalCogs > 0) {
+            // Cost of Goods Sold → profile direction: debit.
+            // Valuation comes from stock layers, which are stored in
+            // the BASE currency — never converted (FR-12 §12).
+            $lines[] = new DomainPostingLine(
+                accountRole: 'cogs',
+                amount: round($totalCogs, 2),
+                currencyCode: $foreign ? $baseCurrency : null,
+                description: "COGS - Invoice {$invoice->invoice_number}",
+            );
+
+            // Inventory → profile direction: credit
+            $lines[] = new DomainPostingLine(
+                accountRole: 'inventory',
+                amount: round($totalCogs, 2),
+                currencyCode: $foreign ? $baseCurrency : null,
+                description: "Inventory - Invoice {$invoice->invoice_number}",
+            );
+        }
+
+        // ── Post via PostingEngine (domain contract) ─────
+        // Issue #875: bind the posting to the invoice's legal entity (and
+        // entity book). Legacy rows that predate the entity columns are
+        // resolved here from the sales order / customer / request context
+        // and stamped on the invoice so document and ledger agree.
+        $entityResolver = app(\App\Services\LegalEntityContextResolver::class);
+        $legalEntityId = $entityResolver->resolveEntity(
+            explicit: $invoice->legal_entity_id ? (int) $invoice->legal_entity_id : null,
+            salesOrderId: $invoice->sales_order_id ? (int) $invoice->sales_order_id : null,
+            customerId: $invoice->customer_id ? (int) $invoice->customer_id : null,
+            required: true,
+        );
+        $entityBookId = $invoice->entity_book_id
+            ? (int) $invoice->entity_book_id
+            : $entityResolver->resolveBookId($legalEntityId);
+
+        if ($persist && $legalEntityId && ((int) $invoice->legal_entity_id !== $legalEntityId || (int) $invoice->entity_book_id !== (int) $entityBookId)) {
+            $invoice->forceFill([
+                'legal_entity_id' => $legalEntityId,
+                'entity_book_id' => $entityBookId,
+            ])->save();
+        }
+
+        return [
+            'domain_request' => new DomainPostingRequest(
+                postingRequestId: DomainPostingRequest::generateRequestId(),
+                idempotencyKey: "invoice:{$invoice->id}:post",
+                tenantId: (string) (function_exists('tenant') && tenant() ? tenant('id') : ''),
+                entityId: $legalEntityId !== null ? (string) $legalEntityId : '',
+                accountingBookId: $entityBookId !== null ? (string) $entityBookId : '',
+                sourceCapability: 'ACC-003',
+                sourceRecordType: 'invoice',
+                sourceRecordId: (string) $invoice->id,
+                sourceRecordVersion: (int) ($invoice->version_number ?? 1),
+                postingProfileCode: 'AR_INVOICE_POST',
+                transactionDate: $invoice->invoice_date->toDateString(),
+                postingDate: $invoice->invoice_date->toDateString(),
+                // FR-5.7/§12: the header FX stamp on the journal entry comes
+                // from the document snapshot (PostingEngine writes the header
+                // columns when this is set).
+                currencyCode: $foreign ? $docCurrency : null,
+                exchangeRate: $foreign ? $fxRate : null,
+                lines: $lines,
+                userId: TenantUserHelper::requireTenantUserId($invoice->created_by),
+                taxDeterminationResult: $taxDetermination,
+                ledgerDescription: "Invoice #{$invoice->invoice_number} - {$invoice->customer->name}",
+                reference: $invoice->invoice_number,
+            ),
+            // Issue #882 (SA9): deferred subledger shares the posting
+            // transaction turns into DeferredRevenueSchedule rows.
+            'deferred_shares' => $deferredShares,
+
+            // Issue #875: the entity/book the posting is bound to.
+            'legal_entity_id' => $legalEntityId,
+            'entity_book_id' => $entityBookId,
+
+            // Issue #682/#683: stock quantities, lots and serials resolved
+            // against the same ledger read the COGS used.
+            'unissued_quantities' => $unissuedQuantities,
+            'line_batches' => $lineBatches,
+            'line_serials' => $lineSerials,
+
+            // FR-5.7/FR-7.1: the document snapshot the header/lines display.
+            'doc_currency' => $docCurrency,
+            'base_currency' => $baseCurrency,
+            'fx_rate' => $fxRate,
+            'foreign' => $foreign,
+        ];
+    }
+
+    /**
+     * Issue #883 (SAU1): the Journal tab payload.
+     *
+     * A draft is served by buildPostingDraft() with persistence OFF, then run
+     * through the same PostingPolicyMapper domainPosting() uses — the tab
+     * shows the lines Post will write, and the read never writes. A posted
+     * invoice is served from its actual JournalEntry.
+     */
+    public function previewJournal(Invoice $invoice): array
+    {
+        if ($invoice->journal_entry_id) {
+            return $this->postedJournal($invoice);
+        }
+
+        try {
+            $draft = $this->buildPostingDraft($invoice, persist: false);
+
+            $resolution = app(\App\Accounting\Services\PostingPolicyMapper::class)
+                ->resolve($draft['domain_request']);
+
+            if (! $resolution->success) {
+                return $this->draftJournal($invoice, $draft, [], $resolution->error);
+            }
+
+            $unresolved = [];
+            foreach ($resolution->ledgerLines as $line) {
+                if (empty($line['account_id'])) {
+                    $unresolved[] = $line['account_role'] ?? 'unknown';
+                }
+            }
+
+            if ($unresolved !== []) {
+                return $this->draftJournal($invoice, $draft, [], 'Account role(s) could not be resolved to a chart_of_accounts.id: '.
+                    implode(', ', array_unique($unresolved)).
+                    '. Configure via Entity Account Roles or update the posting profile.');
+            }
+
+            return $this->draftJournal($invoice, $draft, $this->decorateJournalLines($resolution->ledgerLines));
+        } catch (\Throwable $e) {
+            return $this->draftJournal($invoice, null, [], $e->getMessage());
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $draft
+     * @param  array<int, array<string, mixed>>  $lines
+     */
+    private function draftJournal(Invoice $invoice, ?array $draft, array $lines, ?string $error = null): array
+    {
+        return $this->journalPayload(
+            status: 'draft',
+            source: 'preview',
+            entry: null,
+            postingDate: $invoice->invoice_date?->toDateString(),
+            description: $draft['domain_request']->ledgerDescription
+                ?? "Invoice #{$invoice->invoice_number} - ".($invoice->customer?->name ?? ''),
+            reference: $invoice->invoice_number,
+            legalEntity: $this->journalLegalEntity(
+                $draft['legal_entity_id'] ?? ($invoice->legal_entity_id !== null ? (int) $invoice->legal_entity_id : null)
+            ),
+            accountingBookId: $draft['entity_book_id'] ?? ($invoice->entity_book_id !== null ? (int) $invoice->entity_book_id : null),
+            currency: $this->journalCurrency($invoice, $draft),
+            lines: $lines,
+            error: $error,
+        );
+    }
+
+    private function postedJournal(Invoice $invoice): array
+    {
+        $invoice->loadMissing([
+            'journalEntry.lines.account',
+            'journalEntry.lines.department',
+            'journalEntry.lines.project',
+            'journalEntry.lines.location',
+        ]);
+
+        $entry = $invoice->journalEntry ?? throw new \RuntimeException('Invoice has no journal entry.');
+
+        $lines = $this->decorateJournalLines($entry->lines->map(fn ($line) => [
+            'account_id' => $line->account_id,
+            'debit' => $line->debit,
+            'credit' => $line->credit,
+            'description' => $line->description,
+            'tax_code' => $line->tax_code,
+            'currency_code' => $line->currency_code,
+            'original_amount' => $line->original_amount,
+            'exchange_rate' => $line->exchange_rate,
+            'department_id' => $line->department_id,
+            'project_id' => $line->project_id,
+            'location_id' => $line->location_id,
+        ])->all());
+
+        $document = strtoupper((string) ($entry->original_currency_code ?: $invoice->currency_code ?: \App\Services\DocumentCurrencyResolver::resolve()));
+        $base = strtoupper((string) ($invoice->base_currency_code
+            ?: \App\Services\DocumentCurrencyResolver::baseFor($invoice->salesOrder?->legal_entity_id, $invoice->customer_id)));
+
+        return $this->journalPayload(
+            status: 'posted',
+            source: 'actual',
+            entry: [
+                'id' => $entry->id,
+                'entry_number' => $entry->entry_number,
+                'entry_date' => $entry->entry_date?->toDateString(),
+                'status' => $entry->status,
+                'description' => $entry->description,
+                'reference' => $entry->reference,
+            ],
+            postingDate: $entry->entry_date?->toDateString(),
+            description: (string) $entry->description,
+            reference: $entry->reference,
+            legalEntity: $this->journalLegalEntity($invoice->legal_entity_id !== null ? (int) $invoice->legal_entity_id : null),
+            accountingBookId: $invoice->entity_book_id !== null ? (int) $invoice->entity_book_id : null,
+            currency: [
+                'document' => $document,
+                'base' => $base,
+                'exchange_rate' => $entry->exchange_rate !== null ? (float) $entry->exchange_rate : ($document === $base ? 1.0 : null),
+            ],
+            lines: $lines,
+            error: null,
+        );
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $lines
+     */
+    private function journalPayload(
+        string $status,
+        string $source,
+        ?array $entry,
+        ?string $postingDate,
+        string $description,
+        ?string $reference,
+        ?array $legalEntity,
+        ?int $accountingBookId,
+        array $currency,
+        array $lines,
+        ?string $error,
+    ): array {
+        $totalDebit = round(array_sum(array_column($lines, 'debit')), 2);
+        $totalCredit = round(array_sum(array_column($lines, 'credit')), 2);
+
+        return [
+            'status' => $status,
+            'source' => $source,
+            'preview' => $source === 'preview',
+            'error' => $error,
+            'journal_entry' => $entry,
+            'posting_date' => $postingDate,
+            'description' => $description,
+            'reference' => $reference,
+            'legal_entity' => $legalEntity,
+            'accounting_book_id' => $accountingBookId,
+            'currency' => $currency,
+            'lines' => $lines,
+            'total_debit' => $totalDebit,
+            'total_credit' => $totalCredit,
+            'is_balanced' => $lines !== [] && abs($totalDebit - $totalCredit) < 0.01,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $draft
+     * @return array{document: string, base: string, exchange_rate: ?float}
+     */
+    private function journalCurrency(Invoice $invoice, ?array $draft): array
+    {
+        if ($draft !== null) {
+            return [
+                'document' => $draft['doc_currency'],
+                'base' => $draft['base_currency'],
+                'exchange_rate' => $draft['fx_rate'] !== null ? (float) $draft['fx_rate'] : null,
+            ];
+        }
+
+        $document = strtoupper((string) ($invoice->currency_code ?: \App\Services\DocumentCurrencyResolver::resolve()));
+        $base = strtoupper((string) ($invoice->base_currency_code
+            ?: \App\Services\DocumentCurrencyResolver::baseFor($invoice->salesOrder?->legal_entity_id, $invoice->customer_id)));
+
+        return [
+            'document' => $document,
+            'base' => $base,
+            'exchange_rate' => $document === $base ? 1.0 : ($invoice->exchange_rate !== null ? (float) $invoice->exchange_rate : null),
+        ];
+    }
+
+    /**
+     * @return array{id: int, name: ?string, code: ?string}|null
+     */
+    private function journalLegalEntity(?int $legalEntityId): ?array
+    {
+        if (! $legalEntityId) {
+            return null;
+        }
+
+        $entity = DB::table('legal_entities')->where('id', $legalEntityId)->first(['id', 'name', 'code']);
+
+        return [
+            'id' => $legalEntityId,
+            'name' => $entity?->name,
+            'code' => $entity?->code,
+        ];
+    }
+
+    /**
+     * Attach the account identity the ledger drill-down needs (plus the
+     * analytic dimension names) to raw resolved posting lines.
+     *
+     * @param  array<int, array<string, mixed>>  $rawLines
+     * @return array<int, array<string, mixed>>
+     */
+    private function decorateJournalLines(array $rawLines): array
+    {
+        $lines = array_map(function (array $line): array {
+            $dimensions = is_array($line['dimensions'] ?? null) ? $line['dimensions'] : [];
+
+            return [
+                'account_id' => isset($line['account_id']) && $line['account_id'] !== null ? (int) $line['account_id'] : null,
+                'account_code' => null,
+                'account_name' => null,
+                'debit' => round((float) ($line['debit'] ?? 0), 2),
+                'credit' => round((float) ($line['credit'] ?? 0), 2),
+                'description' => $line['description'] ?? null,
+                'tax_code' => $line['tax_code'] ?? null,
+                'currency_code' => $line['currency_code'] ?? null,
+                'original_amount' => isset($line['original_amount']) && $line['original_amount'] !== null
+                    ? round((float) $line['original_amount'], 2)
+                    : null,
+                'exchange_rate' => isset($line['exchange_rate']) && $line['exchange_rate'] !== null
+                    ? (float) $line['exchange_rate']
+                    : null,
+                'department_id' => isset($line['department_id']) && $line['department_id'] !== null
+                    ? (int) $line['department_id']
+                    : (isset($dimensions['department_id']) ? (int) $dimensions['department_id'] : null),
+                'department_name' => null,
+                'project_id' => isset($line['project_id']) && $line['project_id'] !== null
+                    ? (int) $line['project_id']
+                    : (isset($dimensions['project_id']) ? (int) $dimensions['project_id'] : null),
+                'project_name' => null,
+                'location_id' => isset($line['location_id']) && $line['location_id'] !== null
+                    ? (int) $line['location_id']
+                    : (isset($dimensions['location_id']) ? (int) $dimensions['location_id'] : null),
+                'location_name' => null,
+            ];
+        }, $rawLines);
+
+        $accountIds = array_values(array_unique(array_filter(array_column($lines, 'account_id'))));
+        $accounts = $accountIds === []
+            ? collect()
+            : \App\Models\ChartOfAccount::query()->whereIn('id', $accountIds)->get(['id', 'code', 'name'])->keyBy('id');
+
+        $analyticIds = array_values(array_unique(array_filter(array_merge(
+            array_column($lines, 'department_id'),
+            array_column($lines, 'project_id'),
+            array_column($lines, 'location_id'),
+        ))));
+        $analytics = $analyticIds === []
+            ? collect()
+            : DB::table('analytic_accounts')->whereIn('id', $analyticIds)->pluck('name', 'id');
+
+        foreach ($lines as &$line) {
+            $line['account_code'] = $line['account_id'] !== null ? $accounts->get($line['account_id'])?->code : null;
+            $line['account_name'] = $line['account_id'] !== null ? $accounts->get($line['account_id'])?->name : null;
+            $line['department_name'] = $line['department_id'] !== null ? $analytics->get($line['department_id']) : null;
+            $line['project_name'] = $line['project_id'] !== null ? $analytics->get($line['project_id']) : null;
+            $line['location_name'] = $line['location_id'] !== null ? $analytics->get($line['location_id']) : null;
+        }
+        unset($line);
+
+        return $lines;
     }
 
     /**
@@ -898,8 +1665,9 @@ class InvoiceService
      * Issue #876 (SA2): the concrete account a line's revenue recognises to.
      *
      * Precedence — line GL override → sales-order line income account →
-     * product income account → null (the profile's `sales_revenue` default
-     * resolved from account_mappings / entity_account_roles).
+     * product income account → product category income account → null (the
+     * profile's `sales_revenue` default resolved from account_mappings /
+     * entity_account_roles).
      */
     private function resolveLineIncomeAccountId(InvoiceLine $line): ?int
     {
@@ -919,6 +1687,10 @@ class InvoiceService
             return (int) $line->product->income_account_id;
         }
 
+        if ($line->product?->category?->income_account_id) {
+            return (int) $line->product->category->income_account_id;
+        }
+
         return null;
     }
 
@@ -936,10 +1708,10 @@ class InvoiceService
 
     /**
      * Group the invoice's revenue-carrying lines by (income account,
-     * dimensions) and keep each line's tax-exclusive net as the weight the
-     * document's revenue is shared over.
+     * dimensions) — or per deferred line (#882) — and keep each line's
+     * tax-exclusive net as the weight the document's revenue is shared over.
      *
-     * @return array{lines: array<int, array{key: string, weight: float}>, groups: array<string, array{account_id: ?int, dimensions: array}>}
+     * @return array{lines: array<int, array{key: string, weight: float}>, groups: array<string, array{account_id: ?int, dimensions: array, deferred: bool, line_id: ?int}>}
      */
     private function revenueAllocationPlan(Invoice $invoice): array
     {
@@ -965,9 +1737,27 @@ class InvoiceService
 
             $accountId = $this->resolveLineIncomeAccountId($line);
             $dimensions = $this->revenueLineDimensions($line);
-            $key = ($accountId ?? 'default').':'.json_encode($dimensions);
 
-            $groups[$key] ??= ['account_id' => $accountId, 'dimensions' => $dimensions];
+            if ($line->is_deferred) {
+                // Issue #882 (SA9): every deferred line owns its own schedule,
+                // so it must never merge with another line's revenue group.
+                $key = 'deferred:'.$line->id;
+                $groups[$key] = [
+                    'account_id' => $accountId,
+                    'dimensions' => $dimensions,
+                    'deferred' => true,
+                    'line_id' => (int) $line->id,
+                ];
+            } else {
+                $key = ($accountId ?? 'default').':'.json_encode($dimensions);
+                $groups[$key] ??= [
+                    'account_id' => $accountId,
+                    'dimensions' => $dimensions,
+                    'deferred' => false,
+                    'line_id' => null,
+                ];
+            }
+
             $lines[] = ['key' => $key, 'weight' => $weight];
         }
 
@@ -993,6 +1783,7 @@ class InvoiceService
         bool $foreign,
         ?float $exchangeRate,
         string $baseCurrency,
+        array &$deferredShares,
     ): array {
         $description = "Sales - Invoice {$invoice->invoice_number}";
         $plan = $this->revenueAllocationPlan($invoice);
@@ -1015,6 +1806,21 @@ class InvoiceService
         // ONE group owns the entire document — post it whole, no allocation.
         if (count($plan['groups']) === 1) {
             $group = reset($plan['groups']);
+
+            if ($group['deferred']) {
+                return [
+                    $this->deferredRevenuePostingLine(
+                        line: $invoice->lines->firstWhere('id', $group['line_id']),
+                        amount: $baseTotal,
+                        documentAmount: $documentTotal,
+                        foreign: $foreign,
+                        exchangeRate: $exchangeRate,
+                        baseCurrency: $baseCurrency,
+                        description: $description,
+                        deferredShares: $deferredShares,
+                    ),
+                ];
+            }
 
             return [
                 $this->revenuePostingLine(
@@ -1050,6 +1856,21 @@ class InvoiceService
                 continue;
             }
 
+            if ($group['deferred']) {
+                $result[] = $this->deferredRevenuePostingLine(
+                    line: $invoice->lines->firstWhere('id', $group['line_id']),
+                    amount: round($totals[$key]['base'], 2),
+                    documentAmount: round($totals[$key]['document'], 2),
+                    foreign: $foreign,
+                    exchangeRate: $exchangeRate,
+                    baseCurrency: $baseCurrency,
+                    description: $description,
+                    deferredShares: $deferredShares,
+                );
+
+                continue;
+            }
+
             $result[] = $this->revenuePostingLine(
                 amount: round($totals[$key]['base'], 2),
                 documentAmount: round($totals[$key]['document'], 2),
@@ -1063,6 +1884,52 @@ class InvoiceService
         }
 
         return $result;
+    }
+
+    /**
+     * Issue #882 (SA9): the credit line for a deferred service line — it
+     * credits the deferred-revenue role account and records the share the
+     * posting path turns into a DeferredRevenueSchedule row. The line's
+     * eventual income account is resolved now (line override → order line →
+     * product → sales_revenue default) so the recognition job credits the
+     * same account the invoice would have used.
+     */
+    private function deferredRevenuePostingLine(
+        ?\App\Models\InvoiceLine $line,
+        float $amount,
+        float $documentAmount,
+        bool $foreign,
+        ?float $exchangeRate,
+        string $baseCurrency,
+        string $description,
+        array &$deferredShares,
+    ): DomainPostingLine {
+        if (! $line) {
+            throw new \RuntimeException('Deferred revenue plan references an invoice line that no longer exists.');
+        }
+
+        $roleResolver = app(\App\Accounting\Services\AccountRoleResolver::class);
+        $deferredAccountId = $roleResolver->resolveId('deferred_revenue', 'invoice');
+        $incomeAccountId = $this->resolveLineIncomeAccountId($line)
+            ?? $roleResolver->resolveId('sales_revenue', 'invoice');
+
+        $deferredShares[] = [
+            'line' => $line,
+            'amount' => round($amount, 2),
+            'deferred_account_id' => $deferredAccountId,
+            'income_account_id' => $incomeAccountId,
+        ];
+
+        return new DomainPostingLine(
+            accountRole: 'deferred_revenue',
+            amount: $amount,
+            currencyCode: $foreign ? $baseCurrency : null,
+            originalAmount: $foreign ? round($documentAmount, 2) : null,
+            exchangeRate: $foreign ? $exchangeRate : null,
+            description: $description,
+            dimensions: $this->revenueLineDimensions($line),
+            accountId: $deferredAccountId,
+        );
     }
 
     private function revenuePostingLine(
@@ -1089,41 +1956,16 @@ class InvoiceService
 
     /**
      * Split $totalCents over the weights in WHOLE cents: every share is an
-     * integer and the shares add up to $totalCents exactly.
+     * integer and the shares add up to $totalCents exactly. The arithmetic
+     * lives in App\Support\CentsAllocation so the credit-note revenue split
+     * (#882, SA9) uses the identical rule.
      *
      * @param  array<int, float>  $weights
      * @return array<int, int>
      */
     private function allocateCents(int $totalCents, array $weights): array
     {
-        $sum = array_sum($weights);
-        $shares = [];
-        $remainders = [];
-
-        foreach ($weights as $index => $weight) {
-            $exact = $sum > 0 ? $totalCents * $weight / $sum : 0.0;
-            $share = (int) floor($exact);
-            $shares[$index] = $share;
-            $remainders[$index] = $exact - $share;
-        }
-
-        // floor() can only undershoot (or overshoot by a cent through float
-        // noise) — settle the difference on the largest fractional remainders
-        // so the shares still sum to the exact document total.
-        $missing = $totalCents - array_sum($shares);
-
-        if ($missing !== 0 && $shares !== []) {
-            arsort($remainders);
-            $order = array_keys($remainders);
-            $count = count($order);
-            $step = $missing > 0 ? 1 : -1;
-
-            for ($i = 0, $settled = abs($missing); $i < $settled; $i++) {
-                $shares[$order[$i % $count]] += $step;
-            }
-        }
-
-        return $shares;
+        return \App\Support\CentsAllocation::allocate($totalCents, $weights);
     }
 
     private function resolveInventoryWarehouseId(Invoice $invoice): ?int
@@ -1358,8 +2200,9 @@ class InvoiceService
 
         Invoice::where('id', $invoice->id)->update([
             'balance' => $newBalance,
-            'status' => $status,
         ]);
+
+        $this->syncInvoiceWorkflowStatus($invoice, $status, ['reason' => 'Refund applied']);
 
         $invoice->refresh();
 
@@ -1392,8 +2235,9 @@ class InvoiceService
 
         Invoice::where('id', $invoice->id)->update([
             'balance' => $newBalance,
-            'status' => $status,
         ]);
+
+        $this->syncInvoiceWorkflowStatus($invoice, $status, ['reason' => 'Refund restored']);
 
         $invoice->refresh();
 
@@ -1431,7 +2275,9 @@ class InvoiceService
         $invoice->refresh();
 
         $credited = max(0.0, (float) $invoice->credited_amount + $delta);
-        $newBalance = max(0.0, (float) $invoice->total - (float) $invoice->paid_amount - $credited);
+        // Issue #879 (SA6): a written-off portion is settled and never comes
+        // back as open balance when a credit note is applied.
+        $newBalance = max(0.0, (float) $invoice->total - (float) $invoice->paid_amount - $credited - (float) $invoice->written_off_amount);
 
         $lifecycleFinal = in_array($invoice->status, ['draft', 'void', 'cancelled'], true);
 
@@ -1444,7 +2290,11 @@ class InvoiceService
         Invoice::where('id', $invoice->id)->update([
             'credited_amount' => $credited,
             'balance' => $newBalance,
-            'status' => $status,
+        ]);
+
+        $this->syncInvoiceWorkflowStatus($invoice, $status, [
+            'reason' => $delta >= 0 ? 'Credit note applied' : 'Credit note reversed',
+            'credited_delta' => $delta,
         ]);
 
         $invoice->refresh();
@@ -1472,16 +2322,118 @@ class InvoiceService
         $rows = Invoice::where('customer_id', $customer->id)
             ->notSuperseded()
             ->whereNotIn('status', ['draft', 'void', 'cancelled'])
-            ->get(['id', 'total', 'paid_amount', 'credited_amount']);
+            ->get(['id', 'total', 'paid_amount', 'credited_amount', 'written_off_amount']);
 
         $credit = 0.0;
 
         foreach ($rows as $row) {
-            $remaining = max(0.0, (float) $row->total - (float) $row->paid_amount);
+            // Issue #879 (SA6): a written-off portion is settled, so it cannot
+            // absorb credit — only the truly open remainder can.
+            $remaining = max(0.0, (float) $row->total - (float) $row->paid_amount - (float) $row->written_off_amount);
             $credit += max(0.0, (float) $row->credited_amount - $remaining);
         }
 
         Customer::where('id', $customer->id)->update(['credit_balance' => round($credit, 2)]);
+    }
+
+    /**
+     * Issue #879 (SA6): release written-off amounts as a payment allocation
+     * recovers them — FIFO over the write-off records, posting DR AR /
+     * CR bad-debt expense through the PostingEngine.
+     */
+    private function recoverWrittenOffAmount(Invoice $invoice, float $settledAmount, Payment $payment): void
+    {
+        $amount = round(min($settledAmount, (float) $invoice->written_off_amount), 2);
+        if ($amount <= 0) {
+            return;
+        }
+
+        // The allocation event is the recovery posting's source document: its
+        // id keeps the posting idempotent for one (payment, invoice) settlement.
+        // applied_amount is the FULL settled amount (not just the recovered
+        // part) so a payment that also clears the open balance cannot be
+        // allocated again.
+        $application = \App\Models\PaymentApplication::firstOrCreate(
+            [
+                'payment_id' => $payment->id,
+                'invoice_id' => $invoice->id,
+            ],
+            [
+                'tenant_id' => $invoice->tenant_id
+                    ?? (function_exists('tenant') && tenant() ? tenant()->id : null),
+                'applied_amount' => round($settledAmount, 2),
+                'currency_code' => $invoice->currency_code ?? null,
+                'created_by' => TenantUserHelper::resolveTenantUserId(),
+            ]
+        );
+
+        if (\App\Models\JournalEntryLink::where('source_document_type', 'write_off_recovery')
+            ->where('source_document_id', $application->id)
+            ->whereNull('superseded_at')
+            ->exists()) {
+            return; // already recovered for this allocation
+        }
+
+        $byAccount = [];
+        $remaining = $amount;
+
+        foreach (InvoiceWriteOff::where('invoice_id', $invoice->id)->orderBy('id')->lockForUpdate()->get() as $record) {
+            if ($remaining <= 0) {
+                break;
+            }
+
+            $open = $record->openAmount();
+            if ($open <= 0) {
+                continue;
+            }
+
+            $take = min($open, $remaining);
+            $record->update(['recovered_amount' => round((float) $record->recovered_amount + $take, 2)]);
+            $byAccount[(int) $record->account_id] = round(($byAccount[(int) $record->account_id] ?? 0) + $take, 2);
+            $remaining = round($remaining - $take, 2);
+        }
+
+        $recovered = round($amount - $remaining, 2);
+        if ($recovered <= 0 || $byAccount === []) {
+            return;
+        }
+
+        [$lines, $foreign, $docCurrency, $baseCurrency, $rate] = $this->buildWriteOffLines(
+            invoice: $invoice,
+            documentAmountByAccount: $byAccount,
+            description: "Bad debt recovered - Invoice {$invoice->invoice_number}",
+        );
+
+        [$legalEntityId, $entityBookId] = $this->resolvePostingEntityBinding($invoice);
+
+        $result = $this->postingEngine->domainPosting(new DomainPostingRequest(
+            postingRequestId: DomainPostingRequest::generateRequestId(),
+            idempotencyKey: "payment-application:{$application->id}:write-off-recovery",
+            tenantId: (string) (function_exists('tenant') && tenant() ? tenant('id') : ''),
+            entityId: $legalEntityId !== null ? (string) $legalEntityId : '',
+            accountingBookId: $entityBookId !== null ? (string) $entityBookId : '',
+            sourceCapability: 'ACC-003',
+            sourceRecordType: 'write_off_recovery',
+            sourceRecordId: (string) $application->id,
+            sourceRecordVersion: 1,
+            postingProfileCode: 'AR_WRITE_OFF_RECOVERY',
+            transactionDate: now()->toDateString(),
+            postingDate: now()->toDateString(),
+            lines: $lines,
+            currencyCode: $foreign ? $docCurrency : null,
+            exchangeRate: $foreign ? $rate : null,
+            userId: TenantUserHelper::requireTenantUserId($payment->received_by),
+            ledgerDescription: "Bad debt recovered - Invoice {$invoice->invoice_number}",
+            reference: $invoice->invoice_number,
+        ));
+
+        if (! $result->success) {
+            throw new \RuntimeException($result->error);
+        }
+
+        $invoice->update([
+            'written_off_amount' => round((float) $invoice->written_off_amount - $recovered, 2),
+        ]);
     }
 
     /**
@@ -1540,8 +2492,14 @@ class InvoiceService
         ];
 
         $newPaid = max(0.0, round((float) $invoice->paid_amount - $amount, 2));
-        $newBalance = max(0.0, round((float) $invoice->total - $newPaid, 2));
+        // Issue #879 (SA6): the written-off portion stays settled — reversing
+        // an allocation must not resurrect it as an open balance.
+        $newBalance = max(0.0, round(
+            (float) $invoice->total - $newPaid - (float) $invoice->written_off_amount,
+            2
+        ));
         $newStatus = match (true) {
+            $newBalance <= 0 && (float) $invoice->written_off_amount > 0 => 'written_off',
             $newBalance <= 0 => 'paid',
             $newPaid > 0 => 'partial',
             default => 'sent',
@@ -1550,7 +2508,11 @@ class InvoiceService
         Invoice::where('id', $invoice->id)->update([
             'paid_amount' => $newPaid,
             'balance' => $newBalance,
-            'status' => $newStatus,
+        ]);
+
+        $this->syncInvoiceWorkflowStatus($invoice, $newStatus, [
+            'reason' => 'Payment allocation reversed',
+            'reversed_amount' => $amount,
         ]);
 
         $invoice->refresh();
@@ -1575,25 +2537,75 @@ class InvoiceService
         }
     }
 
+    /**
+     * #900 (PC6): settlement statuses (sent / partial / paid / overdue) are
+     * derived from the paid/credited amounts. The status write goes through the
+     * workflow engine's wildcard sync transitions so every status change is
+     * logged and audited; the amount columns keep their existing writes.
+     */
+    private function syncInvoiceWorkflowStatus(Invoice $invoice, string $status, array $context = []): void
+    {
+        $action = match ($status) {
+            'sent' => 'sync_sent',
+            'partial' => 'sync_partial',
+            'paid' => 'sync_paid',
+            'overdue' => 'sync_overdue',
+            // #879 (SA6): a fully written-off invoice's settlement state is
+            // 'written_off' — derived from the written_off_amount dimension.
+            'written_off' => 'sync_written_off',
+            default => throw new \InvalidArgumentException("No workflow sync action for invoice status '{$status}'."),
+        };
+
+        app(SalesWorkflowService::class)->transition($invoice, $action, $context);
+    }
+
     private function syncInvoicePaymentState(Invoice $invoice, float $paymentAmount, ?Payment $payment = null): void
     {
+        $invoice = $invoice->fresh() ?? $invoice;
+
         $beforeState = [
             'paid_amount' => $invoice->paid_amount,
             'balance' => $invoice->balance,
             'status' => $invoice->status,
         ];
 
+        // Issue #879 (SA6): a payment settling a written-off invoice first
+        // reinstates the receivable and reverses the bad-debt expense (DR AR /
+        // CR bad-debt) for the recovered portion — posted through the
+        // PostingEngine, never written directly.
+        if ($payment && (float) $invoice->written_off_amount > 0) {
+            $this->recoverWrittenOffAmount($invoice, $paymentAmount, $payment);
+            $invoice->refresh();
+        }
+
         Invoice::where('id', $invoice->id)
             ->increment('paid_amount', $paymentAmount);
 
         $invoice->refresh();
 
-        $newBalance = $invoice->total - $invoice->paid_amount;
+        // Issue #879 (SA6): a written-off amount settles the invoice exactly
+        // like cash does; excluding it here would resurrect a written-off
+        // balance the next time a payment is applied.
+        $newBalance = max(0.0, round(
+            (float) $invoice->total
+            - (float) $invoice->paid_amount
+            - (float) $invoice->written_off_amount,
+            2
+        ));
+
+        $stillWrittenOff = (float) $invoice->written_off_amount > 0;
 
         Invoice::where('id', $invoice->id)->update([
             'balance' => $newBalance,
-            'status' => $newBalance <= 0 ? 'paid' : ($invoice->paid_amount > 0 ? 'partial' : $invoice->status),
         ]);
+
+        $this->syncInvoiceWorkflowStatus(
+            $invoice,
+            $newBalance <= 0
+                ? ($stillWrittenOff ? 'written_off' : 'paid')
+                : ((float) $invoice->paid_amount > 0 ? 'partial' : $invoice->status),
+            ['reason' => 'Payment settled', 'payment_id' => $payment?->id],
+        );
 
         $invoice->refresh();
 

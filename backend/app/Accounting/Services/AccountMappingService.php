@@ -29,6 +29,9 @@ class AccountMappingService
         'accounts_payable' => '2100',
         'grni' => '2150',
         'sales_tax_payable' => '2200',
+        // Issue #882 (SA9): unearned revenue held until the service period
+        // has elapsed (released through the recognition job).
+        'deferred_revenue' => '2300',
         // MRD D8: output and input tax must not share one control account.
         'input_tax' => '2210',
         'input_tax_blocked' => '5210',
@@ -164,6 +167,7 @@ class AccountMappingService
         'accounts_payable' => 'liability',
         'grni' => 'liability',
         'sales_tax_payable' => 'liability',
+        'deferred_revenue' => 'liability',
         'input_tax' => 'asset',
         'input_tax_blocked' => 'expense',
         'wht_payable' => 'liability',

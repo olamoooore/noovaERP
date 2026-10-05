@@ -12,6 +12,11 @@ class QuotationLine extends Model
         'sequence',
         'quotation_id',
         'product_id',
+        // Issue #884 (UX2): optional line income account + analytic
+        // dimensions; they travel to the sales order and then the invoice.
+        'income_account_id',
+        'project_id',
+        'department_id',
         'model_number',
         'description',
         'product_notes',
@@ -61,6 +66,15 @@ class QuotationLine extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    /**
+     * Issue #884 (UX2): the line's own income account override, defaulted from
+     * the product at posting when null.
+     */
+    public function incomeAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartOfAccount::class, 'income_account_id');
     }
 
     /**

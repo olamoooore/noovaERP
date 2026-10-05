@@ -44,6 +44,8 @@ import {
   type PaymentCorrectionAction,
   type PaymentCorrectionOutcome,
 } from '@/components/payment/PaymentCorrectionDialog';
+import { EInvoiceStatusChip } from '../components/EInvoiceStatusChip';
+import { useEInvoiceDocument, useEInvoiceStatusMap } from '../components/useEInvoice';
 import { SortableHead } from '@/components/ui/SortableHead';
 import { useSort } from '@/hooks/useSort';
 
@@ -223,6 +225,15 @@ export const CustomerPayments: React.FC = () => {
 
   const paymentList = payments?.data || [];
   const { sorted: sortedPayments, sortKey, sortDir, toggle: toggleSort } = useSort<Payment>(paymentList, 'payment_date', 'desc');
+
+  // #825 (EINV-UX8): a refund record (the negative correction payment created
+  // when money is returned) carries a refund_note compliance document (#816) —
+  // show its LHDN status chip, like #670 does for invoices and credit notes.
+  const refundPaymentIds = paymentList
+    .filter((p) => p.correction_type === 'refund')
+    .map((p) => Number(p.id));
+  const refundNoteStatusMap = useEInvoiceStatusMap('refund_note', refundPaymentIds);
+
   const totalPages = payments?.last_page || 1;
   const totalRecords = payments?.total || 0;
   const paymentFilters = { search: debouncedSearchQuery || undefined, payment_status: statusFilter || undefined, method: methodFilter || undefined, customer_id: customerFilter || undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, invoice_id: invoiceIdParam || undefined };
@@ -656,7 +667,14 @@ export const CustomerPayments: React.FC = () => {
                             {payment.payment_number || `PAY-${payment.id}`}
                           </TableCell>
                           <TableCell>{formatDate(payment.payment_date)}</TableCell>
-                          <TableCell className="w-[1%] whitespace-nowrap">{getStatusBadge(payment.payment_status)}</TableCell>
+                          <TableCell className="w-[1%] whitespace-nowrap">
+                            {getStatusBadge(payment.payment_status)}
+                            {refundNoteStatusMap.get(Number(payment.id)) && (
+                              <div className="mt-1">
+                                <EInvoiceStatusChip status={refundNoteStatusMap.get(Number(payment.id))!.status} />
+                              </div>
+                            )}
+                          </TableCell>
                           <TableCell className="max-w-[9.5rem]">
                             <div className="break-words leading-snug" title={payment.customer?.name || undefined}>
                               {payment.customer?.name || '-'}
@@ -975,6 +993,9 @@ const ViewPaymentDialog: React.FC<{
 
   const detail: Payment | null = full ?? payment;
 
+  // #825 (EINV-UX8): a refund record shows its LHDN refund-note status.
+  const refundNote = useEInvoiceDocument('refund_note', detail.correction_type === 'refund' ? detail.id : undefined);
+
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="max-w-2xl">
@@ -1017,14 +1038,25 @@ const ViewPaymentDialog: React.FC<{
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Status</span>
-            {PAYMENT_STATUS_OPTIONS.find((s) => s.value === detail.payment_status) ? (
-              <Badge variant={PAYMENT_STATUS_OPTIONS.find((s) => s.value === detail.payment_status)?.variant || 'secondary'} className="gap-1">
-                <Icon icon={PAYMENT_STATUS_OPTIONS.find((s) => s.value === detail.payment_status)?.icon || 'solar:document-bold-duotone'} className="h-3 w-3" />
-                {PAYMENT_STATUS_OPTIONS.find((s) => s.value === detail.payment_status)?.label || detail.payment_status}
-              </Badge>
-            ) : (
-              <Badge variant="secondary">{detail.payment_status}</Badge>
-            )}
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {/* #825 (EINV-UX8): the refund note's LHDN status, when issued. */}
+              {detail.correction_type === 'refund' && refundNote.document && (
+                <EInvoiceStatusChip
+                  status={refundNote.status}
+                  uuid={refundNote.latestSubmission?.external_document_uuid}
+                  validationLink={refundNote.latestSubmission?.validation_link}
+                  reason={refundNote.latestSubmission?.rejection_reason ?? refundNote.latestSubmission?.error_message}
+                />
+              )}
+              {PAYMENT_STATUS_OPTIONS.find((s) => s.value === detail.payment_status) ? (
+                <Badge variant={PAYMENT_STATUS_OPTIONS.find((s) => s.value === detail.payment_status)?.variant || 'secondary'} className="gap-1">
+                  <Icon icon={PAYMENT_STATUS_OPTIONS.find((s) => s.value === detail.payment_status)?.icon || 'solar:document-bold-duotone'} className="h-3 w-3" />
+                  {PAYMENT_STATUS_OPTIONS.find((s) => s.value === detail.payment_status)?.label || detail.payment_status}
+                </Badge>
+              ) : (
+                <Badge variant="secondary">{detail.payment_status}</Badge>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4 border-t pt-4">

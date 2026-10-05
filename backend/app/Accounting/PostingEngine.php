@@ -1270,6 +1270,12 @@ class PostingEngine implements PostingEngineInterface
             // Issue #106: manual stock adjustments route here; the actor holds
             // the inventory operation permission, the GL entry is a consequence.
             'stock_adjustment' => 'inventory.write',
+            // Issue #879 (SA6): a bad-debt write-off releases a receivable to
+            // the P&L — an accounting write, like the invoice post/cancel/
+            // credit release actions. Its recovery is the ledger consequence
+            // of settling that invoice.
+            'invoice_write_off' => 'accounting.write',
+            'write_off_recovery' => 'accounting.write',
             // Issue #105: goods receipt recognition is an inventory operation.
             'goods_receipt' => 'inventory.write',
             'reversal' => 'accounting.reverse',
@@ -1279,6 +1285,10 @@ class PostingEngine implements PostingEngineInterface
             'opening_balance', 'period_close', 'bank_adjustment',
             'fx_revaluation', 'intercompany', 'asset_disposal',
             'payroll_run', 'payroll_payment' => 'accounting.write',
+            // Issue #882 (SA9): the monthly deferred-revenue recognition job
+            // releases unearned revenue to income — an accountant-owned
+            // ledger operation.
+            'deferred_revenue_recognition' => 'accounting.write',
             // Retail / ecommerce sales posting — coarse module permission held
             // by the actors who create these documents (module-level RBAC aligned).
             'pos_order', 'pos_refund_payment' => 'pos.create',
