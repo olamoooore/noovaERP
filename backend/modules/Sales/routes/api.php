@@ -31,6 +31,9 @@ Route::middleware([
         Route::middleware(\App\Http\Middleware\RequirePermission::class.':sales.write')->group(function () {
             Route::post('/sales/orders/{id}/confirm', [SalesOrderController::class, 'confirm']);
             Route::post('/sales/orders/{id}/allocate', [SalesOrderController::class, 'allocate']);
+            // Issue #407: lock/unlock a confirmed order (Odoo parity).
+            Route::post('/sales/orders/{id}/lock', [SalesOrderController::class, 'lock']);
+            Route::post('/sales/orders/{id}/unlock', [SalesOrderController::class, 'unlock']);
             Route::post('/sales/orders/{id}/cancel', [SalesOrderController::class, 'cancel']);
             Route::post('/sales/orders/{id}/reset-to-draft', [SalesOrderController::class, 'resetToDraft'])
                 ->middleware(\App\Http\Middleware\RequirePermission::using('documents.reset_to_draft'));

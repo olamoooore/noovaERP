@@ -31,6 +31,11 @@ class SalesOrder extends Model
         'legal_entity_id',
         'channel',
         'status',
+        // Issue #407: a confirmed order can be locked against amendments and
+        // unlocked to amend it again.
+        'is_locked',
+        'locked_at',
+        'locked_by',
         'accounting_status',
         'source_document_type',
         'source_document_id',
@@ -114,6 +119,9 @@ class SalesOrder extends Model
         'shipping_address_snapshot' => 'array',
         // Issue #896: optimistic-concurrency token.
         'lock_version' => 'integer',
+        // Issue #407: lock state of a confirmed order.
+        'is_locked' => 'boolean',
+        'locked_at' => 'datetime',
     ];
 
     protected static function boot()
@@ -229,6 +237,21 @@ class SalesOrder extends Model
     public function deliveryOrders()
     {
         return $this->hasMany(DeliveryOrder::class);
+    }
+
+    /**
+     * Issue #407: an order is locked when a user (or the tenant's
+     * auto-lock-on-confirm option) explicitly locked it after confirmation.
+     * Drafts are never lockable (see SalesOrderService::lockOrder).
+     */
+    public function isLocked(): bool
+    {
+        return (bool) ($this->is_locked ?? false);
+    }
+
+    public function lockedBy(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\User::class, 'locked_by');
     }
 
     public function isDraft(): bool

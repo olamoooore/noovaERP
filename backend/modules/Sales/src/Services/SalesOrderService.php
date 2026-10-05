@@ -18,6 +18,13 @@ use Modules\Sales\Models\SalesOrderStatusHistory;
 
 class SalesOrderService
 {
+    /**
+     * Issue #407: tenant option — when enabled, confirming an order locks it
+     * immediately. Off by default so existing tenants keep the amendable
+     * confirmation behaviour until they opt in.
+     */
+    public const AUTO_LOCK_ON_CONFIRM_SETTING = 'sales.orders.auto_lock_on_confirm';
+
     public function __construct(
         private OrderLifecycleService $lifecycleService,
         private InvoiceService $invoiceService,
@@ -329,6 +336,12 @@ class SalesOrderService
             // Reserve stock for stock-tracked lines that have a warehouse
             $this->reserveStockForOrder($order);
 
+            // Issue #407: tenant option — lock the order as part of
+            // confirmation. Audited with metadata.auto = true.
+            if (self::autoLockOnConfirmEnabled()) {
+                $order = $this->lockOrder($order, true);
+            }
+
             // #377 (O8): log BEFORE returning — this call used to sit after
             // the return inside the closure and never ran, so confirmed orders
             // had no chatter entry.
@@ -337,6 +350,249 @@ class SalesOrderService
             return $order->fresh(['customer', 'lines.product', 'statusHistory']);
 
         });
+    }
+
+    /**
+     * Issue #407: is the tenant's auto-lock-on-confirm option enabled?
+     */
+    public static function autoLockOnConfirmEnabled(): bool
+    {
+        return (bool) \App\Models\Setting::getValue(self::AUTO_LOCK_ON_CONFIRM_SETTING, false);
+    }
+
+    /**
+     * Issue #407: lock a confirmed order against amendments. `$auto` records
+     * that the tenant option applied it during confirmation (surfaced in the
+     * audit metadata); a user-initiated lock passes false.
+     */
+    public function lockOrder(SalesOrder $order, bool $auto = false): SalesOrder
+    {
+        if (! $order->isConfirmed()) {
+            throw new \RuntimeException('Only confirmed orders can be locked.');
+        }
+
+        if ($order->isLocked()) {
+            throw new \RuntimeException('This sales order is already locked.');
+        }
+
+        return $this->setLockState($order, true, $auto);
+    }
+
+    /**
+     * Issue #407: unlock an order so its header/lines can be amended again.
+     */
+    public function unlockOrder(SalesOrder $order): SalesOrder
+    {
+        if (! $order->isLocked()) {
+            throw new \RuntimeException('This sales order is not locked.');
+        }
+
+        return $this->setLockState($order, false, false);
+    }
+
+    private function setLockState(SalesOrder $order, bool $locked, bool $auto): SalesOrder
+    {
+        return DB::transaction(function () use ($order, $locked, $auto) {
+            $beforeState = ['is_locked' => $order->isLocked()];
+
+            $order->forceFill([
+                'is_locked' => $locked,
+                'locked_at' => $locked ? now() : null,
+                'locked_by' => $locked ? TenantUserHelper::resolveTenantUserId() : null,
+            ])->save();
+
+            $this->writeAuditLog(
+                $locked ? 'sales_order_locked' : 'sales_order_unlocked',
+                (int) $order->id,
+                $beforeState,
+                ['is_locked' => $locked],
+                [
+                    'sales_order_number' => $order->sales_order_number,
+                    'auto' => $auto,
+                ],
+            );
+
+            $this->logChatter(
+                $order,
+                $locked ? 'locked' : 'unlocked',
+                $locked
+                    ? "Locked sales order {$order->sales_order_number}"
+                    : "Unlocked sales order {$order->sales_order_number}",
+                ['auto' => $auto],
+            );
+
+            return $order->fresh(['customer', 'lines.product', 'statusHistory']);
+        });
+    }
+
+    /**
+     * Issue #407: apply an amendment to an unlocked confirmed order. Lines
+     * with an `id` are updated in place (delivered/invoiced quantities are
+     * preserved — only the ordered quantity and the descriptive/pricing fields
+     * change); lines without an `id` are added. The delivery and invoice
+     * remainders follow automatically because both read the ordered quantity
+     * from the line.
+     *
+     * @param  array<int, array<string, mixed>>  $lines
+     * @return SalesOrderLine[] the lines created by this amendment
+     */
+    public function amendOrderLines(SalesOrder $order, array $lines): array
+    {
+        $order->loadMissing('lines');
+
+        $created = [];
+        $nextSequence = (int) $order->lines->max('sequence') + 1;
+
+        foreach ($lines as $lineData) {
+            $lineData = (array) $lineData;
+            $lineId = isset($lineData['id']) ? (int) $lineData['id'] : null;
+
+            if ($lineId !== null) {
+                $line = $order->lines->firstWhere('id', $lineId);
+
+                if ($line === null) {
+                    throw new \RuntimeException("Sales order line {$lineId} does not belong to this order.");
+                }
+
+                $this->applyLineAmendment($line, $lineData);
+
+                continue;
+            }
+
+            $line = $order->lines()->create($this->amendmentLineAttributes(
+                $order,
+                $lineData,
+                array_key_exists('sequence', $lineData) ? (int) $lineData['sequence'] : $nextSequence++,
+            ));
+            $line->calculateLineTotal();
+            $line->save();
+
+            $created[] = $line;
+        }
+
+        // A new stock-tracked line joins the order's reservations the same way
+        // confirmation does, through the shared reservation service.
+        if ($created !== []) {
+            $this->reserveStockForLines($order, $created);
+        }
+
+        return $created;
+    }
+
+    /**
+     * Update one existing order line in place. Reducing the ordered quantity
+     * below what was already delivered/invoiced is refused — an amendment must
+     * not turn a delivered line into an over-delivery.
+     */
+    private function applyLineAmendment(SalesOrderLine $line, array $lineData): void
+    {
+        if (
+            array_key_exists('product_id', $lineData)
+            && (int) $lineData['product_id'] !== (int) $line->product_id
+            && ((float) $line->quantity_delivered > 0.0001 || (float) $line->quantity_invoiced > 0.0001)
+        ) {
+            throw new \RuntimeException(
+                "Line #{$line->id} already has delivered or invoiced quantity and its product cannot change."
+            );
+        }
+
+        if (array_key_exists('quantity', $lineData)) {
+            $newQuantity = (float) $lineData['quantity'];
+            $committed = max((float) $line->quantity_delivered, (float) $line->quantity_invoiced);
+
+            if ($newQuantity + 0.0001 < $committed) {
+                throw new \RuntimeException(
+                    "Line #{$line->id} cannot be reduced to {$newQuantity} — {$committed} units are already delivered or invoiced."
+                );
+            }
+        }
+
+        $updates = array_intersect_key($lineData, array_flip([
+            'line_type', 'sequence', 'product_id', 'variant_id', 'description',
+            'product_notes', 'sku', 'model_number', 'quantity', 'unit', 'uom_id',
+            'unit_price', 'discount_type', 'discount_value', 'discount_amount',
+            'tax_rate', 'tax_inclusive', 'income_account_id', 'invoicing_policy',
+        ]));
+
+        if ($updates === []) {
+            return;
+        }
+
+        $line->fill($updates);
+        $line->calculateLineTotal();
+        $line->save();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function amendmentLineAttributes(SalesOrder $order, array $lineData, int $sequence): array
+    {
+        $lineType = $lineData['line_type'] ?? 'product';
+        $product = ($lineType === 'product' && ! empty($lineData['product_id']))
+            ? \App\Models\Product::find($lineData['product_id'])
+            : null;
+
+        if (trim((string) ($lineData['description'] ?? '')) === '') {
+            throw new \RuntimeException('A description is required for a new sales order line.');
+        }
+
+        return [
+            'legal_entity_id' => $order->legal_entity_id,
+            'line_type' => $lineType,
+            'sequence' => $sequence,
+            'product_id' => $lineData['product_id'] ?? null,
+            'model_number' => $lineData['model_number'] ?? null,
+            'product_notes' => $lineData['product_notes'] ?? null,
+            'variant_id' => $lineData['variant_id'] ?? null,
+            'description' => $lineData['description'] ?? '',
+            'sku' => $lineData['sku'] ?? $product?->sku,
+            'quantity' => $lineData['quantity'] ?? ($lineType === 'product' ? 1 : 0),
+            'unit' => $lineData['unit'] ?? $product?->unit ?? 'pcs',
+            'uom_id' => $lineData['uom_id'] ?? null,
+            'unit_price' => $lineData['unit_price'] ?? 0,
+            'discount_type' => $lineData['discount_type'] ?? 'percentage',
+            'discount_value' => $lineData['discount_value'] ?? 0,
+            'discount_amount' => $lineData['discount_amount'] ?? 0,
+            'tax_rate' => $lineData['tax_rate'] ?? 0,
+            // #303 (X3): an explicit flag wins; otherwise the engine resolves
+            // it from the product exactly like the create path.
+            'tax_inclusive' => array_key_exists('tax_inclusive', $lineData)
+                ? (bool) $lineData['tax_inclusive']
+                : ($product !== null
+                    && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct(
+                        $product,
+                        null,
+                        $order->order_date?->toDateString(),
+                    )),
+            'income_account_id' => $lineData['income_account_id'] ?? null,
+            'invoicing_policy' => $lineData['invoicing_policy'] ?? 'ordered_qty',
+            'backorder_quantity' => 0,
+        ];
+    }
+
+    /**
+     * Issue #895 (SALES-PLAT / PC1): append a tamper-evident audit row for a
+     * sales-order lifecycle transition. Deliberately uncaught — an audit
+     * failure surfaces as an error instead of silently succeeding.
+     */
+    public function writeAuditLog(
+        string $operation,
+        int $orderId,
+        ?array $beforeState = null,
+        ?array $afterState = null,
+        array $metadata = [],
+    ): void {
+        app(\App\Services\AuditLogger::class)->log(
+            operation: $operation,
+            referenceType: 'sales_order',
+            referenceId: $orderId,
+            beforeState: $beforeState,
+            afterState: $afterState,
+            metadata: $metadata + [
+                'request_id' => request()?->header(\App\Http\Middleware\CorrelationIdMiddleware::HEADER),
+            ],
+        );
     }
 
     public function allocateOrder(SalesOrder $order): SalesOrder
@@ -1242,13 +1498,26 @@ class SalesOrderService
     {
         $order->loadMissing('lines.product');
 
+        $this->reserveStockForLines($order, $order->lines);
+    }
+
+    /**
+     * Issue #407: reserve stock for a set of lines (all lines at confirmation,
+     * only the newly added ones for an amendment). Insufficient stock does NOT
+     * abort the caller — the line is left unreserved and flagged as a
+     * backorder, exactly like confirmation (#379).
+     *
+     * @param  iterable<\Modules\Sales\Models\SalesOrderLine>  $lines
+     */
+    private function reserveStockForLines(SalesOrder $order, iterable $lines): void
+    {
         if (! $order->warehouse_id) {
             return;
         }
 
         $warehouseId = (int) $order->warehouse_id;
 
-        foreach ($order->lines as $line) {
+        foreach ($lines as $line) {
             if (! $line->product_id) {
                 continue;
             }
