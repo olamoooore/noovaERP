@@ -610,6 +610,25 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             ->middleware(RequirePermission::using('documents.currency.change'));
     });
 
+    // Issue #607 (RPT-F1): Sales-side customer statement surface. Deliberately
+    // OUTSIDE the accounting-write group and gated by the existing
+    // customers.view permission (NOT reports.view, which SALES lacks), so a
+    // sales user can generate and send account statements. Every action
+    // delegates to CustomerStatementDeliveryService / CustomerStatementService
+    // — the batch endpoints are wrappers over the same generate path, never a
+    // second implementation. Entity scoping inside the services.
+    Route::prefix('accounting')->middleware([ResolveEntityContext::class, EnsureEntityAccess::class])->group(function () {
+        Route::post('/customer-statements/send', [CustomerStatementController::class, 'send'])
+            ->middleware(RequirePermission::using('customers.view'));
+        Route::post('/customer-statements/batch/preview', [CustomerStatementController::class, 'batchPreview'])
+            ->middleware(RequirePermission::using('customers.view'));
+        Route::post('/customer-statements/batch', [CustomerStatementController::class, 'batchSend'])
+            ->middleware(RequirePermission::using('customers.view'));
+        Route::get('/customer-statements/batches/{batch}', [CustomerStatementController::class, 'batchStatus'])
+            ->whereNumber('batch')
+            ->middleware(RequirePermission::using('customers.view'));
+    });
+
     // Accounting
     Route::prefix('accounting')->middleware([ResolveEntityContext::class, EnsureEntityAccess::class, EnsureAccountingWriteAccess::class])->group(function () {
         // Dashboard

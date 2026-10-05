@@ -3,15 +3,17 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Mail\CustomerStatementMail;
+use App\Jobs\GenerateCustomerStatementBatchJob;
 use App\Models\Customer;
 use App\Models\CustomerStatement;
+use App\Models\CustomerStatementBatch;
+use App\Services\CustomerStatementBatchService;
+use App\Services\CustomerStatementDeliveryService;
 use App\Services\CustomerStatementService;
+use App\Services\EntityAccessService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Modules\TemplateBuilder\Contracts\PdfGenerationServiceContract;
 
@@ -19,6 +21,8 @@ class CustomerStatementController extends Controller
 {
     public function __construct(
         private readonly CustomerStatementService $statementService,
+        private readonly CustomerStatementDeliveryService $deliveryService,
+        private readonly CustomerStatementBatchService $batchService,
     ) {}
 
     /**
@@ -34,6 +38,11 @@ class CustomerStatementController extends Controller
             'as_of' => 'nullable|date',
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
+            // Issue #607: the Sales preview can exclude fully settled
+            // invoices; the accounting screen keeps the historical default
+            // (range statements show settled documents with their
+            // settlements).
+            'include_paid' => 'nullable|boolean',
             // pdf (default) renders the statement; json exposes the same
             // canonical payload so the SPA can build Excel/Word exports
             // client-side without a second data assembly path.
@@ -55,40 +64,16 @@ class CustomerStatementController extends Controller
         // because a statement for March must show March's invoice AND the
         // March receipt that settled it. As-of statements stay an
         // outstanding-only snapshot.
-        $payload = $startDate !== null
-            ? $this->statementService->buildRangePayload(
-                $customer,
-                $startDate,
-                $asOf,
-                includePaid: true,
-                periodType: 'custom',
-            )
-            : $this->statementService->buildAsOfPayload($customer, $asOf);
-
-        // Save a CustomerStatement record (required by template builder's DataSource)
-        $statement = CustomerStatement::create([
-            'customer_id' => $customer->id,
-            'start_date' => $startDate?->toDateString(),
-            'end_date' => $asOf->toDateString(),
-            'period_type' => $startDate ? 'custom' : 'as_of',
-            'include_paid' => (bool) ($payload['include_paid'] ?? false),
-            'payload' => $payload,
-            'generated_by' => Auth::id(),
-        ]);
-
-        // Issue #632 (CH4): the statement is persisted before rendering, so
-        // the generation step leaves a chatter trail even when the caller only
-        // asks for the JSON payload (the SPA's export path).
-        $this->logStatementChatter(
-            $statement,
-            'generated',
-            "Generated statement of account for {$customer->name}",
-            [
-                'period_type' => $statement->period_type,
-                'start_date' => optional($statement->start_date)->toDateString(),
-                'end_date' => optional($statement->end_date)->toDateString(),
-            ],
+        $statement = $this->deliveryService->generate(
+            $customer,
+            $startDate,
+            $asOf,
+            includePaid: (bool) ($validated['include_paid'] ?? true),
+            periodType: $startDate !== null ? 'custom' : null,
+            generatedBy: Auth::id(),
         );
+
+        $payload = $statement->payload;
 
         $filenameBase = sprintf('SOA_%s_%s', $customer->code ?? 'UNKNOWN', $asOf->format('Ymd'));
 
@@ -108,12 +93,7 @@ class CustomerStatementController extends Controller
         // Issue #618: an explicit template selection from the shared print/send
         // menu is forwarded so "Choose template" actually renders that template
         // (the menu's Preview/Print pass the resolver's pick the same way).
-        $pdfService = app(PdfGenerationServiceContract::class);
-        $result = $pdfService->render('customer_statement', (string) $statement->id, [
-            'format' => 'pdf',
-            'template_id' => $request->input('template'),
-        ]);
-        $bytes = $result['bytes'];
+        $bytes = $this->deliveryService->renderPdf($statement, $request->input('template'));
 
         $filename = $filenameBase.'.pdf';
 
@@ -139,60 +119,154 @@ class CustomerStatementController extends Controller
 
         $customer = Customer::findOrFail($customerId);
 
-        $payload = $this->statementService->buildRangePayload(
+        $statement = $this->deliveryService->generate(
             $customer,
             Carbon::parse($validated['start_date']),
             Carbon::parse($validated['end_date']),
             (bool) ($validated['include_paid'] ?? false),
             $validated['period_type'] ?? 'custom',
+            Auth::id(),
         );
 
-        $statement = CustomerStatement::create([
-            'customer_id' => $customer->id,
-            'start_date' => $validated['start_date'],
-            'end_date' => $validated['end_date'],
-            'period_type' => $validated['period_type'] ?? 'custom',
-            'include_paid' => (bool) ($validated['include_paid'] ?? false),
-            'payload' => $payload,
-            'generated_by' => Auth::id(),
-        ]);
-
-        $pdfRelativePath = $this->storeStatementPdf($statement);
-        $statement->forceFill([
-            'pdf_path' => $pdfRelativePath,
-        ])->save();
-
-        // Issue #632 (CH4): the generation step must leave a chatter trail on
-        // the persisted CustomerStatement record.
-        $this->logStatementChatter(
-            $statement,
-            'generated',
-            "Generated statement of account for {$customer->name}",
-            [
-                'period_type' => $statement->period_type,
-                'start_date' => optional($statement->start_date)->toDateString(),
-                'end_date' => optional($statement->end_date)->toDateString(),
-            ],
-        );
+        $this->deliveryService->storePdf($statement);
 
         if (! empty($validated['send_email']) && ! empty($customer->email)) {
-            Mail::to($customer->email)->send(new CustomerStatementMail($statement->fresh()));
-            $statement->forceFill([
-                'email_sent' => true,
-                'email_sent_at' => now(),
-                'recipient_email' => $customer->email,
-            ])->save();
-
-            // Issue #632 (CH4): the send step is part of the same trail.
-            $this->logStatementChatter(
+            $this->deliveryService->deliver(
                 $statement,
-                'sent',
-                "Sent statement of account to {$customer->email}",
-                ['recipient_email' => $customer->email],
+                \App\Models\CustomerStatementDelivery::CHANNEL_EMAIL,
+                $customer->email,
+                null,
+                Auth::id(),
             );
         }
 
         return response()->json($this->formatStatementResponse($statement->fresh(['customer', 'generatedBy'])));
+    }
+
+    /**
+     * Issue #607 (RPT-F1): single generate-and-send from the Sales statements
+     * tab. Gated by customers.view (not the accounting-write group) so SALES
+     * can send a statement; generation and rendering reuse
+     * CustomerStatementDeliveryService, never a second implementation.
+     *
+     * POST /accounting/customer-statements/send
+     */
+    public function send(Request $request)
+    {
+        $validated = $request->validate([
+            'customer_id' => 'required|integer',
+            'start_date' => 'nullable|date|required_with:end_date',
+            'end_date' => 'nullable|date|after_or_equal:start_date|required_with:start_date',
+            'as_of' => 'nullable|date',
+            'include_paid' => 'nullable|boolean',
+            'period_type' => 'nullable|string|in:monthly,quarterly,yearly,custom',
+            'channel' => 'required|string|in:email,whatsapp',
+        ]);
+
+        $customer = $this->scopedCustomerQuery($request)->find($validated['customer_id']);
+
+        if (! $customer) {
+            return response()->json(['message' => 'Customer not found'], 404);
+        }
+
+        $start = isset($validated['start_date']) ? Carbon::parse($validated['start_date']) : null;
+        $end = $start !== null
+            ? Carbon::parse($validated['end_date'])
+            : Carbon::parse($validated['as_of'] ?? now());
+
+        $statement = $this->deliveryService->generate(
+            $customer,
+            $start,
+            $end,
+            (bool) ($validated['include_paid'] ?? false),
+            $validated['period_type'] ?? null,
+            Auth::id(),
+        );
+
+        $this->deliveryService->storePdf($statement);
+
+        try {
+            $this->deliveryService->deliver(
+                $statement,
+                $validated['channel'],
+                null,
+                null,
+                Auth::id(),
+            );
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json($this->formatStatementResponse($statement->fresh(['customer', 'generatedBy'])));
+    }
+
+    /**
+     * Issue #607: preview the batch list (customer, closing balance, overdue)
+     * from the same canonical payload the batch job will generate.
+     *
+     * POST /accounting/customer-statements/batch/preview
+     */
+    public function batchPreview(Request $request)
+    {
+        $filters = $this->validateBatchFilters($request);
+
+        return response()->json(
+            $this->batchService->preview((int) $request->user()->id, $filters)
+        );
+    }
+
+    /**
+     * Issue #607: queue a batch generate-and-send run. One statement (and one
+     * sent PDF) per matching customer, with progress on the batch row.
+     *
+     * POST /accounting/customer-statements/batch
+     */
+    public function batchSend(Request $request)
+    {
+        $filters = $this->validateBatchFilters($request);
+
+        $options = $request->validate([
+            'channel' => 'nullable|string|in:email,whatsapp,none',
+            'include_paid' => 'nullable|boolean',
+            'start_date' => 'nullable|date|required_with:end_date',
+            'end_date' => 'nullable|date|after_or_equal:start_date|required_with:start_date',
+            'period_type' => 'nullable|string|in:monthly,quarterly,yearly,custom',
+        ]);
+
+        $options['channel'] = $options['channel'] ?? \App\Models\CustomerStatementDelivery::CHANNEL_EMAIL;
+        $options['include_paid'] = (bool) ($options['include_paid'] ?? false);
+
+        $batch = CustomerStatementBatch::create([
+            'status' => CustomerStatementBatch::STATUS_QUEUED,
+            'filters' => $filters,
+            'options' => $options,
+            'created_by' => $request->user()->id,
+        ]);
+
+        GenerateCustomerStatementBatchJob::dispatch(
+            $batch->id,
+            (string) tenant('id'),
+            $filters,
+            $options,
+            (int) $request->user()->id,
+        );
+
+        return response()->json([
+            'message' => 'Statement batch queued',
+            'data' => $this->formatBatchResponse($batch->fresh()),
+        ], 202);
+    }
+
+    /**
+     * Issue #607: batch progress.
+     *
+     * GET /accounting/customer-statements/batches/{batch}
+     */
+    public function batchStatus($batch)
+    {
+        $batch = CustomerStatementBatch::findOrFail($batch);
+
+        return response()->json(['data' => $this->formatBatchResponse($batch)]);
     }
 
     public function history(Request $request)
@@ -380,68 +454,75 @@ class CustomerStatementController extends Controller
             'generated_by' => Auth::id(),
         ]);
 
-        $result = app(PdfGenerationServiceContract::class)->render(
+        $bytes = app(PdfGenerationServiceContract::class)->render(
             'customer_statement',
             (string) $statement->id,
             ['format' => 'pdf'],
-        );
+        )['bytes'];
 
         $filename = sprintf('SOA_Compare_%s_%s.pdf', $customer->code ?? 'UNKNOWN', now()->format('Ymd'));
 
-        return response($result['bytes'], 200, [
+        return response($bytes, 200, [
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => 'inline; filename="'.$filename.'"',
         ]);
     }
 
     /**
-     * Render and persist the statement PDF through the template platform.
-     * The previous implementation rendered the accounting.customer-statement-pdf
-     * Blade directly, bypassing the tenant's assigned template (issue #616).
+     * @return array<string, mixed>
      */
-    protected function storeStatementPdf(CustomerStatement $statement): string
+    private function validateBatchFilters(Request $request): array
     {
-        $result = app(PdfGenerationServiceContract::class)->render(
-            'customer_statement',
-            (string) $statement->id,
-            ['format' => 'pdf'],
-        );
-
-        $relativePath = sprintf('customer-statements/customer-%d/statement-%d.pdf', $statement->customer_id, $statement->id);
-        Storage::disk('public')->put($relativePath, $result['bytes']);
-
-        return $relativePath;
+        return $request->validate([
+            'with_balance' => 'nullable|boolean',
+            'salesperson_id' => 'nullable|integer',
+            'legal_entity_id' => 'nullable|integer',
+            'overdue_days' => 'nullable|integer|min:0',
+            'customer_group' => 'nullable|string|max:100',
+            'customer_ids' => 'nullable|array',
+            'customer_ids.*' => 'integer',
+            'as_of' => 'nullable|date',
+        ]);
     }
 
     /**
-     * Issue #632 (CH4): mirror a statement's generate/send step into the
-     * shared chatter History feed. Chatter failures must never break statement
-     * delivery (the shared ChatterService logs its own errors; this is the
-     * same guard the invoice and quotation controllers use).
+     * Issue #607: entity-scope the single-customer actions (same pattern as
+     * SalesOrderController::applyEntityScope — granted entities only; no
+     * grants keeps the historical unscoped view).
      */
-    private function logStatementChatter(
-        CustomerStatement $statement,
-        string $event,
-        string $description,
-        array $properties = [],
-    ): void {
-        try {
-            app(\App\Services\Chatter\ChatterService::class)->logEvent(
-                CustomerStatement::class,
-                (int) $statement->id,
-                $event,
-                $description,
-                $properties,
-                Auth::id(),
-                Auth::check() ? get_class(Auth::user()) : null,
-            );
-        } catch (\Throwable $e) {
-            Log::warning('CustomerStatementController: chatter mirror failed', [
-                'statement_id' => $statement->id,
-                'event' => $event,
-                'error' => $e->getMessage(),
-            ]);
+    private function scopedCustomerQuery(Request $request)
+    {
+        $query = Customer::query();
+
+        $userId = (int) ($request->user()?->id ?? 0);
+        $entityIds = app(EntityAccessService::class)->accessibleEntityIds($userId);
+
+        if ($entityIds !== []) {
+            $query->whereIn('legal_entity_id', $entityIds);
         }
+
+        return $query;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function formatBatchResponse(CustomerStatementBatch $batch): array
+    {
+        return [
+            'id' => $batch->id,
+            'status' => $batch->status,
+            'total_customers' => (int) $batch->total_customers,
+            'processed_customers' => (int) $batch->processed_customers,
+            'generated_count' => (int) $batch->generated_count,
+            'sent_count' => (int) $batch->sent_count,
+            'failed_count' => (int) $batch->failed_count,
+            'channel' => $batch->options['channel'] ?? null,
+            'include_paid' => (bool) ($batch->options['include_paid'] ?? false),
+            'started_at' => optional($batch->started_at)->toISOString(),
+            'completed_at' => optional($batch->completed_at)->toISOString(),
+            'created_at' => optional($batch->created_at)->toISOString(),
+        ];
     }
 
     protected function formatStatementResponse(CustomerStatement $statement, bool $includePayload = false): array
