@@ -403,6 +403,8 @@ export function QuotationDetailPage() {
       sent: 'bg-blue-100 text-blue-800',
       confirmed: 'bg-green-100 text-green-800',
       cancelled: 'bg-red-100 text-red-800',
+      // Issue #335 (Q6): past-due, set by the daily expiry command.
+      expired: 'bg-amber-100 text-amber-800',
     }
     return styles[status] || 'bg-gray-100 text-gray-800'
   }
@@ -453,6 +455,16 @@ export function QuotationDetailPage() {
               {quotation.is_late && (
                 <Badge variant="destructive" className="shrink-0" title="Commitment date has passed and the quotation is not converted">
                   Late
+                </Badge>
+              )}
+              {/* Issue #335 (Q6): past-due validity — confirm/convert is refused until re-validated. */}
+              {quotation.is_expired && quotation.status !== 'expired' && (
+                <Badge
+                  variant="destructive"
+                  className="shrink-0"
+                  title="Valid-until date has passed — confirm/convert is refused until re-validated"
+                >
+                  Expired
                 </Badge>
               )}
             </div>
@@ -511,7 +523,9 @@ export function QuotationDetailPage() {
               Confirm
             </HeaderActionButton>
           )}
-          {quotation.status === 'draft' && (
+          {/* Issue #335 (Q6): an expired quotation is re-validated by editing
+              its valid-until date back into the future. */}
+          {['draft', 'expired'].includes(quotation.status) && (
             <HeaderActionButton
               variant="outline"
               icon="solar:pen-bold-duotone"

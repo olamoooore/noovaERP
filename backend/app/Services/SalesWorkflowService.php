@@ -279,7 +279,34 @@ class SalesWorkflowService
                     return null;
                 },
             ],
-        ], 'Customer quotation: draft → sent → confirmed/cancelled.');
+            // Issue #335 (Q6): validity expiry. System-scheduled (no
+            // permission — the daily `quotations:expire` command runs with no
+            // actor); deliberately NOT allowed from confirmed/cancelled, and
+            // never with a handler that touches downstream documents.
+            [
+                'from' => 'draft',
+                'to' => 'expired',
+                'action' => 'expire',
+                'label' => 'Expire quotation',
+            ],
+            [
+                'from' => 'sent',
+                'to' => 'expired',
+                'action' => 'expire',
+                'label' => 'Expire quotation',
+            ],
+            // Issue #335 (Q6): re-validation — editing a command-expired
+            // quotation's valid_until back to a future date returns it to
+            // draft so it can be sent/confirmed again. Audited like every
+            // other transition.
+            [
+                'from' => 'expired',
+                'to' => 'draft',
+                'action' => 'revalidate',
+                'label' => 'Re-validate quotation',
+                'permission' => 'quotations.write',
+            ],
+        ], 'Customer quotation: draft → sent → confirmed/cancelled; past-due validity → expired.');
     }
 
     private function registerSalesOrderSchema(): void

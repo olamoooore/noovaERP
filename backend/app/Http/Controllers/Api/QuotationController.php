@@ -18,6 +18,7 @@ use App\Services\DocumentWideSearchService;
 use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
 use App\Services\QuotationConfirmationService;
+use App\Services\QuotationExpiryGuard;
 use App\Services\QuotationReleaseService;
 use App\Services\QuotationSendService;
 use App\Services\SalesApprovalGate;
@@ -534,7 +535,11 @@ class QuotationController extends Controller
             return response()->json(['message' => 'Quotation not found'], 404);
         }
 
-        if ($quotation->status !== 'draft') {
+        // Issue #335 (Q6): draft quotations are editable, and a quotation the
+        // expiry job marked `expired` is editable too — that is the
+        // re-validation path (extend `valid_until`; the transaction below then
+        // returns it to draft through the workflow engine).
+        if (! in_array($quotation->status, ['draft', 'expired'], true)) {
             return response()->json(['message' => 'Only draft quotations can be edited'], 403);
         }
 
@@ -695,6 +700,19 @@ class QuotationController extends Controller
                 $quotation->refresh();
                 $quotation->calculateTotals();
 
+                // Issue #335 (Q6): a command-expired quotation whose validity
+                // date has been moved forward (or cleared) is re-validated:
+                // the status returns to draft through the workflow engine so
+                // it can be sent/confirmed again. The write is engine-owned
+                // and audited like every other transition.
+                if ($quotation->status === 'expired' && ! $quotation->isExpired()) {
+                    app(\App\Services\SalesWorkflowService::class)->transition(
+                        $quotation,
+                        'revalidate',
+                        ['valid_until' => $quotation->valid_until?->toDateString()],
+                    );
+                }
+
                 // Issue #896: the write succeeded — advance the concurrency token.
                 $this->versionGuard->advance($quotation);
             });
@@ -805,6 +823,13 @@ class QuotationController extends Controller
             return response()->json(['message' => 'Quotation not found'], 404);
         }
 
+        // Issue #335 (Q6): a past-due quotation is refused with the expiry
+        // reason (422) before the status gate, so an `expired` quotation gets
+        // the actionable "re-validate" message instead of a bare 403.
+        if ($message = app(QuotationExpiryGuard::class)->check($quotation)) {
+            return response()->json(['message' => $message, 'error' => $message], 422);
+        }
+
         if ($quotation->status !== 'draft' && $quotation->status !== 'sent') {
             return response()->json(['message' => 'Only draft or sent quotations can be confirmed'], 403);
         }
@@ -887,6 +912,13 @@ class QuotationController extends Controller
                 'message' => 'Failed to confirm quotation',
                 'error' => $e->getMessage(),
             ], 500);
+        } catch (\App\Exceptions\QuotationExpiredException $e) {
+            // Issue #335 (Q6): the shared confirmation path refuses expired
+            // quotations; keep that a client conflict with the clear reason.
+            return response()->json([
+                'message' => $e->getMessage(),
+                'error' => $e->getMessage(),
+            ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to confirm quotation',
@@ -983,6 +1015,14 @@ class QuotationController extends Controller
 
         if (! $quotation) {
             return response()->json(['message' => 'Quotation not found'], 404);
+        }
+
+        // Issue #335 (Q6): converting an expired quotation would lock in a
+        // stale price — refuse until it is re-validated. Checked before the
+        // status gate so a command-expired quotation gets the actionable
+        // expiry reason, not a bare 403.
+        if ($message = app(QuotationExpiryGuard::class)->check($quotation)) {
+            return response()->json(['message' => $message, 'error' => $message], 422);
         }
 
         if (! in_array($quotation->status, ['draft', 'sent', 'confirmed'], true)) {
@@ -1111,6 +1151,14 @@ class QuotationController extends Controller
 
         if (! $quotation) {
             return response()->json(['message' => 'Quotation not found'], 404);
+        }
+
+        // Issue #335 (Q6): same validity guard as confirm/invoice — no
+        // delivery may start from an expired quotation. Checked before the
+        // status gate so a command-expired quotation gets the actionable
+        // expiry reason, not a bare 403.
+        if ($message = app(QuotationExpiryGuard::class)->check($quotation)) {
+            return response()->json(['message' => $message, 'error' => $message], 422);
         }
 
         if (! in_array($quotation->status, ['draft', 'sent', 'confirmed'], true)) {

@@ -157,3 +157,12 @@ Schedule::command('sales:scan-expiring-quotations')
     ->dailyAt('06:20')
     ->withoutOverlapping()
     ->runInBackground();
+
+// Issue #335 (Q6) - validity expiry. The daily sweep marks draft/sent
+// quotations whose valid_until has passed as `expired` through the #900
+// engine (audited), so they can no longer be confirmed or converted until
+// re-validated. The command is idempotent and iterates every tenant.
+Schedule::command('quotations:expire')
+    ->dailyAt('06:30')
+    ->withoutOverlapping()
+    ->runInBackground();

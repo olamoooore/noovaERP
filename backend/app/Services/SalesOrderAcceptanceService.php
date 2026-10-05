@@ -202,6 +202,12 @@ class SalesOrderAcceptanceService
             throw new \RuntimeException('Acceptance link has expired.');
         }
 
+        // Issue #335 (Q6): the acceptance token may outlive the quotation's
+        // own validity date. Check the shared validity guard BEFORE writing
+        // signer metadata, so a refused acceptance leaves no accepted_at /
+        // signer trace behind.
+        app(QuotationExpiryGuard::class)->assertNotExpired($quotation);
+
         if (! in_array((string) $quotation->status, ['draft', 'sent'], true)) {
             throw new \RuntimeException('This quotation is no longer open for acceptance.');
         }

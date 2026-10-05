@@ -29,6 +29,12 @@ class QuotationReleaseService
      */
     public function release(Quotation $quotation): Quotation
     {
+        // Issue #335 (Q6): final backstop — no caller may release a past-due
+        // quotation. Confirmed quotations are exempt (their validity is
+        // already accepted), so a downstream DO created after an earlier
+        // confirmation still gets its link re-applied.
+        app(QuotationExpiryGuard::class)->assertNotExpired($quotation);
+
         return DB::transaction(function () use ($quotation) {
             // Build SalesOrder lines from quotation lines
             // FR-5.5: quotation → SO is a CONVERSION — currency, rate

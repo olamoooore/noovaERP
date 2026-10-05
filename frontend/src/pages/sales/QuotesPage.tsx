@@ -234,6 +234,8 @@ export function QuotesPage() {
       sent: 'bg-blue-100 text-blue-800',
       confirmed: 'bg-green-100 text-green-800',
       cancelled: 'bg-red-100 text-red-800',
+      // Issue #335 (Q6): the daily expiry job moves past-due quotations here.
+      expired: 'bg-amber-100 text-amber-800',
     }
     return styles[status] || 'bg-gray-100 text-gray-800'
   }
@@ -324,6 +326,8 @@ export function QuotesPage() {
                 <SelectItem value="sent">Sent</SelectItem>
                 <SelectItem value="confirmed">Confirmed</SelectItem>
                 <SelectItem value="cancelled">Cancelled</SelectItem>
+                {/* Issue #335 (Q6): quotations past their valid_until. */}
+                <SelectItem value="expired">Expired</SelectItem>
               </SelectContent>
             </Select>
 
@@ -491,20 +495,36 @@ export function QuotesPage() {
                         <TableCell>{quote.customer_reference || quote.internal_reference || '-'}</TableCell>
                         <TableCell className="text-right">{formatCurrency(quote.total)}</TableCell>
                         <TableCell>
-                          <Badge variant="secondary" className={getStatusBadge(quote.status)}>
-                            {quote.status}
-                          </Badge>
+                          <div className="flex flex-wrap items-center gap-1">
+                            <Badge variant="secondary" className={getStatusBadge(quote.status)}>
+                              {quote.status}
+                            </Badge>
+                            {/* Issue #335 (Q6): a past-due quotation the daily job has not
+                                swept yet — confirm/convert is refused until it is re-validated. */}
+                            {quote.is_expired && quote.status !== 'expired' && (
+                              <Badge
+                                variant="destructive"
+                                title="Valid-until date has passed — confirm/convert is refused until re-validated"
+                              >
+                                Expired
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell onClick={(event) => event.stopPropagation()}>
                           <div className="flex justify-end gap-1.5">
                             <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => navigate(`/quotations/${quote.id}`)} title="View">
                               <Icon icon="solar:eye-bold-duotone" className="h-3.5 w-3.5" />
                             </Button>
+                            {/* Issue #335 (Q6): an expired quotation is re-validated by
+                                editing its valid-until date back into the future. */}
+                            {(quote.status === 'draft' || quote.status === 'sent' || quote.status === 'expired') && (
+                              <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => navigate(`/quotations/${quote.id}/edit`)} title="Edit">
+                                <Icon icon="solar:pen-bold-duotone" className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
                             {(quote.status === 'draft' || quote.status === 'sent') && (
                               <>
-                                <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => navigate(`/quotations/${quote.id}/edit`)} title="Edit">
-                                  <Icon icon="solar:pen-bold-duotone" className="h-3.5 w-3.5" />
-                                </Button>
                                 <Button
                                   size="sm"
                                   variant="outline"
