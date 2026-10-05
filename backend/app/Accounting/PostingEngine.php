@@ -1279,6 +1279,10 @@ class PostingEngine implements PostingEngineInterface
             'opening_balance', 'period_close', 'bank_adjustment',
             'fx_revaluation', 'intercompany', 'asset_disposal',
             'payroll_run', 'payroll_payment' => 'accounting.write',
+            // Issue #882 (SA9): the monthly deferred-revenue recognition job
+            // releases unearned revenue to income — an accountant-owned
+            // ledger operation.
+            'deferred_revenue_recognition' => 'accounting.write',
             // Retail / ecommerce sales posting — coarse module permission held
             // by the actors who create these documents (module-level RBAC aligned).
             'pos_order', 'pos_refund_payment' => 'pos.create',

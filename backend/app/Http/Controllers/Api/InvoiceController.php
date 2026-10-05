@@ -543,6 +543,11 @@ class InvoiceController extends Controller
             // line (the customer profile supplies the default).
             'lines.*.tax_exemption_reason' => 'nullable|string|max:120',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
+            // Issue #882 (SA9): optional service period for deferred revenue;
+            // absent flags default from the product's deferred setting.
+            'lines.*.is_deferred' => 'nullable|boolean',
+            'lines.*.service_start_date' => 'nullable|date',
+            'lines.*.service_end_date' => 'nullable|date|after_or_equal:lines.*.service_start_date',
             // MRD pricelist-multicurrency FR-5.1/5.2: document currency +
             // optional explicit price list for this document.
             'currency_code' => 'nullable|string|size:3',
@@ -915,6 +920,12 @@ class InvoiceController extends Controller
                 // then resolves it through the engine (product override included).
                 'tax_inclusive' => $line['tax_inclusive'] ?? null,
                 'discount_amount' => $line['discount_amount'] ?? 0,
+                // Issue #882 (SA9): the service period travels with the line
+                // so the invoice can carry it (the Sales Order has no service
+                // columns; the invoice update below stamps it after creation).
+                'is_deferred' => $line['is_deferred'] ?? null,
+                'service_start_date' => $line['service_start_date'] ?? null,
+                'service_end_date' => $line['service_end_date'] ?? null,
             ], fn ($v) => $v !== null);
         }
 
@@ -1033,13 +1044,37 @@ class InvoiceController extends Controller
             $sourceLine = $sourceBySequence[(string) ($invoiceLine->sequence ?? '')]
                 ?? $sourceLines[$index]
                 ?? [];
-            $invoiceLine->update([
+
+            // Issue #882 (SA9): the deferred period belongs to the invoice
+            // line (the Sales Order line has no service columns). The service
+            // has already applied the product default; explicit payload
+            // values win, and an explicit "not deferred" clears the defaults.
+            $deferredFields = [];
+
+            if (array_key_exists('is_deferred', $sourceLine) && $sourceLine['is_deferred'] !== null) {
+                $deferredFields['is_deferred'] = (bool) $sourceLine['is_deferred'];
+
+                if (! (bool) $sourceLine['is_deferred']) {
+                    $deferredFields['service_start_date'] = null;
+                    $deferredFields['service_end_date'] = null;
+                }
+            }
+
+            if (! empty($sourceLine['service_start_date'])) {
+                $deferredFields['service_start_date'] = $sourceLine['service_start_date'];
+            }
+
+            if (! empty($sourceLine['service_end_date'])) {
+                $deferredFields['service_end_date'] = $sourceLine['service_end_date'];
+            }
+
+            $invoiceLine->update(array_merge([
                 'lot_number' => $sourceLine['lot_number'] ?? null,
                 'serial_number' => $sourceLine['serial_number'] ?? null,
                 'product_batch_id' => $sourceLine['product_batch_id'] ?? null,
                 'product_serial_id' => $sourceLine['product_serial_id'] ?? null,
                 'expiry_date' => $sourceLine['expiry_date'] ?? null,
-            ]);
+            ], $deferredFields));
         }
 
         return $invoice;

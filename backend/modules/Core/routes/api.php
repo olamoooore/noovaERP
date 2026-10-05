@@ -451,6 +451,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             Route::get('/accounting/budgets', [\App\Http\Controllers\Api\BudgetController::class, 'index']);
             Route::get('/accounting/budgets/{budget}', [\App\Http\Controllers\Api\BudgetController::class, 'show']);
             Route::get('/accounting/budgets/{budget}/variance', [\App\Http\Controllers\Api\BudgetController::class, 'variance']);
+            // Issue #882 (SA9): the deferred-revenue schedule report, per entity.
+            Route::get('/accounting/deferred-revenue', [\App\Http\Controllers\Api\DeferredRevenueReportController::class, 'index']);
         });
         Route::middleware(RequirePermission::using('accounting.write'))->group(function () {
             Route::post('/accounting/budgets', [\App\Http\Controllers\Api\BudgetController::class, 'store']);

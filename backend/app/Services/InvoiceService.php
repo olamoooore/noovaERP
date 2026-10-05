@@ -129,6 +129,29 @@ class InvoiceService
                     ? (bool) $lineData['tax_inclusive']
                     : $this->resolveLineTaxInclusive($lineData['product_id'] ?? null, $data['invoice_date'] ?? null);
 
+                // Issue #882 (SA9): a line is deferred when the payload says so,
+                // else when its product carries the deferred setting. Service
+                // dates default from the product's deferred period; a missing
+                // period is not invented here — posting fails closed instead.
+                $lineProduct = ! empty($lineData['product_id'])
+                    ? \App\Models\Product::find($lineData['product_id'])
+                    : null;
+                $lineIsDeferred = array_key_exists('is_deferred', $lineData) && $lineData['is_deferred'] !== null
+                    ? (bool) $lineData['is_deferred']
+                    : (bool) ($lineProduct?->is_deferred ?? false);
+                $serviceStart = $lineData['service_start_date'] ?? null;
+                $serviceEnd = $lineData['service_end_date'] ?? null;
+
+                if ($lineIsDeferred) {
+                    $serviceStart = $serviceStart
+                        ?: \Illuminate\Support\Carbon::parse($data['invoice_date'])->toDateString();
+                    if (! $serviceEnd && $lineProduct?->deferred_months) {
+                        $serviceEnd = \Illuminate\Support\Carbon::parse($serviceStart)
+                            ->addMonthsNoOverflow((int) $lineProduct->deferred_months)
+                            ->toDateString();
+                    }
+                }
+
                 $invoice->lines()->create([
                     'line_type' => $lineData['line_type'] ?? 'product',
                     // Issue #138: stable link to the originating order line.
@@ -159,6 +182,10 @@ class InvoiceService
                     // #309 (X9): the line records its exemption reason so the
                     // MyInvois E line carries it; an explicit line reason wins.
                     'tax_exemption_reason' => $lineData['tax_exemption_reason'] ?? $customerExemptionReason,
+                    // Issue #882 (SA9): deferred revenue period snapshot.
+                    'is_deferred' => $lineIsDeferred,
+                    'service_start_date' => $lineIsDeferred ? $serviceStart : null,
+                    'service_end_date' => $lineIsDeferred ? $serviceEnd : null,
                 ]);
             }
 
@@ -264,6 +291,19 @@ class InvoiceService
 
             if ($invoice->status !== 'draft') {
                 throw new \RuntimeException('Only draft invoices can be posted');
+            }
+
+            // Issue #882 (SA9): a deferred line with no service end date has
+            // no period to release over. Fail the posting before any ledger
+            // or schedule row is written rather than silently recognising the
+            // revenue up front (the exact defect this issue fixes).
+            foreach ($invoice->lines as $deferredLine) {
+                if ($deferredLine->is_deferred && ! $deferredLine->service_end_date) {
+                    throw new \RuntimeException(
+                        "Deferred invoice line #{$deferredLine->id} has no service end date; ".
+                        'set a service period or a deferred period on the product before posting.'
+                    );
+                }
             }
 
             // ── Tax determination (Issue #42) ─────────────────
@@ -465,6 +505,11 @@ class InvoiceService
                 );
             }
 
+            // Issue #882 (SA9): deferred lines credit the deferred-revenue
+            // role account and their allocated revenue share is recorded so a
+            // schedule row can be created once the posting succeeds.
+            $deferredShares = [];
+
             if ($salesRevenue > 0 || $revenueBase != 0) {
                 // Issue #876 (SA2): revenue is recognised per resolved income
                 // account (line GL override → sales-order line → product →
@@ -477,6 +522,7 @@ class InvoiceService
                     foreign: $foreign,
                     exchangeRate: $fxRate,
                     baseCurrency: $baseCurrency,
+                    deferredShares: $deferredShares,
                 ) as $revenueLine) {
                     $lines[] = $revenueLine;
                 }
@@ -663,6 +709,42 @@ class InvoiceService
 
             if (! $result->success) {
                 throw new \Exception($result->error);
+            }
+
+            // Issue #882 (SA9): the deferred subledger rows are written in the
+            // same transaction as the journal entry, so a posting can never
+            // leave the ledger with an unearned balance no schedule tracks.
+            // A reset-to-draft releases the post link and leaves the previous
+            // schedules behind (its reversal closed them); the repost replaces
+            // them so the unique (invoice_line_id) row belongs to this posting.
+            if ($deferredShares !== []) {
+                \App\Models\DeferredRevenueSchedule::where('invoice_id', $invoice->id)->delete();
+            }
+
+            foreach ($deferredShares as $deferredShare) {
+                /** @var \App\Models\InvoiceLine|null $deferredLine */
+                $deferredLine = $deferredShare['line'];
+
+                if (! $deferredLine) {
+                    continue;
+                }
+
+                \App\Models\DeferredRevenueSchedule::create([
+                    'invoice_id' => $invoice->id,
+                    'invoice_line_id' => $deferredLine->id,
+                    'customer_id' => $invoice->customer_id,
+                    'legal_entity_id' => $legalEntityId,
+                    'deferred_account_id' => $deferredShare['deferred_account_id'],
+                    'income_account_id' => $deferredShare['income_account_id'],
+                    'amount' => $deferredShare['amount'],
+                    'recognized_amount' => 0,
+                    'reversed_amount' => 0,
+                    'start_date' => $deferredLine->service_start_date->toDateString(),
+                    'end_date' => $deferredLine->service_end_date->toDateString(),
+                    'department_id' => $deferredLine->department_id,
+                    'project_id' => $deferredLine->project_id,
+                    'status' => \App\Models\DeferredRevenueSchedule::STATUS_ACTIVE,
+                ]);
             }
 
             // Status transitions to 'posted' (accounting released to GL).
@@ -936,10 +1018,10 @@ class InvoiceService
 
     /**
      * Group the invoice's revenue-carrying lines by (income account,
-     * dimensions) and keep each line's tax-exclusive net as the weight the
-     * document's revenue is shared over.
+     * dimensions) — or per deferred line (#882) — and keep each line's
+     * tax-exclusive net as the weight the document's revenue is shared over.
      *
-     * @return array{lines: array<int, array{key: string, weight: float}>, groups: array<string, array{account_id: ?int, dimensions: array}>}
+     * @return array{lines: array<int, array{key: string, weight: float}>, groups: array<string, array{account_id: ?int, dimensions: array, deferred: bool, line_id: ?int}>}
      */
     private function revenueAllocationPlan(Invoice $invoice): array
     {
@@ -965,9 +1047,27 @@ class InvoiceService
 
             $accountId = $this->resolveLineIncomeAccountId($line);
             $dimensions = $this->revenueLineDimensions($line);
-            $key = ($accountId ?? 'default').':'.json_encode($dimensions);
 
-            $groups[$key] ??= ['account_id' => $accountId, 'dimensions' => $dimensions];
+            if ($line->is_deferred) {
+                // Issue #882 (SA9): every deferred line owns its own schedule,
+                // so it must never merge with another line's revenue group.
+                $key = 'deferred:'.$line->id;
+                $groups[$key] = [
+                    'account_id' => $accountId,
+                    'dimensions' => $dimensions,
+                    'deferred' => true,
+                    'line_id' => (int) $line->id,
+                ];
+            } else {
+                $key = ($accountId ?? 'default').':'.json_encode($dimensions);
+                $groups[$key] ??= [
+                    'account_id' => $accountId,
+                    'dimensions' => $dimensions,
+                    'deferred' => false,
+                    'line_id' => null,
+                ];
+            }
+
             $lines[] = ['key' => $key, 'weight' => $weight];
         }
 
@@ -993,6 +1093,7 @@ class InvoiceService
         bool $foreign,
         ?float $exchangeRate,
         string $baseCurrency,
+        array &$deferredShares,
     ): array {
         $description = "Sales - Invoice {$invoice->invoice_number}";
         $plan = $this->revenueAllocationPlan($invoice);
@@ -1015,6 +1116,21 @@ class InvoiceService
         // ONE group owns the entire document — post it whole, no allocation.
         if (count($plan['groups']) === 1) {
             $group = reset($plan['groups']);
+
+            if ($group['deferred']) {
+                return [
+                    $this->deferredRevenuePostingLine(
+                        line: $invoice->lines->firstWhere('id', $group['line_id']),
+                        amount: $baseTotal,
+                        documentAmount: $documentTotal,
+                        foreign: $foreign,
+                        exchangeRate: $exchangeRate,
+                        baseCurrency: $baseCurrency,
+                        description: $description,
+                        deferredShares: $deferredShares,
+                    ),
+                ];
+            }
 
             return [
                 $this->revenuePostingLine(
@@ -1050,6 +1166,21 @@ class InvoiceService
                 continue;
             }
 
+            if ($group['deferred']) {
+                $result[] = $this->deferredRevenuePostingLine(
+                    line: $invoice->lines->firstWhere('id', $group['line_id']),
+                    amount: round($totals[$key]['base'], 2),
+                    documentAmount: round($totals[$key]['document'], 2),
+                    foreign: $foreign,
+                    exchangeRate: $exchangeRate,
+                    baseCurrency: $baseCurrency,
+                    description: $description,
+                    deferredShares: $deferredShares,
+                );
+
+                continue;
+            }
+
             $result[] = $this->revenuePostingLine(
                 amount: round($totals[$key]['base'], 2),
                 documentAmount: round($totals[$key]['document'], 2),
@@ -1063,6 +1194,52 @@ class InvoiceService
         }
 
         return $result;
+    }
+
+    /**
+     * Issue #882 (SA9): the credit line for a deferred service line — it
+     * credits the deferred-revenue role account and records the share the
+     * posting path turns into a DeferredRevenueSchedule row. The line's
+     * eventual income account is resolved now (line override → order line →
+     * product → sales_revenue default) so the recognition job credits the
+     * same account the invoice would have used.
+     */
+    private function deferredRevenuePostingLine(
+        ?\App\Models\InvoiceLine $line,
+        float $amount,
+        float $documentAmount,
+        bool $foreign,
+        ?float $exchangeRate,
+        string $baseCurrency,
+        string $description,
+        array &$deferredShares,
+    ): DomainPostingLine {
+        if (! $line) {
+            throw new \RuntimeException('Deferred revenue plan references an invoice line that no longer exists.');
+        }
+
+        $roleResolver = app(\App\Accounting\Services\AccountRoleResolver::class);
+        $deferredAccountId = $roleResolver->resolveId('deferred_revenue', 'invoice');
+        $incomeAccountId = $this->resolveLineIncomeAccountId($line)
+            ?? $roleResolver->resolveId('sales_revenue', 'invoice');
+
+        $deferredShares[] = [
+            'line' => $line,
+            'amount' => round($amount, 2),
+            'deferred_account_id' => $deferredAccountId,
+            'income_account_id' => $incomeAccountId,
+        ];
+
+        return new DomainPostingLine(
+            accountRole: 'deferred_revenue',
+            amount: $amount,
+            currencyCode: $foreign ? $baseCurrency : null,
+            originalAmount: $foreign ? round($documentAmount, 2) : null,
+            exchangeRate: $foreign ? $exchangeRate : null,
+            description: $description,
+            dimensions: $this->revenueLineDimensions($line),
+            accountId: $deferredAccountId,
+        );
     }
 
     private function revenuePostingLine(
@@ -1089,41 +1266,16 @@ class InvoiceService
 
     /**
      * Split $totalCents over the weights in WHOLE cents: every share is an
-     * integer and the shares add up to $totalCents exactly.
+     * integer and the shares add up to $totalCents exactly. The arithmetic
+     * lives in App\Support\CentsAllocation so the credit-note revenue split
+     * (#882, SA9) uses the identical rule.
      *
      * @param  array<int, float>  $weights
      * @return array<int, int>
      */
     private function allocateCents(int $totalCents, array $weights): array
     {
-        $sum = array_sum($weights);
-        $shares = [];
-        $remainders = [];
-
-        foreach ($weights as $index => $weight) {
-            $exact = $sum > 0 ? $totalCents * $weight / $sum : 0.0;
-            $share = (int) floor($exact);
-            $shares[$index] = $share;
-            $remainders[$index] = $exact - $share;
-        }
-
-        // floor() can only undershoot (or overshoot by a cent through float
-        // noise) — settle the difference on the largest fractional remainders
-        // so the shares still sum to the exact document total.
-        $missing = $totalCents - array_sum($shares);
-
-        if ($missing !== 0 && $shares !== []) {
-            arsort($remainders);
-            $order = array_keys($remainders);
-            $count = count($order);
-            $step = $missing > 0 ? 1 : -1;
-
-            for ($i = 0, $settled = abs($missing); $i < $settled; $i++) {
-                $shares[$order[$i % $count]] += $step;
-            }
-        }
-
-        return $shares;
+        return \App\Support\CentsAllocation::allocate($totalCents, $weights);
     }
 
     private function resolveInventoryWarehouseId(Invoice $invoice): ?int

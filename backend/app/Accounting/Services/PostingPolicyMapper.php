@@ -263,6 +263,9 @@ class PostingPolicyMapper
                     'mappings' => [
                         'accounts_receivable' => ['account_id' => null, 'direction' => 'debit'],
                         'sales_revenue' => ['account_id' => null, 'direction' => 'credit'],
+                        // Issue #882 (SA9): an invoice line whose service
+                        // period has not elapsed credits deferred revenue.
+                        'deferred_revenue' => ['account_id' => null, 'direction' => 'credit'],
                         'shipping_revenue' => ['account_id' => null, 'direction' => 'credit'],
                         'sales_tax_payable' => ['account_id' => null, 'direction' => 'credit'],
                         'cogs' => ['account_id' => null, 'direction' => 'debit'],
