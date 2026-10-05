@@ -11,11 +11,12 @@ import type {
   PivotMeasureValues,
   PivotRowNode,
   ReportFilters as ReportFiltersType,
+  SalesViewGrouping,
 } from '@/types/reports';
 import {
   ALL_PIVOT_DIMENSIONS,
   ALL_PIVOT_MEASURES,
-  DEFAULT_PIVOT_MEASURES,
+  DEFAULT_PIVOT_GROUPING,
   PIVOT_DIMENSION_LABELS,
   PIVOT_MEASURE_LABELS,
   buildPivotExportRows,
@@ -27,6 +28,13 @@ interface SalesPivotViewProps {
   filters: ReportFiltersType;
   periodLabel: string;
   exportRange: string;
+  /**
+   * Issue #598: when the page controls the grouping (a saved view can carry
+   * row/column dimensions and measures), pass it here; otherwise the view
+   * manages its own grouping.
+   */
+  config?: SalesViewGrouping | null;
+  onConfigChange?: (grouping: SalesViewGrouping) => void;
 }
 
 interface PivotTableRowProps {
@@ -129,15 +137,29 @@ function PivotTableRow({ node, measures, expanded, onToggle }: PivotTableRowProp
  * shared XLSX/PDF/Word toolbar (`downloadReportXlsx` → the repo's existing
  * `xlsx` dependency).
  */
-export function SalesPivotView({ filters, periodLabel, exportRange }: SalesPivotViewProps) {
+export function SalesPivotView({
+  filters,
+  periodLabel,
+  exportRange,
+  config,
+  onConfigChange,
+}: SalesPivotViewProps) {
   const pivotRef = useRef<HTMLDivElement>(null);
 
-  const [rowDims, setRowDims] = useState<PivotDimension[]>(['product']);
-  const [colDim, setColDim] = useState<PivotDimension | ''>('month');
-  const [measures, setMeasures] = useState<PivotMeasure[]>(DEFAULT_PIVOT_MEASURES);
+  const [internalGrouping, setInternalGrouping] = useState<SalesViewGrouping>(DEFAULT_PIVOT_GROUPING);
+  const grouping = config ?? internalGrouping;
+  const rowDims = grouping.row_dims;
+  const colDim = (grouping.col_dims[0] ?? '') as PivotDimension | '';
+  const measures = grouping.measures;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const colDims = useMemo(() => (colDim ? [colDim] : []), [colDim]);
+
+  const applyGrouping = (next: SalesViewGrouping) => {
+    setExpanded(new Set());
+    setInternalGrouping(next);
+    onConfigChange?.(next);
+  };
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['sales-pivot', filters, rowDims, colDims, measures],
@@ -164,31 +186,41 @@ export function SalesPivotView({ filters, periodLabel, exportRange }: SalesPivot
     });
 
   const changeRowDim = (index: number, value: PivotDimension) => {
-    setExpanded(new Set());
-    setRowDims((previous) => previous.map((dim, i) => (i === index ? value : dim)));
-  };
-
-  const addRowDim = () => {
-    setExpanded(new Set());
-    setRowDims((previous) => {
-      const next = ALL_PIVOT_DIMENSIONS.find((dim) => !previous.includes(dim));
-
-      return previous.length < 3 && next ? [...previous, next] : previous;
+    applyGrouping({
+      ...grouping,
+      row_dims: rowDims.map((dim, i) => (i === index ? value : dim)),
     });
   };
 
+  const addRowDim = () => {
+    const next = ALL_PIVOT_DIMENSIONS.find((dim) => !rowDims.includes(dim));
+
+    if (rowDims.length < 3 && next) {
+      applyGrouping({ ...grouping, row_dims: [...rowDims, next] });
+    }
+  };
+
   const removeRowDim = (index: number) => {
-    setExpanded(new Set());
-    setRowDims((previous) => (previous.length > 1 ? previous.filter((_, i) => i !== index) : previous));
+    if (rowDims.length > 1) {
+      applyGrouping({ ...grouping, row_dims: rowDims.filter((_, i) => i !== index) });
+    }
+  };
+
+  const changeColDim = (value: PivotDimension | '') => {
+    applyGrouping({ ...grouping, col_dims: value ? [value] : [] });
   };
 
   const toggleMeasure = (measure: PivotMeasure) => {
-    setMeasures((previous) => {
-      if (previous.includes(measure)) {
-        return previous.length > 1 ? previous.filter((value) => value !== measure) : previous;
+    if (measures.includes(measure)) {
+      if (measures.length > 1) {
+        applyGrouping({ ...grouping, measures: measures.filter((value) => value !== measure) });
       }
+      return;
+    }
 
-      return ALL_PIVOT_MEASURES.filter((value) => previous.includes(value) || value === measure);
+    applyGrouping({
+      ...grouping,
+      measures: ALL_PIVOT_MEASURES.filter((value) => measures.includes(value) || value === measure),
     });
   };
 
@@ -250,10 +282,7 @@ export function SalesPivotView({ filters, periodLabel, exportRange }: SalesPivot
             <select
               aria-label="Column dimension"
               value={colDim}
-              onChange={(event) => {
-                setExpanded(new Set());
-                setColDim(event.target.value as PivotDimension | '');
-              }}
+              onChange={(event) => changeColDim(event.target.value as PivotDimension | '')}
               className="h-9 rounded-full border border-input bg-background px-3 text-sm"
             >
               <option value="">None</option>

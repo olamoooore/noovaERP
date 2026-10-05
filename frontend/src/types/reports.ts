@@ -556,6 +556,59 @@ export interface SalesByCategoryData {
   comparison?: ReportComparison;
 }
 
+// ---------------------------------------------------------------------------
+// Issue #598 (RPT-UX3): saved report views + scheduled email delivery.
+// ---------------------------------------------------------------------------
+
+/** Tabs of the sales reports page a saved view can capture. */
+export type SalesViewTab =
+  | 'by-product'
+  | 'by-customer'
+  | 'trends'
+  | 'by-category'
+  | 'pivot'
+  | 'unbilled';
+
+/** The pivot's grouping (row/column dimensions and chosen measures). */
+export interface SalesViewGrouping {
+  row_dims: PivotDimension[];
+  col_dims: PivotDimension[];
+  measures: PivotMeasure[];
+}
+
+export interface ReportSavedView {
+  id: number;
+  user_id: number;
+  name: string;
+  report_key: string;
+  tab: SalesViewTab;
+  filters: ReportFilters;
+  grouping: SalesViewGrouping | null;
+  visibility: 'personal' | 'shared';
+  is_default: boolean;
+  is_owner: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export type ReportViewFrequency = 'daily' | 'weekly' | 'monthly';
+
+export interface ReportViewSchedule {
+  id: number;
+  view_id: number;
+  frequency: ReportViewFrequency;
+  day_of_week: number | null;
+  day_of_month: number | null;
+  time_of_day: string;
+  /** Tenant user ids. */
+  recipients: number[];
+  format: 'csv' | 'pdf';
+  is_active: boolean;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  run_count: number;
+}
+
 /**
  * Issue #604 (RPT-D1): one document explaining a report-vs-GL difference,
  * linkable from the reconciliation footer.

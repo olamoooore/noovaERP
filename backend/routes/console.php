@@ -88,6 +88,15 @@ Schedule::command('sales:send-weekly-digest')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Issue #598 (RPT-UX3) - scheduled saved report views. The command iterates
+// every tenant (IteratesTenants) and sends each due schedule (daily / weekly /
+// monthly next_run_at) to recipients who still hold reports.view and entity
+// scope; unauthorized recipients are logged as skipped, never emailed.
+Schedule::command('reports:send-scheduled-views')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Issue #109 - Inventory subledger vs GL control-account reconciliation.
 Schedule::command('inventory:reconcile-gl')
     ->dailyAt('05:45')

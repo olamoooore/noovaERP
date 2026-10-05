@@ -8,6 +8,8 @@ use Modules\FinancialReporting\Controllers\InventoryReportController;
 use Modules\FinancialReporting\Controllers\ReportExportController;
 use Modules\FinancialReporting\Controllers\ReportScheduleController;
 use Modules\FinancialReporting\Controllers\ReportTemplateController;
+use Modules\FinancialReporting\Controllers\SavedReportViewController;
+use Modules\FinancialReporting\Controllers\SavedReportViewScheduleController;
 use Modules\FinancialReporting\Controllers\TraceabilityReportController;
 
 /*
@@ -107,6 +109,26 @@ Route::middleware([
             Route::post('/{id}/run', [ReportScheduleController::class, 'runNow'])->name('run');
             Route::post('/{id}/toggle', [ReportScheduleController::class, 'toggleActive'])->name('toggle');
         });
+    });
+
+    // Issue #598 (RPT-UX3): saved sales-report views and their schedules.
+    // reports.view (the group permission) also guards these mutations — the
+    // feature introduces no new permission; owner-only actions are enforced in
+    // the controllers (403).
+    Route::prefix('reports/saved-views')->name('reports.saved-views.')->group(function () {
+        Route::get('/', [SavedReportViewController::class, 'index'])->name('index');
+        Route::get('/recipients', [SavedReportViewController::class, 'recipients'])->name('recipients');
+        Route::post('/', [SavedReportViewController::class, 'store'])->name('store');
+
+        Route::get('/{id}/schedules', [SavedReportViewScheduleController::class, 'index'])->name('schedules.index');
+        Route::post('/{id}/schedules', [SavedReportViewScheduleController::class, 'store'])->name('schedules.store');
+        Route::put('/{id}/schedules/{scheduleId}', [SavedReportViewScheduleController::class, 'update'])->name('schedules.update');
+        Route::delete('/{id}/schedules/{scheduleId}', [SavedReportViewScheduleController::class, 'destroy'])->name('schedules.destroy');
+        Route::post('/{id}/schedules/{scheduleId}/run', [SavedReportViewScheduleController::class, 'run'])->name('schedules.run');
+
+        Route::put('/{id}', [SavedReportViewController::class, 'update'])->name('update');
+        Route::delete('/{id}', [SavedReportViewController::class, 'destroy'])->name('destroy');
+        Route::post('/{id}/default', [SavedReportViewController::class, 'setDefault'])->name('default');
     });
 
     // Cache Management
