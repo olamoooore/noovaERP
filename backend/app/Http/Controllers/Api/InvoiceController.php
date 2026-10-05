@@ -2589,6 +2589,67 @@ class InvoiceController extends Controller
     }
 
     /**
+     * Issue #879 (SA6): write off (part of) an open invoice as bad debt. The
+     * expense account is caller-supplied (no bad-debt role mapping exists
+     * yet). A full write-off sets `written_off` with a zero balance.
+     */
+    public function writeOff(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'amount' => 'nullable|numeric|min:0.01',
+            'reason' => 'required|string|max:500',
+            'account_id' => 'required|integer|exists:chart_of_accounts,id',
+        ]);
+
+        $invoice = is_object($id) && $id instanceof Invoice ? $id : Invoice::find($id);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        $beforeState = [
+            'status' => $invoice->status,
+            'balance' => (float) $invoice->balance,
+            'written_off_amount' => (float) $invoice->written_off_amount,
+        ];
+
+        try {
+            $writeOff = $this->invoiceService->writeOff(
+                $invoice,
+                (float) ($validated['amount'] ?? $invoice->balance),
+                $validated['reason'],
+                (int) $validated['account_id'],
+                Auth::id(),
+            );
+        } catch (\InvalidArgumentException|\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $invoice = $invoice->fresh();
+
+        $this->writeAuditLog(
+            'invoice_written_off',
+            'invoice',
+            (int) $invoice->id,
+            $beforeState,
+            [
+                'status' => $invoice->status,
+                'balance' => (float) $invoice->balance,
+                'written_off_amount' => (float) $invoice->written_off_amount,
+                'write_off_id' => $writeOff->id,
+                'journal_entry_id' => $writeOff->journal_entry_id,
+            ],
+            ['invoice_number' => $invoice->invoice_number, 'reason' => $validated['reason']],
+        );
+
+        return response()->json([
+            'message' => 'Invoice written off',
+            'data' => $invoice,
+            'write_off' => $writeOff,
+        ], 201);
+    }
+
+    /**
      * Issue #681 data check: cancelled invoices whose journal entry was never
      * reversed, with the AR difference still carried per customer. The AR
      * subledger has dropped these documents while the GL still has them, so
