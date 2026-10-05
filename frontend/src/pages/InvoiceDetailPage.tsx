@@ -16,6 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { ChatterDock } from '@/components/chatter'
 import { AuditTab } from '@/components/audit/AuditTab'
+import { InvoiceJournalTab } from '@/components/accounting/InvoiceJournalTab'
 import { TagEditor } from '@/components/tags/TagEditor'
 import { DocumentLinkChip } from '@/components/documents/DocumentLinkChip'
 import { PrintSendMenu } from '@/components/documents/PrintSendMenu'
@@ -861,6 +862,10 @@ export function InvoiceDetailPage() {
           <TabsTrigger value="document" className="gap-2 rounded-full px-4">
             Document
           </TabsTrigger>
+          <TabsTrigger value="journal" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:document-text-bold-duotone" className="h-4 w-4" />
+            Journal
+          </TabsTrigger>
           <TabsTrigger value="audit" className="gap-2 rounded-full px-4">
             <Icon icon="solar:shield-check-bold-duotone" className="h-4 w-4" />
             Audit
@@ -1565,6 +1570,10 @@ export function InvoiceDetailPage() {
       <div className="text-center text-sm text-muted-foreground print:hidden">
         <p>Thank you for your business!</p>
       </div>
+        </TabsContent>
+
+        <TabsContent value="journal" className="mt-6">
+          <InvoiceJournalTab invoiceId={id as string} status={invoice.status} />
         </TabsContent>
 
         <TabsContent value="audit" className="mt-6">

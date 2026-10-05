@@ -395,6 +395,11 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::get('/invoices/{invoice}/preflight', [InvoiceController::class, 'preflight'])
             ->middleware(RequirePermission::using('invoices.view'));
 
+        // Issue #883 (SAU1): the Journal tab — draft preview (same builder as
+        // posting, never written) or the actual posted entry with drill-down.
+        Route::get('/invoices/{invoice}/journal', [InvoiceController::class, 'journal'])
+            ->middleware(RequirePermission::using('invoices.view'));
+
         // Evidence
         Route::post('/invoices/{invoice}/evidence', [InvoiceController::class, 'uploadEvidence'])
             ->middleware(RequirePermission::using('invoices.evidence.manage'));

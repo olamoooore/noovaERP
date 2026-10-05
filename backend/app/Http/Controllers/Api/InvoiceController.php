@@ -2113,6 +2113,23 @@ class InvoiceController extends Controller
         );
     }
 
+    /**
+     * Issue #883 (SAU1): the Journal tab — for a draft, the would-be entry
+     * computed by the same builder posting uses (never written); for a posted
+     * invoice, the actual journal entry with per-line account drill-down.
+     */
+    public function journal($id): JsonResponse
+    {
+        $invoice = Invoice::with(['customer', 'lines.product', 'lines.uom', 'lines.salesOrderLine', 'salesOrder'])
+            ->find($id);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        return response()->json($this->invoiceService->previewJournal($invoice));
+    }
+
     public function sendBundle(Request $request, $id)
     {
         $invoice = is_object($id) && $id instanceof Invoice ? $id : Invoice::with('customer')->find($id);
