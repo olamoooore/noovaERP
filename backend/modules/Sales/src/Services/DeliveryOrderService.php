@@ -435,7 +435,6 @@ class DeliveryOrderService
             'sales_order_id' => $order->id,
             'customer_id' => $order->customer_id,
             'warehouse_id' => $warehouseId,
-            'status' => 'draft',
             'source' => 'sales_order',
             // MRD pricelist-multicurrency FR-5.6: DOs inherit the SO/quote
             // currency + rate snapshot; delivery never re-prices.
@@ -466,6 +465,10 @@ class DeliveryOrderService
             'customer_reference' => $data['customer_reference'] ?? $order->customer_reference,
             'internal_reference' => $data['internal_reference'] ?? $order->internal_reference,
         ]);
+
+        // #900 (PC6): the DB default owns the starting status; register it on
+        // the workflow transition log so creation is not a back-door write.
+        app(\App\Services\SalesWorkflowService::class)->initialize($deliveryOrder, ['source' => 'create']);
 
         $lines = $data['lines'] ?? [];
 
@@ -964,7 +967,6 @@ class DeliveryOrderService
                 'sales_order_id' => null,
                 'customer_id' => $customerId,
                 'warehouse_id' => $warehouseId,
-                'status' => 'draft',
                 'source' => $data['source'] ?? 'standalone',
                 'currency_code' => $pricingContext['document_currency'],
                 'exchange_rate' => $pricingContext['exchange_rate'],
@@ -1002,6 +1004,10 @@ class DeliveryOrderService
                     ?? ($invoiceId ? \App\Models\Invoice::whereKey($invoiceId)->value('internal_reference') : null)
                     ?? ($quotationId ? \App\Models\Quotation::whereKey($quotationId)->value('internal_reference') : null),
             ]);
+
+            // #900 (PC6): initial status is owned by the DB default and
+            // registered with the workflow engine.
+            app(\App\Services\SalesWorkflowService::class)->initialize($deliveryOrder, ['source' => 'create']);
 
             foreach ($lines as $lineData) {
                 $lineType = $lineData['line_type'] ?? 'product';
@@ -1183,8 +1189,11 @@ class DeliveryOrderService
 
         $actorId = TenantUserHelper::requireTenantUserId(Auth::id());
 
+        // #900 (PC6): status through the engine; the remaining fields keep
+        // their existing write.
+        app(\App\Services\SalesWorkflowService::class)->transition($deliveryOrder, 'confirm');
+
         $deliveryOrder->update([
-            'status' => 'confirmed',
             'confirmed_by' => $actorId,
             'confirmation_method' => $method,
             'confirmed_via_channel' => $method === 'digital' ? $channel : null,
@@ -1405,8 +1414,10 @@ class DeliveryOrderService
             // Issue #176: recognise COGS at completion time.
             $this->postDeliveryCogs($deliveryOrder, $warehouseId, $actorId, $issuedQuantities);
 
+            // #900 (PC6): completion status through the engine.
+            app(\App\Services\SalesWorkflowService::class)->transition($deliveryOrder, 'complete');
+
             $deliveryOrder->update([
-                'status' => 'done',
                 'completed_at' => now(),
                 'completed_by' => $actorId,
             ]);
@@ -1490,8 +1501,15 @@ class DeliveryOrderService
             // Issue #176: reverse the COGS entry that completion posted.
             $this->postDeliveryCogsReversal($deliveryOrder, $warehouseId, $actorId);
 
+            // #900 (PC6): reversal status through the engine.
+            app(\App\Services\SalesWorkflowService::class)->transition(
+                $deliveryOrder,
+                'reverse',
+                ['reason' => $reason],
+                $reason,
+            );
+
             $deliveryOrder->update([
-                'status' => 'cancelled',
                 // #463 (DO11): track the reversal explicitly; the note stays
                 // for continuity but no longer carries the only evidence.
                 'reversed_at' => now(),
@@ -1532,8 +1550,15 @@ class DeliveryOrderService
             throw new \Exception('Delivery order is already cancelled.');
         }
 
+        // #900 (PC6): cancellation status through the engine.
+        app(\App\Services\SalesWorkflowService::class)->transition(
+            $deliveryOrder,
+            'cancel',
+            ['reason' => $reason],
+            $reason,
+        );
+
         $deliveryOrder->update([
-            'status' => 'cancelled',
             'notes' => $reason
                 ? ($deliveryOrder->notes ? $deliveryOrder->notes."\n[CANCELLED] {$reason}" : "[CANCELLED] {$reason}")
                 : $deliveryOrder->notes,
@@ -1617,8 +1642,11 @@ class DeliveryOrderService
             $deliveryOrder->refresh();
         }
 
+        // #900 (PC6): reset status through the engine (done is first reversed
+        // to cancelled above, so the engine sees cancelled → draft).
+        app(\App\Services\SalesWorkflowService::class)->transition($deliveryOrder, 'reset_to_draft');
+
         $deliveryOrder->update([
-            'status' => 'draft',
             'notes' => $deliveryOrder->notes
                 ? $deliveryOrder->notes."\n[RESET TO DRAFT]"
                 : '[RESET TO DRAFT]',
@@ -1764,9 +1792,17 @@ class DeliveryOrderService
 
     public function applyRejectedDecision(DeliveryOrder $deliveryOrder, \App\Models\User $user, string $reason): DeliveryOrder
     {
+        // #900 (PC6): re-opening the document for editing is a workflow
+        // transition; the approval flag keeps its own write.
+        app(\App\Services\SalesWorkflowService::class)->transition(
+            $deliveryOrder,
+            'reject',
+            ['reason' => $reason],
+            $reason,
+        );
+
         $deliveryOrder->update([
             'approval_status' => 'rejected',
-            'status' => 'draft',
         ]);
         $this->settleApprovalRequest($deliveryOrder, 'rejected', (int) $user->id, $reason);
 

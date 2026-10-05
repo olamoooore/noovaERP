@@ -111,7 +111,6 @@ class InvoiceService
             $data['created_by'] = TenantUserHelper::requireTenantUserId($data['created_by'] ?? Auth::id());
             $data['invoice_date'] = $data['invoice_date'] ?? now();
             $data['due_date'] = $data['due_date'] ?? now()->addDays(30);
-            $data['status'] = 'draft';
 
             // #309 (X9): tax resolution consults the customer's tax profile —
             // an exemption valid on the document date suppresses the line tax
@@ -164,6 +163,10 @@ class InvoiceService
             }
 
             $invoice = Invoice::create($data);
+
+            // #900 (PC6): the DB default owns the starting status; record it on
+            // the workflow transition log so creation is not a back-door write.
+            app(SalesWorkflowService::class)->initialize($invoice, ['source' => 'create']);
 
             foreach ($lines as $lineIndex => $lineData) {
                 $lineTaxInclusive = array_key_exists('tax_inclusive', $lineData)
@@ -346,6 +349,17 @@ class InvoiceService
                 }
             }
 
+            // #900 (PC6): pre-flight the registered transition guards
+            // (approval, period lock) through the engine BEFORE any posting
+            // work so a denied transition cannot leave a posted journal entry
+            // behind. The status itself is applied through the engine below.
+            $workflow = app(SalesWorkflowService::class);
+            $canPost = $workflow->can($invoice, 'post');
+
+            if (! $canPost['allowed']) {
+                throw new \RuntimeException($canPost['reason'] ?? 'Invoice posting is not allowed.');
+            }
+
             // Issue #883 (SAU1): the business-value lines, entity binding and
             // posting request come from the ONE builder the draft Journal
             // preview also calls (with persistence off), so the tab and the
@@ -402,16 +416,17 @@ class InvoiceService
                 ]);
             }
 
-            // Status transitions to 'posted' (accounting released to GL).
-            // The operational 'sent' status is set separately via InvoiceController::send().
-            // lifecycle_status must also be set to 'posted' — resetToDraft leaves
-            // it as 'draft' on the invoice, and Invoice::scopePosted() (used by
-            // any invoice list / report) filters by lifecycle_status, not status.
-            $invoice->update([
-                'status' => 'posted',
-                'lifecycle_status' => 'posted',
+            // Status transitions to 'posted' (accounting released to GL) through
+            // the shared workflow engine (#900, PC6). The engine writes the
+            // operational status and derives lifecycle_status ('posted') in the
+            // same single write — Invoice::scopePosted() (used by any invoice
+            // list / report) filters by lifecycle_status, not status.
+            $workflow->transition($invoice, 'post', [
                 'journal_entry_id' => $result->journalEntryId,
+                'reason' => 'Invoice posted',
             ]);
+
+            $invoice->update(['journal_entry_id' => $result->journalEntryId]);
 
             $this->synchronizeSalesOrderPosting($invoice->fresh(['salesOrder', 'lines']));
 
@@ -610,8 +625,20 @@ class InvoiceService
             $invoice->update([
                 'written_off_amount' => round((float) $invoice->written_off_amount + $amount, 2),
                 'balance' => $newBalance,
-                'status' => $newBalance <= 0 ? 'written_off' : $invoice->status,
             ]);
+
+            // #900 (PC6): full write-off is a settlement state — through the
+            // engine like every other status change. A partial write-off
+            // leaves the status untouched (no transition to record).
+            $writeOffStatus = $newBalance <= 0 ? 'written_off' : $invoice->status;
+
+            if ($writeOffStatus !== $invoice->status) {
+                $this->syncInvoiceWorkflowStatus(
+                    $invoice,
+                    $writeOffStatus,
+                    ['reason' => 'Invoice written off', 'write_off_id' => $writeOff->id],
+                );
+            }
 
             if ($invoice->customer) {
                 $invoice->customer->updateOutstanding();
@@ -2173,8 +2200,9 @@ class InvoiceService
 
         Invoice::where('id', $invoice->id)->update([
             'balance' => $newBalance,
-            'status' => $status,
         ]);
+
+        $this->syncInvoiceWorkflowStatus($invoice, $status, ['reason' => 'Refund applied']);
 
         $invoice->refresh();
 
@@ -2207,8 +2235,9 @@ class InvoiceService
 
         Invoice::where('id', $invoice->id)->update([
             'balance' => $newBalance,
-            'status' => $status,
         ]);
+
+        $this->syncInvoiceWorkflowStatus($invoice, $status, ['reason' => 'Refund restored']);
 
         $invoice->refresh();
 
@@ -2261,7 +2290,11 @@ class InvoiceService
         Invoice::where('id', $invoice->id)->update([
             'credited_amount' => $credited,
             'balance' => $newBalance,
-            'status' => $status,
+        ]);
+
+        $this->syncInvoiceWorkflowStatus($invoice, $status, [
+            'reason' => $delta >= 0 ? 'Credit note applied' : 'Credit note reversed',
+            'credited_delta' => $delta,
         ]);
 
         $invoice->refresh();
@@ -2475,7 +2508,11 @@ class InvoiceService
         Invoice::where('id', $invoice->id)->update([
             'paid_amount' => $newPaid,
             'balance' => $newBalance,
-            'status' => $newStatus,
+        ]);
+
+        $this->syncInvoiceWorkflowStatus($invoice, $newStatus, [
+            'reason' => 'Payment allocation reversed',
+            'reversed_amount' => $amount,
         ]);
 
         $invoice->refresh();
@@ -2498,6 +2535,28 @@ class InvoiceService
         if ($invoice->customer) {
             $invoice->customer->updateOutstanding();
         }
+    }
+
+    /**
+     * #900 (PC6): settlement statuses (sent / partial / paid / overdue) are
+     * derived from the paid/credited amounts. The status write goes through the
+     * workflow engine's wildcard sync transitions so every status change is
+     * logged and audited; the amount columns keep their existing writes.
+     */
+    private function syncInvoiceWorkflowStatus(Invoice $invoice, string $status, array $context = []): void
+    {
+        $action = match ($status) {
+            'sent' => 'sync_sent',
+            'partial' => 'sync_partial',
+            'paid' => 'sync_paid',
+            'overdue' => 'sync_overdue',
+            // #879 (SA6): a fully written-off invoice's settlement state is
+            // 'written_off' — derived from the written_off_amount dimension.
+            'written_off' => 'sync_written_off',
+            default => throw new \InvalidArgumentException("No workflow sync action for invoice status '{$status}'."),
+        };
+
+        app(SalesWorkflowService::class)->transition($invoice, $action, $context);
     }
 
     private function syncInvoicePaymentState(Invoice $invoice, float $paymentAmount, ?Payment $payment = null): void
@@ -2538,10 +2597,15 @@ class InvoiceService
 
         Invoice::where('id', $invoice->id)->update([
             'balance' => $newBalance,
-            'status' => $newBalance <= 0
+        ]);
+
+        $this->syncInvoiceWorkflowStatus(
+            $invoice,
+            $newBalance <= 0
                 ? ($stillWrittenOff ? 'written_off' : 'paid')
                 : ((float) $invoice->paid_amount > 0 ? 'partial' : $invoice->status),
-        ]);
+            ['reason' => 'Payment settled', 'payment_id' => $payment?->id],
+        );
 
         $invoice->refresh();
 

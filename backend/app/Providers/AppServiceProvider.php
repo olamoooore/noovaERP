@@ -55,6 +55,15 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(\App\Services\TaxEngineService::class);
         $this->app->singleton(\App\Services\TaxDeterminationService::class);
         $this->app->singleton(\App\Services\TaxOutboxPublisher::class);
+
+        // #900 (PC6): the workflow engine holds code-defined schemas in
+        // instance state, and the Sales domain registers them on its shared
+        // service. Both are container singletons so every caller — controllers,
+        // services, the audit trail — sees the same registry for the life of
+        // the application (and no state survives into the next one, e.g.
+        // between test cases).
+        $this->app->singleton(\App\Platform\Workflow\WorkflowEngine::class);
+        $this->app->singleton(\App\Services\SalesWorkflowService::class);
     }
 
     /**

@@ -123,7 +123,6 @@ class SalesOrderService
             $actorId = TenantUserHelper::requireTenantUserId($data['created_by'] ?? Auth::id());
 
             $data['created_by'] = $actorId;
-            $data['status'] = $data['status'] ?? 'draft';
             $data['accounting_status'] = $data['accounting_status'] ?? 'not_posted';
             $data['order_date'] = $data['order_date'] ?? now()->toDateString();
 
@@ -167,6 +166,11 @@ class SalesOrderService
             $data['base_currency_code'] = $pricingContext['base_currency'];
 
             $order = SalesOrder::create($data);
+
+            // #900 (PC6): record the initial status on the workflow transition
+            // log; the DB default owns the value. Creation must not be a
+            // back-door status write outside the engine.
+            app(\App\Services\SalesWorkflowService::class)->initialize($order, ['source' => 'create']);
 
             foreach ($lines as $lineIndex => $lineData) {
                 $lineProduct = ! empty($lineData['product_id'])

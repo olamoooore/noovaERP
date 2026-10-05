@@ -4,13 +4,14 @@ namespace Modules\Sales\Models;
 
 use App\Models\ApprovalRequest;
 use App\Models\Warehouse;
+use App\Platform\Workflow\Contracts\WorkflowSubject;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class SalesOrder extends Model
+class SalesOrder extends Model implements WorkflowSubject
 {
     use SoftDeletes;
 
@@ -507,5 +508,36 @@ class SalesOrder extends Model
     public function requiresAllProductsReady(): bool
     {
         return $this->shipping_policy === self::SHIPPING_POLICY_WHEN_ALL_READY;
+    }
+
+    // ─── WorkflowEngine subject (#900, PC6) ───────────────────────
+
+    public function workflowEntityType(): string
+    {
+        return 'sales_order';
+    }
+
+    public function workflowEntityId(): string
+    {
+        return (string) $this->getKey();
+    }
+
+    public function workflowCurrentStatus(): string
+    {
+        return (string) ($this->status ?? '');
+    }
+
+    public function workflowContext(): array
+    {
+        return [
+            'status' => $this->status,
+            'sales_order_number' => $this->sales_order_number,
+            'total' => (float) $this->total,
+        ];
+    }
+
+    public function applyWorkflowStatus(string $status, array $context = []): void
+    {
+        $this->forceFill(['status' => $status])->save();
     }
 }

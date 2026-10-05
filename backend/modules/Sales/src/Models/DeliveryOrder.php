@@ -2,13 +2,14 @@
 
 namespace Modules\Sales\Models;
 
+use App\Platform\Workflow\Contracts\WorkflowSubject;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class DeliveryOrder extends Model
+class DeliveryOrder extends Model implements WorkflowSubject
 {
     use SoftDeletes;
 
@@ -305,5 +306,38 @@ class DeliveryOrder extends Model
                 ->pluck('delivery_order_number')
                 ->all(),
         );
+    }
+
+    // ─── WorkflowEngine subject (#900, PC6) ───────────────────────
+
+    public function workflowEntityType(): string
+    {
+        return 'delivery_order';
+    }
+
+    public function workflowEntityId(): string
+    {
+        return (string) $this->getKey();
+    }
+
+    public function workflowCurrentStatus(): string
+    {
+        return (string) ($this->status ?? '');
+    }
+
+    public function workflowContext(): array
+    {
+        return [
+            'status' => $this->status,
+            'approval_status' => $this->approval_status,
+            'requires_approval' => (bool) $this->requires_approval,
+            'warehouse_id' => $this->warehouse_id,
+            'sales_order_id' => $this->sales_order_id,
+        ];
+    }
+
+    public function applyWorkflowStatus(string $status, array $context = []): void
+    {
+        $this->forceFill(['status' => $status])->save();
     }
 }

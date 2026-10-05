@@ -2748,29 +2748,19 @@ class InvoiceController extends Controller
 
         try {
             DB::transaction(function () use ($invoice) {
-                // Reverse the journal entry if one exists (idempotent — a
-                // cancel may already have reversed it, #681).
-                if ($invoice->journal_entry_id) {
-                    $this->cancellationService->reverseJournalEntry(
-                        $invoice,
-                        "Reset to draft: Invoice #{$invoice->invoice_number}",
-                        'RESET_TO_DRAFT',
-                    );
-                }
-
-                // Issue #684: posting deducted this invoice's stock; the
-                // reversal above released its COGS, so the goods go back on
-                // the shelf in the SAME transaction. Otherwise a draft that is
-                // deleted or re-edited loses the stock for good. Only stock
-                // this invoice itself issued moves — a completed delivery
-                // order owns whatever it shipped. Idempotent, so a
-                // reset → repost → reset cycle never double-returns.
-                $this->cancellationService->returnIssuedStockOnReset($invoice);
+                // #900 (PC6): the registered reset handler reverses the
+                // journal entry (if any, idempotent — a cancel may already
+                // have reversed it, #681) and returns exactly the stock this
+                // invoice issued (#684), then the engine applies 'draft'.
+                app(\App\Services\SalesWorkflowService::class)->transition(
+                    $invoice,
+                    'reset_to_draft',
+                    ['reason' => 'Reset to draft'],
+                    'Reset to draft',
+                );
 
                 $invoice->update([
-                    'status' => 'draft',
                     'journal_entry_id' => null,
-                    'lifecycle_status' => 'draft',
                     'sent_at' => null,
                     'delivery_status' => Invoice::DELIVERY_NOT_SENT,
                 ]);
@@ -2979,7 +2969,7 @@ class InvoiceController extends Controller
                     'invoice_posted',
                     'invoice',
                     (int) $postedInvoice->id,
-                    ['status' => 'draft'],
+                    ['status' => $invoice->status],
                     [
                         'status' => $postedInvoice->status,
                         'journal_entry_id' => $postedInvoice->journal_entry_id,

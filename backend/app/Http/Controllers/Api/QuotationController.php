@@ -883,9 +883,20 @@ class QuotationController extends Controller
             // Confirm the SalesOrder
             $salesOrder = $this->salesOrderService->confirmOrder($salesOrder);
 
+            // #900 (PC6): status through the workflow engine; the sales order
+            // link keeps its own write. A quotation that is already confirmed
+            // (e.g. the DO is created later for an earlier confirmation) has
+            // nothing to transition — only the order link is added below.
+            if ($quotation->status !== 'confirmed') {
+                app(\App\Services\SalesWorkflowService::class)->transition(
+                    $quotation,
+                    'confirm',
+                    ['sales_order_id' => $salesOrder->id],
+                );
+            }
+
             // Link the SalesOrder to the quotation
             $quotation->update([
-                'status' => 'confirmed',
                 'sales_order_id' => $salesOrder->id,
             ]);
 
@@ -1795,14 +1806,10 @@ class QuotationController extends Controller
         $fromStatus = $quotation->status;
 
         $quotation = DB::transaction(function () use ($quotation) {
-            if ($quotation->salesOrder && $quotation->salesOrder->status !== 'cancelled') {
-                $this->salesOrderService->cancelOrder(
-                    $quotation->salesOrder,
-                    "Quotation {$quotation->quotation_number} cancelled"
-                );
-            }
-
-            $quotation->update(['status' => 'cancelled']);
+            // #900 (PC6): the workflow engine's cancel handler cancels the
+            // linked Sales Order (through SalesOrderService::cancelOrder)
+            // before the status is applied.
+            app(\App\Services\SalesWorkflowService::class)->transition($quotation, 'cancel');
 
             return $quotation->fresh(['customer', 'lines.product', 'salesOrder']);
         });
@@ -1918,26 +1925,19 @@ class QuotationController extends Controller
         // SECOND active order and the goods can be delivered/invoiced twice.
         // Cancel the linked order through the lifecycle guards first, and refuse
         // the reset when the order can no longer be cancelled (already invoiced).
-        if ($quotation->sales_order_id) {
-            $order = \Modules\Sales\Models\SalesOrder::find($quotation->sales_order_id);
-
-            if ($order && ! $order->isCancelled()) {
-                try {
-                    $this->salesOrderService->cancelOrder(
-                        $order,
-                        "Quotation {$quotation->quotation_number} reset to draft",
-                    );
-                } catch (\Throwable $e) {
-                    return response()->json([
-                        'message' => 'Cannot reset this quotation to draft: its linked Sales Order can no longer be cancelled. '
-                            .$e->getMessage(),
-                    ], 422);
-                }
-            }
+        try {
+            // #900 (PC6): the workflow engine's reset handler cancels the live
+            // linked Sales Order through SalesOrderService::cancelOrder (which
+            // keeps its own lifecycle guards) before applying draft.
+            app(\App\Services\SalesWorkflowService::class)->transition($quotation, 'reset_to_draft');
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Cannot reset this quotation to draft: its linked Sales Order can no longer be cancelled. '
+                    .$e->getMessage(),
+            ], 422);
         }
 
         $quotation->update([
-            'status' => 'draft',
             // The Sales Order has been cancelled above and remains as audit
             // history. Reconfirming the quotation creates and links a new order.
             'sales_order_id' => null,
