@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\AccountMapping;
+use App\Models\FiscalPeriod;
 use App\Services\CashRoundingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -175,8 +176,17 @@ class CompanySettingsController extends Controller
     {
         try {
             $settings = DB::table('company_settings')->first();
-            $month = (int) ($settings->fiscal_year_start_month ?? 1);
-            $day = (int) ($settings->fiscal_year_start_day ?? 1);
+
+            // Issue #768: the legal entity is the single source of truth for
+            // the fiscal year start; company_settings is the derived fallback
+            // for tenants without legal entities.
+            $entity = DB::table('legal_entities')->where('status', 'active')->orderBy('id')->first();
+            if ($entity) {
+                [$month, $day] = FiscalPeriod::parseFiscalYearStart($entity->fiscal_year_start);
+            } else {
+                $month = (int) ($settings->fiscal_year_start_month ?? 1);
+                $day = (int) ($settings->fiscal_year_start_day ?? 1);
+            }
 
             // Compute the fiscal year CONTAINING today from the configured
             // month/day. The stored fiscal_year_end can be stale (it produced
@@ -195,6 +205,7 @@ class CompanySettingsController extends Controller
                 'fiscal_year_label' => 'FY'.$end->year,
                 'fiscal_year_start_month' => $month,
                 'fiscal_year_start_day' => $day,
+                'legal_entity_id' => $entity->id ?? null,
                 'lock_date' => $settings->lock_date ?? null,
             ];
 
@@ -229,6 +240,16 @@ class CompanySettingsController extends Controller
             } else {
                 $data['created_at'] = now();
                 DB::table('company_settings')->insert($data);
+            }
+
+            // Issue #768: mirror the change onto the primary legal entity so
+            // the entity remains the source of truth for period generation.
+            $primaryEntity = DB::table('legal_entities')->orderBy('id')->first();
+            if ($primaryEntity) {
+                DB::table('legal_entities')->where('id', $primaryEntity->id)->update([
+                    'fiscal_year_start' => $startDate->format('m-d'),
+                    'updated_at' => now(),
+                ]);
             }
 
             return response()->json(['success' => true, 'message' => 'Fiscal year settings updated successfully', 'data' => ['fiscal_year_start' => $request->fiscal_year_start, 'fiscal_year_end' => $request->fiscal_year_end, 'lock_date' => $request->lock_date]]);

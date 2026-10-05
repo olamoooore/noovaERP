@@ -767,11 +767,11 @@ class PostingEngine implements PostingEngineInterface
         // properly vetted override carries across both gates (issue #166).
         $actorId ??= TenantUserHelper::resolveTenantUserId($request->userId);
         $fiscalUser = $this->resolveFiscalOverrideUser($actorId, $request->approvedBy);
-        $fiscalResult = $this->fiscalValidator->validateDate($request->postingDate, $fiscalUser);
+        $fiscalResult = $this->fiscalValidator->validateDate($request->postingDate, $fiscalUser, $request->legalEntityId);
 
         if (! $fiscalResult['allowed'] && $fiscalUser && $actorId !== null && (int) $fiscalUser->id !== $actorId) {
             // Fall back to the actor's own override authority.
-            $fiscalResult = $this->fiscalValidator->validateDate($request->postingDate, User::find($actorId));
+            $fiscalResult = $this->fiscalValidator->validateDate($request->postingDate, User::find($actorId), $request->legalEntityId);
             $fiscalUser = User::find($actorId);
         }
 
@@ -921,7 +921,7 @@ class PostingEngine implements PostingEngineInterface
 
         // Issue #166: evaluate the resolved actor, not ambient auth()->user().
         $fiscalUser = $request->userId ? User::find($request->userId) : null;
-        $fiscalResult = $this->fiscalValidator->validateDate($request->entryDate, $fiscalUser);
+        $fiscalResult = $this->fiscalValidator->validateDate($request->entryDate, $fiscalUser, $request->legalEntityId);
         if (! $fiscalResult['allowed']) {
             return DraftJournalResult::failure($fiscalResult['reason']);
         }
