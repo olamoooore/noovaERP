@@ -5,9 +5,11 @@ namespace App\Services;
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\DomainPostingLine;
 use App\Accounting\DTOs\DomainPostingRequest;
+use App\Models\ChartOfAccount;
 use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\InvoiceLine;
+use App\Models\InvoiceWriteOff;
 use App\Models\Payment;
 use App\Models\ProductBatch;
 use App\Models\ProductSerial;
@@ -49,6 +51,45 @@ class InvoiceService
     public function issueCreationToken(): InvoiceCreationToken
     {
         return new InvoiceCreationToken($this);
+    }
+
+    /**
+     * Issue #882/#888: resolve the deferred-revenue snapshot for ONE invoice
+     * line. This is the single rule shared by invoice creation and draft
+     * edit — an explicit payload flag wins, otherwise the product's deferred
+     * setting. A deferred line defaults its start to the invoice date and,
+     * when the product declares a deferred period, its end to start + that
+     * period. A missing period is not invented here: posting fails closed
+     * instead of recognising the revenue up front.
+     *
+     * @param  array<string, mixed>  $lineData
+     * @return array{is_deferred: bool, service_start_date: ?string, service_end_date: ?string}
+     */
+    public function resolveDeferredLineFields(?\App\Models\Product $product, array $lineData, string $invoiceDate): array
+    {
+        $isDeferred = array_key_exists('is_deferred', $lineData) && $lineData['is_deferred'] !== null
+            ? (bool) $lineData['is_deferred']
+            : (bool) ($product?->is_deferred ?? false);
+
+        if (! $isDeferred) {
+            return ['is_deferred' => false, 'service_start_date' => null, 'service_end_date' => null];
+        }
+
+        $serviceStart = $lineData['service_start_date'] ?? null;
+        $serviceStart = $serviceStart ?: \Illuminate\Support\Carbon::parse($invoiceDate)->toDateString();
+
+        $serviceEnd = $lineData['service_end_date'] ?? null;
+        if (! $serviceEnd && $product?->deferred_months) {
+            $serviceEnd = \Illuminate\Support\Carbon::parse($serviceStart)
+                ->addMonthsNoOverflow((int) $product->deferred_months)
+                ->toDateString();
+        }
+
+        return [
+            'is_deferred' => true,
+            'service_start_date' => $serviceStart,
+            'service_end_date' => $serviceEnd,
+        ];
     }
 
     /**
@@ -130,27 +171,17 @@ class InvoiceService
                     : $this->resolveLineTaxInclusive($lineData['product_id'] ?? null, $data['invoice_date'] ?? null);
 
                 // Issue #882 (SA9): a line is deferred when the payload says so,
-                // else when its product carries the deferred setting. Service
-                // dates default from the product's deferred period; a missing
-                // period is not invented here — posting fails closed instead.
+                // else when its product carries the deferred setting. The
+                // defaulted service period comes from the shared #888 resolver
+                // so creation and draft edit can never drift.
                 $lineProduct = ! empty($lineData['product_id'])
                     ? \App\Models\Product::find($lineData['product_id'])
                     : null;
-                $lineIsDeferred = array_key_exists('is_deferred', $lineData) && $lineData['is_deferred'] !== null
-                    ? (bool) $lineData['is_deferred']
-                    : (bool) ($lineProduct?->is_deferred ?? false);
-                $serviceStart = $lineData['service_start_date'] ?? null;
-                $serviceEnd = $lineData['service_end_date'] ?? null;
-
-                if ($lineIsDeferred) {
-                    $serviceStart = $serviceStart
-                        ?: \Illuminate\Support\Carbon::parse($data['invoice_date'])->toDateString();
-                    if (! $serviceEnd && $lineProduct?->deferred_months) {
-                        $serviceEnd = \Illuminate\Support\Carbon::parse($serviceStart)
-                            ->addMonthsNoOverflow((int) $lineProduct->deferred_months)
-                            ->toDateString();
-                    }
-                }
+                $deferredFields = $this->resolveDeferredLineFields(
+                    $lineProduct,
+                    $lineData,
+                    \Illuminate\Support\Carbon::parse($data['invoice_date'])->toDateString()
+                );
 
                 $invoice->lines()->create([
                     'line_type' => $lineData['line_type'] ?? 'product',
@@ -192,9 +223,9 @@ class InvoiceService
                     // MyInvois E line carries it; an explicit line reason wins.
                     'tax_exemption_reason' => $lineData['tax_exemption_reason'] ?? $customerExemptionReason,
                     // Issue #882 (SA9): deferred revenue period snapshot.
-                    'is_deferred' => $lineIsDeferred,
-                    'service_start_date' => $lineIsDeferred ? $serviceStart : null,
-                    'service_end_date' => $lineIsDeferred ? $serviceEnd : null,
+                    'is_deferred' => $deferredFields['is_deferred'],
+                    'service_start_date' => $deferredFields['service_start_date'],
+                    'service_end_date' => $deferredFields['service_end_date'],
                 ]);
             }
 
@@ -511,6 +542,294 @@ class InvoiceService
             DB::rollBack();
             throw $e;
         }
+    }
+
+    /**
+     * Issue #879 (SA6): write off (part of) an open invoice as bad debt.
+     * Posts DR bad-debt expense / CR AR through the PostingEngine (domain
+     * path), records the event for recovery/audit, and reduces the balance —
+     * writing off the whole balance sets status `written_off` and balance
+     * zero. The expense account is caller-supplied (no bad-debt role
+     * mapping exists yet, so no default account is invented).
+     */
+    public function writeOff(Invoice $invoice, float $amount, string $reason, int $accountId, ?int $userId = null): InvoiceWriteOff
+    {
+        return DB::transaction(function () use ($invoice, $amount, $reason, $accountId, $userId) {
+            $invoice = Invoice::whereKey($invoice->id)->lockForUpdate()->firstOrFail();
+
+            $amount = round($amount, 2);
+            $account = $this->assertWriteOffAllowed($invoice, $amount, $accountId);
+
+            $userId = TenantUserHelper::requireTenantUserId($userId ?? Auth::id() ?? $invoice->created_by);
+            [$legalEntityId, $entityBookId] = $this->resolvePostingEntityBinding($invoice);
+
+            $writeOff = InvoiceWriteOff::create([
+                'invoice_id' => $invoice->id,
+                'amount' => $amount,
+                'recovered_amount' => 0,
+                'reason' => $reason,
+                'account_id' => $account->id,
+                'created_by' => $userId,
+            ]);
+
+            [$lines, $foreign, $docCurrency, $baseCurrency, $rate] = $this->buildWriteOffLines(
+                invoice: $invoice,
+                documentAmountByAccount: [(int) $account->id => $amount],
+                description: "Bad debt write-off - Invoice {$invoice->invoice_number}",
+            );
+
+            $result = $this->postingEngine->domainPosting(new DomainPostingRequest(
+                postingRequestId: DomainPostingRequest::generateRequestId(),
+                idempotencyKey: "invoice:{$invoice->id}:write-off:{$writeOff->id}",
+                tenantId: (string) (function_exists('tenant') && tenant() ? tenant('id') : ''),
+                entityId: $legalEntityId !== null ? (string) $legalEntityId : '',
+                accountingBookId: $entityBookId !== null ? (string) $entityBookId : '',
+                sourceCapability: 'ACC-003',
+                sourceRecordType: 'invoice_write_off',
+                sourceRecordId: (string) $writeOff->id,
+                sourceRecordVersion: 1,
+                postingProfileCode: 'AR_WRITE_OFF',
+                transactionDate: now()->toDateString(),
+                postingDate: now()->toDateString(),
+                lines: $lines,
+                currencyCode: $foreign ? $docCurrency : null,
+                exchangeRate: $foreign ? $rate : null,
+                userId: $userId,
+                ledgerDescription: "Bad debt write-off - Invoice {$invoice->invoice_number}",
+                reference: $invoice->invoice_number,
+            ));
+
+            if (! $result->success) {
+                throw new \RuntimeException($result->error);
+            }
+
+            $writeOff->update(['journal_entry_id' => $result->journalEntryId]);
+
+            $newBalance = max(0.0, round((float) $invoice->balance - $amount, 2));
+
+            $invoice->update([
+                'written_off_amount' => round((float) $invoice->written_off_amount + $amount, 2),
+                'balance' => $newBalance,
+                'status' => $newBalance <= 0 ? 'written_off' : $invoice->status,
+            ]);
+
+            if ($invoice->customer) {
+                $invoice->customer->updateOutstanding();
+            }
+
+            return $writeOff->fresh();
+        });
+    }
+
+    /**
+     * Issue #886 (UX4): the write-off journal preview. The lines come from
+     * buildWriteOffLines() — the same builder writeOff() posts — and resolve
+     * through the same PostingPolicyMapper, so the dialog can never show an
+     * entry different from the one Confirm creates. Nothing is persisted.
+     */
+    public function previewWriteOff(Invoice $invoice, ?float $amount, int $accountId): array
+    {
+        $documentAmount = round((float) ($amount ?? $invoice->balance), 2);
+        $description = "Bad debt write-off - Invoice {$invoice->invoice_number}";
+        $lines = [];
+        $error = null;
+        $currency = $this->journalCurrency($invoice, null);
+        $legalEntityId = $invoice->legal_entity_id !== null ? (int) $invoice->legal_entity_id : null;
+        $entityBookId = $invoice->entity_book_id !== null ? (int) $invoice->entity_book_id : null;
+
+        try {
+            $account = $this->assertWriteOffAllowed($invoice, $documentAmount, $accountId);
+
+            [$postingLines, $foreign, $docCurrency, $baseCurrency, $rate] = $this->buildWriteOffLines(
+                invoice: $invoice,
+                documentAmountByAccount: [(int) $account->id => $documentAmount],
+                description: $description,
+            );
+
+            [$legalEntityId, $entityBookId] = $this->resolvePostingEntityBinding($invoice);
+            $currency = [
+                'document' => $docCurrency,
+                'base' => $baseCurrency,
+                'exchange_rate' => $foreign ? $rate : 1.0,
+            ];
+
+            $resolution = app(\App\Accounting\Services\PostingPolicyMapper::class)->resolve(new DomainPostingRequest(
+                postingRequestId: DomainPostingRequest::generateRequestId(),
+                idempotencyKey: "invoice:{$invoice->id}:write-off:preview",
+                tenantId: (string) (function_exists('tenant') && tenant() ? tenant('id') : ''),
+                entityId: $legalEntityId !== null ? (string) $legalEntityId : '',
+                accountingBookId: $entityBookId !== null ? (string) $entityBookId : '',
+                sourceCapability: 'ACC-003',
+                sourceRecordType: 'invoice_write_off',
+                sourceRecordId: 'preview',
+                sourceRecordVersion: 1,
+                postingProfileCode: 'AR_WRITE_OFF',
+                transactionDate: now()->toDateString(),
+                postingDate: now()->toDateString(),
+                lines: $postingLines,
+                currencyCode: $foreign ? $docCurrency : null,
+                exchangeRate: $foreign ? $rate : null,
+                ledgerDescription: $description,
+                reference: $invoice->invoice_number,
+            ));
+
+            if (! $resolution->success) {
+                $error = $resolution->error;
+            } else {
+                $unresolved = [];
+                foreach ($resolution->ledgerLines as $line) {
+                    if (empty($line['account_id'])) {
+                        $unresolved[] = $line['account_role'] ?? 'unknown';
+                    }
+                }
+
+                if ($unresolved !== []) {
+                    $error = 'Account role(s) could not be resolved to a chart_of_accounts.id: '.
+                        implode(', ', array_unique($unresolved)).
+                        '. Configure via Entity Account Roles or update the posting profile.';
+                } else {
+                    $lines = $this->decorateJournalLines($resolution->ledgerLines);
+                }
+            }
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        return $this->journalPayload(
+            status: 'draft',
+            source: 'preview',
+            entry: null,
+            postingDate: now()->toDateString(),
+            description: $description,
+            reference: $invoice->invoice_number,
+            legalEntity: $this->journalLegalEntity($legalEntityId),
+            accountingBookId: $entityBookId,
+            currency: $currency,
+            lines: $lines,
+            error: $error,
+        );
+    }
+
+    /**
+     * Issue #879 (SA6) / #886 (UX4): the shared write-off pre-checks — open
+     * posted receivable, non-zero amount within the balance, an active expense
+     * account. writeOff() runs them under its row lock; the journal preview
+     * enforces the same rules without writing.
+     */
+    private function assertWriteOffAllowed(Invoice $invoice, float $amount, int $accountId): ChartOfAccount
+    {
+        if ($amount <= 0) {
+            throw new \InvalidArgumentException('The write-off amount must be greater than zero.');
+        }
+
+        if ($invoice->journal_entry_id === null
+            || (string) $invoice->lifecycle_status !== 'posted'
+            || ! in_array((string) $invoice->status, ['posted', 'sent', 'partial', 'overdue'], true)) {
+            throw new \RuntimeException(
+                "Invoice {$invoice->invoice_number} is not an open posted receivable and cannot be written off."
+            );
+        }
+
+        if ($amount > (float) $invoice->balance + 0.01) {
+            throw new \RuntimeException(
+                "The write-off amount ({$amount}) exceeds the outstanding balance (".
+                round((float) $invoice->balance, 2).") of invoice {$invoice->invoice_number}."
+            );
+        }
+
+        $account = ChartOfAccount::query()
+            ->whereKey($accountId)
+            ->where('is_active', true)
+            ->first();
+
+        if (! $account) {
+            throw new \RuntimeException('The write-off account is not an active chart-of-accounts account.');
+        }
+
+        if ($account->type !== 'expense') {
+            throw new \RuntimeException('The write-off account must be an expense account (bad-debt expense).');
+        }
+
+        return $account;
+    }
+
+    /**
+     * Issue #879 (SA6): write-off / recovery lines: AR plus one bad-debt
+     * expense line per account, at the invoice's FX snapshot rate.
+     *
+     * @param  array<int, float>  $documentAmountByAccount  account id => document-currency amount
+     * @return array{0: array<int, DomainPostingLine>, 1: bool, 2: string, 3: string, 4: ?float}
+     */
+    private function buildWriteOffLines(Invoice $invoice, array $documentAmountByAccount, string $description): array
+    {
+        $docCurrency = strtoupper((string) ($invoice->currency_code ?: \App\Services\DocumentCurrencyResolver::resolve()));
+        $baseCurrency = strtoupper((string) ($invoice->base_currency_code
+            ?: \App\Services\DocumentCurrencyResolver::baseFor(
+                $invoice->salesOrder?->legal_entity_id,
+                $invoice->customer_id
+            )));
+        $foreign = $docCurrency !== $baseCurrency;
+        $rate = $invoice->exchange_rate !== null ? (float) $invoice->exchange_rate : null;
+
+        if ($foreign && ($rate === null || $rate <= 0)) {
+            throw new \RuntimeException(
+                "Invoice {$invoice->invoice_number} has no FX snapshot rate; cannot post the bad-debt entry."
+            );
+        }
+
+        $toBase = static fn (float $documentAmount): float => $foreign
+            ? round($documentAmount * $rate, 2)
+            : round($documentAmount, 2);
+
+        $totalDocument = round(array_sum($documentAmountByAccount), 2);
+
+        $lines = [
+            new DomainPostingLine(
+                accountRole: 'accounts_receivable',
+                amount: $toBase($totalDocument),
+                currencyCode: $foreign ? $baseCurrency : null,
+                originalAmount: $foreign ? $totalDocument : null,
+                exchangeRate: $foreign ? $rate : null,
+                description: $description,
+            ),
+        ];
+
+        foreach ($documentAmountByAccount as $accountId => $documentAmount) {
+            $lines[] = new DomainPostingLine(
+                accountRole: 'bad_debt_expense',
+                amount: $toBase((float) $documentAmount),
+                currencyCode: $foreign ? $baseCurrency : null,
+                originalAmount: $foreign ? (float) $documentAmount : null,
+                exchangeRate: $foreign ? $rate : null,
+                description: $description,
+                accountId: (int) $accountId,
+            );
+        }
+
+        return [$lines, $foreign, $docCurrency, $baseCurrency, $rate];
+    }
+
+    /**
+     * Issue #879 (SA6): the (entity, book) a write-off/recovery posting binds
+     * to — the same binding the invoice posting resolves.
+     *
+     * @return array{0: ?int, 1: ?int}
+     */
+    private function resolvePostingEntityBinding(Invoice $invoice): array
+    {
+        $entityResolver = app(\App\Services\LegalEntityContextResolver::class);
+        $legalEntityId = $entityResolver->resolveEntity(
+            explicit: $invoice->legal_entity_id ? (int) $invoice->legal_entity_id : null,
+            salesOrderId: $invoice->sales_order_id ? (int) $invoice->sales_order_id : null,
+            customerId: $invoice->customer_id ? (int) $invoice->customer_id : null,
+            required: true,
+        );
+
+        $entityBookId = $invoice->entity_book_id
+            ? (int) $invoice->entity_book_id
+            : $entityResolver->resolveBookId($legalEntityId);
+
+        return [$legalEntityId, $entityBookId];
     }
 
     /**
@@ -1319,8 +1638,9 @@ class InvoiceService
      * Issue #876 (SA2): the concrete account a line's revenue recognises to.
      *
      * Precedence — line GL override → sales-order line income account →
-     * product income account → null (the profile's `sales_revenue` default
-     * resolved from account_mappings / entity_account_roles).
+     * product income account → product category income account → null (the
+     * profile's `sales_revenue` default resolved from account_mappings /
+     * entity_account_roles).
      */
     private function resolveLineIncomeAccountId(InvoiceLine $line): ?int
     {
@@ -1338,6 +1658,10 @@ class InvoiceService
 
         if ($line->product?->income_account_id) {
             return (int) $line->product->income_account_id;
+        }
+
+        if ($line->product?->category?->income_account_id) {
+            return (int) $line->product->category->income_account_id;
         }
 
         return null;
@@ -1922,7 +2246,9 @@ class InvoiceService
         $invoice->refresh();
 
         $credited = max(0.0, (float) $invoice->credited_amount + $delta);
-        $newBalance = max(0.0, (float) $invoice->total - (float) $invoice->paid_amount - $credited);
+        // Issue #879 (SA6): a written-off portion is settled and never comes
+        // back as open balance when a credit note is applied.
+        $newBalance = max(0.0, (float) $invoice->total - (float) $invoice->paid_amount - $credited - (float) $invoice->written_off_amount);
 
         $lifecycleFinal = in_array($invoice->status, ['draft', 'void', 'cancelled'], true);
 
@@ -1963,16 +2289,118 @@ class InvoiceService
         $rows = Invoice::where('customer_id', $customer->id)
             ->notSuperseded()
             ->whereNotIn('status', ['draft', 'void', 'cancelled'])
-            ->get(['id', 'total', 'paid_amount', 'credited_amount']);
+            ->get(['id', 'total', 'paid_amount', 'credited_amount', 'written_off_amount']);
 
         $credit = 0.0;
 
         foreach ($rows as $row) {
-            $remaining = max(0.0, (float) $row->total - (float) $row->paid_amount);
+            // Issue #879 (SA6): a written-off portion is settled, so it cannot
+            // absorb credit — only the truly open remainder can.
+            $remaining = max(0.0, (float) $row->total - (float) $row->paid_amount - (float) $row->written_off_amount);
             $credit += max(0.0, (float) $row->credited_amount - $remaining);
         }
 
         Customer::where('id', $customer->id)->update(['credit_balance' => round($credit, 2)]);
+    }
+
+    /**
+     * Issue #879 (SA6): release written-off amounts as a payment allocation
+     * recovers them — FIFO over the write-off records, posting DR AR /
+     * CR bad-debt expense through the PostingEngine.
+     */
+    private function recoverWrittenOffAmount(Invoice $invoice, float $settledAmount, Payment $payment): void
+    {
+        $amount = round(min($settledAmount, (float) $invoice->written_off_amount), 2);
+        if ($amount <= 0) {
+            return;
+        }
+
+        // The allocation event is the recovery posting's source document: its
+        // id keeps the posting idempotent for one (payment, invoice) settlement.
+        // applied_amount is the FULL settled amount (not just the recovered
+        // part) so a payment that also clears the open balance cannot be
+        // allocated again.
+        $application = \App\Models\PaymentApplication::firstOrCreate(
+            [
+                'payment_id' => $payment->id,
+                'invoice_id' => $invoice->id,
+            ],
+            [
+                'tenant_id' => $invoice->tenant_id
+                    ?? (function_exists('tenant') && tenant() ? tenant()->id : null),
+                'applied_amount' => round($settledAmount, 2),
+                'currency_code' => $invoice->currency_code ?? null,
+                'created_by' => TenantUserHelper::resolveTenantUserId(),
+            ]
+        );
+
+        if (\App\Models\JournalEntryLink::where('source_document_type', 'write_off_recovery')
+            ->where('source_document_id', $application->id)
+            ->whereNull('superseded_at')
+            ->exists()) {
+            return; // already recovered for this allocation
+        }
+
+        $byAccount = [];
+        $remaining = $amount;
+
+        foreach (InvoiceWriteOff::where('invoice_id', $invoice->id)->orderBy('id')->lockForUpdate()->get() as $record) {
+            if ($remaining <= 0) {
+                break;
+            }
+
+            $open = $record->openAmount();
+            if ($open <= 0) {
+                continue;
+            }
+
+            $take = min($open, $remaining);
+            $record->update(['recovered_amount' => round((float) $record->recovered_amount + $take, 2)]);
+            $byAccount[(int) $record->account_id] = round(($byAccount[(int) $record->account_id] ?? 0) + $take, 2);
+            $remaining = round($remaining - $take, 2);
+        }
+
+        $recovered = round($amount - $remaining, 2);
+        if ($recovered <= 0 || $byAccount === []) {
+            return;
+        }
+
+        [$lines, $foreign, $docCurrency, $baseCurrency, $rate] = $this->buildWriteOffLines(
+            invoice: $invoice,
+            documentAmountByAccount: $byAccount,
+            description: "Bad debt recovered - Invoice {$invoice->invoice_number}",
+        );
+
+        [$legalEntityId, $entityBookId] = $this->resolvePostingEntityBinding($invoice);
+
+        $result = $this->postingEngine->domainPosting(new DomainPostingRequest(
+            postingRequestId: DomainPostingRequest::generateRequestId(),
+            idempotencyKey: "payment-application:{$application->id}:write-off-recovery",
+            tenantId: (string) (function_exists('tenant') && tenant() ? tenant('id') : ''),
+            entityId: $legalEntityId !== null ? (string) $legalEntityId : '',
+            accountingBookId: $entityBookId !== null ? (string) $entityBookId : '',
+            sourceCapability: 'ACC-003',
+            sourceRecordType: 'write_off_recovery',
+            sourceRecordId: (string) $application->id,
+            sourceRecordVersion: 1,
+            postingProfileCode: 'AR_WRITE_OFF_RECOVERY',
+            transactionDate: now()->toDateString(),
+            postingDate: now()->toDateString(),
+            lines: $lines,
+            currencyCode: $foreign ? $docCurrency : null,
+            exchangeRate: $foreign ? $rate : null,
+            userId: TenantUserHelper::requireTenantUserId($payment->received_by),
+            ledgerDescription: "Bad debt recovered - Invoice {$invoice->invoice_number}",
+            reference: $invoice->invoice_number,
+        ));
+
+        if (! $result->success) {
+            throw new \RuntimeException($result->error);
+        }
+
+        $invoice->update([
+            'written_off_amount' => round((float) $invoice->written_off_amount - $recovered, 2),
+        ]);
     }
 
     /**
@@ -2031,8 +2459,14 @@ class InvoiceService
         ];
 
         $newPaid = max(0.0, round((float) $invoice->paid_amount - $amount, 2));
-        $newBalance = max(0.0, round((float) $invoice->total - $newPaid, 2));
+        // Issue #879 (SA6): the written-off portion stays settled — reversing
+        // an allocation must not resurrect it as an open balance.
+        $newBalance = max(0.0, round(
+            (float) $invoice->total - $newPaid - (float) $invoice->written_off_amount,
+            2
+        ));
         $newStatus = match (true) {
+            $newBalance <= 0 && (float) $invoice->written_off_amount > 0 => 'written_off',
             $newBalance <= 0 => 'paid',
             $newPaid > 0 => 'partial',
             default => 'sent',
@@ -2068,22 +2502,45 @@ class InvoiceService
 
     private function syncInvoicePaymentState(Invoice $invoice, float $paymentAmount, ?Payment $payment = null): void
     {
+        $invoice = $invoice->fresh() ?? $invoice;
+
         $beforeState = [
             'paid_amount' => $invoice->paid_amount,
             'balance' => $invoice->balance,
             'status' => $invoice->status,
         ];
 
+        // Issue #879 (SA6): a payment settling a written-off invoice first
+        // reinstates the receivable and reverses the bad-debt expense (DR AR /
+        // CR bad-debt) for the recovered portion — posted through the
+        // PostingEngine, never written directly.
+        if ($payment && (float) $invoice->written_off_amount > 0) {
+            $this->recoverWrittenOffAmount($invoice, $paymentAmount, $payment);
+            $invoice->refresh();
+        }
+
         Invoice::where('id', $invoice->id)
             ->increment('paid_amount', $paymentAmount);
 
         $invoice->refresh();
 
-        $newBalance = $invoice->total - $invoice->paid_amount;
+        // Issue #879 (SA6): a written-off amount settles the invoice exactly
+        // like cash does; excluding it here would resurrect a written-off
+        // balance the next time a payment is applied.
+        $newBalance = max(0.0, round(
+            (float) $invoice->total
+            - (float) $invoice->paid_amount
+            - (float) $invoice->written_off_amount,
+            2
+        ));
+
+        $stillWrittenOff = (float) $invoice->written_off_amount > 0;
 
         Invoice::where('id', $invoice->id)->update([
             'balance' => $newBalance,
-            'status' => $newBalance <= 0 ? 'paid' : ($invoice->paid_amount > 0 ? 'partial' : $invoice->status),
+            'status' => $newBalance <= 0
+                ? ($stillWrittenOff ? 'written_off' : 'paid')
+                : ((float) $invoice->paid_amount > 0 ? 'partial' : $invoice->status),
         ]);
 
         $invoice->refresh();

@@ -24,6 +24,7 @@ class ProductCategoryController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'parent_id' => 'nullable|exists:product_categories,id',
+            'income_account_id' => 'nullable|exists:chart_of_accounts,id',
             'is_active' => 'boolean',
         ]);
 
@@ -39,6 +40,7 @@ class ProductCategoryController extends Controller
         $validated = $request->validate([
             'name' => 'string|max:255',
             'parent_id' => 'nullable|exists:product_categories,id',
+            'income_account_id' => 'nullable|exists:chart_of_accounts,id',
             'is_active' => 'boolean',
         ]);
 

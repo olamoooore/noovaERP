@@ -16,9 +16,13 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableHead,
+  TableHeader,
   TableRow,
 } from '@/components/ui/table';
 import { ReportExportToolbar } from '@/components/reports/ReportExportToolbar';
+import { ReportScopeHeader } from '@/components/reports/ReportScopeHeader';
+import { useReportScope } from '@/hooks/useReportScope';
 import reportApi from '@/lib/reportApi';
 import { formatCurrency } from '@/lib/utils';
 
@@ -30,16 +34,19 @@ export default function CashFlowPage() {
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
   const [method, setMethod] = useState<'direct' | 'indirect'>('indirect');
   const reportRef = useRef<HTMLDivElement>(null);
+  const scope = useReportScope();
+  const money = (value: number) => formatCurrency(value, scope.currencyCode);
 
   // Fetch cash flow
   const { data, isLoading, error } = useQuery({
-    queryKey: ['cash-flow', startDate, endDate, method],
+    queryKey: ['cash-flow', startDate, endDate, method, scope.entityId],
     queryFn: () => reportApi.getCashFlow({ 
       start_date: startDate, 
       end_date: endDate,
-      method 
+      method,
+      legal_entity_id: scope.legalEntityId,
     }),
-    enabled: !!startDate && !!endDate,
+    enabled: !!startDate && !!endDate && !scope.missingScope,
   });
 
   // reportApi.getCashFlow() already returns response.data.data
@@ -55,19 +62,27 @@ export default function CashFlowPage() {
           <h3 className="text-lg font-semibold">{title}</h3>
         </div>
         <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Description</TableHead>
+              <TableHead className="text-right">
+                Amount{scope.currencyCode ? ` (${scope.currencyCode})` : ''}
+              </TableHead>
+            </TableRow>
+          </TableHeader>
           <TableBody>
             {section.items?.map((item: any, index: number) => (
               <TableRow key={index}>
                 <TableCell className="pl-6">{item.description || item.name}</TableCell>
                 <TableCell className="text-right font-mono">
-                  {formatCurrency(item.amount)}
+                  {money(item.amount)}
                 </TableCell>
               </TableRow>
             ))}
             <TableRow className="font-bold border-t">
               <TableCell>Net Cash from {title}</TableCell>
               <TableCell className="text-right font-mono">
-                {formatCurrency(section.total)}
+                {money(section.total)}
               </TableCell>
             </TableRow>
           </TableBody>
@@ -122,7 +137,7 @@ export default function CashFlowPage() {
           <ReportExportToolbar
             targetRef={reportRef}
             title="Cash Flow Statement"
-            subtitle={`${method === 'direct' ? 'Direct' : 'Indirect'} method · ${startDate} → ${endDate}`}
+            subtitle={`${method === 'direct' ? 'Direct' : 'Indirect'} method · ${startDate} → ${endDate} · ${scope.scopeLabel}`}
             filename={`cash-flow-${method}-${startDate}-${endDate}`}
           />
           <HeaderActionButton icon="solar:arrow-left-linear" onClick={() => navigate('/accounting')}>
@@ -131,9 +146,20 @@ export default function CashFlowPage() {
         </div>
       </div>
 
+      {/* Scope: entity + reporting currency */}
+      <ReportScopeHeader scope={scope} />
+
       {/* Report */}
       <Card className="p-6" ref={reportRef}>
-        {isLoading ? (
+        {scope.missingScope ? (
+          <div className="py-12 text-center text-muted-foreground" data-testid="report-scope-required">
+            <Icon icon="solar:danger-triangle-bold-duotone" className="mx-auto mb-4 h-16 w-16 opacity-50" />
+            <p>Select a legal entity to run this report.</p>
+            <p className="text-sm">
+              Amounts in {scope.currencies.join(' and ')} are never summed together.
+            </p>
+          </div>
+        ) : isLoading ? (
           <div className="text-center py-12">
             <Icon icon="svg-spinners:ring-resize" className="w-8 h-8 mx-auto" />
             <p className="text-muted-foreground mt-2">Loading cash flow statement...</p>
@@ -172,7 +198,7 @@ export default function CashFlowPage() {
             <div className="mb-6 p-4 bg-muted rounded-lg">
               <div className="flex justify-between items-center">
                 <span className="font-semibold">Opening Cash Balance:</span>
-                <span className="font-mono text-lg">{formatCurrency(cashFlow.opening_cash || 0)}</span>
+                <span className="font-mono text-lg">{money(cashFlow.opening_cash || 0)}</span>
               </div>
             </div>
 
@@ -202,7 +228,7 @@ export default function CashFlowPage() {
               <div className="flex justify-between items-center font-bold text-lg">
                 <span>Net Increase/(Decrease) in Cash:</span>
                 <span className={`font-mono ${cashFlow.net_cash_flow >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {formatCurrency(cashFlow.net_cash_flow || 0)}
+                  {money(cashFlow.net_cash_flow || 0)}
                 </span>
               </div>
             </div>
@@ -211,7 +237,7 @@ export default function CashFlowPage() {
             <div className="mt-4 p-4 bg-muted rounded-lg">
               <div className="flex justify-between items-center font-bold text-lg">
                 <span>Closing Cash Balance:</span>
-                <span className="font-mono">{formatCurrency(cashFlow.closing_cash || 0)}</span>
+                <span className="font-mono">{money(cashFlow.closing_cash || 0)}</span>
               </div>
             </div>
           </>

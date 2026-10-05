@@ -1270,6 +1270,12 @@ class PostingEngine implements PostingEngineInterface
             // Issue #106: manual stock adjustments route here; the actor holds
             // the inventory operation permission, the GL entry is a consequence.
             'stock_adjustment' => 'inventory.write',
+            // Issue #879 (SA6): a bad-debt write-off releases a receivable to
+            // the P&L — an accounting write, like the invoice post/cancel/
+            // credit release actions. Its recovery is the ledger consequence
+            // of settling that invoice.
+            'invoice_write_off' => 'accounting.write',
+            'write_off_recovery' => 'accounting.write',
             // Issue #105: goods receipt recognition is an inventory operation.
             'goods_receipt' => 'inventory.write',
             'reversal' => 'accounting.reverse',

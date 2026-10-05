@@ -27,6 +27,8 @@ import reportApi from '@/lib/reportApi';
 import { formatCurrency } from '@/lib/utils';
 import { ComparisonTable } from '@/components/reports/ComparisonTable';
 import { ReportExportToolbar } from '@/components/reports/ReportExportToolbar';
+import { ReportScopeHeader } from '@/components/reports/ReportScopeHeader';
+import { useReportScope } from '@/hooks/useReportScope';
 import {
   type FiscalYearOption,
   type FiscalYearSettings,
@@ -120,6 +122,8 @@ export default function BalanceSheetPage({
   const [collapsedRows, setCollapsedRows] = useState<Set<string>>(new Set());
   const userPickedDate = useRef(false);
   const reportRef = useRef<HTMLDivElement>(null);
+  const scope = useReportScope();
+  const money = (value: number) => formatCurrency(value, scope.currencyCode);
 
   // Fiscal-year settings drive the default as-of date (the latest completed
   // fiscal year end) instead of "today".
@@ -171,13 +175,14 @@ export default function BalanceSheetPage({
   };
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['balance-sheet', asOfDate, compareEnabled, compareDate],
+    queryKey: ['balance-sheet', asOfDate, compareEnabled, compareDate, scope.entityId],
     queryFn: () =>
       reportApi.getBalanceSheet({
         as_of_date: asOfDate,
         ...(compareEnabled && compareDate ? { compare_date: compareDate } : {}),
+        legal_entity_id: scope.legalEntityId,
       }),
-    enabled: !!asOfDate,
+    enabled: !!asOfDate && !scope.missingScope,
   });
 
   const balanceSheet = data as BalanceSheetData | undefined;
@@ -239,7 +244,7 @@ export default function BalanceSheetPage({
             </div>
           </TableCell>
           <TableCell className="text-right font-mono font-semibold">
-            {formatCurrency(group.total)}
+            {money(group.total)}
           </TableCell>
         </TableRow>
         {!isCollapsed &&
@@ -265,7 +270,7 @@ export default function BalanceSheetPage({
                   )}
                 </div>
               </TableCell>
-              <TableCell className="text-right font-mono">{formatCurrency(account.balance)}</TableCell>
+              <TableCell className="text-right font-mono">{money(account.balance)}</TableCell>
             </TableRow>
           ))}
       </React.Fragment>
@@ -313,7 +318,7 @@ export default function BalanceSheetPage({
         {!isCollapsed && (
           <TableRow className="border-t font-bold">
             <TableCell className="pl-4">Total {title}</TableCell>
-            <TableCell className="text-right font-mono text-base">{formatCurrency(total)}</TableCell>
+            <TableCell className="text-right font-mono text-base">{money(total)}</TableCell>
           </TableRow>
         )}
       </React.Fragment>
@@ -334,6 +339,9 @@ export default function BalanceSheetPage({
           Back
         </HeaderActionButton>
       </div>
+
+      {/* Scope: entity + reporting currency */}
+      <ReportScopeHeader scope={scope} />
 
       {/* Filters */}
       <Card className="rounded-xl p-4">
@@ -476,7 +484,7 @@ export default function BalanceSheetPage({
                 <p className="font-mono text-lg font-semibold">
                   {Math.abs(balanceSheet.balance_check || 0) < 0.01
                     ? 'Balanced'
-                    : formatCurrency(Math.abs(balanceSheet.balance_check || 0))}
+                    : money(Math.abs(balanceSheet.balance_check || 0))}
                 </p>
               </div>
             </div>
@@ -489,7 +497,7 @@ export default function BalanceSheetPage({
               </div>
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Working Capital</p>
-                <p className="font-mono text-lg font-semibold">{formatCurrency(balanceSheet.working_capital || 0)}</p>
+                <p className="font-mono text-lg font-semibold">{money(balanceSheet.working_capital || 0)}</p>
               </div>
             </div>
           </Card>
@@ -579,7 +587,7 @@ export default function BalanceSheetPage({
                 bold: true,
               },
             ]}
-            formatCurrency={formatCurrency}
+            formatCurrency={money}
           />
         </Card>
       )}
@@ -624,7 +632,7 @@ export default function BalanceSheetPage({
             <ReportExportToolbar
               targetRef={reportRef}
               title={statementTitle}
-              subtitle={`As of ${formatLongDate(asOfDate)}`}
+              subtitle={`As of ${formatLongDate(asOfDate)} · ${scope.scopeLabel}`}
               asOfDate={asOfDate}
               filename={`${statementTitle.toLowerCase().replace(/\s+/g, '-')}-${asOfDate}`}
             />
@@ -632,7 +640,15 @@ export default function BalanceSheetPage({
         </CardHeader>
 
         <CardContent ref={reportRef} className="pt-6">
-          {isLoading ? (
+          {scope.missingScope ? (
+            <div className="py-12 text-center text-muted-foreground" data-testid="report-scope-required">
+              <Icon icon="solar:danger-triangle-bold-duotone" className="mx-auto mb-4 h-16 w-16 opacity-50" />
+              <p>Select a legal entity to run this report.</p>
+              <p className="text-sm">
+                Amounts in {scope.currencies.join(' and ')} are never summed together.
+              </p>
+            </div>
+          ) : isLoading ? (
             <div className="py-12 text-center">
               <Icon icon="svg-spinners:ring-resize" className="mx-auto h-8 w-8" />
               <p className="mt-2 text-muted-foreground">Loading balance sheet...</p>
@@ -652,7 +668,9 @@ export default function BalanceSheetPage({
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-2/3">Account</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead className="text-right">
+                      Amount{scope.currencyCode ? ` (${scope.currencyCode})` : ''}
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -676,7 +694,7 @@ export default function BalanceSheetPage({
                   >
                     <TableCell className="py-4 text-lg">TOTAL ASSETS</TableCell>
                     <TableCell className="text-right font-mono text-lg">
-                      {formatCurrency(balanceSheet.total_assets || 0)}
+                      {money(balanceSheet.total_assets || 0)}
                     </TableCell>
                   </TableRow>
 
@@ -708,7 +726,7 @@ export default function BalanceSheetPage({
                   >
                     <TableCell className="py-4 text-lg">TOTAL LIABILITIES</TableCell>
                     <TableCell className="text-right font-mono text-lg">
-                      {formatCurrency(balanceSheet.total_liabilities || 0)}
+                      {money(balanceSheet.total_liabilities || 0)}
                     </TableCell>
                   </TableRow>
 
@@ -719,7 +737,7 @@ export default function BalanceSheetPage({
                   >
                     <TableCell className="py-4 text-lg">NET ASSETS/(LIABILITIES)</TableCell>
                     <TableCell className="text-right font-mono text-lg">
-                      {formatCurrency((balanceSheet.total_assets || 0) - (balanceSheet.total_liabilities || 0))}
+                      {money((balanceSheet.total_assets || 0) - (balanceSheet.total_liabilities || 0))}
                     </TableCell>
                   </TableRow>
 
@@ -759,11 +777,11 @@ export default function BalanceSheetPage({
                             <>
                               <TableRow>
                                 <TableCell className="pl-6">Share Capital</TableCell>
-                                <TableCell className="text-right font-mono">{formatCurrency(shareCapital)}</TableCell>
+                                <TableCell className="text-right font-mono">{money(shareCapital)}</TableCell>
                               </TableRow>
                               <TableRow>
                                 <TableCell className="pl-6">Retained Profit</TableCell>
-                                <TableCell className="text-right font-mono">{formatCurrency(retainedProfit)}</TableCell>
+                                <TableCell className="text-right font-mono">{money(retainedProfit)}</TableCell>
                               </TableRow>
                             </>
                           );
@@ -785,7 +803,7 @@ export default function BalanceSheetPage({
                             balanceSheet.equity.current_year_earnings < 0 ? 'text-red-600' : 'text-emerald-600'
                           }`}
                         >
-                          {formatCurrency(balanceSheet.equity.current_year_earnings)}
+                          {money(balanceSheet.equity.current_year_earnings)}
                         </TableCell>
                       </TableRow>
                     )}
@@ -802,7 +820,7 @@ export default function BalanceSheetPage({
                         {financialStatementStyle ? 'TOTAL EQUITY/(CAPITAL DEFICIENCY)' : 'TOTAL EQUITY'}
                       </TableCell>
                       <TableCell className="text-right font-mono text-lg">
-                        {formatCurrency(balanceSheet.total_equity || 0)}
+                        {money(balanceSheet.total_equity || 0)}
                       </TableCell>
                     </TableRow>
                   )}
@@ -815,7 +833,7 @@ export default function BalanceSheetPage({
                       <TableRow className="border-y-4 bg-primary/20 font-bold">
                         <TableCell className="py-4 text-lg">TOTAL LIABILITIES + EQUITY</TableCell>
                         <TableCell className="text-right font-mono text-lg">
-                          {formatCurrency(balanceSheet.total_liabilities_and_equity || 0)}
+                          {money(balanceSheet.total_liabilities_and_equity || 0)}
                         </TableCell>
                       </TableRow>
                     </>

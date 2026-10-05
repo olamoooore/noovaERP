@@ -16,6 +16,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Icon } from '@iconify/react';
 import api from '@/lib/api';
 import { formatCurrency, getApiErrorMessage } from '@/lib/utils';
+import RefundNoteBanner from '@/pages/accounting/components/RefundNoteBanner';
 
 export type PaymentCorrectionAction = 'reverse' | 'refund' | 'unapply';
 
@@ -157,6 +158,17 @@ export const PaymentCorrectionDialog: React.FC<{
               </div>
             )}
           </div>
+
+          {/* #825 (EINV-UX8): a customer refund on an MY entity is reported to
+              LHDN as a refund note (type 04) — warn before it is posted. */}
+          {action === 'refund' && (
+            <RefundNoteBanner
+              customerName={payment.customer?.name}
+              invoiceNumber={payment.invoice?.invoice_number}
+              amount={payment.amount}
+              currency={payment.currency}
+            />
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="reason-code">Reason code *</Label>

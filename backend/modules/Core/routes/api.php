@@ -446,6 +446,14 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
 
         Route::post('/invoices/{invoice}/cancel', [InvoiceController::class, 'cancel'])
             ->middleware(RequirePermission::using('accounting.post'));
+        // Issue #879 (SA6): write off (part of) an open invoice as bad debt —
+        // an accounting release, posted through the PostingEngine.
+        Route::post('/invoices/{invoice}/write-off', [InvoiceController::class, 'writeOff'])
+            ->middleware(RequirePermission::using('accounting.post'));
+        // Issue #886 (UX4): the dialog's journal preview — same builder as the
+        // write-off posting, nothing written.
+        Route::post('/invoices/{invoice}/write-off/preview', [InvoiceController::class, 'previewWriteOff'])
+            ->middleware(RequirePermission::using('accounting.post'));
         // Reverses the ledger and restores stock — admin/owner only.
         Route::post('/invoices/{invoice}/reset-to-draft', [InvoiceController::class, 'resetToDraft'])
             ->middleware(RequirePermission::using('documents.reset_to_draft'));

@@ -235,6 +235,9 @@ class Invoice extends Model
         'paid_amount',
         'balance',
         'credited_amount',
+        // Issue #879 (SA6): amount written off as bad debt (released by
+        // recovery allocations, never by ordinary settlement arithmetic).
+        'written_off_amount',
         'notes',
         'terms',
         'journal_entry_id',
@@ -295,6 +298,7 @@ class Invoice extends Model
         'paid_amount' => 'decimal:2',
         'balance' => 'decimal:2',
         'credited_amount' => 'decimal:2',
+        'written_off_amount' => 'decimal:2',
         'origin_context' => 'array',
         'voided_at' => 'datetime',
         'reversed_at' => 'datetime',
@@ -344,6 +348,14 @@ class Invoice extends Model
     public function creditNotes(): HasMany
     {
         return $this->hasMany(CustomerCreditNote::class, 'invoice_id');
+    }
+
+    /**
+     * Issue #879 (SA6): bad-debt write-off events (FIFO for recovery).
+     */
+    public function writeOffs(): HasMany
+    {
+        return $this->hasMany(InvoiceWriteOff::class);
     }
 
     public function approvalRequest(): BelongsTo

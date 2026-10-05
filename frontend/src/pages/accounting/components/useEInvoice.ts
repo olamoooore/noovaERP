@@ -6,7 +6,7 @@ import {
   type EInvoiceStatusKey,
 } from './einvoiceStatus';
 
-export type EInvoiceDocumentType = 'invoice' | 'credit_note';
+export type EInvoiceDocumentType = 'invoice' | 'credit_note' | 'refund_note';
 
 export interface ComplianceDocumentRow {
   id: number;
@@ -121,6 +121,50 @@ export function useEInvoiceStatusMap(type: EInvoiceDocumentType, documentIds: nu
 const RETRYABLE = ['failed', 'rejected', 'cancelled'];
 
 /**
+ * #825 (EINV-UX8): will a MY refund note actually be issued when a customer
+ * refund is posted? Mirrors the backend trigger exactly — tenant country MY
+ * with the country plugin on, the MY country configuration enabled and
+ * auto_submit on (`CompliancePluginServiceProvider::submitToEnabledCountries`
+ * is what creates and submits the refund note, #816).
+ */
+export function useMyInvoisRefundNoteIssuance(enabled = true) {
+  const tenantQuery = useQuery({
+    queryKey: ['tenant-country-plugin-settings'],
+    queryFn: async () => {
+      const response = await api.get('/accounting/tenant/country-plugin-settings');
+      return response.data as { tenant_country_code?: string | null; country_plugin_enabled?: boolean };
+    },
+    enabled,
+  });
+
+  const isMyEntity =
+    Boolean(tenantQuery.data?.country_plugin_enabled) &&
+    String(tenantQuery.data?.tenant_country_code || '').toUpperCase() === 'MY';
+
+  const configQuery = useQuery({
+    // Distinct from the MyInvois settings page key: that query only keeps the
+    // credentials-completeness fields, this one needs auto_submit.
+    queryKey: ['myinvois-refund-note-config'],
+    queryFn: async () => {
+      const response = await api.get('/accounting/compliance/config/MY');
+      return response.data?.data as
+        | { is_enabled?: boolean; credentials?: { auto_submit?: boolean } }
+        | undefined;
+    },
+    enabled: enabled && isMyEntity,
+  });
+
+  const enabledForRefunds =
+    isMyEntity &&
+    configQuery.data?.is_enabled === true &&
+    configQuery.data?.credentials?.auto_submit === true;
+
+  return {
+    enabled: enabledForRefunds,
+  };
+}
+
+/**
  * Submit / retry / cancel / respond for one document, refreshing the e-invoice
  * queries on success.
  */
@@ -142,6 +186,19 @@ export function useEInvoiceActions(
     mutationFn: async (countryCode: string) => {
       if (type === 'credit_note') {
         const response = await api.post(`/accounting/compliance/credit-notes/${documentId}/submit`, {
+          country_code: countryCode,
+        });
+        return response.data;
+      }
+
+      // #825 (EINV-UX8): a refund note only exists once the refund has been
+      // posted and the compliance document created (#816) — there is no
+      // source-document submit endpoint to seed it, so never POST undefined.
+      if (type === 'refund_note') {
+        if (!document?.id) {
+          throw new Error('No refund note has been created for this refund yet.');
+        }
+        const response = await api.post(`/accounting/compliance/documents/${document.id}/submit`, {
           country_code: countryCode,
         });
         return response.data;

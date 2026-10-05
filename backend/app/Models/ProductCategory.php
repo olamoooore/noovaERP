@@ -14,6 +14,7 @@ class ProductCategory extends Model
     protected $fillable = [
         'name',
         'parent_id',
+        'income_account_id',
         'is_active',
     ];
 
@@ -34,5 +35,10 @@ class ProductCategory extends Model
     public function products(): HasMany
     {
         return $this->hasMany(Product::class, 'category_id');
+    }
+
+    public function incomeAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartOfAccount::class, 'income_account_id');
     }
 }

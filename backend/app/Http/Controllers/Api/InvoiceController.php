@@ -1233,7 +1233,7 @@ class InvoiceController extends Controller
 
     public function show(Request $request, $id)
     {
-        $invoice = Invoice::with(['customer', 'lines.product', 'lines.uom', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor', 'buyer', 'salesOrder', 'quotation', 'deliveryOrders', 'evidence.confirmedBy'])->find($id);
+        $invoice = Invoice::with(['customer', 'lines.product', 'lines.uom', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor', 'buyer', 'salesOrder', 'quotation', 'deliveryOrders', 'evidence.confirmedBy', 'writeOffs'])->find($id);
 
         if (! $invoice) {
             return response()->json(['message' => 'Invoice not found'], 404);
@@ -1394,6 +1394,12 @@ class InvoiceController extends Controller
             // line (the customer profile supplies the default).
             'lines.*.tax_exemption_reason' => 'nullable|string|max:120',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
+            // Issue #888: a draft edit accepts the same per-line deferred
+            // period as creation (same rules as store); otherwise the edit
+            // strips the deferral and posting recognises revenue up front.
+            'lines.*.is_deferred' => 'nullable|boolean',
+            'lines.*.service_start_date' => 'nullable|date',
+            'lines.*.service_end_date' => 'nullable|date|after_or_equal:lines.*.service_start_date',
         ], [
             'invoice_number.unique' => 'This invoice number is already used by another invoice (including deleted ones). Choose a different number.',
         ]);
@@ -1504,6 +1510,16 @@ class InvoiceController extends Controller
                         $mode = $line['price_mode'] ?? (((float) ($line['unit_price'] ?? 0) > 0) ? 'legacy' : 'auto');
                         $priced = $pricing->priceLineArray($lineProduct, $line, $pricingContext, $mode);
 
+                        // Issue #888: the regenerated line keeps (or accepts)
+                        // the deferral through the same resolver creation uses
+                        // — without this the flag fell back to false, the
+                        // dates to NULL, and posting credited 0 deferred.
+                        $deferredFields = $this->invoiceService->resolveDeferredLineFields(
+                            $lineProduct,
+                            $line,
+                            $invoice->invoice_date?->toDateString() ?? now()->toDateString()
+                        );
+
                         $invoice->lines()->create(array_merge([
                             'line_type' => $line['line_type'] ?? 'product',
                             'sequence' => $line['sequence'] ?? 0,
@@ -1530,6 +1546,9 @@ class InvoiceController extends Controller
                                     && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $invoice->invoice_date?->toDateString())),
                             'discount_amount' => $line['discount_amount'] ?? 0,
                             'tax_exemption_reason' => $line['tax_exemption_reason'] ?? $editExemptionReason,
+                            'is_deferred' => $deferredFields['is_deferred'],
+                            'service_start_date' => $deferredFields['service_start_date'],
+                            'service_end_date' => $deferredFields['service_end_date'],
                         ], array_filter($priced, fn ($v) => $v !== null)));
                     }
                 }
@@ -2567,6 +2586,94 @@ class InvoiceController extends Controller
             'message' => 'Invoice cancelled',
             'data' => $invoice->fresh(['customer', 'lines']),
         ]);
+    }
+
+    /**
+     * Issue #879 (SA6): write off (part of) an open invoice as bad debt. The
+     * expense account is caller-supplied (no bad-debt role mapping exists
+     * yet). A full write-off sets `written_off` with a zero balance.
+     */
+    public function writeOff(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'amount' => 'nullable|numeric|min:0.01',
+            'reason' => 'required|string|max:500',
+            'account_id' => 'required|integer|exists:chart_of_accounts,id',
+        ]);
+
+        $invoice = is_object($id) && $id instanceof Invoice ? $id : Invoice::find($id);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        $beforeState = [
+            'status' => $invoice->status,
+            'balance' => (float) $invoice->balance,
+            'written_off_amount' => (float) $invoice->written_off_amount,
+        ];
+
+        try {
+            $writeOff = $this->invoiceService->writeOff(
+                $invoice,
+                (float) ($validated['amount'] ?? $invoice->balance),
+                $validated['reason'],
+                (int) $validated['account_id'],
+                Auth::id(),
+            );
+        } catch (\InvalidArgumentException|\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $invoice = $invoice->fresh();
+
+        $this->writeAuditLog(
+            'invoice_written_off',
+            'invoice',
+            (int) $invoice->id,
+            $beforeState,
+            [
+                'status' => $invoice->status,
+                'balance' => (float) $invoice->balance,
+                'written_off_amount' => (float) $invoice->written_off_amount,
+                'write_off_id' => $writeOff->id,
+                'journal_entry_id' => $writeOff->journal_entry_id,
+            ],
+            ['invoice_number' => $invoice->invoice_number, 'reason' => $validated['reason']],
+        );
+
+        return response()->json([
+            'message' => 'Invoice written off',
+            'data' => $invoice,
+            'write_off' => $writeOff,
+        ], 201);
+    }
+
+    /**
+     * Issue #886 (UX4): the write-off dialog's journal preview — the lines the
+     * write-off will post, from the same builder and policy mapper as posting.
+     * Nothing is written.
+     */
+    public function previewWriteOff(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'amount' => 'nullable|numeric|min:0.01',
+            'account_id' => 'required|integer|exists:chart_of_accounts,id',
+        ]);
+
+        $invoice = is_object($id) && $id instanceof Invoice ? $id : Invoice::find($id);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        return response()->json(
+            $this->invoiceService->previewWriteOff(
+                $invoice,
+                isset($validated['amount']) ? (float) $validated['amount'] : null,
+                (int) $validated['account_id'],
+            )
+        );
     }
 
     /**

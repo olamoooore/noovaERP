@@ -27,6 +27,8 @@ import reportApi from '@/lib/reportApi';
 import { formatCurrency } from '@/lib/utils';
 import { ComparisonTable } from '@/components/reports/ComparisonTable';
 import { ReportExportToolbar } from '@/components/reports/ReportExportToolbar';
+import { ReportScopeHeader } from '@/components/reports/ReportScopeHeader';
+import { useReportScope } from '@/hooks/useReportScope';
 import {
   type FiscalYearOption,
   type FiscalYearSettings,
@@ -61,6 +63,8 @@ export default function TrialBalancePage() {
   const [compareDate, setCompareDate] = useState('');
   const userPickedDate = useRef(false);
   const reportRef = useRef<HTMLDivElement>(null);
+  const scope = useReportScope();
+  const money = (value: number) => formatCurrency(value, scope.currencyCode);
 
   // Fiscal-year settings drive the default as-of date (latest completed
   // fiscal year end) instead of "today".
@@ -104,13 +108,14 @@ export default function TrialBalancePage() {
 
   // Fetch trial balance
   const { data, isLoading, error } = useQuery({
-    queryKey: ['trial-balance', asOfDate, compareEnabled, compareDate],
+    queryKey: ['trial-balance', asOfDate, compareEnabled, compareDate, scope.entityId],
     queryFn: () =>
       reportApi.getTrialBalance({
         as_of_date: asOfDate,
         ...(compareEnabled && compareDate ? { compare_date: compareDate } : {}),
+        legal_entity_id: scope.legalEntityId,
       }),
-    enabled: !!asOfDate,
+    enabled: !!asOfDate && !scope.missingScope,
   });
 
   const trialBalance = data as any;
@@ -167,6 +172,9 @@ export default function TrialBalancePage() {
           Back to Accounting
         </HeaderActionButton>
       </div>
+
+      {/* Scope: entity + reporting currency */}
+      <ReportScopeHeader scope={scope} />
 
       {/* Filters */}
       <Card className="rounded-xl p-4">
@@ -287,7 +295,7 @@ export default function TrialBalancePage() {
               </div>
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total Debits</p>
-                <p className="font-mono text-lg font-semibold">{formatCurrency(trialBalance.total_debits || 0)}</p>
+                <p className="font-mono text-lg font-semibold">{money(trialBalance.total_debits || 0)}</p>
               </div>
             </div>
           </Card>
@@ -299,7 +307,7 @@ export default function TrialBalancePage() {
               </div>
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total Credits</p>
-                <p className="font-mono text-lg font-semibold">{formatCurrency(trialBalance.total_credits || 0)}</p>
+                <p className="font-mono text-lg font-semibold">{money(trialBalance.total_credits || 0)}</p>
               </div>
             </div>
           </Card>
@@ -325,7 +333,7 @@ export default function TrialBalancePage() {
                 <p className="font-mono text-lg font-semibold">
                   {isBalanced
                     ? 'Balanced'
-                    : `Out by ${formatCurrency(Math.abs(trialBalance.difference || 0))}`}
+                    : `Out by ${money(Math.abs(trialBalance.difference || 0))}`}
                 </p>
               </div>
             </div>
@@ -344,7 +352,7 @@ export default function TrialBalancePage() {
             currentLabel={`As of ${formatShortDate(asOfDate)}`}
             compareLabel={`As of ${formatShortDate(trialBalance.comparison.as_of_date)}`}
             rows={comparisonRows()}
-            formatCurrency={formatCurrency}
+            formatCurrency={money}
           />
         </Card>
       )}
@@ -376,7 +384,7 @@ export default function TrialBalancePage() {
             <ReportExportToolbar
               targetRef={reportRef}
               title="Trial Balance"
-              subtitle={`As of ${formatLongDate(asOfDate)}`}
+              subtitle={`As of ${formatLongDate(asOfDate)} · ${scope.scopeLabel}`}
               asOfDate={asOfDate}
               filename={`trial-balance-${asOfDate}`}
             />
@@ -384,7 +392,15 @@ export default function TrialBalancePage() {
         </CardHeader>
 
         <CardContent ref={reportRef} className="pt-6">
-          {isLoading ? (
+          {scope.missingScope ? (
+            <div className="py-12 text-center text-muted-foreground" data-testid="report-scope-required">
+              <Icon icon="solar:danger-triangle-bold-duotone" className="mx-auto mb-4 h-16 w-16 opacity-50" />
+              <p>Select a legal entity to run this report.</p>
+              <p className="text-sm">
+                Amounts in {scope.currencies.join(' and ')} are never summed together.
+              </p>
+            </div>
+          ) : isLoading ? (
             <div className="py-12 text-center">
               <Icon icon="svg-spinners:ring-resize" className="mx-auto h-8 w-8" />
               <p className="mt-2 text-muted-foreground">Loading trial balance...</p>
@@ -405,8 +421,12 @@ export default function TrialBalancePage() {
                 <TableRow>
                   <TableHead className="w-32">Account Code</TableHead>
                   <TableHead>Account Name</TableHead>
-                  <TableHead className="text-right">Debit</TableHead>
-                  <TableHead className="text-right">Credit</TableHead>
+                  <TableHead className="text-right">
+                    Debit{scope.currencyCode ? ` (${scope.currencyCode})` : ''}
+                  </TableHead>
+                  <TableHead className="text-right">
+                    Credit{scope.currencyCode ? ` (${scope.currencyCode})` : ''}
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -423,20 +443,20 @@ export default function TrialBalancePage() {
                     <TableCell className="font-mono text-xs text-muted-foreground">{account.code}</TableCell>
                     <TableCell>{account.name}</TableCell>
                     <TableCell className="text-right font-mono">
-                      {account.debit > 0 ? formatCurrency(account.debit) : <span className="text-muted-foreground">—</span>}
+                      {account.debit > 0 ? money(account.debit) : <span className="text-muted-foreground">—</span>}
                     </TableCell>
                     <TableCell className="text-right font-mono">
-                      {account.credit > 0 ? formatCurrency(account.credit) : <span className="text-muted-foreground">—</span>}
+                      {account.credit > 0 ? money(account.credit) : <span className="text-muted-foreground">—</span>}
                     </TableCell>
                   </TableRow>
                 ))}
                 <TableRow className="border-t-4 bg-primary/10 font-bold">
                   <TableCell colSpan={2} className="text-base">Total</TableCell>
                   <TableCell className="text-right font-mono text-base">
-                    {formatCurrency(trialBalance.total_debits || 0)}
+                    {money(trialBalance.total_debits || 0)}
                   </TableCell>
                   <TableCell className="text-right font-mono text-base">
-                    {formatCurrency(trialBalance.total_credits || 0)}
+                    {money(trialBalance.total_credits || 0)}
                   </TableCell>
                 </TableRow>
               </TableBody>
