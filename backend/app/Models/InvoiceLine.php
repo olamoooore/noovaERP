@@ -105,6 +105,16 @@ class InvoiceLine extends Model
     }
 
     /**
+     * Issue #876 (SA2): the originating sales-order line — it carries its own
+     * income_account_id, which the posting reads as a line-level revenue
+     * override before falling back to the product's account.
+     */
+    public function salesOrderLine(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Sales\Models\SalesOrderLine::class, 'sales_order_line_id');
+    }
+
+    /**
      * Issue #685: the sales UoM this line is denominated in. Stock and COGS
      * convert through ProductUomConverter at posting; the line keeps the sales
      * quantity and per-sales-UoM price.

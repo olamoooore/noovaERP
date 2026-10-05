@@ -252,7 +252,7 @@ class InvoiceService
 
         try {
             // Re-fetch with lock to prevent concurrent posting
-            $invoice = Invoice::with(['customer', 'lines.product', 'lines.uom'])
+            $invoice = Invoice::with(['customer', 'lines.product', 'lines.uom', 'lines.salesOrderLine'])
                 ->where('id', $invoice->id)
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -466,14 +466,20 @@ class InvoiceService
             }
 
             if ($salesRevenue > 0 || $revenueBase != 0) {
-                $lines[] = new DomainPostingLine(
-                    accountRole: 'sales_revenue',
-                    amount: $revenueBase,
-                    currencyCode: $foreign ? $baseCurrency : null,
-                    originalAmount: $foreign ? round($salesRevenue, 2) : null,
-                    exchangeRate: $foreign ? $fxRate : null,
-                    description: "Sales - Invoice {$invoice->invoice_number}",
-                );
+                // Issue #876 (SA2): revenue is recognised per resolved income
+                // account (line GL override → sales-order line → product →
+                // the account_mappings sales_revenue default) and carries the
+                // line's department/project dimensions.
+                foreach ($this->buildRevenueLines(
+                    $invoice,
+                    baseTotal: $revenueBase,
+                    documentTotal: $salesRevenue,
+                    foreign: $foreign,
+                    exchangeRate: $fxRate,
+                    baseCurrency: $baseCurrency,
+                ) as $revenueLine) {
+                    $lines[] = $revenueLine;
+                }
             }
 
             if ((float) $invoice->shipping_cost > 0) {
@@ -886,6 +892,238 @@ class InvoiceService
             DB::rollBack();
             throw $e;
         }
+    }
+
+    /**
+     * Issue #876 (SA2): the concrete account a line's revenue recognises to.
+     *
+     * Precedence — line GL override → sales-order line income account →
+     * product income account → null (the profile's `sales_revenue` default
+     * resolved from account_mappings / entity_account_roles).
+     */
+    private function resolveLineIncomeAccountId(InvoiceLine $line): ?int
+    {
+        if ($line->gl_account_id) {
+            return (int) $line->gl_account_id;
+        }
+
+        $orderLineIncome = $line->sales_order_line_id
+            ? $line->salesOrderLine?->income_account_id
+            : null;
+
+        if ($orderLineIncome) {
+            return (int) $orderLineIncome;
+        }
+
+        if ($line->product?->income_account_id) {
+            return (int) $line->product->income_account_id;
+        }
+
+        return null;
+    }
+
+    /**
+     * The analytic dimensions a revenue line carries onto its journal line —
+     * only the ids journal_entry_lines actually has columns for.
+     */
+    private function revenueLineDimensions(InvoiceLine $line): array
+    {
+        return array_filter([
+            'department_id' => $line->department_id !== null ? (int) $line->department_id : null,
+            'project_id' => $line->project_id !== null ? (int) $line->project_id : null,
+        ]);
+    }
+
+    /**
+     * Group the invoice's revenue-carrying lines by (income account,
+     * dimensions) and keep each line's tax-exclusive net as the weight the
+     * document's revenue is shared over.
+     *
+     * @return array{lines: array<int, array{key: string, weight: float}>, groups: array<string, array{account_id: ?int, dimensions: array}>}
+     */
+    private function revenueAllocationPlan(Invoice $invoice): array
+    {
+        $lines = [];
+        $groups = [];
+
+        foreach ($invoice->lines as $line) {
+            if (in_array($line->line_type ?? 'product', ['note', 'section'], true)) {
+                continue;
+            }
+
+            $weight = round((float) $line->line_total - (float) $line->tax_amount, 2);
+
+            // A credit-bearing line would need signed shares — fall back to
+            // the single legacy revenue line instead of inventing one.
+            if ($weight < 0) {
+                return ['lines' => [], 'groups' => []];
+            }
+
+            if ($weight == 0) {
+                continue;
+            }
+
+            $accountId = $this->resolveLineIncomeAccountId($line);
+            $dimensions = $this->revenueLineDimensions($line);
+            $key = ($accountId ?? 'default').':'.json_encode($dimensions);
+
+            $groups[$key] ??= ['account_id' => $accountId, 'dimensions' => $dimensions];
+            $lines[] = ['key' => $key, 'weight' => $weight];
+        }
+
+        return ['lines' => $lines, 'groups' => $groups];
+    }
+
+    /**
+     * Build the `sales_revenue` credit lines for one invoice posting.
+     *
+     * Issue #876 (SA2): revenue is split per resolved income account (and
+     * per department/project group), the header discount included, because
+     * the shares are taken over each line's net. The document totals are
+     * never re-derived — the shares add up to EXACTLY $baseTotal and
+     * $documentTotal in whole cents, so the AR leg, the tax/shipping legs
+     * and the FX residual arithmetic (#880/SA7) stay identical.
+     *
+     * @return array<int, DomainPostingLine>
+     */
+    private function buildRevenueLines(
+        Invoice $invoice,
+        float $baseTotal,
+        float $documentTotal,
+        bool $foreign,
+        ?float $exchangeRate,
+        string $baseCurrency,
+    ): array {
+        $description = "Sales - Invoice {$invoice->invoice_number}";
+        $plan = $this->revenueAllocationPlan($invoice);
+
+        // Nothing to split (no revenue lines, or a credit-bearing one): post
+        // the whole amount to the role default, exactly as before.
+        if ($plan['lines'] === []) {
+            return [
+                $this->revenuePostingLine(
+                    amount: $baseTotal,
+                    documentAmount: $documentTotal,
+                    foreign: $foreign,
+                    exchangeRate: $exchangeRate,
+                    baseCurrency: $baseCurrency,
+                    description: $description,
+                ),
+            ];
+        }
+
+        // ONE group owns the entire document — post it whole, no allocation.
+        if (count($plan['groups']) === 1) {
+            $group = reset($plan['groups']);
+
+            return [
+                $this->revenuePostingLine(
+                    amount: $baseTotal,
+                    documentAmount: $documentTotal,
+                    foreign: $foreign,
+                    exchangeRate: $exchangeRate,
+                    baseCurrency: $baseCurrency,
+                    description: $description,
+                    accountId: $group['account_id'],
+                    dimensions: $group['dimensions'],
+                ),
+            ];
+        }
+
+        // Several groups: share both totals over the lines by net weight.
+        $weights = array_column($plan['lines'], 'weight');
+        $baseShares = $this->allocateCents((int) round($baseTotal * 100), $weights);
+        $documentShares = $foreign
+            ? $this->allocateCents((int) round($documentTotal * 100), $weights)
+            : [];
+
+        $totals = [];
+        foreach ($plan['lines'] as $index => $entry) {
+            $key = $entry['key'];
+            $totals[$key]['base'] = ($totals[$key]['base'] ?? 0.0) + $baseShares[$index] / 100;
+            $totals[$key]['document'] = ($totals[$key]['document'] ?? 0.0) + ($documentShares[$index] ?? 0) / 100;
+        }
+
+        $result = [];
+        foreach ($plan['groups'] as $key => $group) {
+            if (! isset($totals[$key]) || round($totals[$key]['base'], 2) == 0.0) {
+                continue;
+            }
+
+            $result[] = $this->revenuePostingLine(
+                amount: round($totals[$key]['base'], 2),
+                documentAmount: round($totals[$key]['document'], 2),
+                foreign: $foreign,
+                exchangeRate: $exchangeRate,
+                baseCurrency: $baseCurrency,
+                description: $description,
+                accountId: $group['account_id'],
+                dimensions: $group['dimensions'],
+            );
+        }
+
+        return $result;
+    }
+
+    private function revenuePostingLine(
+        float $amount,
+        float $documentAmount,
+        bool $foreign,
+        ?float $exchangeRate,
+        string $baseCurrency,
+        string $description,
+        ?int $accountId = null,
+        array $dimensions = [],
+    ): DomainPostingLine {
+        return new DomainPostingLine(
+            accountRole: 'sales_revenue',
+            amount: $amount,
+            currencyCode: $foreign ? $baseCurrency : null,
+            originalAmount: $foreign ? round($documentAmount, 2) : null,
+            exchangeRate: $foreign ? $exchangeRate : null,
+            description: $description,
+            dimensions: $dimensions,
+            accountId: $accountId,
+        );
+    }
+
+    /**
+     * Split $totalCents over the weights in WHOLE cents: every share is an
+     * integer and the shares add up to $totalCents exactly.
+     *
+     * @param  array<int, float>  $weights
+     * @return array<int, int>
+     */
+    private function allocateCents(int $totalCents, array $weights): array
+    {
+        $sum = array_sum($weights);
+        $shares = [];
+        $remainders = [];
+
+        foreach ($weights as $index => $weight) {
+            $exact = $sum > 0 ? $totalCents * $weight / $sum : 0.0;
+            $share = (int) floor($exact);
+            $shares[$index] = $share;
+            $remainders[$index] = $exact - $share;
+        }
+
+        // floor() can only undershoot (or overshoot by a cent through float
+        // noise) — settle the difference on the largest fractional remainders
+        // so the shares still sum to the exact document total.
+        $missing = $totalCents - array_sum($shares);
+
+        if ($missing !== 0 && $shares !== []) {
+            arsort($remainders);
+            $order = array_keys($remainders);
+            $count = count($order);
+            $step = $missing > 0 ? 1 : -1;
+
+            for ($i = 0, $settled = abs($missing); $i < $settled; $i++) {
+                $shares[$order[$i % $count]] += $step;
+            }
+        }
+
+        return $shares;
     }
 
     private function resolveInventoryWarehouseId(Invoice $invoice): ?int

@@ -10,7 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
-import { Label } from '@/components/ui/label'
 import { Pagination } from '@/components/ui/Pagination'
 import {
   Select,
@@ -61,6 +60,8 @@ import { StripePaymentDialog } from '@/components/StripePaymentDialog'
 import { HitPayPaymentDialog } from '@/components/pos/HitPayPaymentDialog'
 import { OfflineBanner } from '@/components/pos/OfflineBanner'
 import loyaltyApi from '@/lib/loyaltyApi'
+import { CustomerForm } from '@/components/customers/CustomerForm'
+import { customerFormToCreatePayload, emptyCustomerFormValues, type CustomerFormValues } from '@/lib/customerPayload'
 import { NOOVAERP_LOGO_URL } from '@/lib/assets'
 
 const METHOD_ICONS: Record<string, string> = {
@@ -371,7 +372,7 @@ export function POSTerminal() {
   const [customerSearchOpen, setCustomerSearchOpen] = useState(false)
   const [customerSearch, setCustomerSearch] = useState('')
   const [showAddCustomerDialog, setShowAddCustomerDialog] = useState(false)
-  const [newCustomer, setNewCustomer] = useState({ name: '', phone: '', email: '' })
+  const [newCustomer, setNewCustomer] = useState<CustomerFormValues>(emptyCustomerFormValues())
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [showCustomerDialog, setShowCustomerDialog] = useState(false)
   
@@ -555,11 +556,11 @@ export function POSTerminal() {
 
   // Create Customer Mutation
   const createCustomerMutation = useMutation({
-    mutationFn: async (data: { name: string; phone?: string; email?: string }) => {
-      const response = await api.post('/customers', { 
-        ...data, 
+    mutationFn: async (data: CustomerFormValues) => {
+      const response = await api.post('/customers', {
+        ...customerFormToCreatePayload(data),
         type: 'individual',
-        is_active: true 
+        is_active: true,
       })
       return response.data
     },
@@ -577,7 +578,7 @@ export function POSTerminal() {
         loyalty_tier_name: newCust.loyalty_tier_name,
       })
       setShowAddCustomerDialog(false)
-      setNewCustomer({ name: '', phone: '', email: '' })
+      setNewCustomer(emptyCustomerFormValues())
     },
     onError: (error: any) => {
       toast({ 
@@ -2511,35 +2512,14 @@ export function POSTerminal() {
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="cust-name">Name *</Label>
-              <Input
-                id="cust-name"
-                placeholder="Customer name"
-                value={newCustomer.name}
-                onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="cust-phone">Phone</Label>
-              <Input
-                id="cust-phone"
-                placeholder="Phone number"
-                value={newCustomer.phone}
-                onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="cust-email">Email</Label>
-              <Input
-                id="cust-email"
-                type="email"
-                placeholder="Email address"
-                value={newCustomer.email}
-                onChange={(e) => setNewCustomer({ ...newCustomer, email: e.target.value })}
-              />
-            </div>
+          <div className="py-4">
+            <CustomerForm
+              compact
+              value={newCustomer}
+              onChange={setNewCustomer}
+              idPrefix="pos-customer"
+              disabled={createCustomerMutation.isPending}
+            />
           </div>
 
           <DialogFooter>

@@ -24,6 +24,8 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { TagEditor } from '@/components/tags/TagEditor'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { AuditTab } from '@/components/audit/AuditTab'
+import { CustomerForm } from '@/components/customers/CustomerForm'
+import { customerFormToUpdatePayload, customerToFormValues, emptyCustomerFormValues, type CustomerFormValues } from '@/lib/customerPayload'
 import { downloadReportDocx, downloadReportXlsx } from '@/lib/reportFiles'
 
 const numericPhoneValue = (value: string) => value.replace(/\D/g, '')
@@ -148,12 +150,6 @@ interface Customer {
   web_orders: WebOrder[]
   webOrders?: WebOrder[]
 }
-
-/**
- * Issue #239: the edit form must be able to clear credit_limit to null
- * ("no limit configured", per #144) — Partial<Customer> alone types it number.
- */
-type CustomerEditForm = Partial<Omit<Customer, 'credit_limit'>> & { credit_limit?: number | null }
 
 interface CustomerAddress {  id: number
   type: 'billing' | 'shipping' | 'other'
@@ -287,7 +283,7 @@ export function CustomerDetailsPage() {
   const [contactForm, setContactForm] = useState<Partial<CustomerContact>>({})
   const [loyaltyAdjustment, setLoyaltyAdjustment] = useState({ points: 0, notes: '' })
   const [customerNote, setCustomerNote] = useState('')
-  const [editForm, setEditForm] = useState<CustomerEditForm>({})
+  const [editForm, setEditForm] = useState<CustomerFormValues>(emptyCustomerFormValues())
   const [emailForm, setEmailForm] = useState({ subject: '', body: '' })
   const [statementAsOf, setStatementAsOf] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [statementDialogOpen, setStatementDialogOpen] = useState(false)
@@ -356,8 +352,9 @@ export function CustomerDetailsPage() {
 
   // Update customer mutation
   const updateMutation = useMutation({
-    mutationFn: async (data: CustomerEditForm) => {
-      const response = await api.put(`/customers/${id}`, data)
+    mutationFn: async (data: CustomerFormValues | { is_active: boolean }) => {
+      const payload = 'type' in data ? customerFormToUpdatePayload(data) : data
+      const response = await api.put(`/customers/${id}`, payload)
       return response.data
     },
     onSuccess: () => {
@@ -537,26 +534,7 @@ export function CustomerDetailsPage() {
   // Open edit dialog with current values
   const openEditDialog = () => {
     if (customer) {
-      setEditForm({
-        code: customer.code,
-        name: customer.name,
-        display_name: customer.display_name,
-        email: customer.email,
-        phone: numericPhoneValue(customer.phone || ''),
-        mobile: numericPhoneValue(customer.mobile || ''),
-        company: customer.company,
-        tax_number: customer.tax_number,
-        website: customer.website,
-        type: customer.type,
-        credit_limit: customer.credit_limit,
-        payment_terms: customer.payment_terms,
-        billing_address: customer.billing_address,
-        shipping_address: customer.shipping_address,
-        date_of_birth: customer.date_of_birth,
-        gender: customer.gender,
-        marketing_opt_in: customer.marketing_opt_in,
-        preferred_contact: customer.preferred_contact,
-      })
+      setEditForm(customerToFormValues(customer))
       setEditDialogOpen(true)
     }
   }
@@ -2229,245 +2207,17 @@ export function CustomerDetailsPage() {
           <DialogHeader>
             <DialogTitle>Edit Customer</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-code">Customer Code</Label>
-                <Input
-                  id="edit-code"
-                  value={editForm.code || ''}
-                  onChange={(e) => setEditForm({ ...editForm, code: e.target.value })}
-                  placeholder="e.g., CUST-001"
-                  className="font-mono"
-                />
-                <p className="text-xs text-muted-foreground">Your own ID format — leave empty to keep auto-generated</p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-name">Name *</Label>
-                <Input
-                  id="edit-name"
-                  value={editForm.name || ''}
-                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                  placeholder="Customer name"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-display-name">Display Name</Label>
-                <Input
-                  id="edit-display-name"
-                  value={editForm.display_name || ''}
-                  onChange={(e) => setEditForm({ ...editForm, display_name: e.target.value })}
-                  placeholder="Display name"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-type">Customer Type</Label>
-                <Select
-                  value={editForm.type || 'individual'}
-                  onValueChange={(value: 'individual' | 'company') => setEditForm({ ...editForm, type: value })}
-                >
-                  <SelectTrigger id="edit-type">
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="individual">Individual</SelectItem>
-                    <SelectItem value="company">Company</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-company">Company</Label>
-                <Input
-                  id="edit-company"
-                  value={editForm.company || ''}
-                  onChange={(e) => setEditForm({ ...editForm, company: e.target.value })}
-                  placeholder="Company name"
-                />
-              </div>
-            </div>
-
-            <Separator />
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-email">Email</Label>
-                <Input
-                  id="edit-email"
-                  type="email"
-                  value={editForm.email || ''}
-                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                  placeholder="email@example.com"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-phone">Phone</Label>
-                <Input
-                  id="edit-phone"
-                  value={editForm.phone || ''}
-                  onChange={(e) => setEditForm({ ...editForm, phone: numericPhoneValue(e.target.value) })}
-                  placeholder="Phone number"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-mobile">Mobile</Label>
-                <Input
-                  id="edit-mobile"
-                  value={editForm.mobile || ''}
-                  onChange={(e) => setEditForm({ ...editForm, mobile: numericPhoneValue(e.target.value) })}
-                  placeholder="Mobile number"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-website">Website</Label>
-                <Input
-                  id="edit-website"
-                  value={editForm.website || ''}
-                  onChange={(e) => setEditForm({ ...editForm, website: e.target.value })}
-                  placeholder="https://example.com"
-                />
-              </div>
-            </div>
-
-            <Separator />
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-tax-number">Tax Number</Label>
-                <Input
-                  id="edit-tax-number"
-                  value={editForm.tax_number || ''}
-                  onChange={(e) => setEditForm({ ...editForm, tax_number: e.target.value })}
-                  placeholder="Tax/VAT number"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-credit-limit">Credit Limit</Label>
-                <Input
-                  id="edit-credit-limit"
-                  type="number"
-                  value={editForm.credit_limit ?? ''}
-                  onChange={(e) => setEditForm({
-                    ...editForm,
-                    // Issue #239: an emptied field means "no limit configured"
-                    // (null), never 0 — after #144, 0 blocks all credit sales.
-                    credit_limit: e.target.value === '' ? null : parseFloat(e.target.value),
-                  })}
-                  placeholder="0.00"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-payment-terms">Payment Terms (days)</Label>
-                <Input
-                  id="edit-payment-terms"
-                  type="number"
-                  value={editForm.payment_terms || ''}
-                  onChange={(e) => setEditForm({ ...editForm, payment_terms: parseInt(e.target.value) || 0 })}
-                  placeholder="30"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-preferred-contact">Preferred Contact</Label>
-                <Select
-                  value={editForm.preferred_contact || 'email'}
-                  onValueChange={(value) => setEditForm({ ...editForm, preferred_contact: value })}
-                >
-                  <SelectTrigger id="edit-preferred-contact">
-                    <SelectValue placeholder="Select preferred contact" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="email">Email</SelectItem>
-                    <SelectItem value="phone">Phone</SelectItem>
-                    <SelectItem value="mobile">Mobile</SelectItem>
-                    <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <Separator />
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-dob">Date of Birth</Label>
-                <Input
-                  id="edit-dob"
-                  type="date"
-                  value={editForm.date_of_birth || ''}
-                  onChange={(e) => setEditForm({ ...editForm, date_of_birth: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-gender">Gender</Label>
-                <Select
-                  value={editForm.gender || ''}
-                  onValueChange={(value) => setEditForm({ ...editForm, gender: value })}
-                >
-                  <SelectTrigger id="edit-gender">
-                    <SelectValue placeholder="Select gender" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="male">Male</SelectItem>
-                    <SelectItem value="female">Female</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                    <SelectItem value="prefer_not_to_say">Prefer not to say</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="edit-billing-address">Billing Address</Label>
-              <Textarea
-                id="edit-billing-address"
-                value={editForm.billing_address || ''}
-                onChange={(e) => setEditForm({ ...editForm, billing_address: e.target.value })}
-                placeholder="Enter billing address"
-                rows={2}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="edit-shipping-address">Shipping Address</Label>
-              <Textarea
-                id="edit-shipping-address"
-                value={editForm.shipping_address || ''}
-                onChange={(e) => setEditForm({ ...editForm, shipping_address: e.target.value })}
-                placeholder="Enter shipping address"
-                rows={2}
-              />
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <input
-                type="checkbox"
-                id="edit-marketing"
-                checked={editForm.marketing_opt_in || false}
-                onChange={(e) => setEditForm({ ...editForm, marketing_opt_in: e.target.checked })}
-                className="h-4 w-4 rounded border-gray-300"
-              />
-              <Label htmlFor="edit-marketing" className="font-normal">
-                Opted in for marketing communications
-              </Label>
-            </div>
-          </div>
+          <CustomerForm
+            value={editForm}
+            onChange={setEditForm}
+            idPrefix="detail-edit"
+            disabled={updateMutation.isPending}
+          />
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
               Cancel
             </Button>
-            <Button 
+            <Button
               onClick={handleEditSubmit}
               disabled={!editForm.name || updateMutation.isPending}
             >

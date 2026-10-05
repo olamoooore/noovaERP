@@ -97,3 +97,213 @@ export function buildCustomerPayload<T extends CustomerPayloadFields>(data: T) {
 
   return payload
 }
+
+/**
+ * #437 (CU9): the one customer form values shape.
+ *
+ * Every customer create/edit surface (list quick-create, detail-page edit,
+ * in-document quick-create) renders the same `CustomerForm` over these values,
+ * so field handling cannot drift again. Numeric fields stay strings while the
+ * user types; the payload builders below do the normalisation.
+ */
+export interface CustomerFormValues {
+  code: string
+  type: 'individual' | 'company'
+  name: string
+  company: string
+  tax_number: string
+  company_registration_number: string
+  email: string
+  phone: string
+  mobile: string
+  website: string
+  billing_street: string
+  billing_street2: string
+  billing_city: string
+  billing_state: string
+  billing_zip: string
+  billing_country: string
+  shipping_address: string
+  credit_limit: string
+  payment_terms: string
+  preferred_contact: string
+  date_of_birth: string
+  gender: string
+  marketing_opt_in: boolean
+  notes: string
+  category_ids: number[]
+}
+
+export const PREFERRED_CONTACT_METHODS = ['email', 'phone', 'sms', 'whatsapp'] as const
+export const CUSTOMER_GENDERS = ['male', 'female', 'other'] as const
+
+export function emptyCustomerFormValues(overrides: Partial<CustomerFormValues> = {}): CustomerFormValues {
+  return {
+    code: '',
+    type: 'individual',
+    name: '',
+    company: '',
+    tax_number: '',
+    company_registration_number: '',
+    email: '',
+    phone: '',
+    mobile: '',
+    website: '',
+    billing_street: '',
+    billing_street2: '',
+    billing_city: '',
+    billing_state: '',
+    billing_zip: '',
+    billing_country: '',
+    shipping_address: '',
+    credit_limit: '',
+    payment_terms: '30',
+    preferred_contact: 'email',
+    date_of_birth: '',
+    gender: '',
+    marketing_opt_in: false,
+    notes: '',
+    category_ids: [],
+    ...overrides,
+  }
+}
+
+export interface CustomerFormAddressSource {
+  type?: string | null
+  street?: string | null
+  street2?: string | null
+  city?: string | null
+  state?: string | null
+  zip?: string | null
+  country?: string | null
+  is_default?: boolean | null
+}
+
+export interface CustomerFormSource {
+  code?: string | null
+  type?: 'individual' | 'company' | null
+  name?: string | null
+  company?: string | null
+  tax_number?: string | null
+  company_registration_number?: string | null
+  email?: string | null
+  phone?: string | null
+  mobile?: string | null
+  website?: string | null
+  billing_address?: string | null
+  shipping_address?: string | null
+  credit_limit?: string | number | null
+  payment_terms?: string | number | null
+  preferred_contact?: string | null
+  date_of_birth?: string | null
+  gender?: string | null
+  marketing_opt_in?: boolean | null
+  notes?: string | null
+  categories?: { id: number }[] | null
+  addresses?: CustomerFormAddressSource[] | null
+}
+
+const digitsOnly = (value: string | null | undefined) => (value ?? '').replace(/\D/g, '')
+
+function splitLegacyAddress(address: string | null | undefined): Partial<CustomerBillingAddressFields> {
+  if (!address) return {}
+
+  const trimmed = address.trim()
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed) as Record<string, unknown>
+      const pick = (...keys: string[]) => {
+        for (const key of keys) {
+          const value = parsed[key]
+          if (typeof value === 'string' && value !== '') return value
+        }
+        return ''
+      }
+      return {
+        billing_street: pick('address', 'street'),
+        billing_street2: pick('street2'),
+        billing_city: pick('city'),
+        billing_state: pick('state'),
+        billing_zip: pick('zip', 'postal_code'),
+        billing_country: pick('country'),
+      }
+    } catch {
+      // Fall through and treat it as plain text.
+    }
+  }
+
+  return { billing_street: address }
+}
+
+export function customerToFormValues(customer: CustomerFormSource = {}): CustomerFormValues {
+  const addresses = customer.addresses ?? []
+  const billing = addresses.find((address) => address.type === 'billing' && address.is_default)
+    ?? addresses.find((address) => address.type === 'billing')
+  const legacy = billing ? {} : splitLegacyAddress(customer.billing_address)
+
+  const preferredContact = (customer.preferred_contact ?? '').toLowerCase()
+  const gender = (customer.gender ?? '').toLowerCase()
+
+  return emptyCustomerFormValues({
+    code: customer.code ?? '',
+    type: customer.type ?? 'individual',
+    name: customer.name ?? '',
+    company: customer.company ?? '',
+    tax_number: customer.tax_number ?? '',
+    company_registration_number: customer.company_registration_number ?? '',
+    email: customer.email ?? '',
+    phone: digitsOnly(customer.phone),
+    mobile: digitsOnly(customer.mobile),
+    website: customer.website ?? '',
+    billing_street: billing?.street ?? legacy.billing_street ?? '',
+    billing_street2: billing?.street2 ?? legacy.billing_street2 ?? '',
+    billing_city: billing?.city ?? legacy.billing_city ?? '',
+    billing_state: billing?.state ?? legacy.billing_state ?? '',
+    billing_zip: billing?.zip ?? legacy.billing_zip ?? '',
+    billing_country: billing?.country ?? legacy.billing_country ?? '',
+    shipping_address: customer.shipping_address ?? '',
+    credit_limit: customer.credit_limit === null || customer.credit_limit === undefined ? '' : String(customer.credit_limit),
+    payment_terms: customer.payment_terms === null || customer.payment_terms === undefined ? '30' : String(customer.payment_terms),
+    preferred_contact: (PREFERRED_CONTACT_METHODS as readonly string[]).includes(preferredContact) ? preferredContact : 'email',
+    date_of_birth: (customer.date_of_birth ?? '').slice(0, 10),
+    gender: (CUSTOMER_GENDERS as readonly string[]).includes(gender) ? gender : '',
+    marketing_opt_in: Boolean(customer.marketing_opt_in),
+    notes: customer.notes ?? '',
+    category_ids: (customer.categories ?? []).map((category) => category.id),
+  })
+}
+
+/**
+ * Create payload: the endpoint accepts `addresses[]`, so the structured
+ * billing fields travel as a billing address record (#436 CU8).
+ */
+export function customerFormToCreatePayload(values: CustomerFormValues): Record<string, unknown> {
+  return buildCustomerPayload(values)
+}
+
+/**
+ * Update payload: `PUT /customers/{id}` persists the legacy `billing_address`
+ * column (it does not accept `addresses[]`), so the same structured form
+ * values are flattened back into that column. The zero/normalisation rules
+ * stay identical to create (#429 CU1).
+ */
+export function customerFormToUpdatePayload(values: CustomerFormValues): Record<string, unknown> {
+  const payload = buildCustomerPayload(values)
+  const addresses = payload.addresses as CustomerBillingAddressRecord[] | undefined
+  delete payload.addresses
+  delete payload.billing_address
+
+  if (addresses && addresses.length > 0) {
+    const billing = addresses[0]
+    payload.billing_address = [
+      billing.street,
+      billing.street2,
+      billing.city,
+      billing.state,
+      billing.zip,
+      billing.country,
+    ].filter(Boolean).join('\n')
+  }
+
+  return payload
+}

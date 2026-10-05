@@ -536,12 +536,18 @@ class PostingEngine implements PostingEngineInterface
         // ── 5. Build PostingRequest from resolved lines ───────
         $postingRequestLines = [];
         foreach ($resolution->ledgerLines as $line) {
+            // Issue #876 (SA2): the mapper merges request- and line-level
+            // dimensions; the journal columns are the analytic ids.
+            $dimensions = is_array($line['dimensions'] ?? null) ? $line['dimensions'] : [];
             $postingRequestLines[] = new PostingRequestLine(
                 accountMappingKey: $line['account_role'] ?? 'unknown',
                 accountId: $line['account_id'],
                 debit: (float) $line['debit'],
                 credit: (float) $line['credit'],
                 description: $line['description'] ?? "Posting profile {$request->postingProfileCode}",
+                departmentId: isset($dimensions['department_id']) ? (int) $dimensions['department_id'] : null,
+                projectId: isset($dimensions['project_id']) ? (int) $dimensions['project_id'] : null,
+                locationId: isset($dimensions['location_id']) ? (int) $dimensions['location_id'] : null,
                 currencyCode: $line['currency_code'] ?? $request->currencyCode,
                 originalAmount: $line['original_amount'] ?? null,
                 exchangeRate: $line['exchange_rate'] ?? null,

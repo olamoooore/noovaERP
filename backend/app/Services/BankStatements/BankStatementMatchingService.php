@@ -213,7 +213,12 @@ class BankStatementMatchingService
         return ['accepted' => count($this->acceptGroup($allocations, $idempotencyKey, $actorId))];
     }
 
-    private function refreshStatement(BankStatementTransaction $statement): void
+    /**
+     * Issue #841 (BK9): public so every accept path (statement controller or
+     * auto-match) lands the statement row in the same residual/status state
+     * the reconciliation engine's validate/complete read.
+     */
+    public function refreshStatement(BankStatementTransaction $statement): void
     {
         $matched = (float) BankStatementMatch::where('bank_statement_transaction_id', $statement->id)->where('status', 'accepted')->sum('matched_amount');
         $residual = (float) $statement->amount - $matched;

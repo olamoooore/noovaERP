@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\AccountingAccessService;
 use App\Services\BankReconciliationService;
 use App\Services\Reconciliation\AutoMatchingService;
 use Illuminate\Http\JsonResponse;
@@ -19,7 +20,27 @@ class AutoMatchController extends Controller
     public function __construct(
         private readonly AutoMatchingService $autoMatchingService,
         private readonly BankReconciliationService $bankReconciliationService,
+        private readonly AccountingAccessService $accessService,
     ) {}
+
+    /**
+     * Issue #841 (BK9): auto-match writes are governed by
+     * reconciliation.match — the same permission set as every other
+     * reconciliation write endpoint.
+     */
+    private function denyUnlessMatchAllowed(Request $request): ?JsonResponse
+    {
+        $user = $request->user();
+
+        if (! $user || ! $this->accessService->canMatchReconciliation($user)) {
+            return response()->json([
+                'message' => 'You do not have permission to run auto-matching.',
+                'required_permission' => 'reconciliation.match',
+            ], 403);
+        }
+
+        return null;
+    }
 
     /**
      * Get auto-match suggestions for bank transactions
@@ -28,6 +49,10 @@ class AutoMatchController extends Controller
      */
     public function suggestMatches(Request $request): JsonResponse
     {
+        if ($denied = $this->denyUnlessMatchAllowed($request)) {
+            return $denied;
+        }
+
         try {
             $validated = $request->validate([
                 'bank_account_id' => 'required|integer|exists:bank_accounts,id',
@@ -77,6 +102,10 @@ class AutoMatchController extends Controller
      */
     public function acceptMatches(Request $request): JsonResponse
     {
+        if ($denied = $this->denyUnlessMatchAllowed($request)) {
+            return $denied;
+        }
+
         try {
             $validated = $request->validate([
                 'bank_account_id' => 'required|integer|exists:bank_accounts,id',
@@ -123,6 +152,10 @@ class AutoMatchController extends Controller
      */
     public function bulkAcceptHighConfidence(Request $request): JsonResponse
     {
+        if ($denied = $this->denyUnlessMatchAllowed($request)) {
+            return $denied;
+        }
+
         try {
             $validated = $request->validate([
                 'bank_account_id' => 'required|integer|exists:bank_accounts,id',
@@ -203,8 +236,16 @@ class AutoMatchController extends Controller
      *
      * GET /api/v1/reconciliation/auto-match/statistics/{bankAccountId}
      */
-    public function getStatistics(int $bankAccountId): JsonResponse
+    public function getStatistics(Request $request, int $bankAccountId): JsonResponse
     {
+        $user = $request->user();
+        if (! $user || ! $this->accessService->canViewReconciliation($user)) {
+            return response()->json([
+                'message' => 'You do not have permission to view reconciliation statistics.',
+                'required_permission' => 'reconciliation.view',
+            ], 403);
+        }
+
         try {
             // Get unreconciled transactions.
             // Issue #101: getUnreconciledTransactions() takes (bankAccountId,

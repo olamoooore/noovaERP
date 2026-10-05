@@ -7,14 +7,17 @@ use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\BankAccount;
 use App\Models\BankReconciliation;
+use App\Models\BankStatementImport;
 use App\Models\BankStatementMatch;
+use App\Models\BankStatementTransaction;
 use App\Models\ChartOfAccount;
 use App\Models\FiscalPeriod;
 use App\Models\JournalEntryLine;
 use App\Models\Payment;
-use App\Models\ReconciliationItem;
+use App\Services\BankStatements\BankStatementReconciliationService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
@@ -25,6 +28,7 @@ class BankReconciliationService
 {
     public function __construct(
         private PostingEngineInterface $postingEngine,
+        private BankStatementReconciliationService $statementReconciliations,
     ) {}
 
     /**
@@ -239,46 +243,72 @@ class BankReconciliationService
                 );
             }
 
-            // Create reconciliation record
-            $reconciliation = BankReconciliation::create([
-                'bank_account_id' => $bankAccount->id,
-                'statement_date' => $statementDate,
-                'statement_balance' => $statementBalance,
-                'opening_balance' => $openingBalance,
-                'closing_balance' => $reconciledBalance,
-                'difference' => $difference,
-                'status' => 'draft',
-            ]);
+            // Issue #841 (BK9): the legacy completion is no longer a parallel
+            // reconciliation model. It becomes a manual-statement source on
+            // the statement-import engine — the same validate/complete path
+            // every imported statement takes — so the continuity, tolerance,
+            // fiscal and audit controls apply here exactly as there.
+            $resolvedUserId = TenantUserHelper::requireTenantUserId();
+            $statementLines = JournalEntryLine::with('journalEntry')
+                ->whereIn('id', $reconciledTransactionIds)
+                ->orderBy('id')
+                ->get();
 
-            \Log::info('Bank reconciliation record created', [
-                'reconciliation_id' => $reconciliation->id,
-                'bank_account_id' => $bankAccountId,
-                'status' => $reconciliation->status,
-            ]);
+            $manualImport = $this->createManualStatementImport(
+                $bankAccount,
+                $statementDate,
+                $statementBalance,
+                $openingBalance,
+                $statementLines,
+                $resolvedUserId
+            );
 
-            // Create reconciliation items
-            foreach ($reconciledTransactionIds as $transactionId) {
-                ReconciliationItem::create([
-                    'reconciliation_id' => $reconciliation->id,
-                    'journal_entry_line_id' => $transactionId,
+            $statementRows = [];
+            foreach ($statementLines as $index => $line) {
+                $movement = round((float) $line->debit - (float) $line->credit, 8);
+                $lineDate = $line->transaction_date ?? $line->journalEntry?->entry_date ?? $statementDate;
+                $transaction = BankStatementTransaction::create([
+                    'import_id' => $manualImport->id,
+                    'bank_account_id' => $bankAccount->id,
+                    'transaction_key' => 'manual-'.Str::uuid(),
+                    'source_row' => $index + 1,
+                    'transaction_date' => Carbon::parse($lineDate)->toDateString(),
+                    'description' => (string) ($line->description ?: $line->journalEntry?->description ?: 'Manual reconciliation line'),
+                    'bank_reference' => $line->reference ?: null,
+                    'amount' => $movement,
+                    'currency_code' => $manualImport->currency_code,
+                    'status' => 'matched',
+                    'matched_amount' => $movement,
+                    'residual_amount' => 0,
+                    'raw_data' => ['source' => 'legacy_manual_reconciliation', 'journal_entry_line_id' => $line->id],
                 ]);
+
+                BankStatementMatch::create([
+                    'bank_statement_transaction_id' => $transaction->id,
+                    'journal_entry_line_id' => $line->id,
+                    'matched_amount' => $movement,
+                    'match_type' => 'manual',
+                    'status' => 'accepted',
+                    'accepted_by' => $resolvedUserId,
+                    'accepted_at' => now(),
+                    'match_reasons' => ['source' => 'legacy_manual_reconciliation'],
+                ]);
+
+                $statementRows[] = $transaction;
             }
 
-            // Workstream 2 (2026-04-15): Only mark lines reconciled AFTER balance check passes
-            // Update journal entry lines with reconciliation reference
-            JournalEntryLine::whereIn('id', $reconciledTransactionIds)
-                ->update([
-                    'reconciliation_id' => $reconciliation->id,
-                    'reconciliation_date' => $statementDate,
-                ]);
-
-            // Mark as completed since balanced
-            $resolvedUserId = TenantUserHelper::resolveTenantUserId();
-            \Log::info('Completing reconciliation', [
-                'reconciliation_id' => $reconciliation->id,
-                'resolved_user_id' => $resolvedUserId,
+            \Log::info('Completing reconciliation on the statement engine', [
+                'bank_account_id' => $bankAccountId,
+                'import_id' => $manualImport->id,
+                'transaction_count' => count($statementRows),
             ]);
-            $reconciliation->complete($resolvedUserId);
+
+            $reconciliation = $this->statementReconciliations->complete(
+                $bankAccount->id,
+                [$manualImport->id],
+                (string) Str::uuid(),
+                $resolvedUserId
+            );
 
             $fresh = $reconciliation->fresh();
             \Log::info('Bank reconciliation completed', [
@@ -289,6 +319,55 @@ class BankReconciliationService
 
             return $fresh;
         });
+    }
+
+    /**
+     * Issue #841 (BK9): a manual reconciliation tick is materialised as an
+     * imported statement (one per completion) so it flows through the same
+     * BankStatementReconciliationService::validate()/complete() rules as a
+     * parsed statement file.
+     */
+    private function createManualStatementImport(
+        BankAccount $bankAccount,
+        Carbon $statementDate,
+        float $statementBalance,
+        float $openingBalance,
+        \Illuminate\Support\Collection $statementLines,
+        int $resolvedUserId
+    ): BankStatementImport {
+        $startDate = $statementDate->copy();
+        foreach ($statementLines as $line) {
+            $lineDate = $line->transaction_date ?? $line->journalEntry?->entry_date;
+
+            if ($lineDate) {
+                $candidate = Carbon::parse($lineDate);
+                if ($candidate->lessThan($startDate)) {
+                    $startDate = $candidate;
+                }
+            }
+        }
+
+        return BankStatementImport::create([
+            'bank_account_id' => $bankAccount->id,
+            'file_name' => 'manual-'.$statementDate->toDateString().'-'.Str::lower(Str::random(8)),
+            // Unique per tick: the partial unique index on (bank_account_id,
+            // file_hash) only spans non-reversed imports, and each manual
+            // completion is its own source document.
+            'file_hash' => hash('sha256', 'legacy-manual:'.Str::uuid()),
+            'storage_path' => 'manual://reconciliation/'.Str::uuid(),
+            'file_type' => 'manual',
+            'status' => 'imported',
+            'statement_start_date' => $startDate->toDateString(),
+            'statement_end_date' => $statementDate->toDateString(),
+            'opening_balance' => $openingBalance,
+            'closing_balance' => $statementBalance,
+            'currency_code' => $bankAccount->currency_code ?: 'USD',
+            'row_count' => $statementLines->count(),
+            'transaction_count' => $statementLines->count(),
+            'metadata' => ['source' => 'legacy_manual_reconciliation'],
+            'imported_by' => $resolvedUserId,
+            'imported_at' => now(),
+        ]);
     }
 
     /**

@@ -126,7 +126,20 @@ class BankStatementReconciliationService
             $reconciliation = BankReconciliation::create(['bank_account_id' => $bankAccountId, 'statement_date' => $validation['statement_end_date'], 'statement_balance' => $validation['statement_closing_balance'], 'opening_balance' => $validation['opening_balance'], 'closing_balance' => $validation['statement_closing_balance'], 'difference' => $validation['difference'], 'status' => 'completed', 'reconciled_by' => $actorId, 'reconciled_at' => now()]);
             foreach ($matches->groupBy('journal_entry_line_id') as $journalLineId => $lineMatches) {
                 $representative = $lineMatches->first();
-                ReconciliationItem::create(['reconciliation_id' => $reconciliation->id, 'journal_entry_line_id' => $journalLineId, 'bank_statement_transaction_id' => $representative->bank_statement_transaction_id, 'bank_statement_match_id' => $representative->id]);
+                // Issue #841 (BK9): reconciliation_items carries a unique
+                // (journal_entry_line_id), and a line staged by an auto-match
+                // accept already owns a draft-scoped row — adopt it instead of
+                // violating the uniqueness the "reconciled only once" control
+                // exists for.
+                ReconciliationItem::updateOrCreate(
+                    ['journal_entry_line_id' => $journalLineId],
+                    [
+                        'reconciliation_id' => $reconciliation->id,
+                        'bank_statement_transaction_id' => $representative->bank_statement_transaction_id,
+                        'bank_statement_match_id' => $representative->id,
+                        'reversed_at' => null,
+                    ]
+                );
             }
             JournalEntryLine::whereIn('id', $glLines->pluck('id'))->update(['reconciliation_id' => $reconciliation->id, 'reconciled' => true, 'reconciliation_date' => $validation['statement_end_date']]);
             BankStatementMatch::whereIn('id', $matches->pluck('id'))->update(['reconciliation_id' => $reconciliation->id]);

@@ -665,11 +665,17 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::get('/reports/aged-payables/details', [AgedPayablesController::class, 'details']);
 
         // Bank Reconciliation
-        Route::get('/reconciliation/bank-accounts', [BankReconciliationController::class, 'getBankAccounts']);
+        // Issue #841 (BK9): legacy reads join the reconciliation.* permission
+        // set (AC3) — the statement routes were gated, these were not. The
+        // transactions list stays authenticated-only: issue P1-9 pins it as
+        // the shared ledger view for the reconciliation workspace.
+        Route::get('/reconciliation/bank-accounts', [BankReconciliationController::class, 'getBankAccounts'])
+            ->middleware(RequirePermission::using('reconciliation.view'));
         Route::get('/reconciliation/transactions/{bankAccountId}', [BankReconciliationController::class, 'getTransactions']);
         Route::post('/reconciliation/complete', [BankReconciliationController::class, 'complete']);
         Route::post('/reconciliation/add-transaction', [BankReconciliationController::class, 'addTransaction']);
-        Route::get('/reconciliation/history/{bankAccountId}', [BankReconciliationController::class, 'history']);
+        Route::get('/reconciliation/history/{bankAccountId}', [BankReconciliationController::class, 'history'])
+            ->middleware(RequirePermission::using('reconciliation.view'));
 
         // Persisted bank-statement ingestion (statement records only; never posts GL entries)
         Route::post('/reconciliation/statement-imports/preview', [BankStatementImportController::class, 'preview'])

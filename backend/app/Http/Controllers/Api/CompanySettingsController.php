@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Accounting\Services\AccountMappingService;
+use App\Accounting\Services\AccountRoleResolver;
 use App\Http\Controllers\Controller;
 use App\Models\AccountMapping;
 use App\Models\FiscalPeriod;
 use App\Services\CashRoundingService;
+use App\Support\TenantUserHelper;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +35,23 @@ class CompanySettingsController extends Controller
         'cost_of_goods_sold' => 'cogs',
         'retained_earnings' => 'retained_earnings',
         'bank_charges' => 'bank_charges',
+    ];
+
+    /**
+     * #885 (UX3): screen fields posting can resolve per legal entity through
+     * entity_account_roles (AccountRoleResolver priority 1). Assigning one of
+     * these for a selected entity overrides the tenant-wide mapping for that
+     * entity only; fields without a role stay tenant-wide.
+     */
+    private const DEFAULT_ACCOUNT_ROLES = [
+        'accounts_receivable' => 'AR_CONTROL',
+        'accounts_payable' => 'AP_CONTROL',
+        'bank_account' => 'BANK_MAIN',
+        'sales_tax' => 'TAX_OUTPUT',
+        'purchase_tax' => 'TAX_INPUT',
+        'inventory' => 'INVENTORY',
+        'cost_of_goods_sold' => 'COGS',
+        'retained_earnings' => 'RETAINED_EARNINGS',
     ];
 
     /**
@@ -351,13 +371,16 @@ class CompanySettingsController extends Controller
         }
     }
 
-    public function accounts(): JsonResponse
+    public function accounts(Request $request): JsonResponse
     {
         try {
             // #877 (SA3): read the account-role mapping posting resolves
             // through. No company_settings row is auto-created (the previous
             // behaviour silently inserted base_currency 'SGD').
-            return response()->json(['success' => true, 'data' => $this->defaultAccountMappings()]);
+            // #885 (UX3): when an entity is selected, entity_account_roles
+            // overrides the tenant-wide mapping for that entity, exactly as
+            // AccountRoleResolver does when posting.
+            return response()->json($this->defaultAccountsPayload($this->selectedEntityId($request)));
         } catch (\Exception $e) {
             \Log::error('Failed to fetch default accounts', ['error' => $e->getMessage()]);
 
@@ -379,6 +402,7 @@ class CompanySettingsController extends Controller
         $input = collect($request->all())->map($normalize)->all();
 
         $validator = Validator::make($input, [
+            'entity_id' => 'nullable|integer|exists:legal_entities,id',
             'accounts_receivable' => 'nullable|integer|exists:chart_of_accounts,id',
             'accounts_payable' => 'nullable|integer|exists:chart_of_accounts,id',
             'bank_account' => 'nullable|integer|exists:chart_of_accounts,id',
@@ -398,31 +422,127 @@ class CompanySettingsController extends Controller
         }
 
         try {
-            // #877 (SA3): one source of truth — write the same
-            // account_mappings rows AccountMappingService::resolve() reads.
-            // Fields absent from the payload are left untouched; a null
-            // (cleared) field does not remove a mapping posting depends on.
+            $entityId = $this->selectedEntityId($request);
+            $roleResolver = app(AccountRoleResolver::class);
+            $assignedBy = TenantUserHelper::resolveTenantUserId();
+
+            // #877 (SA3): one source of truth — write the same mappings
+            // posting reads. Fields absent from the payload are left
+            // untouched; a null (cleared) field does not remove a tenant-wide
+            // mapping posting depends on.
+            //
+            // #885 (UX3): with a selected entity, a field that has an account
+            // role is written to entity_account_roles for that entity only —
+            // clearing it deactivates the override and falls back to the
+            // tenant-wide mapping. Fields without a role remain tenant-wide.
             foreach (self::DEFAULT_ACCOUNT_MAPPINGS as $field => $mappingKey) {
-                if (! array_key_exists($field, $input) || $input[$field] === null) {
+                if (! array_key_exists($field, $input)) {
+                    continue;
+                }
+
+                $value = $input[$field];
+                $roleCode = self::DEFAULT_ACCOUNT_ROLES[$field] ?? null;
+
+                if ($entityId !== null && $roleCode !== null) {
+                    if ($value === null) {
+                        $roleResolver->unassignByRoleCode($roleCode, $entityId);
+                    } else {
+                        $roleResolver->assignByRoleCode($roleCode, (int) $value, $entityId, $assignedBy);
+                    }
+
+                    continue;
+                }
+
+                if ($value === null) {
                     continue;
                 }
 
                 AccountMapping::updateOrCreate(
                     ['mapping_key' => $mappingKey, 'document_type' => null],
-                    ['account_id' => (int) $input[$field], 'is_active' => true],
+                    ['account_id' => (int) $value, 'is_active' => true],
                 );
             }
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Default accounts updated successfully',
-                'data' => $this->defaultAccountMappings(),
-            ]);
+            return response()->json($this->defaultAccountsPayload($entityId));
         } catch (\Exception $e) {
             \Log::error('Failed to update default accounts', ['error' => $e->getMessage()]);
 
             return response()->json(['success' => false, 'message' => 'Failed to update default accounts: '.$e->getMessage()], 500);
         }
+    }
+
+    /**
+     * #885 (UX3): the entity the screen is editing. Only an explicit
+     * selection (query/body `entity_id` or the X-Entity-Id header) scopes the
+     * screen — the user's default entity from ResolveEntityContext is not
+     * applied so "all entities" remains reachable.
+     */
+    private function selectedEntityId(Request $request): ?int
+    {
+        $entityId = $request->input('entity_id') ?? $request->header('X-Entity-Id');
+
+        return $entityId ? (int) $entityId : null;
+    }
+
+    /**
+     * #877 (SA3) + #885 (UX3): the screen payload — every field resolved the
+     * way posting would resolve it for the selected entity, the source of
+     * each value, the fields left unmapped, and the shared #775 health check.
+     *
+     * @return array<string, mixed>
+     */
+    private function defaultAccountsPayload(?int $entityId): array
+    {
+        $defaults = $this->defaultAccountMappings();
+        $entityRoles = $entityId !== null ? $this->entityAccountRoles($entityId) : [];
+
+        $data = [];
+        $scope = [];
+        $unmapped = [];
+
+        foreach (self::DEFAULT_ACCOUNT_MAPPINGS as $field => $mappingKey) {
+            $roleCode = self::DEFAULT_ACCOUNT_ROLES[$field] ?? null;
+
+            if ($roleCode !== null && array_key_exists($roleCode, $entityRoles)) {
+                $data[$field] = $entityRoles[$roleCode];
+                $scope[$field] = 'entity';
+            } else {
+                $data[$field] = $defaults[$field] ?? null;
+                $scope[$field] = 'default';
+            }
+
+            if ($data[$field] === null) {
+                $unmapped[] = $field;
+            }
+        }
+
+        return [
+            'success' => true,
+            'data' => $data,
+            'entity_id' => $entityId,
+            'scope' => $scope,
+            'unmapped' => $unmapped,
+            // #885 AC: the screen shares the #775 account-mapping health
+            // check instead of inventing a second one.
+            'health' => app(AccountMappingService::class)->health(),
+        ];
+    }
+
+    /**
+     * Active account-role assignments for one entity, keyed by role code.
+     *
+     * @return array<string, int>
+     */
+    private function entityAccountRoles(int $entityId): array
+    {
+        return DB::table('entity_account_roles as ear')
+            ->join('account_roles as ar', 'ar.id', '=', 'ear.account_role_id')
+            ->where('ear.legal_entity_id', $entityId)
+            ->where('ear.is_active', true)
+            ->whereIn('ar.code', array_values(self::DEFAULT_ACCOUNT_ROLES))
+            ->pluck('ear.chart_of_account_id', 'ar.code')
+            ->map(fn ($accountId) => (int) $accountId)
+            ->all();
     }
 
     /**

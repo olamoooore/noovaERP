@@ -527,8 +527,11 @@ class MedicalCaseController extends Controller
             return response()->json(['message' => 'Medical case not found'], 404);
         }
 
-        if ($case->status !== 'allocated') {
-            return response()->json(['message' => 'Only allocated cases can be marked as delivered'], 403);
+        // Issue #570 (MC7): a first partial delivery leaves the case
+        // `partially_delivered`, and the remaining lines may be delivered in a
+        // later call — only a case already fully delivered is closed off.
+        if (! in_array($case->status, ['allocated', 'partially_delivered'], true)) {
+            return response()->json(['message' => 'Only allocated or partially delivered cases can be delivered'], 403);
         }
 
         $validated = $request->validate([
@@ -548,35 +551,41 @@ class MedicalCaseController extends Controller
                         ->where('id', $itemData['id'])
                         ->firstOrFail();
 
-                    if ($itemData['delivered_qty'] > $item->allocated_qty) {
-                        throw new \RuntimeException("Delivered quantity cannot exceed allocated quantity for item {$item->id}");
-                    }
-
                     $deliveryOrderLine = DeliveryOrderLine::with('deliveryOrder')
                         ->lockForUpdate()
                         ->find($itemData['delivery_order_item_id']);
 
-                    $this->assertDeliverableFromLine($case, $item, $deliveryOrderLine, (float) $itemData['delivered_qty'], $index);
-
+                    // Issue #570 (MC7): every call links an additional chunk
+                    // from a completed DO line; the line's cumulative delivered
+                    // quantity (capped by the case line's allocated quantity)
+                    // is what the derived case status is judged on.
                     $previouslyDelivered = (float) $item->delivered_qty;
+                    $newlyDelivered = (float) $itemData['delivered_qty'];
+                    $deliveredTotal = round($previouslyDelivered + $newlyDelivered, 4);
+
+                    if ($deliveredTotal > round((float) $item->allocated_qty, 4)) {
+                        throw ValidationException::withMessages([
+                            "items.{$index}.delivered_qty" => "The delivered quantity cannot exceed the allocated quantity of {$item->allocated_qty} for this case line.",
+                        ]);
+                    }
+
+                    $this->assertDeliverableFromLine($case, $item, $deliveryOrderLine, $newlyDelivered, $index);
 
                     $item->update([
-                        'delivered_qty' => $itemData['delivered_qty'],
+                        'delivered_qty' => $deliveredTotal,
                         'delivery_order_item_id' => $deliveryOrderLine->id,
                     ]);
 
                     // Issue #184: accrue bonus usage for the newly delivered
                     // quantity, fanned out over every active scheme assignment
                     // the customer holds (same transaction as the delivery).
-                    $newlyDelivered = (float) $itemData['delivered_qty'] - $previouslyDelivered;
-
                     if ($newlyDelivered > 0) {
                         app(\App\Services\MedicalCaseBonusAccrualService::class)
                             ->accrueForItem($item->fresh(), $newlyDelivered);
                     }
                 }
 
-                $case->update(['status' => 'delivered']);
+                $case->update(['status' => $this->derivedDeliveryStatus($case->fresh('items'))]);
             });
 
             return response()->json([
@@ -641,11 +650,35 @@ class MedicalCaseController extends Controller
             ->where('id', '!=', $item->id)
             ->sum('delivered_qty');
 
-        $remaining = round((float) $line->quantity_delivered - $alreadyLinked, 4);
+        // Issue #570 (MC7): when the same case line is delivered in several
+        // chunks from the same DO line, the chunks this item already linked
+        // must be subtracted too — otherwise each call could spend the line's
+        // full delivered quantity again.
+        $alreadyLinkedByThisItem = (int) $item->delivery_order_item_id === (int) $line->id
+            ? (float) $item->delivered_qty
+            : 0.0;
+
+        $remaining = round((float) $line->quantity_delivered - $alreadyLinked - $alreadyLinkedByThisItem, 4);
 
         if (round($deliveredQty, 4) > $remaining) {
             throw $error("The delivered quantity exceeds the delivery order line's remaining quantity of {$remaining}.");
         }
+    }
+
+    /**
+     * Issue #570 (MC7): the case status is derived, never stamped. A case is
+     * `delivered` only once every line's allocated quantity has been linked to
+     * completed DO lines; until then it stays `partially_delivered`.
+     */
+    private function derivedDeliveryStatus(MedicalCase $case): string
+    {
+        foreach ($case->items as $item) {
+            if (round((float) $item->delivered_qty, 4) < round((float) $item->allocated_qty, 4)) {
+                return 'partially_delivered';
+            }
+        }
+
+        return 'delivered';
     }
 
     public function invoice(Request $request, $id): JsonResponse
@@ -754,7 +787,10 @@ class MedicalCaseController extends Controller
                         ->release($reservation, "Medical case {$case->case_no} cancelled");
                 }
 
-                if (in_array($case->status, ['delivered', 'invoiced'], true)) {
+                // Issue #570 (MC7): a partially delivered case carries real
+                // delivered quantities and accrued usage just like a fully
+                // delivered one, so it must be reversed on cancellation too.
+                if (in_array($case->status, ['partially_delivered', 'delivered', 'invoiced'], true)) {
                     $itemIds = $case->items->pluck('id')->all();
 
                     foreach ($case->items as $item) {
