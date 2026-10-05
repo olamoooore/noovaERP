@@ -497,6 +497,11 @@ class CustomerCreditNoteService
             // balance = total − paid − credited), never via paid_amount.
             app(InvoiceService::class)->applyCreditNoteToInvoice($invoice, (float) $creditNote->total_amount);
 
+            // #901 (PC7): the business event is written to the outbox inside
+            // this transaction and published only after it commits.
+            app(\Modules\Sales\Services\SalesDomainEventEmitter::class)
+                ->emitCreditNotePosted($creditNote);
+
             DB::commit();
 
             // #516 (CN7): after the commit, mirroring InvoicePosted — the

@@ -343,11 +343,14 @@ class AnalyticsController extends Controller
      *
      * Group rows by up to three whitelisted dimensions (`row_dims[]`), spread
      * columns by up to two more (`col_dims[]` or the singular `col_dim`) and
-     * choose up to five measures (`measure[]`, `measures[]` also accepted).
-     * The same sales filters as the fixed tabs scope the read model. A
-     * comparison window is deliberately not accepted here — a pivot reports
-     * one period — so `comparison`/`compare_*` are rejected rather than
-     * ignored.
+     * choose the measures (`measure[]`, `measures[]` also accepted). The same
+     * sales filters as the fixed tabs scope the read model. A comparison
+     * window is deliberately not accepted here — a pivot reports one period —
+     * so `comparison`/`compare_*` are rejected rather than ignored.
+     *
+     * Issue #602: the measure set includes the Odoo lifecycle measures
+     * (qty/amount ordered, delivered, invoiced and to-invoice), so the cap is
+     * the full whitelist rather than five.
      */
     public function salesPivot(Request $request): JsonResponse
     {
@@ -357,9 +360,9 @@ class AnalyticsController extends Controller
             'col_dim' => ['nullable', 'string', Rule::in(SalesAnalyticsService::pivotDimensions())],
             'col_dims' => 'nullable|array|max:2',
             'col_dims.*' => ['string', Rule::in(SalesAnalyticsService::pivotDimensions())],
-            'measure' => 'nullable|array|max:5',
+            'measure' => 'nullable|array|max:13',
             'measure.*' => ['string', Rule::in(SalesAnalyticsService::pivotMeasures())],
-            'measures' => 'nullable|array|max:5',
+            'measures' => 'nullable|array|max:13',
             'measures.*' => ['string', Rule::in(SalesAnalyticsService::pivotMeasures())],
         ], allowComparison: false);
 
@@ -388,6 +391,34 @@ class AnalyticsController extends Controller
 
         } catch (\Exception $e) {
             \Log::error('Sales Pivot analytics failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to generate analytics. Please try again.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Issue #602: the "unbilled deliveries" table — completed DO lines whose
+     * delivered quantity still exceeds what has been invoiced. Same #593
+     * filter contract as the sales reports; a comparison window is rejected
+     * (a snapshot list compares to nothing).
+     */
+    public function unbilledDeliveries(Request $request): JsonResponse
+    {
+        $filter = $this->salesFilter($request, allowComparison: false);
+
+        try {
+            return response()->json([
+                'success' => true,
+                'data' => $this->salesAnalyticsService->getUnbilledDeliveries($filter),
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Unbilled deliveries report failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);

@@ -21,6 +21,9 @@ class AccountingDocumentLineData
         public readonly ?int $projectId = null,
         public readonly ?int $departmentId = null,
         public readonly ?int $branchId = null,
+        // Issue #456: stable link to the originating sales-order line so the
+        // converted invoice keeps the same traceability as the SO→invoice path.
+        public readonly ?int $salesOrderLineId = null,
     ) {}
 
     public function toArray(): array
@@ -38,6 +41,7 @@ class AccountingDocumentLineData
             'project_id' => $this->projectId,
             'department_id' => $this->departmentId,
             'branch_id' => $this->branchId,
+            'sales_order_line_id' => $this->salesOrderLineId,
         ];
     }
 }

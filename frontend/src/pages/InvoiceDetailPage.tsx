@@ -19,6 +19,7 @@ import { AuditTab } from '@/components/audit/AuditTab'
 import { InvoiceJournalTab } from '@/components/accounting/InvoiceJournalTab'
 import { InvoiceWriteOffDialog } from '@/components/accounting/InvoiceWriteOffDialog'
 import { StockMovesTab } from '@/components/inventory/StockMovesTab'
+import { StockCogsBadge } from '@/components/inventory/StockCogsBadge'
 import { TagEditor } from '@/components/tags/TagEditor'
 import { DocumentLinkChip } from '@/components/documents/DocumentLinkChip'
 import { PrintSendMenu } from '@/components/documents/PrintSendMenu'
@@ -799,6 +800,13 @@ export function InvoiceDetailPage() {
               />
             )}
           </>}
+        />
+        {/* Issue #696 (INV-D3): stock & COGS reconciliation badge. */}
+        <StockCogsBadge
+          documentType="invoice"
+          documentId={Number(id)}
+          permission="invoices.view"
+          className="mt-2"
         />
       </div>
 

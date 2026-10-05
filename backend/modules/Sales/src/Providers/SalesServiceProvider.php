@@ -28,6 +28,35 @@ class SalesServiceProvider extends ServiceProvider
     {
         $this->registerAuditObservers();
         $this->registerExceptionRetryHandlers();
+        $this->registerDomainEventSubscriptions();
+    }
+
+    /**
+     * Issue #901 (PC7): subscribe the Sales event consumer to the versioned
+     * catalogue on the platform Domain Event Bus. Subscriptions live in the
+     * tenant schema, so register when tenancy initializes (and immediately if
+     * a tenant is already active, e.g. CLI/tests).
+     */
+    private function registerDomainEventSubscriptions(): void
+    {
+        $this->app['events']->listen(\Stancl\Tenancy\Events\TenancyInitialized::class, function () {
+            try {
+                app(\App\Platform\EventBus\DomainEventDispatcher::class)
+                    ->subscribe(new \Modules\Sales\Subscriptions\SalesEventSubscription);
+            } catch (\Throwable $e) {
+                // Subscription table not migrated for this tenant yet — the
+                // event bus still persists events; the publisher retries.
+            }
+        });
+
+        try {
+            if (function_exists('tenant') && tenant()) {
+                app(\App\Platform\EventBus\DomainEventDispatcher::class)
+                    ->subscribe(new \Modules\Sales\Subscriptions\SalesEventSubscription);
+            }
+        } catch (\Throwable $e) {
+            // Tenancy not initialized yet — handled by the listener above.
+        }
     }
 
     /**

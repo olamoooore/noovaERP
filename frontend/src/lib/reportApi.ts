@@ -17,6 +17,7 @@ import type {
   SalesByCategoryData,
   SalesReconciliationData,
   SalesPivotData,
+  UnbilledDeliveriesData,
   PivotDimension,
   PivotMeasure,
   ExpensesByCategoryData,
@@ -674,6 +675,24 @@ class ReportApiClient {
       return response.data.data;
     } catch (error) {
       this.handleError(error, 'Failed to fetch Sales Pivot');
+      throw error;
+    }
+  }
+
+  /**
+   * Issue #602: the "unbilled deliveries" view — completed delivery-order
+   * lines whose delivered quantity still exceeds what has been invoiced,
+   * scoped by the same #593 sales filters.
+   */
+  async getUnbilledDeliveries(filters: ReportFilters): Promise<UnbilledDeliveriesData> {
+    try {
+      const response = await api.get<ApiResponse<UnbilledDeliveriesData>>(
+        '/analytics/sales/unbilled-deliveries',
+        { params: this.salesParams(filters) }
+      );
+      return response.data.data;
+    } catch (error) {
+      this.handleError(error, 'Failed to fetch Unbilled Deliveries');
       throw error;
     }
   }

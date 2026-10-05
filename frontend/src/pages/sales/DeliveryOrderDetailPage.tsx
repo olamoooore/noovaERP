@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast'
 import { ChatterDock } from '@/components/chatter'
 import { AuditTab } from '@/components/audit/AuditTab'
 import { StockMovesTab } from '@/components/inventory/StockMovesTab'
+import { StockCogsBadge } from '@/components/inventory/StockCogsBadge'
 import { TagEditor } from '@/components/tags/TagEditor'
 import { DocumentLinkChip } from '@/components/documents/DocumentLinkChip'
 import api from '@/lib/api'
@@ -401,6 +402,13 @@ export function DeliveryOrderDetailPage() {
                 ? `For Quotation ${deliveryOrder.quotation.quotation_number}`
                 : 'Standalone Delivery'}
             </p>
+            {/* Issue #696 (INV-D3): stock & COGS reconciliation badge. */}
+            <StockCogsBadge
+              documentType="delivery_order"
+              documentId={Number(id)}
+              permission="sales.view"
+              className="mt-2"
+            />
             <TagEditor subjectType="delivery_order" subjectId={id!} />
           </div>
         </div>

@@ -9,6 +9,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ChatterAttachment;
 use App\Models\CustomerContact;
 use App\Models\DocumentFollower;
+use App\Services\Chatter\ChatterMentionService;
 use App\Services\Chatter\ChatterService;
 use App\Services\Chatter\DocumentFollowerService;
 use App\Services\TenantRoleService;
@@ -27,6 +28,7 @@ class ChatterController extends Controller
         private readonly TenantRoleService $roleService,
         private readonly CommunicationEngine $communication,
         private readonly DocumentFollowerService $followers,
+        private readonly ChatterMentionService $mentions,
     ) {}
 
     public function show(Request $request, string $subjectType, int|string $subjectId): JsonResponse
@@ -54,7 +56,8 @@ class ChatterController extends Controller
                 return [
                     'id' => $m->id,
                     'body' => $m->body,
-                    'mentions' => [],
+                    // Issue #635: persisted @mention payload, not a stub.
+                    'mentions' => $this->mentions->mentionsFromMessage($m),
                     'is_internal_note' => $m->message_type === CommunicationMessage::TYPE_INTERNAL_NOTE,
                     'created_at' => optional($m->created_at)->toIso8601String(),
                     'source' => 'communication',
@@ -142,7 +145,8 @@ class ChatterController extends Controller
                 return [
                     'id' => $m->id,
                     'body' => $m->body,
-                    'mentions' => [],
+                    // Issue #635: persisted @mention payload, not a stub.
+                    'mentions' => $this->mentions->mentionsFromMessage($m),
                     'is_internal_note' => $m->message_type === CommunicationMessage::TYPE_INTERNAL_NOTE,
                     'created_at' => optional($m->created_at)->toIso8601String(),
                     'source' => 'communication',
@@ -420,10 +424,33 @@ class ChatterController extends Controller
             ['body' => $data['body']],
         );
 
+        // Issue #635: resolve @mentions from the body, persist them on the
+        // message, notify each mentioned user and auto-follow them. Runs after
+        // the follower fan-out above so a newly mentioned user does not also
+        // receive the generic "new message" notification on the same post.
+        $mentions = [];
+        try {
+            $mentions = $this->mentions->apply(
+                $message,
+                $subjectType,
+                (int) $subjectId,
+                (int) $request->user()->id,
+                $data['body'],
+            );
+        } catch (\Throwable $e) {
+            // The message is already stored; a mention failure must not turn
+            // the post into an error, but it must be visible in the log.
+            Log::error('Chatter: mention processing failed', [
+                'subject_type' => $subjectType,
+                'subject_id' => $subjectId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
         return response()->json(['data' => [
             'id' => $message->id,
             'body' => $message->body,
-            'mentions' => $message->mentions ?? [],
+            'mentions' => $mentions,
             'created_at' => optional($message->created_at)->toIso8601String(),
             'actor' => $author ? [
                 'id' => $author->id,
@@ -474,6 +501,23 @@ class ChatterController extends Controller
                 'summary' => $data['summary'],
             ],
         );
+
+        // Issue #635: the assignee is notified directly — follower fan-out
+        // only reaches users who already follow the document with the
+        // activity subscription on.
+        if ($assigneeId !== null && $activity->assignee !== null) {
+            $this->followers->notifyAssignee(
+                $subjectType,
+                (int) $subjectId,
+                $activity->assignee,
+                $actorId,
+                [
+                    'activity_type' => $data['activity_type'],
+                    'summary' => $data['summary'],
+                    'due_date' => $data['due_date'] ?? null,
+                ],
+            );
+        }
 
         // Issue #83 priority 2: audit who assigned what to whom.
         if ($assigneeId !== null && $assigneeId !== $actorId) {

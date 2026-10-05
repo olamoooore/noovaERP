@@ -62,6 +62,7 @@ use App\Http\Controllers\Api\ProductVariantController;
 use App\Http\Controllers\Api\QuotationController;
 use App\Http\Controllers\Api\ReconciliationExceptionController;
 use App\Http\Controllers\Api\SettingsController;
+use App\Http\Controllers\Api\StockCogsBadgeController;
 use App\Http\Controllers\Api\SubledgerReconciliationController;
 use App\Http\Controllers\Api\TaxController;
 use App\Http\Controllers\Api\TaxRatesController;
@@ -452,6 +453,13 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             ->defaults('stockMovesSubject', 'invoice')
             ->middleware(RequirePermission::using('invoices.view'));
 
+        // Issue #696 (INV-D3): stock & COGS reconciliation badge for the
+        // invoice header — same read gate as the trail tab.
+        Route::get('/invoices/{subjectId}/stock-cogs-badge', [StockCogsBadgeController::class, 'index'])
+            ->whereNumber('subjectId')
+            ->defaults('stockCogsSubject', 'invoice')
+            ->middleware(RequirePermission::using('invoices.view'));
+
         Route::post('/invoices/{invoice}/cancel', [InvoiceController::class, 'cancel'])
             ->middleware(RequirePermission::using('accounting.post'));
         // Issue #879 (SA6): write off (part of) an open invoice as bad debt —
@@ -600,6 +608,25 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         // Guarded currency change + re-price of a draft document (FR-5.2).
         Route::post('/documents/{type}/{id}/currency', [DocumentCurrencyController::class, 'update'])
             ->middleware(RequirePermission::using('documents.currency.change'));
+    });
+
+    // Issue #607 (RPT-F1): Sales-side customer statement surface. Deliberately
+    // OUTSIDE the accounting-write group and gated by the existing
+    // customers.view permission (NOT reports.view, which SALES lacks), so a
+    // sales user can generate and send account statements. Every action
+    // delegates to CustomerStatementDeliveryService / CustomerStatementService
+    // — the batch endpoints are wrappers over the same generate path, never a
+    // second implementation. Entity scoping inside the services.
+    Route::prefix('accounting')->middleware([ResolveEntityContext::class, EnsureEntityAccess::class])->group(function () {
+        Route::post('/customer-statements/send', [CustomerStatementController::class, 'send'])
+            ->middleware(RequirePermission::using('customers.view'));
+        Route::post('/customer-statements/batch/preview', [CustomerStatementController::class, 'batchPreview'])
+            ->middleware(RequirePermission::using('customers.view'));
+        Route::post('/customer-statements/batch', [CustomerStatementController::class, 'batchSend'])
+            ->middleware(RequirePermission::using('customers.view'));
+        Route::get('/customer-statements/batches/{batch}', [CustomerStatementController::class, 'batchStatus'])
+            ->whereNumber('batch')
+            ->middleware(RequirePermission::using('customers.view'));
     });
 
     // Accounting

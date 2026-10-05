@@ -40,6 +40,7 @@ import {
   sumBy,
 } from './salesAnalyticsRows';
 import { SalesPivotView } from './SalesPivotView';
+import { UnbilledDeliveriesView } from './UnbilledDeliveriesView';
 
 interface SalesAnalyticsPageProps {
   productOnly?: boolean;
@@ -372,6 +373,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     queryClient.invalidateQueries({ queryKey: ['sales-trends'] });
     queryClient.invalidateQueries({ queryKey: ['sales-by-category'] });
     queryClient.invalidateQueries({ queryKey: ['sales-pivot'] });
+    queryClient.invalidateQueries({ queryKey: ['sales-unbilled-deliveries'] });
   };
 
   const activeFetching = productOnly
@@ -1095,6 +1097,10 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
             <Icon icon="solar:widget-5-bold" className="h-4 w-4" />
             Pivot
           </TabsTrigger>
+          <TabsTrigger value="unbilled" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:delivery-bold" className="h-4 w-4" />
+            Unbilled Deliveries
+          </TabsTrigger>
         </TabsList>
 
         {/* ------------------------------- Customers ------------------------------ */}
@@ -1451,6 +1457,15 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
         {/* -------------------------------- Pivot --------------------------------- */}
         <TabsContent value="pivot" className="space-y-6">
           <SalesPivotView
+            filters={pivotFilters}
+            periodLabel={periodLabel}
+            exportRange={exportRange}
+          />
+        </TabsContent>
+
+        {/* --------------------------- Unbilled Deliveries ------------------------ */}
+        <TabsContent value="unbilled" className="space-y-6">
+          <UnbilledDeliveriesView
             filters={pivotFilters}
             periodLabel={periodLabel}
             exportRange={exportRange}

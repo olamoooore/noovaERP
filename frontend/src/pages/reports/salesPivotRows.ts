@@ -40,6 +40,15 @@ export const ALL_PIVOT_MEASURES: PivotMeasure[] = [
   'net_revenue',
   'cost',
   'margin',
+  // Issue #602: the Odoo lifecycle measures, quantity and amount.
+  'qty_ordered',
+  'qty_delivered',
+  'qty_invoiced',
+  'qty_to_invoice',
+  'amount_ordered',
+  'amount_delivered',
+  'amount_invoiced',
+  'amount_to_invoice',
 ];
 
 export const PIVOT_MEASURE_LABELS: Record<PivotMeasure, string> = {
@@ -48,13 +57,39 @@ export const PIVOT_MEASURE_LABELS: Record<PivotMeasure, string> = {
   net_revenue: 'Net Revenue',
   cost: 'Cost',
   margin: 'Margin',
+  qty_ordered: 'Qty Ordered',
+  qty_delivered: 'Qty Delivered',
+  qty_invoiced: 'Qty Invoiced',
+  qty_to_invoice: 'Qty to Invoice',
+  amount_ordered: 'Amount Ordered',
+  amount_delivered: 'Amount Delivered',
+  amount_invoiced: 'Amount Invoiced',
+  amount_to_invoice: 'Amount to Invoice',
 };
 
-/** Measures the issue lists; all selected by default. */
-export const DEFAULT_PIVOT_MEASURES: PivotMeasure[] = [...ALL_PIVOT_MEASURES];
+/**
+ * Measures the #601 issue lists; selected by default so an existing user's
+ * pivot is unchanged (#602 adds the lifecycle measures to the picker without
+ * changing the default view).
+ */
+export const DEFAULT_PIVOT_MEASURES: PivotMeasure[] = [
+  'paid_qty',
+  'foc_qty',
+  'net_revenue',
+  'cost',
+  'margin',
+];
 
 /** Measures rendered as money; the rest are quantities. */
-const MONEY_MEASURES: PivotMeasure[] = ['net_revenue', 'cost', 'margin'];
+const MONEY_MEASURES: PivotMeasure[] = [
+  'net_revenue',
+  'cost',
+  'margin',
+  'amount_ordered',
+  'amount_delivered',
+  'amount_invoiced',
+  'amount_to_invoice',
+];
 
 export const formatPivotMeasure = (measure: PivotMeasure, value: number): string =>
   MONEY_MEASURES.includes(measure) ? formatCurrency(value) : formatNumber(value);

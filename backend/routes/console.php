@@ -94,6 +94,15 @@ Schedule::command('inventory:reconcile-gl')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Issue #696 - nightly per-document stock & COGS reconciliation badge sweep.
+// Records each mismatch once in #902's platform exception queue (accountant
+// owner) and fails the run when anything was found, so the scheduler alerting
+// sees it; the fix is the document's existing reversal / reset-to-draft path.
+Schedule::command('inventory:stock-cogs-reconciliation-report --fail-on-mismatch')
+    ->dailyAt('05:55')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Issue #881 - AR subledger vs GL AR control account, per legal entity.
 // --fail-on-variance makes an out-of-tolerance day a failed run (alertable).
 Schedule::command('accounting:reconcile-ar-gl --fail-on-variance')
@@ -113,6 +122,14 @@ Schedule::command('exchange-rates:sync')
 // events onto the Domain Event Bus every minute. withoutOverlapping +
 // SKIP LOCKED inside the command make this safe to double-run.
 Schedule::command('accounting:publish-outbox')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Sales Outbox (issue #901, PC7) - Publish written-but-unpublished sales
+// domain events onto the Domain Event Bus. Same contract as the accounting
+// outbox: withoutOverlapping + SKIP LOCKED make it safe to double-run.
+Schedule::command('sales:publish-outbox')
     ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();

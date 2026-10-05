@@ -98,6 +98,7 @@ const BonusSchemeDetailPage = lazy(() => import('@/pages/sales/BonusSchemeDetail
 const BonusSchemeCreatePage = lazy(() => import('@/pages/sales/BonusSchemeCreatePage').then(m => ({ default: m.BonusSchemeCreatePage })))
 const CustomerBonusSchemesPage = lazy(() => import('@/pages/sales/CustomerBonusSchemesPage').then(m => ({ default: m.CustomerBonusSchemesPage })))
 const CustomerBonusSchemeCreatePage = lazy(() => import('@/pages/sales/CustomerBonusSchemeCreatePage').then(m => ({ default: m.CustomerBonusSchemeCreatePage })))
+const SalesStatementsPage = lazy(() => import('@/pages/sales/SalesStatementsPage').then(m => ({ default: m.SalesStatementsPage })))
 const InventoryDashboard = lazy(() => import('@/pages/dashboards/InventoryDashboard').then(m => ({ default: m.InventoryDashboard })))
 const FinancialDashboard = lazy(() => import('@/pages/dashboards/FinancialDashboard').then(m => ({ default: m.FinancialDashboard })))
 
@@ -414,6 +415,21 @@ function App() {
                 <Route path="/sales/customer-bonus-schemes/create" element={<CustomerBonusSchemeCreatePage />} />
                 <Route path="/sales/settings" element={<SalesSettingsPage />} />
                 <Route path="/sales/price-lists" element={<PriceListsPage />} />
+
+                {/* Issue #607 (RPT-F1): Sales-side statements — gated by
+                    customers.view (not reports.view, which SALES lacks). */}
+                <Route
+                  path="/sales/statements"
+                  element={
+                    <RequirePermissionAccess
+                      permission="customers.view"
+                      title="Statements access required"
+                      description="Your role does not include the customers.view permission, which is required to generate customer statements."
+                    >
+                      <SalesStatementsPage />
+                    </RequirePermissionAccess>
+                  }
+                />
 
                 {/* Quotation Routes (new) */}
                 <Route path="/quotations" element={<QuotesPage />} />

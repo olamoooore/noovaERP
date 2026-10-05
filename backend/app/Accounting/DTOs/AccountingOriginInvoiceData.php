@@ -28,5 +28,11 @@ class AccountingOriginInvoiceData
         public readonly bool $autoPost = false,
         public readonly array $originContext = [],
         public readonly ?string $createdViaRole = null,
+        // Issue #456: the source document's currency snapshot and order link
+        // must travel with the conversion — a USD delivery order stays USD.
+        public readonly ?string $currencyCode = null,
+        public readonly ?string $baseCurrencyCode = null,
+        public readonly ?float $exchangeRate = null,
+        public readonly ?int $salesOrderId = null,
     ) {}
 }

@@ -6,7 +6,8 @@ use App\Enums\UserRole;
 
 /**
  * Issue #902 [SALES-PLAT] P2 (PC8): the catalogue of business-relevant failures
- * the Sales domain raises to the platform exception queue.
+ * the Sales domain (and #696's inventory stock/COGS reconciliation) raises to
+ * the platform exception queue.
  *
  * Each case carries the routing metadata the operations console (#914) and the
  * queue UI need without a second lookup:
@@ -48,9 +49,23 @@ enum ExceptionType: string
      */
     case SALES_PAYMENT_POSTING_FAILED = 'sales.payment.posting_failed';
 
+    /**
+     * Issue #696 (INV-D3): the nightly stock & COGS reconciliation found a
+     * sales document whose warehouse movements and COGS postings disagree
+     * (over-issued stock, missing / duplicated COGS, or COGS without an
+     * issue). There is no safe automatic retry — the fix is the document's
+     * documented correction path (reverse the duplicate delivery issue,
+     * reset-to-draft the invoice), so the accountant opens the document from
+     * the exception's payload.
+     */
+    case INVENTORY_STOCK_COGS_MISMATCH = 'inventory.stock_cogs_mismatch';
+
     public function module(): string
     {
-        return 'sales';
+        return match ($this) {
+            self::INVENTORY_STOCK_COGS_MISMATCH => 'inventory',
+            default => 'sales',
+        };
     }
 
     public function defaultSeverity(): string
@@ -75,7 +90,7 @@ enum ExceptionType: string
             self::SALES_DO_APPROVAL_NOTIFICATION_FAILED => 'sales.delivery_order.notify_approvers',
             self::SALES_EINVOICE_AUTO_SUBMIT_FAILED => 'compliance.einvoice.submit',
             self::SALES_PAYMENT_POSTING_FAILED => 'sales.payment.post',
-            self::SALES_INVOICE_TAX_VARIANCE, self::SALES_INVOICE_FX_RESIDUAL => null,
+            self::SALES_INVOICE_TAX_VARIANCE, self::SALES_INVOICE_FX_RESIDUAL, self::INVENTORY_STOCK_COGS_MISMATCH => null,
         };
     }
 }

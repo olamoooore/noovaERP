@@ -429,6 +429,11 @@ export interface SalesTrendsData {
  * Issue #601: pivot-style sales analysis. Dimensions and measures are a
  * backend-validated whitelist; `values[i]` aligns with `columns[i]` and
  * `children` carries the expandable row hierarchy (parents aggregate children).
+ *
+ * Issue #602 adds the Odoo lifecycle measures: ordered / delivered / invoiced
+ * / to-invoice, as quantity and amount. `qty_to_invoice`/`amount_to_invoice`
+ * are delivered − invoiced and are NOT clamped (a negative value means more
+ * was invoiced than delivered).
  */
 export type PivotDimension =
   | 'salesperson'
@@ -439,7 +444,20 @@ export type PivotDimension =
   | 'country'
   | 'month';
 
-export type PivotMeasure = 'paid_qty' | 'foc_qty' | 'net_revenue' | 'cost' | 'margin';
+export type PivotMeasure =
+  | 'paid_qty'
+  | 'foc_qty'
+  | 'net_revenue'
+  | 'cost'
+  | 'margin'
+  | 'qty_ordered'
+  | 'qty_delivered'
+  | 'qty_invoiced'
+  | 'qty_to_invoice'
+  | 'amount_ordered'
+  | 'amount_delivered'
+  | 'amount_invoiced'
+  | 'amount_to_invoice';
 
 /** Only the measures requested are present, so every key is optional. */
 export type PivotMeasureValues = Partial<Record<PivotMeasure, number>>;
@@ -471,6 +489,49 @@ export interface SalesPivotData {
   summary: {
     row_count: number;
     column_count: number;
+    base_currency?: string;
+    revenue_basis?: string;
+    includes_tax?: boolean;
+  };
+  period?: { start_date: string; end_date: string };
+  pos_excluded_by_tag?: boolean;
+}
+
+/**
+ * Issue #602: one completed delivery-order line whose delivered quantity still
+ * exceeds what has been invoiced (the DO-side companion of the pivot's
+ * `qty_to_invoice`). `amount_to_invoice` is base-currency and tax excluded.
+ */
+export interface UnbilledDeliveryRow {
+  delivery_order_id: number;
+  delivery_order_number: string;
+  delivery_order_line_id: number;
+  delivery_date: string | null;
+  sales_order_id: number | null;
+  customer_id: number | null;
+  customer_name: string | null;
+  product_id: number | null;
+  product_name: string | null;
+  sku: string | null;
+  quantity_ordered: number;
+  quantity_delivered: number;
+  quantity_invoiced: number;
+  quantity_to_invoice: number;
+  unit_price: number;
+  amount_to_invoice: number;
+  currency_code: string | null;
+}
+
+export interface UnbilledDeliveriesData {
+  title: string;
+  deliveries: UnbilledDeliveryRow[];
+  summary: {
+    line_count: number;
+    delivery_order_count: number;
+    total_quantity_delivered: number;
+    total_quantity_invoiced: number;
+    total_quantity_to_invoice: number;
+    total_amount_to_invoice: number;
     base_currency?: string;
     revenue_basis?: string;
     includes_tax?: boolean;

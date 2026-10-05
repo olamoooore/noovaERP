@@ -48,6 +48,9 @@ class DocumentFollower extends Model
 
     public const SOURCE_STAGE_CHANGE = 'auto:stage_change';
 
+    /** Issue #635: the user was @mentioned in a chatter message. */
+    public const SOURCE_MENTION = 'auto:mention';
+
     protected $table = 'document_followers';
 
     protected $fillable = [
