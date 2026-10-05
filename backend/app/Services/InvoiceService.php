@@ -1536,8 +1536,9 @@ class InvoiceService
      * Issue #876 (SA2): the concrete account a line's revenue recognises to.
      *
      * Precedence — line GL override → sales-order line income account →
-     * product income account → null (the profile's `sales_revenue` default
-     * resolved from account_mappings / entity_account_roles).
+     * product income account → product category income account → null (the
+     * profile's `sales_revenue` default resolved from account_mappings /
+     * entity_account_roles).
      */
     private function resolveLineIncomeAccountId(InvoiceLine $line): ?int
     {
@@ -1555,6 +1556,10 @@ class InvoiceService
 
         if ($line->product?->income_account_id) {
             return (int) $line->product->income_account_id;
+        }
+
+        if ($line->product?->category?->income_account_id) {
+            return (int) $line->product->category->income_account_id;
         }
 
         return null;

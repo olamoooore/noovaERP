@@ -514,6 +514,7 @@ class ChartOfAccountsController extends Controller
         ['journals', 'default_debit_account_id', 'journal templates'],
         ['journals', 'default_credit_account_id', 'journal templates'],
         ['ocr_account_mappings', 'account_id', 'OCR account mappings'],
+        ['product_categories', 'income_account_id', 'product categories'],
         ['products', 'expense_account_id', 'products'],
         ['products', 'income_account_id', 'products'],
         ['reconciliation_exceptions', 'bank_account_id', 'reconciliation exceptions'],
