@@ -61,6 +61,7 @@ const ReceiptBuilderPage = lazy(() => import('@/pages/Settings/ReceiptBuilderPag
 const CountryPluginSettings = lazy(() => import('@/pages/Settings/CountryPluginSettings').then(m => ({ default: m.CountryPluginSettings })))
 const TemplateEditorPage = lazy(() => import('@/pages/TemplateBuilder/TemplateEditorPage'))
 const SalesSettingsPage = lazy(() => import('@/pages/sales/SalesSettingsPage').then(m => ({ default: m.SalesSettingsPage })))
+const AutomationRulesPage = lazy(() => import('@/pages/sales/AutomationRulesPage').then(m => ({ default: m.AutomationRulesPage })))
 const PriceListsPage = lazy(() => import('@/pages/sales/PriceListsPage'))
 const IoTDevicesPage = lazy(() => import('@/pages/IoT/IoTDevicesPage').then(m => ({ default: m.IoTDevicesPage })))
 const IoTHubPage = lazy(() => import('@/pages/IoTHub').then(m => ({ default: m.IoTHubPage })))
@@ -414,6 +415,8 @@ function App() {
                 <Route path="/sales/customer-bonus-schemes" element={<CustomerBonusSchemesPage />} />
                 <Route path="/sales/customer-bonus-schemes/create" element={<CustomerBonusSchemeCreatePage />} />
                 <Route path="/sales/settings" element={<SalesSettingsPage />} />
+                {/* Issue #913: no-code automation rules over sales events */}
+                <Route path="/sales/automation-rules" element={<AutomationRulesPage />} />
                 <Route path="/sales/price-lists" element={<PriceListsPage />} />
 
                 {/* Issue #607 (RPT-F1): Sales-side statements — gated by

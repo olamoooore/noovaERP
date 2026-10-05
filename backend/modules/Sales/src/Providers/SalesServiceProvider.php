@@ -39,27 +39,28 @@ class SalesServiceProvider extends ServiceProvider
     }
 
     /**
-     * Issue #901 (PC7): subscribe the Sales event consumer to the versioned
+     * Issue #901 (PC7): subscribe the Sales event consumers to the versioned
      * catalogue on the platform Domain Event Bus. Issue #903 (PC9) adds the
-     * notification consumer beside it. Subscriptions live in the tenant
-     * schema, so register when tenancy initializes (and immediately if a
-     * tenant is already active, e.g. CLI/tests).
+     * notification consumer; issue #913 wires the automation consumer onto
+     * the same catalogue (priority 250, after the audit consumer).
+     * Subscriptions live in the tenant schema, so register when tenancy
+     * initializes (and immediately if a tenant is already active, e.g.
+     * CLI/tests).
      */
     private function registerDomainEventSubscriptions(): void
     {
         $subscribe = function (): void {
-            app(\App\Platform\EventBus\DomainEventDispatcher::class)
-                ->subscribe(new \Modules\Sales\Subscriptions\SalesEventSubscription);
-
-            app(\App\Platform\EventBus\DomainEventDispatcher::class)
-                ->subscribe(new \Modules\Sales\Subscriptions\SalesNotificationSubscription);
+            $dispatcher = app(\App\Platform\EventBus\DomainEventDispatcher::class);
+            $dispatcher->subscribe(new \Modules\Sales\Subscriptions\SalesEventSubscription);
+            $dispatcher->subscribe(new \Modules\Sales\Subscriptions\SalesNotificationSubscription);
+            $dispatcher->subscribe(new \Modules\Sales\Subscriptions\SalesAutomationSubscription);
         };
 
         $this->app['events']->listen(\Stancl\Tenancy\Events\TenancyInitialized::class, function () use ($subscribe) {
             try {
                 $subscribe();
             } catch (\Throwable $e) {
-                // Subscription table not migrated for this tenant yet — the
+                // Subscription tables not migrated for this tenant yet — the
                 // event bus still persists events; the publisher retries.
             }
         });
