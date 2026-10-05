@@ -52,7 +52,7 @@ export function WebsitesIndex() {
   const [domainWebsite, setDomainWebsite] = useState<Website | null>(null)
   const [newDomain, setNewDomain] = useState('')
   const websitePublicUrl = (website: Website) => website.public_url
-    || `${window.location.origin}${(import.meta.env.VITE_BASE_PATH || '').replace(/\/+$/, '')}/site/${website.uuid}`
+    || `${window.location.origin}${(import.meta.env.VITE_BASE_PATH || '').replace(/\/+$/, '')}/w/${website.slug}`
 
   const domainsQuery = useQuery({
     queryKey: ['website-domains', domainWebsite?.id],

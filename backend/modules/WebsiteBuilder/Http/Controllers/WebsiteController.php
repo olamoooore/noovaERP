@@ -44,9 +44,10 @@ class WebsiteController extends Controller
 
         $websites->getCollection()->each(function (Website $website) use ($primaryHosts) {
             $hostname = $primaryHosts->get($website->uuid);
+            $frontendUrl = rtrim((string) config('frontend.url'), '/');
             $website->setAttribute(
                 'public_url',
-                $hostname ? 'https://'.$hostname : url('/site/'.$website->uuid),
+                $hostname ? 'https://'.$hostname : $frontendUrl.'/w/'.$website->slug,
             );
         });
 

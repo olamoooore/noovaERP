@@ -29,6 +29,13 @@ final class WebsiteHostnameService
                 $existing = Hostname::query()->where('hostname', $hostname)->lockForUpdate()->first();
 
                 if ($existing) {
+                    if ((string) $existing->tenant_id === $tenantId
+                        && $existing->purpose === 'website'
+                        && $existing->website_uuid === $website->uuid
+                        && ! in_array($existing->serving_status, ['release_requested', 'quarantined', 'released'], true)) {
+                        return $this->reuseExistingHostname($existing, $website, $token, $primary, $actorId);
+                    }
+
                     if ((string) $existing->tenant_id !== $tenantId
                         || ! in_array($existing->serving_status, ['release_requested', 'quarantined', 'released'], true)) {
                         throw ValidationException::withMessages(['hostname' => 'This hostname is already claimed.']);
@@ -69,6 +76,48 @@ final class WebsiteHostnameService
             }
             throw $e;
         }
+    }
+
+    private function reuseExistingHostname(Hostname $hostname, Website $website, string $token, bool $primary, ?int $actorId): Hostname
+    {
+        $updates = [];
+
+        if ($primary && ! $hostname->primary_requested) {
+            Hostname::query()
+                ->where('tenant_id', $hostname->tenant_id)
+                ->where('website_uuid', $website->uuid)
+                ->where('id', '<>', $hostname->id)
+                ->where('primary_requested', true)
+                ->update(['primary_requested' => false]);
+            $updates['primary_requested'] = true;
+        }
+
+        if ($hostname->serving_status === 'pending'
+            && (! $hostname->challenge_expires_at || $hostname->challenge_expires_at->isPast())) {
+            $updates = array_merge($updates, [
+                'challenge_version' => $hostname->challenge_version + 1,
+                'challenge_token_ciphertext' => Crypt::encryptString($token),
+                'challenge_token_hash' => hash('sha256', $token),
+                'challenge_expires_at' => now()->addHours(config('website_domains.challenge_ttl_hours', 72)),
+                'failure_code' => null,
+                'failure_message' => null,
+                'next_retry_at' => null,
+                'retry_count' => 0,
+                'lock_version' => $hostname->lock_version + 1,
+                'ingress_revision' => (string) Str::uuid(),
+            ]);
+        }
+
+        if ($updates === []) {
+            return $hostname;
+        }
+
+        $previous = $hostname->toArray();
+        $hostname->update($updates);
+        $refreshed = $hostname->fresh();
+        $this->audit($refreshed, 'hostname.reused_by_owner', $previous, $refreshed->toArray(), $actorId);
+
+        return $refreshed;
     }
 
     public function dnsInstructions(Hostname $hostname): array
