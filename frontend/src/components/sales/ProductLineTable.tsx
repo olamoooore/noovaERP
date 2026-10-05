@@ -75,6 +75,11 @@ export function productLineColumns(options: {
   lotNumber?: boolean
   expiryDate?: boolean
   taxRate?: boolean
+  /**
+   * Issue #314: per-line discount column. The quotation edit page had one and
+   * the create page didn't; the shared grid shows it everywhere.
+   */
+  discount?: boolean
   /** Issue #465: on-hand / reserved / available stock cell (delivery orders). */
   stock?: boolean
 } = {}): LineItemsColumn[] {
@@ -91,6 +96,7 @@ export function productLineColumns(options: {
     { key: 'stock', label: 'Available', align: 'right', minWidth: 'min-w-[8.5rem]', hidden: !options.stock },
     { key: 'unit_price', label: 'Unit Price', align: 'right', minWidth: 'min-w-[7rem]' },
     { key: 'tax_rate', label: 'Tax %', align: 'right', minWidth: 'min-w-[5rem]', hidden: !options.taxRate },
+    { key: 'discount', label: 'Disc', align: 'right', minWidth: 'w-[5.5rem] min-w-[4.5rem]', hidden: !options.discount },
     { key: 'line_total', label: 'Line Total', align: 'right', minWidth: 'min-w-[7rem]' },
     { key: 'actions', label: '', align: 'right', minWidth: 'w-[10.5rem]', className: 'w-[10.5rem]' },
   ]

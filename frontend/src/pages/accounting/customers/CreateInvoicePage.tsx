@@ -22,6 +22,16 @@ import { cn, formatCurrency, formatDate, getApiErrorMessage } from '@/lib/utils'
 import api from '@/lib/api'
 import { resolveLineTaxRate } from '@/lib/lineTax';
 import { computeDocumentTotals } from '@/lib/documentTotals';
+import { useSalesDocumentPricing } from '@/hooks/useSalesDocumentPricing';
+import {
+  duplicateSalesDocumentLine,
+  getSalesDocumentLineTotal,
+  isBlankSalesDocumentLine,
+  moveSalesDocumentLine,
+  removeSalesDocumentLine,
+  resetSalesDocumentLine,
+  type SalesDocumentLine,
+} from '@/lib/salesDocumentLines';
 import pricingApi from '@/lib/pricingApi'
 import { useAuthStore } from '@/store/authStore';
 import { ContactSearchCombobox } from '@/components/ui/ContactSearchCombobox';
@@ -193,11 +203,9 @@ const emptyLine = (): InvoiceLine => ({
 // A fully-empty, untouched product row. These placeholder rows must be ignored
 // consistently by every validation + the payload filter (issue #290) — they
 // used to block saving after catalogue adds while the starter row lingered.
+// Issue #314: the rule lives in the shared sales-document line module.
 const isBlankPlaceholderLine = (line: InvoiceLine): boolean =>
-  (line.line_type ?? 'product') === 'product'
-  && !line.product_id
-  && !line.description.trim()
-  && !line.sku.trim();
+  isBlankSalesDocumentLine(line as SalesDocumentLine);
 
 const initialCustomerForm: CustomerFormState = emptyCustomerFormValues({ type: 'company' });
 
@@ -419,9 +427,6 @@ export const CreateInvoicePage: React.FC = () => {
   const [commandResults, setCommandResults] = useState<Array<{ id: number; name: string; sku?: string | null }>>([]);
   const warehouseTouchedRef = useRef(false);
   const appliedLastInvoiceRef = useRef<number | null>(null);
-  // #296: monotonically increasing id of the newest async price resolution —
-  // a response is only allowed to apply if it is still the latest request.
-  const pricingRequestSeqRef = useRef(0);
   const [customInvoiceNumber, setCustomInvoiceNumber] = useState('');
   const calcDueDate = (invDate: string, termsDays: number) => addCalendarDays(invDate, termsDays);
   const [dueDate, setDueDate] = useState(() => calcDueDate(todayDateOnly(), 30));
@@ -456,23 +461,31 @@ export const CreateInvoicePage: React.FC = () => {
   const [discountMode, setDiscountMode] = useState<'fixed' | 'percentage'>('fixed');
   const [discountAmount, setDiscountAmount] = useState<number | ''>('');
   const [lines, setLines] = useState<InvoiceLine[]>([emptyLine()]);
-  // MRD pricelist-multicurrency FR-5.1/FR-6.1: document currency + resolved
-  // rate snapshot for display (server remains the price authority).
-  const [currencyCode, setCurrencyCode] = useState('');
-  // Explicit price-list selection (FR-2.3 step 1); '' = auto (customer's list).
-  const [priceListId, setPriceListId] = useState('');
-  const [pricingMeta, setPricingMeta] = useState<{
-    base_currency_code?: string;
-    exchange_rate?: number;
-    rate_date?: string | null;
-    rate_source?: string | null;
-    rate_stale?: boolean;
-    price_list_name?: string | null;
-    price_list_currency?: string | null;
-  } | null>(null);
-  // FR-1.3/FR-5.2: a resolution failure (missing rate, unsellable currency,
-  // rule error) must be VISIBLE, not silently leave stale prices on screen.
-  const [pricingError, setPricingError] = useState<string | null>(null);
+  // MRD pricelist-multicurrency FR-5.1/FR-6.1: document currency + resolved rate
+  // snapshot + visible resolution errors. Issue #314: the race-safe resolver and
+  // state live in the shared hook so invoice/quotation cannot drift again.
+  const {
+    currencyCode,
+    setCurrencyCode,
+    priceListId,
+    setPriceListId,
+    pricingMeta,
+    pricingError,
+    resolvePricingForLines: resolvePricingForLinesShared,
+  } = useSalesDocumentPricing<InvoiceLine>({
+    customerId,
+    documentDate: invoiceDate,
+    setLines,
+    // D5: keep the full engine trace so the price chip can explain how the
+    // number was reached (list/rule, tier, FX rate).
+    applyQuote: (_line, quote) => ({
+      pricing_source: quote.pricing_trace?.pricelist_code || quote.source || null,
+      list_price: Number(quote.list_price ?? 0) || null,
+      pricing_trace: quote.pricing_trace ?? null,
+      pricing_currency: quote.currency ?? null,
+      pricing_base_currency: quote.base_currency ?? null,
+    }),
+  });
   const [overrideDialogOpen, setOverrideDialogOpen] = useState(false);
   const [overrideReason, setOverrideReason] = useState('');
   const [draggedLineIndex, setDraggedLineIndex] = useState<number | null>(null);
@@ -1020,12 +1033,13 @@ export const CreateInvoicePage: React.FC = () => {
   });
 
   /**
-   * MRD pricelist-multicurrency FR-4.6/FR-6.2: ask the engine for the
-   * applicable price-list prices + the document's default currency. The
-   * server re-resolves authoritatively on save (price_mode='auto'); this
-   * keeps the on-screen value truthful before saving.
+   * MRD pricelist-multicurrency FR-4.6/FR-6.2: ask the shared engine resolver
+   * for the applicable price-list prices + the document's default currency.
+   * The server re-resolves authoritatively on save (price_mode='auto'); this
+   * keeps the on-screen value truthful before saving. Issue #314: the race
+   * guard (#296) and error surfacing live once in the shared pricing hook.
    */
-  const resolvePricingForLines = async (
+  const resolvePricingForLines = (
     customerIdArg: string,
     nextLines: InvoiceLine[],
     currencyOverride?: string,
@@ -1033,90 +1047,12 @@ export const CreateInvoicePage: React.FC = () => {
     // #299 (F7): price against a date that has not landed in state yet — the
     // date input's onChange runs before React re-renders with the new value.
     dateOverride?: string,
-  ) => {
-    const productLines = nextLines
-      .map((line, index) => ({ line, index }))
-      .filter(({ line }) => (line.line_type ?? 'product') === 'product' && !!line.product_id);
-    if (productLines.length === 0) return;
-
-    // #296: stamp the request before awaiting. A stale response must never
-    // apply after a newer resolution has been started.
-    const requestId = ++pricingRequestSeqRef.current;
-
-    try {
-      const result = await pricingApi.resolveBatch(
-        {
-          customer_id: customerIdArg ? parseInt(customerIdArg, 10) : null,
-          date: (dateOverride ?? invoiceDate) || undefined,
-          // The editor's selected currency wins; when empty the server
-          // resolves the customer's list currency (FR-5.2).
-          document_currency: (currencyOverride ?? currencyCode) || undefined,
-          price_list_id: (listOverride ?? priceListId) ? Number(listOverride ?? priceListId) : undefined,
-        },
-        productLines.map(({ line }) => ({
-          product_id: parseInt(line.product_id, 10),
-          quantity: line.quantity === '' ? 1 : Number(line.quantity) || 1,
-        })),
-      );
-
-      // A newer resolve was started while this one was in flight — its result
-      // (and this one's metadata) are obsolete.
-      if (requestId !== pricingRequestSeqRef.current) return;
-
-      setCurrencyCode(result.currency_code);
-      setPricingMeta({
-        base_currency_code: result.base_currency_code,
-        exchange_rate: result.exchange_rate,
-        rate_date: result.rate_date,
-        rate_source: (result as any).rate_source ?? null,
-        rate_stale: Boolean((result as any).rate_stale),
-        price_list_name: result.price_list_name,
-        price_list_currency: result.price_list_currency,
-      });
-      setPricingError(null);
-
-      const lineError = (result.lines ?? []).map((quote: any) => quote?.error).find(Boolean) ?? null;
-
-      // Apply against the CURRENT lines, not the request snapshot, and only to
-      // the line that still is the product/quantity the quote was requested
-      // for. Edits made while the request was in flight (manual price, qty,
-      // product) therefore survive.
-      setLines((current) => {
-        const updated = [...current];
-        result.lines.forEach((quote: any, quoteIndex: number) => {
-          const requested = productLines[quoteIndex];
-          const target = requested?.index;
-          if (target === undefined || quote?.error) return;
-          const existing = updated[target];
-          if (!existing) return;
-          if (String(existing.product_id) !== String(requested.line.product_id)) return;
-          const requestedQty = requested.line.quantity === '' ? 1 : Number(requested.line.quantity) || 1;
-          const currentQty = existing.quantity === '' ? 1 : Number(existing.quantity) || 1;
-          if (currentQty !== requestedQty) return;
-          // Auto-filled prices only override auto/empty lines — a hand-typed
-          // price must never be silently replaced (FR-6.3).
-          if (existing.price_mode === 'manual') return;
-          updated[target] = {
-            ...existing,
-            unit_price: quote.unit_price,
-            price_mode: 'auto',
-            pricing_source: quote.pricing_trace?.pricelist_code || quote.source || null,
-            list_price: Number(quote.list_price ?? 0) || null,
-            pricing_trace: quote.pricing_trace ?? null,
-            pricing_currency: quote.currency ?? null,
-            pricing_base_currency: quote.base_currency ?? null,
-          };
-        });
-        return updated;
-      });
-      if (lineError) setPricingError(lineError);
-    } catch (error) {
-      // Missing FX rate / unsellable currency / engine errors: show the real
-      // message where the operator is looking (the currency + list fields).
-      const message = getApiErrorMessage(error) || 'Pricing could not be resolved.';
-      setPricingError(typeof message === 'string' ? message : 'Pricing could not be resolved.');
-    }
-  };
+  ) => resolvePricingForLinesShared(nextLines, {
+    customerIdOverride: customerIdArg,
+    currencyOverride,
+    listOverride,
+    dateOverride,
+  });
 
   const updateLine = (index: number, field: keyof InvoiceLine, value: string | number) => {
     const updated = [...lines];
@@ -1547,44 +1483,22 @@ export const CreateInvoicePage: React.FC = () => {
   });
 
   const duplicateLine = (index: number) => {
-    const targetLine = lines[index];
-    if (!targetLine) return;
-    const updated = [...lines];
-    updated.splice(index + 1, 0, { ...targetLine });
-    setLines(updated);
+    setLines((current) => duplicateSalesDocumentLine(current, index));
   };
 
   const moveLine = (index: number, direction: 'up' | 'down') => {
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= lines.length) {
-      return;
-    }
-
-    const updated = [...lines];
-    [updated[index], updated[targetIndex]] = [updated[targetIndex], updated[index]];
-    setLines(updated);
+    setLines((current) => moveSalesDocumentLine(current, index, direction));
   };
 
   const removeLine = (index: number) => {
-    if (lines.length > 1) {
-      setLines(lines.filter((_, currentIndex) => currentIndex !== index));
-    }
+    setLines((current) => removeSalesDocumentLine(current, index));
   };
 
   const resetLine = (index: number) => {
-    setLines((current) => current.map((line, i) => (i === index ? emptyLine() : line)));
+    setLines((current) => resetSalesDocumentLine(current, index, emptyLine()));
   };
 
-  const getLineTotal = (line: InvoiceLine) => {
-    const qty = line.quantity === '' ? 0 : line.quantity;
-    const unitPrice = line.unit_price === '' ? 0 : line.unit_price;
-    const taxRate = line.tax_rate === '' ? 0 : line.tax_rate;
-    const discount = line.discount_amount === '' ? 0 : line.discount_amount;
-    const base = qty * unitPrice;
-    const discounted = base - discount;
-    const tax = discounted * (taxRate / 100);
-    return discounted + tax;
-  };
+  const getLineTotal = (line: InvoiceLine) => getSalesDocumentLineTotal(line as SalesDocumentLine);
 
   const openCreateCustomerDialog = () => {
     setCustomerDialogMode('create');
