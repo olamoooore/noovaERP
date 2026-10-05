@@ -31,7 +31,7 @@ class AIStatusController extends Controller
         return response()->json([
             'success' => true,
             'status' => $isHealthy ? 'healthy' : 'unhealthy',
-            'service' => $this->ollamaService->provider(),
+            'service' => 'ollama',
             'timestamp' => now()->toIso8601String(),
         ], $isHealthy ? 200 : 503);
     }
@@ -41,15 +41,15 @@ class AIStatusController extends Controller
      */
     public function info(): JsonResponse
     {
-        $cached = Cache::remember('ai_service_info_'.$this->ollamaService->provider().'_'.md5($this->ollamaService->model().'-'.(string) $this->ollamaService->cerebrasKey()), 60, function () {
+        $cached = Cache::remember('ai_service_info_'.md5($this->ollamaService->model()), 60, function () {
             $models = $this->ollamaService->listModels();
             $isHealthy = $this->ollamaService->healthCheck();
 
             return [
                 'service' => [
-                    'provider' => $this->ollamaService->provider(),
+                    'provider' => 'ollama',
                     'status' => $isHealthy ? 'running' : 'stopped',
-                    'base_url' => $this->ollamaService->provider() === 'cerebras' ? config('ai.cerebras.base_url') : config('ai.ollama.base_url'),
+                    'base_url' => config('ai.ollama.base_url'),
                     'current_model' => $this->ollamaService->model(),
                     'available_models' => $models,
                 ],

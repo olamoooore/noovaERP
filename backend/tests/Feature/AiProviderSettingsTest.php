@@ -12,17 +12,17 @@ use Modules\AI\Services\OllamaService;
 use Tests\TenantTestCase;
 
 /**
- * AI provider settings + BYOK (Settings → General → AI) and the
- * provider-aware chat service.
+ * AI settings (Settings → General → AI) and the local chat service.
+ *
+ * Every AI request goes to the local Ollama server, and the settings payload
+ * exposes only local model fields.
  *
  * Verifies through the real router that:
- *  - the workspace defaults to local Ollama,
- *  - switching to Cerebras persists the provider/model/key and the chat
- *    service then calls the Cerebras OpenAI-compatible endpoint with the
- *    tenant's own key (BYOK), reasoning-model aware,
- *  - switching back posts to the local Ollama endpoint again,
+ *  - the settings payload is Ollama-only (no `provider`/`cerebras` keys),
+ *  - saving a model persists it and the chat service calls the local endpoint
+ *    without any Authorization header,
  *  - only settings.view / settings.write holders (Owner/Admin) can read or
- *    change provider settings.
+ *    change AI settings.
  */
 class AiProviderSettingsTest extends TenantTestCase
 {
@@ -80,93 +80,51 @@ class AiProviderSettingsTest extends TenantTestCase
         app()->instance(FeatureGateService::class, $mock);
     }
 
-    private function fakeProviders(): void
+    private function fakeOllama(): void
     {
         Http::fake([
-            'localhost:11434/*' => Http::response(['models' => [['name' => 'llama3.1:8b']]]),
-            'api.cerebras.ai/*' => Http::response([
+            'localhost:11434/api/tags' => Http::response(['models' => [['name' => 'llama3.1:8b']]]),
+            'localhost:11434/v1/chat/completions' => Http::response([
                 'choices' => [[
                     'index' => 0,
-                    'message' => ['role' => 'assistant', 'content' => 'PONG', 'reasoning' => 'internal'],
+                    'message' => ['role' => 'assistant', 'content' => 'LOCAL', 'reasoning' => 'internal'],
                     'finish_reason' => 'stop',
                 ]],
-                'usage' => ['total_tokens' => 42],
+                'usage' => ['total_tokens' => 7],
             ]),
         ]);
     }
 
     /** @test */
-    public function owner_reads_provider_settings_and_cerebras_key_status(): void
+    public function owner_reads_ollama_only_settings(): void
     {
-        $this->fakeProviders();
+        $this->fakeOllama();
 
         $response = $this->actingAs($this->owner)
             ->getJson('/api/v1/ai/settings')
             ->assertOk();
 
-        $response->assertJsonPath('data.provider', 'ollama');
-        $response->assertJsonPath('data.cerebras.model', 'qwen-3.8-27b');
-        // The workspace default key (env) is present; no tenant key stored yet.
-        $this->assertTrue($response->json('data.cerebras.using_default_key'));
-        $this->assertFalse($response->json('data.cerebras.has_custom_key'));
-        $this->assertNull($response->json('data.cerebras.key_hint'));
+        $response->assertJsonPath('data.ollama.model', config('ai.ollama.model'));
+        $this->assertArrayHasKey('models', $response->json('data.ollama'));
+        $this->assertArrayHasKey('health', $response->json('data'));
+
+        // No provider switch and no key material in the payload.
+        $this->assertArrayNotHasKey('cerebras', $response->json('data'));
+        $this->assertArrayNotHasKey('provider', $response->json('data'));
+        $this->assertArrayNotHasKey('provider', $response->json('data.health'));
     }
 
     /** @test */
-    public function switching_to_cerebras_persists_and_chat_uses_byok(): void
+    public function saving_a_model_keeps_all_chat_traffic_on_local_ollama(): void
     {
-        $this->fakeProviders();
+        $this->fakeOllama();
 
         $this->actingAs($this->owner)
             ->putJson('/api/v1/ai/settings', [
-                'provider' => 'cerebras',
-                'cerebras_model' => 'qwen-3.8-27b',
-                'cerebras_api_key' => 'csk-tenant-own-key',
+                'ollama_model' => 'llama3.1:8b',
             ])
             ->assertOk()
-            ->assertJsonPath('data.provider', 'cerebras')
-            ->assertJsonPath('data.model', 'qwen-3.8-27b');
-
-        // Fresh service resolves the tenant selection.
-        $service = app(OllamaService::class);
-        $this->assertSame('cerebras', $service->provider());
-        $this->assertSame('qwen-3.8-27b', $service->model());
-        $this->assertSame('csk-tenant-own-key', $service->cerebrasKey());
-
-        $result = $service->chat([['role' => 'user', 'content' => 'ping']]);
-        $this->assertSame('PONG', $result['content']);
-        $this->assertSame('internal', $result['reasoning']);
-
-        Http::assertSent(function ($request) {
-            return str_contains($request->url(), 'api.cerebras.ai/v1/chat/completions')
-                && $request->hasHeader('Authorization', 'Bearer csk-tenant-own-key')
-                && $request['model'] === 'qwen-3.8-27b';
-        });
-
-        // Settings now expose the tenant key as a masked hint only.
-        $this->actingAs($this->owner)
-            ->getJson('/api/v1/ai/settings')
-            ->assertOk()
-            ->assertJsonPath('data.cerebras.has_custom_key', true)
-            ->assertJsonPath('data.cerebras.using_default_key', false);
-        $this->assertStringStartsWith('csk-ten', (string) $this->actingAs($this->owner)->getJson('/api/v1/ai/settings')->json('data.cerebras.key_hint'));
-    }
-
-    /** @test */
-    public function switching_back_to_ollama_uses_the_local_endpoint_again(): void
-    {
-        Http::fake([
-            'localhost:11434/api/tags' => Http::response(['models' => [['name' => 'llama3.1:8b']]]),
-            'localhost:11434/v1/chat/completions' => Http::response([
-                'choices' => [['index' => 0, 'message' => ['role' => 'assistant', 'content' => 'LOCAL'], 'finish_reason' => 'stop']],
-                'usage' => ['total_tokens' => 7],
-            ]),
-        ]);
-
-        $this->actingAs($this->owner)
-            ->putJson('/api/v1/ai/settings', ['provider' => 'ollama', 'ollama_model' => 'llama3.1:8b'])
-            ->assertOk()
-            ->assertJsonPath('data.provider', 'ollama');
+            ->assertJsonPath('data.model', 'llama3.1:8b');
 
         $service = app(OllamaService::class);
         $this->assertSame('ollama', $service->provider());
@@ -177,16 +135,28 @@ class AiProviderSettingsTest extends TenantTestCase
 
         Http::assertSent(fn ($request) => str_contains($request->url(), 'localhost:11434/v1/chat/completions')
             && ! $request->hasHeader('Authorization'));
+
+        // Legacy payload fields are inert: they cannot switch the provider.
+        $this->actingAs($this->owner)
+            ->putJson('/api/v1/ai/settings', [
+                'provider' => 'cerebras',
+                'cerebras_model' => 'qwen-3.8-27b',
+                'cerebras_api_key' => 'csk-should-be-ignored',
+            ])
+            ->assertOk();
+
+        $this->assertSame('ollama', app(OllamaService::class)->provider());
+        $this->assertDatabaseMissing('settings', ['key' => 'ai.cerebras.api_key']);
     }
 
     /** @test */
-    public function provider_settings_require_settings_permissions(): void
+    public function ai_settings_require_settings_permissions(): void
     {
-        $this->fakeProviders();
+        $this->fakeOllama();
 
         $this->actingAs($this->sales)->getJson('/api/v1/ai/settings')->assertForbidden();
         $this->actingAs($this->sales)
-            ->putJson('/api/v1/ai/settings', ['provider' => 'cerebras'])
+            ->putJson('/api/v1/ai/settings', ['ollama_model' => 'llama3.1:8b'])
             ->assertForbidden();
     }
 }
