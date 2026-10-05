@@ -546,6 +546,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::patch('/quotations/{quotation}', [QuotationController::class, 'update'])->middleware(RequirePermission::using('quotations.write'));
         Route::delete('/quotations/{quotation}', [QuotationController::class, 'destroy'])->middleware(RequirePermission::using('quotations.write'));
         Route::post('/quotations/{id}/confirm', [QuotationController::class, 'confirm'])->middleware(RequirePermission::using('quotations.write'));
+        // Issue #334 (Q5): send the quotation PDF + public acceptance link.
+        Route::post('/quotations/{id}/send', [QuotationController::class, 'send'])->middleware(RequirePermission::using('quotations.write'));
         Route::post('/quotations/{id}/cancel', [QuotationController::class, 'cancel'])->middleware(RequirePermission::using('quotations.write'));
         // Issue #178/#179: rejection with auto-versioned replacement draft.
         Route::post('/quotations/{id}/reject', [QuotationController::class, 'reject'])->middleware(RequirePermission::using('quotations.write'));

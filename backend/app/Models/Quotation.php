@@ -106,6 +106,14 @@ class Quotation extends Model implements WorkflowSubject
         'correction_type',
         'correction_reason_code',
         'correction_reason_text',
+        // Issue #334: public acceptance link + signer metadata.
+        'acceptance_token',
+        'acceptance_expires_at',
+        'accepted_at',
+        'signer_name',
+        'signer_email',
+        'signature_data',
+        'acceptance_source',
     ];
 
     protected $casts = [
@@ -124,6 +132,9 @@ class Quotation extends Model implements WorkflowSubject
         'delivery_date' => 'date',
         'is_active_version' => 'boolean',
         'superseded_at' => 'datetime',
+        // Issue #334: acceptance token expiry + acceptance timestamp.
+        'acceptance_expires_at' => 'datetime',
+        'accepted_at' => 'datetime',
         // Issue #896: optimistic-concurrency token.
         'lock_version' => 'integer',
     ];

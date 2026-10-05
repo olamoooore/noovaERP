@@ -17,6 +17,9 @@ use App\Services\CustomerWideSearchService;
 use App\Services\DocumentWideSearchService;
 use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
+use App\Services\QuotationConfirmationService;
+use App\Services\QuotationReleaseService;
+use App\Services\QuotationSendService;
 use App\Services\SalesApprovalGate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -39,6 +42,11 @@ class QuotationController extends Controller
         private CaseImportService $caseImportService,
         private DeliveryOrderService $deliveryService,
         private RecordVersionGuard $versionGuard,
+        // Issue #334 (Q5): confirmation + release + customer send are shared
+        // with the public acceptance portal (one code path, no parallel flow).
+        private QuotationConfirmationService $confirmationService,
+        private QuotationReleaseService $releaseService,
+        private QuotationSendService $sendService,
     ) {}
 
     /**
@@ -784,128 +792,11 @@ class QuotationController extends Controller
     /**
      * Confirm a quotation.
      * Creates a SalesOrder from the quotation lines and marks the quotation as confirmed.
+     *
+     * Issue #334 (Q5): the approval gate and the release path now live in
+     * QuotationConfirmationService / QuotationReleaseService, shared with the
+     * public customer-portal acceptance so both run one code path.
      */
-    /**
-     * Release a quotation: create and confirm its linked Sales Order and mark
-     * the quotation confirmed. Shared by the explicit Confirm action and by
-     * the quote→invoice / quote→DO conversions, so a child document can be
-     * created straight from a draft quote without a separate confirm click.
-     */
-    private function releaseQuotation(Quotation $quotation): Quotation
-    {
-        return DB::transaction(function () use ($quotation) {
-            // Build SalesOrder lines from quotation lines
-            // FR-5.5: quotation → SO is a CONVERSION — currency, rate
-            // snapshot and line prices propagate unchanged; nothing re-prices.
-            // Issue #685: a line quoted in a sales UoM hands the order the
-            // same quantity + UoM (the order service converts to stock units)
-            // and a per-stock-unit price, so the accepted per-Box price is
-            // preserved exactly.
-            $salesLines = $quotation->lines->map(function ($line) {
-                $uomConverter = app(\App\Services\ProductUomConverter::class);
-                $lineUom = ($line->uom_id && $line->product_id)
-                    ? $uomConverter->resolveOrNull((int) $line->product_id, (int) $line->uom_id)
-                    : null;
-
-                $unitPrice = $line->unit_price;
-                if ($lineUom && ! $lineUom->isStockUnit() && $unitPrice !== null) {
-                    $unitPrice = $uomConverter->salesPriceToBase($lineUom, (float) $unitPrice);
-                }
-
-                return array_filter([
-                    'line_type' => $line->line_type ?? 'product',
-                    'sequence' => $line->sequence ?? 0,
-                    'product_id' => $line->product_id,
-                    'description' => $line->description,
-                    'quantity' => $line->quantity,
-                    'uom_id' => $lineUom?->id,
-                    'unit_price' => $unitPrice,
-                    'price_mode' => 'carried',
-                    'base_unit_price' => $line->base_unit_price,
-                    'pricing_trace' => $line->pricing_trace,
-                    'tax_rate' => $line->tax_rate,
-                    // #303 (X3): the accepted price mode travels with the line.
-                    'tax_inclusive' => (bool) $line->tax_inclusive,
-                    'discount_amount' => $line->discount_amount,
-                    // Issue #884 (UX2): the accepted line income account and
-                    // analytic dimensions travel with the order (and from
-                    // there to the invoice) — a null keeps the product default.
-                    'income_account_id' => $line->income_account_id,
-                    'project_id' => $line->project_id,
-                    'department_id' => $line->department_id,
-                ], fn ($v) => $v !== null);
-            })->toArray();
-
-            // Resolve warehouse if needed
-            $warehouseId = null;
-            $productIds = array_filter(array_column($salesLines, 'product_id'));
-            if (! empty($productIds)) {
-                $hasStockTracked = Product::whereIn('id', $productIds)
-                    ->where('track_inventory', true)
-                    ->exists();
-                if ($hasStockTracked) {
-                    $warehouse = Warehouse::getDefault() ?? Warehouse::first();
-                    $warehouseId = $warehouse?->id;
-                }
-            }
-
-            // Create SalesOrder
-            $salesOrder = $this->salesOrderService->createOrder([
-                'customer_id' => $quotation->customer_id,
-                'channel' => 'admin',
-                'notes' => "Quotation #{$quotation->quotation_number}",
-                // Carry the customer's references onto the order so the whole
-                // chain (SO → DO → invoice) stays traceable from any of them.
-                'customer_reference' => $quotation->customer_reference,
-                'internal_reference' => $quotation->internal_reference,
-                // Issue #408: the accepted promise date and partial-delivery
-                // policy travel with the order (and from there to its DOs).
-                'commitment_date' => $quotation->commitment_date?->toDateString(),
-                'shipping_policy' => $quotation->shipping_policy ?: 'asap',
-                // Issue #333: the accepted trade term travels with the order
-                // (and from there to its invoices).
-                'incoterm_code' => $quotation->incoterm_code,
-                'incoterm_place' => $quotation->incoterm_place,
-                // #291: the header discount is part of the accepted price — it
-                // must travel onto the Sales Order (and from there the invoice),
-                // otherwise a quote accepted at 990 was ordered/billed at 1,100.
-                'discount_amount' => (float) ($quotation->discount_amount ?? 0),
-                // Issue #553: the accepted quote's salesperson/team travel with
-                // the order so the creation defaults never overwrite them.
-                'salesperson' => $quotation->salesperson,
-                'sales_team' => $quotation->sales_team,
-                'lines' => $salesLines,
-                'warehouse_id' => $warehouseId,
-                // FR-5.5: document currency + FX snapshot propagate verbatim.
-                'currency_code' => $quotation->currency_code,
-                'exchange_rate' => $quotation->exchange_rate,
-                'base_currency_code' => $quotation->base_currency_code,
-            ]);
-
-            // Confirm the SalesOrder
-            $salesOrder = $this->salesOrderService->confirmOrder($salesOrder);
-
-            // #900 (PC6): status through the workflow engine; the sales order
-            // link keeps its own write. A quotation that is already confirmed
-            // (e.g. the DO is created later for an earlier confirmation) has
-            // nothing to transition — only the order link is added below.
-            if ($quotation->status !== 'confirmed') {
-                app(\App\Services\SalesWorkflowService::class)->transition(
-                    $quotation,
-                    'confirm',
-                    ['sales_order_id' => $salesOrder->id],
-                );
-            }
-
-            // Link the SalesOrder to the quotation
-            $quotation->update([
-                'sales_order_id' => $salesOrder->id,
-            ]);
-
-            return $quotation->fresh(['customer', 'lines.product', 'salesOrder']);
-        });
-    }
-
     public function confirm($id)
     {
         $quotation = Quotation::with(['customer', 'lines.product'])->find($id);
@@ -918,31 +809,30 @@ class QuotationController extends Controller
             return response()->json(['message' => 'Only draft or sent quotations can be confirmed'], 403);
         }
 
-        // Issue #180: config-driven approval gate. Quotation total must meet
-        // or exceed the tenant's threshold to proceed; otherwise an
+        // Issue #180 / #334: config-driven approval gate. Quotation total must
+        // meet or exceed the tenant's threshold to proceed; otherwise an
         // ApprovalRequest is created and the quotation stays in its current
         // status. The SalesOrder is NOT created until approval lands.
         // requestIfNeeded also lets a re-run proceed once the request is
-        // approved, which is how the workflow resumes.
-        if ($approval = $this->approvalGate->requestIfNeeded(
-            $quotation,
-            SalesApprovalGate::REQUEST_TYPE_QUOTATION,
-            (float) $quotation->total,
-            Auth::user(),
-        )) {
-            return response()->json([
-                'message' => 'Approval required',
-                'requires_approval' => true,
-                'approval_request' => $approval,
-                'threshold' => $this->approvalGate->threshold($quotation),
-                'quotation' => $quotation->fresh(['customer', 'lines.product']),
-            ], 202);
-        }
-
+        // approved, which is how the workflow resumes. The gate + release are
+        // shared with the public acceptance portal through
+        // QuotationConfirmationService.
         $beforeStatus = $quotation->status;
 
         try {
-            $quotation = $this->releaseQuotation($quotation);
+            $result = $this->confirmationService->confirm($quotation, Auth::user());
+
+            if ($result['requires_approval']) {
+                return response()->json([
+                    'message' => 'Approval required',
+                    'requires_approval' => true,
+                    'approval_request' => $result['approval_request'],
+                    'threshold' => $this->approvalGate->threshold($quotation),
+                    'quotation' => $result['quotation'],
+                ], 202);
+            }
+
+            $quotation = $result['quotation'];
 
             // Issue #895: confirmation creates a Sales Order — record the
             // transition and the order it produced on the audit trail.
@@ -966,7 +856,9 @@ class QuotationController extends Controller
                 "Confirmed quotation {$quotation->quotation_number}"
                     .($quotation->salesOrder ? " — created sales order {$quotation->salesOrder->sales_order_number}" : ''),
                 [
-                    'from_state' => 'sent',
+                    // Issue #334: the document's REAL previous state, not a
+                    // hardcoded 'sent' (a draft quote confirms from draft).
+                    'from_state' => $beforeStatus,
                     'to_state' => 'confirmed',
                     'sales_order_id' => $quotation->salesOrder?->id,
                     'sales_order_number' => $quotation->salesOrder?->sales_order_number,
@@ -998,6 +890,84 @@ class QuotationController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to confirm quotation',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Issue #334 (Q5): send a quotation to the customer.
+     *
+     * Renders the quotation PDF, issues the public acceptance token, moves the
+     * quotation to `sent` through the #900 engine and emails the customer the
+     * PDF + acceptance link. Re-sending a `sent` quotation refreshes/reuses the
+     * link without a second status transition.
+     */
+    public function send(Request $request, $id)
+    {
+        $quotation = Quotation::with(['customer', 'lines.product'])->find($id);
+
+        if (! $quotation) {
+            return response()->json(['message' => 'Quotation not found'], 404);
+        }
+
+        if (! in_array($quotation->status, ['draft', 'sent'], true)) {
+            return response()->json([
+                'message' => 'Only draft or sent quotations can be sent to the customer.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'send_email' => 'nullable|boolean',
+            // The operator confirms/overrides the recipient before sending and
+            // may add any number of CC addresses (same shape as the DO send).
+            'recipient_email' => 'nullable|email',
+            'cc' => 'nullable',
+        ]);
+
+        try {
+            $result = $this->sendService->send($quotation, Auth::user(), [
+                'send_email' => $validated['send_email'] ?? true,
+                'recipient' => $validated['recipient_email'] ?? null,
+                'cc' => $validated['cc'] ?? [],
+            ]);
+
+            $message = 'Quotation link issued';
+            if ($result['delivery'] !== null) {
+                $message .= ' and emailed to '.$result['delivery']['recipient'];
+            } elseif ($result['email_error'] !== null) {
+                $message .= ' — email failed';
+            } elseif (! ($validated['send_email'] ?? true)) {
+                $message .= ' (email not requested)';
+            } elseif (($validated['recipient_email'] ?? null) === null
+                && $quotation->contact_email === null
+                && $quotation->customer?->email === null) {
+                $message .= ' (the customer has no email address)';
+            }
+
+            return response()->json([
+                'message' => $message,
+                'data' => [
+                    'quotation_id' => (int) $result['quotation']->id,
+                    'quotation_number' => $result['quotation']->quotation_number,
+                    'status' => $result['quotation']->status,
+                    'acceptance_token' => $result['token'],
+                    'acceptance_url' => $result['url'],
+                    'acceptance_expires_at' => $result['expires_at'],
+                    'delivery' => $result['delivery'],
+                    'email_error' => $result['email_error'],
+                ],
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            Log::error('Failed to send quotation', [
+                'quotation_id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Failed to send quotation',
                 'error' => $e->getMessage(),
             ], 500);
         }
@@ -1036,7 +1006,7 @@ class QuotationController extends Controller
                     'threshold' => $this->approvalGate->threshold($quotation),
                 ], 202);
             }
-            $quotation = $this->releaseQuotation($quotation);
+            $quotation = $this->releaseService->release($quotation);
         }
 
         if (! $quotation->sales_order_id) {
@@ -1166,7 +1136,7 @@ class QuotationController extends Controller
                     'threshold' => $this->approvalGate->threshold($quotation),
                 ], 202);
             }
-            $quotation = $this->releaseQuotation($quotation);
+            $quotation = $this->releaseService->release($quotation);
         }
 
         // Same approval gate as invoicing: meeting the threshold requires an
