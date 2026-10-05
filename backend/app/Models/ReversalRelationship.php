@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Accounting\Enums\ReversalBasis;
 use App\Accounting\Enums\ReversalMode;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -45,6 +46,25 @@ class ReversalRelationship extends Model
         'component_count' => 'integer',
         'posted_at' => 'datetime',
     ];
+
+    /**
+     * reversal_relationships lives in the central schema keyed by tenant_id.
+     * Without this scope, a journal-entry id collision across tenants (e.g.
+     * this tenant's JE #119 vs another tenant's already-reversed JE #119)
+     * made eligibility checks answer "already fully reversed" and exposed
+     * other tenants' reversal rows through the API.
+     */
+    protected static function booted(): void
+    {
+        static::addGlobalScope('tenant', function (Builder $query) {
+            if (function_exists('tenant') && ($tenant = tenant())) {
+                $query->where(
+                    $query->getModel()->getTable().'.tenant_id',
+                    $tenant->getTenantKey()
+                );
+            }
+        });
+    }
 
     // ── Relationships ──────────────────────────────────
 
