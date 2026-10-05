@@ -16,6 +16,9 @@ import type {
   SalesTrendsData,
   SalesByCategoryData,
   SalesReconciliationData,
+  SalesPivotData,
+  PivotDimension,
+  PivotMeasure,
   ExpensesByCategoryData,
   ExpensesByVendorData,
   ExpensesByDepartmentData,
@@ -651,6 +654,26 @@ class ReportApiClient {
       return response.data.data;
     } catch (error) {
       this.handleError(error, 'Failed to fetch Sales reconciliation');
+      throw error;
+    }
+  }
+
+  /**
+   * Issue #601: pivot-style sales analysis — whitelisted row/column group-bys
+   * over the shared sales read model, with the chosen measures per cell.
+   */
+  async getSalesPivot(
+    filters: ReportFilters,
+    params: { row_dims: PivotDimension[]; col_dims: PivotDimension[]; measure: PivotMeasure[] }
+  ): Promise<SalesPivotData> {
+    try {
+      const response = await api.get<ApiResponse<SalesPivotData>>(
+        '/analytics/sales/pivot',
+        { params: { ...this.salesParams(filters), ...params } }
+      );
+      return response.data.data;
+    } catch (error) {
+      this.handleError(error, 'Failed to fetch Sales Pivot');
       throw error;
     }
   }

@@ -65,6 +65,7 @@ Route::middleware([
         Route::get('/sales/trends', [AnalyticsController::class, 'salesTrends'])->name('sales.trends');
         Route::get('/sales/by-currency', [AnalyticsController::class, 'salesByCurrency'])->name('sales.by-currency');
         Route::get('/sales/by-category', [AnalyticsController::class, 'salesByCategory'])->name('sales.by-category');
+        Route::get('/sales/pivot', [AnalyticsController::class, 'salesPivot'])->name('sales.pivot');
         Route::get('/sales/profit-margins', [AnalyticsController::class, 'profitMargins'])->name('sales.profit-margins');
 
         // Expense Analytics

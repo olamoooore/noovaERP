@@ -425,6 +425,60 @@ export interface SalesTrendsData {
   comparison?: ReportComparison;
 }
 
+/**
+ * Issue #601: pivot-style sales analysis. Dimensions and measures are a
+ * backend-validated whitelist; `values[i]` aligns with `columns[i]` and
+ * `children` carries the expandable row hierarchy (parents aggregate children).
+ */
+export type PivotDimension =
+  | 'salesperson'
+  | 'team'
+  | 'customer'
+  | 'product'
+  | 'category'
+  | 'country'
+  | 'month';
+
+export type PivotMeasure = 'paid_qty' | 'foc_qty' | 'net_revenue' | 'cost' | 'margin';
+
+/** Only the measures requested are present, so every key is optional. */
+export type PivotMeasureValues = Partial<Record<PivotMeasure, number>>;
+
+export interface PivotColumn {
+  /** Dimension values for this column group ([] for the single Total column). */
+  key: string[];
+  label: string;
+}
+
+export interface PivotRowNode {
+  /** Full dimension path, unique per node (used for expand/collapse state). */
+  key: string[];
+  label: string;
+  depth: number;
+  values: PivotMeasureValues[];
+  totals: PivotMeasureValues;
+  children: PivotRowNode[];
+}
+
+export interface SalesPivotData {
+  title: string;
+  row_dims: PivotDimension[];
+  col_dims: PivotDimension[];
+  measures: PivotMeasure[];
+  columns: PivotColumn[];
+  rows: PivotRowNode[];
+  totals: PivotMeasureValues;
+  summary: {
+    row_count: number;
+    column_count: number;
+    base_currency?: string;
+    revenue_basis?: string;
+    includes_tax?: boolean;
+  };
+  period?: { start_date: string; end_date: string };
+  pos_excluded_by_tag?: boolean;
+}
+
 export interface SalesByCategoryData {
   categories: Array<{
     category_id: number | null;

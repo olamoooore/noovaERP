@@ -98,6 +98,44 @@ class SalesAnalyticsService
     ];
 
     /**
+     * Issue #601: the only row/column group-bys the pivot endpoint accepts.
+     * Every one maps to a fixed SQL expression in pivotDimensionSql(); raw
+     * caller input never reaches the query.
+     */
+    private const PIVOT_DIMENSIONS = [
+        'salesperson', 'team', 'customer', 'product', 'category', 'country', 'month',
+    ];
+
+    /**
+     * Issue #601: the only measures the pivot endpoint accepts, each mapped to
+     * a fixed aggregate over the #355 read model in pivotMeasureSql().
+     */
+    private const PIVOT_MEASURES = [
+        'paid_qty', 'foc_qty', 'net_revenue', 'cost', 'margin',
+    ];
+
+    /**
+     * Dimensions a pivot request may group by; the controller validates
+     * against this list (a class constant cannot be implode()d in a rule).
+     *
+     * @return list<string>
+     */
+    public static function pivotDimensions(): array
+    {
+        return self::PIVOT_DIMENSIONS;
+    }
+
+    /**
+     * Measures a pivot request may ask for.
+     *
+     * @return list<string>
+     */
+    public static function pivotMeasures(): array
+    {
+        return self::PIVOT_MEASURES;
+    }
+
+    /**
      * The human-readable definition of every "revenue" figure in this service.
      * Surfaced in each summary so no caller has to guess (#355).
      */
@@ -568,6 +606,391 @@ class SalesAnalyticsService
         ];
     }
 
+    /**
+     * Issue #601: pivot-style sales analysis over the SAME #355 read model as
+     * every fixed tab, so the pivot's net revenue reconciles with them.
+     *
+     * The caller supplies whitelisted dimensions and measures; this method
+     * maps each to a fixed SQL expression, runs ONE grouped query, then folds
+     * the flat result into a row hierarchy (parents aggregate their children)
+     * for the frontend's expand/collapse. Measures:
+     *
+     *   - paid_qty    SUM(quantity) on lines whose document revenue is non-zero
+     *   - foc_qty     SUM(quantity) on zero-net lines (free-of-charge lines,
+     *                 e.g. #560's list-price/100%-discount lines); FOC cost
+     *                 still lands in `cost` so free goods are costed
+     *   - net_revenue SUM(base_revenue) — the #355 definition
+     *   - cost        SUM(quantity × products.cost), the product/category source
+     *   - margin      net_revenue − cost
+     *
+     * @param  list<string>  $rowDims  row group-bys, outermost first
+     * @param  list<string>  $colDims  column group-bys ([] → one Total column)
+     * @param  list<string>  $measures
+     * @return array<string, mixed>
+     */
+    public function getSalesPivot(
+        ReportFilter $filter,
+        array $rowDims = ['product'],
+        array $colDims = [],
+        array $measures = [
+            'paid_qty', 'foc_qty', 'net_revenue', 'cost', 'margin',
+        ],
+    ): array {
+        $rowDims = $this->validatedPivotDimensions($rowDims, 'row_dims');
+        $colDims = $this->validatedPivotDimensions($colDims, 'col_dims');
+        $measures = $this->validatedPivotMeasures($measures);
+
+        if ($rowDims === []) {
+            $rowDims = ['product'];
+        }
+
+        $startDate = $filter->startDate ?? Carbon::now()->startOfMonth();
+        $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
+
+        [$salesOrderIds, $invoiceIds] = $this->documentIdsForTag($filter->tag ?? null);
+
+        try {
+            $select = [];
+            foreach ($rowDims as $index => $dimension) {
+                $select[] = DB::raw($this->pivotDimensionSql($dimension)." AS row_dim_{$index}");
+            }
+            foreach ($colDims as $index => $dimension) {
+                $select[] = DB::raw($this->pivotDimensionSql($dimension)." AS col_dim_{$index}");
+            }
+            foreach ($measures as $measure) {
+                $select[] = DB::raw($this->pivotMeasureSql($measure)." AS m_{$measure}");
+            }
+
+            // GROUP BY position: the selected expressions are fixed whitelist
+            // SQL, and grouping by position keeps the query builder from
+            // re-quoting a raw expression.
+            $dimensionCount = count($rowDims) + count($colDims);
+            $groupBy = implode(', ', range(1, $dimensionCount));
+
+            $cells = DB::query()
+                ->fromSub($this->lineItemsUnion($filter, $salesOrderIds, $invoiceIds), 'li')
+                ->leftJoin('customers as c', 'c.id', '=', 'li.customer_id')
+                ->leftJoin('users as sp', 'sp.id', '=', 'c.salesperson_id')
+                ->leftJoin('products as p', 'p.id', '=', 'li.product_id')
+                ->leftJoin('product_categories as pc', 'pc.id', '=', 'p.category_id')
+                ->select($select)
+                ->groupByRaw($groupBy)
+                ->get();
+        } catch (\Throwable $e) {
+            Log::error('SalesAnalyticsService getSalesPivot error', [
+                'error' => $e->getMessage(),
+            ]);
+
+            throw $e;
+        }
+
+        return $this->buildSalesPivotPayload(
+            $filter,
+            $startDate,
+            $endDate,
+            $rowDims,
+            $colDims,
+            $measures,
+            $cells,
+        );
+    }
+
+    /**
+     * Fold the flat grouped cells into the pivot response: ordered columns,
+     * one row hierarchy per row dimension, per-cell measures, row and grand
+     * totals.
+     *
+     * @param  list<string>  $rowDims
+     * @param  list<string>  $colDims
+     * @param  list<string>  $measures
+     * @param  \Illuminate\Support\Collection<int, object>  $cells
+     * @return array<string, mixed>
+     */
+    private function buildSalesPivotPayload(
+        ReportFilter $filter,
+        Carbon $startDate,
+        Carbon $endDate,
+        array $rowDims,
+        array $colDims,
+        array $measures,
+        $cells,
+    ): array {
+        $columns = [];
+        $tree = [];
+        $grandTotals = array_fill_keys($measures, 0.0);
+        $leafCount = 0;
+
+        foreach ($cells as $cell) {
+            $rowValues = [];
+            foreach (array_keys($rowDims) as $index) {
+                $rowValues[] = (string) ($cell->{'row_dim_'.$index} ?? '');
+            }
+
+            $colValues = [];
+            foreach (array_keys($colDims) as $index) {
+                $colValues[] = (string) ($cell->{'col_dim_'.$index} ?? '');
+            }
+
+            $columnKey = $this->pivotKey($colValues);
+            if (! isset($columns[$columnKey])) {
+                $columns[$columnKey] = [
+                    'key' => $colValues,
+                    'label' => $colValues === []
+                        ? 'Total'
+                        : implode(' / ', array_map(
+                            fn (string $dimension, string $value): string => $this->pivotValueLabel($dimension, $value),
+                            $colDims,
+                            $colValues,
+                        )),
+                ];
+            }
+
+            $measuresByKey = [];
+            foreach ($measures as $measure) {
+                $measuresByKey[$measure] = (float) ($cell->{'m_'.$measure} ?? 0);
+            }
+
+            $this->insertPivotNode($tree, 0, $rowValues, $columnKey, $measuresByKey, $measures);
+
+            foreach ($measures as $measure) {
+                $grandTotals[$measure] += $measuresByKey[$measure];
+            }
+            $leafCount++;
+        }
+
+        // An empty result still renders a single labelled column, so the
+        // frontend always has a header to show.
+        if ($columns === []) {
+            $columns[$this->pivotKey([])] = ['key' => [], 'label' => 'Total'];
+        }
+
+        ksort($columns);
+        $this->sortPivotNodes($tree, $measures);
+
+        $columnKeys = array_keys($columns);
+        $segment = function (array $node) use (&$segment, $columnKeys, $measures): array {
+            $values = [];
+            foreach ($columnKeys as $columnKey) {
+                $values[] = $this->roundPivotMeasures($measures, $node['values'][$columnKey] ?? []);
+            }
+
+            return [
+                'key' => $node['key'],
+                'label' => $node['label'],
+                'depth' => $node['depth'],
+                'values' => $values,
+                'totals' => $this->roundPivotMeasures($measures, $node['totals']),
+                'children' => array_map($segment, array_values($node['children'])),
+            ];
+        };
+
+        return [
+            'title' => 'Sales Analysis',
+            'row_dims' => $rowDims,
+            'col_dims' => $colDims,
+            'measures' => $measures,
+            'columns' => array_values($columns),
+            'rows' => array_map($segment, array_values($tree)),
+            'totals' => $this->roundPivotMeasures($measures, $grandTotals),
+            'summary' => $this->baseSummary([
+                'row_count' => $leafCount,
+                'column_count' => count($columns),
+                'channels_included' => self::CHANNELS_INCLUDED,
+            ]),
+            'pos_excluded_by_tag' => $filter->tag !== null,
+            'period' => [
+                'start_date' => $startDate->format('Y-m-d'),
+                'end_date' => $endDate->format('Y-m-d'),
+            ],
+            'generated_at' => now()->toISOString(),
+        ];
+    }
+
+    /**
+     * Insert one grouped cell into the row hierarchy, accumulating it into
+     * every ancestor's per-column values and totals.
+     *
+     * @param  array<string, array<string, mixed>>  $nodes
+     * @param  list<string>  $rowValues
+     * @param  array<string, float>  $cell
+     * @param  list<string>  $measures
+     */
+    private function insertPivotNode(
+        array &$nodes,
+        int $depth,
+        array $rowValues,
+        string $columnKey,
+        array $cell,
+        array $measures,
+    ): void {
+        $value = $rowValues[$depth] ?? '';
+
+        if (! isset($nodes[$value])) {
+            $nodes[$value] = [
+                'key' => array_slice($rowValues, 0, $depth + 1),
+                'label' => $value,
+                'depth' => $depth,
+                'values' => [],
+                'totals' => array_fill_keys($measures, 0.0),
+                'children' => [],
+            ];
+        }
+
+        $current = $nodes[$value]['values'][$columnKey] ?? array_fill_keys($measures, 0.0);
+        foreach ($measures as $measure) {
+            $current[$measure] += $cell[$measure] ?? 0.0;
+            $nodes[$value]['totals'][$measure] += $cell[$measure] ?? 0.0;
+        }
+        $nodes[$value]['values'][$columnKey] = $current;
+
+        if ($depth + 1 < count($rowValues)) {
+            $this->insertPivotNode($nodes[$value]['children'], $depth + 1, $rowValues, $columnKey, $cell, $measures);
+        }
+    }
+
+    /**
+     * Order siblings by the first requested measure (descending), then label,
+     * recursively — so the pivot opens on the biggest group first.
+     *
+     * @param  array<string, array<string, mixed>>  $nodes
+     * @param  list<string>  $measures
+     */
+    private function sortPivotNodes(array &$nodes, array $measures): void
+    {
+        $primary = $measures[0] ?? 'net_revenue';
+
+        uasort($nodes, function (array $a, array $b) use ($primary): int {
+            $comparison = ($b['totals'][$primary] ?? 0.0) <=> ($a['totals'][$primary] ?? 0.0);
+
+            return $comparison !== 0 ? $comparison : ($a['label'] <=> $b['label']);
+        });
+
+        foreach ($nodes as &$node) {
+            if ($node['children'] !== []) {
+                $this->sortPivotNodes($node['children'], $measures);
+            }
+        }
+        unset($node);
+    }
+
+    /**
+     * Round one measure collection for output: quantities at the report's
+     * 4-decimal scale (#592), money at 2.
+     *
+     * @param  list<string>  $measures
+     * @param  array<string, float>  $values
+     * @return array<string, float>
+     */
+    private function roundPivotMeasures(array $measures, array $values): array
+    {
+        $rounded = [];
+        foreach ($measures as $measure) {
+            $value = (float) ($values[$measure] ?? 0.0);
+            $rounded[$measure] = in_array($measure, ['net_revenue', 'cost', 'margin'], true)
+                ? round($value, 2)
+                : $this->roundQuantity($value);
+        }
+
+        return $rounded;
+    }
+
+    /**
+     * Human label for one column value (month keys become `Aug 2026`).
+     */
+    private function pivotValueLabel(string $dimension, string $value): string
+    {
+        if ($dimension === 'month' && preg_match('/^\d{4}-\d{2}$/', $value) === 1) {
+            return Carbon::createFromFormat('Y-m', $value)->format('M Y');
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param  list<string>  $values
+     */
+    private function pivotKey(array $values): string
+    {
+        return implode("\x1F", $values);
+    }
+
+    /**
+     * The fixed SQL expression for each whitelisted pivot dimension. No input
+     * is interpolated — an unknown dimension is a programming error, not a
+     * user error (the controller's Rule::in already 422s it).
+     */
+    private function pivotDimensionSql(string $dimension): string
+    {
+        return match ($dimension) {
+            'salesperson' => "COALESCE(NULLIF(li.salesperson, ''), sp.name, 'Unassigned')",
+            'team' => "COALESCE(NULLIF(li.sales_team, ''), 'Unassigned')",
+            'customer' => "COALESCE(c.name, 'Walk-in Customer')",
+            'product' => "COALESCE(p.name, 'Unknown product')",
+            'category' => "COALESCE(pc.name, 'Uncategorized')",
+            'country' => 'COALESCE((SELECT ca.country FROM customer_addresses ca'
+                .' WHERE ca.customer_id = li.customer_id'
+                ." AND ca.country IS NOT NULL AND ca.country <> ''"
+                ." ORDER BY ca.is_default DESC, ca.id LIMIT 1), 'Unknown')",
+            'month' => "TO_CHAR(li.revenue_date, 'YYYY-MM')",
+            default => throw new \InvalidArgumentException("Unsupported pivot dimension [{$dimension}]."),
+        };
+    }
+
+    /**
+     * The fixed aggregate for each whitelisted pivot measure. Paid/FOC split
+     * on the line's own document revenue, so #560's zero-net FOC line is
+     * counted as FOC while its units still cost margin.
+     */
+    private function pivotMeasureSql(string $measure): string
+    {
+        return match ($measure) {
+            'paid_qty' => 'SUM(CASE WHEN li.document_revenue <> 0 THEN li.quantity ELSE 0 END)',
+            'foc_qty' => 'SUM(CASE WHEN li.document_revenue = 0 THEN li.quantity ELSE 0 END)',
+            'net_revenue' => 'SUM(li.base_revenue)',
+            'cost' => 'SUM(li.quantity * COALESCE(p.cost, 0))',
+            'margin' => 'SUM(li.base_revenue - (li.quantity * COALESCE(p.cost, 0)))',
+            default => throw new \InvalidArgumentException("Unsupported pivot measure [{$measure}]."),
+        };
+    }
+
+    /**
+     * @param  list<string>  $dimensions
+     * @return list<string>
+     */
+    private function validatedPivotDimensions(array $dimensions, string $field): array
+    {
+        $validated = [];
+        foreach ($dimensions as $dimension) {
+            if (! is_string($dimension) || ! in_array($dimension, self::PIVOT_DIMENSIONS, true)) {
+                throw new \InvalidArgumentException("Unsupported pivot {$field} [".(is_string($dimension) ? $dimension : gettype($dimension)).'].');
+            }
+            if (! in_array($dimension, $validated, true)) {
+                $validated[] = $dimension;
+            }
+        }
+
+        return $validated;
+    }
+
+    /**
+     * @param  list<string>  $measures
+     * @return list<string>
+     */
+    private function validatedPivotMeasures(array $measures): array
+    {
+        $validated = [];
+        foreach ($measures as $measure) {
+            if (! is_string($measure) || ! in_array($measure, self::PIVOT_MEASURES, true)) {
+                throw new \InvalidArgumentException('Unsupported pivot measure ['.(is_string($measure) ? $measure : gettype($measure)).'].');
+            }
+            if (! in_array($measure, $validated, true)) {
+                $validated[] = $measure;
+            }
+        }
+
+        return $validated === [] ? self::PIVOT_MEASURES : $validated;
+    }
+
     public function getTopSellingProducts(ReportFilter $filter, int $limit = 10): array
     {
         $report = $this->getSalesByProduct($filter);
@@ -798,6 +1221,10 @@ class SalesAnalyticsService
 
         // Credit note: line_total is already tax-exclusive (CustomerCreditNoteLine
         // computes quantity x unit_price) and a credit note carries no discount.
+        // Issue #601: the pivot groups by the document's own salesperson/team.
+        // POS orders carry neither, so their arm leaves them NULL and the pivot
+        // falls back to the customer's assigned salesperson; invoice and credit
+        // note arms inherit them from the sales order they document.
         $arms = "(
             SELECT poi.product_id,
                    po.customer_id,
@@ -807,7 +1234,9 @@ class SalesAnalyticsService
                    'pos' AS channel,
                    'pos:' || po.id AS order_ref,
                    COALESCE(po.currency, {$baseCurrency}, 'USD') AS currency_code,
-                   COALESCE(po.exchange_rate, 1.0) AS exchange_rate
+                   COALESCE(po.exchange_rate, 1.0) AS exchange_rate,
+                   NULL::varchar(255) AS salesperson,
+                   NULL::varchar(255) AS sales_team
             FROM pos_order_items poi
             JOIN pos_orders po ON po.id = poi.pos_order_id
             WHERE {$posRevenueDate} BETWEEN '{$start}' AND '{$end}'
@@ -822,7 +1251,9 @@ class SalesAnalyticsService
                    'booking' AS channel,
                    'so:' || so.id AS order_ref,
                    COALESCE(so.currency_code, {$baseCurrency}, 'USD') AS currency_code,
-                   COALESCE(so.exchange_rate, 1.0) AS exchange_rate
+                   COALESCE(so.exchange_rate, 1.0) AS exchange_rate,
+                   so.salesperson,
+                   so.sales_team
             FROM sales_order_lines sol
             JOIN sales_orders so ON so.id = sol.sales_order_id
             WHERE so.status NOT IN ('draft', 'cancelled')
@@ -856,7 +1287,9 @@ class SalesAnalyticsService
                    'invoice' AS channel,
                    'inv:' || i.id AS order_ref,
                    COALESCE(i.currency_code, {$baseCurrency}, 'USD') AS currency_code,
-                   COALESCE(i.exchange_rate, 1.0) AS exchange_rate
+                   COALESCE(i.exchange_rate, 1.0) AS exchange_rate,
+                   (SELECT so.salesperson FROM sales_orders so WHERE so.id = i.sales_order_id) AS salesperson,
+                   (SELECT so.sales_team FROM sales_orders so WHERE so.id = i.sales_order_id) AS sales_team
             FROM invoice_lines il
             JOIN invoices i ON i.id = il.invoice_id
             WHERE i.lifecycle_status IN ('posted', 'credited')
@@ -880,7 +1313,9 @@ class SalesAnalyticsService
                    'credit_note' AS channel,
                    'cn:' || ccn.id AS order_ref,
                    COALESCE(ccn.currency_code, {$baseCurrency}, 'USD') AS currency_code,
-                   COALESCE(ccn.exchange_rate, 1.0) AS exchange_rate
+                   COALESCE(ccn.exchange_rate, 1.0) AS exchange_rate,
+                   (SELECT so.salesperson FROM invoices i JOIN sales_orders so ON so.id = i.sales_order_id WHERE i.id = ccn.invoice_id) AS salesperson,
+                   (SELECT so.sales_team FROM invoices i JOIN sales_orders so ON so.id = i.sales_order_id WHERE i.id = ccn.invoice_id) AS sales_team
             FROM customer_credit_note_lines cnl
             JOIN customer_credit_notes ccn ON ccn.id = cnl.credit_note_id
             WHERE ccn.status = 'posted'
@@ -899,6 +1334,8 @@ class SalesAnalyticsService
                        order_ref,
                        currency_code,
                        exchange_rate,
+                       salesperson,
+                       sales_team,
                        document_revenue,
                        ROUND(document_revenue * exchange_rate, 2) AS base_revenue
                 FROM ({$arms}) AS li_doc";
