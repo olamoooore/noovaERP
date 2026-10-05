@@ -62,6 +62,7 @@ use App\Http\Controllers\Api\ProductVariantController;
 use App\Http\Controllers\Api\QuotationController;
 use App\Http\Controllers\Api\ReconciliationExceptionController;
 use App\Http\Controllers\Api\SettingsController;
+use App\Http\Controllers\Api\StockCogsBadgeController;
 use App\Http\Controllers\Api\SubledgerReconciliationController;
 use App\Http\Controllers\Api\TaxController;
 use App\Http\Controllers\Api\TaxRatesController;
@@ -450,6 +451,13 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::get('/invoices/{subjectId}/stock-moves', [DocumentStockMovesController::class, 'index'])
             ->whereNumber('subjectId')
             ->defaults('stockMovesSubject', 'invoice')
+            ->middleware(RequirePermission::using('invoices.view'));
+
+        // Issue #696 (INV-D3): stock & COGS reconciliation badge for the
+        // invoice header — same read gate as the trail tab.
+        Route::get('/invoices/{subjectId}/stock-cogs-badge', [StockCogsBadgeController::class, 'index'])
+            ->whereNumber('subjectId')
+            ->defaults('stockCogsSubject', 'invoice')
             ->middleware(RequirePermission::using('invoices.view'));
 
         Route::post('/invoices/{invoice}/cancel', [InvoiceController::class, 'cancel'])

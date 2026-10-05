@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\DocumentAuditController;
 use App\Http\Controllers\Api\DocumentStockMovesController;
+use App\Http\Controllers\Api\StockCogsBadgeController;
 use Illuminate\Support\Facades\Route;
 use Modules\Sales\Http\Controllers\DeliveryOrderController;
 use Modules\Sales\Http\Controllers\SalesOrderController;
@@ -75,6 +76,11 @@ Route::middleware([
             Route::get('/sales/orders/{subjectId}/stock-moves', [DocumentStockMovesController::class, 'index'])
                 ->whereNumber('subjectId')
                 ->defaults('stockMovesSubject', 'sales_order');
+            // Issue #696 (INV-D3): stock & COGS reconciliation badge for the
+            // order header — same read gate as the trail tab.
+            Route::get('/sales/orders/{subjectId}/stock-cogs-badge', [StockCogsBadgeController::class, 'index'])
+                ->whereNumber('subjectId')
+                ->defaults('stockCogsSubject', 'sales_order');
             // Issue #150: sales-pipeline analytics (pre-invoice).
             Route::get('/sales/analytics/pipeline', [\Modules\Sales\Http\Controllers\SalesPipelineAnalyticsController::class, 'index']);
 
@@ -117,6 +123,11 @@ Route::middleware([
             Route::get('/sales/delivery-orders/{subjectId}/stock-moves', [DocumentStockMovesController::class, 'index'])
                 ->whereNumber('subjectId')
                 ->defaults('stockMovesSubject', 'delivery_order');
+            // Issue #696 (INV-D3): stock & COGS reconciliation badge for the
+            // delivery order header — same read gate as the trail tab.
+            Route::get('/sales/delivery-orders/{subjectId}/stock-cogs-badge', [StockCogsBadgeController::class, 'index'])
+                ->whereNumber('subjectId')
+                ->defaults('stockCogsSubject', 'delivery_order');
         });
 
         Route::apiResource('sales/delivery-orders', DeliveryOrderController::class)

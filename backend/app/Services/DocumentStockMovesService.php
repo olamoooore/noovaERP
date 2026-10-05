@@ -78,7 +78,7 @@ class DocumentStockMovesService
     ) {}
 
     /**
-     * @return array{document: array<string, mixed>, sales_order_id: int|null, has_mismatch: bool, movements: array<int, array<string, mixed>>, lines: array<int, array<string, mixed>>}
+     * @return array{document: array<string, mixed>, sales_order_id: int|null, has_mismatch: bool, movements: array<int, array<string, mixed>>, lines: array<int, array<string, mixed>>, unallocated: array<int, array<string, mixed>>}
      */
     public function forDocument(string $documentType, int $documentId): array
     {
@@ -128,7 +128,46 @@ class DocumentStockMovesService
             'has_mismatch' => $hasMismatch,
             'movements' => $movementRows,
             'lines' => $lines,
+            'unallocated' => $this->unallocatedResiduals($unallocated, $movements),
         ];
+    }
+
+    /**
+     * Issue #696 (INV-D3): the over-issued component quantities the per-line
+     * allocation could not attribute to any line's demand — what a double
+     * goods issue (#682) leaves behind once every line has taken what it
+     * needs. Positive residuals only: a negative one means more was returned
+     * than sold, which the badge deliberately leaves alone (returns/reversals
+     * must net out green).
+     *
+     * @param  array<int, float>  $unallocated  product id → leftover quantity
+     * @param  Collection<int, StockMovement>  $movements
+     * @return array<int, array{product_id: int, product: array<string, mixed>|null, quantity: float}>
+     */
+    private function unallocatedResiduals(array $unallocated, Collection $movements): array
+    {
+        $residuals = [];
+
+        foreach ($unallocated as $productId => $quantity) {
+            if ((float) $quantity <= self::EPSILON) {
+                continue;
+            }
+
+            $movement = $movements->firstWhere('product_id', (int) $productId);
+            $product = $movement?->product;
+
+            $residuals[] = [
+                'product_id' => (int) $productId,
+                'product' => $product ? [
+                    'id' => (int) $product->id,
+                    'name' => $product->name,
+                    'sku' => $product->sku,
+                ] : null,
+                'quantity' => (float) $quantity,
+            ];
+        }
+
+        return array_values($residuals);
     }
 
     /**

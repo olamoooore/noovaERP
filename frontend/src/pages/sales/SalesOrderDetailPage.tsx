@@ -24,6 +24,7 @@ import { Progress } from '@/components/ui/progress'
 import { ChatterDialog } from '@/components/chatter'
 import { AuditTab } from '@/components/audit/AuditTab'
 import { StockMovesTab } from '@/components/inventory/StockMovesTab'
+import { StockCogsBadge } from '@/components/inventory/StockCogsBadge'
 import api from '@/lib/api'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { PrintSendMenu } from '@/components/documents/PrintSendMenu'
@@ -663,6 +664,13 @@ export function SalesOrderDetailPage() {
             >
               Created on {formatDate(order.created_at)} for {order.customer?.name || 'Unknown Customer'}
             </p>
+            {/* Issue #696 (INV-D3): stock & COGS reconciliation badge. */}
+            <StockCogsBadge
+              documentType="sales_order"
+              documentId={Number(id)}
+              permission="sales.view"
+              className="mt-2"
+            />
             {/* #402 (SU4): compact order-info chips. */}
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               {warehouseLabel && (
