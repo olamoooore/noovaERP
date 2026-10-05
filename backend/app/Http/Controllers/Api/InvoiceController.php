@@ -1394,6 +1394,12 @@ class InvoiceController extends Controller
             // line (the customer profile supplies the default).
             'lines.*.tax_exemption_reason' => 'nullable|string|max:120',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
+            // Issue #888: a draft edit accepts the same per-line deferred
+            // period as creation (same rules as store); otherwise the edit
+            // strips the deferral and posting recognises revenue up front.
+            'lines.*.is_deferred' => 'nullable|boolean',
+            'lines.*.service_start_date' => 'nullable|date',
+            'lines.*.service_end_date' => 'nullable|date|after_or_equal:lines.*.service_start_date',
         ], [
             'invoice_number.unique' => 'This invoice number is already used by another invoice (including deleted ones). Choose a different number.',
         ]);
@@ -1504,6 +1510,16 @@ class InvoiceController extends Controller
                         $mode = $line['price_mode'] ?? (((float) ($line['unit_price'] ?? 0) > 0) ? 'legacy' : 'auto');
                         $priced = $pricing->priceLineArray($lineProduct, $line, $pricingContext, $mode);
 
+                        // Issue #888: the regenerated line keeps (or accepts)
+                        // the deferral through the same resolver creation uses
+                        // — without this the flag fell back to false, the
+                        // dates to NULL, and posting credited 0 deferred.
+                        $deferredFields = $this->invoiceService->resolveDeferredLineFields(
+                            $lineProduct,
+                            $line,
+                            $invoice->invoice_date?->toDateString() ?? now()->toDateString()
+                        );
+
                         $invoice->lines()->create(array_merge([
                             'line_type' => $line['line_type'] ?? 'product',
                             'sequence' => $line['sequence'] ?? 0,
@@ -1530,6 +1546,9 @@ class InvoiceController extends Controller
                                     && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $invoice->invoice_date?->toDateString())),
                             'discount_amount' => $line['discount_amount'] ?? 0,
                             'tax_exemption_reason' => $line['tax_exemption_reason'] ?? $editExemptionReason,
+                            'is_deferred' => $deferredFields['is_deferred'],
+                            'service_start_date' => $deferredFields['service_start_date'],
+                            'service_end_date' => $deferredFields['service_end_date'],
                         ], array_filter($priced, fn ($v) => $v !== null)));
                     }
                 }

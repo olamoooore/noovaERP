@@ -52,6 +52,45 @@ class InvoiceService
     }
 
     /**
+     * Issue #882/#888: resolve the deferred-revenue snapshot for ONE invoice
+     * line. This is the single rule shared by invoice creation and draft
+     * edit — an explicit payload flag wins, otherwise the product's deferred
+     * setting. A deferred line defaults its start to the invoice date and,
+     * when the product declares a deferred period, its end to start + that
+     * period. A missing period is not invented here: posting fails closed
+     * instead of recognising the revenue up front.
+     *
+     * @param  array<string, mixed>  $lineData
+     * @return array{is_deferred: bool, service_start_date: ?string, service_end_date: ?string}
+     */
+    public function resolveDeferredLineFields(?\App\Models\Product $product, array $lineData, string $invoiceDate): array
+    {
+        $isDeferred = array_key_exists('is_deferred', $lineData) && $lineData['is_deferred'] !== null
+            ? (bool) $lineData['is_deferred']
+            : (bool) ($product?->is_deferred ?? false);
+
+        if (! $isDeferred) {
+            return ['is_deferred' => false, 'service_start_date' => null, 'service_end_date' => null];
+        }
+
+        $serviceStart = $lineData['service_start_date'] ?? null;
+        $serviceStart = $serviceStart ?: \Illuminate\Support\Carbon::parse($invoiceDate)->toDateString();
+
+        $serviceEnd = $lineData['service_end_date'] ?? null;
+        if (! $serviceEnd && $product?->deferred_months) {
+            $serviceEnd = \Illuminate\Support\Carbon::parse($serviceStart)
+                ->addMonthsNoOverflow((int) $product->deferred_months)
+                ->toDateString();
+        }
+
+        return [
+            'is_deferred' => true,
+            'service_start_date' => $serviceStart,
+            'service_end_date' => $serviceEnd,
+        ];
+    }
+
+    /**
      * Create invoice with lines — structurally non-public.
      *
      * Callers must hold a valid InvoiceCreationToken obtained from issueCreationToken().
@@ -130,27 +169,17 @@ class InvoiceService
                     : $this->resolveLineTaxInclusive($lineData['product_id'] ?? null, $data['invoice_date'] ?? null);
 
                 // Issue #882 (SA9): a line is deferred when the payload says so,
-                // else when its product carries the deferred setting. Service
-                // dates default from the product's deferred period; a missing
-                // period is not invented here — posting fails closed instead.
+                // else when its product carries the deferred setting. The
+                // defaulted service period comes from the shared #888 resolver
+                // so creation and draft edit can never drift.
                 $lineProduct = ! empty($lineData['product_id'])
                     ? \App\Models\Product::find($lineData['product_id'])
                     : null;
-                $lineIsDeferred = array_key_exists('is_deferred', $lineData) && $lineData['is_deferred'] !== null
-                    ? (bool) $lineData['is_deferred']
-                    : (bool) ($lineProduct?->is_deferred ?? false);
-                $serviceStart = $lineData['service_start_date'] ?? null;
-                $serviceEnd = $lineData['service_end_date'] ?? null;
-
-                if ($lineIsDeferred) {
-                    $serviceStart = $serviceStart
-                        ?: \Illuminate\Support\Carbon::parse($data['invoice_date'])->toDateString();
-                    if (! $serviceEnd && $lineProduct?->deferred_months) {
-                        $serviceEnd = \Illuminate\Support\Carbon::parse($serviceStart)
-                            ->addMonthsNoOverflow((int) $lineProduct->deferred_months)
-                            ->toDateString();
-                    }
-                }
+                $deferredFields = $this->resolveDeferredLineFields(
+                    $lineProduct,
+                    $lineData,
+                    \Illuminate\Support\Carbon::parse($data['invoice_date'])->toDateString()
+                );
 
                 $invoice->lines()->create([
                     'line_type' => $lineData['line_type'] ?? 'product',
@@ -192,9 +221,9 @@ class InvoiceService
                     // MyInvois E line carries it; an explicit line reason wins.
                     'tax_exemption_reason' => $lineData['tax_exemption_reason'] ?? $customerExemptionReason,
                     // Issue #882 (SA9): deferred revenue period snapshot.
-                    'is_deferred' => $lineIsDeferred,
-                    'service_start_date' => $lineIsDeferred ? $serviceStart : null,
-                    'service_end_date' => $lineIsDeferred ? $serviceEnd : null,
+                    'is_deferred' => $deferredFields['is_deferred'],
+                    'service_start_date' => $deferredFields['service_start_date'],
+                    'service_end_date' => $deferredFields['service_end_date'],
                 ]);
             }
 
