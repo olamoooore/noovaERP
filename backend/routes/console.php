@@ -133,3 +133,18 @@ Schedule::command('sales:publish-outbox')
     ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();
+
+// Issue #903 (PC9) - time-based sales notifications. The #901 catalogue only
+// emits invoice.overdue on a settlement transition and quotation.expired on a
+// transition, so these daily scans notify the account owner when an invoice
+// passes its due date and warn quotation owners before validity lapses. Both
+// are idempotent per document through the notification dispatcher.
+Schedule::command('sales:scan-overdue-invoices')
+    ->dailyAt('06:10')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('sales:scan-expiring-quotations')
+    ->dailyAt('06:20')
+    ->withoutOverlapping()
+    ->runInBackground();

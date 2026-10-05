@@ -9,13 +9,18 @@ use Illuminate\Support\Str;
 
 class NotificationService implements NotificationServiceContract
 {
+    /** The channels this service can deliver. */
+    public const CHANNELS = ['in_app', 'mail'];
+
     /**
      * Dispatch a notification to a user via mail.
      * Checks user preferences before sending.
      */
     public function dispatch(string $event, User $user, array $data = []): void
     {
-        // Check if user has opted out
+        // Check if user has opted out. The mail row is the legacy
+        // all-or-nothing opt-out (approvals, chatter, …): a user who
+        // disabled mail for the event receives nothing at all.
         $preference = NotificationPreference::where('user_id', $user->id)
             ->where('event', $event)
             ->where('channel', 'mail')
@@ -30,19 +35,58 @@ class NotificationService implements NotificationServiceContract
             return;
         }
 
-        // Create log entry
+        $this->dispatchOnChannels($event, $user, $data, self::CHANNELS);
+    }
+
+    /**
+     * Dispatch a notification on an explicit set of channels.
+     *
+     * Issue #903: the per-user/per-channel preference decision is made by the
+     * caller (SalesNotificationDispatcher), which knows the event's default
+     * audiences and channels; this method only delivers. The notification_logs
+     * row remains the in-app notification and the mail delivery record.
+     *
+     * @param  string[]  $channels  subset of self::CHANNELS
+     */
+    public function dispatchOnChannels(string $event, User $user, array $data, array $channels): void
+    {
+        $channels = array_values(array_intersect($channels, self::CHANNELS));
+
+        if ($channels === []) {
+            Log::info('Notification skipped — every requested channel is disabled', [
+                'user_id' => $user->id,
+                'event' => $event,
+            ]);
+
+            return;
+        }
+
+        $sendMail = in_array('mail', $channels, true);
+
+        // Create log entry. The log row IS the in-app notification; when the
+        // in-app channel is disabled but mail is on, the row still carries the
+        // mail delivery state (the inbox endpoints filter in-app-muted events).
         $log = NotificationLog::create([
             'id' => Str::uuid(),
             'tenant_id' => tenant()?->id,
             'user_id' => $user->id,
             'event' => $event,
-            'channel' => 'mail',
+            'channel' => $sendMail ? 'mail' : 'in_app',
             'subject' => $data['subject'] ?? $this->defaultSubject($event),
             'body' => $data['body'] ?? $this->defaultBody($event, $data),
             'data' => $data,
             'status' => 'pending',
             'sent_at' => null,
         ]);
+
+        if (! $sendMail) {
+            $log->update([
+                'status' => 'skipped',
+                'error' => 'Mail channel is disabled for this notification.',
+            ]);
+
+            return;
+        }
 
         // The log row IS the in-app notification; `status` tracks the mail leg
         // only. A recipient we cannot deliver to is not a notification

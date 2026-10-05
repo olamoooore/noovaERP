@@ -18,6 +18,7 @@ import api from '@/lib/api'
 import { linkableRefs, refLabel, refRoute, resolveNotificationTarget } from '@/lib/notificationLinks'
 import type { NotificationItem } from '@/components/layout/NotificationBell'
 import { notificationText } from '@/lib/notificationText'
+import { NotificationPreferencesCard } from '@/components/notifications/NotificationPreferencesCard'
 
 const formatRelativeTime = (iso: string | null) => {
   if (!iso) return ''
@@ -114,6 +115,8 @@ export default function NotificationsPage() {
           </Button>
         )}
       </div>
+
+      <NotificationPreferencesCard />
 
       <Card>
         <CardHeader>

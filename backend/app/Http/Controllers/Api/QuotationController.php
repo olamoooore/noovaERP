@@ -24,6 +24,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Maatwebsite\Excel\Facades\Excel;
+use Modules\Sales\Exceptions\CreditLimitExceededException;
+use Modules\Sales\Notifications\SalesNotificationDispatcher;
 use Modules\Sales\Services\DeliveryOrderService;
 use Modules\Sales\Services\SalesOrderService;
 
@@ -976,6 +978,23 @@ class QuotationController extends Controller
                 'data' => $quotation,
             ]);
 
+        } catch (CreditLimitExceededException $e) {
+            // Issue #903: releaseQuotation's transaction has already rolled
+            // back, so notifying here keeps the notification out of the failed
+            // transaction.
+            try {
+                app(SalesNotificationDispatcher::class)->dispatchCreditLimitExceeded($e);
+            } catch (\Throwable $notifyError) {
+                Log::warning('Credit limit notification failed', [
+                    'quotation_id' => $quotation->id,
+                    'error' => $notifyError->getMessage(),
+                ]);
+            }
+
+            return response()->json([
+                'message' => 'Failed to confirm quotation',
+                'error' => $e->getMessage(),
+            ], 500);
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to confirm quotation',

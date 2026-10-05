@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\DocumentStockMovesController;
 use App\Http\Controllers\Api\StockCogsBadgeController;
 use Illuminate\Support\Facades\Route;
 use Modules\Sales\Http\Controllers\DeliveryOrderController;
+use Modules\Sales\Http\Controllers\SalesNotificationPreferenceController;
 use Modules\Sales\Http\Controllers\SalesOrderController;
 
 Route::middleware([
@@ -14,6 +15,12 @@ Route::middleware([
     \App\Http\Middleware\EnsureTenantSearchPath::class,
     \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,
 ])->group(function () {
+
+    // Issue #903: the user-facing mute surface for sales notifications.
+    // Self-scoped (always the authenticated user) and entity-independent, so
+    // it sits outside ResolveEntityContext/EnsureEntityAccess.
+    Route::get('/notifications/preferences', [SalesNotificationPreferenceController::class, 'index']);
+    Route::put('/notifications/preferences', [SalesNotificationPreferenceController::class, 'update']);
 
     Route::middleware([
         \App\Http\Middleware\ResolveEntityContext::class,
