@@ -153,6 +153,9 @@ class SalesOrderController extends Controller
             'lines.*.discount_value' => 'nullable|numeric|min:0',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
             'lines.*.income_account_id' => 'nullable|exists:chart_of_accounts,id',
+            // Issue #884 (UX2): optional line analytic dimensions.
+            'lines.*.project_id' => 'nullable|integer',
+            'lines.*.department_id' => 'nullable|integer',
             'lines.*.source_line_type' => 'nullable|string|max:60',
             'lines.*.source_line_id' => 'nullable|integer',
             'channel_reference.channel' => 'nullable|in:pos,ecommerce,admin',

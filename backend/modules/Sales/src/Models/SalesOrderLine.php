@@ -43,6 +43,10 @@ class SalesOrderLine extends Model
         'tax_amount',
         'line_total',
         'income_account_id',
+        // Issue #884 (UX2): optional analytic dimensions carried from the
+        // quotation line onto the invoice line.
+        'project_id',
+        'department_id',
         'source_line_type',
         'source_line_id',
     ];

@@ -158,6 +158,15 @@ class InvoiceService
                     'sales_order_line_id' => $lineData['sales_order_line_id'] ?? null,
                     'sequence' => $lineData['sequence'] ?? $lineIndex,
                     'product_id' => $lineData['product_id'] ?? null,
+                    // Issue #884 (UX2): persist the line's income-account
+                    // override and analytic dimensions instead of dropping
+                    // them — accounting-origin creation and the direct API
+                    // have always supplied these fields.
+                    'gl_account_id' => $lineData['gl_account_id'] ?? null,
+                    'cost_center_id' => $lineData['cost_center_id'] ?? null,
+                    'project_id' => $lineData['project_id'] ?? null,
+                    'department_id' => $lineData['department_id'] ?? null,
+                    'branch_id' => $lineData['branch_id'] ?? null,
                     'model_number' => $lineData['model_number'] ?? null,
                     'description' => $lineData['description'],
                     'product_notes' => $lineData['product_notes'] ?? null,

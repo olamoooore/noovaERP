@@ -240,6 +240,10 @@ class SalesOrderService
                             && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $data['order_date'] ?? null)),
                     'tax_amount' => $lineData['tax_amount'] ?? 0,
                     'income_account_id' => $lineData['income_account_id'] ?? null,
+                    // Issue #884 (UX2): the line's analytic dimensions travel
+                    // quotation → order → invoice alongside the income account.
+                    'project_id' => $lineData['project_id'] ?? null,
+                    'department_id' => $lineData['department_id'] ?? null,
                     // Issue #151: preserve the line's invoicing policy through
                     // any caller that reproduces lines (recurring orders).
                     'invoicing_policy' => $lineData['invoicing_policy'] ?? 'ordered_qty',
@@ -547,6 +551,12 @@ class SalesOrderService
                     // carried price — the invoice must book the same gross.
                     'tax_inclusive' => (bool) $line->tax_inclusive,
                     'discount_amount' => $line->discount_amount,
+                    // Issue #884 (UX2): the order line's income account and
+                    // analytic dimensions land on the invoice line, so the
+                    // invoice records the override it will post with.
+                    'gl_account_id' => $line->income_account_id,
+                    'project_id' => $line->project_id,
+                    'department_id' => $line->department_id,
                 ];
             }
 

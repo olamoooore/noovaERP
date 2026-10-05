@@ -522,6 +522,12 @@ class InvoiceController extends Controller
             'lines' => 'required|array|min:1',
             'lines.*.line_type' => 'nullable|in:product,note,section',
             'lines.*.product_id' => 'nullable|exists:products,id',
+            // Issue #884 (UX2): optional line income-account override and
+            // analytic dimensions — overridable per line, defaulted from the
+            // product when omitted.
+            'lines.*.gl_account_id' => 'nullable|exists:chart_of_accounts,id',
+            'lines.*.project_id' => 'nullable|integer',
+            'lines.*.department_id' => 'nullable|integer',
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
             'lines.*.product_notes' => 'nullable|string',
@@ -847,6 +853,11 @@ class InvoiceController extends Controller
                     'line_type' => $line['line_type'] ?? 'product',
                     'sequence' => $line['sequence'] ?? 0,
                     'product_id' => $line['product_id'] ?? null,
+                    // Issue #884 (UX2): the draft keeps its line override and
+                    // dimensions on re-import.
+                    'gl_account_id' => $line['gl_account_id'] ?? null,
+                    'project_id' => $line['project_id'] ?? null,
+                    'department_id' => $line['department_id'] ?? null,
                     'model_number' => $line['model_number'] ?? null,
                     'description' => $line['description'],
                     'product_notes' => $line['product_notes'] ?? null,
@@ -905,6 +916,12 @@ class InvoiceController extends Controller
                 'line_type' => $lineType,
                 'sequence' => $line['sequence'] ?? 0,
                 'product_id' => $line['product_id'] ?? null,
+                // Issue #884 (UX2): the invoice line's income-account override
+                // is the order line's income account; the dimensions travel
+                // with it so the created invoice line carries them.
+                'income_account_id' => $line['gl_account_id'] ?? null,
+                'project_id' => $line['project_id'] ?? null,
+                'department_id' => $line['department_id'] ?? null,
                 'model_number' => $line['model_number'] ?? null,
                 'description' => $line['description'],
                 'product_notes' => $line['product_notes'] ?? null,
@@ -1350,6 +1367,12 @@ class InvoiceController extends Controller
             'lines' => 'sometimes|array|min:1',
             'lines.*.line_type' => 'nullable|in:product,note,section',
             'lines.*.product_id' => 'nullable|exists:products,id',
+            // Issue #884 (UX2): optional line income-account override and
+            // analytic dimensions — overridable per line, defaulted from the
+            // product when omitted.
+            'lines.*.gl_account_id' => 'nullable|exists:chart_of_accounts,id',
+            'lines.*.project_id' => 'nullable|integer',
+            'lines.*.department_id' => 'nullable|integer',
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
             'lines.*.product_notes' => 'nullable|string',
@@ -1485,6 +1508,11 @@ class InvoiceController extends Controller
                             'line_type' => $line['line_type'] ?? 'product',
                             'sequence' => $line['sequence'] ?? 0,
                             'product_id' => $line['product_id'] ?? null,
+                            // Issue #884 (UX2): a draft edit keeps the line
+                            // income-account override and dimensions.
+                            'gl_account_id' => $line['gl_account_id'] ?? null,
+                            'project_id' => $line['project_id'] ?? null,
+                            'department_id' => $line['department_id'] ?? null,
                             'model_number' => $line['model_number'] ?? null,
                             'description' => $line['description'],
                             'product_notes' => $line['product_notes'] ?? null,
