@@ -15,6 +15,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ReportExportToolbar } from '@/components/reports/ReportExportToolbar';
+import { ReportScopeHeader } from '@/components/reports/ReportScopeHeader';
+import { useReportScope } from '@/hooks/useReportScope';
 import reportApi from '@/lib/reportApi';
 import { formatCurrency } from '@/lib/utils';
 import chartOfAccountsApi from '@/lib/chartOfAccountsApi';
@@ -38,6 +40,8 @@ export default function GeneralLedgerPage() {
   });
 
   const reportRef = useRef<HTMLDivElement>(null);
+  const scope = useReportScope();
+  const money = (value: number) => formatCurrency(value, scope.currencyCode);
 
   // If accountId from URL is not present in the current tenant's chart of accounts,
   // fall back to "all" instead of crashing with a 422.
@@ -46,7 +50,7 @@ export default function GeneralLedgerPage() {
 
   // Fetch general ledger
   const { data, isLoading, error } = useQuery({
-    queryKey: ['general-ledger', effectiveAccountId, startDate, endDate],
+    queryKey: ['general-ledger', effectiveAccountId, startDate, endDate, scope.entityId],
     queryFn: () => {
       if (effectiveAccountId === 'all') {
         // Don't pass account_id, backend will return multi-account summary
@@ -54,6 +58,7 @@ export default function GeneralLedgerPage() {
           start_date: startDate,
           end_date: endDate,
           per_page: 0,
+          legal_entity_id: scope.legalEntityId,
         });
       }
       return reportApi.getGeneralLedger({
@@ -61,9 +66,10 @@ export default function GeneralLedgerPage() {
         start_date: startDate,
         end_date: endDate,
         per_page: 0,
+        legal_entity_id: scope.legalEntityId,
       });
     },
-    enabled: !!startDate && !!endDate,
+    enabled: !!startDate && !!endDate && !scope.missingScope,
     retry: false,
   });
 
@@ -131,15 +137,26 @@ export default function GeneralLedgerPage() {
           <ReportExportToolbar
             targetRef={reportRef}
             title="General Ledger"
-            subtitle={`${ledger?.account ? `${ledger.account.code} - ${ledger.account.name}` : 'All Accounts Summary'} · ${startDate} → ${endDate}`}
+            subtitle={`${ledger?.account ? `${ledger.account.code} - ${ledger.account.name}` : 'All Accounts Summary'} · ${startDate} → ${endDate} · ${scope.scopeLabel}`}
             filename={`general-ledger-${ledger?.account?.code ?? 'all'}-${startDate}-${endDate}`}
           />
         </div>
       </div>
 
+      {/* Scope: entity + reporting currency */}
+      <ReportScopeHeader scope={scope} />
+
       {/* Report */}
       <Card className="p-6" ref={reportRef}>
-        {isLoading ? (
+        {scope.missingScope ? (
+          <div className="py-12 text-center text-muted-foreground" data-testid="report-scope-required">
+            <Icon icon="solar:danger-triangle-bold-duotone" className="mx-auto mb-4 h-16 w-16 opacity-50" />
+            <p>Select a legal entity to run this report.</p>
+            <p className="text-sm">
+              Amounts in {scope.currencies.join(' and ')} are never summed together.
+            </p>
+          </div>
+        ) : isLoading ? (
           <div className="text-center py-12">
             <Icon icon="svg-spinners:ring-resize" className="w-8 h-8 mx-auto" />
             <p className="text-muted-foreground mt-2">Loading general ledger...</p>
@@ -177,7 +194,7 @@ export default function GeneralLedgerPage() {
               <div className="mb-4 p-4 bg-muted rounded-lg">
                 <div className="flex justify-between items-center">
                   <span className="font-semibold">Opening Balance:</span>
-                  <span className="font-mono">{formatCurrency(ledger.opening_balance || 0)}</span>
+                  <span className="font-mono">{money(ledger.opening_balance || 0)}</span>
                 </div>
               </div>
             )}
@@ -188,9 +205,15 @@ export default function GeneralLedgerPage() {
                   <TableHead>Date</TableHead>
                   <TableHead>Reference</TableHead>
                   <TableHead>Description</TableHead>
-                  <TableHead className="text-right">Debit</TableHead>
-                  <TableHead className="text-right">Credit</TableHead>
-                  <TableHead className="text-right">Balance</TableHead>
+                  <TableHead className="text-right">
+                    Debit{scope.currencyCode ? ` (${scope.currencyCode})` : ''}
+                  </TableHead>
+                  <TableHead className="text-right">
+                    Credit{scope.currencyCode ? ` (${scope.currencyCode})` : ''}
+                  </TableHead>
+                  <TableHead className="text-right">
+                    Balance{scope.currencyCode ? ` (${scope.currencyCode})` : ''}
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -225,13 +248,13 @@ export default function GeneralLedgerPage() {
                     </TableCell>
                     <TableCell>{tx.description}</TableCell>
                     <TableCell className="text-right font-mono">
-                      {tx.debit > 0 ? formatCurrency(tx.debit) : '-'}
+                      {tx.debit > 0 ? money(tx.debit) : '-'}
                     </TableCell>
                     <TableCell className="text-right font-mono">
-                      {tx.credit > 0 ? formatCurrency(tx.credit) : '-'}
+                      {tx.credit > 0 ? money(tx.credit) : '-'}
                     </TableCell>
                     <TableCell className="text-right font-mono">
-                      {formatCurrency(tx.balance || 0)}
+                      {money(tx.balance || 0)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -242,7 +265,7 @@ export default function GeneralLedgerPage() {
               <div className="mt-4 p-4 bg-muted rounded-lg">
                 <div className="flex justify-between items-center font-bold">
                   <span>Closing Balance:</span>
-                  <span className="font-mono">{formatCurrency(ledger.closing_balance || 0)}</span>
+                  <span className="font-mono">{money(ledger.closing_balance || 0)}</span>
                 </div>
               </div>
             )}
