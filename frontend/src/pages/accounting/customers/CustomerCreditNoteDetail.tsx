@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { AuditTab } from '@/components/audit/AuditTab';
+import { StockMovesTab } from '@/components/inventory/StockMovesTab';
 import { PrintSendMenu } from '@/components/documents/PrintSendMenu';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
@@ -111,6 +112,10 @@ export const CustomerCreditNoteDetail: React.FC = () => {
           <TabsTrigger value="audit" className="gap-2 rounded-full px-4">
             <Icon icon="solar:shield-check-bold-duotone" className="h-4 w-4" />
             Audit
+          </TabsTrigger>
+          <TabsTrigger value="stock-moves" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:box-bold-duotone" className="h-4 w-4" />
+            Stock moves
           </TabsTrigger>
         </TabsList>
 
@@ -256,6 +261,10 @@ export const CustomerCreditNoteDetail: React.FC = () => {
 
         <TabsContent value="audit" className="mt-6">
           <AuditTab endpoint={`/accounting/customers/credit-notes/${id}/audit`} permission="accounting.view" />
+        </TabsContent>
+
+        <TabsContent value="stock-moves" className="mt-6">
+          <StockMovesTab endpoint={`/accounting/customers/credit-notes/${id}/stock-moves`} permission="accounting.view" />
         </TabsContent>
       </Tabs>
     </div>

@@ -81,7 +81,25 @@ class OrderLifecycleService
                 }
             }
 
-            $order->update(['status' => $toStatus]);
+            // #900 (PC6): the status write is owned by the shared WorkflowEngine.
+            // This method keeps the existing field updates and status-history
+            // write; the engine validates the edge and records the audit trail.
+            $action = match ($toStatus) {
+                'confirmed' => 'confirm',
+                'allocated' => 'allocate',
+                'fulfilled' => 'fulfil',
+                'invoiced' => 'mark_invoiced',
+                'cancelled' => 'cancel',
+                'draft' => 'reset_to_draft',
+                default => throw new \InvalidArgumentException(
+                    "No workflow action for sales order status '{$toStatus}'."
+                ),
+            };
+
+            app(\App\Services\SalesWorkflowService::class)->transition($order, $action, [
+                'reason' => $reason,
+                'source' => $source,
+            ], $reason);
 
             match ($toStatus) {
                 'confirmed' => $order->update(['confirmed_by' => $actorId]),

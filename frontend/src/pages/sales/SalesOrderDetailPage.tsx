@@ -23,6 +23,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import { Progress } from '@/components/ui/progress'
 import { ChatterDialog } from '@/components/chatter'
 import { AuditTab } from '@/components/audit/AuditTab'
+import { StockMovesTab } from '@/components/inventory/StockMovesTab'
 import api from '@/lib/api'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { PrintSendMenu } from '@/components/documents/PrintSendMenu'
@@ -30,6 +31,7 @@ import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
 import { fetchBulkStockAvailability } from '@/components/sales/stockAvailability'
 import { StockShortageDialog, type ShortageLine } from '@/components/sales/StockShortageDialog'
 import { EditingBanner } from '@/components/sales/EditingBanner'
+import { SalesOrderLockControl } from '@/components/sales/SalesOrderLockControl'
 import { SaveConflictDialog } from '@/components/sales/SaveConflictDialog'
 import { extractSaveConflict, type ActiveEditor, type SaveConflict } from '@/lib/recordConflict'
 import { useAuthStore } from '@/store/authStore'
@@ -96,6 +98,9 @@ interface SalesOrder {
   incoterm_code?: string | null
   incoterm_place?: string | null
   status: string
+  // Issue #407: a confirmed order can be locked against amendments.
+  is_locked?: boolean
+  locked_at?: string | null
   allowed_transitions?: string[]
   invoice_status?: string
   subtotal: number
@@ -386,6 +391,29 @@ export function SalesOrderDetailPage() {
       toast({
         title: 'Error',
         description: error.response?.data?.message || 'Failed to update order',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  // Issue #407: lock/unlock a confirmed order (Odoo parity). The lock is
+  // enforced server-side; this only mirrors the resulting state.
+  const lockMutation = useMutation({
+    mutationFn: async (target: 'lock' | 'unlock') => {
+      const response = await api.post(`/sales/orders/${id}/${target}`)
+      return response.data
+    },
+    onSuccess: (data, target) => {
+      refresh()
+      toast({
+        title: 'Success',
+        description: data?.message || (target === 'lock' ? 'Order locked' : 'Order unlocked'),
+      })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || 'Failed to update the order lock',
         variant: 'destructive',
       })
     },
@@ -716,6 +744,17 @@ export function SalesOrderDetailPage() {
               Late
             </Badge>
           )}
+          {/* Issue #407: the lock only exists for confirmed orders. */}
+          {(order.is_locked === true || order.status === 'confirmed') && (
+            <SalesOrderLockControl
+              isLocked={order.is_locked === true}
+              canWrite={canOverwrite}
+              isPending={lockMutation.isPending}
+              lockedAt={order.locked_at}
+              onLock={() => lockMutation.mutate('lock')}
+              onUnlock={() => lockMutation.mutate('unlock')}
+            />
+          )}
           {order.status === 'draft' && (
             <HeaderActionButton
               variant="outline"
@@ -822,6 +861,10 @@ export function SalesOrderDetailPage() {
           <TabsTrigger value="audit" className="gap-2 rounded-full px-4">
             <Icon icon="solar:shield-check-bold-duotone" className="h-4 w-4" />
             Audit
+          </TabsTrigger>
+          <TabsTrigger value="stock-moves" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:box-bold-duotone" className="h-4 w-4" />
+            Stock moves
           </TabsTrigger>
         </TabsList>
 
@@ -1151,6 +1194,10 @@ export function SalesOrderDetailPage() {
 
         <TabsContent value="audit" className="mt-6">
           <AuditTab endpoint={`/sales/orders/${id}/audit`} permission="sales.view" />
+        </TabsContent>
+
+        <TabsContent value="stock-moves" className="mt-6">
+          <StockMovesTab endpoint={`/sales/orders/${id}/stock-moves`} permission="sales.view" />
         </TabsContent>
       </Tabs>
 

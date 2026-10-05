@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\CustomerCreditNote;
 use App\Models\Invoice;
 use App\Models\InvoiceLine;
+use App\Models\Quotation;
 use App\Models\StockMovement;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -164,6 +166,30 @@ class GoodsIssueLedger
             ->all();
     }
 
+    /**
+     * Issue #690 (INV-UX4): the goods-issue bucket for one document, resolved
+     * to the same set of references `remaining*()` reasons about — so the
+     * "Stock moves" tab shows exactly the trail the #682 ledger owns, instead
+     * of forking a second interpretation of which documents ship the goods.
+     *
+     * A credit note moves no stock of its own (money-only), so its bucket is
+     * the credited invoice's trail; a quotation's bucket is its downstream
+     * sales order, or the delivery orders / invoices directly raised from it.
+     *
+     * @return array{sales_order_id: int|null, references: array<int, array{0: string, 1: int}>}
+     */
+    public function bucketForDocument(string $documentType, int $documentId): array
+    {
+        return match ($documentType) {
+            'delivery_order' => $this->deliveryOrderDocumentBucket($documentId),
+            'invoice' => $this->invoiceDocumentBucket($documentId),
+            'sales_order' => $this->salesOrderBucket($documentId),
+            'quotation' => $this->quotationBucket($documentId),
+            'credit_note' => $this->creditNoteBucket($documentId),
+            default => ['sales_order_id' => null, 'references' => []],
+        };
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // The one rule
     // ─────────────────────────────────────────────────────────────────────
@@ -289,6 +315,171 @@ class GoodsIssueLedger
             'sales_order_id' => $salesOrderId,
             'references' => $references,
         ];
+    }
+
+    /**
+     * @return array{sales_order_id: int|null, references: array<int, array{0: string, 1: int}>}
+     */
+    private function deliveryOrderDocumentBucket(int $documentId): array
+    {
+        $deliveryOrder = DeliveryOrder::find($documentId);
+
+        if (! $deliveryOrder) {
+            return ['sales_order_id' => null, 'references' => []];
+        }
+
+        $salesOrderId = $this->salesOrderIdForDeliveryOrder($deliveryOrder);
+
+        if ($salesOrderId) {
+            return $this->salesOrderBucket($salesOrderId);
+        }
+
+        $references = [['DeliveryOrder', (int) $deliveryOrder->id]];
+
+        foreach ($this->linkedInvoiceIds($deliveryOrder) as $invoiceId) {
+            $references[] = ['Invoice', $invoiceId];
+        }
+
+        return [
+            'sales_order_id' => null,
+            'references' => $references,
+        ];
+    }
+
+    /**
+     * Line-level buckets read sales_order_line_id; the document-level tab uses
+     * the header link first (set by every SO-linked creation path) and falls
+     * back to the line link, so both agree for historical rows.
+     */
+    private function salesOrderIdForDeliveryOrder(DeliveryOrder $deliveryOrder): ?int
+    {
+        if ($deliveryOrder->sales_order_id) {
+            return (int) $deliveryOrder->sales_order_id;
+        }
+
+        $salesOrderLineId = DeliveryOrderLine::where('delivery_order_id', $deliveryOrder->id)
+            ->whereNotNull('sales_order_line_id')
+            ->value('sales_order_line_id');
+
+        if (! $salesOrderLineId) {
+            return null;
+        }
+
+        $salesOrderId = SalesOrderLine::find((int) $salesOrderLineId)?->sales_order_id;
+
+        return $salesOrderId ? (int) $salesOrderId : null;
+    }
+
+    /**
+     * @return array{sales_order_id: int|null, references: array<int, array{0: string, 1: int}>}
+     */
+    private function invoiceDocumentBucket(int $documentId): array
+    {
+        $invoice = Invoice::find($documentId);
+
+        if (! $invoice) {
+            return ['sales_order_id' => null, 'references' => []];
+        }
+
+        $salesOrderId = $invoice->sales_order_id
+            ? (int) $invoice->sales_order_id
+            : $this->salesOrderIdForInvoice($invoice);
+
+        if ($salesOrderId) {
+            return $this->salesOrderBucket($salesOrderId);
+        }
+
+        $references = [['Invoice', (int) $invoice->id]];
+
+        foreach ($this->linkedDeliveryOrderIds($invoice) as $deliveryOrderId) {
+            $references[] = ['DeliveryOrder', $deliveryOrderId];
+        }
+
+        return [
+            'sales_order_id' => null,
+            'references' => $references,
+        ];
+    }
+
+    private function salesOrderIdForInvoice(Invoice $invoice): ?int
+    {
+        $salesOrderLineId = InvoiceLine::where('invoice_id', $invoice->id)
+            ->whereNotNull('sales_order_line_id')
+            ->value('sales_order_line_id');
+
+        if (! $salesOrderLineId) {
+            return null;
+        }
+
+        $salesOrderId = SalesOrderLine::find((int) $salesOrderLineId)?->sales_order_id;
+
+        return $salesOrderId ? (int) $salesOrderId : null;
+    }
+
+    /**
+     * A quotation with no sales order yet still shows the trail of whatever
+     * was raised directly from it (standalone DO / invoice → DO conversions).
+     *
+     * @return array{sales_order_id: int|null, references: array<int, array{0: string, 1: int}>}
+     */
+    private function quotationBucket(int $quotationId): array
+    {
+        $quotation = Quotation::find($quotationId);
+
+        if (! $quotation) {
+            return ['sales_order_id' => null, 'references' => []];
+        }
+
+        if ($quotation->sales_order_id) {
+            return $this->salesOrderBucket((int) $quotation->sales_order_id);
+        }
+
+        $references = [];
+
+        foreach (DeliveryOrder::where('quotation_id', $quotationId)->pluck('id') as $deliveryOrderId) {
+            $references = array_merge(
+                $references,
+                $this->deliveryOrderDocumentBucket((int) $deliveryOrderId)['references'],
+            );
+        }
+
+        foreach (Invoice::where('quotation_id', $quotationId)->pluck('id') as $invoiceId) {
+            $references = array_merge(
+                $references,
+                $this->invoiceDocumentBucket((int) $invoiceId)['references'],
+            );
+        }
+
+        return [
+            'sales_order_id' => null,
+            'references' => array_values(array_unique($references, SORT_REGULAR)),
+        ];
+    }
+
+    /**
+     * A customer credit note is money-only — no stock movement carries its id.
+     * Its tab shows the trail of the invoice it credits (or the order it was
+     * raised against).
+     *
+     * @return array{sales_order_id: int|null, references: array<int, array{0: string, 1: int}>}
+     */
+    private function creditNoteBucket(int $creditNoteId): array
+    {
+        $creditNote = CustomerCreditNote::find($creditNoteId);
+
+        if (! $creditNote) {
+            return ['sales_order_id' => null, 'references' => []];
+        }
+
+        if ($creditNote->invoice_id) {
+            return $this->invoiceDocumentBucket((int) $creditNote->invoice_id);
+        }
+
+        if ($creditNote->sales_order_id) {
+            return $this->salesOrderBucket((int) $creditNote->sales_order_id);
+        }
+
+        return ['sales_order_id' => null, 'references' => []];
     }
 
     // ─────────────────────────────────────────────────────────────────────

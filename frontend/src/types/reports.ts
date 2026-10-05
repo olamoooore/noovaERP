@@ -425,6 +425,60 @@ export interface SalesTrendsData {
   comparison?: ReportComparison;
 }
 
+/**
+ * Issue #601: pivot-style sales analysis. Dimensions and measures are a
+ * backend-validated whitelist; `values[i]` aligns with `columns[i]` and
+ * `children` carries the expandable row hierarchy (parents aggregate children).
+ */
+export type PivotDimension =
+  | 'salesperson'
+  | 'team'
+  | 'customer'
+  | 'product'
+  | 'category'
+  | 'country'
+  | 'month';
+
+export type PivotMeasure = 'paid_qty' | 'foc_qty' | 'net_revenue' | 'cost' | 'margin';
+
+/** Only the measures requested are present, so every key is optional. */
+export type PivotMeasureValues = Partial<Record<PivotMeasure, number>>;
+
+export interface PivotColumn {
+  /** Dimension values for this column group ([] for the single Total column). */
+  key: string[];
+  label: string;
+}
+
+export interface PivotRowNode {
+  /** Full dimension path, unique per node (used for expand/collapse state). */
+  key: string[];
+  label: string;
+  depth: number;
+  values: PivotMeasureValues[];
+  totals: PivotMeasureValues;
+  children: PivotRowNode[];
+}
+
+export interface SalesPivotData {
+  title: string;
+  row_dims: PivotDimension[];
+  col_dims: PivotDimension[];
+  measures: PivotMeasure[];
+  columns: PivotColumn[];
+  rows: PivotRowNode[];
+  totals: PivotMeasureValues;
+  summary: {
+    row_count: number;
+    column_count: number;
+    base_currency?: string;
+    revenue_basis?: string;
+    includes_tax?: boolean;
+  };
+  period?: { start_date: string; end_date: string };
+  pos_excluded_by_tag?: boolean;
+}
+
 export interface SalesByCategoryData {
   categories: Array<{
     category_id: number | null;
@@ -439,6 +493,44 @@ export interface SalesByCategoryData {
     revenue_percentage: number;
   }>;
   comparison?: ReportComparison;
+}
+
+/**
+ * Issue #604 (RPT-D1): one document explaining a report-vs-GL difference,
+ * linkable from the reconciliation footer.
+ */
+export interface SalesReconciliationDocument {
+  type: 'invoice' | 'journal_entry' | string;
+  id: number;
+  label: string;
+  url: string;
+}
+
+/** Issue #604: one named cause of the difference, with its documents. */
+export interface SalesReconciliationCause {
+  code: 'unposted_invoice' | 'manual_journal' | 'other_difference' | string;
+  label: string;
+  direction: 'report_only' | 'gl_only' | string;
+  amount: number;
+  document_count: number;
+  documents: SalesReconciliationDocument[];
+}
+
+/**
+ * Issue #604: the sales reports' ties-to-GL footer payload — the report's net
+ * revenue, the posted GL revenue for the same filters, and (when they differ)
+ * the difference broken down by cause.
+ */
+export interface SalesReconciliationData {
+  period: { start_date: string; end_date: string };
+  base_currency: string;
+  report_net_revenue: number;
+  gl_revenue: number;
+  difference: number;
+  reconciled: boolean;
+  report_breakdown: { invoice: number; pos: number; credit_note: number; booking: number };
+  causes: SalesReconciliationCause[];
+  notes: string[];
 }
 
 export interface ExpensesByCategoryData {

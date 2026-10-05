@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { ChatterDock } from '@/components/chatter'
 import { AuditTab } from '@/components/audit/AuditTab'
+import { StockMovesTab } from '@/components/inventory/StockMovesTab'
 import { TagEditor } from '@/components/tags/TagEditor'
 import { DocumentLinkChip } from '@/components/documents/DocumentLinkChip'
 import api from '@/lib/api'
@@ -621,6 +622,10 @@ export function DeliveryOrderDetailPage() {
             <Icon icon="solar:shield-check-bold-duotone" className="h-4 w-4" />
             Audit
           </TabsTrigger>
+          <TabsTrigger value="stock-moves" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:box-bold-duotone" className="h-4 w-4" />
+            Stock moves
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="document" className="space-y-6 mt-6">
@@ -984,6 +989,10 @@ export function DeliveryOrderDetailPage() {
 
         <TabsContent value="audit" className="mt-6">
           <AuditTab endpoint={`/sales/delivery-orders/${id}/audit`} permission="sales.view" />
+        </TabsContent>
+
+        <TabsContent value="stock-moves" className="mt-6">
+          <StockMovesTab endpoint={`/sales/delivery-orders/${id}/stock-moves`} permission="sales.view" />
         </TabsContent>
       </Tabs>
 

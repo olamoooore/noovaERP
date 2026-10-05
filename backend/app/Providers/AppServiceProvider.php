@@ -12,6 +12,7 @@ use App\Accounting\Services\RevisionPolicyResolver;
 use App\Accounting\Services\StateTransitionService;
 use App\Accounting\Services\StructuredObservabilityService;
 use App\Listeners\DeliveryOrderApprovalDecisionListener;
+use App\Listeners\DocumentFollowerApprovalListener;
 use App\Listeners\InvoiceApprovalDecisionListener;
 use App\Listeners\PreventDangerousMigrations;
 use App\Listeners\SalesApprovalDecisionListener;
@@ -54,6 +55,15 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(\App\Services\TaxEngineService::class);
         $this->app->singleton(\App\Services\TaxDeterminationService::class);
         $this->app->singleton(\App\Services\TaxOutboxPublisher::class);
+
+        // #900 (PC6): the workflow engine holds code-defined schemas in
+        // instance state, and the Sales domain registers them on its shared
+        // service. Both are container singletons so every caller — controllers,
+        // services, the audit trail — sees the same registry for the life of
+        // the application (and no state survives into the next one, e.g.
+        // between test cases).
+        $this->app->singleton(\App\Platform\Workflow\WorkflowEngine::class);
+        $this->app->singleton(\App\Services\SalesWorkflowService::class);
     }
 
     /**
@@ -89,6 +99,8 @@ class AppServiceProvider extends ServiceProvider
         // the requester of the decision and record the one-click Continue
         // (the gate keeps documents in draft by design — #180/#646).
         Event::listen(ApprovalDecisionEvent::class, SalesApprovalDecisionListener::class);
+        // Issue #639: whoever approves a document auto-follows it.
+        Event::listen(ApprovalDecisionEvent::class, DocumentFollowerApprovalListener::class);
 
         // Register the approval-flow communication subtypes. Without this the
         // Communication engine rejects 'invoice.approval_submitted' with

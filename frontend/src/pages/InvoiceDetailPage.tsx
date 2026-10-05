@@ -18,6 +18,7 @@ import { ChatterDock } from '@/components/chatter'
 import { AuditTab } from '@/components/audit/AuditTab'
 import { InvoiceJournalTab } from '@/components/accounting/InvoiceJournalTab'
 import { InvoiceWriteOffDialog } from '@/components/accounting/InvoiceWriteOffDialog'
+import { StockMovesTab } from '@/components/inventory/StockMovesTab'
 import { TagEditor } from '@/components/tags/TagEditor'
 import { DocumentLinkChip } from '@/components/documents/DocumentLinkChip'
 import { PrintSendMenu } from '@/components/documents/PrintSendMenu'
@@ -900,6 +901,10 @@ export function InvoiceDetailPage() {
             <Icon icon="solar:shield-check-bold-duotone" className="h-4 w-4" />
             Audit
           </TabsTrigger>
+          <TabsTrigger value="stock-moves" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:box-bold-duotone" className="h-4 w-4" />
+            Stock moves
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="document" className="space-y-6 mt-6">
@@ -1628,6 +1633,10 @@ export function InvoiceDetailPage() {
 
         <TabsContent value="audit" className="mt-6">
           <AuditTab endpoint={`/invoices/${id}/audit`} permission="invoices.view" />
+        </TabsContent>
+
+        <TabsContent value="stock-moves" className="mt-6">
+          <StockMovesTab endpoint={`/invoices/${id}/stock-moves`} permission="invoices.view" />
         </TabsContent>
       </Tabs>
 

@@ -18,6 +18,7 @@ import api from '@/lib/api';
 import pricingApi from '@/lib/pricingApi';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
 import { ReportExportToolbar } from '@/components/reports/ReportExportToolbar';
+import { GlReconciliationFooter } from '@/components/reports/GlReconciliationFooter';
 import { ReportTable, Column } from '@/components/reports/ReportTable';
 import { StatCard } from '@/components/ui/stat-card';
 import { BarChart } from '@/components/charts/BarChart';
@@ -38,6 +39,7 @@ import {
   safeDate,
   sumBy,
 } from './salesAnalyticsRows';
+import { SalesPivotView } from './SalesPivotView';
 
 interface SalesAnalyticsPageProps {
   productOnly?: boolean;
@@ -215,6 +217,17 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     return incomplete;
   }, [filters]);
 
+  // Issue #601: a pivot reports one period — the comparison window is
+  // meaningless there and the endpoint rejects it outright (422), so the
+  // pivot query never carries the comparison keys.
+  const pivotFilters = useMemo<ReportFiltersType>(() => {
+    const rest = { ...queryFilters };
+    delete rest.comparison;
+    delete rest.compare_start_date;
+    delete rest.compare_end_date;
+    return rest;
+  }, [queryFilters]);
+
   // Sales by Product Query
   const {
     data: productData,
@@ -358,6 +371,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     queryClient.invalidateQueries({ queryKey: ['sales-by-customer'] });
     queryClient.invalidateQueries({ queryKey: ['sales-trends'] });
     queryClient.invalidateQueries({ queryKey: ['sales-by-category'] });
+    queryClient.invalidateQueries({ queryKey: ['sales-pivot'] });
   };
 
   const activeFetching = productOnly
@@ -1018,6 +1032,8 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
               </Card>
             </>
           )}
+
+          <GlReconciliationFooter filters={queryFilters} />
         </div>
       </div>
     );
@@ -1074,6 +1090,10 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
           <TabsTrigger value="by-category" className="gap-2 rounded-full px-4">
             <Icon icon="solar:pie-chart-bold" className="h-4 w-4" />
             By Category
+          </TabsTrigger>
+          <TabsTrigger value="pivot" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:widget-5-bold" className="h-4 w-4" />
+            Pivot
           </TabsTrigger>
         </TabsList>
 
@@ -1427,7 +1447,18 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
             </>
           )}
         </TabsContent>
+
+        {/* -------------------------------- Pivot --------------------------------- */}
+        <TabsContent value="pivot" className="space-y-6">
+          <SalesPivotView
+            filters={pivotFilters}
+            periodLabel={periodLabel}
+            exportRange={exportRange}
+          />
+        </TabsContent>
       </Tabs>
+
+      <GlReconciliationFooter filters={queryFilters} />
     </div>
   );
 }

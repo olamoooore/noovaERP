@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Platform\Workflow\Contracts\WorkflowSubject;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class Invoice extends Model
+class Invoice extends Model implements WorkflowSubject
 {
     use \App\Models\Concerns\GuardsJournalEntryLinks;
     use \App\Models\Concerns\ResolvesLegalEntityContext;
@@ -556,5 +557,68 @@ class Invoice extends Model
         $this->attributes['patient_name_encrypted'] = ($value === null || $value === '')
             ? null
             : \Illuminate\Support\Facades\Crypt::encryptString((string) $value);
+    }
+
+    // ─── WorkflowEngine subject (#900, PC6) ───────────────────────
+
+    /**
+     * Lifecycle status derived from the operational status. The operational
+     * `status` is the single authoritative field written by the engine;
+     * `lifecycle_status` (the ADR-005 posting dimension reports scope on) is
+     * derived here in the same write — never kept in sync by hand.
+     *
+     * Correction lifecycles (voided/reversed/credited/superseded) are owned by
+     * DocumentLifecycleService and are not overwritten by this map.
+     *
+     * @var array<string, string>
+     */
+    private const WORKFLOW_LIFECYCLE_MAP = [
+        'draft' => 'draft',
+        'sent' => 'posted',
+        'posted' => 'posted',
+        'partial' => 'posted',
+        'paid' => 'posted',
+        'overdue' => 'posted',
+        'cancelled' => 'cancelled',
+    ];
+
+    public function workflowEntityType(): string
+    {
+        return 'invoice';
+    }
+
+    public function workflowEntityId(): string
+    {
+        return (string) $this->getKey();
+    }
+
+    public function workflowCurrentStatus(): string
+    {
+        return (string) ($this->status ?? '');
+    }
+
+    public function workflowContext(): array
+    {
+        return [
+            'status' => $this->status,
+            'lifecycle_status' => $this->lifecycle_status,
+            'requires_approval' => (bool) $this->requires_approval,
+            'approval_status' => $this->approval_status,
+            'journal_entry_id' => $this->journal_entry_id,
+            'total' => (float) $this->total,
+        ];
+    }
+
+    public function applyWorkflowStatus(string $status, array $context = []): void
+    {
+        $attributes = ['status' => $status];
+
+        if (in_array($context['action'] ?? null, ['post', 'cancel', 'reset_to_draft'], true)) {
+            $attributes['lifecycle_status'] = self::WORKFLOW_LIFECYCLE_MAP[$status]
+                ?? $this->lifecycle_status
+                ?? 'draft';
+        }
+
+        $this->forceFill($attributes)->save();
     }
 }

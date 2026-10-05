@@ -5,18 +5,21 @@ namespace Modules\FinancialReporting\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Modules\FinancialReporting\DTOs\ReportFilter;
 use Modules\FinancialReporting\Services\Analytics\CustomerAnalyticsService;
 use Modules\FinancialReporting\Services\Analytics\ExpenseAnalyticsService;
 use Modules\FinancialReporting\Services\Analytics\SalesAnalyticsService;
+use Modules\FinancialReporting\Services\Analytics\SalesGlReconciliationService;
 
 class AnalyticsController extends Controller
 {
     public function __construct(
         protected SalesAnalyticsService $salesAnalyticsService,
         protected ExpenseAnalyticsService $expenseAnalyticsService,
-        protected CustomerAnalyticsService $customerAnalyticsService
+        protected CustomerAnalyticsService $customerAnalyticsService,
+        protected SalesGlReconciliationService $salesGlReconciliationService
     ) {}
 
     /**
@@ -72,10 +75,18 @@ class AnalyticsController extends Controller
      * has to reach Laravel's handler as a 422, not be logged as a 500.
      *
      * @param  array<string, string>  $extraRules
+     * @param  bool  $allowComparison  false for endpoints where a comparison
+     *                                 window is meaningless (the pivot): the
+     *                                 comparison keys then 422 instead of
+     *                                 being accepted and silently dropped.
      */
-    private function salesFilter(Request $request, array $extraRules = []): ReportFilter
+    private function salesFilter(Request $request, array $extraRules = [], bool $allowComparison = true): ReportFilter
     {
-        $rules = array_merge(self::SALES_FILTER_RULES, self::comparisonRules(), $extraRules);
+        $rules = array_merge(
+            self::SALES_FILTER_RULES,
+            $allowComparison ? self::comparisonRules() : [],
+            $extraRules,
+        );
 
         $unknown = array_diff(array_keys($request->query()), array_keys($rules));
         if ($unknown !== []) {
@@ -133,6 +144,33 @@ class AnalyticsController extends Controller
         }
 
         return $data;
+    }
+
+    /**
+     * Issue #604 (RPT-D1): ties-to-GL reconciliation for the sales reports'
+     * footer. Same filter contract as the other sales reports (#593), same
+     * period and dimensions on both sides.
+     */
+    public function salesReconciliation(Request $request): JsonResponse
+    {
+        $filter = $this->salesFilter($request);
+
+        try {
+            return response()->json([
+                'success' => true,
+                'data' => $this->salesGlReconciliationService->reconcile($filter),
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Sales reconciliation failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to generate analytics. Please try again.',
+            ], 500);
+        }
     }
 
     /**
@@ -289,6 +327,67 @@ class AnalyticsController extends Controller
 
         } catch (\Exception $e) {
             \Log::error('Sales by Category analytics failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to generate analytics. Please try again.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Issue #601: pivot-style sales analysis.
+     *
+     * Group rows by up to three whitelisted dimensions (`row_dims[]`), spread
+     * columns by up to two more (`col_dims[]` or the singular `col_dim`) and
+     * choose up to five measures (`measure[]`, `measures[]` also accepted).
+     * The same sales filters as the fixed tabs scope the read model. A
+     * comparison window is deliberately not accepted here — a pivot reports
+     * one period — so `comparison`/`compare_*` are rejected rather than
+     * ignored.
+     */
+    public function salesPivot(Request $request): JsonResponse
+    {
+        $filter = $this->salesFilter($request, [
+            'row_dims' => 'nullable|array|max:3',
+            'row_dims.*' => ['string', Rule::in(SalesAnalyticsService::pivotDimensions())],
+            'col_dim' => ['nullable', 'string', Rule::in(SalesAnalyticsService::pivotDimensions())],
+            'col_dims' => 'nullable|array|max:2',
+            'col_dims.*' => ['string', Rule::in(SalesAnalyticsService::pivotDimensions())],
+            'measure' => 'nullable|array|max:5',
+            'measure.*' => ['string', Rule::in(SalesAnalyticsService::pivotMeasures())],
+            'measures' => 'nullable|array|max:5',
+            'measures.*' => ['string', Rule::in(SalesAnalyticsService::pivotMeasures())],
+        ], allowComparison: false);
+
+        try {
+            $rowDims = array_values((array) $request->input('row_dims', []));
+            if ($rowDims === []) {
+                $rowDims = ['product'];
+            }
+
+            $colDims = array_values(array_filter(array_merge(
+                $request->filled('col_dim') ? [(string) $request->input('col_dim')] : [],
+                (array) $request->input('col_dims', []),
+            )));
+
+            $measures = array_values((array) ($request->input('measure') ?? $request->input('measures') ?? []));
+            if ($measures === []) {
+                $measures = SalesAnalyticsService::pivotMeasures();
+            }
+
+            $reportData = $this->salesAnalyticsService->getSalesPivot($filter, $rowDims, $colDims, $measures);
+
+            return response()->json([
+                'success' => true,
+                'data' => $reportData,
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Sales Pivot analytics failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
