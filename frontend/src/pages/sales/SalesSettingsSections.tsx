@@ -408,12 +408,12 @@ const REVIEWER_ROLES = [
 
 type ReviewerDocType = 'invoice' | 'quotation' | 'sales_order' | 'invoice_threshold' | 'delivery_order'
 
-const REVIEWER_DOC_TYPES: Array<{ value: ReviewerDocType; label: string; description: string }> = [
-  { value: 'invoice', label: 'Invoices', description: 'Invoices flagged “requires approval” before posting.' },
-  { value: 'quotation', label: 'Quotations', description: 'Quotations over the approval threshold.' },
-  { value: 'sales_order', label: 'Sales orders', description: 'Sales orders over the approval threshold.' },
-  { value: 'invoice_threshold', label: 'Invoice threshold', description: 'Invoices auto-flagged by the approval threshold.' },
-  { value: 'delivery_order', label: 'Delivery orders', description: 'Delivery orders that require approval.' },
+const REVIEWER_DOC_TYPES: Array<{ value: ReviewerDocType; label: string; description: string; icon: string }> = [
+  { value: 'invoice', label: 'Invoices', description: 'Invoices flagged “requires approval” before posting.', icon: 'solar:document-text-bold-duotone' },
+  { value: 'quotation', label: 'Quotations', description: 'Quotations over the approval threshold.', icon: 'solar:document-add-bold-duotone' },
+  { value: 'sales_order', label: 'Sales orders', description: 'Sales orders over the approval threshold.', icon: 'solar:cart-large-2-bold-duotone' },
+  { value: 'invoice_threshold', label: 'Invoice threshold', description: 'Invoices auto-flagged by the approval threshold.', icon: 'solar:danger-triangle-bold-duotone' },
+  { value: 'delivery_order', label: 'Delivery orders', description: 'Delivery orders that require approval.', icon: 'solar:delivery-bold-duotone' },
 ]
 
 type ApprovalPatch = ReviewerConfig & {
@@ -425,7 +425,8 @@ export function ApprovalSettings() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const { data, isLoading } = useSalesSettings()
-  const [reviewerType, setReviewerType] = useState<ReviewerDocType>('invoice')
+  // Approval reviewers are edited for one OR MORE document types at once.
+  const [reviewerTypes, setReviewerTypes] = useState<ReviewerDocType[]>(['invoice'])
   // Dirty approval fields per request type — saved together by the save bar.
   const [dirty, setDirty] = useState<Partial<Record<ReviewerDocType, ApprovalPatch>>>({})
 
@@ -473,33 +474,71 @@ export function ApprovalSettings() {
 
   const invoice = groups.invoice
   const deliveryOrder = groups.delivery_order
-  const reviewerGroup = groups[reviewerType]
   const availableReviewers = data.invoice.available_reviewers ?? []
-  const reviewerCount = (reviewerGroup.reviewer_user_ids ?? []).length + (reviewerGroup.reviewer_roles ?? []).length
-  const reviewerTypeMeta = REVIEWER_DOC_TYPES.find((t) => t.value === reviewerType) ?? REVIEWER_DOC_TYPES[0]
+  const selectedTypes = REVIEWER_DOC_TYPES.filter((t) => reviewerTypes.includes(t.value))
+  const reviewerTypeMeta = selectedTypes[0] ?? REVIEWER_DOC_TYPES[0]
+  const multiType = selectedTypes.length > 1
 
-  const toggleReviewerRole = (role: string) => {
-    const current = reviewerGroup.reviewer_roles ?? []
-    const active = current.includes(role)
-    patchGroup(reviewerType, {
-      reviewer_roles: active ? current.filter((r) => r !== role) : [...current, role],
+  const toggleReviewerType = (type: ReviewerDocType) => {
+    setReviewerTypes((current) => {
+      if (current.includes(type)) {
+        // Always keep at least one type selected — reviewers need a target.
+        return current.length === 1 ? current : current.filter((t) => t !== type)
+      }
+
+      // Keep the canonical display order.
+      return REVIEWER_DOC_TYPES.map((t) => t.value).filter((v) => current.includes(v) || v === type)
     })
   }
 
-  const toggleReviewerPerson = (personId: number) => {
-    const current = reviewerGroup.reviewer_user_ids ?? []
-    const active = current.includes(personId)
-    patchGroup(reviewerType, {
-      reviewer_user_ids: active ? current.filter((id) => id !== personId) : [...current, personId],
+  /** Does every selected type carry this reviewer value? */
+  const hasEverywhere = (field: 'reviewer_roles' | 'reviewer_user_ids', value: string | number) =>
+    reviewerTypes.every((t) => (groups[t][field] ?? []).includes(value as never))
+
+  /** Does at least one selected type carry it (but not all)? */
+  const hasSomewhere = (field: 'reviewer_roles' | 'reviewer_user_ids', value: string | number) =>
+    !hasEverywhere(field, value) && reviewerTypes.some((t) => (groups[t][field] ?? []).includes(value as never))
+
+  /** Toggle a reviewer for EVERY selected document type at once. */
+  const applyToSelected = (
+    field: 'reviewer_roles' | 'reviewer_user_ids',
+    value: string | number,
+    remove: boolean,
+  ) => {
+    setDirty((current) => {
+      const next = { ...current }
+      for (const type of reviewerTypes) {
+        const existing = (groups[type][field] ?? []) as Array<string | number>
+        const updated = remove
+          ? existing.filter((v) => v !== value)
+          : existing.includes(value)
+            ? existing
+            : [...existing, value]
+        next[type] = { ...(next[type] ?? {}), [field]: updated }
+      }
+      return next
     })
   }
+
+  const toggleReviewerRole = (role: string) => applyToSelected('reviewer_roles', role, hasEverywhere('reviewer_roles', role))
+
+  const toggleReviewerPerson = (personId: number) =>
+    applyToSelected('reviewer_user_ids', personId, hasEverywhere('reviewer_user_ids', personId))
+
+  const reviewerCount = selectedTypes.reduce(
+    (count, type) =>
+      count +
+      (groups[type.value].reviewer_user_ids ?? []).length +
+      (groups[type.value].reviewer_roles ?? []).length,
+    0,
+  )
 
   return (
     <Card className="overflow-hidden">
       <SettingsSectionHeader
         icon="solar:checklist-bold-duotone"
         title="Approval Workflow"
-        description="Decide which invoices need review before posting and how long approvals remain valid."
+        description="Decide which sales documents need review before posting and how long approvals remain valid."
       />
       <CardContent className="divide-y py-0">
         <SettingsRow
@@ -561,23 +600,43 @@ export function ApprovalSettings() {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="space-y-0.5">
-              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Document type</div>
-              <p className="text-xs text-muted-foreground">{reviewerTypeMeta.description}</p>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Document types</div>
+                <p className="text-xs text-muted-foreground">
+                  {multiType
+                    ? `Reviewer choices below apply to all ${selectedTypes.length} selected document types at once.`
+                    : reviewerTypeMeta.description}
+                </p>
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {selectedTypes.length} of {REVIEWER_DOC_TYPES.length} selected
+              </span>
             </div>
-            <Select value={reviewerType} onValueChange={(v) => setReviewerType(v as ReviewerDocType)}>
-              <SelectTrigger className="w-56">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {REVIEWER_DOC_TYPES.map((type) => (
-                  <SelectItem key={type.value} value={type.value}>
+            <div className="flex flex-wrap gap-2">
+              {REVIEWER_DOC_TYPES.map((type) => {
+                const active = reviewerTypes.includes(type.value)
+                return (
+                  <button
+                    key={type.value}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => toggleReviewerType(type.value)}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all',
+                      active
+                        ? 'border-primary/40 bg-primary/10 text-primary'
+                        : 'border-border text-muted-foreground hover:border-primary/30 hover:bg-muted/60 hover:text-foreground',
+                    )}
+                  >
+                    <Icon icon={type.icon} className="h-3.5 w-3.5" />
                     {type.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                    {active && <Icon icon="solar:check-circle-bold" className="h-3.5 w-3.5" />}
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
           {/* Roles */}
@@ -585,7 +644,8 @@ export function ApprovalSettings() {
             <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">By role</div>
             <div className="flex flex-wrap gap-2">
               {REVIEWER_ROLES.map((role) => {
-                const active = (reviewerGroup.reviewer_roles ?? []).includes(role.value)
+                const active = hasEverywhere('reviewer_roles', role.value)
+                const partial = hasSomewhere('reviewer_roles', role.value)
                 return (
                   <button
                     key={role.value}
@@ -595,12 +655,15 @@ export function ApprovalSettings() {
                       'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all',
                       active
                         ? 'border-primary/40 bg-primary/10 text-primary'
-                        : 'border-border text-muted-foreground hover:border-primary/30 hover:bg-muted/60 hover:text-foreground',
+                        : partial
+                          ? 'border-primary/30 border-dashed bg-primary/5 text-primary/80'
+                          : 'border-border text-muted-foreground hover:border-primary/30 hover:bg-muted/60 hover:text-foreground',
                     )}
                   >
                     <Icon icon={role.icon} className="h-3.5 w-3.5" />
                     {role.label}
                     {active && <Icon icon="solar:check-circle-bold" className="h-3.5 w-3.5" />}
+                    {partial && <Icon icon="solar:minus-circle-bold" className="h-3.5 w-3.5" />}
                   </button>
                 )
               })}
@@ -617,7 +680,8 @@ export function ApprovalSettings() {
             ) : (
               <div className="grid max-h-60 gap-1 overflow-y-auto rounded-lg border p-2 sm:grid-cols-2">
                 {availableReviewers.map((person) => {
-                  const active = (reviewerGroup.reviewer_user_ids ?? []).includes(person.id)
+                  const active = hasEverywhere('reviewer_user_ids', person.id)
+                  const partial = hasSomewhere('reviewer_user_ids', person.id)
                   return (
                     <button
                       key={person.id}
@@ -625,7 +689,7 @@ export function ApprovalSettings() {
                       onClick={() => toggleReviewerPerson(person.id)}
                       className={cn(
                         'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors',
-                        active ? 'bg-primary/10' : 'hover:bg-muted/60',
+                        active ? 'bg-primary/10' : partial ? 'bg-primary/5' : 'hover:bg-muted/60',
                       )}
                     >
                       <span
@@ -633,11 +697,15 @@ export function ApprovalSettings() {
                           'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold',
                           active
                             ? 'bg-primary text-primary-foreground'
-                            : 'bg-muted text-muted-foreground',
+                            : partial
+                              ? 'bg-primary/20 text-primary'
+                              : 'bg-muted text-muted-foreground',
                         )}
                       >
                         {active ? (
                           <Icon icon="solar:check-circle-bold" className="h-4 w-4" />
+                        ) : partial ? (
+                          <Icon icon="solar:minus-circle-bold" className="h-4 w-4" />
                         ) : (
                           person.name.slice(0, 2).toUpperCase()
                         )}
@@ -660,15 +728,17 @@ export function ApprovalSettings() {
           {reviewerCount > 0 ? (
             <div className="flex items-center gap-2 rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
               <Icon icon="solar:info-circle-bold-duotone" className="h-3.5 w-3.5 shrink-0 text-primary" />
-              {reviewerCount} reviewer source{reviewerCount === 1 ? '' : 's'} selected for{' '}
-              {reviewerTypeMeta.label.toLowerCase()}. The submitter is always excluded from approving their own
-              document.
+              {multiType
+                ? `Reviewer selections apply to ${selectedTypes.map((t) => t.label).join(', ')}.`
+                : `${reviewerCount} reviewer source${reviewerCount === 1 ? '' : 's'} selected for ${reviewerTypeMeta.label.toLowerCase()}.`}{' '}
+              The submitter is always excluded from approving their own document.
             </div>
           ) : (
             <div className="flex items-center gap-2 rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
               <Icon icon="solar:info-circle-bold-duotone" className="h-3.5 w-3.5 shrink-0 text-primary" />
-              No reviewers configured for {reviewerTypeMeta.label.toLowerCase()} — the invoice reviewer list is
-              used, or the invoice-approval permission for invoices.
+              No reviewers configured for{' '}
+              {multiType ? 'the selected document types' : reviewerTypeMeta.label.toLowerCase()} — a type with no
+              reviewers of its own falls back to the invoice list, or the invoice-approval permission for invoices.
             </div>
           )}
         </div>
