@@ -26,6 +26,14 @@ import pricingApi from '@/lib/pricingApi'
 import { useAuthStore } from '@/store/authStore';
 import { ContactSearchCombobox } from '@/components/ui/ContactSearchCombobox';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
+import { CustomerForm } from '@/components/customers/CustomerForm';
+import {
+  customerFormToCreatePayload,
+  customerFormToUpdatePayload,
+  customerToFormValues,
+  emptyCustomerFormValues,
+  type CustomerFormValues,
+} from '@/lib/customerPayload';
 import { getProductLineDescription, ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
 import { CaseSearchCombobox, type MedicalCaseOption } from '@/components/sales/CaseSearchCombobox';
 import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard';
@@ -145,21 +153,7 @@ interface CustomerRecord {
   customerContacts?: CustomerContact[];
 }
 
-interface CustomerFormState {
-  type: 'individual' | 'company';
-  name: string;
-  company: string;
-  email: string;
-  phone: string;
-  mobile: string;
-  tax_number: string;
-  company_registration_number: string;
-  website: string;
-  billing_address: string;
-  shipping_address: string;
-  payment_terms: string;
-  notes: string;
-}
+type CustomerFormState = CustomerFormValues;
 
 interface InvoiceDocumentSnapshot {
   customer_reference: string;
@@ -205,21 +199,7 @@ const isBlankPlaceholderLine = (line: InvoiceLine): boolean =>
   && !line.description.trim()
   && !line.sku.trim();
 
-const initialCustomerForm: CustomerFormState = {
-  type: 'company',
-  name: '',
-  company: '',
-  email: '',
-  phone: '',
-  mobile: '',
-  tax_number: '',
-  company_registration_number: '',
-  website: '',
-  billing_address: '',
-  shipping_address: '',
-  payment_terms: '30',
-  notes: '',
-};
+const initialCustomerForm: CustomerFormState = emptyCustomerFormValues({ type: 'company' });
 
 const emptyDocumentSnapshot: InvoiceDocumentSnapshot = {
   customer_reference: '',
@@ -998,10 +978,7 @@ export const CreateInvoicePage: React.FC = () => {
 
   const createCustomerMutation = useMutation({
     mutationFn: async (payload: CustomerFormState) => {
-      const response = await api.post('/customers', {
-        ...payload,
-        payment_terms: payload.payment_terms ? parseInt(payload.payment_terms, 10) : undefined,
-      });
+      const response = await api.post('/customers', customerFormToCreatePayload(payload));
       return response.data as CustomerRecord;
     },
     onSuccess: async (customer) => {
@@ -1022,10 +999,7 @@ export const CreateInvoicePage: React.FC = () => {
 
   const updateCustomerMutation = useMutation({
     mutationFn: async (payload: CustomerFormState) => {
-      const response = await api.put(`/customers/${customerId}`, {
-        ...payload,
-        payment_terms: payload.payment_terms ? parseInt(payload.payment_terms, 10) : undefined,
-      });
+      const response = await api.put(`/customers/${customerId}`, customerFormToUpdatePayload(payload));
       return response.data as CustomerRecord;
     },
     onSuccess: async () => {
@@ -1624,21 +1598,7 @@ export const CreateInvoicePage: React.FC = () => {
     }
 
     setCustomerDialogMode('edit');
-    setCustomerForm({
-      type: selectedCustomer.type ?? 'company',
-      name: selectedCustomer.name ?? '',
-      company: selectedCustomer.company ?? '',
-      email: selectedCustomer.email ?? '',
-      phone: selectedCustomer.phone ?? '',
-      mobile: selectedCustomer.mobile ?? '',
-      tax_number: selectedCustomer.tax_number ?? '',
-      company_registration_number: selectedCustomer.company_registration_number ?? '',
-      website: selectedCustomer.website ?? '',
-      billing_address: getCustomerAddress(selectedCustomer, 'billing'),
-      shipping_address: getCustomerAddress(selectedCustomer, 'shipping'),
-      payment_terms: String(selectedCustomer.payment_terms ?? 30),
-      notes: selectedCustomer.notes ?? '',
-    });
+    setCustomerForm(customerToFormValues(selectedCustomer));
     setCustomerDialogOpen(true);
   };
 
@@ -3330,133 +3290,12 @@ export const CreateInvoicePage: React.FC = () => {
           </DialogHeader>
 
           <form onSubmit={handleCustomerFormSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Customer Type</label>
-                <select
-                  value={customerForm.type}
-                  onChange={(event) => setCustomerForm((current) => ({ ...current, type: event.target.value as 'individual' | 'company' }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                >
-                  <option value="company">Company</option>
-                  <option value="individual">Individual</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Customer Name *</label>
-                <input
-                  type="text"
-                  value={customerForm.name}
-                  onChange={(event) => setCustomerForm((current) => ({ ...current, name: event.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Company</label>
-                <input
-                  type="text"
-                  value={customerForm.company}
-                  onChange={(event) => setCustomerForm((current) => ({ ...current, company: event.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Email</label>
-                <input
-                  type="email"
-                  value={customerForm.email}
-                  onChange={(event) => setCustomerForm((current) => ({ ...current, email: event.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Phone</label>
-                <input
-                  type="text"
-                  value={customerForm.phone}
-                  onChange={(event) => setCustomerForm((current) => ({ ...current, phone: event.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Mobile</label>
-                <input
-                  type="text"
-                  value={customerForm.mobile}
-                  onChange={(event) => setCustomerForm((current) => ({ ...current, mobile: event.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Tax Registration</label>
-                <input
-                  type="text"
-                  value={customerForm.tax_number}
-                  onChange={(event) => setCustomerForm((current) => ({ ...current, tax_number: event.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Company Registration</label>
-                <input
-                  type="text"
-                  value={customerForm.company_registration_number}
-                  onChange={(event) => setCustomerForm((current) => ({ ...current, company_registration_number: event.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Website</label>
-                <input
-                  type="url"
-                  value={customerForm.website}
-                  onChange={(event) => setCustomerForm((current) => ({ ...current, website: event.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Payment Terms (days)</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={customerForm.payment_terms}
-                  onChange={(event) => setCustomerForm((current) => ({ ...current, payment_terms: event.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Billing Address</label>
-                <textarea
-                  value={customerForm.billing_address}
-                  onChange={(event) => setCustomerForm((current) => ({ ...current, billing_address: event.target.value }))}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Shipping Address</label>
-                <textarea
-                  value={customerForm.shipping_address}
-                  onChange={(event) => setCustomerForm((current) => ({ ...current, shipping_address: event.target.value }))}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Notes</label>
-              <textarea
-                value={customerForm.notes}
-                onChange={(event) => setCustomerForm((current) => ({ ...current, notes: event.target.value }))}
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-              />
-            </div>
+            <CustomerForm
+              value={customerForm}
+              onChange={setCustomerForm}
+              idPrefix="invoice-customer"
+              disabled={customerMutationPending}
+            />
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setCustomerDialogOpen(false)}>
