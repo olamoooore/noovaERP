@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -51,8 +51,28 @@ import { ProductUsageView } from './ProductUsageView';
 import { SavedViewBar, type SavedViewApplied } from './SavedViewBar';
 
 interface SalesAnalyticsPageProps {
+  /** Open on the Product tab (kept for callers of the old product-only page). */
   productOnly?: boolean;
 }
+
+/**
+ * Issue #599: the tabs `?tab=` may deep-link to. Product sales used to be a
+ * separate page at /products/report; it is now the report's Product tab.
+ */
+const DEEP_LINK_TABS = [
+  'by-customer',
+  'by-product',
+  'trends',
+  'by-category',
+  'pivot',
+  'unbilled',
+  'product-usage',
+];
+
+/** Issue #599: /products/report keeps working — it opens the Product tab. */
+export const ProductSalesReportRedirect = () => (
+  <Navigate to="/reports/sales-analytics?tab=by-product" replace />
+);
 
 export const defaultFilters = (): ReportFiltersType => {
   const now = new Date();
@@ -200,7 +220,12 @@ function ReportPanelState({
 }
 
 export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPageProps) {
-  const [activeTab, setActiveTab] = useState('by-customer');
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(() => {
+    const requested = searchParams.get('tab');
+    if (requested && DEEP_LINK_TABS.includes(requested)) return requested;
+    return productOnly ? 'by-product' : 'by-customer';
+  });
   const queryClient = useQueryClient();
   useReportAutoRefresh();
   const [filters, setFilters] = useState<ReportFiltersType>(defaultFilters);
@@ -249,7 +274,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
   } = useQuery({
     queryKey: ['sales-by-product', queryFilters],
     queryFn: () => reportApi.getSalesByProduct(queryFilters),
-    enabled: productOnly,
+    enabled: activeTab === 'by-product',
     staleTime: 15 * 1000,
   });
 
@@ -262,7 +287,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
   } = useQuery({
     queryKey: ['sales-by-customer', queryFilters],
     queryFn: () => reportApi.getSalesByCustomer(queryFilters),
-    enabled: !productOnly && activeTab === 'by-customer',
+    enabled: activeTab === 'by-customer',
     staleTime: 15 * 1000,
   });
 
@@ -353,7 +378,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
   } = useQuery({
     queryKey: ['sales-trends', queryFilters],
     queryFn: () => reportApi.getSalesTrends(queryFilters),
-    enabled: !productOnly && activeTab === 'trends',
+    enabled: activeTab === 'trends',
     staleTime: 15 * 1000,
   });
 
@@ -366,7 +391,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
   } = useQuery({
     queryKey: ['sales-by-category', queryFilters],
     queryFn: () => reportApi.getSalesByCategory(queryFilters),
-    enabled: !productOnly && activeTab === 'by-category',
+    enabled: activeTab === 'by-category',
     staleTime: 15 * 1000,
   });
 
@@ -387,7 +412,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     queryClient.invalidateQueries({ queryKey: ['sales-unbilled-deliveries'] });
   };
 
-  const activeFetching = productOnly
+  const activeFetching = activeTab === 'by-product'
     ? isProductFetching
     : activeTab === 'by-customer'
       ? isCustomerFetching
@@ -410,15 +435,14 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     }));
 
   // Issue #598: applying a saved view restores its tab, filters and (pivot)
-  // grouping. The product-only page hosts no tabs, so it only restores the
-  // filters there.
+  // grouping.
   const applySavedView = ({ tab: savedTab, filters: savedFilters, grouping }: SavedViewApplied) => {
-    if (!productOnly) setActiveTab(savedTab);
+    setActiveTab(savedTab);
     setFilters(savedFilters);
     if (grouping) setPivotGrouping(grouping);
   };
 
-  const savedViewTab = (productOnly ? 'by-product' : activeTab) as SalesViewTab;
+  const savedViewTab = activeTab as SalesViewTab;
 
   const hasCustomFilters =
     !!filters.tag ||
@@ -986,13 +1010,9 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
   const header = (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h1 className="text-3xl font-bold">
-          {productOnly ? 'Product Sales Report' : 'Sales Analytics'}
-        </h1>
+        <h1 className="text-3xl font-bold">Sales Analytics</h1>
         <p className="mt-1 text-muted-foreground">
-          {productOnly
-            ? 'Analyze sales performance by product'
-            : 'Analyze sales performance by customer, category, and trends'}
+          Analyze sales performance by customer, product, category, and trends
         </p>
       </div>
       <HeaderActionButton
@@ -1005,126 +1025,6 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
       </HeaderActionButton>
     </div>
   );
-
-  // ---------------------------------------------------------------------------
-  // Product-only view (used by /products/report)
-  // ---------------------------------------------------------------------------
-  if (productOnly) {
-    return (
-      <div className="space-y-6">
-        {header}
-        <SavedViewBar
-          tab={savedViewTab}
-          filters={filters}
-          grouping={pivotGrouping}
-          onApply={applySavedView}
-        />
-        {filterCard}
-
-        <div className="space-y-6">
-          <ReportHeading
-            title="Sales by Product"
-            subtitle={`For the period ${periodLabel}${comparisonRangeLabel(productData?.comparison)}`}
-          >
-            <ReportExportToolbar
-              targetRef={productRef}
-              title="Sales by Product"
-              subtitle={`For the period ${periodLabel}`}
-              filename={`sales-by-product-${exportRange}`}
-              rows={productExportRows}
-              columnAligns={['left','left','right','right','right','right','right','right','right','right']}
-            />
-          </ReportHeading>
-
-          <ReportPanelState
-            isLoading={isProductLoading}
-            error={productError?.message || null}
-            empty={products.length === 0}
-          />
-
-          {!isProductLoading && !productError && products.length > 0 && (
-            <>
-              <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                <StatCard
-                  label="Products Sold"
-                  value={formatNumber(products.length)}
-                  icon="solar:box-bold-duotone"
-                  tone="bg-primary/10 text-primary"
-                />
-                <StatCard
-                  label="Total Revenue"
-                  value={formatCurrency(sumBy(products, (p) => p.total_revenue))}
-                  icon="solar:wallet-money-bold-duotone"
-                  tone="bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400"
-                />
-                <StatCard
-                  label="Total Profit"
-                  value={formatCurrency(sumBy(products, (p) => p.total_profit))}
-                  icon="solar:graph-up-bold-duotone"
-                  tone="bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400"
-                />
-                <StatCard
-                  label="Avg Margin"
-                  value={`${avgBy(products, (p) => p.profit_margin).toFixed(2)}%`}
-                  icon="solar:tag-price-bold-duotone"
-                  tone="bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400"
-                />
-              </div>
-
-              <Card className="rounded-xl">
-                <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 border-b pb-4">
-                  <div>
-                    <CardTitle className="text-base">Top 10 Products by Revenue</CardTitle>
-                    <p className="mt-0.5 text-sm text-muted-foreground">
-                      Hover a bar for exact figures
-                    </p>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-6">
-                  <BarChart
-                    data={products.slice(0, 10).map((p) => ({
-                      name: p.name,
-                      Revenue: p.total_revenue,
-                      Profit: p.total_profit,
-                    }))}
-                    xKey="name"
-                    yKeys={['Revenue', 'Profit']}
-                    colors={['#3b82f6', '#8b5cf6']}
-                    height={360}
-                    formatYAxis="currency"
-                    truncateLabels={14}
-                    xAxisAngle={-30}
-                  />
-                </CardContent>
-              </Card>
-
-              <Card className="rounded-xl">
-                <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 border-b pb-4">
-                  <div>
-                    <CardTitle className="text-base">All Products</CardTitle>
-                    <p className="mt-0.5 text-sm text-muted-foreground">
-                      {products.length} products · {formatCurrency(sumBy(products, (p) => p.total_revenue))} revenue
-                    </p>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-6" ref={productRef}>
-                  <ReportTable
-                    columns={productColumns}
-                    data={products}
-                    showPagination
-                    showSearch
-                    pageSize={20}
-                  />
-                </CardContent>
-              </Card>
-            </>
-          )}
-
-          <GlReconciliationFooter filters={queryFilters} />
-        </div>
-      </div>
-    );
-  }
 
   // ---------------------------------------------------------------------------
   // Tabbed view
@@ -1179,6 +1079,10 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
           <TabsTrigger value="by-customer" className="gap-2 rounded-full px-4">
             <Icon icon="solar:users-group-rounded-bold" className="h-4 w-4" />
             By Customer
+          </TabsTrigger>
+          <TabsTrigger value="by-product" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:box-bold" className="h-4 w-4" />
+            By Product
           </TabsTrigger>
           <TabsTrigger value="trends" className="gap-2 rounded-full px-4">
             <Icon icon="solar:chart-2-bold" className="h-4 w-4" />
@@ -1306,6 +1210,109 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
               </Card>
             </>
           )}
+        </TabsContent>
+
+        {/* ------------------------------- Products ------------------------------- */}
+        {/* Issue #599: formerly the separate /products/report page. */}
+        <TabsContent value="by-product" className="space-y-6">
+          <ReportHeading
+            title="Sales by Product"
+            subtitle={`For the period ${periodLabel}${comparisonRangeLabel(productData?.comparison)}`}
+          >
+            <ReportExportToolbar
+              targetRef={productRef}
+              title="Sales by Product"
+              subtitle={`For the period ${periodLabel}`}
+              filename={`sales-by-product-${exportRange}`}
+              rows={productExportRows}
+              columnAligns={['left','left','right','right','right','right','right','right','right','right']}
+            />
+          </ReportHeading>
+
+          <ReportPanelState
+            isLoading={isProductLoading}
+            error={productError?.message || null}
+            empty={products.length === 0}
+          />
+
+          {!isProductLoading && !productError && products.length > 0 && (
+            <>
+              <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                <StatCard
+                  label="Products Sold"
+                  value={formatNumber(products.length)}
+                  icon="solar:box-bold-duotone"
+                  tone="bg-primary/10 text-primary"
+                />
+                <StatCard
+                  label="Total Revenue"
+                  value={formatCurrency(sumBy(products, (p) => p.total_revenue))}
+                  icon="solar:wallet-money-bold-duotone"
+                  tone="bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400"
+                />
+                <StatCard
+                  label="Total Profit"
+                  value={formatCurrency(sumBy(products, (p) => p.total_profit))}
+                  icon="solar:graph-up-bold-duotone"
+                  tone="bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400"
+                />
+                <StatCard
+                  label="Avg Margin"
+                  value={`${avgBy(products, (p) => p.profit_margin).toFixed(2)}%`}
+                  icon="solar:tag-price-bold-duotone"
+                  tone="bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400"
+                />
+              </div>
+
+              <Card className="rounded-xl">
+                <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 border-b pb-4">
+                  <div>
+                    <CardTitle className="text-base">Top 10 Products by Revenue</CardTitle>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      Hover a bar for exact figures
+                    </p>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-6">
+                  <BarChart
+                    data={products.slice(0, 10).map((p) => ({
+                      name: p.name,
+                      Revenue: p.total_revenue,
+                      Profit: p.total_profit,
+                    }))}
+                    xKey="name"
+                    yKeys={['Revenue', 'Profit']}
+                    colors={['#3b82f6', '#8b5cf6']}
+                    height={360}
+                    formatYAxis="currency"
+                    truncateLabels={14}
+                    xAxisAngle={-30}
+                  />
+                </CardContent>
+              </Card>
+
+              <Card className="rounded-xl">
+                <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 border-b pb-4">
+                  <div>
+                    <CardTitle className="text-base">All Products</CardTitle>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      {products.length} products · {formatCurrency(sumBy(products, (p) => p.total_revenue))} revenue
+                    </p>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-6" ref={productRef}>
+                  <ReportTable
+                    columns={productColumns}
+                    data={products}
+                    showPagination
+                    showSearch
+                    pageSize={20}
+                  />
+                </CardContent>
+              </Card>
+            </>
+          )}
+
         </TabsContent>
 
         {/* -------------------------------- Trends -------------------------------- */}

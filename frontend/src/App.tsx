@@ -73,6 +73,7 @@ const OCRDocumentReviewPage = lazy(() => import('@/pages/OCRDocumentReviewPage')
 const FinancialReportsPage = lazy(() => import('@/pages/reports/FinancialReportsPage').then(m => ({ default: m.FinancialReportsPage })))
 const InventoryReportsPage = lazy(() => import('@/pages/reports/InventoryReportsPage').then(m => ({ default: m.InventoryReportsPage })))
 const SalesAnalyticsPage = lazy(() => import('@/pages/reports/SalesAnalyticsPage').then(m => ({ default: m.SalesAnalyticsPage })))
+const ProductSalesReportRedirect = lazy(() => import('@/pages/reports/SalesAnalyticsPage').then(m => ({ default: m.ProductSalesReportRedirect })))
 const ExpenseAnalyticsPage = lazy(() => import('@/pages/reports/ExpenseAnalyticsPage').then(m => ({ default: m.ExpenseAnalyticsPage })))
 const LotTraceabilityPage = lazy(() => import('@/pages/reports/LotTraceabilityPage'))
 
@@ -591,7 +592,8 @@ function App() {
                 <Route path="/reports/financial" element={<ReportsGate><FinancialReportsPage /></ReportsGate>} />
                 <Route path="/reports/inventory" element={<ReportsGate><InventoryReportsPage /></ReportsGate>} />
                 <Route path="/reports/traceability" element={<ReportsGate><LotTraceabilityPage /></ReportsGate>} />
-                <Route path="/products/report" element={<ReportsGate><SalesAnalyticsPage productOnly /></ReportsGate>} />
+                {/* Issue #599: product sales is now a tab of Sales Analytics; the old URL deep-links to it. */}
+                <Route path="/products/report" element={<ProductSalesReportRedirect />} />
                 <Route path="/reports/sales-analytics" element={<ReportsGate><SalesAnalyticsPage /></ReportsGate>} />
                 <Route path="/reports/expense-analytics" element={<ReportsGate><ExpenseAnalyticsPage /></ReportsGate>} />
                 <Route path="/dashboards/executive" element={<ExecutiveDashboard />} />
