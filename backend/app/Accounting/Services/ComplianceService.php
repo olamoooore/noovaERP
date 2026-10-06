@@ -630,6 +630,14 @@ class ComplianceService
             $submission->update(['last_status_check' => now()]);
             $submission->refresh();
 
+            if (! $updated && ProviderRateLimit::isThrottled($countryCode)) {
+                return [
+                    'success' => false,
+                    'updated' => false,
+                    'message' => 'The e-invoicing service is rate limiting requests. Please try again shortly.',
+                ];
+            }
+
             if (! $updated && in_array($submission->submission_status, ['pending', 'ack', 'unknown'], true)) {
                 $provider = $this->pluginRegistry->resolve($countryCode, 'provider');
                 if ($provider) {
@@ -849,6 +857,17 @@ class ComplianceService
 
         $synced = 0;
         foreach ($pending as $submission) {
+            // #666 AC1: the provider answered 429 — stop calling it for this
+            // tenant/country until its Retry-After has passed; the remaining
+            // submissions are picked up by a later sweep.
+            if (ProviderRateLimit::isThrottled($countryCode)) {
+                Log::info('E-invoice status sync paused: provider is rate limiting', [
+                    'country_code' => $countryCode,
+                    'remaining' => $pending->count() - $synced,
+                ]);
+                break;
+            }
+
             if ($this->syncSubmissionStatus($submission->id)) {
                 $synced++;
             }
