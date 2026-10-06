@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
@@ -50,6 +50,16 @@ interface ContactSearchComboboxProps {
   className?: string
 }
 
+const formatRecordName = (c: Contact, source: ContactSearchComboboxProps['source']) => {
+  // Only address selectors should render structured address values. Customer
+  // contacts can also carry address fields but must still display their name.
+  if (source === 'addresses' && (c.street || c.city || c.country)) {
+    const parts = [c.street, c.street2, c.city, c.state, c.zip, c.country].filter(Boolean)
+    return parts.join(', ') || c.label || c.type || 'Address'
+  }
+  return c.display_name || (c as any).name || [c.first_name, c.last_name].filter(Boolean).join(' ') || c.company_name || c.label || 'Unnamed'
+}
+
 export function ContactSearchCombobox({
   value,
   onValueChange,
@@ -71,26 +81,33 @@ export function ContactSearchCombobox({
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-  const { data: searchResults, isLoading } = useQuery<Contact[]>({
-    queryKey: ['contacts-search', debouncedQuery, customerId],
+  const usesCustomerRecords = Boolean(customerId) && (source === 'customer_contacts' || source === 'addresses')
+
+  // #301: a customer's contacts/addresses come from one GET /customers/{id},
+  // fetched once per customer and filtered locally. The search text is NOT in
+  // this key — typing must never refetch the whole customer.
+  const { data: customerRecord, isLoading: isCustomerLoading } = useQuery<Record<string, any> | null>({
+    queryKey: ['customer-contact-records', customerId],
     queryFn: async () => {
-      if (customerId && (source === 'customer_contacts' || source === 'addresses')) {
-        const res = await api.get(`/customers/${customerId}`)
-        const customer = res.data?.data ?? res.data
-        const records = source === 'addresses'
-          ? (customer?.addresses ?? []).filter((address: Contact) => !addressType || address.type === addressType)
-          : (customer?.customer_contacts ?? customer?.customerContacts ?? [])
-        // Apply search filter client-side if needed
-        if (debouncedQuery) {
-          const q = debouncedQuery.toLowerCase()
-          return records.filter((record: Contact) => {
-            const display = getDisplayName(record).toLowerCase()
-            return display.includes(q)
-          })
-        }
-        return records
-      }
-      // Otherwise fetch all contacts
+      const res = await api.get(`/customers/${customerId}`)
+      return res.data?.data ?? res.data ?? null
+    },
+    enabled: usesCustomerRecords && (open || !!value),
+  })
+
+  const getDisplayName = (c: Contact) => formatRecordName(c, source)
+
+  const customerRecords = useMemo<Contact[]>(() => {
+    if (!usesCustomerRecords || !customerRecord) return []
+    return source === 'addresses'
+      ? (customerRecord.addresses ?? []).filter((address: Contact) => !addressType || address.type === addressType)
+      : (customerRecord.customer_contacts ?? customerRecord.customerContacts ?? [])
+  }, [usesCustomerRecords, customerRecord, source, addressType])
+
+  // Free contact search (no customer) stays server-side and debounced.
+  const { data: contactResults, isLoading: isContactsLoading } = useQuery<Contact[]>({
+    queryKey: ['contacts-search', debouncedQuery],
+    queryFn: async () => {
       const params: Record<string, string> = { per_page: '50', is_active: 'true' }
       if (debouncedQuery) {
         params.search = debouncedQuery
@@ -98,35 +115,25 @@ export function ContactSearchCombobox({
       const res = await api.get('/contacts', { params })
       return res.data?.data?.data ?? res.data?.data ?? []
     },
-    enabled: open && (source === 'contacts' || !!customerId),
+    enabled: open && !usesCustomerRecords && source === 'contacts',
   })
+
+  const searchResults = useMemo<Contact[] | undefined>(() => {
+    if (!usesCustomerRecords) return contactResults
+    if (!debouncedQuery) return customerRecords
+    const q = debouncedQuery.toLowerCase()
+    return customerRecords.filter((record) => formatRecordName(record, source).toLowerCase().includes(q))
+  }, [usesCustomerRecords, contactResults, customerRecords, debouncedQuery, source])
+  const isLoading = usesCustomerRecords ? isCustomerLoading : isContactsLoading
 
   const { data: selectedContact } = useQuery<Contact>({
     queryKey: ['contact-detail', value],
     queryFn: async () => {
-      if (customerId && (source === 'customer_contacts' || source === 'addresses')) {
-        const res = await api.get(`/customers/${customerId}`)
-        const customer = res.data?.data ?? res.data
-        const records = source === 'addresses'
-          ? customer?.addresses ?? []
-          : customer?.customer_contacts ?? customer?.customerContacts ?? []
-        return records.find((record: Contact) => String(record.id) === String(value))
-      }
       const res = await api.get(`/contacts/${value}`)
       return res.data?.data ?? res.data
     },
-    enabled: !!value && !searchResults?.find(c => String(c.id) === value),
+    enabled: !usesCustomerRecords && !!value && !searchResults?.find(c => String(c.id) === value),
   })
-
-  const getDisplayName = (c: Contact) => {
-    // Only address selectors should render structured address values. Customer
-    // contacts can also carry address fields but must still display their name.
-    if (source === 'addresses' && (c.street || c.city || c.country)) {
-      const parts = [c.street, c.street2, c.city, c.state, c.zip, c.country].filter(Boolean)
-      return parts.join(', ') || c.label || c.type || 'Address'
-    }
-    return c.display_name || (c as any).name || [c.first_name, c.last_name].filter(Boolean).join(' ') || c.company_name || c.label || 'Unnamed'
-  }
 
   const getDisplayValue = useCallback(() => {
     if (!value) return placeholder
@@ -134,10 +141,20 @@ export function ContactSearchCombobox({
     const fromResults = searchResults?.find(c => String(c.id) === value)
     if (fromResults) return getDisplayName(fromResults)
 
+    if (usesCustomerRecords) {
+      // The selected record may be filtered out by the current search text.
+      const pool: Contact[] = source === 'addresses'
+        ? customerRecord?.addresses ?? []
+        : customerRecords
+      const fromCustomer = pool.find(c => String(c.id) === value)
+      if (fromCustomer) return getDisplayName(fromCustomer)
+    }
+
     if (selectedContact) return getDisplayName(selectedContact)
 
     return 'Loading...'
-  }, [value, searchResults, selectedContact, placeholder])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, searchResults, selectedContact, placeholder, usesCustomerRecords, customerRecord, customerRecords, source])
 
   const handleSelect = (contactId: string) => {
     const contact = searchResults?.find(c => String(c.id) === contactId)

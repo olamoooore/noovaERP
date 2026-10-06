@@ -537,14 +537,6 @@ export const CreateInvoicePage: React.FC = () => {
     staleTime: 60_000,
   });
 
-  const { data: customers } = useQuery<CustomerRecord[]>({
-    queryKey: ['customers-list'],
-    queryFn: async () => {
-      const response = await api.get('/customers?per_page=1000');
-      return response.data.data || response.data || [];
-    },
-  });
-
   const { data: selectedCustomerDetail } = useQuery<CustomerRecord>({
     queryKey: ['customer-document', customerId],
     queryFn: async () => {
@@ -554,16 +546,9 @@ export const CreateInvoicePage: React.FC = () => {
     enabled: Boolean(customerId),
   });
 
-  const selectedCustomer = selectedCustomerDetail
-    ?? customers?.find((customer) => String(customer.id) === String(customerId));
-
-  const { data: products } = useQuery({
-    queryKey: ['products-list'],
-    queryFn: async () => {
-      const response = await api.get('/products?per_page=1000');
-      return response.data.data || response.data || [];
-    },
-  });
+  // #301: the customer picker searches the server; the selected customer comes
+  // from its own detail fetch, so no 1,000-row customer preload is needed.
+  const selectedCustomer = selectedCustomerDetail;
 
   const { data: warehouses = [] } = useQuery({
     queryKey: ['warehouses-list'],
@@ -1058,24 +1043,6 @@ export const CreateInvoicePage: React.FC = () => {
   const updateLine = (index: number, field: keyof InvoiceLine, value: string | number) => {
     const updated = [...lines];
     updated[index] = { ...updated[index], [field]: value };
-
-    if (field === 'product_id' && value && products) {
-      const product = products.find((item: any) => String(item.id) === String(value));
-      if (product) {
-        updated[index].description = product.description || product.short_description || '';
-        updated[index].unit_price = parseFloat(product.price || product.selling_price || '0');
-        updated[index].model_number = product.manufacturer_part_number || '';
-        updated[index].sku = product.sku || '';
-        updated[index].price_mode = 'auto';
-        updated[index].pricing_source = null;
-        // Configured tax follows the product (product tax → linked tax →
-        // tenant default), so a picked product is never silently zero-rated.
-        updated[index].tax_rate = resolveLineTaxRate(product, defaultTaxRate);
-        setLines(updated);
-        void resolvePricingForLines(customerId, updated);
-        return;
-      }
-    }
 
     // A hand-typed price is an override (FR-6.2 manual chip / FR-6.3 floor).
     if (field === 'unit_price') {
@@ -3064,7 +3031,7 @@ export const CreateInvoicePage: React.FC = () => {
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2">
-                <ProductCatalogDialog products={products || []} onAdd={addCatalogProducts} />
+                <ProductCatalogDialog onAdd={addCatalogProducts} />
                 <HeaderActionButton type="button" variant="outline" icon="solar:add-circle-bold-duotone" onClick={addLine}>
                   Add Line
                 </HeaderActionButton>

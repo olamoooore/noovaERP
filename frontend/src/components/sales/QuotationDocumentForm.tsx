@@ -140,14 +140,6 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
   const lastPayloadRef = useRef<Record<string, any> | null>(null)
   const autofilledCustomerRef = useRef<string | null>(null)
 
-  const { data: products } = useQuery({
-    queryKey: ['products-list'],
-    queryFn: async () => {
-      const response = await api.get('/products?per_page=1000')
-      return response.data.data || response.data || []
-    },
-  })
-
   // One pick fills everything (invoice parity): primary contact, references
   // and the saved billing/shipping addresses pre-fill from the customer.
   const { data: customerDetail } = useQuery({
@@ -1219,7 +1211,6 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
             <SalesDocumentLineGrid
               lines={lines}
               setLines={setLines}
-              products={products || []}
               money={money}
               resolvePricing={(nextLines) => { void resolvePricingForLines(nextLines) }}
               defaultHiddenColumns={[6]}

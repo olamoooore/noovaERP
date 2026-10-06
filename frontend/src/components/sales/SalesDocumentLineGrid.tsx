@@ -61,7 +61,8 @@ const LINE_VALUE_TOKEN = cn(LINE_VALUE, SALES_RADIUS)
 export interface SalesDocumentLineGridProps {
   lines: SalesDocumentLine[]
   setLines: React.Dispatch<React.SetStateAction<SalesDocumentLine[]>>
-  products: any[]
+  /** Optional in-memory products for the legacy product_id lookup; the catalogue searches the server (#301). */
+  products?: any[]
   money: (value: number) => string
   /** Called after every change that must reprice auto lines through the engine. */
   resolvePricing?: (nextLines: SalesDocumentLine[]) => void
@@ -648,7 +649,7 @@ export function SalesDocumentLineGrid({
 
       <div className="mt-3 flex flex-wrap gap-2">
         <SalesLineColumnMenu columns={menuColumns} hidden={hiddenLineColumns} setHidden={setHiddenLineColumns} />
-        <ProductCatalogDialog products={products || []} onAdd={addCatalogProducts} />
+        <ProductCatalogDialog onAdd={addCatalogProducts} />
         <HeaderActionButton type="button" variant="outline" icon="solar:add-circle-bold-duotone" onClick={addLine}>
           Add Line
         </HeaderActionButton>
