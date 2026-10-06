@@ -24,6 +24,8 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Pagination } from '@/components/ui/Pagination'
 import { SortableHead } from '@/components/ui/SortableHead'
 import { useSort } from '@/hooks/useSort'
+import { SalesOrderFilterChip } from '@/components/sales/SalesOrderFilterChip'
+import { useSalesOrderFilterParam } from '@/hooks/useSalesOrderFilterParam'
 
 export function InvoicesPage() {
   const { toast } = useToast()
@@ -47,6 +49,8 @@ export function InvoicesPage() {
   const [customEndDate, setCustomEndDate] = useState('')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(20)
+  // #403: the Sales Order page's Invoices smart button links here with ?sales_order_id=<id>.
+  const { salesOrderId: salesOrderFilter, clear: clearSalesOrderFilter } = useSalesOrderFilterParam()
 
   const { data: filterCurrencies } = useQuery({
     queryKey: ['currencies', 'sellable'],
@@ -70,6 +74,7 @@ export function InvoicesPage() {
     if (sortBy === 'currency') params.sort_by = 'currency'
     if (debouncedSearchQuery.trim()) params.search = debouncedSearchQuery.trim()
     if (customerFilter) params.customer_id = customerFilter
+    if (salesOrderFilter) params.sales_order_id = salesOrderFilter
     if (tagFilter) params.tag = tagFilter
     if (dateFilter === 'yearly') {
       params.start_date = `${selectedYear}-01-01`
@@ -86,7 +91,7 @@ export function InvoicesPage() {
   }
 
   const { data: response, isLoading } = useQuery({
-    queryKey: ['invoices', page, perPage, statusFilter, currencyFilter, sortBy, debouncedSearchQuery, customerFilter, tagFilter, dateFilter, selectedYear, selectedMonth, customStartDate, customEndDate],
+    queryKey: ['invoices', page, perPage, statusFilter, currencyFilter, sortBy, debouncedSearchQuery, customerFilter, salesOrderFilter, tagFilter, dateFilter, selectedYear, selectedMonth, customStartDate, customEndDate],
     queryFn: async () => {
       const params = { page, per_page: perPage, ...activeFilterParams() }
       const res = await api.get('/invoices', { params })
@@ -410,6 +415,15 @@ export function InvoicesPage() {
               />
             </div>
           </div>
+
+          {salesOrderFilter && (
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              <SalesOrderFilterChip
+                salesOrderId={salesOrderFilter}
+                onClear={() => { clearSalesOrderFilter(); setPage(1) }}
+              />
+            </div>
+          )}
 
           {isLoading ? (
             <div className="py-12 text-center">

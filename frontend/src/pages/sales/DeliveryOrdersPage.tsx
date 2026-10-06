@@ -23,6 +23,8 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Pagination } from '@/components/ui/Pagination'
 import { SortableHead } from '@/components/ui/SortableHead'
 import { useSort } from '@/hooks/useSort'
+import { SalesOrderFilterChip } from '@/components/sales/SalesOrderFilterChip'
+import { useSalesOrderFilterParam } from '@/hooks/useSalesOrderFilterParam'
 
 const DELIVERY_ORDER_EXPORT_COLUMNS = [
   { key: 'delivery_order_number', label: 'Delivery Order No', group: 'Delivery Order', default: true },
@@ -79,6 +81,8 @@ export function DeliveryOrdersPage() {
   const [tagFilter, setTagFilter] = useState('')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(20)
+  // #403: the Sales Order page's Deliveries smart button links here with ?sales_order_id=<id>.
+  const { salesOrderId: salesOrderFilter, clear: clearSalesOrderFilter } = useSalesOrderFilterParam()
   const [hiddenDoColumns, setHiddenDoColumns] = useState<number[]>([])
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
 
@@ -89,7 +93,7 @@ export function DeliveryOrdersPage() {
   const filterCurrencyRows: any[] = (filterCurrencies as any)?.data ?? filterCurrencies ?? []
 
   const { data: response, isLoading } = useQuery({
-    queryKey: ['delivery-orders', page, perPage, typeFilter, currencyFilter, sortBy, tagFilter, debouncedSearchQuery],
+    queryKey: ['delivery-orders', page, perPage, typeFilter, currencyFilter, sortBy, tagFilter, debouncedSearchQuery, salesOrderFilter],
     queryFn: async () => {
       const params: any = { page, per_page: perPage }
       if (typeFilter !== 'all') params.type = typeFilter
@@ -97,6 +101,7 @@ export function DeliveryOrdersPage() {
       if (sortBy === 'currency') params.sort_by = 'currency'
       if (debouncedSearchQuery.trim()) params.search = debouncedSearchQuery.trim()
       if (tagFilter) params.tag = tagFilter
+      if (salesOrderFilter) params.sales_order_id = salesOrderFilter
       const res = await api.get('/sales/delivery-orders', { params })
       return res.data
     },
@@ -114,6 +119,7 @@ export function DeliveryOrdersPage() {
     ...(typeFilter !== 'all' ? { type: typeFilter } : {}),
     ...(debouncedSearchQuery.trim() ? { search: debouncedSearchQuery.trim() } : {}),
     ...(tagFilter ? { tag: tagFilter } : {}),
+    ...(salesOrderFilter ? { sales_order_id: salesOrderFilter } : {}),
   }
   const {
     selectedIds,
@@ -211,6 +217,7 @@ export function DeliveryOrdersPage() {
             filters={{
               search: debouncedSearchQuery.trim() || undefined,
               type: typeFilter !== 'all' ? typeFilter : undefined,
+              sales_order_id: salesOrderFilter || undefined,
             }}
             selectedIds={selectedIds}
           />
@@ -321,6 +328,15 @@ export function DeliveryOrdersPage() {
               />
             </div>
           </div>
+
+          {salesOrderFilter && (
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              <SalesOrderFilterChip
+                salesOrderId={salesOrderFilter}
+                onClear={() => { clearSalesOrderFilter(); setPage(1) }}
+              />
+            </div>
+          )}
 
           {isLoading ? (
             <div className="py-12 text-center">

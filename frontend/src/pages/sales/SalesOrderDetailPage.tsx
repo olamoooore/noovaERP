@@ -128,7 +128,15 @@ interface SalesOrder {
   active_lock?: ActiveEditor | null
   lines: SalesOrderLine[]
   quotation?: { id: number; quotation_number: string }
-  invoices?: { id: number; invoice_number: string; status: string }[]
+  // #403 (SU5): total/balance/currency feed the invoice smart-button summary.
+  invoices?: {
+    id: number
+    invoice_number: string
+    status: string
+    total?: number | string | null
+    balance?: number | string | null
+    currency_code?: string | null
+  }[]
   delivery_orders?: { id: number; delivery_order_number: string; status: string }[]
   // #404 (SU6): eager-loaded by GET /sales/orders/{id} (statusHistory.actor).
   status_history?: SalesOrderStatusHistoryEntry[]
@@ -294,6 +302,45 @@ const APPROVAL_STATUS_LABELS: Record<string, string> = {
   rejected: 'Approval rejected',
   expired: 'Approval expired',
   withdrawn: 'Approval withdrawn',
+}
+
+const UNPAID_INVOICE_STATUSES = ['posted', 'sent', 'partial', 'overdue']
+
+/**
+ * #403 (SU5): one summary line per linked-document type ("1 unpaid · 1 draft
+ * · $60.00 due", "1 pending") instead of one chip per document.
+ */
+function summarizeInvoices(invoices: NonNullable<SalesOrder['invoices']>, fallbackCurrency?: string) {
+  const status = (invoice: { status: string }) => String(invoice.status || '').toLowerCase()
+  const live = invoices.filter((invoice) => status(invoice) !== 'cancelled')
+  const unpaid = live.filter(
+    (invoice) => UNPAID_INVOICE_STATUSES.includes(status(invoice)) && (invoice.balance == null || Number(invoice.balance) > 0),
+  )
+  const drafts = live.filter((invoice) => status(invoice) === 'draft')
+  const cancelled = invoices.length - live.length
+  const parts: string[] = []
+  if (unpaid.length > 0) parts.push(`${unpaid.length} unpaid`)
+  if (drafts.length > 0) parts.push(`${drafts.length} draft`)
+  if (cancelled > 0) parts.push(`${cancelled} cancelled`)
+  const currencies = new Set(unpaid.map((invoice) => invoice.currency_code || fallbackCurrency || ''))
+  const due = unpaid.reduce((sum, invoice) => sum + Number(invoice.balance ?? invoice.total ?? 0), 0)
+  // Only total the balance when every unpaid invoice shares one currency.
+  if (unpaid.length > 0 && currencies.size === 1) {
+    const [currency] = [...currencies]
+    parts.push(`${formatCurrency(due, currency || undefined)} due`)
+  }
+  return { live, summary: parts.join(' · ') }
+}
+
+function summarizeDeliveries(deliveries: NonNullable<SalesOrder['delivery_orders']>) {
+  const status = (delivery: { status: string }) => String(delivery.status || '').toLowerCase()
+  const live = deliveries.filter((delivery) => status(delivery) !== 'cancelled')
+  const pending = live.filter((delivery) => status(delivery) !== 'done')
+  const cancelled = deliveries.length - live.length
+  const parts: string[] = []
+  if (pending.length > 0) parts.push(`${pending.length} pending`)
+  if (cancelled > 0) parts.push(`${cancelled} cancelled`)
+  return { live, summary: parts.join(' · ') }
 }
 
 function getInvoiceStatusLabel(invoices: NonNullable<SalesOrder['invoices']>) {
@@ -628,8 +675,13 @@ export function SalesOrderDetailPage() {
   const fullyDelivered = isFullyDelivered(order.lines ?? [])
   const deliveryStatusMeta = SALES_ORDER_DELIVERY_STATUS_META[getSalesOrderDeliveryStatus(order.lines ?? [])]
   const invoiceStatusMeta = getSalesOrderInvoiceStatusMeta(order.invoice_status)
-  const deliveryOrdersCount = order.delivery_orders?.length ?? 0
-  const linkedInvoices = order.invoices ?? []
+  // #403 (SU5): cancelled documents are summarised, not counted as live.
+  const deliverySummary = summarizeDeliveries(order.delivery_orders ?? [])
+  const deliveryOrdersCount = deliverySummary.live.length
+  const invoiceSummary = summarizeInvoices(order.invoices ?? [], order.currency_code || undefined)
+  const linkedInvoices = invoiceSummary.live
+  const showDeliveryButton = showFulfilmentSmartButtons || (order.delivery_orders?.length ?? 0) > 0
+  const showInvoiceButton = showFulfilmentSmartButtons || (order.invoices?.length ?? 0) > 0
 
   // #402 (SU4): compact order-info chips. Every value comes from the order
   // payload (snapshots/columns) or the existing credit-preview endpoint.
@@ -920,22 +972,31 @@ export function SalesOrderDetailPage() {
 
         <TabsContent value="document" className="space-y-6 mt-6">
       {/* Smart Buttons */}
-      <div className="flex flex-wrap gap-3">
-        {showFulfilmentSmartButtons && (
+      {/* #403 (SU5): one summary button per document type (counts + state), wrapping on small screens. */}
+      <div className="flex flex-wrap gap-3" data-testid="sales-order-smart-buttons">
+        {showDeliveryButton && (
           <button
+            data-testid="smart-button-deliveries"
             onClick={() => navigate(`/delivery-orders?sales_order_id=${order.id}`)}
             title={`${pluralize(deliveryOrdersCount, 'delivery order')} — open the sales order's deliveries`}
             className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
           >
             <Icon icon="solar:delivery-bold-duotone" className="h-5 w-5 text-orange-600" />
             <div className="text-left">
-              <div className="font-bold text-foreground">{fullyDelivered ? 'Delivered' : 'To Deliver'}</div>
-              <div className="text-xs text-muted-foreground">{pluralize(deliveryOrdersCount, 'Delivery Order')}</div>
+              <div className="font-bold text-foreground">
+                {/* Draft/cancelled orders only show the button for existing documents — nothing is "to deliver". */}
+                {!showFulfilmentSmartButtons ? 'Deliveries' : fullyDelivered ? 'Delivered' : 'To Deliver'}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                <span>{pluralize(deliveryOrdersCount, 'Delivery Order')}</span>
+                {deliverySummary.summary && <span data-testid="smart-button-summary"> · {deliverySummary.summary}</span>}
+              </div>
             </div>
           </button>
         )}
-        {showFulfilmentSmartButtons && (
+        {showInvoiceButton && (
           <button
+            data-testid="smart-button-invoices"
             onClick={() => navigate(`/invoices?sales_order_id=${order.id}`)}
             title={`${pluralize(linkedInvoices.length, 'invoice')} — open the sales order's invoices`}
             className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
@@ -943,7 +1004,10 @@ export function SalesOrderDetailPage() {
             <Icon icon="solar:bill-list-bold-duotone" className="h-5 w-5 text-blue-600" />
             <div className="text-left">
               <div className="font-bold text-foreground">{getInvoiceStatusLabel(linkedInvoices)}</div>
-              <div className="text-xs text-muted-foreground">{pluralize(linkedInvoices.length, 'Invoice')}</div>
+              <div className="text-xs text-muted-foreground">
+                <span>{pluralize(linkedInvoices.length, 'Invoice')}</span>
+                {invoiceSummary.summary && <span data-testid="smart-button-summary"> · {invoiceSummary.summary}</span>}
+              </div>
             </div>
           </button>
         )}
@@ -959,32 +1023,6 @@ export function SalesOrderDetailPage() {
             </div>
           </button>
         )}
-        {order.invoices && order.invoices.length > 0 && order.invoices.map((inv) => (
-          <button
-            key={inv.id}
-            onClick={() => navigate(`/invoices/${inv.id}`)}
-            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
-          >
-            <Icon icon="solar:bill-list-bold-duotone" className="h-5 w-5 text-blue-600" />
-            <div className="text-left">
-              <div className="font-bold text-foreground">{inv.invoice_number}</div>
-              <div className="text-xs text-muted-foreground">Invoice</div>
-            </div>
-          </button>
-        ))}
-        {order.delivery_orders && order.delivery_orders.length > 0 && order.delivery_orders.map((d) => (
-          <button
-            key={d.id}
-            onClick={() => navigate(`/delivery-orders/${d.id}`)}
-            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
-          >
-            <Icon icon="solar:package-bold" className="h-5 w-5 text-orange-600" />
-            <div className="text-left">
-              <div className="font-bold text-foreground">{d.delivery_order_number}</div>
-              <div className="text-xs text-muted-foreground">Delivery</div>
-            </div>
-          </button>
-        ))}
       </div>
 
       {/* Order Details */}

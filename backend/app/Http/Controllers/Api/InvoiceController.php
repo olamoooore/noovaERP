@@ -262,6 +262,21 @@ class InvoiceController extends Controller
             $query->where('customer_id', $request->customer_id);
         }
 
+        // #403: the Sales Order page's Invoices smart button opens the list
+        // filtered by order. Match the invoices the order page counts (linked
+        // through sales_invoice_links) plus any carrying the order directly.
+        if ($request->filled('sales_order_id')) {
+            $salesOrderId = (int) $request->sales_order_id;
+            $query->where(function ($q) use ($salesOrderId) {
+                $q->where('invoices.sales_order_id', $salesOrderId)
+                    ->orWhereIn('invoices.id', function ($links) use ($salesOrderId) {
+                        $links->select('invoice_id')
+                            ->from('sales_invoice_links')
+                            ->where('sales_order_id', $salesOrderId);
+                    });
+            });
+        }
+
         // MRD pricelist-multicurrency FR-8: filter/sort by document currency.
         if ($request->filled('currency_code')) {
             $query->where('currency_code', strtoupper((string) $request->currency_code));
