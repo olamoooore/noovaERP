@@ -111,4 +111,18 @@ class MasterListWideSearchTest extends TenantTestCase
         $this->assertContains($product->id, $this->searchIds('/api/v1/products', 'Surgical Instruments'));
         $this->assertContains($product->id, $this->searchIds('/api/v1/products', 'micro forceps'));
     }
+
+    public function test_product_search_matches_model_code_in_short_description(): void
+    {
+        $product = Product::factory()->create([
+            'name' => 'Disposable Hysteroscope',
+            'sku' => '21005',
+            'short_description' => 'HTx60',
+            'description' => null,
+            'track_inventory' => false,
+        ]);
+
+        $this->assertContains($product->id, $this->searchIds('/api/v1/products', 'HTx60'));
+        $this->assertContains($product->id, $this->searchIds('/api/v1/products', 'htx60'));
+    }
 }
