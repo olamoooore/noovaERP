@@ -1067,12 +1067,73 @@ class SalesOrderController extends Controller
             'bill_by_delivered_qty' => 'required|boolean',
         ]);
 
-        $order->update(['bill_by_delivered_qty' => $validated['bill_by_delivered_qty']]);
+        // Issue #376: the invoicing basis may change only before the first
+        // invoice, and every change is an audited (#895) action. The row lock
+        // keeps a concurrent SO -> invoice from slipping in between the check
+        // and the write.
+        $refused = null;
+        $before = null;
+
+        DB::transaction(function () use ($order, $validated, &$refused, &$before) {
+            $locked = SalesOrder::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
+
+            if ($this->orderHasInvoicing($locked)) {
+                $refused = 'Bill-by-delivered can only be changed before the order is first invoiced.';
+
+                return;
+            }
+
+            $before = (bool) $locked->bill_by_delivered_qty;
+            $after = (bool) $validated['bill_by_delivered_qty'];
+
+            if ($before === $after) {
+                return;
+            }
+
+            $locked->update(['bill_by_delivered_qty' => $after]);
+
+            $this->writeAuditLog(
+                'sales_order_updated',
+                (int) $locked->id,
+                ['fields' => ['bill_by_delivered_qty' => $before]],
+                ['fields' => ['bill_by_delivered_qty' => $after]],
+                ['sales_order_number' => $locked->sales_order_number],
+            );
+        });
+
+        if ($refused !== null) {
+            return response()->json(['message' => $refused], 422);
+        }
+
+        $order->refresh();
 
         return response()->json([
             'message' => 'Bill-by-delivered setting updated',
             'bill_by_delivered_qty' => $order->bill_by_delivered_qty,
         ]);
+    }
+
+    /**
+     * Issue #376: an order counts as invoiced once any line carries invoiced
+     * quantity or any non-cancelled invoice is attached to it (through an
+     * active sales_invoice_links row or the invoice's own sales_order_id).
+     */
+    private function orderHasInvoicing(SalesOrder $order): bool
+    {
+        if ($order->lines()->where('quantity_invoiced', '>', 0)->exists()) {
+            return true;
+        }
+
+        return \App\Models\Invoice::query()
+            ->where('status', '!=', 'cancelled')
+            ->where(function ($query) use ($order) {
+                $query->where('sales_order_id', $order->id)
+                    ->orWhereIn('id', \Modules\Sales\Models\SalesInvoiceLink::query()
+                        ->where('sales_order_id', $order->id)
+                        ->where('link_state', 'active')
+                        ->select('invoice_id'));
+            })
+            ->exists();
     }
 
     /**

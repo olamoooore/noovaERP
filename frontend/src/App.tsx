@@ -102,6 +102,11 @@ const BonusSchemeCreatePage = lazy(() => import('@/pages/sales/BonusSchemeCreate
 const CustomerBonusSchemesPage = lazy(() => import('@/pages/sales/CustomerBonusSchemesPage').then(m => ({ default: m.CustomerBonusSchemesPage })))
 const CustomerBonusSchemeCreatePage = lazy(() => import('@/pages/sales/CustomerBonusSchemeCreatePage').then(m => ({ default: m.CustomerBonusSchemeCreatePage })))
 const SalesStatementsPage = lazy(() => import('@/pages/sales/SalesStatementsPage').then(m => ({ default: m.SalesStatementsPage })))
+// Issue #376 (O7): UI for existing sales backends (#150 pipeline, #151 recurrence, #152 blanket orders)
+const SalesPipelinePage = lazy(() => import('@/pages/sales/SalesPipelinePage').then(m => ({ default: m.SalesPipelinePage })))
+const RecurringOrdersPage = lazy(() => import('@/pages/sales/RecurringOrdersPage').then(m => ({ default: m.RecurringOrdersPage })))
+const BlanketOrdersPage = lazy(() => import('@/pages/sales/BlanketOrdersPage').then(m => ({ default: m.BlanketOrdersPage })))
+const BlanketOrderDetailPage = lazy(() => import('@/pages/sales/BlanketOrderDetailPage').then(m => ({ default: m.BlanketOrderDetailPage })))
 const InventoryDashboard = lazy(() => import('@/pages/dashboards/InventoryDashboard').then(m => ({ default: m.InventoryDashboard })))
 const FinancialDashboard = lazy(() => import('@/pages/dashboards/FinancialDashboard').then(m => ({ default: m.FinancialDashboard })))
 
@@ -425,6 +430,28 @@ function App() {
                 {/* Issue #913: no-code automation rules over sales events */}
                 <Route path="/sales/automation-rules" element={<AutomationRulesPage />} />
                 <Route path="/sales/price-lists" element={<PriceListsPage />} />
+                {/* Issue #376 (O7): pages for existing sales backends, gated by
+                    the routes' own sales.view read permission. */}
+                {[
+                  { path: '/sales/pipeline', element: <SalesPipelinePage /> },
+                  { path: '/sales/recurring-orders', element: <RecurringOrdersPage /> },
+                  { path: '/sales/blanket-orders', element: <BlanketOrdersPage /> },
+                  { path: '/sales/blanket-orders/:id', element: <BlanketOrderDetailPage /> },
+                ].map(({ path, element }) => (
+                  <Route
+                    key={path}
+                    path={path}
+                    element={
+                      <RequirePermissionAccess
+                        permission="sales.view"
+                        title="Sales access required"
+                        description="Your role does not include the sales.view permission, which is required to open this page."
+                      >
+                        {element}
+                      </RequirePermissionAccess>
+                    }
+                  />
+                ))}
 
                 {/* Issue #607 (RPT-F1): Sales-side statements — gated by
                     customers.view (not reports.view, which SALES lacks). */}
