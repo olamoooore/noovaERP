@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Casts\EncryptedOrLegacyString;
+use App\Platform\Workflow\Contracts\WorkflowSubject;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Log;
 
-class MedicalCase extends Model
+class MedicalCase extends Model implements WorkflowSubject
 {
     use HasFactory, SoftDeletes;
 
@@ -183,5 +184,82 @@ class MedicalCase extends Model
     public function scopeActive($query)
     {
         return $query->where('status', '!=', 'cancelled');
+    }
+
+    // ─── Fulfilment rules (#573, MC8) ─────────────────────────────
+
+    /**
+     * Issue #573 (MC8): a line is "used" once it carries an allocated or
+     * delivered quantity. Unused lines (0 allocated, 0 delivered) do not hold
+     * the case open.
+     */
+    public static function itemIsUsed(MedicalCaseItem $item): bool
+    {
+        return round((float) $item->allocated_qty, 4) > 0
+            || round((float) $item->delivered_qty, 4) > 0;
+    }
+
+    /**
+     * Issue #573 (MC8): why the case cannot be considered fully invoiced, or
+     * null when it is. Every used line must be fully delivered (delivered =
+     * allocated) and — unless it is an FOC line redeemed free of charge —
+     * fully invoiced (invoiced = delivered). A case with no used line at all
+     * has nothing delivered or invoiced, so it is never complete.
+     */
+    public function fulfilmentBlocker(): ?string
+    {
+        $items = $this->relationLoaded('items') ? $this->items : $this->items()->get();
+        $used = $items->filter(fn (MedicalCaseItem $item) => static::itemIsUsed($item));
+
+        if ($used->isEmpty()) {
+            return 'The case has no delivered lines, so it cannot be invoiced or completed.';
+        }
+
+        foreach ($used as $item) {
+            $allocated = round((float) $item->allocated_qty, 4);
+            $delivered = round((float) $item->delivered_qty, 4);
+            $invoiced = round((float) $item->invoiced_qty, 4);
+
+            if ($delivered <= 0 || $delivered < $allocated) {
+                return "Case line {$item->id} is not fully delivered ({$delivered} of {$allocated}).";
+            }
+
+            if (! $item->is_foc && $invoiced < $delivered) {
+                return "Case line {$item->id} is not fully invoiced ({$invoiced} of {$delivered} delivered).";
+            }
+        }
+
+        return null;
+    }
+
+    // ─── WorkflowEngine subject (#573 — status writes via the engine) ──
+
+    public function workflowEntityType(): string
+    {
+        return 'medical_case';
+    }
+
+    public function workflowEntityId(): string
+    {
+        return (string) $this->getKey();
+    }
+
+    public function workflowCurrentStatus(): string
+    {
+        return (string) ($this->status ?? '');
+    }
+
+    public function workflowContext(): array
+    {
+        return [
+            'status' => $this->status,
+            'customer_id' => $this->customer_id,
+            'invoice_id' => $this->invoice_id,
+        ];
+    }
+
+    public function applyWorkflowStatus(string $status, array $context = []): void
+    {
+        $this->forceFill(['status' => $status])->save();
     }
 }

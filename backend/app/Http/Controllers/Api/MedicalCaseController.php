@@ -11,7 +11,9 @@ use App\Models\MedicalCase;
 use App\Models\MedicalCaseItem;
 use App\Models\ProductBatch;
 use App\Models\ProductLot;
+use App\Platform\Workflow\WorkflowDeniedException;
 use App\Services\CustomerWideSearchService;
+use App\Services\SalesWorkflowService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -475,7 +477,7 @@ class MedicalCaseController extends Controller
                     $this->reserveCaseItem($case, $item, $quantity, $index);
                 }
 
-                $case->update(['status' => 'allocated']);
+                app(SalesWorkflowService::class)->transition($case, 'allocate');
             });
 
             return response()->json([
@@ -598,7 +600,11 @@ class MedicalCaseController extends Controller
                     }
                 }
 
-                $case->update(['status' => $this->derivedDeliveryStatus($case->fresh('items'))]);
+                // Issue #573: the derived status is applied through the
+                // WorkflowEngine, never stamped directly.
+                $fresh = $case->fresh('items');
+                $action = $this->derivedDeliveryStatus($fresh) === 'delivered' ? 'deliver' : 'deliver_partial';
+                app(SalesWorkflowService::class)->transition($fresh, $action);
             });
 
             return response()->json([
@@ -702,8 +708,12 @@ class MedicalCaseController extends Controller
             return response()->json(['message' => 'Medical case not found'], 404);
         }
 
-        if (! in_array($case->status, ['allocated', 'delivered'])) {
-            return response()->json(['message' => 'Case must be allocated or delivered before invoicing'], 403);
+        // Issue #573 (MC8): from `allocated` nothing is delivered, so the
+        // invoiced quantity could only be 0 — yet the case was stamped
+        // invoiced and could then be completed. Invoicing needs delivered
+        // quantities to bill against.
+        if (! in_array($case->status, ['partially_delivered', 'delivered'], true)) {
+            return response()->json(['message' => 'Case must be partially delivered or delivered before invoicing'], 403);
         }
 
         $validated = $request->validate([
@@ -787,10 +797,17 @@ class MedicalCaseController extends Controller
                     ]);
                 }
 
-                $case->update([
-                    'invoice_id' => $validated['invoice_id'],
-                    'status' => 'invoiced',
-                ]);
+                $case->update(['invoice_id' => $validated['invoice_id']]);
+
+                // Issue #573 (MC8): the case is `invoiced` only once every used
+                // line is fully delivered and fully invoiced (FOC lines are
+                // redeemed free of charge). A partial invoice leaves the
+                // derived delivery status in place.
+                $fresh = $case->fresh('items');
+
+                if ($fresh->status === 'delivered' && $fresh->fulfilmentBlocker() === null) {
+                    app(SalesWorkflowService::class)->transition($fresh, 'invoice');
+                }
             });
 
             return response()->json([
@@ -909,7 +926,7 @@ class MedicalCaseController extends Controller
                     }
                 }
 
-                $case->update(['status' => 'cancelled']);
+                app(SalesWorkflowService::class)->transition($case, 'cancel');
             });
 
             // The linked invoice is deliberately left untouched: spec §9 rule 9
@@ -947,18 +964,22 @@ class MedicalCaseController extends Controller
             return response()->json(['message' => 'Only invoiced cases can be completed'], 403);
         }
 
+        // Issue #573 (MC8): `completed` requires every used line to be
+        // delivered and invoiced (or FOC-redeemed). The engine guard enforces
+        // it, so a case stamped `invoiced` with nothing behind it (legacy
+        // rows) is refused as a business-rule failure.
         try {
-            $case->update(['status' => 'completed']);
-
+            app(SalesWorkflowService::class)->transition($case, 'complete');
+        } catch (WorkflowDeniedException $e) {
             return response()->json([
-                'message' => 'Medical case completed successfully',
-                'data' => $case->fresh()->load(['customer', 'items.product']),
-            ]);
-        } catch (\Throwable $e) {
-            return response()->json([
-                'message' => 'Failed to complete medical case',
-                'error' => $e->getMessage(),
-            ], 500);
+                'message' => 'The medical case cannot be completed: '.$e->getMessage(),
+                'errors' => ['status' => [$e->getMessage()]],
+            ], 422);
         }
+
+        return response()->json([
+            'message' => 'Medical case completed successfully',
+            'data' => $case->fresh()->load(['customer', 'items.product']),
+        ]);
     }
 }
