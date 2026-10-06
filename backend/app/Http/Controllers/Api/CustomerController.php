@@ -114,9 +114,17 @@ class CustomerController extends Controller
         }
 
         if ($request->boolean('has_balance')) {
+            // Issue #438 (CU10): "has balance" must mean a real open
+            // receivable, not merely "not paid and not draft" — that old test
+            // also matched voided/reversed/superseded/cancelled and fully
+            // credited invoices whose remaining balance is zero. Mirror the AR
+            // context/aging definition (AgedReceivablesService::
+            // getCustomerContext) so this filter can never disagree with the
+            // figures the user is shown.
             $query->whereHas('invoices', function ($q) {
-                $q->where('status', '!=', 'paid')
-                    ->where('status', '!=', 'draft');
+                $q->whereIn('status', ['sent', 'posted', 'partial', 'overdue'])
+                    ->where('balance', '>', 0)
+                    ->notSuperseded();
             });
         }
 
