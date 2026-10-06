@@ -298,6 +298,11 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     setIncotermCode(quotation.incoterm_code || '')
     setIncotermPlace(quotation.incoterm_place || '')
     setValidity(quotation.validity || '')
+    // #322 (Q14): the saved document currency drives every amount on the
+    // form. The header currency + rate snapshot is not re-derived on a draft
+    // edit (FR-1.7), so it is shown as-is rather than falling back to the
+    // tenant default.
+    setCurrencyCode(quotation.currency_code ? String(quotation.currency_code).toUpperCase() : '')
     setCaseInformation({
       case_number: quotation.case_number || '',
       date_of_case: quotation.date_of_case ? String(quotation.date_of_case).split('T')[0] : '',
@@ -327,7 +332,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
       price_mode: (line.line_type ?? 'product') === 'product' && line.unit_price != null ? 'carried' : undefined,
     }))
     setLines(mappedLines.length > 0 ? mappedLines : [emptySalesDocumentLine()])
-  }, [quotation, setAutofillBaseline])
+  }, [quotation, setAutofillBaseline, setCurrencyCode])
 
   useEffect(() => {
     if (!customerDetail || Array.isArray(customerDetail)) return
@@ -387,7 +392,15 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
       || pricingMeta?.price_list_name
       || pricingError,
   )
-  const money = (value: number) => formatCurrency(value, currencyCode || undefined)
+  // #322 (Q14): every amount is shown in the document currency — the explicit
+  // or engine-resolved currency first, else the currency of the price list the
+  // user picked (the server resolves the document currency from that list).
+  // Only with neither does it fall back to the tenant default.
+  const selectedPriceListCurrency = priceListId
+    ? priceListRows.find((list: any) => String(list.id) === priceListId)?.currency_code
+    : undefined
+  const documentCurrency = (currencyCode || selectedPriceListCurrency || '') || undefined
+  const money = (value: number) => formatCurrency(value, documentCurrency)
 
   const productLineCount = lines.filter((line) => (line.line_type ?? 'product') === 'product').length
 
@@ -667,11 +680,19 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
 
             {/* Row 2: direct dropdowns + chips, one compact strip. */}
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <label className={SALES_FIELD_SHELL} title="Document currency — auto follows the customer's price list">
+              <label
+                className={SALES_FIELD_SHELL}
+                title={mode === 'edit'
+                  ? 'Document currency — fixed once the quotation is saved'
+                  : "Document currency — auto follows the customer's price list"}
+              >
                 <span className="text-muted-foreground">Currency</span>
                 <select
                   aria-label="Document currency"
                   value={currencyCode}
+                  // #322: the server keeps the saved currency + rate snapshot
+                  // on edit, so the selector must not offer a change it drops.
+                  disabled={mode === 'edit'}
                   onChange={(event) => {
                     const next = event.target.value
                     setCurrencyCode(next)
