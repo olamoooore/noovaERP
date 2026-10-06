@@ -655,16 +655,47 @@ class SalesOrderService
         return DB::transaction(function () use ($order) {
             $order->loadMissing('lines.product');
 
-            if ($this->hasStockTrackedLines($order)) {
+            $stockTracked = $this->hasStockTrackedLines($order);
+            if ($stockTracked) {
                 $this->requireCommitmentWarehouseId($order, 'allocate');
+            }
+
+            // Issue #380: allocation reflects real reserved / available stock
+            // per line (partial allocation supported) instead of copying the
+            // ordered quantity.
+            $allocations = [];
+            $stockAllocated = 0.0;
+            foreach ($order->lines as $line) {
+                if (! $line->product_id) {
+                    continue;
+                }
+
+                if (! (bool) ($line->product?->track_inventory ?? false)) {
+                    // Nothing to check a non-stock line against.
+                    $allocations[$line->id] = [$line, (float) $line->quantity];
+
+                    continue;
+                }
+
+                $allocated = $this->allocateStockForLine($order, $line);
+                $allocations[$line->id] = [$line, $allocated];
+                $stockAllocated += $allocated;
+            }
+
+            if ($stockTracked && $stockAllocated <= 0.0) {
+                throw new \RuntimeException(
+                    "Cannot allocate sales order {$order->sales_order_number}: no stock is available in the order's warehouse."
+                );
             }
 
             $order = $this->lifecycleService->allocate($order, 'Stock allocated');
 
-            foreach ($order->lines as $line) {
-                if ($line->product_id) {
-                    $line->update(['quantity_allocated' => $line->quantity]);
+            foreach ($allocations as [$line, $allocated]) {
+                $attributes = ['quantity_allocated' => $allocated];
+                if ((bool) ($line->product?->track_inventory ?? false)) {
+                    $attributes['backorder_quantity'] = max(0.0, (float) $line->quantity - $allocated);
                 }
+                $line->update($attributes);
             }
 
             // #377 (O8): log before returning (see confirmOrder).
@@ -704,6 +735,52 @@ class SalesOrderService
             return $order->fresh(['customer', 'lines.product', 'statusHistory']);
 
         });
+    }
+
+    /**
+     * Issue #380: the quantity a stock-tracked line can really be allocated —
+     * its active reservation, or (when confirmation could not reserve it, a
+     * #379 backorder) a fresh reservation of whatever is available now, up
+     * to the ordered quantity. Returns 0 when nothing is available.
+     */
+    private function allocateStockForLine(SalesOrder $order, SalesOrderLine $line): float
+    {
+        $reservations = \Modules\Inventory\Models\StockReservation::where([
+            'source_document_type' => 'SalesOrder',
+            'source_document_id' => $order->id,
+            'source_document_line_id' => $line->id,
+        ])->whereIn('status', ['open', 'allocated'])->get();
+
+        if ($reservations->isNotEmpty()) {
+            return min((float) $line->quantity, (float) $reservations->sum('quantity'));
+        }
+
+        $warehouseId = (int) $order->warehouse_id;
+        $stockLevel = \Modules\Inventory\Models\StockLevel::where('product_id', $line->product_id)
+            ->where('warehouse_id', $warehouseId)
+            ->lockForUpdate()
+            ->first();
+
+        $available = $stockLevel
+            ? max(0.0, (float) $stockLevel->quantity - (float) $stockLevel->reserved_quantity)
+            : 0.0;
+        $quantity = round(min((float) $line->quantity, $available), 4);
+
+        if ($quantity <= 0.0) {
+            return 0.0;
+        }
+
+        $reservation = $this->reservationService->reserve(
+            productId: (int) $line->product_id,
+            warehouseId: $warehouseId,
+            quantity: $quantity,
+            sourceDocumentType: 'SalesOrder',
+            sourceDocumentId: $order->id,
+            sourceDocumentLineId: $line->id,
+            notes: "Allocated for sales order {$order->sales_order_number}",
+        );
+
+        return (float) $reservation->quantity;
     }
 
     private function requireCommitmentWarehouseId(SalesOrder $order, string $phase): int
