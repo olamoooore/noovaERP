@@ -2,7 +2,13 @@ import { useState } from 'react'
 import { Icon } from '@iconify/react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import TemplateListPage from '@/pages/TemplateBuilder/TemplateListPage'
-import { SettingsSectionNav, type SettingsSectionDef } from '@/components/settings/settings-ui'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import {
+  SettingsDirtyScope,
+  SettingsSectionNav,
+  type SettingsSectionDef,
+} from '@/components/settings/settings-ui'
+import { useSettingsLeaveGuard } from '@/components/settings/settings-leave-guard'
 import {
   NumberingSettings,
   ApprovalSettings,
@@ -75,6 +81,10 @@ const SECTIONS: SettingsSectionDef[] = [
 
 export function SalesSettingsPage() {
   const [activeSection, setActiveSection] = useState<string>('numbering')
+  const [activeTab, setActiveTab] = useState<string>('settings')
+  // #546: each section keeps unsaved edits in local state, and swapping the
+  // section (or tab) unmounts it — so confirm before throwing edits away.
+  const leaveGuard = useSettingsLeaveGuard()
   const ActiveComponent =
     SECTIONS.find((s) => s.key === activeSection)?.component ?? NumberingSettings
 
@@ -87,7 +97,11 @@ export function SalesSettingsPage() {
         </p>
       </div>
 
-      <Tabs defaultValue="settings" className="space-y-6">
+      <Tabs
+        value={activeTab}
+        onValueChange={(tab) => leaveGuard.guard(() => setActiveTab(tab))}
+        className="space-y-6"
+      >
         <TabsList className="h-10 w-fit max-w-full justify-start gap-1 bg-muted p-1">
           <TabsTrigger value="settings" className="gap-2 px-5">
             <Icon icon="solar:settings-bold-duotone" className="h-4 w-4" />
@@ -104,12 +118,17 @@ export function SalesSettingsPage() {
             <SettingsSectionNav
               sections={SECTIONS}
               activeKey={activeSection}
-              onSelect={setActiveSection}
+              onSelect={(key) => {
+                if (key !== activeSection) leaveGuard.guard(() => setActiveSection(key))
+              }}
+              dirtyKey={leaveGuard.dirty ? activeSection : undefined}
             />
 
             {/* Active section content */}
             <div className="min-w-0 flex-1">
-              <ActiveComponent />
+              <SettingsDirtyScope reportDirty={leaveGuard.reportDirty}>
+                <ActiveComponent />
+              </SettingsDirtyScope>
             </div>
           </div>
         </TabsContent>
@@ -118,6 +137,19 @@ export function SalesSettingsPage() {
           <TemplateListPage embedded />
         </TabsContent>
       </Tabs>
+
+      <ConfirmDialog
+        open={leaveGuard.confirmOpen}
+        onOpenChange={(open) => {
+          if (!open) leaveGuard.keepEditing()
+        }}
+        title="Discard unsaved changes?"
+        description="This section has changes that are not saved yet. Switching now discards them."
+        confirmLabel="Discard and switch"
+        cancelLabel="Keep editing"
+        tone="warning"
+        onConfirm={leaveGuard.confirmDiscard}
+      />
     </div>
   )
 }
