@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
@@ -34,6 +34,7 @@ interface Warehouse {
 }
 
 interface TransferItem {
+  id?: number
   product_id: string
   product_name: string
   sku: string
@@ -41,6 +42,8 @@ interface TransferItem {
 }
 
 export function WarehouseTransferCreatePage() {
+  const { id } = useParams<{ id: string }>()
+  const isEdit = Boolean(id)
   const navigate = useNavigate()
   const { toast } = useToast()
   const queryClient = useQueryClient()
@@ -64,29 +67,60 @@ export function WarehouseTransferCreatePage() {
     },
   })
 
+  const { data: transfer, isLoading: transferLoading } = useQuery({
+    queryKey: ['warehouse-transfer', id],
+    enabled: isEdit,
+    queryFn: async () => (await api.get(`/warehouse-transfers/${id}`)).data,
+  })
+
+  // Edit mode: prefill from the existing draft (once).
+  useEffect(() => {
+    if (!isEdit || !transfer) return
+
+    setFromWarehouseId(String(transfer.from_warehouse_id ?? ''))
+    setToWarehouseId(String(transfer.to_warehouse_id ?? ''))
+    setTransferDate((transfer.transfer_date ?? '').split('T')[0] || new Date().toISOString().split('T')[0])
+    setExpectedDate(transfer.expected_date ? String(transfer.expected_date).split('T')[0] : '')
+    setNotes(transfer.notes ?? '')
+    setItems((transfer.items ?? []).map((item: any) => ({
+      id: item.id,
+      product_id: String(item.product_id),
+      product_name: item.product?.name ?? item.product_name ?? 'Product',
+      sku: item.product?.sku ?? '',
+      quantity_requested: item.quantity_requested ?? 1,
+    })))
+  }, [isEdit, transfer])
+
   const mutation = useMutation({
     mutationFn: async () => {
-      return api.post('/warehouse-transfers', {
+      const payload = {
         from_warehouse_id: parseInt(fromWarehouseId),
         to_warehouse_id: parseInt(toWarehouseId),
         transfer_date: transferDate,
         expected_date: expectedDate || null,
         notes: notes || null,
         items: items.map(item => ({
+          ...(item.id ? { id: item.id } : {}),
           product_id: parseInt(item.product_id),
           quantity_requested: item.quantity_requested,
         })),
-      })
+      }
+
+      return isEdit
+        ? api.put(`/warehouse-transfers/${id}`, payload)
+        : api.post('/warehouse-transfers', payload)
     },
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['warehouse-transfers'] })
-      toast({ title: 'Transfer created' })
-      navigate('/inventory/transfers')
+      queryClient.invalidateQueries({ queryKey: ['warehouse-transfer', id] })
+      toast({ title: isEdit ? 'Transfer updated' : 'Transfer created' })
+      const createdId = response?.data?.id ?? id
+      navigate(createdId ? `/inventory/transfers/${createdId}` : '/inventory/transfers')
     },
     onError: (error: any) => {
       toast({
         title: 'Error',
-        description: error.response?.data?.message || 'Failed to create transfer',
+        description: error.response?.data?.message || (isEdit ? 'Failed to update transfer' : 'Failed to create transfer'),
         variant: 'destructive',
       })
     },
@@ -152,6 +186,28 @@ export function WarehouseTransferCreatePage() {
 
   const totalUnits = items.reduce((sum, item) => sum + item.quantity_requested, 0)
 
+  if (isEdit && transferLoading) {
+    return (
+      <div className="flex items-center gap-2 p-8 text-muted-foreground">
+        <Icon icon="eos-icons:loading" className="h-5 w-5 animate-spin text-primary" />
+        Loading transfer…
+      </div>
+    )
+  }
+
+  if (isEdit && transfer && transfer.status !== 'draft') {
+    return (
+      <div className="max-w-3xl space-y-4 p-2">
+        <p className="text-muted-foreground">
+          Only draft transfers can be edited — this one is <span className="font-medium capitalize">{String(transfer.status).replace('_', ' ')}</span>.
+        </p>
+        <HeaderActionButton variant="outline" onClick={() => navigate(`/inventory/transfers/${id}`)}>
+          Back to transfer
+        </HeaderActionButton>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-3xl space-y-6">
       {/* Header */}
@@ -166,9 +222,11 @@ export function WarehouseTransferCreatePage() {
             <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
             Back
           </Button>
-          <h1 className="text-3xl font-bold">New Warehouse Transfer</h1>
+          <h1 className="text-3xl font-bold">{isEdit ? 'Edit Warehouse Transfer' : 'New Warehouse Transfer'}</h1>
           <p className="mt-1 text-muted-foreground">
-            Move stock between warehouses with a tracked, auditable transfer.
+            {isEdit
+              ? <>Update draft <span className="font-medium">{transfer?.transfer_number}</span> before submitting it.</>
+              : 'Move stock between warehouses with a tracked, auditable transfer.'}
           </p>
         </div>
 
@@ -184,7 +242,7 @@ export function WarehouseTransferCreatePage() {
             loading={mutation.isPending}
             disabled={mutation.isPending}
           >
-            Create Transfer
+            {isEdit ? 'Save Changes' : 'Create Transfer'}
           </HeaderActionButton>
         </div>
       </div>
