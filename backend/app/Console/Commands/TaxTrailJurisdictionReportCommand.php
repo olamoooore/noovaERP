@@ -57,6 +57,7 @@ class TaxTrailJurisdictionReportCommand extends Command
         $this->line("  Trail rows checked: {$summary['rows_checked']}; recorded outside home: {$summary['rows_outside_home']}");
         $this->line('  Periods affected: '.(implode(', ', $summary['periods_affected']) ?: 'none'));
         $this->line('  Of which FILED: '.(implode(', ', $summary['filed_periods_affected']) ?: 'none'));
+        $this->line('  Of which LOCKED: '.(implode(', ', $summary['locked_periods_affected']) ?: 'none'));
         $this->table(
             ['Direction | currency', 'Tax outside home'],
             collect($summary['tax_outside_home'])->map(fn ($amount, $key) => [$key, number_format((float) $amount, 2)])->values()->all()

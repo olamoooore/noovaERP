@@ -24,9 +24,11 @@ use Tests\TenantTestCase;
  *
  * POS posting calls TaxDeterminationService::determineForLineSet() with only
  * the customer, so the BUYER's billing country becomes the jurisdiction of
- * the tax trail row. The tax return selects trail rows by jurisdiction
- * (TaxReportingService: upper(ttd.jurisdiction) = country), so tax a MY
- * seller collected at its own till can be left out of the MY return:
+ * the tax trail row. The statutory returns select trail rows by
+ * jurisdiction (Sst02ReturnService / GstF5ReturnService → TaxReturnAggregator
+ * `upper(ttd.jurisdiction) = ?`), so tax a MY seller collected at its own
+ * till can be left out of the MY return (asserted through the SST-02 route
+ * below):
  *  - a buyer whose country is typed as "Malaysia" → jurisdiction "MALAYSIA";
  *  - a correctly coded foreign buyer ("SG") → jurisdiction "SG".
  *
@@ -171,6 +173,37 @@ class TaxPosBuyerJurisdictionTest extends TenantTestCase
         );
     }
 
+    public function test_tax_collected_from_a_buyer_typed_malaysia_is_in_the_sst02_return(): void
+    {
+        // The product's tax comes from an activated MY pack rule (sales or
+        // service tax) in force today, at that rule's rate — no rate is
+        // invented here.
+        $this->actingAs($this->manager)->postJson('/api/v1/accounting/tax-engine/packs/MY/activate')->assertOk();
+        $today = now()->toDateString();
+        $rule = \App\Models\Tax::query()
+            ->where('jurisdiction', 'MY')->whereIn('type', ['sales', 'service'])
+            ->where('is_active', true)->where('lifecycle_state', 'ACTIVE')->where('rate', '>', 0)
+            ->where('effective_from', '<=', $today)
+            ->where(fn ($q) => $q->whereNull('effective_to')->orWhere('effective_to', '>=', $today))
+            ->orderBy('id')
+            ->firstOrFail();
+        $this->product->update(['tax_rate' => (float) $rule->rate, 'tax_id' => $rule->id]);
+
+        $control = $this->trailRow($this->payOrder($this->openSession(), Customer::factory()->create(), null));
+        $named = $this->trailRow($this->payOrder($this->openSession(), $this->customerWithBillingCountry('Malaysia'), null));
+        $this->assertSame($control->reporting_period, $named->reporting_period);
+
+        $return = $this->actingAs($this->manager)
+            ->getJson('/api/v1/accounting/statutory-returns/MY/'.$control->reporting_period)
+            ->assertOk();
+
+        $this->assertSame(
+            round((float) $control->tax_amount + (float) $named->tax_amount, 2),
+            (float) $return->json('data.total_tax_payable'),
+            'The MY seller\'s SST-02 must include the tax collected from both POS sales, including the buyer whose country is typed "Malaysia".'
+        );
+    }
+
     private function customerWithBillingCountry(string $country): Customer
     {
         $customer = Customer::factory()->create();
@@ -196,7 +229,7 @@ class TaxPosBuyerJurisdictionTest extends TenantTestCase
         return PosSession::find($response->json('session.id'));
     }
 
-    private function payOrder(PosSession $session, Customer $customer): PosOrder
+    private function payOrder(PosSession $session, Customer $customer, ?float $amount = 110.00): PosOrder
     {
         $response = $this->actingAs($this->cashier)->postJson('/api/v1/pos/orders', [
             'session_id' => $session->id,
@@ -212,7 +245,7 @@ class TaxPosBuyerJurisdictionTest extends TenantTestCase
 
         $pay = $this->actingAs($this->cashier)->postJson("/api/v1/pos/orders/{$orderId}/pay", [
             'method' => 'cash',
-            'amount' => 110.00,
+            'amount' => $amount ?? (float) PosOrder::findOrFail($orderId)->total,
         ]);
         $this->assertSame(200, $pay->status(), 'Payment failed: '.$pay->content());
 

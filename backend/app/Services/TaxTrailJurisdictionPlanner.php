@@ -19,7 +19,14 @@ use Modules\AccountingCountry\Services\TaxReportingService;
  * entity's own — the jurisdictions of its tax registrations, or the
  * tenant's home jurisdiction when it has none — by period, direction,
  * document type and currency, and says whether the period they belong to
- * was already FILED (a correction may need an amended return).
+ * was already FILED (a correction may need an amended return) or is LOCKED
+ * (#278: TaxPeriodLockGate rejects tax-bearing postings dated in it, so a
+ * correction must be an adjustment in the next open period).
+ *
+ * "Filed" = a home-country return in any state other than PREPARED or
+ * VOIDED: SUBMITTED, ACCEPTED, REJECTED, PENDING_AUTHORITY_RESPONSE, FILED
+ * (legacy) and AMENDMENT_REQUIRED (set when a locked period is reopened)
+ * all mean the authority has seen, or was sent, a figure for the period.
  *
  * It changes nothing and holds no personal data.
  */
@@ -37,6 +44,7 @@ class TaxTrailJurisdictionPlanner
         $tenantHome = strtoupper($this->engine->tenantJurisdiction());
         $entityHomes = $this->entityHomes();
         $filings = $this->filings();
+        $locks = $this->locks();
 
         $groups = DB::table('tax_transaction_details as ttd')
             ->leftJoin('journal_entries as je', 'je.id', '=', 'ttd.journal_entry_id')
@@ -51,6 +59,7 @@ class TaxTrailJurisdictionPlanner
         $recorded = [];
         $periods = [];
         $filedPeriods = [];
+        $lockedPeriods = [];
 
         foreach ($groups as $group) {
             $totals['rows_checked'] += (int) $group->rows;
@@ -70,6 +79,7 @@ class TaxTrailJurisdictionPlanner
             $filedBy = $this->filedBy($filings, $homes, $entityId, (string) $group->reporting_period);
             // A return only prepared (or voided) has not gone to the authority.
             $isFiled = collect($filedBy)->contains(fn ($f) => ! in_array($f['state'], self::NOT_FILED_STATES, true));
+            $isLocked = $this->isLocked($locks, $entityId, (string) $group->reporting_period);
 
             $outside[] = [
                 'reporting_period' => $group->reporting_period,
@@ -84,6 +94,8 @@ class TaxTrailJurisdictionPlanner
                 'taxable_amount' => round((float) $group->taxable_amount, 2),
                 'tax_amount' => round((float) $group->tax_amount, 2),
                 'period_filed' => $isFiled,
+                'amendment_required' => collect($filedBy)->contains(fn ($f) => $f['state'] === 'AMENDMENT_REQUIRED'),
+                'period_locked' => $isLocked,
                 'filings' => $filedBy,
             ];
 
@@ -95,10 +107,14 @@ class TaxTrailJurisdictionPlanner
             if ($isFiled) {
                 $filedPeriods[$group->reporting_period] = true;
             }
+            if ($isLocked) {
+                $lockedPeriods[$group->reporting_period] = true;
+            }
         }
 
         ksort($periods);
         ksort($filedPeriods);
+        ksort($lockedPeriods);
 
         return [
             'tenant_id' => $tenantId,
@@ -111,6 +127,7 @@ class TaxTrailJurisdictionPlanner
                 'recorded_jurisdictions' => array_keys($recorded),
                 'periods_affected' => array_keys($periods),
                 'filed_periods_affected' => array_keys($filedPeriods),
+                'locked_periods_affected' => array_keys($lockedPeriods),
             ],
             'groups' => $outside,
         ];
@@ -134,6 +151,46 @@ class TaxTrailJurisdictionPlanner
             ->groupBy('legal_entity_id')
             ->map(fn ($rows) => $rows->map(fn ($r) => strtoupper(trim($r->jurisdiction)))->unique()->values()->all())
             ->all();
+    }
+
+    /**
+     * #278 locks (one schema per tenant, so no tenant_id filter).
+     *
+     * @return list<object>
+     */
+    private function locks(): array
+    {
+        if (! Schema::hasTable('tax_period_locks')) {
+            return [];
+        }
+
+        $columns = ['period'];
+        if (Schema::hasColumn('tax_period_locks', 'legal_entity_id')) {
+            $columns[] = 'legal_entity_id';
+        }
+
+        return DB::table('tax_period_locks')->get($columns)->all();
+    }
+
+    /**
+     * Same scope as TaxPeriodLockGate: a tenant-wide lock (no entity) covers
+     * every entity; an entity lock covers only that entity.
+     *
+     * @param  list<object>  $locks
+     */
+    private function isLocked(array $locks, ?int $entityId, string $month): bool
+    {
+        foreach ($locks as $lock) {
+            if ($lock->period !== $month) {
+                continue;
+            }
+            $lockEntity = $lock->legal_entity_id ?? null;
+            if ($lockEntity === null || ($entityId !== null && (int) $lockEntity === $entityId)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @return list<object> */
