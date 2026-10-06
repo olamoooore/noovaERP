@@ -43,6 +43,55 @@ class ComplianceService
         return tenancy()->tenant?->id;
     }
 
+    private function supplierIdentityResolver(): EInvoiceSupplierIdentityResolver
+    {
+        return app(EInvoiceSupplierIdentityResolver::class);
+    }
+
+    /**
+     * #668 (EI6): the provider context for a document — the tenant's country
+     * configuration (credentials, settings) with the supplier identity of the
+     * document's legal entity laid over it. The report says which identity
+     * fields came from the entity and which fell back to the tenant.
+     *
+     * @return array{context: array<string, mixed>, report: array<string, mixed>}
+     */
+    private function providerContextFor(?CountryConfiguration $config, mixed $sourceDocument): array
+    {
+        $resolved = $this->supplierIdentityResolver()->resolve($sourceDocument, $config?->getProviderContext() ?? []);
+
+        if ($resolved['report']['fallback_used'] || $resolved['report']['missing_fields'] !== []) {
+            Log::info('E-invoice supplier identity: tenant configuration fallback', [
+                'source_type' => is_object($sourceDocument) ? class_basename($sourceDocument) : null,
+                'source_id' => is_object($sourceDocument) ? ($sourceDocument->id ?? null) : null,
+                'report' => $resolved['report'],
+            ]);
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * #668 (EI6): a document is gated by its legal entity's country — an SG
+     * entity's invoice never goes to MyInvois and a MY entity's never to
+     * Peppol. Returns an error message, or null when the country matches (or
+     * the document has no entity country, which keeps the tenant behaviour).
+     */
+    private function entityCountryMismatch(mixed $sourceDocument, string $countryCode): ?string
+    {
+        $entityCountry = $this->supplierIdentityResolver()->countryFor($sourceDocument);
+
+        if ($entityCountry === null || $entityCountry === strtoupper($countryCode)) {
+            return null;
+        }
+
+        return sprintf(
+            'ENTITY_COUNTRY_MISMATCH: this document belongs to a legal entity registered in %s; it cannot be submitted to the %s e-invoicing system.',
+            $entityCountry,
+            strtoupper($countryCode),
+        );
+    }
+
     /**
      * Map and submit an invoice for compliance
      *
@@ -209,7 +258,11 @@ class ComplianceService
         try {
             $provider = $this->pluginRegistry->resolve($countryCode, 'provider');
             $config = $this->getCountryConfig($countryCode);
-            $context = $config?->getProviderContext() ?? [];
+            // #668 (EI6): a retry re-maps the payload, so it carries the
+            // document entity's supplier identity like the first submission.
+            $context = $sourceDocument
+                ? $this->providerContextFor($config, $sourceDocument)['context']
+                : ($config?->getProviderContext() ?? []);
 
             if ($sourceDocument) {
                 $nonInvoiceTypes = ['credit_note', 'refund_note', 'bill', 'vendor_debit_note'];
@@ -816,29 +869,49 @@ class ComplianceService
     /**
      * #667 (EI5): the countries a posted document is auto-submitted to — the
      * tenant's enabled configurations with settings.auto_submit on, limited
-     * to the tenant's own country (no cross-country submission).
+     * to the issuing country (no cross-country submission).
+     *
+     * #668 (EI6): the issuing country is the document's legal entity's
+     * country when known ($documentCountry); the tenant's country is only
+     * the fallback for documents without an entity country.
      *
      * @return array<int, string>
      */
-    public function autoSubmitCountryCodes(?string $tenantId = null): array
+    public function autoSubmitCountryCodes(?string $tenantId = null, ?string $documentCountry = null): array
     {
         $tenantId ??= $this->currentTenantId();
         if ($tenantId === null) {
             return [];
         }
 
-        $tenant = tenancy()->tenant ?? (function_exists('tenant') ? tenant() : null);
-        $tenantCountry = strtoupper((string) ($tenant?->tenant_country_code ?? ''));
+        $gateCountry = strtoupper(trim((string) $documentCountry));
+        if ($gateCountry === '') {
+            $tenant = tenancy()->tenant ?? (function_exists('tenant') ? tenant() : null);
+            $gateCountry = strtoupper((string) ($tenant?->tenant_country_code ?? ''));
+        }
 
         return CountryConfiguration::where('tenant_id', $tenantId)
             ->where('is_enabled', true)
             ->get()
             ->filter(fn (CountryConfiguration $config) => ($config->settings['auto_submit'] ?? false)
-                && ($tenantCountry === '' || $tenantCountry === strtoupper((string) $config->country_code)))
+                && ($gateCountry === '' || $gateCountry === strtoupper((string) $config->country_code)))
             ->map(fn (CountryConfiguration $config) => strtoupper((string) $config->country_code))
             ->unique()
             ->values()
             ->all();
+    }
+
+    /**
+     * #668 (EI6): the auto-submit countries for one posted document, gated by
+     * its legal entity's country.
+     *
+     * @return array<int, string>
+     */
+    public function autoSubmitCountryCodesFor(
+        Invoice|CustomerCreditNote|Payment $source,
+        ?string $tenantId = null,
+    ): array {
+        return $this->autoSubmitCountryCodes($tenantId, $this->supplierIdentityResolver()->countryFor($source));
     }
 
     /**
@@ -900,7 +973,7 @@ class ComplianceService
         Invoice|CustomerCreditNote|Payment $source,
         ?string $tenantId = null,
     ): array {
-        $countries = $this->autoSubmitCountryCodes($tenantId);
+        $countries = $this->autoSubmitCountryCodesFor($source, $tenantId);
 
         foreach ($countries as $countryCode) {
             $this->queueForAutoSubmit($documentType, $source, $countryCode, $tenantId);
@@ -1270,6 +1343,11 @@ class ComplianceService
             return ['success' => false, 'message' => "Associated {$docType} not found"];
         }
 
+        $countryMismatch = $this->entityCountryMismatch($sourceDocument, $countryCode);
+        if ($countryMismatch !== null) {
+            return ['success' => false, 'document_id' => $document->id, 'message' => $countryMismatch];
+        }
+
         $queued = $this->queueB2CConsolidationIfNeeded($document, $sourceDocument);
         if ($queued !== null) {
             return $queued;
@@ -1312,12 +1390,13 @@ class ComplianceService
         try {
             DB::beginTransaction();
 
-            // Tenant supplier identity is configured in MyInvois settings,
-            // rather than duplicated on every invoice. Load it before
-            // validation so the Malaysia validator sees the same values that
-            // will be mapped into and submitted with the payload.
+            // #668 (EI6): the supplier identity is the document's legal
+            // entity's, falling back to the tenant's country configuration
+            // (and reported as such) only for what the entity does not carry.
+            // Load it before validation so the validator sees the same values
+            // that will be mapped into and submitted with the payload.
             $config = $this->getCountryConfig($countryCode);
-            $context = $config?->getProviderContext() ?? [];
+            ['context' => $context, 'report' => $supplierIdentity] = $this->providerContextFor($config, $sourceDocument);
 
             $validator = $this->pluginRegistry->resolve($countryCode, 'validator');
             if (! $validator) {
@@ -1481,6 +1560,7 @@ class ComplianceService
                     'error_code' => $submitResult['error_code'] ?? null,
                     'error_message' => $submitResult['message'] ?? null,
                     'lhdn_details' => $submitResult['details'] ?? null,
+                    'supplier_identity' => $supplierIdentity,
                     'submitted_by' => \Auth::id(),
                     'submitted_at' => now()->toIso8601String(),
                 ], null, 'user');
@@ -1519,6 +1599,7 @@ class ComplianceService
                 'payload_hash' => $payloadHash,
                 'document_hash' => $documentHash,
                 'signature_enabled' => (bool) ($preparedDocument['signature_metadata']['enabled'] ?? false),
+                'supplier_identity' => $supplierIdentity,
                 'submitted_by' => \Auth::id(),
                 'submitted_at' => now()->toIso8601String(),
             ], null, 'user');
@@ -1538,6 +1619,7 @@ class ComplianceService
                 'document_id' => $document->id,
                 'submission_id' => $submission->id,
                 'provider_reference' => $submitResult['provider_reference'],
+                'supplier_identity' => $supplierIdentity,
                 'message' => 'Submitted successfully',
             ];
         } catch (\Exception $e) {
@@ -1607,7 +1689,7 @@ class ComplianceService
         }
 
         $config = $this->getCountryConfig($countryCode);
-        $context = $config?->getProviderContext() ?? [];
+        $context = $this->providerContextFor($config, $invoice)['context'];
         $payload = $this->applyProviderPayloadDefaults($payload, $context, $countryCode);
         $preparedDocument = $this->prepareDocumentArtifacts($countryCode, $payload, $context, $signingData);
 

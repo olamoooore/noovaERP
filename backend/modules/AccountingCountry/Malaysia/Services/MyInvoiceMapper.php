@@ -1209,6 +1209,11 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract, SupportsPayloadDef
     {
         $supplier = is_array($payload['supplier'] ?? null) ? $payload['supplier'] : [];
 
+        // #668 (EI6): identity fields resolved from the document's legal
+        // entity are authoritative — they replace what the mapper derived
+        // from the tenant-wide company settings rather than only filling gaps.
+        $supplier = $this->applyEntitySupplierIdentity($supplier, $context);
+
         // ── Party identity ──────────────────────────────────────────────────
         $supplier['tin'] = $supplier['tin']
             ?? $context['supplier_tin']
@@ -1228,6 +1233,10 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract, SupportsPayloadDef
 
         $supplier['identity_number'] = $supplier['identity_number']
             ?? $context['supplier_id_number']
+            ?? null;
+
+        $supplier['sst_registration'] = $supplier['sst_registration']
+            ?? $context['supplier_sst_registration_number']
             ?? null;
 
         // ── Business classification (MSIC) ──────────────────────────────────
@@ -1277,5 +1286,69 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract, SupportsPayloadDef
         // The mapper is responsible for a correct buyer.
 
         return $payload;
+    }
+
+    /**
+     * #668 (EI6): overlay the supplier identity fields the core resolved from
+     * the document's legal entity (listed in supplier_identity_entity_fields).
+     *
+     * @param  array<string, mixed>  $supplier
+     * @param  array<string, mixed>  $context
+     * @return array<string, mixed>
+     */
+    private function applyEntitySupplierIdentity(array $supplier, array $context): array
+    {
+        $entityFields = $context['supplier_identity_entity_fields'] ?? [];
+        if (! is_array($entityFields) || $entityFields === []) {
+            return $supplier;
+        }
+
+        $value = fn (string $key) => in_array($key, $entityFields, true) ? ($context[$key] ?? null) : null;
+
+        foreach ([
+            'supplier_name' => 'name',
+            'supplier_tin' => 'tin',
+            'supplier_registration_number' => 'company_registration',
+            'supplier_id_type' => 'identity_type',
+            'supplier_id_number' => 'identity_number',
+            'supplier_sst_registration_number' => 'sst_registration',
+        ] as $key => $field) {
+            if ($value($key) !== null) {
+                $supplier[$field] = $value($key);
+            }
+        }
+
+        // Statutory identifiers the entity does not carry are not borrowed
+        // from the tenant-wide company record (see the identity resolver).
+        if ($value('supplier_tin') !== null || $value('supplier_registration_number') !== null) {
+            foreach ([
+                'supplier_tin' => 'tin',
+                'supplier_registration_number' => 'company_registration',
+                'supplier_id_type' => 'identity_type',
+                'supplier_id_number' => 'identity_number',
+                'supplier_sst_registration_number' => 'sst_registration',
+            ] as $key => $field) {
+                if ($value($key) === null) {
+                    $supplier[$field] = null;
+                }
+            }
+        }
+
+        $contact = is_array($supplier['contact'] ?? null) ? $supplier['contact'] : [];
+        if ($value('supplier_phone') !== null) {
+            $contact['phone'] = $value('supplier_phone');
+        }
+        if ($value('supplier_email') !== null) {
+            $contact['email'] = $value('supplier_email');
+        }
+        $supplier['contact'] = $contact;
+
+        if ($value('supplier_address') !== null) {
+            $address = is_array($supplier['address'] ?? null) ? $supplier['address'] : [];
+            $address['street'] = $value('supplier_address');
+            $supplier['address'] = $address;
+        }
+
+        return $supplier;
     }
 }

@@ -666,6 +666,9 @@ class ComplianceController extends Controller
                     'document_id' => $result['document_id'],
                     'submission_id' => $result['submission_id'],
                     'provider_reference' => $result['provider_reference'],
+                    // #668 (EI6): which supplier identity fields came from the
+                    // document's legal entity and which fell back to the tenant.
+                    'supplier_identity' => $result['supplier_identity'] ?? null,
                 ],
                 'message' => $result['message'],
             ]);
