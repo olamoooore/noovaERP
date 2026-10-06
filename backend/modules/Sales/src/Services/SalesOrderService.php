@@ -26,6 +26,8 @@ class SalesOrderService
      */
     public const AUTO_LOCK_ON_CONFIRM_SETTING = 'sales.orders.auto_lock_on_confirm';
 
+    private ?CreditCheckResult $lastCreditCheck = null;
+
     public function __construct(
         private OrderLifecycleService $lifecycleService,
         private InvoiceService $invoiceService,
@@ -398,8 +400,20 @@ class SalesOrderService
         });
     }
 
+    /**
+     * Issue #383: the credit verdict the most recent confirmOrder() call
+     * gated on (null when the order has no customer). The controller returns
+     * this instead of running a second, differently-based check.
+     */
+    public function lastCreditCheck(): ?CreditCheckResult
+    {
+        return $this->lastCreditCheck;
+    }
+
     public function confirmOrder(SalesOrder $order): SalesOrder
     {
+        $this->lastCreditCheck = null;
+
         if (! $order->isDraft()) {
             throw new \Exception('Only draft orders can be confirmed.');
         }
@@ -428,6 +442,7 @@ class SalesOrderService
                         $this->baseCurrencyAmount($order, (float) $order->total),
                         (float) $committedOrdersTotal
                     );
+                    $this->lastCreditCheck = $creditCheck;
 
                     if (! $creditCheck->approved) {
                         // Issue #903: typed so the route boundary can notify the

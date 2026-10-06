@@ -673,8 +673,6 @@ class SalesOrderController extends Controller
             ], 202);
         }
 
-        $creditCheck = $this->creditCheckService->checkCreditLimit($order->customer, (float) $order->total);
-
         $beforeStatus = $order->status;
 
         try {
@@ -688,10 +686,13 @@ class SalesOrderController extends Controller
                 ['sales_order_number' => $order->sales_order_number],
             );
 
+            // Issue #383: report the verdict the service gated confirmation
+            // on (committed open orders included, base currency) rather than
+            // re-running a second, differently-based check here.
             return response()->json([
                 'message' => 'Order confirmed',
                 'order' => $order,
-                'credit_check' => $creditCheck,
+                'credit_check' => $this->orderService->lastCreditCheck(),
             ]);
         } catch (CreditLimitExceededException $e) {
             // Issue #903: the confirmation transaction has rolled back by the
