@@ -944,14 +944,22 @@ class SalesOrderService
                 : null;
             $dueDate = $paymentTerm
                 ? $paymentTerm->calculateDueDate($invoiceDate)->toDateString()
-                : now()->addDays($order->customer->payment_terms ?? 30)->toDateString();
+                // #539: the tenant's default terms only when the customer has none.
+                : now()->addDays(
+                    $order->customer->payment_terms ?? app(\App\Services\SalesSettings::class)->defaultPaymentTermsDays()
+                )->toDateString();
 
             $invoiceData = [
                 'customer_id' => $order->customer_id,
                 'invoice_date' => $invoiceDate,
                 'due_date' => $dueDate,
                 'payment_term_id' => $paymentTerm?->id,
-                'notes' => "Sales Order #{$order->sales_order_number}",
+                // #539: the tenant's default invoice notes lead, the order
+                // reference stays for traceability.
+                'notes' => implode("\n", array_filter([
+                    app(\App\Services\SalesSettings::class)->defaultNotes(),
+                    "Sales Order #{$order->sales_order_number}",
+                ])),
                 'sales_order_id' => $order->id,
                 // Carry the order's references into the invoice for end-to-end
                 // tracing (Customer Ref. / PO / Internal Ref.).

@@ -6,7 +6,6 @@ use App\Mail\CustomerEmail;
 use App\Models\Invoice;
 use App\Models\InvoiceActivityLog;
 use App\Models\InvoiceDelivery;
-use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -41,7 +40,7 @@ class InvoiceDeliveryService
         // setting the existing status rule applies: a draft being sent is an
         // acceptance copy, a posted invoice is the final invoice.
         $documentType = $options['document_type']
-            ?? Setting::getValue('sales.delivery.document_type_on_send')
+            ?? app(SalesSettings::class)->documentTypeOnSend()
             ?? ($invoice->status === 'posted'
                 ? InvoiceDelivery::DOCUMENT_FINAL_INVOICE
                 : InvoiceDelivery::DOCUMENT_ACCEPTANCE_COPY);
@@ -176,24 +175,35 @@ class InvoiceDeliveryService
     private function sendEmail(InvoiceDelivery $delivery, Invoice $invoice): void
     {
         try {
-            $pdfData = $this->generatePdfData($invoice, $delivery->document_type);
+            $salesSettings = app(SalesSettings::class);
             $paymentUrl = $delivery->metadata['payment_url'] ?? null;
 
-            Mail::to($delivery->recipient)->send(new CustomerEmail(
+            // #539: sales.delivery.attach_pdf decides whether the document PDF
+            // travels with the email; sales.delivery.cc_internal_email copies
+            // the tenant's internal mailbox.
+            $attachments = $salesSettings->attachPdf()
+                ? [[
+                    'name' => "Invoice-{$invoice->invoice_number}.pdf",
+                    'data' => $this->generatePdfData($invoice, $delivery->document_type),
+                    'mime' => 'application/pdf',
+                ]]
+                : [];
+
+            $mailer = Mail::to($delivery->recipient);
+            if (($cc = $salesSettings->ccInternalEmail()) !== null) {
+                $mailer->cc($cc);
+            }
+
+            $mailer->send(new CustomerEmail(
                 emailSubject: $this->getEmailSubject($invoice, $delivery->document_type),
                 emailBody: $this->getEmailBody(
                     $invoice,
                     $delivery->document_type,
                     $delivery->metadata['portal_url'] ?? null,
                     $paymentUrl,
+                    $attachments !== [],
                 ),
-                emailAttachments: [
-                    [
-                        'name' => "Invoice-{$invoice->invoice_number}.pdf",
-                        'data' => $pdfData,
-                        'mime' => 'application/pdf',
-                    ],
-                ],
+                emailAttachments: $attachments,
                 qrDataUri: $paymentUrl
                     ? app(QrCodeService::class)->dataUri($paymentUrl)
                     : null,
@@ -301,7 +311,7 @@ class InvoiceDeliveryService
         return "{$prefix} {$invoice->invoice_number} from {$company}";
     }
 
-    private function getEmailBody(Invoice $invoice, string $documentType, ?string $portalUrl = null, ?string $paymentUrl = null): string
+    private function getEmailBody(Invoice $invoice, string $documentType, ?string $portalUrl = null, ?string $paymentUrl = null, bool $pdfAttached = true): string
     {
         $type = $documentType === InvoiceDelivery::DOCUMENT_ACCEPTANCE_COPY
             ? 'acceptance copy'
@@ -309,7 +319,9 @@ class InvoiceDeliveryService
         $dueDate = $invoice->due_date ? $invoice->due_date->format('d M Y') : 'N/A';
 
         $body = "Dear {$invoice->customer?->name},\n\n".
-            "Please find attached the {$type} for invoice {$invoice->invoice_number}.\n\n".
+            ($pdfAttached
+                ? "Please find attached the {$type} for invoice {$invoice->invoice_number}.\n\n"
+                : "This is the {$type} for invoice {$invoice->invoice_number}.\n\n").
             "Amount: {$invoice->currency_code} ".number_format($invoice->total, 2)."\n".
             "Due Date: {$dueDate}\n\n";
 

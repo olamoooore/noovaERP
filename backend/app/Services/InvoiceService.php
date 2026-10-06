@@ -110,7 +110,26 @@ class InvoiceService
 
             $data['created_by'] = TenantUserHelper::requireTenantUserId($data['created_by'] ?? Auth::id());
             $data['invoice_date'] = $data['invoice_date'] ?? now();
-            $data['due_date'] = $data['due_date'] ?? now()->addDays(30);
+
+            // #539: one place applies the tenant's Sales Settings defaults, so
+            // every creation path (direct, import, conversion, accounting
+            // origin) gets them — not only the browser form. Due date: the
+            // customer's own terms first, the tenant default only when the
+            // customer has none.
+            $salesSettings = app(SalesSettings::class);
+            if (empty($data['due_date'])) {
+                $customerTerms = isset($data['customer_id'])
+                    ? Customer::query()->whereKey($data['customer_id'])->value('payment_terms')
+                    : null;
+                $termsDays = $customerTerms !== null ? (int) $customerTerms : $salesSettings->defaultPaymentTermsDays();
+                $data['due_date'] = \Illuminate\Support\Carbon::parse($data['invoice_date'])->addDays($termsDays)->toDateString();
+            }
+            if (blank($data['notes'] ?? null) && ($defaultNotes = $salesSettings->defaultNotes()) !== null) {
+                $data['notes'] = $defaultNotes;
+            }
+            if (blank($data['terms'] ?? null) && ($defaultTerms = $salesSettings->defaultTerms()) !== null) {
+                $data['terms'] = $defaultTerms;
+            }
 
             // #309 (X9): tax resolution consults the customer's tax profile —
             // an exemption valid on the document date suppresses the line tax

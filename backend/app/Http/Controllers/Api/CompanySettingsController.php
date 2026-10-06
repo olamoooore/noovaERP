@@ -735,12 +735,12 @@ class CompanySettingsController extends Controller
         return response()->json([
             'data' => [
                 'invoice' => [
-                    'allow_custom_number' => (bool) \App\Models\Setting::getValue('sales.invoice.allow_custom_number', true),
+                    'allow_custom_number' => app(\App\Services\SalesSettings::class)->allowCustomInvoiceNumber(),
                     'field_profile' => (string) \App\Models\Setting::getValue('sales.invoice.field_profile', 'medical'),
                     'default_requires_approval' => (bool) \App\Models\Setting::getValue('sales.invoice.default_requires_approval', false),
-                    'default_payment_terms_days' => (int) \App\Models\Setting::getValue('sales.invoice.default_payment_terms_days', 30),
-                    'default_notes' => \App\Models\Setting::getValue('sales.invoice.default_notes', ''),
-                    'default_terms' => \App\Models\Setting::getValue('sales.invoice.default_terms', 'Payment due within 30 days.'),
+                    'default_payment_terms_days' => app(\App\Services\SalesSettings::class)->defaultPaymentTermsDays(),
+                    'default_notes' => app(\App\Services\SalesSettings::class)->defaultNotes() ?? '',
+                    'default_terms' => app(\App\Services\SalesSettings::class)->defaultTerms() ?? '',
                 ],
                 'delivery_order' => [
                     'default_requires_approval' => (bool) \App\Models\Setting::getValue('sales.delivery_order.default_requires_approval', false),
@@ -817,12 +817,12 @@ class CompanySettingsController extends Controller
                     ];
                 })(),
                 'invoice' => [
-                    'allow_custom_number' => (bool) \App\Models\Setting::getValue('sales.invoice.allow_custom_number', true),
+                    'allow_custom_number' => app(\App\Services\SalesSettings::class)->allowCustomInvoiceNumber(),
                     // D4: which extra header fields the invoice entry screen
                     // shows. 'medical' preserves the pre-setting behaviour.
                     'field_profile' => (string) \App\Models\Setting::getValue('sales.invoice.field_profile', 'medical'),
                     'default_requires_approval' => (bool) \App\Models\Setting::getValue('sales.invoice.default_requires_approval', false),
-                    'approval_expiry_days' => (int) \App\Models\Setting::getValue('sales.invoice.approval_expiry_days', 7),
+                    'approval_expiry_days' => app(\App\Services\SalesSettings::class)->approvalExpiryDays(),
                     'approval_enforcement' => $this->invoiceApprovalEnforcement(),
                     'reviewer_user_ids' => array_values(array_map('intval', (array) \App\Models\Setting::getValue('sales.invoice.reviewer_user_ids', []))),
                     'reviewer_roles' => array_values((array) \App\Models\Setting::getValue('sales.invoice.reviewer_roles', [])),
@@ -832,26 +832,26 @@ class CompanySettingsController extends Controller
                         ->map(fn ($u) => ['id' => $u->id, 'name' => $u->name, 'email' => $u->email])
                         ->values()
                         ->all(),
-                    'auto_send_to_customer_on_post' => (bool) \App\Models\Setting::getValue('sales.invoice.auto_send_to_customer_on_post', true),
-                    'allow_partial_payments' => (bool) \App\Models\Setting::getValue('sales.invoice.allow_partial_payments', true),
-                    'default_payment_terms_days' => (int) \App\Models\Setting::getValue('sales.invoice.default_payment_terms_days', 30),
-                    'default_notes' => \App\Models\Setting::getValue('sales.invoice.default_notes', ''),
-                    'default_terms' => \App\Models\Setting::getValue('sales.invoice.default_terms', 'Payment due within 30 days.'),
+                    'auto_send_to_customer_on_post' => app(\App\Services\SalesSettings::class)->autoSendToCustomerOnPost(),
+                    'allow_partial_payments' => app(\App\Services\SalesSettings::class)->allowPartialPayments(),
+                    'default_payment_terms_days' => app(\App\Services\SalesSettings::class)->defaultPaymentTermsDays(),
+                    'default_notes' => app(\App\Services\SalesSettings::class)->defaultNotes() ?? '',
+                    'default_terms' => app(\App\Services\SalesSettings::class)->defaultTerms() ?? '',
                 ],
                 'portal' => [
-                    'acceptance_enabled' => (bool) \App\Models\Setting::getValue('sales.portal.acceptance_enabled', true),
-                    'require_signature' => (bool) \App\Models\Setting::getValue('sales.portal.require_signature', true),
-                    'acceptance_link_expiry_days' => (int) \App\Models\Setting::getValue('sales.portal.acceptance_link_expiry_days', 30),
-                    'payment_link_expiry_days' => (int) \App\Models\Setting::getValue('sales.portal.payment_link_expiry_days', 14),
+                    'acceptance_enabled' => app(\App\Services\SalesSettings::class)->acceptanceEnabled(),
+                    'require_signature' => app(\App\Services\SalesSettings::class)->requireSignature(),
+                    'acceptance_link_expiry_days' => app(\App\Services\SalesSettings::class)->acceptanceLinkExpiryDays(),
+                    'payment_link_expiry_days' => app(\App\Services\SalesSettings::class)->paymentLinkExpiryDays(),
                 ],
                 // MRD R10.3: ONE tax config surface. The legacy sales.tax.*
                 // keys are now derived from the canonical Setting tax block
                 // that the engine actually reads — no orphan writes.
                 'tax' => $this->salesTaxDefaults(),
                 'delivery' => [
-                    'attach_pdf' => (bool) \App\Models\Setting::getValue('sales.delivery.attach_pdf', true),
-                    'cc_internal_email' => \App\Models\Setting::getValue('sales.delivery.cc_internal_email', ''),
-                    'document_type_on_send' => \App\Models\Setting::getValue('sales.delivery.document_type_on_send', 'final_invoice'),
+                    'attach_pdf' => app(\App\Services\SalesSettings::class)->attachPdf(),
+                    'cc_internal_email' => app(\App\Services\SalesSettings::class)->ccInternalEmail() ?? '',
+                    'document_type_on_send' => app(\App\Services\SalesSettings::class)->documentTypeOnSend() ?? \App\Models\InvoiceDelivery::DOCUMENT_FINAL_INVOICE,
                 ],
                 // Issue #645: per-request-type reviewer lists. Each type falls
                 // back to the invoice pool when nothing is configured here, so

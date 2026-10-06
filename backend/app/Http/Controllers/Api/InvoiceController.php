@@ -669,7 +669,7 @@ class InvoiceController extends Controller
      */
     private function customInvoiceNumberingAllowed(): bool
     {
-        return (bool) Setting::getValue('sales.invoice.allow_custom_number', true);
+        return app(\App\Services\SalesSettings::class)->allowCustomInvoiceNumber();
     }
 
     /**
@@ -1969,7 +1969,8 @@ class InvoiceController extends Controller
         ]);
 
         $amount = $validated['amount'] ?? $invoice->balance;
-        $expiresDays = $validated['expires_in_days'] ?? 14;
+        // #539: tenant default lifetime (sales.portal.payment_link_expiry_days).
+        $expiresDays = $validated['expires_in_days'] ?? app(\App\Services\SalesSettings::class)->paymentLinkExpiryDays();
 
         try {
             $paymentLink = $this->invoiceService->createPaymentLink(
@@ -2039,7 +2040,18 @@ class InvoiceController extends Controller
             'save_customer_email' => 'nullable|boolean',
         ]);
 
-        $expiresDays = $validated['expires_in_days'] ?? 30;
+        // #539: customer acceptance can be switched off per tenant
+        // (sales.portal.acceptance_enabled) — then no acceptance link is issued.
+        if (! app(\App\Services\SalesSettings::class)->acceptanceEnabled()) {
+            return response()->json([
+                'message' => 'Customer acceptance is disabled by the sales setting sales.portal.acceptance_enabled.',
+                'code' => 'ACCEPTANCE_DISABLED',
+            ], 422);
+        }
+
+        // #539: null lets the evidence service apply the tenant's
+        // sales.portal.acceptance_link_expiry_days.
+        $expiresDays = $validated['expires_in_days'] ?? null;
         $sendEmail = $validated['send_email'] ?? true;
         // Issue #617: null lets InvoiceDeliveryService apply the #539
         // "document type on send" setting / invoice-status default instead of
@@ -2170,28 +2182,36 @@ class InvoiceController extends Controller
             $invoice->unsetRelation('customer');
         }
 
-        try {
-            // 1) Acceptance portal link (review / e-sign).
-            $linkData = $this->evidenceService->createPortalAcceptanceLink(
-                $invoice,
-                $validated['expires_in_days'] ?? 30
-            );
+        $salesSettings = app(\App\Services\SalesSettings::class);
 
-            $this->activityService->log(
-                $invoice,
-                \App\Models\InvoiceActivityLog::EVENT_ACCEPTANCE_LINK_CREATED,
-                [
-                    'acceptance_url' => $linkData['url'],
-                    'expires_at' => $linkData['expires_at'],
-                    'evidence_id' => $linkData['evidence_id'],
-                    'send_email' => true,
-                    'bundle' => true,
-                ],
-                $invoice->getOriginal('evidence_status') ?? $invoice->evidence_status,
-                $invoice->fresh()->evidence_status,
-                \App\Models\InvoiceActivityLog::ACTOR_USER,
-                $request->user()->id,
-            );
+        try {
+            // 1) Acceptance portal link (review / e-sign) — only while the
+            // tenant keeps customer acceptance on (#539). The link lifetime
+            // defaults to sales.portal.acceptance_link_expiry_days.
+            $linkData = [];
+
+            if ($salesSettings->acceptanceEnabled()) {
+                $linkData = $this->evidenceService->createPortalAcceptanceLink(
+                    $invoice,
+                    $validated['expires_in_days'] ?? null
+                );
+
+                $this->activityService->log(
+                    $invoice,
+                    \App\Models\InvoiceActivityLog::EVENT_ACCEPTANCE_LINK_CREATED,
+                    [
+                        'acceptance_url' => $linkData['url'],
+                        'expires_at' => $linkData['expires_at'],
+                        'evidence_id' => $linkData['evidence_id'],
+                        'send_email' => true,
+                        'bundle' => true,
+                    ],
+                    $invoice->getOriginal('evidence_status') ?? $invoice->evidence_status,
+                    $invoice->fresh()->evidence_status,
+                    \App\Models\InvoiceActivityLog::ACTOR_USER,
+                    $request->user()->id,
+                );
+            }
 
             // 2) Pay-now link — only for posted invoices with a live balance.
             // Drafts are sent for acceptance first; a draft has no payable
@@ -2204,7 +2224,7 @@ class InvoiceController extends Controller
                     $payment = $this->invoiceService->createPaymentLink(
                         $invoice,
                         (float) $invoice->balance,
-                        now()->addDays($validated['payment_expires_in_days'] ?? 14),
+                        now()->addDays($validated['payment_expires_in_days'] ?? $salesSettings->paymentLinkExpiryDays()),
                     );
                     $paymentUrl = $payment['url'] ?? null;
 
@@ -2231,8 +2251,10 @@ class InvoiceController extends Controller
 
             // 3)ONE email: PDF + acceptance link + pay-now link + QR.
             $delivery = $this->deliveryService->deliver($invoice, 'email', $request->user(), [
-                'document_type' => \App\Models\InvoiceDelivery::DOCUMENT_FINAL_INVOICE,
-                'portal_url' => $linkData['url'],
+                // #539: the tenant's "document type on send" choice; the final
+                // invoice stays the bundle default when none was configured.
+                'document_type' => $salesSettings->documentTypeOnSend() ?? \App\Models\InvoiceDelivery::DOCUMENT_FINAL_INVOICE,
+                'portal_url' => $linkData['url'] ?? null,
                 'payment_url' => $paymentUrl,
                 'recipient' => $recipientOverride,
             ]);
@@ -2445,21 +2467,39 @@ class InvoiceController extends Controller
                 $request->user()->id,
             );
 
-            try {
-                $acceptance = $this->evidenceService->createPortalAcceptanceLink($invoice);
+            // #539: sales.invoice.auto_send_to_customer_on_post decides whether
+            // posting emails the customer. The send uses the POSTED invoice
+            // (the pre-post instance is still a draft, which the delivery
+            // service refuses — so nothing was ever sent). The acceptance link
+            // is issued only while the tenant keeps acceptance on. The post
+            // itself is already committed, so a failed send is reported in
+            // the response (auto_send) instead of failing the post.
+            $salesSettings = app(\App\Services\SalesSettings::class);
+            $autoSend = ['enabled' => $salesSettings->autoSendToCustomerOnPost(), 'sent' => false, 'error' => null];
 
-                $this->deliveryService->deliver($invoice, 'email', $request->user(), [
-                    'document_type' => 'final_invoice',
-                ]);
+            if ($autoSend['enabled']) {
+                try {
+                    $acceptance = $salesSettings->acceptanceEnabled()
+                        ? $this->evidenceService->createPortalAcceptanceLink($posted)
+                        : null;
 
-                $posted->acceptance_url = $acceptance['url'] ?? null;
-                $posted->acceptance_expires_at = $acceptance['expires_at'] ?? null;
-            } catch (\Throwable $e) {
-                \Log::warning('Failed to auto-deliver posted invoice', [
-                    'invoice_id' => $invoice->id,
-                    'error' => $e->getMessage(),
-                ]);
+                    $this->deliveryService->deliver($posted, 'email', $request->user(), [
+                        'document_type' => \App\Models\InvoiceDelivery::DOCUMENT_FINAL_INVOICE,
+                    ]);
+
+                    $autoSend['sent'] = true;
+                    $posted->acceptance_url = $acceptance['url'] ?? null;
+                    $posted->acceptance_expires_at = $acceptance['expires_at'] ?? null;
+                } catch (\Throwable $e) {
+                    $autoSend['error'] = $e->getMessage();
+                    \Log::warning('Failed to auto-deliver posted invoice', [
+                        'invoice_id' => $invoice->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
+
+            $posted->auto_send = $autoSend;
 
             return response()->json([
                 'message' => 'Invoice posted successfully',

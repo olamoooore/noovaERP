@@ -299,6 +299,18 @@ class PaymentController extends Controller
                 ], 422);
             }
 
+            // #539: sales.invoice.allow_partial_payments=false means a receipt
+            // must settle the whole outstanding balance.
+            if (
+                ! app(\App\Services\SalesSettings::class)->allowPartialPayments()
+                && bccomp(number_format((float) $totalApplied, 2, '.', ''), number_format((float) $invoice->balance, 2, '.', ''), 2) < 0
+            ) {
+                return response()->json([
+                    'message' => 'Partial payments are disabled by the sales setting sales.invoice.allow_partial_payments. Record the full outstanding balance of '.number_format((float) $invoice->balance, 2, '.', '').'.',
+                    'code' => 'PARTIAL_PAYMENT_NOT_ALLOWED',
+                ], 422);
+            }
+
             // Lock-date check: block recording payment dated in a closed period
             $paymentDate = $validated['payment_date'] ?? now()->toDateString();
             $lockResult = $this->lockDateValidator->validateTransactionDate('payments', $paymentDate);

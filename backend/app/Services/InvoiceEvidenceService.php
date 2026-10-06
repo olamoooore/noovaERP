@@ -637,8 +637,11 @@ class InvoiceEvidenceService
         return $path;
     }
 
-    public function createPortalAcceptanceLink(Invoice $invoice, int $expiresInDays = 30): array
+    public function createPortalAcceptanceLink(Invoice $invoice, ?int $expiresInDays = null): array
     {
+        // #539: without an explicit lifetime the tenant's
+        // sales.portal.acceptance_link_expiry_days applies (was a fixed 30).
+        $expiresInDays ??= app(SalesSettings::class)->acceptanceLinkExpiryDays();
         $token = \Illuminate\Support\Str::uuid()->toString();
         $expiresAt = now()->addDays($expiresInDays);
 
