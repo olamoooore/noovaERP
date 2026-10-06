@@ -127,10 +127,10 @@ class ContactLinkingReportTest extends TenantTestCase
         $this->assertSame('needs_review', $people[$wizard]['action']);
         $this->assertSame(['Wizard'], $people[$wizard]['flags']['unknown_taxonomy_values']);
 
-        // A contact with no email and no mobile: the live matcher (tier 1)
-        // currently returns an arbitrary person. The report must flag it.
-        $this->assertSame('needs_review', $people[$plain]['action']);
-        $this->assertTrue($people[$plain]['flags']['matched_without_shared_identifier']);
+        // A contact with no email and no mobile gets a new person: nothing
+        // links it automatically (fixed matcher, ADR-003A §9).
+        $this->assertSame('create_person', $people[$plain]['action']);
+        $this->assertArrayNotHasKey('flags', $people[$plain]);
         $this->assertTrue($people[$plain]['customer_needs_organisation']);
     }
 
