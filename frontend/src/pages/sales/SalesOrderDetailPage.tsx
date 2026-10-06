@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { Progress } from '@/components/ui/progress'
 import { ChatterDialog } from '@/components/chatter'
+import { SalesOrderTimeline, type SalesOrderStatusHistoryEntry } from '@/components/sales/SalesOrderTimeline'
 import { AuditTab } from '@/components/audit/AuditTab'
 import { StockMovesTab } from '@/components/inventory/StockMovesTab'
 import { StockCogsBadge } from '@/components/inventory/StockCogsBadge'
@@ -129,6 +130,8 @@ interface SalesOrder {
   quotation?: { id: number; quotation_number: string }
   invoices?: { id: number; invoice_number: string; status: string }[]
   delivery_orders?: { id: number; delivery_order_number: string; status: string }[]
+  // #404 (SU6): eager-loaded by GET /sales/orders/{id} (statusHistory.actor).
+  status_history?: SalesOrderStatusHistoryEntry[]
 }
 
 interface SalesOrderLine {
@@ -1221,6 +1224,12 @@ export function SalesOrderDetailPage() {
           </CardContent>
         </Card>
       )}
+      {/* #404 (SU6): inline status timeline merged with chatter activity. */}
+      <SalesOrderTimeline
+        subjectType="Modules\\Sales\\Models\\SalesOrder"
+        subjectId={id as string}
+        statusHistory={order.status_history ?? []}
+      />
         </TabsContent>
 
         <TabsContent value="audit" className="mt-6">
