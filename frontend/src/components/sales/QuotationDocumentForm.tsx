@@ -19,7 +19,7 @@ import { useAuthStore } from '@/store/authStore'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { TagPicker } from '@/components/tags/TagPicker'
 import { TagEditor } from '@/components/tags/TagEditor'
-import { SalesDocumentLineGrid } from '@/components/sales/SalesDocumentLineGrid'
+import { SalesDocumentLineGrid, type SalesDocumentLineGridHandle } from '@/components/sales/SalesDocumentLineGrid'
 import { EditingBanner } from '@/components/sales/EditingBanner'
 import { SaveConflictDialog } from '@/components/sales/SaveConflictDialog'
 import { extractSaveConflict, type SaveConflict } from '@/lib/recordConflict'
@@ -160,6 +160,14 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
   // #317: edit mode is "ready" for dirty tracking once the saved document
   // has been put into the form.
   const [hydrated, setHydrated] = useState(false)
+  // #319: keyboard-first entry — a new document starts on the customer, and
+  // a customer pick moves on to line 1's product.
+  const customerFieldRef = useRef<HTMLDivElement>(null)
+  const lineGridRef = useRef<SalesDocumentLineGridHandle>(null)
+  useEffect(() => {
+    if (mode !== 'create') return
+    customerFieldRef.current?.querySelector<HTMLElement>('button[role="combobox"]')?.focus()
+  }, [mode])
   const { fill: autofillField, setBaseline: setAutofillBaseline } = useCustomerAutofill()
 
   // One pick fills everything (invoice parity): primary contact, references
@@ -794,21 +802,24 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
               <div className="col-span-2 md:col-span-2 xl:col-span-6">
                 <label className="mb-1 block text-xs font-medium">Customer *</label>
                 <FieldSlot name="customer_id">
-                  <CustomerSearchCombobox
-                    className={cn(SALES_CONTROL, 'justify-between')}
-                    value={customerId}
-                    onValueChange={(id, customer) => {
-                      fieldErrors.clear('customer_id')
-                      autofilledCustomerRef.current = null
-                      setCustomerId(id)
-                      setCustomerMatch(customer ? {
-                        contacts: (customer as any).matched_contacts ?? [],
-                        tags: (customer as any).matched_tags ?? [],
-                        addresses: (customer as any).matched_addresses ?? [],
-                      } : null)
-                    }}
-                    placeholder="Search customers..."
-                  />
+                  <div ref={customerFieldRef}>
+                    <CustomerSearchCombobox
+                      focusAfterSelect={() => lineGridRef.current?.focusFirstOpenProduct()}
+                      className={cn(SALES_CONTROL, 'justify-between')}
+                      value={customerId}
+                      onValueChange={(id, customer) => {
+                        fieldErrors.clear('customer_id')
+                        autofilledCustomerRef.current = null
+                        setCustomerId(id)
+                        setCustomerMatch(customer ? {
+                          contacts: (customer as any).matched_contacts ?? [],
+                          tags: (customer as any).matched_tags ?? [],
+                          addresses: (customer as any).matched_addresses ?? [],
+                        } : null)
+                      }}
+                      placeholder="Search customers..."
+                    />
+                  </div>
                 </FieldSlot>
                 {customerMatch && (customerMatch.contacts.length > 0 || customerMatch.tags.length > 0 || customerMatch.addresses.length > 0) && (
                   <p className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] leading-snug text-muted-foreground">
@@ -1427,6 +1438,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
           <CardContent>
             <FieldSlot name="lines" highlight={false}>
               <SalesDocumentLineGrid
+                ref={lineGridRef}
                 lines={lines}
                 setLines={setLines}
                 money={money}

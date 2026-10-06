@@ -9,7 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
 import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard'
-import { SalesDocumentLineGrid } from '@/components/sales/SalesDocumentLineGrid'
+import { SalesDocumentLineGrid, type SalesDocumentLineGridHandle } from '@/components/sales/SalesDocumentLineGrid'
 import { EditingBanner } from '@/components/sales/EditingBanner'
 import { SaveConflictDialog } from '@/components/sales/SaveConflictDialog'
 import {
@@ -102,6 +102,14 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
   const payloadRowsRef = useRef<number[]>([])
   // #317: edit mode is "ready" for dirty tracking once the order is loaded.
   const [hydrated, setHydrated] = useState(false)
+  // #319: keyboard-first entry — a new document starts on the customer, and
+  // a customer pick moves on to line 1's product.
+  const customerFieldRef = useRef<HTMLDivElement>(null)
+  const lineGridRef = useRef<SalesDocumentLineGridHandle>(null)
+  useEffect(() => {
+    if (mode !== 'create') return
+    customerFieldRef.current?.querySelector<HTMLElement>('button[role="combobox"]')?.focus()
+  }, [mode])
 
   const { data: order, isLoading, refetch: refetchOrder } = useQuery({
     queryKey: ['sales-order', documentId],
@@ -463,18 +471,21 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
               <div className="col-span-2 md:col-span-2 xl:col-span-6">
                 <label className="mb-1 block text-xs font-medium">Customer *</label>
                 <FieldSlot name="customer_id">
-                  <CustomerSearchCombobox
-                    className={cn(SALES_CONTROL, 'justify-between')}
-                    value={customerId}
-                    onValueChange={(id, customer) => {
-                      fieldErrors.clear('customer_id')
-                      setCustomerId(id)
-                      if (customer && (customer as any).code) {
-                        setCustomerReference((current) => current || (customer as any).code)
-                      }
-                    }}
-                    placeholder="Search customers..."
-                  />
+                  <div ref={customerFieldRef}>
+                    <CustomerSearchCombobox
+                      focusAfterSelect={() => lineGridRef.current?.focusFirstOpenProduct()}
+                      className={cn(SALES_CONTROL, 'justify-between')}
+                      value={customerId}
+                      onValueChange={(id, customer) => {
+                        fieldErrors.clear('customer_id')
+                        setCustomerId(id)
+                        if (customer && (customer as any).code) {
+                          setCustomerReference((current) => current || (customer as any).code)
+                        }
+                      }}
+                      placeholder="Search customers..."
+                    />
+                  </div>
                 </FieldSlot>
               </div>
               <div className="col-span-1 xl:col-span-3">
@@ -644,6 +655,7 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
           <CardContent>
             <FieldSlot name="lines" highlight={false}>
               <SalesDocumentLineGrid
+                ref={lineGridRef}
                 lines={lines}
                 setLines={setLines}
                 money={money}

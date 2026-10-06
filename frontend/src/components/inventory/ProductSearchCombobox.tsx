@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef, type KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
@@ -40,7 +40,25 @@ interface ProductSearchComboboxProps {
   placeholder?: string
   disabled?: boolean
   wrapText?: boolean
+  /**
+   * #319: keyboard-first entry for line grids. Typing on the closed cell
+   * opens the search seeded with the typed keys; Enter looks up an exact
+   * SKU/barcode match right away (no debounce wait, so a scanner's trailing
+   * Enter works); a search whose only result is an exact SKU/barcode match is
+   * picked without Enter.
+   */
+  keyboardEntry?: boolean
+  /**
+   * Called after a pick instead of returning focus to the trigger (e.g. move
+   * to the line's quantity).
+   */
+  focusAfterSelect?: () => void
 }
+
+const isExactCode = (product: Product, query: string) =>
+  [product.sku, product.barcode]
+    .filter(Boolean)
+    .some((code) => String(code).trim().toLowerCase() === query)
 
 const plainText = (value?: string | null) =>
   value ? value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : ''
@@ -54,8 +72,11 @@ export function ProductSearchCombobox({
   placeholder = 'Search name, SKU, barcode, lot or serial...',
   disabled = false,
   wrapText = false,
+  keyboardEntry = false,
+  focusAfterSelect,
 }: ProductSearchComboboxProps) {
   const [open, setOpen] = useState(false)
+  const pickedRef = useRef(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
 
@@ -109,11 +130,15 @@ export function ProductSearchCombobox({
     return 'Loading...'
   }, [value, searchResults, selectedProduct, placeholder])
 
-  const handleSelect = (productId: string) => {
-    const product = searchResults?.find(p => String(p.id) === productId)
+  const pick = (productId: string, product?: Product) => {
+    pickedRef.current = true
     onValueChange(productId, product)
     setOpen(false)
     setSearchQuery('')
+  }
+
+  const handleSelect = (productId: string) => {
+    pick(productId, searchResults?.find(p => String(p.id) === productId))
   }
 
   const handleClear = () => {
@@ -126,12 +151,65 @@ export function ProductSearchCombobox({
   // that product directly — no need to click the dropdown row.
   const trimmedQuery = searchQuery.trim().toLowerCase()
   const exactMatch = trimmedQuery
-    ? searchResults?.find((product) =>
-        [product.sku, product.barcode]
-          .filter(Boolean)
-          .some((code) => String(code).toLowerCase() === trimmedQuery),
-      ) ?? null
+    ? searchResults?.find((product) => isExactCode(product, trimmedQuery)) ?? null
     : null
+
+  // #319: Enter before the debounced results arrive (a scanner) asks the same
+  // product search endpoint directly and picks the exact SKU/barcode match.
+  const lookupRef = useRef(0)
+  const [lookupError, setLookupError] = useState<string | null>(null)
+  const selectExactNow = async () => {
+    const query = searchQuery.trim()
+    if (!query) return
+    if (exactMatch) {
+      pick(String(exactMatch.id), exactMatch)
+      return
+    }
+    const ticket = ++lookupRef.current
+    setLookupError(null)
+    let res
+    try {
+      res = await api.get('/products', { params: { per_page: 20, search: query } })
+    } catch {
+      if (ticket === lookupRef.current) setLookupError(`Could not look up "${query}". Try again.`)
+      return
+    }
+    if (ticket !== lookupRef.current) return
+    const rows: Product[] = res.data?.data || []
+    const match = rows.find((product) => isExactCode(product, query.toLowerCase()))
+    if (match) pick(String(match.id), match)
+  }
+
+  // #319: the settled search for what is typed has one result and it is an
+  // exact SKU/barcode match — pick it without waiting for Enter. Several
+  // results (e.g. YRN-1 and YRN-10) wait for Enter or a click.
+  useEffect(() => {
+    if (!keyboardEntry || !open || !trimmedQuery || isLoading) return
+    if (debouncedQuery.trim().toLowerCase() !== trimmedQuery) return
+    if (searchResults?.length === 1 && isExactCode(searchResults[0], trimmedQuery)) {
+      pick(String(searchResults[0].id), searchResults[0])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keyboardEntry, open, trimmedQuery, debouncedQuery, searchResults, isLoading])
+
+  const handleTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (!keyboardEntry || disabled) return
+    if (event.key === 'Enter' && open && searchQuery.trim()) {
+      // Keys typed faster than focus moved into the search box.
+      event.preventDefault()
+      void selectExactNow()
+      return
+    }
+    if (event.key.length !== 1 || event.ctrlKey || event.metaKey || event.altKey) return
+    if (event.key === ' ' && !open) return // Space still opens the list.
+    event.preventDefault()
+    if (open) {
+      setSearchQuery((current) => current + event.key)
+    } else {
+      setSearchQuery(event.key)
+      setOpen(true)
+    }
+  }
 
   return (
     <div className="relative w-full">
@@ -142,6 +220,7 @@ export function ProductSearchCombobox({
             role="combobox"
             aria-expanded={open}
             disabled={disabled}
+            onKeyDown={handleTriggerKeyDown}
             className={cn(
               'w-full justify-between gap-2 font-normal',
               wrapText && 'h-auto min-h-10 py-2',
@@ -182,20 +261,42 @@ export function ProductSearchCombobox({
             </span>
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[420px] max-w-[calc(100vw-2rem)] p-0" align="start">
+        <PopoverContent
+          className="w-[420px] max-w-[calc(100vw-2rem)] p-0"
+          align="start"
+          onCloseAutoFocus={(event) => {
+            if (pickedRef.current && focusAfterSelect) {
+              event.preventDefault()
+              focusAfterSelect()
+            }
+            pickedRef.current = false
+          }}
+        >
         <Command shouldFilter={false}>
           <CommandInput
             placeholder="Search name, SKU, barcode, lot or serial..."
             value={searchQuery}
             onValueChange={setSearchQuery}
+            onFocus={(event) => {
+              // Keep the keys typed on the trigger: caret after them.
+              const end = event.currentTarget.value.length
+              event.currentTarget.setSelectionRange(end, end)
+            }}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' && exactMatch) {
+              if (event.key !== 'Enter') return
+              if (exactMatch) {
                 event.preventDefault()
                 handleSelect(String(exactMatch.id))
+              } else if (keyboardEntry && searchQuery.trim()) {
+                event.preventDefault()
+                void selectExactNow()
               }
             }}
           />
           <CommandList>
+            {lookupError && (
+              <div role="alert" className="px-3 py-2 text-xs text-destructive">{lookupError}</div>
+            )}
             {isLoading ? (
               <div className="py-6 text-center text-sm text-muted-foreground">
                 <Icon icon="solar:refresh-bold" className="h-4 w-4 animate-spin inline mr-2" />
