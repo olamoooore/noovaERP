@@ -600,6 +600,14 @@ export const baseNavItems: NavItem[] = [
         requiredPermission: 'accounting.view',
         searchOnly: true,
       },
+      {
+        title: 'Analytic Accounts',
+        href: '/accounting/configuration/company?tab=analytic-accounts',
+        icon: 'solar:pie-chart-2-bold-duotone',
+        keywords: ['cost centre', 'cost center', 'department', 'project', 'dimension'],
+        requiredPermission: 'accounting.view',
+        searchOnly: true,
+      },
     ],
   },
   // Storefront (generic commerce, MRD ecommerce-Enterprice). Merchant-facing

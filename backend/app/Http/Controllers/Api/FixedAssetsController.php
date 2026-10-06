@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\FixedAsset;
 use App\Services\DepreciationService;
 use App\Services\EntityAccessService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -580,7 +581,7 @@ class FixedAssetsController extends Controller
             'disposal_date' => 'required|date',
             'disposal_amount' => 'required|numeric|min:0',
             'disposal_method' => 'required|in:sold,scrapped,donated',
-            'notes' => 'nullable|string',
+            'notes' => 'nullable|string|max:1000',
         ]);
 
         if ($validator->fails()) {
@@ -591,6 +592,18 @@ class FixedAssetsController extends Controller
 
         if ($asset->status === 'disposed') {
             return response()->json(['error' => 'Asset already disposed'], 422);
+        }
+
+        if (! $asset->is_active || $asset->status !== 'active') {
+            return response()->json(['error' => 'Only an active asset can be disposed'], 422);
+        }
+
+        if (Carbon::parse($request->disposal_date)->startOfDay()->lt(Carbon::parse($asset->purchase_date)->startOfDay())) {
+            return response()->json(['error' => 'Disposal date cannot be before the purchase date'], 422);
+        }
+
+        if ($request->disposal_method !== 'sold' && (float) $request->disposal_amount !== 0.0) {
+            return response()->json(['error' => 'Scrapped or donated assets must have zero disposal proceeds'], 422);
         }
 
         DB::beginTransaction();

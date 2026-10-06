@@ -952,6 +952,7 @@ export function BankReconciliationPage() {
                       <th className="text-left px-3 py-2">Status</th>
                       <th className="text-right px-3 py-2">Residual</th>
                       <th className="text-left px-3 py-2 min-w-[320px]">Match to posted GL line</th>
+                      <th className="text-right px-3 py-2 min-w-[120px]">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -996,7 +997,6 @@ export function BankReconciliationPage() {
                           {transaction.status === 'excluded' ? (
                             <div className="space-y-1">
                               <p className="text-xs text-muted-foreground">{transaction.exclusion_type}: {transaction.exclusion_reason}</p>
-                              <Button type="button" size="sm" variant="outline" onClick={() => { setStatementException({ transactionId: transaction.id, mode: 'restore' }); setExceptionReason(''); }}>Restore</Button>
                             </div>
                           ) : transaction.status === 'matched' ? (
                             <div className="flex flex-wrap items-center gap-2">
@@ -1117,6 +1117,45 @@ export function BankReconciliationPage() {
                                 <Button key={match.id} type="button" size="sm" variant="ghost" onClick={() => unmatchStatementMutation.mutate(match.id)}>Remove existing match</Button>
                               ))}
                             </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-right align-top">
+                          {transaction.status === 'excluded' ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-8 gap-1.5 text-green-700 hover:bg-green-50 hover:text-green-800"
+                              aria-label={`Restore ${transaction.description || 'statement transaction'}`}
+                              onClick={() => {
+                                setStatementException({ transactionId: transaction.id, mode: 'restore' });
+                                setExceptionReason('');
+                                setExceptionEvidence('');
+                              }}
+                            >
+                              <Icon icon="solar:restart-bold-duotone" className="h-4 w-4" />
+                              Restore
+                            </Button>
+                          ) : ['unmatched', 'suggested'].includes(transaction.status)
+                            && !(transaction.matches ?? []).some((match: any) => match.status === 'accepted') ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-8 gap-1.5 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
+                              aria-label={`Exclude ${transaction.description || 'statement transaction'}`}
+                              onClick={() => {
+                                setStatementException({ transactionId: transaction.id, mode: 'exclude' });
+                                setExceptionType('duplicate');
+                                setExceptionReason('');
+                                setExceptionEvidence('');
+                              }}
+                            >
+                              <Icon icon="solar:minus-circle-bold-duotone" className="h-4 w-4" />
+                              Exclude
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
                           )}
                         </td>
                       </tr>
