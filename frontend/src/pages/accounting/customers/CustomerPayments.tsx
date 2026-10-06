@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { InvoiceSearchCombobox } from '@/components/ui/InvoiceSearchCombobox';
 import { RecordPaymentForm } from '@/components/payment/RegisterPaymentDialog'; // #491
+import { PaymentAllocationsPanel } from '@/components/payment/PaymentAllocations'; // #488
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 import {
   AlertDialog,
@@ -1174,6 +1175,16 @@ const ViewPaymentDialog: React.FC<{
               <p className="font-mono text-xs">#{detail.id}</p>
             </div>
           </div>
+
+          {/* #488 (PAY-UX2): the #155 applications, unapplied amount and Allocate. */}
+          <PaymentAllocationsPanel
+            paymentId={detail.id}
+            paymentLabel={detail.payment_number || `PAY-${detail.id}`}
+            customerId={detail.customer_id ?? detail.customer?.id ?? null}
+            paymentStatus={detail.payment_status}
+            currency={detail.currency}
+            onNavigate={onClose}
+          />
 
           {detail.notes && (
             <div className="border-t pt-4">

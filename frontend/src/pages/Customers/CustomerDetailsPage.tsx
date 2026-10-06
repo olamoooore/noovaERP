@@ -24,6 +24,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { TagEditor } from '@/components/tags/TagEditor'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { AuditTab } from '@/components/audit/AuditTab'
+import { UnappliedCreditsCard } from '@/components/payment/PaymentAllocations'
 import { CustomerForm } from '@/components/customers/CustomerForm'
 import { customerFormToUpdatePayload, customerToFormValues, emptyCustomerFormValues, type CustomerFormValues } from '@/lib/customerPayload'
 import { downloadReportDocx, downloadReportXlsx } from '@/lib/reportFiles'
@@ -1332,6 +1333,9 @@ export function CustomerDetailsPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* #488 (PAY-UX2): payments still holding unapplied credit. */}
+            {id && <UnappliedCreditsCard customerId={Number(id)} />}
 
             {/* Invoices Table — full (paginated) list, not just the 10-row preview */}
             <Card className="rounded-xl border-slate-200/80 dark:border-slate-800">

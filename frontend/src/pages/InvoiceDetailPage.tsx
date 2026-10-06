@@ -33,6 +33,7 @@ import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Textarea } from '@/components/ui/textarea'
 import { RegisterPaymentDialog } from '@/components/payment/RegisterPaymentDialog'
+import { UnappliedCreditsCard } from '@/components/payment/PaymentAllocations'
 import { isInvoicePayable, useCanRegisterPayment } from '@/lib/registerPayment'
 import {
   InvoiceDeliveryProgressSummary,
@@ -1379,6 +1380,19 @@ export function InvoiceDetailPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          {/* #488 (PAY-UX2): the customer's unapplied payments, applicable here. */}
+          {isInvoicePayable(invoice) && invoice.customer_id && (
+            <div className="mb-8">
+              <UnappliedCreditsCard
+                customerId={Number(invoice.customer_id)}
+                invoiceId={invoice.id}
+                invoiceBalance={Number(invoice.balance ?? 0)}
+                currency={invoice.currency_code}
+                hideWhenEmpty
+              />
+            </div>
+          )}
 
           {/* Payment History */}
           {invoice.payments && invoice.payments.length > 0 && (

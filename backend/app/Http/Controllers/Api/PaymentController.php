@@ -71,6 +71,23 @@ class PaymentController extends Controller
             $query->whereDate('payment_date', '<=', $request->date_to);
         }
 
+        // #488 (PAY-UX2): only posted payments that still hold unapplied
+        // credit (capacity − live applications, the same formula as
+        // PaymentAllocationService::unappliedAmount()), each carrying it as
+        // `unapplied_amount` — for the customer page / invoice "outstanding
+        // credits" and the Allocate action.
+        $unappliedOnly = $request->boolean('unapplied');
+        if ($unappliedOnly) {
+            $liveApplied = '(SELECT COALESCE(SUM(pa.applied_amount), 0) FROM payment_applications pa '
+                .'WHERE pa.payment_id = payments.id AND pa.reversed_at IS NULL)';
+            $unappliedSql = "ROUND(CAST(payments.amount + COALESCE(payments.discount_amount, 0) - {$liveApplied} AS numeric), 2)";
+            $query->where('payment_status', 'applied')
+                ->whereNotNull('customer_id')
+                ->select('payments.*')
+                ->selectRaw("{$unappliedSql} AS unapplied_amount")
+                ->whereRaw("{$unappliedSql} > 0");
+        }
+
         $search = $request->filled('search') ? trim((string) $request->search) : '';
         if ($search !== '') {
             app(DocumentWideSearchService::class)->apply($query, $search, $this->wideSearchConfig());
@@ -193,6 +210,9 @@ class PaymentController extends Controller
                 'total' => (float) $invoice->total,
                 'balance' => (float) ($invoice->balance ?? $invoice->total),
                 'status' => $invoice->status,
+                // #488: the allocation UI offers only POSTED receivables
+                // (PaymentAllocationService rejects any other lifecycle).
+                'lifecycle_status' => $invoice->lifecycle_status,
                 'customer_id' => $invoice->customer_id,
                 'customer_name' => $invoice->customer?->name ?? 'Unknown',
             ];
