@@ -499,6 +499,17 @@ class CustomerController extends Controller
             'billing_address' => 'nullable|string',
             'shipping_address' => 'nullable|string',
 
+            // ADR-003B W1: the edit form's structured billing fields. They
+            // update the default billing address — the record the form loads
+            // and new documents read — not only the legacy text column.
+            'billing_address_record' => 'nullable|array',
+            'billing_address_record.street' => 'nullable|string|max:255',
+            'billing_address_record.street2' => 'nullable|string|max:255',
+            'billing_address_record.city' => 'nullable|string|max:100',
+            'billing_address_record.state' => 'nullable|string|max:100',
+            'billing_address_record.zip' => 'nullable|string|max:20',
+            'billing_address_record.country' => 'nullable|string|max:100',
+
             // Financial
             'credit_limit' => 'nullable|numeric|min:0',
             'payment_terms' => 'nullable|integer|min:0',
@@ -549,8 +560,10 @@ class CustomerController extends Controller
 
         // Extract category IDs
         $categoryIds = $validated['category_ids'] ?? null;
+        $billingAddressRecord = $validated['billing_address_record'] ?? null;
         unset(
             $validated['category_ids'],
+            $validated['billing_address_record'],
             $validated['allow_duplicate'],
             $validated['duplicate_acknowledgement_reason'],
         );
@@ -558,12 +571,16 @@ class CustomerController extends Controller
         // Issue #432 (CU4): the customer profile and its canonical Contact
         // Master contact are edited in the same transaction. Without this the
         // Contact Master keeps the pre-edit name/email/phone/website forever.
-        \Illuminate\Support\Facades\DB::transaction(function () use ($customer, $validated, $categoryIds) {
+        \Illuminate\Support\Facades\DB::transaction(function () use ($customer, $validated, $categoryIds, $billingAddressRecord) {
             $customer->update($validated);
 
             // Sync categories if provided
             if ($categoryIds !== null) {
                 $customer->categories()->sync($categoryIds);
+            }
+
+            if ($billingAddressRecord !== null) {
+                $this->saveDefaultBillingAddress($customer, $billingAddressRecord);
             }
 
             if (! $customer->core_contact_uuid || $customer->wasChanged(self::CONTACT_MIRROR_FIELDS)) {
@@ -680,6 +697,35 @@ class CustomerController extends Controller
         $address = $customer->addresses()->create($validated);
 
         return response()->json($address, 201);
+    }
+
+    /**
+     * ADR-003B W1: write the edit form's billing fields to the customer's
+     * default billing address (the same record the form loads from and new
+     * invoices/quotations read), creating it when the customer has none.
+     *
+     * @param  array<string, string|null>  $fields
+     */
+    private function saveDefaultBillingAddress(Customer $customer, array $fields): void
+    {
+        $attributes = [];
+        foreach (['street', 'street2', 'city', 'state', 'zip', 'country'] as $field) {
+            $attributes[$field] = $fields[$field] ?? null;
+        }
+
+        $billing = $customer->addresses()
+            ->where('type', 'billing')
+            ->orderByDesc('is_default')
+            ->orderBy('id')
+            ->first();
+
+        if ($billing) {
+            $billing->update($attributes + ['is_default' => true]);
+
+            return;
+        }
+
+        $customer->addresses()->create($attributes + ['type' => 'billing', 'is_default' => true]);
     }
 
     public function updateAddress(Request $request, $customerId, $addressId): JsonResponse

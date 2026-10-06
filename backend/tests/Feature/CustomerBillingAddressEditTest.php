@@ -14,10 +14,10 @@ use Tests\TenantTestCase;
  * address the customer record (and therefore new documents) actually uses.
  *
  * The customer form loads the billing address from the structured default
- * billing address (`addresses[]`) and the create path saves it there, but the
- * edit path (`customerFormToUpdatePayload`) sends it as the legacy
- * `billing_address` text column, which never updates the structured record.
- * Payloads below mirror exactly what the frontend sends on create and edit.
+ * billing address (`addresses[]`) and the create path saves it there. The
+ * edit path used to send only the legacy `billing_address` text column, which
+ * never updated the structured record. Payloads below mirror exactly what the
+ * frontend sends on create and edit (`customerFormToUpdatePayload`).
  */
 class CustomerBillingAddressEditTest extends TenantTestCase
 {
@@ -71,11 +71,20 @@ class CustomerBillingAddressEditTest extends TenantTestCase
 
         $customerId = $created->json('id');
 
-        // Edit: customerFormToUpdatePayload flattens the same structured form
-        // fields into the legacy `billing_address` text column.
+        // Edit: customerFormToUpdatePayload sends the structured billing
+        // fields and also flattens them into the legacy `billing_address`
+        // text column.
         $this->actingAs($this->admin, 'sanctum')
             ->putJson('/api/v1/customers/'.$customerId, [
                 'name' => 'Acme Clinic',
+                'billing_address_record' => [
+                    'street' => '9 New Avenue',
+                    'street2' => '',
+                    'city' => 'Petaling Jaya',
+                    'state' => 'Selangor',
+                    'zip' => '46000',
+                    'country' => 'MY',
+                ],
                 'billing_address' => implode("\n", ['9 New Avenue', 'Petaling Jaya', 'Selangor', '46000', 'MY']),
             ])
             ->assertOk();
