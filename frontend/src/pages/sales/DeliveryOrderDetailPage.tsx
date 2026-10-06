@@ -430,13 +430,17 @@ export function DeliveryOrderDetailPage() {
                 Send
               </HeaderActionButton>
             )}
-          {deliveryOrder.status !== 'cancelled' && (
+          {/* #459 (DO7): the server decides billability — a delivery order is
+              only invoiced once completed, unless the tenant enables the
+              bill-before-delivery policy. Anything else (draft/confirmed
+              without the policy, fully billed, cancelled) hides the action. */}
+          {deliveryOrder.can_invoice === true && (
             <HeaderActionButton
               icon="solar:bill-list-bold-duotone"
               loading={createInvoiceMutation.isPending}
               onClick={() => createInvoiceMutation.mutate()}
-              disabled={createInvoiceMutation.isPending || deliveryOrder.can_invoice === false}
-              title={deliveryOrder.can_invoice === false ? 'Everything delivered has already been invoiced' : 'Create an invoice for the remaining delivered quantities'}
+              disabled={createInvoiceMutation.isPending}
+              title="Create an invoice for the remaining delivered quantities"
             >
               Create Invoice
             </HeaderActionButton>

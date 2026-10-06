@@ -296,15 +296,30 @@ class SalesOrderAcceptanceService
         }
 
         $token = Str::random(48);
+        $expiresAt = now()->addDays(self::TOKEN_TTL_DAYS);
+
         $subject->update([
             'acceptance_token' => $token,
-            'acceptance_expires_at' => now()->addDays(self::TOKEN_TTL_DAYS),
+            'acceptance_expires_at' => $expiresAt,
             'accepted_at' => null,
             'signer_name' => null,
             'signer_email' => null,
             'signature_data' => null,
             'acceptance_source' => null,
         ]);
+
+        // Issue #466 (DO14): public acceptance links carry no tenant in the
+        // host, so the token → tenant mapping is registered centrally at
+        // issuance for the one indexed lookup on the public route.
+        app(DocumentTokenRegistry::class)->register(
+            $token,
+            tenant('id'),
+            $subject instanceof \App\Models\Quotation
+                ? DocumentTokenRegistry::TYPE_QUOTATION
+                : DocumentTokenRegistry::TYPE_SALES_ORDER,
+            $subject->getKey(),
+            $expiresAt,
+        );
 
         return $token;
     }

@@ -124,7 +124,7 @@ class DocumentConversionFlowsTest extends TenantTestCase
     {
         $service = app(DeliveryOrderService::class);
 
-        return $service->createStandaloneDeliveryOrder([
+        $deliveryOrder = $service->createStandaloneDeliveryOrder([
             'customer_id' => $this->customer->id,
             'warehouse_id' => $this->warehouse->id,
             'created_by' => $this->user->id,
@@ -138,6 +138,16 @@ class DocumentConversionFlowsTest extends TenantTestCase
                 'unit_price' => 100,
             ]],
         ]);
+
+        // Issue #459: only a completed (`done`) delivery order is billable by
+        // default; this suite targets the conversion flows themselves, so the
+        // fixture is put in the state a shipped delivery reaches.
+        \Illuminate\Support\Facades\DB::table('delivery_orders')->where('id', $deliveryOrder->id)->update([
+            'status' => 'done',
+            'completed_at' => now(),
+        ]);
+
+        return $deliveryOrder->fresh('lines');
     }
 
     public function test_delivery_order_send_confirms_recipient_and_cc(): void

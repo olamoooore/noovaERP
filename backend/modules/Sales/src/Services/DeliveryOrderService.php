@@ -3,7 +3,10 @@
 namespace Modules\Sales\Services;
 
 use App\Models\Product;
+use App\Models\ProductSerial;
+use App\Models\StockMovement;
 use App\Models\Warehouse;
+use App\Services\BatchSerialConsumptionService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -691,6 +694,14 @@ class DeliveryOrderService
             return;
         }
 
+        // #464 (DO12): COGS belongs to the shipping document's date, not to
+        // the day the completion happened to be keyed. The posting engine
+        // validates this date against lock dates and fiscal periods exactly
+        // like any other operational posting, so a delivery dated inside a
+        // locked period is rejected (and the completion rolls back) instead
+        // of silently shifting the cost into the current period.
+        $cogsDate = $this->resolveCogsPostingDate($deliveryOrder);
+
         $result = $this->postingEngine->domainPosting(new \App\Accounting\DTOs\DomainPostingRequest(
             postingRequestId: \App\Accounting\DTOs\DomainPostingRequest::generateRequestId(),
             idempotencyKey: "delivery_order:{$deliveryOrder->id}:cogs",
@@ -705,8 +716,8 @@ class DeliveryOrderService
             sourceRecordId: (string) $deliveryOrder->id,
             sourceRecordVersion: 1,
             postingProfileCode: 'DELIVERY_ORDER_COGS',
-            transactionDate: now()->toDateString(),
-            postingDate: now()->toDateString(),
+            transactionDate: $cogsDate,
+            postingDate: $cogsDate,
             lines: [
                 new \App\Accounting\DTOs\DomainPostingLine(
                     accountRole: 'cogs',
@@ -732,9 +743,39 @@ class DeliveryOrderService
     }
 
     /**
+     * #464 (DO12): the ledger date for a delivery order's COGS — the shipping
+     * document's delivery date when set, otherwise the completion timestamp
+     * (the moment this completion is being posted; completed_at is written
+     * after posting, so `now()` is that instant).
+     *
+     * This is the same "delivery or completion date" the acceptance criteria
+     * name, and it is what lets the invoice/revenue side (which posts on the
+     * invoice date) and the stock issue agree on a period.
+     */
+    private function resolveCogsPostingDate(DeliveryOrder $deliveryOrder): string
+    {
+        $date = $deliveryOrder->delivery_date
+            ?? $deliveryOrder->completed_at
+            ?? now();
+
+        return $date instanceof \DateTimeInterface
+            ? $date->format('Y-m-d')
+            : (string) $date;
+    }
+
+    /**
      * Issue #176: reversing a completed DO must also reverse its COGS entry.
      * domainPosting() dedupes by source record, so the reversal goes through
      * PostingEngine::reverse() (relation_type=reversal links to the same DO).
+     *
+     * #464 (DO12): the reversal is dated TODAY — the current, open period —
+     * never back into the original delivery period, which may already have
+     * been closed. The original COGS entry/date is carried in the reversal's
+     * ledger description so the lineage survives even when the periods differ.
+     * NOTE: PostingEngine::reverse() (ReversalCorrectionEngine) does not run
+     * the lock-date/fiscal-period gates — reversals post on the supplied date
+     * regardless — so the date choice here is the whole period policy; no
+     * parallel lock check is added.
      */
     private function postDeliveryCogsReversal(DeliveryOrder $deliveryOrder, int $warehouseId, int $actorId): void
     {
@@ -747,10 +788,19 @@ class DeliveryOrderService
             return; // nothing posted (e.g. zero-cost delivery)
         }
 
+        $originalEntry = \App\Models\JournalEntry::find((int) $link->journal_entry_id);
+        $originalDate = $originalEntry?->entry_date?->toDateString()
+            ?? $deliveryOrder->delivery_date?->toDateString()
+            ?? 'unknown';
+
+        $reversalReason = $originalEntry
+            ? "Delivery order {$deliveryOrder->delivery_order_number} reversed (original COGS entry {$originalEntry->entry_number} dated {$originalDate})"
+            : "Delivery order {$deliveryOrder->delivery_order_number} reversed (original COGS dated {$originalDate})";
+
         $result = $this->postingEngine->reverse(new \App\Accounting\DTOs\ReversalRequest(
             journalEntryId: (int) $link->journal_entry_id,
             reversalDate: now()->toDateString(),
-            reason: 'Delivery order reversed',
+            reason: $reversalReason,
             reasonCode: 'DELIVERY_ORDER_REVERSAL',
             actorUserId: $actorId,
             tenantId: (string) (function_exists('tenant') && tenant() ? tenant('id') : ''),
@@ -1442,6 +1492,11 @@ class DeliveryOrderService
      * completion. A delivery whose goods an invoice had already issued restocks
      * nothing — putting the delivered quantity back would conjure stock nobody
      * ever received.
+     *
+     * Issue #460 (DO8): the restock is now driven by the stock movements
+     * completion recorded — the same components, quantities, lots and expiry —
+     * instead of being recomputed from the lines, and the serials completion
+     * marked sold are returned to stock.
      */
     public function reverseDeliveryOrder(DeliveryOrder $deliveryOrder, string $reason): DeliveryOrder
     {
@@ -1455,41 +1510,13 @@ class DeliveryOrderService
 
             $deliveryOrder->load(['lines.product', 'lines.salesOrderLine']);
 
+            // #460 (DO8): replay the completion's stock movements in reverse —
+            // same product/component, quantity, lot and expiry — and un-mark
+            // the serials the completion marked sold.
+            $this->restockReversingCompletionMovements($deliveryOrder, $reason);
+            $this->returnDeliverySerials($deliveryOrder);
+
             foreach ($deliveryOrder->lines as $line) {
-                if (! $line->product_id) {
-                    continue;
-                }
-
-                $product = $line->product;
-                $isStockTracked = $product && (bool) ($product->track_inventory ?? false);
-
-                if ($isStockTracked) {
-                    // #457 (DO5): reverse exactly what was issued, fraction included.
-                    $qty = (float) $line->quantity_delivered;
-
-                    foreach ($this->bundleDecomposition->stockConsumingComponents($product, $qty) as $component) {
-                        $issuedQty = (float) $this->goodsIssueLedger->issuedByDeliveryOrder($deliveryOrder, (int) $component['product']->id);
-
-                        if ($issuedQty <= 0) {
-                            continue;
-                        }
-
-                        // Compensating inbound movement (restock)
-                        $this->inventoryService->adjustStock(
-                            productId: $component['product']->id,
-                            warehouseId: $warehouseId,
-                            quantity: $issuedQty,
-                            type: 'return',
-                            reference: "REVERSAL-{$deliveryOrder->delivery_order_number}",
-                            referenceType: 'DeliveryOrder',
-                            referenceId: $deliveryOrder->id,
-                            notes: "Reversal: {$reason}",
-                            idempotencyKey: "do-reverse-{$deliveryOrder->id}-line-{$line->id}".
-                                ($product->is_bundle ? "-component-{$component['product']->id}" : ''),
-                        );
-                    }
-                }
-
                 // Subtract from SO line delivered_qty (always, regardless of stock tracking)
                 if ($deliveryOrder->sales_order_id && $line->salesOrderLine) {
                     $soLine = $line->salesOrderLine;
@@ -1538,6 +1565,256 @@ class DeliveryOrderService
     }
 
     /**
+     * #459 (DO7): whether this tenant allows billing a delivery order before
+     * it is completed. Off by default — the invoice then waits until the goods
+     * actually shipped, so no never-shipped invoice can exist. Enabling it does
+     * not relax any permission: the conversion still travels the same
+     * sales.write route chain as before (no new permission string).
+     */
+    public function billBeforeDeliveryEnabled(): bool
+    {
+        return (bool) \App\Models\Setting::getValue('sales.delivery.bill_before_delivery', false);
+    }
+
+    /**
+     * #459 (DO7): a delivery order may be billed only when its stock already
+     * moved (`done`), or — under the explicit tenant policy above — while it is
+     * still draft/confirmed. Cancelled/reversed orders are never billable.
+     */
+    public function isInvoiceableStatus(DeliveryOrder $deliveryOrder): bool
+    {
+        if ($deliveryOrder->isDone()) {
+            return true;
+        }
+
+        if ($deliveryOrder->isCancelled()) {
+            return false;
+        }
+
+        return $this->billBeforeDeliveryEnabled()
+            && ($deliveryOrder->isDraft() || $deliveryOrder->isConfirmed());
+    }
+
+    /**
+     * #459 (DO7): every invoice linked to a delivery order — the legacy
+     * `invoice_id` pointer plus the `invoice_delivery_orders` pivot.
+     */
+    private function linkedInvoices(DeliveryOrder $deliveryOrder): \Illuminate\Support\Collection
+    {
+        $invoices = collect();
+
+        if ($deliveryOrder->invoice_id) {
+            $found = \App\Models\Invoice::find($deliveryOrder->invoice_id);
+            if ($found) {
+                $invoices->push($found);
+            }
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('invoice_delivery_orders')) {
+            $pivotIds = \Illuminate\Support\Facades\DB::table('invoice_delivery_orders')
+                ->where('delivery_order_id', $deliveryOrder->id)
+                ->pluck('invoice_id');
+
+            if ($pivotIds->isNotEmpty()) {
+                $invoices = $invoices
+                    ->merge(\App\Models\Invoice::whereIn('id', $pivotIds)->get())
+                    ->unique('id')
+                    ->values();
+            }
+        }
+
+        return $invoices;
+    }
+
+    /**
+     * #459 (DO7): a draft/voided/cancelled invoice does not own delivered
+     * quantities — the same stale-link states resetToDraft() detaches.
+     */
+    private function invoiceIsHarmless($invoice): bool
+    {
+        return ! $invoice // orphaned pointer — nothing to protect
+            || in_array($invoice->status, ['draft', 'cancelled'], true)
+            || in_array((string) $invoice->lifecycle_status, ['draft', 'cancelled', 'voided', 'reversed', 'superseded'], true);
+    }
+
+    /**
+     * #459 (DO7): drop stale (harmless) invoice links so a cancelled/reset
+     * delivery order cannot be billed again through them. The draft invoice
+     * itself is left untouched — it was never posted and owns nothing.
+     */
+    private function detachInvoiceLinks(DeliveryOrder $deliveryOrder, \Illuminate\Support\Collection $invoices): void
+    {
+        if ($invoices->isEmpty()) {
+            return;
+        }
+
+        $deliveryOrder->update(['invoice_id' => null]);
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('invoice_delivery_orders')) {
+            \Illuminate\Support\Facades\DB::table('invoice_delivery_orders')
+                ->where('delivery_order_id', $deliveryOrder->id)
+                ->whereIn('invoice_id', $invoices->pluck('id')->all())
+                ->delete();
+        }
+    }
+
+    /**
+     * Issue #460 (DO8): the reverse replay of a completion.
+     *
+     * Completion records one `sale` movement per component it consumed (bundle
+     * decomposition, #130) carrying the line's lot and expiry; this method
+     * walks those same rows and posts the compensating `return` for each — same
+     * product/component, same quantity, same batch_number and expiry_date. A
+     * virtual bundle therefore restocks its components (it has no stock of its
+     * own), and a lot delivery restores its named lot with the FEFO trail
+     * intact instead of a lot-less aggregate.
+     *
+     * A delivery whose completion recorded no `sale` movement issued no goods
+     * (an invoice already shipped them — #682), and a legacy delivery completed
+     * before the movement trail existed has none either; both fall back to
+     * {@see restockLegacyLines()}, which restocks only what the goods-issue
+     * ledger attributes to this delivery and never conjures stock.
+     */
+    private function restockReversingCompletionMovements(DeliveryOrder $deliveryOrder, string $reason): void
+    {
+        $saleMovements = StockMovement::query()
+            ->where('reference_type', 'DeliveryOrder')
+            ->where('reference_id', $deliveryOrder->id)
+            ->where('type', 'sale')
+            ->orderBy('id')
+            ->get();
+
+        if ($saleMovements->isEmpty()) {
+            $this->restockLegacyLines($deliveryOrder, $reason);
+
+            return;
+        }
+
+        foreach ($saleMovements as $movement) {
+            $this->inventoryService->adjustStock(
+                productId: (int) $movement->product_id,
+                warehouseId: (int) $movement->warehouse_id,
+                quantity: (float) $movement->quantity,
+                type: 'return',
+                reference: "REVERSAL-{$deliveryOrder->delivery_order_number}",
+                referenceType: 'DeliveryOrder',
+                referenceId: $deliveryOrder->id,
+                notes: "Reversal: {$reason} — reverses stock movement #{$movement->id}",
+                batchNumber: $movement->batch_number,
+                expiryDate: $movement->expiry_date
+                    ? new \DateTime($movement->expiry_date->toDateString())
+                    : null,
+                idempotencyKey: "do-reverse-{$deliveryOrder->id}-movement-{$movement->id}",
+            );
+        }
+    }
+
+    /**
+     * The pre-#460 reversal logic, kept as the fallback for delivery orders
+     * with no recorded `sale` movement (a legacy completion, or goods an
+     * invoice had already issued — #682). It recomputes the bundle demand and
+     * restocks exactly what the goods-issue ledger attributes to this delivery:
+     * zero when completion shipped nothing, so it can never conjure stock.
+     */
+    private function restockLegacyLines(DeliveryOrder $deliveryOrder, string $reason): void
+    {
+        foreach ($deliveryOrder->lines as $line) {
+            if (! $line->product_id) {
+                continue;
+            }
+
+            $product = $line->product;
+            $isStockTracked = $product && (bool) ($product->track_inventory ?? false);
+
+            if (! $isStockTracked) {
+                continue;
+            }
+
+            // #457 (DO5): reverse exactly what was issued, fraction included.
+            $qty = (float) $line->quantity_delivered;
+
+            foreach ($this->bundleDecomposition->stockConsumingComponents($product, $qty) as $component) {
+                $issuedQty = (float) $this->goodsIssueLedger->issuedByDeliveryOrder($deliveryOrder, (int) $component['product']->id);
+
+                if ($issuedQty <= 0) {
+                    continue;
+                }
+
+                // Compensating inbound movement (restock)
+                $this->inventoryService->adjustStock(
+                    productId: $component['product']->id,
+                    warehouseId: (int) $deliveryOrder->warehouse_id,
+                    quantity: $issuedQty,
+                    type: 'return',
+                    reference: "REVERSAL-{$deliveryOrder->delivery_order_number}",
+                    referenceType: 'DeliveryOrder',
+                    referenceId: $deliveryOrder->id,
+                    notes: "Reversal: {$reason}",
+                    idempotencyKey: "do-reverse-{$deliveryOrder->id}-line-{$line->id}".
+                        ($product->is_bundle ? "-component-{$component['product']->id}" : ''),
+                );
+            }
+        }
+    }
+
+    /**
+     * Issue #460 (DO8): the inverse of completion's markSerialsSold() — the
+     * serials this delivery marked sold return to `available` so they can be
+     * sold again.
+     *
+     * Two guards keep the inverse exact: the serial must currently be `sold`
+     * with this delivery order's number as its sale reference (a serial another
+     * document sold is never touched), and this delivery must have issued one
+     * of the line's stock-consuming products (a delivery whose goods an invoice
+     * already shipped recorded no movement and is left for the invoice — #682).
+     */
+    private function returnDeliverySerials(DeliveryOrder $deliveryOrder): void
+    {
+        $serialService = app(BatchSerialConsumptionService::class);
+
+        foreach ($deliveryOrder->lines as $line) {
+            if (! $line->product || empty($line->serial_numbers)) {
+                continue;
+            }
+
+            $lineProductIds = array_map(
+                fn (array $component) => (int) $component['product']->id,
+                $this->bundleDecomposition->stockConsumingComponents(
+                    $line->product,
+                    (float) $line->quantity_delivered,
+                ),
+            );
+
+            if ($lineProductIds === []) {
+                continue;
+            }
+
+            $issuedByThisDelivery = StockMovement::query()
+                ->where('reference_type', 'DeliveryOrder')
+                ->where('reference_id', $deliveryOrder->id)
+                ->where('type', 'sale')
+                ->whereIn('product_id', $lineProductIds)
+                ->exists();
+
+            if (! $issuedByThisDelivery) {
+                continue;
+            }
+
+            $serials = ProductSerial::query()
+                ->where('product_id', $line->product_id)
+                ->whereIn('serial_number', (array) $line->serial_numbers)
+                ->where('status', ProductSerial::STATUS_SOLD)
+                ->where('sale_reference', $deliveryOrder->delivery_order_number)
+                ->pluck('serial_number')
+                ->all();
+
+            if ($serials !== []) {
+                $serialService->markSerialsReturned($line->product, $serials);
+            }
+        }
+    }
+
+    /**
      * DRAFT|CONFIRMED → CANCELLED (pre-completion cancellation — no stock effect)
      */
     public function cancelDeliveryOrder(DeliveryOrder $deliveryOrder, ?string $reason = null): DeliveryOrder
@@ -1550,6 +1827,18 @@ class DeliveryOrderService
             throw new \Exception('Delivery order is already cancelled.');
         }
 
+        // #459 (DO7): an issued invoice owns the delivered quantities, so a
+        // cancellation underneath it would leave a billed-but-never-shipped
+        // invoice. Only stale (draft/cancelled/voided) links are detachable.
+        $linkedInvoices = $this->linkedInvoices($deliveryOrder);
+
+        $blockingInvoice = $linkedInvoices->first(fn ($invoice) => ! $this->invoiceIsHarmless($invoice));
+        if ($blockingInvoice) {
+            throw new \Exception(
+                'Cannot cancel a delivery order linked to an issued invoice ('.$blockingInvoice->invoice_number.'). Issue a credit note instead.'
+            );
+        }
+
         // #900 (PC6): cancellation status through the engine.
         app(\App\Services\SalesWorkflowService::class)->transition(
             $deliveryOrder,
@@ -1557,6 +1846,8 @@ class DeliveryOrderService
             ['reason' => $reason],
             $reason,
         );
+
+        $this->detachInvoiceLinks($deliveryOrder, $linkedInvoices);
 
         $deliveryOrder->update([
             'notes' => $reason
@@ -1596,44 +1887,17 @@ class DeliveryOrderService
         // delivered quantities, so the order cannot be re-opened underneath it.
         // A draft / cancelled / voided invoice does NOT — the link is stale and
         // previously blocked resets forever on a cancelled DO (422), so those
-        // links are detached here instead.
-        $harmlessInvoiceStates = ['draft', 'cancelled', 'voided', 'reversed', 'superseded'];
-        $invoiceIsHarmless = fn ($invoice): bool => ! $invoice // orphaned pointer — nothing to protect
-            || in_array($invoice->status, ['draft', 'cancelled'], true)
-            || in_array((string) $invoice->lifecycle_status, $harmlessInvoiceStates, true);
+        // links are detached here instead (#459 shares these helpers).
+        $linkedInvoices = $this->linkedInvoices($deliveryOrder);
 
-        $linkedInvoices = collect();
-        if ($deliveryOrder->invoice_id) {
-            $linkedInvoices->push(\App\Models\Invoice::find($deliveryOrder->invoice_id));
-        }
-        if (\Illuminate\Support\Facades\Schema::hasTable('invoice_delivery_orders')) {
-            $pivotInvoiceIds = \Illuminate\Support\Facades\DB::table('invoice_delivery_orders')
-                ->where('delivery_order_id', $deliveryOrder->id)
-                ->pluck('invoice_id');
-            if ($pivotInvoiceIds->isNotEmpty()) {
-                $linkedInvoices = $linkedInvoices
-                    ->merge(\App\Models\Invoice::whereIn('id', $pivotInvoiceIds)->get())
-                    ->filter();
-            }
-        }
-
-        $blockingInvoice = $linkedInvoices->first(fn ($invoice) => ! $invoiceIsHarmless($invoice));
+        $blockingInvoice = $linkedInvoices->first(fn ($invoice) => ! $this->invoiceIsHarmless($invoice));
         if ($blockingInvoice) {
             throw new \Exception(
                 'Cannot reset a delivery order that is linked to an issued invoice ('.$blockingInvoice->invoice_number.'). Cancel or reset that invoice first.'
             );
         }
 
-        if ($linkedInvoices->isNotEmpty()) {
-            // Detach every non-issued link so the order can be edited and billed again.
-            $deliveryOrder->update(['invoice_id' => null]);
-            if (\Illuminate\Support\Facades\Schema::hasTable('invoice_delivery_orders')) {
-                \Illuminate\Support\Facades\DB::table('invoice_delivery_orders')
-                    ->where('delivery_order_id', $deliveryOrder->id)
-                    ->whereIn('invoice_id', $linkedInvoices->pluck('id')->all())
-                    ->delete();
-            }
-        }
+        $this->detachInvoiceLinks($deliveryOrder, $linkedInvoices);
 
         if ($deliveryOrder->isDone()) {
             // DONE → CANCELLED via the canonical reversal: posts compensating
@@ -1854,24 +2118,32 @@ class DeliveryOrderService
      * Locate which tenant owns a given delivery-order customer token.
      * Mirrors InvoiceEvidenceService::resolveTenantForAcceptanceToken for the
      * public /do-accept route.
+     *
+     * Issue #466 (DO14): the tenant is resolved from the central token
+     * registry in one indexed lookup instead of scanning every tenant schema
+     * per public request. The scan survives only as a fallback for tokens
+     * issued before the registry existed; a token found that way is registered
+     * so later requests are O(1).
      */
     public function resolveTenantForCustomerToken(string $token): ?\App\Models\Tenant
     {
-        foreach (\App\Models\Tenant::all() as $tenant) {
-            try {
-                $found = $tenant->run(function () use ($token) {
-                    return DeliveryOrder::where('acceptance_token', $token)->exists();
+        return app(\App\Services\DocumentTokenRegistry::class)->resolveTenant(
+            $token,
+            \App\Services\DocumentTokenRegistry::TYPE_DELIVERY_ORDER,
+            function (\App\Models\Tenant $tenant) use ($token): ?array {
+                $deliveryOrder = $tenant->run(function () use ($token) {
+                    return DeliveryOrder::where('acceptance_token', $token)->first();
                 });
 
-                if ($found) {
-                    return $tenant;
+                if (! $deliveryOrder) {
+                    return null;
                 }
-            } catch (\Throwable $e) {
-                // A tenant whose schema predates the acceptance_token column.
-                continue;
-            }
-        }
 
-        return null;
+                return [
+                    'document_id' => (int) $deliveryOrder->getKey(),
+                    'expires_at' => $deliveryOrder->acceptance_expires_at,
+                ];
+            },
+        );
     }
 }
