@@ -14,6 +14,21 @@ import { useToast } from '@/hooks/use-toast';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 
+/** #490: GET /payments/fx-preview — the posting engine's own settlement maths. */
+export interface PaymentFxPreview {
+  currency: string;
+  base_currency_code: string;
+  foreign: boolean;
+  exchange_rate: number;
+  rate_source: string;
+  invoice_rate: number;
+  amount: number;
+  base_amount: number;
+  ar_base_amount: number;
+  fx_amount: number;
+  fx_type: 'gain' | 'loss' | 'none';
+}
+
 /**
  * #491 (PAY-UX5): the existing "Record Customer Payment" form, moved out of
  * CustomerPayments.tsx unchanged so the invoice list and invoice detail pages
@@ -141,6 +156,35 @@ export const RecordPaymentForm: React.FC<{
 
   const { toast } = useToast();
 
+  // #490 (PAY-UX4): foreign-currency invoices show the currency, an editable
+  // payment rate (defaulted from the stored rate snapshot), the base amount
+  // and the expected realized FX gain/loss — all from the backend preview,
+  // which is the same computation posting uses.
+  const [rateInput, setRateInput] = useState('');
+  const [rateEdited, setRateEdited] = useState(false);
+  const amountNumber = Number(formData.amount);
+  const editedRate = rateEdited && Number(rateInput) > 0 ? Number(rateInput) : null;
+  const { data: fxPreview, error: fxPreviewError } = useQuery<PaymentFxPreview>({
+    queryKey: ['payment-fx-preview', formData.invoice_id, formData.amount, formData.payment_date, editedRate],
+    queryFn: async () => {
+      const res = await api.get('/payments/fx-preview', {
+        params: {
+          invoice_id: formData.invoice_id,
+          amount: amountNumber,
+          payment_date: formData.payment_date || undefined,
+          exchange_rate: editedRate ?? undefined,
+        },
+      });
+      return res.data.data as PaymentFxPreview;
+    },
+    enabled: !!formData.invoice_id && amountNumber > 0,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!rateEdited && fxPreview?.foreign) setRateInput(String(fxPreview.exchange_rate));
+  }, [fxPreview, rateEdited]);
+
   const recordPaymentMutation = useMutation({
     mutationFn: async (data: any) => {
       const response = await api.post('/payments', data);
@@ -177,10 +221,15 @@ export const RecordPaymentForm: React.FC<{
     recordPaymentMutation.mutate({
       ...formData,
       bank_account_id: formData.bank_account_id ? Number(formData.bank_account_id) : null,
+      // #490: an edited rate (the bank's actual one) is sent as exchange_rate;
+      // otherwise the backend snapshots the payment-date rate itself.
+      ...(editedRate != null && fxPreview?.foreign ? { exchange_rate: editedRate } : {}),
     });
   };
 
   const handleInvoiceChange = (value: string, invoice?: InvoiceSearchItem) => {
+    setRateEdited(false);
+    setRateInput('');
     setFormData({
       ...formData,
       invoice_id: value,
@@ -246,6 +295,55 @@ export const RecordPaymentForm: React.FC<{
           </Select>
         </div>
       </div>
+      {fxPreview?.foreign && (
+        <div className="rounded-md border p-3 space-y-2" data-testid="payment-fx-preview">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="exchange_rate">
+                Payment rate (1 {fxPreview.currency} = ? {fxPreview.base_currency_code})
+              </Label>
+              <Input
+                id="exchange_rate"
+                type="number"
+                step="0.000001"
+                min="0"
+                value={rateInput}
+                onChange={(e) => {
+                  setRateEdited(true);
+                  setRateInput(e.target.value);
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                Invoice rate: {fxPreview.invoice_rate}
+                {!rateEdited && ' · defaulted from the rate snapshot; edit to use the bank\'s rate'}
+              </p>
+            </div>
+            <div className="space-y-1 text-sm">
+              <p>Currency: <span className="font-medium">{fxPreview.currency}</span></p>
+              <p>
+                Base amount:{' '}
+                <span className="font-medium" data-testid="fx-base-amount">
+                  {fxPreview.base_amount.toFixed(2)} {fxPreview.base_currency_code}
+                </span>
+              </p>
+              <p>
+                Expected FX {fxPreview.fx_type === 'loss' ? 'loss' : 'gain'}:{' '}
+                <span
+                  data-testid="fx-amount"
+                  className={fxPreview.fx_type === 'loss' ? 'font-medium text-red-600' : 'font-medium text-green-700'}
+                >
+                  {Math.abs(fxPreview.fx_amount).toFixed(2)} {fxPreview.base_currency_code}
+                </span>
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+      {fxPreviewError && formData.invoice_id && (
+        <p className="text-xs text-red-600">
+          {(fxPreviewError as any)?.response?.data?.message || 'Could not preview the exchange rate.'}
+        </p>
+      )}
       <div className="space-y-2">
         <Label htmlFor="reference">Reference Number</Label>
         <Input

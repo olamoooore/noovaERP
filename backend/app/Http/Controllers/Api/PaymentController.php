@@ -210,6 +210,53 @@ class PaymentController extends Controller
         ]);
     }
 
+    /**
+     * #490 (PAY-UX4): read-only preview of a payment's currency, rate,
+     * base-currency amount and expected realized FX gain/loss — computed by
+     * PaymentPostingService::settlementPreview(), the same code post() uses,
+     * on an unsaved payment shaped exactly as store() would record it.
+     */
+    public function fxPreview(Request $request)
+    {
+        $validated = $request->validate([
+            'invoice_id' => 'required|exists:invoices,id',
+            'amount' => 'required|numeric|min:0',
+            'discount_amount' => 'nullable|numeric|min:0',
+            'payment_date' => 'nullable|date',
+            'exchange_rate' => 'nullable|numeric|gt:0',
+        ]);
+
+        $invoice = Invoice::findOrFail($validated['invoice_id']);
+
+        $payment = new Payment([
+            'invoice_id' => $invoice->id,
+            'customer_id' => $invoice->customer_id,
+            'amount' => $validated['amount'],
+            'discount_amount' => $validated['discount_amount'] ?? 0,
+            'payment_date' => $validated['payment_date'] ?? now()->toDateString(),
+            // Same currency inheritance as InvoiceService::recordPayment().
+            'currency' => $invoice->currency_code ?? \App\Services\DocumentCurrencyResolver::resolve(),
+            'base_currency_code' => $invoice->base_currency_code
+                ?? \App\Services\DocumentCurrencyResolver::baseFor($invoice->salesOrder?->legal_entity_id, $invoice->customer_id),
+            'exchange_rate' => $validated['exchange_rate'] ?? null,
+        ]);
+        $payment->setRelation('invoice', $invoice);
+
+        try {
+            $preview = $this->paymentPostingService->settlementPreview($payment);
+        } catch (\App\Exceptions\PricingException $e) {
+            // No usable rate: posting would be blocked too (FR-1.5/AC-3).
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        if (isset($validated['exchange_rate'])) {
+            $preview['rate_source'] = 'manual';
+        }
+        unset($preview['rate_resolved']);
+
+        return response()->json(['data' => $preview]);
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -221,6 +268,9 @@ class PaymentController extends Controller
             'reference' => 'nullable|string',
             'notes' => 'nullable|string',
             'bank_account_id' => 'nullable|exists:bank_accounts,id',
+            // #490: the bank's actual rate, edited in the payment dialog.
+            // Absent → the payment-date snapshot is used (unchanged).
+            'exchange_rate' => 'nullable|numeric|gt:0',
         ]);
 
         // #486: field requirements come from the method master, not a

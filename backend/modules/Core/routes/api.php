@@ -510,6 +510,10 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             ->middleware(RequirePermission::using('accounting.view')); // #481
         Route::get('/payments/eligible-invoices', [PaymentController::class, 'eligibleInvoices'])
             ->middleware(RequirePermission::using('accounting.view')); // #481
+        // #490 (PAY-UX4): read-only FX settlement preview — registered before
+        // /payments/{payment} so the literal segment is not taken as an id.
+        Route::get('/payments/fx-preview', [PaymentController::class, 'fxPreview'])
+            ->middleware(RequirePermission::using('accounting.view'));
         Route::post('/payments/import', [PaymentImportController::class, 'import']);
         Route::post('/payments/bulk-delete', [PaymentController::class, 'bulkDestroy']);
         Route::post('/payments/bulk-post', [PaymentController::class, 'bulkPost'])

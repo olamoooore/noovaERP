@@ -37,6 +37,101 @@ class PaymentPostingService
     ) {}
 
     /**
+     * #490 (PAY-UX4): the realized-FX settlement computation for a payment —
+     * shared by post() and the read-only GET /payments/fx-preview endpoint, so
+     * what the operator previews is exactly what posts. Pure: never writes.
+     *
+     * Realized FX: AR clears at the INVOICE snapshot rate, the bank receives
+     * at the PAYMENT rate (the payment's stored/edited exchange_rate, else the
+     * payment-date snapshot), and the difference is the realized gain/loss.
+     * Base-currency payments keep both rates at 1.0.
+     *
+     * @return array{currency:string, base_currency_code:string, foreign:bool, exchange_rate:float, rate_source:string, rate_resolved:bool, invoice_rate:float, amount:float, discount_amount:float, base_amount:float, ar_cash_base_amount:float, discount_base_amount:float, ar_base_amount:float, fx_amount:float, fx_type:string}
+     *
+     * @throws \App\Exceptions\PricingException when a foreign payment has no rate
+     */
+    public function settlementPreview(Payment $payment): array
+    {
+        $invoice = $payment->invoice;
+
+        $docCurrency = strtoupper((string) ($payment->currency
+            ?? $invoice?->currency_code
+            ?? \App\Services\DocumentCurrencyResolver::resolve()));
+        $baseCurrency = strtoupper((string) ($payment->base_currency_code
+            ?? $invoice?->base_currency_code
+            ?? \App\Services\DocumentCurrencyResolver::baseFor(
+                $invoice?->salesOrder?->legal_entity_id,
+                $payment->customer_id
+            )));
+        $foreign = $docCurrency !== $baseCurrency;
+
+        $payRate = $payment->exchange_rate !== null ? (float) $payment->exchange_rate : null;
+        $rateSource = 'stored';
+        $rateResolved = false;
+
+        if ($payRate === null || $payRate <= 0) {
+            $rateResolved = true;
+            if (! $foreign) {
+                $payRate = 1.0;
+                $rateSource = 'same_currency';
+            } else {
+                $snapshot = \App\Services\DocumentCurrencyResolver::snapshot(
+                    $docCurrency,
+                    $payment->customer_id,
+                    $invoice?->salesOrder?->legal_entity_id,
+                    $payment->payment_date instanceof \DateTimeInterface
+                        ? $payment->payment_date->format('Y-m-d')
+                        : (string) $payment->payment_date
+                );
+                $payRate = (float) $snapshot['exchange_rate'];
+                $baseCurrency = strtoupper((string) $snapshot['base_currency_code']);
+                $rateSource = (string) $snapshot['rate_source'];
+            }
+        }
+
+        // §9.5: fx = round(applied × (payment_rate − invoice_rate), 2).
+        // A STANDALONE payment (no invoice to clear) has no second rate —
+        // both legs carry the settlement rate, so the FX leg is zero by
+        // construction and the posting matches the historical shape.
+        if ($invoice) {
+            $invoiceRate = $invoice->exchange_rate !== null ? (float) $invoice->exchange_rate : 1.0;
+        } else {
+            $invoiceRate = $payRate;
+        }
+
+        // #478: a cash discount settles part of the invoice without cash —
+        // debit Sales discount and credit AR by amount + discount. Realized
+        // FX applies only to the cash leg, so its base stays
+        // bankBase − amount×invoiceRate; the discount is converted at the
+        // invoice snapshot rate (it reduces the receivable at that rate).
+        $amount = round((float) $payment->amount, 2);
+        $discount = round((float) ($payment->discount_amount ?? 0), 2);
+        $bankBase = round((float) $payment->amount * $payRate, 2);
+        $arCashBase = round((float) $payment->amount * $invoiceRate, 2);
+        $discountBase = round($discount * $invoiceRate, 2);
+        $arBase = round($arCashBase + $discountBase, 2);
+        $fx = round($bankBase - $arCashBase, 2);
+
+        return [
+            'currency' => $docCurrency,
+            'base_currency_code' => $baseCurrency,
+            'foreign' => $foreign,
+            'exchange_rate' => $payRate,
+            'rate_source' => $rateSource,
+            'rate_resolved' => $rateResolved,
+            'invoice_rate' => $invoiceRate,
+            'amount' => $amount,
+            'discount_amount' => $discount,
+            'base_amount' => $bankBase,
+            'ar_cash_base_amount' => $arCashBase,
+            'discount_base_amount' => $discountBase,
+            'ar_base_amount' => $arBase,
+            'fx_amount' => $fx,
+            'fx_type' => $fx > 0 ? 'gain' : ($fx < 0 ? 'loss' : 'none'),
+        ];
+    }
+
+    /**
      * Post a single payment.
      *
      * Idempotent:
@@ -107,42 +202,19 @@ class PaymentPostingService
             }
 
             // ── MRD pricelist-multicurrency FR-7.2/7.3 / AC-4 ────────────
-            // Realized FX: AR clears at the INVOICE snapshot rate, the bank
-            // receives at the PAYMENT-date rate, and the difference posts to
-            // the realized gain/loss accounts. Base-currency payments keep
-            // both rates at 1.0, so this collapses exactly to the historical
-            // "same amount on both legs" posting.
+            // #490: the settlement maths lives in settlementPreview() so the
+            // pre-posting preview shown to the operator is the SAME
+            // computation that posts here (preview == posted).
             $invoice = $payment->invoice;
+            $settlement = $this->settlementPreview($payment);
 
-            $docCurrency = strtoupper((string) ($payment->currency
-                ?? $invoice?->currency_code
-                ?? \App\Services\DocumentCurrencyResolver::resolve()));
-            $baseCurrency = strtoupper((string) ($payment->base_currency_code
-                ?? $invoice?->base_currency_code
-                ?? \App\Services\DocumentCurrencyResolver::baseFor(
-                    $invoice?->salesOrder?->legal_entity_id,
-                    $payment->customer_id
-                )));
-            $foreign = $docCurrency !== $baseCurrency;
+            $docCurrency = $settlement['currency'];
+            $baseCurrency = $settlement['base_currency_code'];
+            $foreign = $settlement['foreign'];
+            $payRate = $settlement['exchange_rate'];
+            $invoiceRate = $settlement['invoice_rate'];
 
-            $payRate = $payment->exchange_rate !== null ? (float) $payment->exchange_rate : null;
-
-            if ($payRate === null || $payRate <= 0) {
-                if (! $foreign) {
-                    $payRate = 1.0;
-                } else {
-                    $snapshot = \App\Services\DocumentCurrencyResolver::snapshot(
-                        $docCurrency,
-                        $payment->customer_id,
-                        $invoice?->salesOrder?->legal_entity_id,
-                        $payment->payment_date instanceof \DateTimeInterface
-                            ? $payment->payment_date->format('Y-m-d')
-                            : (string) $payment->payment_date
-                    );
-                    $payRate = (float) $snapshot['exchange_rate'];
-                    $baseCurrency = strtoupper((string) $snapshot['base_currency_code']);
-                }
-
+            if ($settlement['rate_resolved']) {
                 // Persist the resolved settlement snapshot so a re-post is
                 // deterministic and the audit can see the rate used (FR-3.9).
                 $payment->update([
@@ -152,27 +224,11 @@ class PaymentPostingService
                 ]);
             }
 
-            // §9.5: fx = round(applied × (payment_rate − invoice_rate), 2).
-            // A STANDALONE payment (no invoice to clear) has no second rate —
-            // both legs carry the settlement rate, so the FX leg is zero by
-            // construction and the posting matches the historical shape.
-            if ($invoice) {
-                $invoiceRate = $invoice->exchange_rate !== null ? (float) $invoice->exchange_rate : 1.0;
-            } else {
-                $invoiceRate = $payRate;
-            }
-
-            // #478: a cash discount settles part of the invoice without cash —
-            // debit Sales discount and credit AR by amount + discount. Realized
-            // FX applies only to the cash leg, so its base stays
-            // bankBase − amount×invoiceRate; the discount is converted at the
-            // invoice snapshot rate (it reduces the receivable at that rate).
-            $discount = round((float) ($payment->discount_amount ?? 0), 2);
-            $bankBase = round((float) $payment->amount * $payRate, 2);
-            $arCashBase = round((float) $payment->amount * $invoiceRate, 2);
-            $discountBase = round($discount * $invoiceRate, 2);
-            $arBase = round($arCashBase + $discountBase, 2);
-            $fx = round($bankBase - $arCashBase, 2);
+            $discount = $settlement['discount_amount'];
+            $bankBase = $settlement['base_amount'];
+            $discountBase = $settlement['discount_base_amount'];
+            $arBase = $settlement['ar_base_amount'];
+            $fx = $settlement['fx_amount'];
 
             $lines = [
                 // DR Cash/Bank (at settlement rate)
