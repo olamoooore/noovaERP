@@ -35,6 +35,7 @@ import {
 import pricingApi from '@/lib/pricingApi'
 import { useAuthStore } from '@/store/authStore';
 import { ContactSearchCombobox } from '@/components/ui/ContactSearchCombobox';
+import { invoiceContactPayload } from './invoiceContactPayload';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 import { CustomerForm } from '@/components/customers/CustomerForm';
 import {
@@ -1705,7 +1706,7 @@ export const CreateInvoicePage: React.FC = () => {
       case_number: caseNumber || undefined,
       cases: buildCasesPayload(),
       pr_no: prNo || undefined, contract_no: contractNo || undefined,
-      buyer_contact_id: buyerContactId.includes('-') ? buyerContactId : null,
+      ...invoiceContactPayload('buyer', buyerContactId),
       plant_code: plantCode || undefined, company_code: companyCode || undefined,
       date_of_case: dateOfCase || undefined,
       case_location: caseLocation || undefined,
@@ -1714,20 +1715,13 @@ export const CreateInvoicePage: React.FC = () => {
       delivery_date: deliveryDate || undefined,
       warehouse_id: warehouseId ? Number(warehouseId) : undefined,
       po_number: poNumber || undefined,
-      doctor_contact_id: doctorContactId.includes('-') ? doctorContactId : null,
-      requestor_contact_id: requestorContactId.includes('-') ? requestorContactId : null,
-      // Customer-contact selections populate the document snapshot. The legacy
-      // UUID contact links are retained only when loading an existing invoice.
-      billing_contact_id: billingContactId.includes('-') ? billingContactId : null,
-      shipping_contact_id: shippingContactId.includes('-') ? shippingContactId : null,
-      billing_contact_name: (selectedCustomerDetail?.customer_contacts ?? selectedCustomerDetail?.customerContacts ?? [])
-        .find((contact) => String(contact.id) === billingContactId)?.name || null,
-      shipping_contact_name: (selectedCustomerDetail?.customer_contacts ?? selectedCustomerDetail?.customerContacts ?? [])
-        .find((contact) => String(contact.id) === shippingContactId)?.name || null,
-      doctor_contact_name: (selectedCustomerDetail?.customer_contacts ?? selectedCustomerDetail?.customerContacts ?? [])
-        .find((contact) => String(contact.id) === doctorContactId)?.name || null,
-      requestor_contact_name: (selectedCustomerDetail?.customer_contacts ?? selectedCustomerDetail?.customerContacts ?? [])
-        .find((contact) => String(contact.id) === requestorContactId)?.name || null,
+      // #300: send the picked contact's stable id (customer-contact id or
+      // existing core contact UUID) — never its name, which the server would
+      // resolve by name and could merge or duplicate contacts.
+      ...invoiceContactPayload('doctor', doctorContactId),
+      ...invoiceContactPayload('requestor', requestorContactId),
+      ...invoiceContactPayload('billing', billingContactId),
+      ...invoiceContactPayload('shipping', shippingContactId),
       notes: notes || undefined,
       terms: terms || undefined,
       payment_terms: paymentTerms,

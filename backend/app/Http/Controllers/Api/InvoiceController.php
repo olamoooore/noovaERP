@@ -519,6 +519,14 @@ class InvoiceController extends Controller
             'shipping_contact_id' => 'nullable|exists:core_contacts,id',
             'billing_contact_name' => 'nullable|string|max:255',
             'shipping_contact_name' => 'nullable|string|max:255',
+            // #300: the form picks people from the customer's own contact list
+            // (numeric customer_contacts ids); these resolve to that contact's
+            // linked core contact instead of a name lookup.
+            'doctor_customer_contact_id' => 'nullable|integer',
+            'requestor_customer_contact_id' => 'nullable|integer',
+            'buyer_customer_contact_id' => 'nullable|integer',
+            'billing_customer_contact_id' => 'nullable|integer',
+            'shipping_customer_contact_id' => 'nullable|integer',
             'lines' => 'required|array|min:1',
             'lines.*.line_type' => 'nullable|in:product,note,section',
             'lines.*.product_id' => 'nullable|exists:products,id',
@@ -600,14 +608,7 @@ class InvoiceController extends Controller
             ], 422);
         }
 
-        foreach (['doctor', 'requestor', 'billing', 'shipping'] as $contactType) {
-            $nameKey = $contactType.'_contact_name';
-            $idKey = $contactType.'_contact_id';
-            if (! empty($validated[$nameKey])) {
-                $validated[$idKey] = $this->resolveOrCreateContact($validated[$nameKey], 'person', 'invoice_form');
-            }
-            unset($validated[$nameKey]);
-        }
+        $this->applyFormContactSelections($validated, isset($validated['customer_id']) ? (int) $validated['customer_id'] : null);
 
         try {
             $tagNames = $validated['tags'] ?? [];
@@ -1363,6 +1364,14 @@ class InvoiceController extends Controller
             'shipping_contact_id' => 'nullable|exists:core_contacts,id',
             'billing_contact_name' => 'nullable|string|max:255',
             'shipping_contact_name' => 'nullable|string|max:255',
+            // #300: the form picks people from the customer's own contact list
+            // (numeric customer_contacts ids); these resolve to that contact's
+            // linked core contact instead of a name lookup.
+            'doctor_customer_contact_id' => 'nullable|integer',
+            'requestor_customer_contact_id' => 'nullable|integer',
+            'buyer_customer_contact_id' => 'nullable|integer',
+            'billing_customer_contact_id' => 'nullable|integer',
+            'shipping_customer_contact_id' => 'nullable|integer',
             'requires_approval' => 'nullable|boolean',
             'lines' => 'sometimes|array|min:1',
             'lines.*.line_type' => 'nullable|in:product,note,section',
@@ -1417,14 +1426,7 @@ class InvoiceController extends Controller
             ]);
         }
 
-        foreach (['doctor', 'requestor', 'billing', 'shipping'] as $contactType) {
-            $nameKey = $contactType.'_contact_name';
-            $idKey = $contactType.'_contact_id';
-            if (! empty($validated[$nameKey])) {
-                $validated[$idKey] = $this->resolveOrCreateContact($validated[$nameKey], 'person', 'invoice_form');
-            }
-            unset($validated[$nameKey]);
-        }
+        $this->applyFormContactSelections($validated, (int) ($validated['customer_id'] ?? $invoice->customer_id));
 
         // Reject document discount exceeding the line subtotal
         $subtotal = isset($validated['lines'])
@@ -3503,6 +3505,57 @@ class InvoiceController extends Controller
         }
 
         return mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+    }
+
+    /**
+     * #300: resolve the invoice form's contact selections to stable core
+     * contact ids. Precedence per role: a selected customer contact (must
+     * belong to the invoice's customer) → an explicit core contact id → a
+     * bare name (legacy API callers only; the form no longer sends names).
+     * A sent id is never overridden by a name lookup, so two people with the
+     * same name are not merged and no duplicate contact is created.
+     *
+     * @param  array<string, mixed>  $validated
+     */
+    private function applyFormContactSelections(array &$validated, ?int $customerId): void
+    {
+        $customer = null;
+
+        foreach (['doctor', 'requestor', 'buyer', 'billing', 'shipping'] as $contactType) {
+            $nameKey = $contactType.'_contact_name';
+            $idKey = $contactType.'_contact_id';
+            $customerContactKey = $contactType.'_customer_contact_id';
+
+            if (! empty($validated[$customerContactKey])) {
+                $customerContact = $customerId
+                    ? \App\Models\CustomerContact::query()
+                        ->where('customer_id', $customerId)
+                        ->find((int) $validated[$customerContactKey])
+                    : null;
+                if (! $customerContact) {
+                    throw ValidationException::withMessages([
+                        $customerContactKey => 'The selected contact does not belong to this customer.',
+                    ]);
+                }
+
+                $personId = $customerContact->core_contact_uuid
+                    && \Modules\Contact\src\Models\CoreContact::query()->whereKey($customerContact->core_contact_uuid)->exists()
+                    ? $customerContact->core_contact_uuid
+                    : null;
+                if (! $personId) {
+                    // Unlinked legacy customer contact: link it to its canonical
+                    // person once (ADR-003A sync), then reuse that link.
+                    $customer ??= Customer::findOrFail($customerId);
+                    $personId = app(\App\Services\CustomerContactSyncService::class)
+                        ->syncPersonForCustomerContact($customer, $customerContact);
+                }
+                $validated[$idKey] = $personId;
+            } elseif (empty($validated[$idKey]) && ! empty($validated[$nameKey])) {
+                $validated[$idKey] = $this->resolveOrCreateContact($validated[$nameKey], 'person', 'invoice_form');
+            }
+
+            unset($validated[$nameKey], $validated[$customerContactKey]);
+        }
     }
 
     /**
