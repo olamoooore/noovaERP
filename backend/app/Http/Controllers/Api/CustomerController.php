@@ -32,6 +32,32 @@ class CustomerController extends Controller
     private const CONTACT_MIRROR_FIELDS = ['name', 'type', 'email', 'phone', 'mobile', 'website'];
 
     /**
+     * Issue #439 (CU11): the only columns GET /customers may be ordered by.
+     * These are real `customers` columns (no relations/aggregates), covering
+     * the columns the customer list UI displays and exports.
+     */
+    private const SORTABLE_COLUMNS = [
+        'id',
+        'name',
+        'code',
+        'email',
+        'phone',
+        'mobile',
+        'company',
+        'tax_number',
+        'type',
+        'credit_limit',
+        'payment_terms',
+        'total_outstanding',
+        'total_purchases',
+        'total_orders',
+        'customer_since',
+        'is_active',
+        'created_at',
+        'updated_at',
+    ];
+
+    /**
      * Issue #434 (CU6): scope a customer query to the requester's accessible
      * legal entities. Mirrors SalesOrderController::applyEntityScope(): users
      * with no entity grants keep the historical unscoped view (fail-open);
@@ -136,10 +162,14 @@ class CustomerController extends Controller
             $query->whereIn('id', $taggedIds !== [] ? $taggedIds : [-1]);
         }
 
-        // Sorting
-        $sortBy = $request->sort_by ?? 'name';
-        $sortDir = $request->sort_dir ?? 'asc';
-        $query->orderBy($sortBy, $sortDir);
+        // Sorting — issue #439 (CU11): validate against an allow-list first,
+        // so an unknown column or direction is a 422 validation error instead
+        // of an unhandled SQL/InvalidArgumentException (500).
+        $sort = $request->validate([
+            'sort_by' => ['nullable', 'string', Rule::in(self::SORTABLE_COLUMNS)],
+            'sort_dir' => ['nullable', 'string', Rule::in(['asc', 'desc'])],
+        ]);
+        $query->orderBy($sort['sort_by'] ?? 'name', $sort['sort_dir'] ?? 'asc');
 
         if ($request->boolean('ids_only')) {
             $ids = $query->pluck('id');
