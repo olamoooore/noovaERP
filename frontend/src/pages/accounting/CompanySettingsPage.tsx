@@ -29,6 +29,7 @@ import ChartOfAccountsPage from '@/pages/accounting/ChartOfAccountsPage';
 import MultiCurrencyPage from '@/pages/accounting/MultiCurrencyPage';
 import AccountingOnboardingPage from '@/pages/accounting/AccountingOnboardingPage';
 import AccountingEntityManagementPage from '@/pages/accounting/AccountingEntityManagementPage';
+import AnalyticAccountsPage from '@/pages/accounting/AnalyticAccountsPage';
 
 const COMPANY_SECTIONS: SettingsSectionDef[] = [
   {
@@ -85,6 +86,13 @@ const COMPANY_SECTIONS: SettingsSectionDef[] = [
     title: 'Entities',
     description: 'Legal entities and their accounting scope',
     icon: 'solar:buildings-2-bold-duotone',
+    component: () => null,
+  },
+  {
+    key: 'analytic-accounts',
+    title: 'Analytic Accounts',
+    description: 'Cost centres, departments, projects and reporting dimensions',
+    icon: 'solar:pie-chart-2-bold-duotone',
     component: () => null,
   },
 ];
@@ -945,6 +953,8 @@ export default function CompanySettingsPage() {
         {activeTab === 'onboarding' && <AccountingOnboardingPage />}
 
         {activeTab === 'entities' && <AccountingEntityManagementPage embedded />}
+
+        {activeTab === 'analytic-accounts' && <AnalyticAccountsPage embedded />}
         </div>
       </div>
     </div>

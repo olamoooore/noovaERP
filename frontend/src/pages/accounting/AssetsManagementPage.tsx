@@ -34,7 +34,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import fixedAssetsApi, { type FixedAsset, type CreateAssetRequest } from '@/lib/fixedAssetsApi';
+import fixedAssetsApi, { type FixedAsset, type CreateAssetRequest, type DisposeAssetRequest } from '@/lib/fixedAssetsApi';
 import chartOfAccountsApi from '@/lib/chartOfAccountsApi';
 import { SalesDocumentExportMenu, type SalesExportColumn } from '@/components/sales/SalesDocumentExportMenu';
 
@@ -57,6 +57,13 @@ export default function AssetsManagementPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<FixedAsset | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<FixedAsset | null>(null);
+  const [disposeTarget, setDisposeTarget] = useState<FixedAsset | null>(null);
+  const [disposeForm, setDisposeForm] = useState<Omit<DisposeAssetRequest, 'disposal_amount'> & { disposal_amount: number | '' }>({
+    disposal_date: new Date().toLocaleDateString('en-CA'),
+    disposal_amount: '',
+    disposal_method: 'sold',
+    notes: '',
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedAssetId, setSelectedAssetId] = useState<number | null>(null);
@@ -243,6 +250,34 @@ export default function AssetsManagementPage() {
     },
   });
 
+  const disposeMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: DisposeAssetRequest }) =>
+      fixedAssetsApi.disposeAsset(id, data),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['fixed-assets'] });
+      queryClient.invalidateQueries({ queryKey: ['depreciation-schedule'] });
+      const gainLoss = Number(data?.gain_loss || 0);
+      const outcome = gainLoss > 0
+        ? `Gain: $${gainLoss.toLocaleString()}`
+        : gainLoss < 0
+          ? `Loss: $${Math.abs(gainLoss).toLocaleString()}`
+          : 'No gain or loss';
+      toast({ title: 'Asset disposed', description: `The disposal journal entry was posted. ${outcome}.` });
+      setDisposeTarget(null);
+    },
+    onError: (error: any) => {
+      const payload = error.response?.data;
+      toast({
+        title: 'Disposal failed',
+        description: payload?.error
+          || payload?.message
+          || (payload?.errors ? Object.values(payload.errors).flat().join(', ') : null)
+          || 'Failed to dispose asset',
+        variant: 'destructive',
+      });
+    },
+  });
+
   const resetForm = () => {
     setFormData({
       asset_number: '',
@@ -324,6 +359,20 @@ export default function AssetsManagementPage() {
   const handleDelete = (asset: FixedAsset) => {
     setDeactivateTarget(asset);
   };
+
+  const handleOpenDispose = (asset: FixedAsset) => {
+    setDisposeTarget(asset);
+    setDisposeForm({
+      disposal_date: new Date().toLocaleDateString('en-CA'),
+      disposal_amount: '',
+      disposal_method: 'sold',
+      notes: '',
+    });
+  };
+
+  const estimatedGainLoss = disposeTarget
+    ? Number(disposeForm.disposal_amount || 0) - Number(disposeTarget.book_value || 0)
+    : 0;
 
   const getStatusBadge = (status: string) => {
     const colors: Record<string, string> = {
@@ -430,26 +479,39 @@ export default function AssetsManagementPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-7 w-7"
-                            title="Edit"
-                            aria-label="Edit asset"
-                            onClick={() => handleOpenForm(asset)}
-                          >
-                            <Icon icon="solar:pen-linear" className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                            title="Deactivate"
-                            aria-label="Deactivate asset"
-                            onClick={() => handleDelete(asset)}
-                          >
-                            <Icon icon="solar:trash-bin-trash-linear" className="h-4 w-4" />
-                          </Button>
+                          {asset.status === 'active' && asset.is_active && (
+                            <>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7"
+                                title="Edit"
+                                aria-label="Edit asset"
+                                onClick={() => handleOpenForm(asset)}
+                              >
+                                <Icon icon="solar:pen-linear" className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 gap-1 px-2 text-xs"
+                                onClick={() => handleOpenDispose(asset)}
+                              >
+                                <Icon icon="solar:hand-money-linear" className="h-4 w-4" />
+                                Dispose
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                title="Deactivate"
+                                aria-label="Deactivate asset"
+                                onClick={() => handleDelete(asset)}
+                              >
+                                <Icon icon="solar:trash-bin-trash-linear" className="h-4 w-4" />
+                              </Button>
+                            </>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -760,6 +822,63 @@ export default function AssetsManagementPage() {
               ) : (
                 'Save Asset'
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={disposeTarget !== null} onOpenChange={(open) => !open && !disposeMutation.isPending && setDisposeTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Dispose {disposeTarget?.name || 'asset'}</DialogTitle>
+            <DialogDescription>
+              This posts a disposal journal entry, removes the asset from the ledger, and permanently stops depreciation.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3 rounded-md border bg-muted/30 p-3 text-sm">
+              <div><span className="text-muted-foreground">Asset number</span><div className="font-medium">{disposeTarget?.asset_number}</div></div>
+              <div><span className="text-muted-foreground">Current book value</span><div className="font-medium">${Number(disposeTarget?.book_value || 0).toLocaleString()}</div></div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="disposal_date">Disposal date *</Label>
+                <Input id="disposal_date" type="date" value={disposeForm.disposal_date} onChange={(e) => setDisposeForm({ ...disposeForm, disposal_date: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Method *</Label>
+                <Select value={disposeForm.disposal_method} onValueChange={(value: DisposeAssetRequest['disposal_method']) => setDisposeForm({ ...disposeForm, disposal_method: value, disposal_amount: value === 'sold' ? '' : 0 })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sold">Sold</SelectItem>
+                    <SelectItem value="scrapped">Scrapped</SelectItem>
+                    <SelectItem value="donated">Donated</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="disposal_amount">Disposal proceeds *</Label>
+              <Input id="disposal_amount" type="number" min="0" step="0.01" disabled={disposeForm.disposal_method !== 'sold'} value={disposeForm.disposal_amount} onChange={(e) => setDisposeForm({ ...disposeForm, disposal_amount: e.target.value === '' ? '' : Math.max(0, Number(e.target.value)) })} />
+              {disposeForm.disposal_method !== 'sold' && <p className="text-xs text-muted-foreground">Scrapped and donated assets have zero proceeds.</p>}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="disposal_notes">Notes</Label>
+              <Input id="disposal_notes" maxLength={1000} value={disposeForm.notes || ''} onChange={(e) => setDisposeForm({ ...disposeForm, notes: e.target.value })} placeholder="Reason, buyer, or supporting reference" />
+            </div>
+            <div className={`rounded-md border p-3 text-sm ${estimatedGainLoss < 0 ? 'border-amber-300 bg-amber-50 text-amber-900' : 'bg-muted/30'}`}>
+              Estimated {estimatedGainLoss >= 0 ? 'gain' : 'loss'}: <strong>${Math.abs(estimatedGainLoss).toLocaleString()}</strong>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" disabled={disposeMutation.isPending} onClick={() => setDisposeTarget(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={disposeMutation.isPending || !disposeForm.disposal_date || (disposeForm.disposal_method === 'sold' && disposeForm.disposal_amount === '')}
+              onClick={() => disposeTarget && disposeMutation.mutate({ id: disposeTarget.id, data: { ...disposeForm, disposal_amount: Number(disposeForm.disposal_amount) } })}
+            >
+              {disposeMutation.isPending && <Icon icon="svg-spinners:ring-resize" className="mr-2 h-4 w-4" />}
+              Post disposal
             </Button>
           </DialogFooter>
         </DialogContent>

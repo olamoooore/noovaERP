@@ -127,7 +127,6 @@ const ApSubledgerReconciliationPage = lazy(() => import('@/pages/accounting/ApSu
 const AssetsManagementPage = lazy(() => import('@/pages/accounting/AssetsManagementPage'))
 const FixedAssetImportPage = lazy(() => import('@/pages/accounting/FixedAssetImportPage'))
 const LockDatesPage = lazy(() => import('@/pages/accounting/LockDatesPage'))
-const AnalyticAccountsPage = lazy(() => import('@/pages/accounting/AnalyticAccountsPage'))
 const CompanySettingsPage = lazy(() => import('@/pages/accounting/CompanySettingsPage'))
 const ChartOfAccountsImportPage = lazy(() => import('@/pages/accounting/ChartOfAccountsImportPage'))
 const PaymentTermsPage = lazy(() => import('@/pages/accounting/PaymentTermsPage'))
@@ -508,7 +507,7 @@ function App() {
                 <Route path="/accounting/core/assets/import" element={<FixedAssetImportPage />} />
                 <Route path="/accounting/core/lock-dates" element={<LockDatesPage />} />
                 <Route path="/accounting/core/multi-currency" element={<Navigate to="/accounting/configuration/company?tab=multi-currency" replace />} />
-                <Route path="/accounting/core/analytic-accounts" element={<AnalyticAccountsPage />} />
+                <Route path="/accounting/core/analytic-accounts" element={<Navigate to="/accounting/configuration/company?tab=analytic-accounts" replace />} />
                 <Route path="/accounting/core/onboarding" element={<Navigate to="/accounting/configuration/company?tab=onboarding" replace />} />
                 <Route path="/accounting/core/entities" element={<Navigate to="/accounting/configuration/company?tab=entities" replace />} />
                 

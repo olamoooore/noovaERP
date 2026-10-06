@@ -35,7 +35,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import analyticAccountsApi, { type AnalyticAccount, type CreateAnalyticAccountRequest } from '@/lib/analyticAccountsApi';
 
-export default function AnalyticAccountsPage() {
+export default function AnalyticAccountsPage({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -230,9 +230,9 @@ export default function AnalyticAccountsPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className={embedded ? 'space-y-6' : 'p-6 space-y-6'}>
       {/* Header */}
-      <div className="flex items-center justify-between">
+      {!embedded && <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Analytic Accounts</h1>
           <p className="text-muted-foreground mt-1">
@@ -242,7 +242,7 @@ export default function AnalyticAccountsPage() {
         <HeaderActionButton icon="solar:arrow-left-linear" onClick={() => navigate('/accounting')}>
           Back to Accounting
         </HeaderActionButton>
-      </div>
+      </div>}
 
       {/* Type Selector */}
       <Card className="p-4">
