@@ -62,6 +62,9 @@ class BillPaymentService
 
             $vendor->updateSpending();
 
+            // ACC-005B: recognise the vendor payment into the settlement overlay.
+            app(SettlementRecognitionService::class)->recogniseBillPayment($payment->fresh());
+
             return $payment->fresh(['vendor', 'bill', 'journalEntry']);
         });
     }

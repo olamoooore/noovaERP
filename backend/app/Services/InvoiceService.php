@@ -2169,6 +2169,11 @@ class InvoiceService
 
         $this->syncInvoicePaymentState($invoice->fresh(), (float) $payment->amount, $payment);
 
+        // ACC-005B: channel receipts (POS / ecommerce / gateway) are
+        // cash-bearing when recorded, so they must appear in the settlement
+        // overlay like any other posted receipt.
+        app(SettlementRecognitionService::class)->recognisePayment($payment->fresh());
+
         return $payment;
     }
 

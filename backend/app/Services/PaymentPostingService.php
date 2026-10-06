@@ -288,6 +288,10 @@ class PaymentPostingService
             // draft never touched the invoice; this is where it finally does.
             app(\App\Services\InvoiceService::class)->settlePostedPayment($payment->fresh());
 
+            // ACC-005B: recognise the cash receipt into the settlement overlay
+            // once the receipt is cash-bearing (posted).
+            app(SettlementRecognitionService::class)->recognisePayment($payment->fresh());
+
             Log::info('Payment posted to ledger', [
                 'payment_id' => $payment->id,
                 'payment_number' => $payment->payment_number,
