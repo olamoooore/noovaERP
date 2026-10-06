@@ -85,7 +85,8 @@ final class DefaultTemplates
                         ['label' => 'Expiry', 'field' => 'expiry_date', 'width' => '12%'],
                         ['label' => 'Qty', 'field' => 'quantity', 'width' => '10%', 'align' => 'right'],
                         ['label' => 'Unit Price', 'field' => 'unit_price', 'width' => '13%', 'align' => 'right', 'format' => 'money'],
-                        ['label' => 'Amount', 'field' => 'line_total', 'width' => '13%', 'align' => 'right', 'format' => 'money'],
+                        // Issue #621: FOC lines print "FOC" with the list value struck through.
+                        ['label' => 'Amount', 'field' => 'line_total', 'width' => '13%', 'align' => 'right', 'format' => 'money', 'foc_display' => 'list_value'],
                     ]],
                     // Issue #614 (TP4): statutory tax summary per posted tax
                     // code/rate. paginate=false keeps its rows out of the

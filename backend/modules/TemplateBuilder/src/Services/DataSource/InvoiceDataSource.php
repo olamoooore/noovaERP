@@ -10,6 +10,7 @@ use App\Models\Invoice;
 use App\Models\LegalEntity;
 use App\Services\QrCodeService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Modules\TemplateBuilder\Contracts\DataSourceContract;
 use Modules\TemplateBuilder\Support\AmountInWords;
 
@@ -83,6 +84,10 @@ class InvoiceDataSource implements DataSourceContract
             $invoice->customer?->language,
         );
 
+        // Issue #621 (TPL-UX4): per-line FOC marker/list value, medical case
+        // number and linked SO/DO numbers.
+        $lineLinks = $this->lineLinks($invoice);
+
         $lines = [];
         $salesperson = $invoice->customer?->salesperson?->name ?? '';
         $doctor = $invoice->doctor?->full_name ?? $invoice->doctor?->display_name ?? '';
@@ -93,6 +98,8 @@ class InvoiceDataSource implements DataSourceContract
             if ($isProduct) {
                 $productIndex++;
             }
+            $links = $lineLinks[$line->id] ?? [];
+            $foc = $isProduct ? $this->focFor($line, $links) : ['is_foc' => false, 'list_value' => 0.0];
             $lines[] = [
                 'line_type' => $line->line_type ?? 'product',
                 'index' => $isProduct ? $productIndex : null,
@@ -111,7 +118,15 @@ class InvoiceDataSource implements DataSourceContract
                 'requestor' => $requestor,
                 'attention_to' => $invoice->attention_to ?? '',
                 'po_number' => $invoice->po_number ?? '',
-                'case_number' => $invoice->case_number ?? '',
+                // Issue #621: the line's own medical case(s); the invoice's
+                // case number when the line is not billed from a case.
+                'case_number' => ($links['case_numbers'] ?? []) !== []
+                    ? implode(', ', $links['case_numbers'])
+                    : ($invoice->case_number ?? ''),
+                'is_foc' => $foc['is_foc'],
+                'list_value' => $foc['list_value'],
+                'so_number' => implode(', ', $links['so_numbers'] ?? []),
+                'do_number' => implode(', ', $links['do_numbers'] ?? []),
                 'pr_no' => $invoice->pr_no ?? '', 'contract_no' => $invoice->contract_no ?? '',
                 'buyer' => $invoice->buyer?->full_name ?? $invoice->buyer?->display_name ?? '',
                 'plant_code' => $invoice->plant_code ?? '', 'company_code' => $invoice->company_code ?? '',
@@ -134,6 +149,13 @@ class InvoiceDataSource implements DataSourceContract
                 'reference' => $invoice->customer_reference,
                 'po_number' => $invoice->po_number ?? '',
                 'case_number' => $invoice->case_number ?? '',
+                // Issue #621: document-level case tokens the catalog already
+                // offered (invoice.date_of_case / case_location /
+                // patient_name) now carry data. patient_name is masked by the
+                // DataSourceRegistry PHI choke point like the line copy.
+                'date_of_case' => optional($invoice->date_of_case)->format('Y-m-d') ?? '',
+                'case_location' => $invoice->case_location ?? '',
+                'patient_name' => $invoice->patient_name ?? '',
                 'pr_no' => $invoice->pr_no ?? '',
                 'contract_no' => $invoice->contract_no ?? '',
                 'buyer' => $invoice->buyer?->full_name ?? $invoice->buyer?->display_name ?? '',
@@ -210,6 +232,132 @@ class InvoiceDataSource implements DataSourceContract
                 'language' => strtolower((string) ($invoice->customer?->language ?: 'en')),
             ],
         ];
+    }
+
+    /**
+     * Issue #621 (TPL-UX4): per invoice line — the medical case number(s),
+     * FOC quantity from live FOC case lines, and the linked sales order /
+     * delivery order numbers.
+     *
+     * FOC: until #560 adds `invoice_lines.is_foc`, the flag lives on the
+     * medical case line that bills the invoice line (`medical_case_items.
+     * is_foc`, `invoice_item_id`) — the same source and the same "cancelled
+     * or deleted cases gave nothing away" rule as the #600 analytics model.
+     *
+     * DO: the case line's own delivery order line when set; otherwise the
+     * lines of the invoice's linked delivery orders that ship the same sales
+     * order line; otherwise the single linked delivery order.
+     *
+     * @return array<int, array{case_numbers: list<string>, foc_qty: float, has_foc: bool, so_numbers: list<string>, do_numbers: list<string>}>
+     */
+    private function lineLinks(Invoice $invoice): array
+    {
+        $lines = $invoice->lines->filter(fn ($line) => $line->id !== null);
+        if ($lines->isEmpty()) {
+            return [];
+        }
+
+        $links = [];
+        foreach ($lines as $line) {
+            $links[$line->id] = ['case_numbers' => [], 'foc_qty' => 0.0, 'has_foc' => false, 'so_numbers' => [], 'do_numbers' => []];
+        }
+        $lineIds = array_keys($links);
+
+        $caseDoLineIds = [];
+        if (Schema::hasTable('medical_case_items') && Schema::hasTable('medical_cases')) {
+            $caseItems = DB::table('medical_case_items as mci')
+                ->join('medical_cases as mc', 'mc.id', '=', 'mci.medical_case_id')
+                ->whereIn('mci.invoice_item_id', $lineIds)
+                ->where('mc.status', '<>', 'cancelled')
+                ->whereNull('mc.deleted_at')
+                ->orderBy('mci.id')
+                ->get(['mci.invoice_item_id', 'mci.is_foc', 'mci.invoiced_qty', 'mci.delivery_order_item_id', 'mc.case_no']);
+
+            foreach ($caseItems as $item) {
+                $lineId = (int) $item->invoice_item_id;
+                if ($item->case_no !== null && $item->case_no !== '' && ! in_array($item->case_no, $links[$lineId]['case_numbers'], true)) {
+                    $links[$lineId]['case_numbers'][] = (string) $item->case_no;
+                }
+                if ((bool) $item->is_foc) {
+                    $links[$lineId]['has_foc'] = true;
+                    $links[$lineId]['foc_qty'] += (float) $item->invoiced_qty;
+                }
+                if ($item->delivery_order_item_id !== null) {
+                    $caseDoLineIds[$lineId][] = (int) $item->delivery_order_item_id;
+                }
+            }
+        }
+
+        $soLineIds = $lines->pluck('sales_order_line_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $soNumbers = $soLineIds === [] ? collect() : DB::table('sales_order_lines as sol')
+            ->join('sales_orders as so', 'so.id', '=', 'sol.sales_order_id')
+            ->whereIn('sol.id', $soLineIds)
+            ->pluck('so.sales_order_number', 'sol.id');
+
+        $linkedDoIds = DB::table('invoice_delivery_orders')->where('invoice_id', $invoice->id)->pluck('delivery_order_id')->map(fn ($id) => (int) $id)->all();
+        $doLinesBySoLine = ($soLineIds === [] || $linkedDoIds === []) ? collect() : DB::table('delivery_order_lines as dol')
+            ->join('delivery_orders as do', 'do.id', '=', 'dol.delivery_order_id')
+            ->whereIn('dol.sales_order_line_id', $soLineIds)
+            ->whereIn('do.id', $linkedDoIds)
+            ->orderBy('do.id')
+            ->get(['dol.sales_order_line_id', 'do.delivery_order_number'])
+            ->groupBy('sales_order_line_id');
+        $caseDoNumbers = $caseDoLineIds === [] ? collect() : DB::table('delivery_order_lines as dol')
+            ->join('delivery_orders as do', 'do.id', '=', 'dol.delivery_order_id')
+            ->whereIn('dol.id', array_merge(...array_values($caseDoLineIds)))
+            ->pluck('do.delivery_order_number', 'dol.id');
+        $singleDoNumber = count($linkedDoIds) === 1
+            ? DB::table('delivery_orders')->where('id', $linkedDoIds[0])->value('delivery_order_number')
+            : null;
+        $headerSoNumber = $invoice->sales_order_id
+            ? DB::table('sales_orders')->where('id', $invoice->sales_order_id)->value('sales_order_number')
+            : null;
+
+        foreach ($lines as $line) {
+            $soLineId = $line->sales_order_line_id !== null ? (int) $line->sales_order_line_id : null;
+
+            $so = $soLineId !== null ? ($soNumbers[$soLineId] ?? null) : null;
+            $so ??= $headerSoNumber;
+            if ($so !== null && $so !== '') {
+                $links[$line->id]['so_numbers'][] = (string) $so;
+            }
+
+            $doNumbers = collect($caseDoLineIds[$line->id] ?? [])->map(fn ($id) => $caseDoNumbers[$id] ?? null);
+            if ($doNumbers->filter()->isEmpty() && $soLineId !== null) {
+                $doNumbers = collect($doLinesBySoLine[$soLineId] ?? [])->pluck('delivery_order_number');
+            }
+            if ($doNumbers->filter()->isEmpty() && $singleDoNumber !== null) {
+                $doNumbers = collect([$singleDoNumber]);
+            }
+            $links[$line->id]['do_numbers'] = $doNumbers->filter()->map(fn ($n) => (string) $n)->unique()->values()->all();
+        }
+
+        return $links;
+    }
+
+    /**
+     * Issue #621: FOC flag and FOC list value of a product line. The list
+     * value is the FOC quantity (capped at the line quantity; the whole line
+     * when the case line records no invoiced quantity) at the line's unit
+     * (list) price — the #600 valuation. A #560 `invoice_lines.is_foc` flag,
+     * once it exists, marks the whole line FOC.
+     *
+     * @param  array<string,mixed>  $links
+     * @return array{is_foc: bool, list_value: float}
+     */
+    private function focFor(\App\Models\InvoiceLine $line, array $links): array
+    {
+        $lineQty = (float) $line->quantity;
+        $ownFlag = (bool) ($line->getAttribute('is_foc') ?? false);
+
+        if (! $ownFlag && ! ($links['has_foc'] ?? false)) {
+            return ['is_foc' => false, 'list_value' => 0.0];
+        }
+
+        $focQty = $ownFlag ? $lineQty : (float) ($links['foc_qty'] ?? 0);
+        $focQty = $focQty > 0 ? min($focQty, $lineQty) : $lineQty;
+
+        return ['is_foc' => true, 'list_value' => round($focQty * (float) $line->unit_price, 2)];
     }
 
     /**
@@ -587,6 +735,13 @@ class InvoiceDataSource implements DataSourceContract
                 ['token' => 'lines.lot_number', 'label' => 'Lot / Batch Number'],
                 ['token' => 'lines.expiry_date', 'label' => 'Expiry Date'],
                 ['token' => 'lines.serial_number', 'label' => 'Serial Number'],
+                // Issue #621 (TPL-UX4)
+                ['token' => 'lines.is_foc', 'label' => 'FOC Line (free of charge)'],
+                ['token' => 'lines.list_value', 'label' => 'FOC List Value (quantity × list price)'],
+                ['token' => 'lines.case_number', 'label' => 'Medical Case Number (per line)'],
+                ['token' => 'lines.patient_name', 'label' => 'Patient Name (per line, masked without PHI permission)'],
+                ['token' => 'lines.so_number', 'label' => 'Sales Order Number (per line)'],
+                ['token' => 'lines.do_number', 'label' => 'Delivery Order Number (per line)'],
             ]],
         ];
     }
@@ -649,9 +804,9 @@ class InvoiceDataSource implements DataSourceContract
             // (acceptance copies); empty means the canonical final invoice.
             'document_variant' => '',
             'lines' => [
-                ['index' => 1, 'sku' => 'SKU-1001', 'description' => 'Enterprise licence — 50 seats', 'quantity' => 1, 'unit_price' => 4500.00, 'tax_rate' => 6.0, 'discount' => 0, 'line_total' => 4770.00, 'lot_number' => 'LOT-2607A', 'expiry_date' => '2029-06-07'],
-                ['index' => 2, 'sku' => 'SKU-2099', 'description' => 'On-site training (2 days)',     'quantity' => 2, 'unit_price' => 1200.00, 'tax_rate' => 6.0, 'discount' => 0, 'line_total' => 2544.00, 'lot_number' => '', 'expiry_date' => ''],
-                ['index' => 3, 'sku' => 'SKU-3300', 'description' => 'Premium support — annual',      'quantity' => 1, 'unit_price' => 800.00,  'tax_rate' => 6.0, 'discount' => 100, 'line_total' => 742.00, 'lot_number' => 'LOT-2511B', 'expiry_date' => '2028-09-27'],
+                ['index' => 1, 'sku' => 'SKU-1001', 'description' => 'Enterprise licence — 50 seats', 'quantity' => 1, 'unit_price' => 4500.00, 'tax_rate' => 6.0, 'discount' => 0, 'line_total' => 4770.00, 'lot_number' => 'LOT-2607A', 'expiry_date' => '2029-06-07', 'is_foc' => false, 'list_value' => 0.0, 'case_number' => 'CASE-2026-001', 'so_number' => 'SO-2026-0001', 'do_number' => 'DO-2026-0001'],
+                ['index' => 2, 'sku' => 'SKU-2099', 'description' => 'On-site training (2 days)',     'quantity' => 2, 'unit_price' => 1200.00, 'tax_rate' => 6.0, 'discount' => 0, 'line_total' => 2544.00, 'lot_number' => '', 'expiry_date' => '', 'is_foc' => false, 'list_value' => 0.0, 'case_number' => 'CASE-2026-001', 'so_number' => 'SO-2026-0001', 'do_number' => 'DO-2026-0001'],
+                ['index' => 3, 'sku' => 'SKU-3300', 'description' => 'Premium support — annual',      'quantity' => 1, 'unit_price' => 800.00,  'tax_rate' => 6.0, 'discount' => 100, 'line_total' => 742.00, 'lot_number' => 'LOT-2511B', 'expiry_date' => '2028-09-27', 'is_foc' => false, 'list_value' => 0.0, 'case_number' => 'CASE-2026-001', 'so_number' => 'SO-2026-0001', 'do_number' => 'DO-2026-0001'],
             ],
             'totals' => [
                 'subtotal' => 7600.00, 'tax' => 456.00, 'discount' => 100.00, 'shipping' => 0.00,

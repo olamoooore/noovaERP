@@ -298,6 +298,14 @@ final class BlockRenderer implements TemplateRendererInterface
     /** @param array<string,mixed> $col */
     private function renderCell(array $col, array $row): string
     {
+        // Issue #621: a column with `foc_display: list_value` prints a FOC
+        // line as its list value struck through, followed by "FOC".
+        if (($col['foc_display'] ?? null) === 'list_value' && ! empty($row['is_foc'])) {
+            $listValue = $this->resolver->formatValue($row['list_value'] ?? 0, $col['format'] ?? 'money');
+
+            return '<s>'.htmlspecialchars((string) $listValue, ENT_QUOTES).'</s> FOC';
+        }
+
         $field = $col['field'] ?? '';
         $value = $field === 'index' ? ($row['index'] ?? '') : ($row[$field] ?? '');
         $value = $this->resolver->formatValue($value, $col['format'] ?? null);
