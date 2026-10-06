@@ -176,6 +176,9 @@ class SalesOrderController extends Controller
             'incoterm_place' => 'nullable|string|max:255',
             'currency_code' => 'nullable|string|size:3',
             'discount_amount' => 'nullable|numeric|min:0',
+            // Issue #381: the fulfilment warehouse drives the reservation at
+            // confirm and the allocation step.
+            'warehouse_id' => 'nullable|integer|exists:warehouses,id',
             'lines' => 'required|array|min:1',
             'lines.*.line_type' => 'nullable|in:product,note,section',
             'lines.*.sequence' => 'nullable|integer|min:0',
@@ -227,6 +230,15 @@ class SalesOrderController extends Controller
                         $lineUom,
                         (float) $line['unit_price'],
                     );
+                }
+            }
+
+            // Issue #381: stock-tracked lines need a warehouse to reserve and
+            // allocate against; default to the tenant's default warehouse.
+            if (empty($validated['warehouse_id'])) {
+                $productIds = collect($validated['lines'])->pluck('product_id')->filter()->unique()->all();
+                if ($productIds !== [] && \App\Models\Product::whereKey($productIds)->where('track_inventory', true)->exists()) {
+                    $validated['warehouse_id'] = \App\Models\Warehouse::getDefault()?->id;
                 }
             }
 
