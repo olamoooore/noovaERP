@@ -42,6 +42,17 @@ interface PdfGenerationServiceContract
     public function renderData(string $documentType, array $data, ?string $templateId = null, string $format = 'pdf'): array;
 
     /**
+     * Issue #620: render an editor DRAFT template against a real document's
+     * payload through the same body/canvas pipeline as a real render. The
+     * payload passes the registry choke point (PHI masking, pricelist display
+     * mode). Nothing is persisted. Callers must authorize the document first
+     * (DocumentRenderAuthorizer).
+     *
+     * @return array{html: string, warnings: array<int,string>}
+     */
+    public function previewDocument(DocumentTemplate $draft, string $documentType, string $documentId): array;
+
+    /**
      * Store the immutable, checksummed copy of a posted/issued document and
      * return its record. Idempotent: an existing current immutable copy is
      * returned untouched (never re-rendered).

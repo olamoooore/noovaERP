@@ -25,6 +25,8 @@ export function EditorShell({ templateId }: { templateId: string }) {
   useEditorKeyboard()
   const navigate = useNavigate()
   const [view, setView] = useState<'edit' | 'preview'>('edit')
+  // Issue #620: '' = sample data; otherwise a real document id.
+  const [previewDocumentId, setPreviewDocumentId] = useState('')
   const loadedId = useRef<string | null>(null)
 
   const template = useTemplateEditorStore((s) => s.template)
@@ -42,6 +44,16 @@ export function EditorShell({ templateId }: { templateId: string }) {
     queryKey: ['tb-template', templateId],
     queryFn: () => templateBuilderApi.get(templateId),
     enabled: !!templateId,
+  })
+
+  // Issue #620: recent real documents (of this template's type, that the user
+  // may see) for "Preview with INV-…". A 403 (no source-document permission)
+  // simply leaves only sample data available.
+  const { data: previewDocuments } = useQuery({
+    queryKey: ['tb-preview-documents', templateId],
+    queryFn: () => templateBuilderApi.previewDocuments(templateId),
+    enabled: !!templateId && view === 'preview',
+    retry: false,
   })
 
   useEffect(() => {
@@ -82,14 +94,26 @@ export function EditorShell({ templateId }: { templateId: string }) {
     })
   }
 
-  const handlePreview = () => {
+  const handlePreview = (documentId: string = previewDocumentId) => {
     if (!template) return
     setLoadingPreview(true)
     templateBuilderApi
-      .preview(templateId, { layout_config: template.layout_config, css: template.css ?? undefined, mode: 'block', document_type: template.document_type, metadata: template.metadata })
+      .preview(templateId, {
+        layout_config: template.layout_config,
+        css: template.css ?? undefined,
+        mode: 'block',
+        document_type: template.document_type,
+        metadata: template.metadata,
+        ...(documentId ? { document_id: documentId } : {}),
+      })
       .then((r) => setPreview(r.html, r.warnings))
       .catch(() => toast({ title: 'Preview failed', variant: 'destructive' }))
       .finally(() => setLoadingPreview(false))
+  }
+
+  const handlePreviewDocumentChange = (documentId: string) => {
+    setPreviewDocumentId(documentId)
+    handlePreview(documentId)
   }
 
   if (isLoading) {
@@ -171,7 +195,10 @@ export function EditorShell({ templateId }: { templateId: string }) {
                 html={previewHtml}
                 warnings={previewWarnings}
                 loading={loadingPreview}
-                onRefresh={handlePreview}
+                onRefresh={() => handlePreview()}
+                documents={previewDocuments ?? []}
+                documentId={previewDocumentId}
+                onDocumentChange={handlePreviewDocumentChange}
               />
             </main>
           )}

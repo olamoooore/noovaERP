@@ -115,7 +115,17 @@ Route::prefix('template-builder')->group(function () use ($perm) {
     Route::get('/templates/{id}/versions', [TemplateController::class, 'versions'])->middleware($perm('template.view'));
     Route::post('/templates/{id}/versions/{version}/restore', [TemplateController::class, 'restoreVersion'])->middleware($perm('template.edit_draft'));
 
-    Route::post('/templates/{id}/preview', [TemplateEditorController::class, 'preview'])->middleware($perm('template.view'));
+    // Issue #620: the editor preview can render the draft against a REAL
+    // document. The entity context is resolved/validated here so the
+    // controller can apply the #611 source-permission + legal-entity check
+    // (template.view alone does not grant access to a document).
+    Route::middleware([
+        \App\Http\Middleware\ResolveEntityContext::class,
+        \App\Http\Middleware\EnsureEntityAccess::class,
+    ])->group(function () use ($perm) {
+        Route::post('/templates/{id}/preview', [TemplateEditorController::class, 'preview'])->middleware($perm('template.view'));
+        Route::get('/templates/{id}/preview-documents', [TemplateEditorController::class, 'previewDocuments'])->middleware($perm('template.view'));
+    });
     Route::post('/templates/validate', [TemplateEditorController::class, 'validateDefinition'])->middleware($perm('template.validate'));
 
     // ─── Universal Registry (ADR-004 §7) ───────────────────────────────────

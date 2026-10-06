@@ -24,6 +24,8 @@ class PreviewTemplateRequest extends FormRequest
             'sample_data' => ['nullable', 'array'],
             'document_type' => ['nullable', 'string', 'max:40'],
             'metadata' => ['nullable', 'array'],
+            // Issue #620: preview the draft against a real document.
+            'document_id' => ['nullable', 'alpha_dash', 'max:64'],
         ];
     }
 }
