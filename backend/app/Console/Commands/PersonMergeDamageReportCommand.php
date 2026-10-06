@@ -29,6 +29,9 @@ class PersonMergeDamageReportCommand extends Command
 
     public function handle(PersonMergeDamagePlanner $planner): int
     {
+        // The command instance can be reused in one process; each run
+        // reports only its own tenants.
+        $this->reports = [];
         $tenantId = (string) ($this->option('tenant') ?? '');
 
         if ($tenantId !== '') {
