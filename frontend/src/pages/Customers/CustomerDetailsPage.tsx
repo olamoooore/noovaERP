@@ -25,6 +25,8 @@ import { TagEditor } from '@/components/tags/TagEditor'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { AuditTab } from '@/components/audit/AuditTab'
 import { UnappliedCreditsCard } from '@/components/payment/PaymentAllocations'
+import { RegisterPaymentDialog } from '@/components/payment/RegisterPaymentDialog' // #489
+import { useCanRegisterPayment } from '@/lib/registerPayment'
 import { CustomerForm } from '@/components/customers/CustomerForm'
 import { customerFormToUpdatePayload, customerToFormValues, emptyCustomerFormValues, type CustomerFormValues } from '@/lib/customerPayload'
 import { downloadReportDocx, downloadReportXlsx } from '@/lib/reportFiles'
@@ -288,6 +290,9 @@ export function CustomerDetailsPage() {
   const [emailForm, setEmailForm] = useState({ subject: '', body: '' })
   const [statementAsOf, setStatementAsOf] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [statementDialogOpen, setStatementDialogOpen] = useState(false)
+  // #489 (PAY-UX3): customer-first payment entry from the customer page.
+  const [registerPaymentOpen, setRegisterPaymentOpen] = useState(false)
+  const canRegisterPayment = useCanRegisterPayment()
   const [statementBusy, setStatementBusy] = useState<'pdf' | 'xlsx' | 'docx' | null>(null)
 
   // Fetch customer details
@@ -1345,6 +1350,15 @@ export function CustomerDetailsPage() {
                   <CardDescription>All invoices for this customer</CardDescription>
                 </div>
                 <div className="flex gap-2">
+                  {canRegisterPayment && (
+                    <HeaderActionButton
+                      variant="outline"
+                      icon="solar:card-bold-duotone"
+                      onClick={() => setRegisterPaymentOpen(true)}
+                    >
+                      Register payment
+                    </HeaderActionButton>
+                  )}
                   <HeaderActionButton
                     variant="outline"
                     icon="solar:document-text-bold"
@@ -2415,6 +2429,11 @@ export function CustomerDetailsPage() {
       </Dialog>
 
       {/* Statement of Account Dialog */}
+      <RegisterPaymentDialog
+        open={registerPaymentOpen}
+        customerId={customer.id}
+        onOpenChange={setRegisterPaymentOpen}
+      />
       <Dialog open={statementDialogOpen} onOpenChange={setStatementDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>

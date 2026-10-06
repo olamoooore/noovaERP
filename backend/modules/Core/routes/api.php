@@ -526,6 +526,10 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::post('/payments/bulk-post', [PaymentController::class, 'bulkPost'])
             ->middleware(RequirePermission::using('accounting.post')); // #480
         Route::post('/payments', [PaymentController::class, 'store']);
+        // #489 (PAY-UX3): customer-first receipt — record + post + allocate in
+        // one atomic request; it posts to the GL, so it needs accounting.post.
+        Route::post('/payments/receipts', [PaymentController::class, 'storeReceipt'])
+            ->middleware(RequirePermission::using('accounting.post'));
         Route::get('/payments/{payment}', [PaymentController::class, 'show'])
             ->middleware(RequirePermission::using('accounting.view')); // #481
         Route::put('/payments/{payment}', [PaymentController::class, 'update']);

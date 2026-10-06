@@ -202,11 +202,22 @@ class PaymentController extends Controller
             $query->where('customer_id', $request->customer_id);
         }
 
-        $invoices = $query->get()->map(function ($invoice) {
+        // #489: the customer-first receipt allocates oldest-due first and only
+        // across base-currency invoices (CustomerReceiptService) — expose the
+        // due date and whether the invoice is in a foreign currency.
+        $baseByCustomer = [];
+        $invoices = $query->get()->map(function ($invoice) use (&$baseByCustomer) {
+            $base = $baseByCustomer[$invoice->customer_id]
+                ??= strtoupper((string) \App\Services\DocumentCurrencyResolver::baseFor(null, $invoice->customer_id));
+            $currency = strtoupper((string) ($invoice->currency_code ?: $base));
+
             return [
                 'id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
                 'invoice_date' => $invoice->invoice_date,
+                'due_date' => $invoice->due_date,
+                'currency_code' => $currency,
+                'foreign' => $currency !== $base,
                 'total' => (float) $invoice->total,
                 'balance' => (float) ($invoice->balance ?? $invoice->total),
                 'status' => $invoice->status,
@@ -365,6 +376,82 @@ class PaymentController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Issue #489 (PAY-UX3): customer-first receipt. One request records a
+     * customer-level payment, posts it (PaymentPostingService → PostingEngine)
+     * and allocates it across the customer's invoices (#155
+     * PaymentAllocationService) atomically; the remainder stays as unapplied
+     * credit. Gated by accounting.post on the route — it posts to the GL.
+     */
+    public function storeReceipt(Request $request)
+    {
+        $validated = $request->validate([
+            'customer_id' => 'required|integer|exists:customers,id',
+            'payment_date' => 'nullable|date',
+            'amount' => 'required|numeric|min:0.01',
+            'method' => ['required', 'string', Rule::in($this->methodCodes())],
+            'reference' => 'nullable|string|max:255',
+            'notes' => 'nullable|string',
+            'bank_account_id' => 'nullable|exists:bank_accounts,id',
+            'applications' => 'nullable|array',
+            'applications.*.invoice_id' => 'required|integer|distinct|exists:invoices,id',
+            'applications.*.amount' => 'required|numeric|min:0.01',
+        ]);
+
+        $methodRow = PaymentMethod::query()->active()->where('code', $validated['method'])->first();
+        if ($methodRow?->requires_reference && blank($validated['reference'] ?? null)) {
+            return response()->json([
+                'message' => "A reference number is required for {$methodRow->label} payments.",
+            ], 422);
+        }
+
+        $paymentDate = $validated['payment_date'] ?? now()->toDateString();
+        $lockResult = $this->lockDateValidator->validateTransactionDate('payments', $paymentDate);
+        if ($lockResult['is_locked']) {
+            return response()->json([
+                'message' => "Cannot record payment dated in a closed period. {$lockResult['message']}",
+                'lock_date' => $lockResult['lock_date'],
+                'transaction_date' => $paymentDate,
+            ], 422);
+        }
+
+        $applications = array_values($validated['applications'] ?? []);
+        unset($validated['applications']);
+
+        try {
+            $payment = app(\App\Services\CustomerReceiptService::class)->receive($validated, $applications);
+        } catch (\App\Exceptions\PartialPaymentNotAllowedException $e) {
+            return response()->json(['message' => $e->getMessage(), 'code' => 'PARTIAL_PAYMENT_NOT_ALLOWED'], 422);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage(), 'error' => 'INVALID_ALLOCATION'], 422);
+        } catch (\RuntimeException $e) {
+            // The posting engine rejected the receipt (e.g. GL mapping missing).
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $this->writeAuditLog(
+            'payment_posted',
+            (int) $payment->id,
+            ['payment_status' => null, 'journal_entry_id' => null],
+            [
+                'payment_status' => $payment->payment_status,
+                'journal_entry_id' => $payment->journal_entry_id,
+                'amount' => (float) $payment->amount,
+            ],
+            ['customer_id' => $payment->customer_id, 'customer_receipt' => true],
+        );
+
+        $allocation = app(\App\Services\PaymentAllocationService::class);
+
+        return response()->json([
+            'message' => 'Payment posted and allocated',
+            'id' => $payment->id,
+            'data' => $payment,
+            'applied_amount' => round((float) $payment->applications->whereNull('reversed_at')->sum('applied_amount'), 2),
+            'unapplied_amount' => $allocation->unappliedAmount($payment),
+        ], 201);
     }
 
     /**

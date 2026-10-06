@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { buildPaymentPayload, type PaymentFormState } from '@/lib/paymentPayload'; // #487
+import { CustomerReceiptForm } from '@/components/payment/CustomerReceiptForm'; // #489
 
 /** #490: GET /payments/fx-preview — the posting engine's own settlement maths. */
 export interface PaymentFxPreview {
@@ -29,6 +30,9 @@ export interface PaymentFxPreview {
   fx_amount: number;
   fx_type: 'gain' | 'loss' | 'none';
 }
+
+/** #489: posting a customer receipt is a GL post (route: accounting.post). */
+const RECEIPT_PERMISSION = 'accounting.post';
 
 /** A draft payment as the edit path receives it (#487: same dialog edits drafts). */
 export interface EditablePayment {
@@ -48,8 +52,12 @@ export interface EditablePayment {
  * draft) and the retired /invoices/:id/payment URL (now a redirect) — opens
  * this component, and every submit goes through buildPaymentPayload().
  *
- * Open state: `open` when given; otherwise open while an invoice or a draft
- * payment is set (the #491 call sites pass only `invoiceId`).
+ * Open state: `open` when given; otherwise open while an invoice, a customer
+ * or a draft payment is set (the #491 call sites pass only `invoiceId`).
+ *
+ * #489 (PAY-UX3): a new payment that is not tied to one invoice can be entered
+ * customer-first (CustomerReceiptForm → POST /payments/receipts, which posts),
+ * offered only to users holding accounting.post.
  */
 export const RegisterPaymentDialog: React.FC<{
   /** Invoice to pay. */
@@ -58,15 +66,36 @@ export const RegisterPaymentDialog: React.FC<{
   open?: boolean;
   /** A draft payment to edit (PUT /payments/{id}) instead of recording one. */
   payment?: EditablePayment | null;
+  /** #489: open customer-first for this customer (the customer page). */
+  customerId?: number | string | null;
   /** Optional preloaded open invoices (balance hint while the fetch is in flight). */
   unpaidInvoices?: any[];
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
-}> = ({ invoiceId = null, open, payment = null, unpaidInvoices = [], onOpenChange, onSuccess }) => {
+}> = ({ invoiceId = null, open, payment = null, customerId = null, unpaidInvoices = [], onOpenChange, onSuccess }) => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const isOpen = open ?? (invoiceId != null || payment != null);
+  const isOpen = open ?? (invoiceId != null || payment != null || customerId != null);
   const isEdit = payment != null;
+  // #489: customer-first posts the receipt, so it needs accounting.post.
+  const canPost = useAuthStore((state) => state.hasPermission(RECEIPT_PERMISSION));
+  const canChooseMode = !isEdit && invoiceId == null && canPost;
+  const [mode, setMode] = useState<'invoice' | 'customer'>(customerId != null ? 'customer' : 'invoice');
+  useEffect(() => {
+    if (isOpen) setMode(customerId != null ? 'customer' : 'invoice');
+  }, [isOpen, customerId]);
+  const customerMode = canChooseMode && mode === 'customer';
+
+  const refresh = () => {
+    // #477: a draft does not move the invoice, but the payment
+    // count/history and payment lists must refresh.
+    queryClient.invalidateQueries({ queryKey: ['customer-payments'] });
+    queryClient.invalidateQueries({ queryKey: ['unpaid-invoices'] });
+    queryClient.invalidateQueries({ queryKey: ['invoice-payments-count'] });
+    queryClient.invalidateQueries({ queryKey: ['invoice'] });
+    queryClient.invalidateQueries({ queryKey: ['customer-invoice'] });
+    queryClient.invalidateQueries({ queryKey: ['invoices'] });
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -74,7 +103,45 @@ export const RegisterPaymentDialog: React.FC<{
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Edit draft payment' : 'Register payment'}</DialogTitle>
         </DialogHeader>
-        {isOpen && (
+        {canChooseMode && (
+          <div className="inline-flex rounded-md border p-0.5 text-sm" role="group" aria-label="Payment entry mode">
+            <Button
+              type="button"
+              size="sm"
+              variant={customerMode ? 'ghost' : 'secondary'}
+              aria-pressed={!customerMode}
+              onClick={() => setMode('invoice')}
+            >
+              By invoice
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={customerMode ? 'secondary' : 'ghost'}
+              aria-pressed={customerMode}
+              onClick={() => setMode('customer')}
+            >
+              By customer
+            </Button>
+          </div>
+        )}
+        {isOpen && customerMode && (
+          <CustomerReceiptForm
+            key={`receipt-${customerId ?? 'new'}`}
+            initialCustomerId={customerId != null ? String(customerId) : ''}
+            onSuccess={() => {
+              onOpenChange(false);
+              refresh();
+              // #489: the receipt is posted — balances, credits and the GL moved.
+              queryClient.invalidateQueries({ queryKey: ['unapplied-payments'] });
+              queryClient.invalidateQueries({ queryKey: ['payment-eligible-invoices'] });
+              queryClient.invalidateQueries({ queryKey: ['payments'] });
+              queryClient.invalidateQueries({ queryKey: ['customer'] });
+              onSuccess?.();
+            }}
+          />
+        )}
+        {isOpen && !customerMode && (
           <RecordPaymentForm
             key={isEdit ? `edit-${payment.id}` : String(invoiceId ?? 'new')}
             unpaidInvoices={unpaidInvoices}
@@ -82,14 +149,7 @@ export const RegisterPaymentDialog: React.FC<{
             payment={payment}
             onSuccess={() => {
               onOpenChange(false);
-              // #477: a draft does not move the invoice, but the payment
-              // count/history and payment lists must refresh.
-              queryClient.invalidateQueries({ queryKey: ['customer-payments'] });
-              queryClient.invalidateQueries({ queryKey: ['unpaid-invoices'] });
-              queryClient.invalidateQueries({ queryKey: ['invoice-payments-count'] });
-              queryClient.invalidateQueries({ queryKey: ['invoice'] });
-              queryClient.invalidateQueries({ queryKey: ['customer-invoice'] });
-              queryClient.invalidateQueries({ queryKey: ['invoices'] });
+              refresh();
               toast(isEdit
                 ? { title: 'Draft payment updated' }
                 : { title: 'Draft payment recorded', description: 'Post it from the Payments page to update the ledger.' });
