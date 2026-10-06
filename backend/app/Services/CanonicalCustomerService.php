@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Customer;
+use App\Models\CustomerLoyaltyProgram;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Contact\src\Models\ContactDuplicateCandidate;
@@ -38,8 +39,9 @@ class CanonicalCustomerService
      * Create a customer with their canonical organisation contact and any
      * related CRM records (categories, addresses, contacts).
      *
-     * All of it is created in the same database transaction.
-     * If any step fails, the entire operation rolls back.
+     * All of it is created in the same database transaction, including the
+     * zero-balance enrolment for every active loyalty programme (issue
+     * #440). If any step fails, the entire operation rolls back.
      *
      * Issue #433 (CU5): this is the ONE customer creation implementation.
      * CustomerController::store() and the customer importer both call it
@@ -60,8 +62,32 @@ class CanonicalCustomerService
 
             $this->applyRelations($customer, $relations);
 
+            $this->initialiseLoyaltyBalances($customer);
+
             return $customer->fresh();
         });
+    }
+
+    /**
+     * Issue #440 (CU12): a new customer is enrolled in every active loyalty
+     * programme with a zero balance. This runs inside the customer-creation
+     * transaction, so a failure rolls the customer back instead of leaving a
+     * customer without its balances; and every active programme gets a row,
+     * not only the first one returned by the query.
+     */
+    private function initialiseLoyaltyBalances(Customer $customer): void
+    {
+        $programmes = CustomerLoyaltyProgram::query()
+            ->where('is_active', true)
+            ->orderBy('id')
+            ->get();
+
+        foreach ($programmes as $programme) {
+            $customer->loyaltyBalances()->create([
+                'program_id' => $programme->id,
+                'points_balance' => 0,
+            ]);
+        }
     }
 
     /**

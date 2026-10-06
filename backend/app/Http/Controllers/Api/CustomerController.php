@@ -6,7 +6,6 @@ use App\Exports\CustomersExport;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\CustomerCategory;
-use App\Models\CustomerLoyaltyProgram;
 use App\Services\CanonicalCustomerService;
 use App\Services\CustomerContactSyncService;
 use App\Services\CustomerWideSearchService;
@@ -371,20 +370,15 @@ class CustomerController extends Controller
         // service (SOP §4). It wraps customer + Contact Master organisation
         // contact + related records in one transaction, so a failure rolls the
         // whole operation back — no partial state.
+        //
+        // Issue #440 (CU12): the canonical service also initialises a zero
+        // balance for every active loyalty programme inside that same
+        // transaction.
         $customer = $canonicalCustomers->create($validated, [
             'category_ids' => $categoryIds,
             'addresses' => $addresses,
             'contacts' => $contacts,
         ]);
-
-        // Initialize loyalty if program exists
-        $program = CustomerLoyaltyProgram::where('is_active', true)->first();
-        if ($program) {
-            $customer->loyaltyBalances()->create([
-                'program_id' => $program->id,
-                'points_balance' => 0,
-            ]);
-        }
 
         return response()->json(
             $customer->load(['categories', 'addresses', 'customerContacts', 'loyaltyBalances']),
