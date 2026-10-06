@@ -15,7 +15,6 @@ use App\Models\User;
 use App\Models\Warehouse;
 use App\Platform\EventBus\DomainEventDispatcher;
 use App\Platform\Notifications\NotificationLog;
-use App\Platform\Notifications\NotificationPreference;
 use App\Services\SalesApprovalGate;
 use App\SuperAdmin\Application\FeatureGateService;
 use Illuminate\Support\Facades\DB;
