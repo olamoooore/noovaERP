@@ -71,6 +71,29 @@ final class SalesNotificationCatalogue
     public const DELIVERABLE_CHANNELS = ['in_app', 'mail'];
 
     /**
+     * Issue #907: WhatsApp is a stored preference only — its drivers are
+     * unimplemented stubs — but it is a column in the matrix so the user's
+     * choice is captured now and honoured when a transport ships.
+     */
+    public const CHANNEL_WHATSAPP = 'whatsapp';
+
+    /** The columns of the #907 preference matrix, in display order. */
+    public const MATRIX_CHANNELS = ['in_app', 'mail', self::CHANNEL_WHATSAPP];
+
+    /**
+     * Document types a document-scoped mute may reference. Matches the
+     * `document_type` values the Sales dispatcher stores on notification_logs.
+     */
+    public const DOCUMENT_TYPES = [
+        'invoice',
+        'quotation',
+        'sales_order',
+        'delivery_order',
+        'payment',
+        'credit_note',
+    ];
+
+    /**
      * Domain event name (SalesEventCatalogue) → notification event name.
      */
     public const DOMAIN_EVENT_MAP = [

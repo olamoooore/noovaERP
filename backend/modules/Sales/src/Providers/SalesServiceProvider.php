@@ -34,6 +34,7 @@ class SalesServiceProvider extends ServiceProvider
             $this->commands([
                 \Modules\Sales\Console\Commands\ScanOverdueInvoices::class,
                 \Modules\Sales\Console\Commands\ScanExpiringQuotations::class,
+                \Modules\Sales\Console\Commands\ExpireQuotations::class,
             ]);
         }
     }

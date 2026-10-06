@@ -172,6 +172,10 @@ class SalesOrderAcceptanceController extends Controller
                 'signer_name' => $validated['signer_name'],
                 'accepted_at' => optional($accepted->accepted_at)->toIso8601String(),
             ], $result['requires_approval'] ? 202 : 200);
+        } catch (\App\Exceptions\QuotationExpiredException $e) {
+            // Issue #335 (Q6): the quotation's validity lapsed while its
+            // acceptance token was still alive — a clear 422, not a token 410.
+            return response()->json(['error' => $e->getMessage()], 422);
         } catch (\RuntimeException $e) {
             return response()->json(['error' => $e->getMessage()], 410);
         } catch (\Exception $e) {

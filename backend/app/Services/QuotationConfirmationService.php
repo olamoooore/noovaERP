@@ -20,13 +20,23 @@ class QuotationConfirmationService
     public function __construct(
         private SalesApprovalGate $approvalGate,
         private QuotationReleaseService $release,
+        private QuotationExpiryGuard $expiryGuard,
     ) {}
 
     /**
      * @return array{requires_approval: bool, approval_request: ?ApprovalRequest, quotation: Quotation}
+     *
+     * @throws \App\Exceptions\QuotationExpiredException when the quotation's
+     *                                                   validity date has passed
      */
     public function confirm(Quotation $quotation, User $actor): array
     {
+        // Issue #335 (Q6): both the internal Confirm action and the public
+        // customer-portal acceptance run this method, so the validity guard
+        // lives here once. It runs before the approval gate: an expired
+        // quotation must not raise an approval request.
+        $this->expiryGuard->assertNotExpired($quotation);
+
         $approval = $this->approvalGate->requestIfNeeded(
             $quotation,
             SalesApprovalGate::REQUEST_TYPE_QUOTATION,

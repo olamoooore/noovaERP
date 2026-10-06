@@ -261,12 +261,37 @@ class Quotation extends Model implements WorkflowSubject
         return $this->status === 'sent';
     }
 
+    /**
+     * Issue #335 (Q6): a quotation whose validity date has passed without
+     * acceptance. Confirmed (already converted) and cancelled quotations are
+     * never "expired"; a null valid_until means no expiry.
+     */
+    public function isExpired(): bool
+    {
+        if ($this->valid_until === null) {
+            return false;
+        }
+
+        if (in_array((string) $this->status, ['confirmed', 'cancelled'], true)) {
+            return false;
+        }
+
+        return $this->valid_until->lt(now()->startOfDay());
+    }
+
+    public function getIsExpiredAttribute(): bool
+    {
+        return $this->isExpired();
+    }
+
     // Issue #222: patient name is PHI — encrypted at rest, exposed as the
     // virtual patient_name attribute so existing callers keep working.
     //
     // Issue #408: expected_date (computed from lead times) and is_late (past
     // the commitment date on an open quotation) ride along for the lists.
-    protected $appends = ['patient_name', 'expected_date', 'is_late'];
+    // Issue #335 (Q6): is_expired lets the list badge past-due quotations that
+    // the daily job has not swept yet.
+    protected $appends = ['patient_name', 'expected_date', 'is_late', 'is_expired'];
 
     protected $hidden = ['patient_name_encrypted'];
 

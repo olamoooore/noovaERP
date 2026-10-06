@@ -70,6 +70,17 @@ class SalesNotificationDispatcher
                     continue;
                 }
 
+                // Issue #907: a document-scoped mute suppresses every channel
+                // of that document for that user only.
+                if ($this->notifications->isDocumentMuted(
+                    (int) $user->id,
+                    $notificationEvent,
+                    isset($payload['document_type']) ? (string) $payload['document_type'] : null,
+                    $payload['document_id'] ?? null,
+                )) {
+                    continue;
+                }
+
                 $channels = $this->channelsFor($user, $notificationEvent, $defaults);
 
                 if ($channels === []) {
