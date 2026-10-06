@@ -20,6 +20,7 @@ import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
 import { cn, formatCurrency, formatDate, getApiErrorMessage } from '@/lib/utils';
 import api from '@/lib/api'
+import { getPrimaryCustomerContact } from '@/lib/customerDocumentDefaults';
 import { resolveLineTaxRate } from '@/lib/lineTax';
 import { computeDocumentTotals } from '@/lib/documentTotals';
 import { useSalesDocumentPricing } from '@/hooks/useSalesDocumentPricing';
@@ -253,22 +254,8 @@ const formatAddress = (address?: CustomerAddress | null): string => {
     .join('\n');
 };
 
-/**
- * The contact that belongs on an invoice's Bill-To snapshot: a billing-category
- * contact first, then the primary contact, then the first one. Picking
- * `contacts[0]` blindly put a doctor/requestor's details on invoices.
- */
-const getPrimaryCustomerContact = (customer?: CustomerRecord | null): CustomerContact | undefined => {
-  const contacts = customer?.customer_contacts ?? customer?.customerContacts ?? [];
-  const categoryOf = (contact: CustomerContact) =>
-    (contact.contact_category || contact.contact_type || '').toLowerCase();
-
-  return (
-    contacts.find((contact) => categoryOf(contact) === 'billing')
-    ?? contacts.find((contact) => contact.is_primary)
-    ?? contacts[0]
-  );
-};
+// The Bill-To contact rule (billing → primary → first) is shared with the
+// quotation form — see '@/lib/customerDocumentDefaults' (issue #320).
 
 const formatLegacyAddress = (address: string | null | undefined): string => {
   if (!address) return '';

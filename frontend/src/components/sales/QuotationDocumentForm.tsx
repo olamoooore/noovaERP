@@ -26,6 +26,8 @@ import { extractSaveConflict, type SaveConflict } from '@/lib/recordConflict'
 import { QuotationCaseInformation, emptyQuotationCaseInformation } from '@/components/sales/QuotationCaseInformation'
 import { InternalReferenceTags } from '@/components/sales/InternalReferenceTags'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
+import { useCustomerAutofill } from '@/hooks/useCustomerAutofill'
+import { getCustomerContactDefaults, pickCustomerAddress } from '@/lib/customerDocumentDefaults'
 import { ContactSearchCombobox } from '@/components/ui/ContactSearchCombobox'
 import { HeaderChip } from '@/components/ui/HeaderChip'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -79,6 +81,10 @@ const addressFormToSnapshot = (address: AddressFormState): string =>
   [address.label, address.street, address.street2, address.city, address.state, address.zip, address.country]
     .filter(Boolean)
     .join('\n')
+
+// '' for an all-empty address so an empty form counts as "not filled in".
+const serializeAddressForm = (address: AddressFormState): string =>
+  Object.values(address).some(Boolean) ? JSON.stringify(address) : ''
 
 export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mode, documentId }) => {
   const navigate = useNavigate()
@@ -139,6 +145,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
   const [conflict, setConflict] = useState<SaveConflict | null>(null)
   const lastPayloadRef = useRef<Record<string, any> | null>(null)
   const autofilledCustomerRef = useRef<string | null>(null)
+  const { fill: autofillField, setBaseline: setAutofillBaseline } = useCustomerAutofill()
 
   // One pick fills everything (invoice parity): primary contact, references
   // and the saved billing/shipping addresses pre-fill from the customer.
@@ -272,6 +279,17 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     setShippingAddressSnapshot(quotation.shipping_address_snapshot || '')
     setBillingContactId(quotation.billing_contact_id ? String(quotation.billing_contact_id) : '')
     setShippingContactId(quotation.shipping_contact_id ? String(quotation.shipping_contact_id) : '')
+    // #320: the saved values are the auto-fill baseline — a later customer
+    // change may replace them until the user edits them.
+    setAutofillBaseline({
+      attentionTo: quotation.attention_to || '',
+      contactEmail: quotation.contact_email || '',
+      contactPhone: quotation.contact_phone || '',
+      customerReference: quotation.customer_reference || '',
+      creditTerms: quotation.credit_terms || '',
+      billingAddressSnapshot: quotation.billing_address_snapshot || '',
+      shippingAddressSnapshot: quotation.shipping_address_snapshot || '',
+    })
     setSalesperson(quotation.salesperson || '')
     setSalesTeam(quotation.sales_team || '')
     setDeliveryLeadTime(quotation.delivery_lead_time || '')
@@ -309,40 +327,37 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
       price_mode: (line.line_type ?? 'product') === 'product' && line.unit_price != null ? 'carried' : undefined,
     }))
     setLines(mappedLines.length > 0 ? mappedLines : [emptySalesDocumentLine()])
-  }, [quotation])
+  }, [quotation, setAutofillBaseline])
 
   useEffect(() => {
     if (!customerDetail || Array.isArray(customerDetail)) return
     if (autofilledCustomerRef.current === customerId) return
     autofilledCustomerRef.current = customerId
 
-    const contacts = customerDetail.customer_contacts ?? customerDetail.customerContacts ?? []
-    const primary = contacts.find((contact: any) => contact.is_primary) ?? contacts[0]
-
-    setAttentionTo(primary?.name ?? customerDetail.name ?? '')
-    setContactEmail(primary?.email ?? customerDetail.email ?? '')
-    setContactPhone(primary?.phone ?? primary?.mobile ?? customerDetail.phone ?? customerDetail.mobile ?? '')
-    setCustomerReference((prev) => prev || customerDetail.code || '')
+    // #320: invoice-parity defaults (billing contact first, default addresses),
+    // filled only into fields the user has not edited — a customer change
+    // refreshes untouched fields and keeps the user's own values.
+    const contactDefaults = getCustomerContactDefaults(customerDetail)
+    autofillField('attentionTo', attentionTo, contactDefaults.attentionTo, setAttentionTo)
+    autofillField('contactEmail', contactEmail, contactDefaults.contactEmail, setContactEmail)
+    autofillField('contactPhone', contactPhone, contactDefaults.contactPhone, setContactPhone)
+    autofillField('customerReference', customerReference, customerDetail.code ?? '', setCustomerReference)
 
     const days = Number(customerDetail.payment_terms)
-    if (Number.isFinite(days) && days >= 0) {
-      setCreditTerms((prev) => prev || (days > 0 ? `Net ${days} days` : 'Due on receipt'))
-    }
+    const nextCreditTerms = Number.isFinite(days) && days >= 0 ? (days > 0 ? `Net ${days} days` : 'Due on receipt') : ''
+    autofillField('creditTerms', creditTerms, nextCreditTerms, setCreditTerms)
 
-    const addresses = customerDetail.addresses ?? []
-    const pick = (type: string) => addresses.find((address: any) => address.type === type && address.is_default)
-      ?? addresses.find((address: any) => address.type === type)
-    const nextBilling = toAddressForm(pick('billing'))
-    const nextShipping = toAddressForm(pick('shipping'))
-    setBillingAddress(nextBilling)
-    setShippingAddress(nextShipping)
+    const nextBilling = toAddressForm(pickCustomerAddress(customerDetail, 'billing'))
+    const nextShipping = toAddressForm(pickCustomerAddress(customerDetail, 'shipping'))
+    autofillField('billingAddress', billingAddress, nextBilling, setBillingAddress, serializeAddressForm)
+    autofillField('shippingAddress', shippingAddress, nextShipping, setShippingAddress, serializeAddressForm)
     setBillingContactId('')
     setShippingContactId('')
     if (mode === 'edit') {
       // The edit payload ships the raw snapshots, so keep them in step with a
-      // customer change too.
-      setBillingAddressSnapshot(addressFormToSnapshot(nextBilling))
-      setShippingAddressSnapshot(addressFormToSnapshot(nextShipping))
+      // customer change too (unless the user edited them).
+      autofillField('billingAddressSnapshot', billingAddressSnapshot, addressFormToSnapshot(nextBilling), setBillingAddressSnapshot)
+      autofillField('shippingAddressSnapshot', shippingAddressSnapshot, addressFormToSnapshot(nextShipping), setShippingAddressSnapshot)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerDetail, customerId])
@@ -613,9 +628,6 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                       tags: (customer as any).matched_tags ?? [],
                       addresses: (customer as any).matched_addresses ?? [],
                     } : null)
-                    if (customer && (customer as any).code) {
-                      setCustomerReference((current) => current || (customer as any).code)
-                    }
                   }}
                   placeholder="Search customers..."
                 />
