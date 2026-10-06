@@ -3,6 +3,7 @@
 namespace App\Accounting\Services;
 
 use App\Accounting\BuyerTypeResolver;
+use App\Accounting\Contracts\ExplainsSubmissionErrors;
 use App\Accounting\Contracts\ProvidesProviderName;
 use App\Accounting\Contracts\SupportsCredentialValidation;
 use App\Accounting\Contracts\SupportsPayloadDefaults;
@@ -10,6 +11,7 @@ use App\Accounting\Contracts\SupportsReadinessCheck;
 use App\Accounting\Contracts\SupportsSigning;
 use App\Accounting\Plugin\CountryPluginRegistry;
 use App\Enums\UserRole;
+use App\Jobs\SubmitEInvoiceJob;
 use App\Models\Accounting\ComplianceDocument;
 use App\Models\Accounting\ComplianceEvent;
 use App\Models\Accounting\ComplianceSubmission;
@@ -997,6 +999,200 @@ class ComplianceService
             'issues' => $issues,
             'supplier_identity' => $supplierIdentity,
         ];
+    }
+
+    /**
+     * #673 (EINV-UX4): statuses of the failed / invalid queue — the only
+     * documents a retry resubmits. Anything LHDN holds (submitted, Valid)
+     * or that is already queued is left alone.
+     */
+    public const RETRYABLE_STATUSES = ['failed', 'rejected'];
+
+    /** Source document types SubmitEInvoiceJob can resubmit. */
+    private const RETRYABLE_DOCUMENT_TYPES = ['invoice', 'credit_note', 'refund_note'];
+
+    public const BULK_RETRY_LIMIT = 100;
+
+    /**
+     * #673 (EINV-UX4): retry the selected failed / invalid documents. Each
+     * document is claimed atomically (failed|rejected -> queued, retry
+     * counted) and handed to the #667 SubmitEInvoiceJob — the same queued,
+     * backed-off submission path as auto-submit — one job per document. A
+     * document that is not in the queue (Valid, submitted, already queued)
+     * is skipped, so a double click never submits twice.
+     *
+     * @param  array<int, int|string>  $documentIds
+     * @return list<array<string, mixed>>
+     */
+    public function bulkRetryDocuments(array $documentIds): array
+    {
+        $tenantId = $this->currentTenantId();
+        $results = [];
+
+        foreach (array_values(array_unique(array_map('intval', $documentIds))) as $id) {
+            $document = ComplianceDocument::query()->where('tenant_id', $tenantId)->find($id);
+
+            if ($document === null) {
+                $results[] = ['id' => $id, 'outcome' => 'skipped', 'reason' => 'E-invoice document not found.'];
+
+                continue;
+            }
+
+            if (! in_array($document->document_type, self::RETRYABLE_DOCUMENT_TYPES, true)) {
+                $results[] = $this->bulkRetryResult($document, 'skipped', "A {$document->document_type} cannot be resubmitted from the e-invoice queue.");
+
+                continue;
+            }
+
+            $claimed = ComplianceDocument::query()
+                ->whereKey($document->id)
+                ->where('tenant_id', $tenantId)
+                ->whereIn('compliance_status', self::RETRYABLE_STATUSES)
+                ->update([
+                    'compliance_status' => 'queued',
+                    'retry_count' => DB::raw('COALESCE(retry_count, 0) + 1'),
+                    'last_retried_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+            if ($claimed === 0) {
+                $document->refresh();
+                $results[] = $this->bulkRetryResult($document, 'skipped', match (true) {
+                    in_array($document->compliance_status, ['accepted', 'valid', 'submitted'], true) => 'Already submitted to LHDN — it is not resubmitted.',
+                    $document->compliance_status === 'queued' => 'Already queued for submission.',
+                    default => "Only failed or invalid e-invoices can be retried (this one is {$document->compliance_status}).",
+                });
+
+                continue;
+            }
+
+            SubmitEInvoiceJob::dispatch((string) $tenantId, $document->document_type, (int) $document->document_id, (string) $document->country_code);
+
+            $results[] = $this->bulkRetryResult($document->refresh(), 'queued');
+        }
+
+        return $results;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function bulkRetryResult(ComplianceDocument $document, string $outcome, ?string $reason = null): array
+    {
+        return array_filter([
+            'id' => $document->id,
+            'outcome' => $outcome,
+            'reason' => $reason,
+            'document_number' => $document->document_number,
+            'compliance_status' => $document->compliance_status,
+            'retry_count' => (int) $document->retry_count,
+        ], fn ($value) => $value !== null);
+    }
+
+    /**
+     * #673 (EINV-UX4): the last error of a failed / invalid document, each
+     * explained by the country pack in plain language with the record and
+     * field to fix (ExplainsSubmissionErrors). A pack without the capability,
+     * or an error it does not recognise, shows the raw message.
+     *
+     * The last error is what the document already records: for an Invalid
+     * document the latest rejected submission (its code and message, or the
+     * LHDN validation step errors); for a failed one the failure reason the
+     * submission / #667 job wrote to it, with the code of the failed
+     * submission that returned that reason.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function documentErrors(ComplianceDocument $document): array
+    {
+        if (! in_array($document->compliance_status, self::RETRYABLE_STATUSES, true)) {
+            return [];
+        }
+
+        $rawErrors = [];
+        $latest = ComplianceSubmission::query()
+            ->where('document_id', $document->id)
+            ->orderByDesc('id')
+            ->first();
+
+        if ($document->compliance_status === 'rejected' && $latest?->submission_status === 'rejected') {
+            $details = is_array($latest->status_details) ? $latest->status_details : [];
+            foreach (is_array($details['validation_errors'] ?? null) ? $details['validation_errors'] : [] as $validationError) {
+                $message = trim((string) ($validationError['message'] ?? ''));
+                if ($message !== '') {
+                    $rawErrors[] = ['code' => $validationError['code'] ?? null, 'message' => $message];
+                }
+            }
+
+            if ($rawErrors === []) {
+                $message = trim((string) ($latest->error_message ?: $latest->rejection_reason ?: $document->compliance_notes));
+                if ($message !== '') {
+                    $rawErrors[] = ['code' => $latest->error_code, 'message' => $message];
+                }
+            }
+        } else {
+            $message = trim((string) $document->compliance_notes);
+            if ($message !== '') {
+                $code = $latest?->submission_status === 'failed'
+                    && is_string($latest->error_message)
+                    && $latest->error_message !== ''
+                    && str_contains($message, $latest->error_message)
+                    ? $latest->error_code
+                    : null;
+                $rawErrors[] = ['code' => $code, 'message' => $message];
+            }
+        }
+
+        if ($rawErrors === []) {
+            return [];
+        }
+
+        $countryCode = (string) $document->country_code;
+        $validator = $this->pluginRegistry->has($countryCode)
+            ? $this->pluginRegistry->resolve($countryCode, 'validator')
+            : null;
+        $source = null;
+        $context = [];
+
+        if ($validator instanceof ExplainsSubmissionErrors) {
+            $source = match ($document->document_type) {
+                'credit_note' => CustomerCreditNote::with('customer')->find($document->document_id),
+                'refund_note' => Payment::with('customer')->find($document->document_id),
+                'invoice' => Invoice::with('customer')->find($document->document_id),
+                default => null,
+            };
+
+            if ($source !== null) {
+                ['context' => $context, 'report' => $report] = $this->providerContextFor($this->getCountryConfig($countryCode), $source);
+                if ($report['source'] === EInvoiceSupplierIdentityResolver::SOURCE_LEGAL_ENTITY) {
+                    $context['supplier_identity_legal_entity_id'] = $report['legal_entity_id'];
+                }
+            }
+        }
+
+        $explained = [];
+        foreach ($rawErrors as $raw) {
+            $code = $raw['code'] !== null && $raw['code'] !== '' ? (string) $raw['code'] : null;
+            $items = $validator instanceof ExplainsSubmissionErrors
+                ? $validator->explainSubmissionError($code, $raw['message'], $source, $context)
+                : [];
+
+            if ($items === []) {
+                $items = [[
+                    'code' => $code,
+                    'issue_code' => null,
+                    'message' => $raw['message'],
+                    'raw_message' => $raw['message'],
+                    'fix' => null,
+                ]];
+            }
+
+            foreach ($items as $item) {
+                $explained[] = ['country_code' => $countryCode] + $item;
+            }
+        }
+
+        return $explained;
     }
 
     /**

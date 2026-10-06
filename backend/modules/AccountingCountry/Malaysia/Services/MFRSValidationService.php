@@ -3,6 +3,7 @@
 namespace Modules\AccountingCountry\Malaysia\Services;
 
 use App\Accounting\Contracts\CountryValidationContract;
+use App\Accounting\Contracts\ExplainsSubmissionErrors;
 use App\Accounting\Contracts\SupportsCredentialValidation;
 use App\Accounting\Contracts\SupportsReadinessCheck;
 use App\Models\Invoice;
@@ -11,7 +12,7 @@ use Illuminate\Support\Carbon;
 /**
  * Validates invoices against Malaysia MFRS and MyInvois requirements.
  */
-class MFRSValidationService implements CountryValidationContract, SupportsCredentialValidation, SupportsReadinessCheck
+class MFRSValidationService implements CountryValidationContract, ExplainsSubmissionErrors, SupportsCredentialValidation, SupportsReadinessCheck
 {
     /**
      * #699 (EC2): MyInvois credential requirements belong to the MY pack —
@@ -265,15 +266,105 @@ class MFRSValidationService implements CountryValidationContract, SupportsCreden
                 'id' => $invoice->customer?->id !== null ? (int) $invoice->customer->id : null,
                 'fields' => ['tax_number', 'buyer_type'],
             ],
-            'supplier' => ($context['supplier_identity_legal_entity_id'] ?? null) !== null
-                ? [
-                    'type' => 'legal_entity',
-                    'id' => (int) $context['supplier_identity_legal_entity_id'],
-                    'fields' => ['tax_id', 'registration_number'],
-                ]
-                : ['type' => 'einvoice_settings', 'id' => null, 'fields' => []],
+            'supplier' => $this->supplierFixTarget($context),
             default => ['type' => 'invoice', 'id' => (int) $invoice->id, 'fields' => []],
         };
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function supplierFixTarget(array $context): array
+    {
+        return ($context['supplier_identity_legal_entity_id'] ?? null) !== null
+            ? [
+                'type' => 'legal_entity',
+                'id' => (int) $context['supplier_identity_legal_entity_id'],
+                'fields' => ['tax_id', 'registration_number'],
+            ]
+            : ['type' => 'einvoice_settings', 'id' => null, 'fields' => []];
+    }
+
+    /**
+     * #673 (EINV-UX4): the plain-language version of an error this pack's
+     * MyInvois integration returned, with the record and field to fix.
+     *
+     * Only the codes MyInvoiceSubmissionProvider itself emits or classifies
+     * (mapFinanceErrorCategory, PAYLOAD_VALIDATION_FAILED,
+     * SIGNATURE_REQUIRED_IN_PRODUCTION) are translated. A message that is
+     * one of this validator's own rules (the "Validation failed: ..." a
+     * submission returns) is matched back to its readiness issue (#671).
+     * Anything else is returned as received, with no fix.
+     */
+    public function explainSubmissionError(?string $code, string $message, ?object $source, array $context): array
+    {
+        $code = $code !== null && trim($code) !== '' ? strtoupper(trim($code)) : null;
+        $invoice = $source instanceof Invoice ? $source : null;
+        $customer = $source?->customer ?? null;
+        $customerName = $customer !== null
+            ? "customer '".(trim((string) ($customer->name ?? '')) ?: 'Customer #'.$customer->id)."'"
+            : 'the customer';
+        $customerFix = fn (array $fields) => $customer !== null
+            ? ['type' => 'customer', 'id' => (int) $customer->id, 'fields' => $fields]
+            : null;
+        $supplierWhere = ($context['supplier_identity_legal_entity_id'] ?? null) !== null
+            ? 'the issuing legal entity'
+            : 'MyInvois settings';
+        $settingsFix = ['type' => 'einvoice_settings', 'id' => null, 'fields' => []];
+
+        $explained = fn (string $plain, ?array $fix, ?string $issueCode = null) => [
+            'code' => $code,
+            'issue_code' => $issueCode,
+            'message' => $plain,
+            'raw_message' => $message,
+            'fix' => $fix,
+        ];
+
+        switch ($code) {
+            case 'BUYER_TIN_INVALID':
+                return [$explained("Buyer TIN not accepted by LHDN — check the TIN on {$customerName}.", $customerFix(['tax_number', 'buyer_type']))];
+            case 'SUPPLIER_TIN_INVALID':
+                return [$explained("Supplier TIN not accepted by LHDN — check the supplier TIN in {$supplierWhere}.", $this->supplierFixTarget($context))];
+            case 'INVALID_TIN':
+                return [$explained("A TIN on this document was not accepted by LHDN — check the TIN on {$customerName} and the supplier TIN in {$supplierWhere}.", $customerFix(['tax_number', 'buyer_type']))];
+            case 'INVALID_REGISTRATION':
+                return [$explained("A registration number on this document was not accepted by LHDN — check the registration number on {$customerName} and the supplier registration in {$supplierWhere}.", $customerFix(['company_registration_number']))];
+            case 'INVALID_TAX_CODE':
+            case 'INVALID_SST_RATE':
+            case 'TAX_MISMATCH':
+                return [$explained(
+                    'LHDN did not accept the tax on this document — check the tax code and SST rate on its lines.',
+                    $invoice !== null ? ['type' => 'invoice', 'id' => (int) $invoice->id, 'fields' => ['lines']] : null,
+                )];
+            case 'UNAUTHORIZED':
+            case 'TOKEN_EXPIRED':
+            case 'INVALID_API_KEY':
+                return [$explained('LHDN refused the MyInvois API credentials — check the client ID and secret in MyInvois settings.', $settingsFix)];
+            case 'SYSTEM_ERROR':
+            case 'SERVICE_UNAVAILABLE':
+            case 'TIMEOUT':
+                return [$explained('The LHDN service did not respond — nothing needs to change on the document; retry it.', null)];
+            case 'DUPLICATE_SUBMISSION':
+                return [$explained('LHDN already holds this document — check its status on the MyInvois portal before retrying.', null)];
+            case 'SIGNATURE_REQUIRED_IN_PRODUCTION':
+                return [$explained('Production submissions must be digitally signed — set up the signing certificate in MyInvois settings.', $settingsFix)];
+        }
+
+        // One of this validator's own rules, reported by a submission as
+        // "Validation failed: <rule>, <rule>": link each to its record.
+        if ($invoice !== null) {
+            $matched = [];
+            foreach ($this->collectInvoiceIssues($invoice, $context) as $issue) {
+                if (str_contains($message, $issue['message'])) {
+                    $matched[] = $explained($issue['message'], $this->fixTarget($issue['target'], $invoice, $context), $issue['code']);
+                }
+            }
+            if ($matched !== []) {
+                return $matched;
+            }
+        }
+
+        return [$explained($message, null)];
     }
 
     public function validateAccountMapping(string $accountCode, string $accountType): bool
