@@ -172,16 +172,36 @@ class CustomerCreditNotesController extends Controller
             ], 403);
         }
 
+        // #518 (CN9): a draft's lines can be corrected (replace-all); the
+        // service recalculates totals through the same line calculation used
+        // at create time. Line rules mirror store().
         $validated = $request->validate([
             'credit_note_date' => 'date',
             'due_date' => 'nullable|date',
             'reason' => 'nullable|string',
             'notes' => 'nullable|string',
+            'lines' => 'sometimes|array|min:1',
+            'lines.*.invoice_line_id' => 'nullable|exists:invoice_lines,id',
+            'lines.*.product_id' => 'nullable|exists:products,id',
+            'lines.*.description' => 'required|string',
+            'lines.*.quantity' => 'required|numeric|min:0.01',
+            'lines.*.unit_price' => 'required|numeric|min:0',
+            'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            'lines.*.tax_inclusive' => 'nullable|boolean',
+            'lines.*.discount_amount' => 'nullable|numeric|min:0',
+            'lines.*.account_id' => 'nullable|exists:chart_of_accounts,id',
         ]);
 
-        $creditNote->update($validated);
+        try {
+            $updated = $this->creditNoteService->updateDraftCreditNote($creditNote, $validated);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'message' => 'Failed to update credit note',
+                'error' => $e->getMessage(),
+            ], 422);
+        }
 
-        return response()->json($creditNote->fresh(['customer', 'invoice', 'lines']));
+        return response()->json($updated);
     }
 
     /**
