@@ -723,6 +723,58 @@ class CompanySettingsController extends Controller
         ]);
     }
 
+    /**
+     * Issue #540 (ST3): read-only document defaults for the sales create
+     * pages. GET /settings/sales is OWNER/ADMIN-only (settings.view), so every
+     * other role silently lost these defaults. This returns ONLY what a new
+     * invoice / delivery order needs — no reviewer pools, user directory or
+     * administrative settings.
+     */
+    public function getSalesDocumentDefaults(): JsonResponse
+    {
+        return response()->json([
+            'data' => [
+                'invoice' => [
+                    'allow_custom_number' => (bool) \App\Models\Setting::getValue('sales.invoice.allow_custom_number', true),
+                    'field_profile' => (string) \App\Models\Setting::getValue('sales.invoice.field_profile', 'medical'),
+                    'default_requires_approval' => (bool) \App\Models\Setting::getValue('sales.invoice.default_requires_approval', false),
+                    'default_payment_terms_days' => (int) \App\Models\Setting::getValue('sales.invoice.default_payment_terms_days', 30),
+                    'default_notes' => \App\Models\Setting::getValue('sales.invoice.default_notes', ''),
+                    'default_terms' => \App\Models\Setting::getValue('sales.invoice.default_terms', 'Payment due within 30 days.'),
+                ],
+                'delivery_order' => [
+                    'default_requires_approval' => (bool) \App\Models\Setting::getValue('sales.delivery_order.default_requires_approval', false),
+                ],
+                'tax' => $this->salesTaxDefaults(),
+            ],
+        ]);
+    }
+
+    /**
+     * MRD R10.3: ONE tax config surface. The legacy sales.tax.* keys are
+     * derived from the canonical Setting tax block that the engine actually
+     * reads — no orphan writes.
+     *
+     * @return array{default_tax_rate: float, prices_include_tax: bool, default_tax_treatment: string}
+     */
+    private function salesTaxDefaults(): array
+    {
+        $tax = \App\Models\Setting::getValue('tax', []);
+        $defaultRate = 0.0;
+        if (! empty($tax['default_tax_id'])) {
+            $defaultRate = (float) (\App\Models\Tax::query()->whereKey($tax['default_tax_id'])->value('rate') ?? 0);
+        }
+
+        return [
+            'default_tax_rate' => $defaultRate,
+            'prices_include_tax' => ($tax['pricing_mode'] ?? 'exclusive') === 'inclusive',
+            // #451: the tenant-level treatment default is a real persisted
+            // choice; 'standard' is only the display default until the tenant
+            // saves one.
+            'default_tax_treatment' => (string) ($tax['default_tax_treatment'] ?? 'standard'),
+        ];
+    }
+
     public function getSalesSettings(): JsonResponse
     {
         return response()->json([
@@ -770,22 +822,7 @@ class CompanySettingsController extends Controller
                 // MRD R10.3: ONE tax config surface. The legacy sales.tax.*
                 // keys are now derived from the canonical Setting tax block
                 // that the engine actually reads — no orphan writes.
-                'tax' => (static function (): array {
-                    $tax = \App\Models\Setting::getValue('tax', []);
-                    $defaultRate = 0.0;
-                    if (! empty($tax['default_tax_id'])) {
-                        $defaultRate = (float) (\App\Models\Tax::query()->whereKey($tax['default_tax_id'])->value('rate') ?? 0);
-                    }
-
-                    return [
-                        'default_tax_rate' => $defaultRate,
-                        'prices_include_tax' => ($tax['pricing_mode'] ?? 'exclusive') === 'inclusive',
-                        // #451: the tenant-level treatment default is a real
-                        // persisted choice; 'standard' is only the display
-                        // default until the tenant saves one.
-                        'default_tax_treatment' => (string) ($tax['default_tax_treatment'] ?? 'standard'),
-                    ];
-                })(),
+                'tax' => $this->salesTaxDefaults(),
                 'delivery' => [
                     'attach_pdf' => (bool) \App\Models\Setting::getValue('sales.delivery.attach_pdf', true),
                     'cc_internal_email' => \App\Models\Setting::getValue('sales.delivery.cc_internal_email', ''),

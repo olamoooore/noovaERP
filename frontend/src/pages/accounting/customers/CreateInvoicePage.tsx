@@ -526,11 +526,14 @@ export const CreateInvoicePage: React.FC = () => {
     enabled: isEditMode,
   });
 
-  // Tenant-level sales settings (only consulted when not editing)
+  // Tenant-level sales document defaults (only consulted when not editing).
+  // Issue #540: read from the defaults endpoint every invoice creator can
+  // reach — GET /settings/sales is OWNER/ADMIN-only, so other roles silently
+  // lost default notes, terms and the approval policy.
   const { data: salesSettings } = useQuery({
-    queryKey: ['sales-settings'],
+    queryKey: ['sales-settings', 'defaults'],
     queryFn: async () => {
-      const res = await api.get('/settings/sales');
+      const res = await api.get('/settings/sales/defaults');
       return res.data?.data ?? null;
     },
     enabled: !isEditMode,
@@ -1697,7 +1700,8 @@ export const CreateInvoicePage: React.FC = () => {
       ...(currencyCode ? { currency_code: currencyCode } : {}),
       // FR-2.3 step 1: explicit list selection wins over applicability.
       ...(priceListId ? { price_list_id: Number(priceListId) } : {}),
-      requires_approval: requiresApproval,
+      // Issue #540: requires_approval is never sent — the server applies the
+      // tenant approval policy on create and keeps it on edit.
       ...(!isEditMode && tags.length ? { tags } : {}),
       ...(customInvoiceNumber && (isQuoteMode || allowCustomNumber) ? { invoice_number: customInvoiceNumber } : {}),
       // Issue #896/#906: echo the loaded version so a concurrent editor's
