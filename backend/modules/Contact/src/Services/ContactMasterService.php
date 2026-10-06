@@ -23,12 +23,12 @@ use Modules\Contact\src\Models\ContactImportBatch;
 use Modules\Contact\src\Models\ContactImportStaging;
 use Modules\Contact\src\Models\ContactMergeHistory;
 use Modules\Contact\src\Models\ContactMethod;
+use Modules\Contact\src\Models\ContactRegistration;
 use Modules\Contact\src\Models\ContactRelatedRecord;
 use Modules\Contact\src\Models\ContactRelationship;
-use Modules\Contact\src\Models\ContactRegistration;
 use Modules\Contact\src\Models\ContactRole;
-use Modules\Contact\src\Models\ContactTaxProfile;
 use Modules\Contact\src\Models\ContactSearchIndex;
+use Modules\Contact\src\Models\ContactTaxProfile;
 use Modules\Contact\src\Models\CoreContact;
 use Modules\Contact\src\Models\CrmContactProfile;
 use Modules\Contact\src\Models\HrStaffProfile;
@@ -401,24 +401,24 @@ class ContactMasterService
             }
 
             return ContactAddress::create([
-            'id' => Str::uuid(),
-            'tenant_id' => $tenantId,
-            'contact_id' => $contactId,
-            'address_type' => $data['address_type'],
-            'label' => $data['label'] ?? null,
-            'line_1' => $data['line_1'] ?? null,
-            'line_2' => $data['line_2'] ?? null,
-            'line_3' => $data['line_3'] ?? null,
-            'city' => $data['city'] ?? null,
-            'state' => $data['state'] ?? null,
-            'postal_code' => $data['postal_code'] ?? null,
-            'country' => $data['country'] ?? null,
-            'latitude' => $data['latitude'] ?? null,
-            'longitude' => $data['longitude'] ?? null,
-            'is_primary' => $data['is_primary'] ?? false,
-            'is_default_billing' => $data['is_default_billing'] ?? false,
-            'is_default_shipping' => $data['is_default_shipping'] ?? false,
-            'metadata' => $data['metadata'] ?? null,
+                'id' => Str::uuid(),
+                'tenant_id' => $tenantId,
+                'contact_id' => $contactId,
+                'address_type' => $data['address_type'],
+                'label' => $data['label'] ?? null,
+                'line_1' => $data['line_1'] ?? null,
+                'line_2' => $data['line_2'] ?? null,
+                'line_3' => $data['line_3'] ?? null,
+                'city' => $data['city'] ?? null,
+                'state' => $data['state'] ?? null,
+                'postal_code' => $data['postal_code'] ?? null,
+                'country' => $data['country'] ?? null,
+                'latitude' => $data['latitude'] ?? null,
+                'longitude' => $data['longitude'] ?? null,
+                'is_primary' => $data['is_primary'] ?? false,
+                'is_default_billing' => $data['is_default_billing'] ?? false,
+                'is_default_shipping' => $data['is_default_shipping'] ?? false,
+                'metadata' => $data['metadata'] ?? null,
             ]);
         });
     }
@@ -766,15 +766,28 @@ class ContactMasterService
 
     // ─── Merge ────────────────────────────────────────────────────
 
-    public function merge(string $primaryId, string $mergedId, string $tenantId, string $userId): bool
-    {
+    /**
+     * Issue #435 (CU7): optional $reason and $mergeDetails let a calling
+     * module (customer merge) record its own business context in the same
+     * ContactMergeHistory row. Existing callers are unaffected.
+     *
+     * @param  list<string>  $mergeDetails
+     */
+    public function merge(
+        string $primaryId,
+        string $mergedId,
+        string $tenantId,
+        string $userId,
+        ?string $reason = null,
+        array $mergeDetails = [],
+    ): bool {
         $primary = $this->find($primaryId, $tenantId);
         $merged = $this->find($mergedId, $tenantId);
         if (! $primary || ! $merged) {
             return false;
         }
 
-        return DB::transaction(function () use ($primary, $merged, $primaryId, $mergedId, $tenantId, $userId) {
+        return DB::transaction(function () use ($primary, $merged, $primaryId, $mergedId, $tenantId, $userId, $reason, $mergeDetails) {
             // Move roles
             ContactRole::where('tenant_id', $tenantId)->where('contact_id', $merged->id)
                 ->update(['contact_id' => $primary->id]);
@@ -849,9 +862,10 @@ class ContactMasterService
                 'tenant_id' => $tenantId,
                 'primary_contact_id' => $primaryId,
                 'merged_contact_id' => $mergedId,
-                'merge_details' => $movedGroups,
+                'merge_details' => array_values(array_unique(array_merge($movedGroups, $mergeDetails))),
                 'merged_by' => $userId,
                 'merged_at' => now(),
+                'reason' => $reason,
             ]);
 
             // Rebuild search index

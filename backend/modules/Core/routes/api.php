@@ -308,6 +308,11 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         ->middleware(RequirePermission::using('customers.write'));
     Route::post('customers/{customer}/recalculate-stats', [CustomerController::class, 'recalculateStats'])
         ->middleware(RequirePermission::using('customers.write'));
+    // Issue #435 (CU7): merge a duplicate customer into a survivor. Reuses the
+    // coarse customers.write grant — contacts.merge is not seeded in
+    // RolePermissionSeeder and this issue must not change the permission matrix.
+    Route::post('customers/{customer}/merge', [CustomerController::class, 'merge'])
+        ->middleware(RequirePermission::using('customers.write'));
     Route::post('customers/{customer}/send-email', [CustomerController::class, 'sendEmail'])
         ->middleware(RequirePermission::using('customers.write'));
     Route::post('customers/{customer}/addresses', [CustomerController::class, 'addAddress'])
