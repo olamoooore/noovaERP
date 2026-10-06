@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { SALES_CONTROL } from '@/components/sales/salesDesignTokens'
+import { FieldSlot } from '@/components/ui/field-errors'
 
 export interface DocumentTotalsCardProps {
   subtotal: number
@@ -16,6 +17,8 @@ export interface DocumentTotalsCardProps {
   onDiscountAmountChange?: (value: number | '') => void
   /** Cap for percentage mode (defaults to 100). */
   discountMax?: number
+  /** #318: validation key the discount control reports errors under. */
+  discountFieldKey?: string
   lineDiscounts?: number
   documentDiscountAmount?: number
   /** Small print rows under the total (base equivalent, priced-by, ...). */
@@ -39,6 +42,7 @@ export function DocumentTotalsCard({
   discountAmount = '',
   onDiscountAmountChange,
   discountMax = 100,
+  discountFieldKey = 'discount_amount',
   lineDiscounts = 0,
   documentDiscountAmount = 0,
   footer,
@@ -61,30 +65,33 @@ export function DocumentTotalsCard({
             <div className="flex items-center justify-between gap-3">
               <span className="text-muted-foreground">{discountLabel}</span>
               {interactive ? (
-                <div className="flex items-center gap-1.5">
-                  <select
-                    aria-label="Document discount mode"
-                    value={discountMode}
-                    onChange={(event) => onDiscountModeChange?.(event.target.value as 'fixed' | 'percentage')}
-                    className={cn(SALES_CONTROL, 'h-9 w-auto pr-2')}
-                  >
-                    <option value="fixed">Fixed</option>
-                    <option value="percentage">%</option>
-                  </select>
-                  <input
-                    type="number"
-                    min="0"
-                    max={discountMode === 'percentage' ? discountMax : undefined}
-                    step="0.01"
-                    placeholder="0"
-                    aria-label="Document discount amount"
-                    value={discountAmount === '' ? '' : discountAmount}
-                    onChange={(event) => onDiscountAmountChange?.(
-                      event.target.value === '' ? '' : Number(event.target.value),
-                    )}
-                    className={cn(SALES_CONTROL, 'w-24 text-right tabular-nums')}
-                  />
-                </div>
+                <FieldSlot name={discountFieldKey} className="flex flex-col items-end">
+                  <div className="flex items-center gap-1.5">
+                    <select
+                      aria-label="Document discount mode"
+                      value={discountMode}
+                      onChange={(event) => onDiscountModeChange?.(event.target.value as 'fixed' | 'percentage')}
+                      className={cn(SALES_CONTROL, 'h-9 w-auto pr-2')}
+                    >
+                      <option value="fixed">Fixed</option>
+                      <option value="percentage">%</option>
+                    </select>
+                    <input
+                      type="number"
+                      min="0"
+                      max={discountMode === 'percentage' ? discountMax : undefined}
+                      step="0.01"
+                      placeholder="0"
+                      aria-label="Document discount amount"
+                      data-field-focus
+                      value={discountAmount === '' ? '' : discountAmount}
+                      onChange={(event) => onDiscountAmountChange?.(
+                        event.target.value === '' ? '' : Number(event.target.value),
+                      )}
+                      className={cn(SALES_CONTROL, 'w-24 text-right tabular-nums')}
+                    />
+                  </div>
+                </FieldSlot>
               ) : (
                 <span className="font-medium tabular-nums">
                   {money(typeof discountAmount === 'number' ? discountAmount : 0)}

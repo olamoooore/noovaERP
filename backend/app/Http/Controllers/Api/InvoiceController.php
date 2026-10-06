@@ -86,6 +86,13 @@ class InvoiceController extends Controller
 
         $this->annotateApprovalView($invoices, $request->user());
 
+        // Issue #688 (INV-UX2): "Delivered x/y" chip, one batched query per page.
+        $progress = app(\App\Services\SalesDocumentProgress::class)
+            ->forInvoices(collect($invoices->items())->pluck('id')->all());
+        foreach ($invoices as $invoice) {
+            $invoice->setAttribute('delivery_progress', $progress[(int) $invoice->id] ?? null);
+        }
+
         if ($search !== '') {
             $this->annotateSearchMatches($invoices, $search);
         }
@@ -288,6 +295,11 @@ class InvoiceController extends Controller
 
         if ($request->filled('document_ids')) {
             $query->whereIn('id', $request->input('document_ids', []));
+        }
+
+        // Issue #688 (INV-UX2): invoices whose goods are not (fully) delivered.
+        if ($request->input('progress_filter') === 'invoiced_not_delivered') {
+            app(\App\Services\SalesDocumentProgress::class)->scopeInvoicedNotDelivered($query);
         }
 
         if ($request->filled('start_date')) {
@@ -657,7 +669,7 @@ class InvoiceController extends Controller
      */
     private function customInvoiceNumberingAllowed(): bool
     {
-        return (bool) Setting::getValue('sales.invoice.allow_custom_number', true);
+        return app(\App\Services\SalesSettings::class)->allowCustomInvoiceNumber();
     }
 
     /**
@@ -1235,6 +1247,13 @@ class InvoiceController extends Controller
         // "Someone else is editing" banner. Null when nobody holds the lock.
         $invoice->setAttribute('active_lock', $this->versionGuard->activeLockInfo('invoice', (int) $invoice->id));
 
+        // Issue #688 (INV-UX2): per-line and header "Delivered x/y" with the
+        // delivery orders shipping this invoice's goods.
+        $invoice->setAttribute(
+            'delivery_progress',
+            app(\App\Services\SalesDocumentProgress::class)->forInvoices([(int) $invoice->id])[(int) $invoice->id] ?? null,
+        );
+
         return response()->json($invoice);
     }
 
@@ -1567,14 +1586,26 @@ class InvoiceController extends Controller
         $newNumber = (string) $invoice->fresh()->invoice_number;
         $numberChanged = $oldNumber !== '' && $newNumber !== '' && $oldNumber !== $newNumber;
 
+        // Issue #895 snapshots, reused by #634 for the chatter field-change list.
+        $afterHeader = $invoice->fresh()->getAttributes();
+        $afterLines = $invoice->lines()->get()
+            ->map(fn ($line) => $this->auditLineSnapshot($line))
+            ->values()
+            ->all();
+
+        // Issue #634: one chatter entry per save listing every tracked field
+        // (header and lines) with its old → new value.
+        $tracked = app(\App\Services\Chatter\FieldChangeTracker::class)
+            ->track(Invoice::class, $beforeHeader, $afterHeader, $beforeLines, $afterLines);
+
         $linesReplaced = array_key_exists('lines', (array) ($request->all()));
-        if ($changedFields !== [] || $linesReplaced) {
+        if ($changedFields !== [] || $linesReplaced || $tracked !== []) {
             $metadata = [
                 'invoice_number' => $invoice->invoice_number,
                 'fields' => $changedFields === []
                     ? 'line items'
                     : implode(', ', $changedFields).($linesReplaced ? ', line items' : ''),
-            ];
+            ] + $tracked;
 
             if ($numberChanged) {
                 $metadata['invoice_number_from'] = $oldNumber;
@@ -1598,11 +1629,8 @@ class InvoiceController extends Controller
                     'lines' => $beforeLines,
                 ],
                 [
-                    'fields' => array_intersect_key($invoice->fresh()->getAttributes(), array_flip($changedFields)),
-                    'lines' => $invoice->lines()->get()
-                        ->map(fn ($line) => $this->auditLineSnapshot($line))
-                        ->values()
-                        ->all(),
+                    'fields' => array_intersect_key($afterHeader, array_flip($changedFields)),
+                    'lines' => $afterLines,
                 ],
                 ['invoice_number' => $invoice->invoice_number],
             );
@@ -1950,7 +1978,8 @@ class InvoiceController extends Controller
         ]);
 
         $amount = $validated['amount'] ?? $invoice->balance;
-        $expiresDays = $validated['expires_in_days'] ?? 14;
+        // #539: tenant default lifetime (sales.portal.payment_link_expiry_days).
+        $expiresDays = $validated['expires_in_days'] ?? app(\App\Services\SalesSettings::class)->paymentLinkExpiryDays();
 
         try {
             $paymentLink = $this->invoiceService->createPaymentLink(
@@ -2020,7 +2049,18 @@ class InvoiceController extends Controller
             'save_customer_email' => 'nullable|boolean',
         ]);
 
-        $expiresDays = $validated['expires_in_days'] ?? 30;
+        // #539: customer acceptance can be switched off per tenant
+        // (sales.portal.acceptance_enabled) — then no acceptance link is issued.
+        if (! app(\App\Services\SalesSettings::class)->acceptanceEnabled()) {
+            return response()->json([
+                'message' => 'Customer acceptance is disabled by the sales setting sales.portal.acceptance_enabled.',
+                'code' => 'ACCEPTANCE_DISABLED',
+            ], 422);
+        }
+
+        // #539: null lets the evidence service apply the tenant's
+        // sales.portal.acceptance_link_expiry_days.
+        $expiresDays = $validated['expires_in_days'] ?? null;
         $sendEmail = $validated['send_email'] ?? true;
         // Issue #617: null lets InvoiceDeliveryService apply the #539
         // "document type on send" setting / invoice-status default instead of
@@ -2109,6 +2149,25 @@ class InvoiceController extends Controller
     }
 
     /**
+     * #671 (EINV-UX2): the e-invoice readiness checklist shown before Post —
+     * a read-only dry run of the country pack's submission rules, each gap
+     * pointing at the record (customer, product, legal entity, settings)
+     * that fixes it.
+     */
+    public function einvoiceReadiness($id): JsonResponse
+    {
+        $invoice = Invoice::with(['customer', 'lines.product'])->find($id);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        return response()->json(
+            app(\App\Accounting\Services\ComplianceService::class)->invoiceReadiness($invoice)
+        );
+    }
+
+    /**
      * Issue #883 (SAU1): the Journal tab — for a draft, the would-be entry
      * computed by the same builder posting uses (never written); for a posted
      * invoice, the actual journal entry with per-line account drill-down.
@@ -2151,28 +2210,36 @@ class InvoiceController extends Controller
             $invoice->unsetRelation('customer');
         }
 
-        try {
-            // 1) Acceptance portal link (review / e-sign).
-            $linkData = $this->evidenceService->createPortalAcceptanceLink(
-                $invoice,
-                $validated['expires_in_days'] ?? 30
-            );
+        $salesSettings = app(\App\Services\SalesSettings::class);
 
-            $this->activityService->log(
-                $invoice,
-                \App\Models\InvoiceActivityLog::EVENT_ACCEPTANCE_LINK_CREATED,
-                [
-                    'acceptance_url' => $linkData['url'],
-                    'expires_at' => $linkData['expires_at'],
-                    'evidence_id' => $linkData['evidence_id'],
-                    'send_email' => true,
-                    'bundle' => true,
-                ],
-                $invoice->getOriginal('evidence_status') ?? $invoice->evidence_status,
-                $invoice->fresh()->evidence_status,
-                \App\Models\InvoiceActivityLog::ACTOR_USER,
-                $request->user()->id,
-            );
+        try {
+            // 1) Acceptance portal link (review / e-sign) — only while the
+            // tenant keeps customer acceptance on (#539). The link lifetime
+            // defaults to sales.portal.acceptance_link_expiry_days.
+            $linkData = [];
+
+            if ($salesSettings->acceptanceEnabled()) {
+                $linkData = $this->evidenceService->createPortalAcceptanceLink(
+                    $invoice,
+                    $validated['expires_in_days'] ?? null
+                );
+
+                $this->activityService->log(
+                    $invoice,
+                    \App\Models\InvoiceActivityLog::EVENT_ACCEPTANCE_LINK_CREATED,
+                    [
+                        'acceptance_url' => $linkData['url'],
+                        'expires_at' => $linkData['expires_at'],
+                        'evidence_id' => $linkData['evidence_id'],
+                        'send_email' => true,
+                        'bundle' => true,
+                    ],
+                    $invoice->getOriginal('evidence_status') ?? $invoice->evidence_status,
+                    $invoice->fresh()->evidence_status,
+                    \App\Models\InvoiceActivityLog::ACTOR_USER,
+                    $request->user()->id,
+                );
+            }
 
             // 2) Pay-now link — only for posted invoices with a live balance.
             // Drafts are sent for acceptance first; a draft has no payable
@@ -2185,7 +2252,7 @@ class InvoiceController extends Controller
                     $payment = $this->invoiceService->createPaymentLink(
                         $invoice,
                         (float) $invoice->balance,
-                        now()->addDays($validated['payment_expires_in_days'] ?? 14),
+                        now()->addDays($validated['payment_expires_in_days'] ?? $salesSettings->paymentLinkExpiryDays()),
                     );
                     $paymentUrl = $payment['url'] ?? null;
 
@@ -2212,8 +2279,10 @@ class InvoiceController extends Controller
 
             // 3)ONE email: PDF + acceptance link + pay-now link + QR.
             $delivery = $this->deliveryService->deliver($invoice, 'email', $request->user(), [
-                'document_type' => \App\Models\InvoiceDelivery::DOCUMENT_FINAL_INVOICE,
-                'portal_url' => $linkData['url'],
+                // #539: the tenant's "document type on send" choice; the final
+                // invoice stays the bundle default when none was configured.
+                'document_type' => $salesSettings->documentTypeOnSend() ?? \App\Models\InvoiceDelivery::DOCUMENT_FINAL_INVOICE,
+                'portal_url' => $linkData['url'] ?? null,
                 'payment_url' => $paymentUrl,
                 'recipient' => $recipientOverride,
             ]);
@@ -2426,21 +2495,39 @@ class InvoiceController extends Controller
                 $request->user()->id,
             );
 
-            try {
-                $acceptance = $this->evidenceService->createPortalAcceptanceLink($invoice);
+            // #539: sales.invoice.auto_send_to_customer_on_post decides whether
+            // posting emails the customer. The send uses the POSTED invoice
+            // (the pre-post instance is still a draft, which the delivery
+            // service refuses — so nothing was ever sent). The acceptance link
+            // is issued only while the tenant keeps acceptance on. The post
+            // itself is already committed, so a failed send is reported in
+            // the response (auto_send) instead of failing the post.
+            $salesSettings = app(\App\Services\SalesSettings::class);
+            $autoSend = ['enabled' => $salesSettings->autoSendToCustomerOnPost(), 'sent' => false, 'error' => null];
 
-                $this->deliveryService->deliver($invoice, 'email', $request->user(), [
-                    'document_type' => 'final_invoice',
-                ]);
+            if ($autoSend['enabled']) {
+                try {
+                    $acceptance = $salesSettings->acceptanceEnabled()
+                        ? $this->evidenceService->createPortalAcceptanceLink($posted)
+                        : null;
 
-                $posted->acceptance_url = $acceptance['url'] ?? null;
-                $posted->acceptance_expires_at = $acceptance['expires_at'] ?? null;
-            } catch (\Throwable $e) {
-                \Log::warning('Failed to auto-deliver posted invoice', [
-                    'invoice_id' => $invoice->id,
-                    'error' => $e->getMessage(),
-                ]);
+                    $this->deliveryService->deliver($posted, 'email', $request->user(), [
+                        'document_type' => \App\Models\InvoiceDelivery::DOCUMENT_FINAL_INVOICE,
+                    ]);
+
+                    $autoSend['sent'] = true;
+                    $posted->acceptance_url = $acceptance['url'] ?? null;
+                    $posted->acceptance_expires_at = $acceptance['expires_at'] ?? null;
+                } catch (\Throwable $e) {
+                    $autoSend['error'] = $e->getMessage();
+                    \Log::warning('Failed to auto-deliver posted invoice', [
+                        'invoice_id' => $invoice->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
+
+            $posted->auto_send = $autoSend;
 
             return response()->json([
                 'message' => 'Invoice posted successfully',

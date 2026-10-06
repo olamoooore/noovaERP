@@ -192,13 +192,17 @@ class SalesAnalyticsService
                     'p.sku',
                     'p.cost',
                     'p.price',
-                    DB::raw('SUM(li.quantity) as total_quantity'),
+                    // Issue #600: quantity sold, cost, profit and margin are
+                    // on PAID units; free (FOC) units are reported apart.
+                    DB::raw('SUM(li.quantity - li.foc_quantity) as total_quantity'),
+                    DB::raw('SUM(li.foc_quantity) as foc_quantity'),
+                    DB::raw('SUM(li.base_foc_list_value) as foc_list_value'),
                     DB::raw('SUM(li.base_revenue) as total_revenue'),
                     DB::raw('SUM(CASE WHEN li.channel = \'booking\' THEN li.base_revenue ELSE 0 END) as bookings_revenue'),
                     DB::raw('SUM(CASE WHEN li.channel <> \'booking\' THEN li.base_revenue ELSE 0 END) as invoiced_revenue'),
-                    DB::raw('SUM(li.quantity * COALESCE(p.cost, 0)) as total_cost'),
-                    DB::raw('SUM(li.base_revenue - (li.quantity * COALESCE(p.cost, 0))) as total_profit'),
-                    DB::raw('CASE WHEN SUM(li.base_revenue) > 0 THEN (SUM(li.base_revenue - (li.quantity * COALESCE(p.cost, 0))) / SUM(li.base_revenue) * 100) ELSE 0 END as profit_margin'),
+                    DB::raw('SUM((li.quantity - li.foc_quantity) * COALESCE(p.cost, 0)) as total_cost'),
+                    DB::raw('SUM(li.base_revenue - ((li.quantity - li.foc_quantity) * COALESCE(p.cost, 0))) as total_profit'),
+                    DB::raw('CASE WHEN SUM(li.base_revenue) > 0 THEN (SUM(li.base_revenue - ((li.quantity - li.foc_quantity) * COALESCE(p.cost, 0))) / SUM(li.base_revenue) * 100) ELSE 0 END as profit_margin'),
                     // Issue #360: orders, not line rows — a product on two
                     // lines of one order is one order.
                     DB::raw('COUNT(DISTINCT li.order_ref) as order_count'),
@@ -228,6 +232,8 @@ class SalesAnalyticsService
             'total_profit' => round((float) $sales->sum('total_profit'), 2),
             'average_profit_margin' => $sales->count() > 0 ? round((float) $sales->avg('profit_margin'), 2) : 0,
             'total_quantity_sold' => $this->roundQuantity($sales->sum('total_quantity')),
+            'total_foc_quantity' => $this->roundQuantity($sales->sum('foc_quantity')),
+            'total_foc_list_value' => round((float) $sales->sum('foc_list_value'), 2),
             'channels_included' => self::CHANNELS_INCLUDED,
         ]);
 
@@ -247,6 +253,12 @@ class SalesAnalyticsService
                 'order_count' => (int) $item->order_count,
                 'total_quantity' => $this->roundQuantity($item->total_quantity),
                 'quantity_sold' => $this->roundQuantity($item->total_quantity),
+                'paid_quantity' => $this->roundQuantity($item->total_quantity),
+                'foc_quantity' => $this->roundQuantity($item->foc_quantity),
+                'foc_list_value' => round((float) $item->foc_list_value, 2),
+                'average_price' => (float) $item->total_quantity != 0.0
+                    ? round((float) $item->total_revenue / (float) $item->total_quantity, 2)
+                    : 0.0,
                 'total_revenue' => round((float) $item->total_revenue, 2),
                 'total_sales' => round((float) $item->total_revenue, 2),
                 'total_cost' => round((float) $item->total_cost, 2),
@@ -289,6 +301,11 @@ class SalesAnalyticsService
                     'c.name as customer_name',
                     'c.email as customer_email',
                     DB::raw('COUNT(DISTINCT li.order_ref) as order_count'),
+                    // Issue #600: paid vs free (FOC) units, and the list value
+                    // of the free goods given to the customer.
+                    DB::raw('SUM(li.quantity - li.foc_quantity) as paid_quantity'),
+                    DB::raw('SUM(li.foc_quantity) as foc_quantity'),
+                    DB::raw('SUM(li.base_foc_list_value) as foc_list_value'),
                     DB::raw('SUM(li.base_revenue) as total_revenue'),
                     DB::raw('SUM(CASE WHEN li.channel = \'booking\' THEN li.base_revenue ELSE 0 END) as bookings_revenue'),
                     DB::raw('SUM(CASE WHEN li.channel <> \'booking\' THEN li.base_revenue ELSE 0 END) as invoiced_revenue'),
@@ -335,6 +352,9 @@ class SalesAnalyticsService
                 'total_revenue' => round((float) $item->total_revenue, 2),
                 'total_sales' => round((float) $item->total_revenue, 2),
                 'average_order_value' => round((float) $item->average_order_value, 2),
+                'paid_quantity' => $this->roundQuantity($item->paid_quantity),
+                'foc_quantity' => $this->roundQuantity($item->foc_quantity),
+                'foc_list_value' => round((float) $item->foc_list_value, 2),
                 'last_purchase_date' => $item->last_purchase_date,
             ])->toArray(),
             'summary' => $summary,
@@ -1364,7 +1384,9 @@ class SalesAnalyticsService
      * 'booking' | 'invoice' | 'credit_note'), order_ref, line_type (#360:
      * the document line's type; POS and credit-note lines are 'product'), currency_code,
      * exchange_rate, document_revenue, base_revenue, base_ordered_amount,
-     * base_delivered_amount, base_invoiced_amount (#602).
+     * base_delivered_amount, base_invoiced_amount (#602), foc_quantity and
+     * base_foc_list_value (#600: free units within `quantity`, and their
+     * value at the line's list price).
      *
      * Implemented as a raw SQL subquery rather than a query-builder union
      * because fromSub() with a QB union is fragile across PG versions.
@@ -1463,6 +1485,16 @@ class SalesAnalyticsService
             'i.id'
         );
 
+        // Issue #600: free-of-charge (bonus scheme) units. The FOC flag lives on
+        // the medical case line (`medical_case_items.is_foc`); a live case's
+        // FOC units are mapped to the invoice line that bills them, or — before
+        // invoicing — to the sales order line they were allocated from. They
+        // are capped at the document line's quantity and valued at that line's
+        // unit (list) price. Revenue is untouched: FOC units are already in the
+        // line's net amount at zero. POS and credit-note lines carry no FOC.
+        $focBySalesOrderLine = $this->focQuantitiesSql('sales_order_item_id', 'allocated_qty');
+        $focByInvoiceLine = $this->focQuantitiesSql('invoice_item_id', 'invoiced_qty');
+
         // Credit note: line_total is already tax-exclusive (CustomerCreditNoteLine
         // computes quantity x unit_price) and a credit note carries no discount.
         // Issue #601: the pivot groups by the document's own salesperson/team.
@@ -1479,6 +1511,8 @@ class SalesAnalyticsService
                    COALESCE(poi.quantity, 0) AS ordered_quantity,
                    COALESCE(poi.quantity, 0) AS delivered_quantity,
                    COALESCE(poi.quantity, 0) AS invoiced_quantity,
+                   0 AS foc_quantity,
+                   0 AS foc_list_value,
                    {$posRevenueDate} AS revenue_date,
                    'pos' AS channel,
                    'pos:' || po.id AS order_ref,
@@ -1504,6 +1538,8 @@ class SalesAnalyticsService
                    GREATEST(COALESCE(sol.quantity, 0) - COALESCE(sol.quantity_cancelled, 0), 0) AS ordered_quantity,
                    COALESCE(sol.quantity_delivered, 0) AS delivered_quantity,
                    0 AS invoiced_quantity,
+                   LEAST(COALESCE(sol.quantity, 0), COALESCE(foc_so.qty, 0)) AS foc_quantity,
+                   LEAST(COALESCE(sol.quantity, 0), COALESCE(foc_so.qty, 0)) * COALESCE(sol.unit_price, 0) AS foc_list_value,
                    {$soRevenueDate} AS revenue_date,
                    'booking' AS channel,
                    'so:' || so.id AS order_ref,
@@ -1514,6 +1550,7 @@ class SalesAnalyticsService
                    so.sales_team
             FROM sales_order_lines sol
             JOIN sales_orders so ON so.id = sol.sales_order_id
+            LEFT JOIN {$focBySalesOrderLine} foc_so ON foc_so.line_id = sol.id
             WHERE so.status NOT IN ('draft', 'cancelled')
               AND so.accounting_status <> 'reversed'
               AND so.channel <> 'pos'
@@ -1556,6 +1593,8 @@ class SalesAnalyticsService
                         ELSE COALESCE(sol.quantity_delivered, 0)
                    END AS delivered_quantity,
                    COALESCE(il.quantity, 0) AS invoiced_quantity,
+                   LEAST(COALESCE(il.quantity, 0), COALESCE(foc_il.qty, 0)) AS foc_quantity,
+                   LEAST(COALESCE(il.quantity, 0), COALESCE(foc_il.qty, 0)) * COALESCE(il.unit_price, 0) AS foc_list_value,
                    i.invoice_date AS revenue_date,
                    'invoice' AS channel,
                    'inv:' || i.id AS order_ref,
@@ -1567,6 +1606,7 @@ class SalesAnalyticsService
             FROM invoice_lines il
             JOIN invoices i ON i.id = il.invoice_id
             LEFT JOIN sales_order_lines sol ON sol.id = il.sales_order_line_id
+            LEFT JOIN {$focByInvoiceLine} foc_il ON foc_il.line_id = il.id
             WHERE i.lifecycle_status IN ('posted', 'credited')
               AND i.status <> 'cancelled'
               AND i.deleted_at IS NULL
@@ -1590,6 +1630,8 @@ class SalesAnalyticsService
                    0 AS ordered_quantity,
                    0 AS delivered_quantity,
                    (-1 * COALESCE(cnl.quantity, 0)) AS invoiced_quantity,
+                   0 AS foc_quantity,
+                   0 AS foc_list_value,
                    ccn.credit_note_date AS revenue_date,
                    'credit_note' AS channel,
                    'cn:' || ccn.id AS order_ref,
@@ -1620,6 +1662,7 @@ class SalesAnalyticsService
                        ordered_quantity,
                        delivered_quantity,
                        invoiced_quantity,
+                       foc_quantity,
                        revenue_date,
                        channel,
                        order_ref,
@@ -1630,12 +1673,35 @@ class SalesAnalyticsService
                        sales_team,
                        document_revenue,
                        ROUND(document_revenue * exchange_rate, 2) AS base_revenue,
+                       ROUND(foc_list_value * exchange_rate, 2) AS base_foc_list_value,
                        ROUND(document_revenue * exchange_rate * ordered_quantity / NULLIF(quantity, 0), 2) AS base_ordered_amount,
                        ROUND(document_revenue * exchange_rate * delivered_quantity / NULLIF(quantity, 0), 2) AS base_delivered_amount,
                        ROUND(document_revenue * exchange_rate * invoiced_quantity / NULLIF(quantity, 0), 2) AS base_invoiced_amount
                 FROM ({$arms}) AS li_doc";
 
         return DB::table(DB::raw('('.$sql.') AS li'));
+    }
+
+    /**
+     * Issue #600: per-document-line FOC quantity from live medical case lines
+     * flagged `is_foc`, as a derived table `(line_id, qty)` keyed by the
+     * medical case column that points at the document line. Cancelled and
+     * deleted cases gave nothing away, so they are skipped.
+     */
+    private function focQuantitiesSql(string $lineColumn, string $quantityColumn): string
+    {
+        if (! $this->tableExists('medical_case_items') || ! $this->tableExists('medical_cases')) {
+            return '(SELECT NULL::bigint AS line_id, 0::numeric AS qty WHERE FALSE)';
+        }
+
+        return "(SELECT mci.{$lineColumn} AS line_id, SUM(mci.{$quantityColumn}) AS qty
+                 FROM medical_case_items mci
+                 JOIN medical_cases mc ON mc.id = mci.medical_case_id
+                 WHERE mci.is_foc = TRUE
+                   AND mci.{$lineColumn} IS NOT NULL
+                   AND mc.status <> 'cancelled'
+                   AND mc.deleted_at IS NULL
+                 GROUP BY mci.{$lineColumn})";
     }
 
     /**

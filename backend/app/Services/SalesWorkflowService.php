@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\DeliveryOrder;
 use App\Models\Invoice;
+use App\Models\MedicalCase;
 use App\Models\Quotation;
 use App\Platform\Workflow\Contracts\WorkflowSubject;
 use App\Platform\Workflow\WorkflowEngine;
@@ -32,6 +33,8 @@ class SalesWorkflowService
 
     public const SALES_ORDER_RECURRENCE = 'sales_order_recurrence';
 
+    public const MEDICAL_CASE = 'medical_case';
+
     private bool $registered = false;
 
     public function __construct(private WorkflowEngine $engine)
@@ -53,6 +56,7 @@ class SalesWorkflowService
         $this->registerSalesOrderSchema();
         $this->registerDeliveryOrderSchema();
         $this->registerRecurrenceSchema();
+        $this->registerMedicalCaseSchema();
 
         $this->registered = true;
     }
@@ -430,6 +434,45 @@ class SalesWorkflowService
             ['from' => 'paused', 'to' => 'cancelled', 'action' => 'cancel', 'label' => 'Cancel recurrence'],
             ['from' => 'active', 'to' => 'completed', 'action' => 'complete', 'label' => 'Complete recurrence'],
         ], 'Recurring sales order schedule: active → paused → cancelled/completed.');
+    }
+
+    /**
+     * Issue #573 (MC8): the medical case lifecycle. Delivery and invoicing
+     * statuses are derived from the linked DO / invoice quantities by the
+     * controller; the engine owns which moves exist, and `invoice` /
+     * `complete` are guarded so a case with undelivered or uninvoiced lines
+     * (non-FOC) can never be stamped invoiced or completed.
+     */
+    private function registerMedicalCaseSchema(): void
+    {
+        $fullyFulfilled = function (WorkflowSubject $subject): ?string {
+            if (! $subject instanceof MedicalCase) {
+                return null;
+            }
+
+            return $subject->fulfilmentBlocker();
+        };
+
+        $transitions = [
+            ['from' => 'draft', 'to' => 'allocated', 'action' => 'allocate', 'label' => 'Allocate case'],
+            ['from' => 'allocated', 'to' => 'partially_delivered', 'action' => 'deliver_partial', 'label' => 'Record partial delivery'],
+            ['from' => 'partially_delivered', 'to' => 'partially_delivered', 'action' => 'deliver_partial', 'label' => 'Record partial delivery'],
+            ['from' => 'allocated', 'to' => 'delivered', 'action' => 'deliver', 'label' => 'Record delivery'],
+            ['from' => 'partially_delivered', 'to' => 'delivered', 'action' => 'deliver', 'label' => 'Record delivery'],
+            ['from' => 'delivered', 'to' => 'invoiced', 'action' => 'invoice', 'label' => 'Invoice case', 'guards' => [$fullyFulfilled]],
+            ['from' => 'invoiced', 'to' => 'completed', 'action' => 'complete', 'label' => 'Complete case', 'guards' => [$fullyFulfilled]],
+        ];
+
+        foreach (['draft', 'allocated', 'partially_delivered', 'delivered', 'invoiced'] as $from) {
+            $transitions[] = ['from' => $from, 'to' => 'cancelled', 'action' => 'cancel', 'label' => 'Cancel case'];
+        }
+
+        $this->engine->defineSchema(
+            self::MEDICAL_CASE,
+            'draft',
+            $transitions,
+            'Medical case: draft → allocated → (partially_)delivered → invoiced → completed / cancelled.',
+        );
     }
 
     // ─── Guards ───────────────────────────────────────────────────

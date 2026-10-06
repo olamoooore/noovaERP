@@ -228,10 +228,18 @@ class CommunicationEngine
         bool $isInternalNote = false,
         ?string $tenantId = null,
         ?int $parentId = null,
+        array $metadata = [],
     ): CommunicationMessage {
         $messageType = $isInternalNote
             ? CommunicationMessage::TYPE_INTERNAL_NOTE
             : CommunicationMessage::TYPE_COMMENT;
+
+        // Issue #636: the parent_id column was dropped as dead (#80) and was
+        // never fillable, so a reply's parent is kept in metadata.parent_id —
+        // the key the chatter uses to thread replies under their message.
+        if ($parentId !== null) {
+            $metadata['parent_id'] = $parentId;
+        }
 
         $message = CommunicationMessage::create([
             'tenant_id' => $tenantId,
@@ -241,9 +249,9 @@ class CommunicationEngine
             'subtype' => $isInternalNote ? 'internal.note' : 'record.comment',
             'body' => $body,
             'body_plain' => strip_tags($body),
+            'metadata' => $metadata === [] ? null : $metadata,
             'author_id' => $authorId,
             'author_type' => 'user',
-            'parent_id' => $parentId,
             'status' => CommunicationMessage::STATUS_SENT,
         ]);
 
@@ -259,6 +267,59 @@ class CommunicationEngine
         }
 
         return $message;
+    }
+
+    /**
+     * Issue #636: "Message customer" from a record's chatter.
+     *
+     * Logs ONE outbound message on the record (email or WhatsApp) and queues
+     * it to the record's customer contact only — never to the record's
+     * subscribers, so it is a deliberate customer-facing send, distinct from
+     * internal notes. `metadata` carries direction/channel/recipient and the
+     * RFC Message-ID the email is stamped with, so an inbound reply's
+     * In-Reply-To can be threaded back under this message.
+     */
+    public function sendToRecordContact(
+        string $model,
+        int $recordId,
+        string $channel,
+        string $subject,
+        string $bodyHtml,
+        string $bodyPlain,
+        ?string $email,
+        ?string $phone,
+        int $authorId,
+        ?string $tenantId = null,
+        array $metadata = [],
+    ): CommunicationMessage {
+        $messageType = match ($channel) {
+            'email' => CommunicationMessage::TYPE_EMAIL,
+            'whatsapp' => CommunicationMessage::TYPE_WHATSAPP,
+            default => throw new \InvalidArgumentException("Unsupported customer message channel '{$channel}'."),
+        };
+
+        $message = CommunicationMessage::create([
+            'tenant_id' => $tenantId,
+            'model' => $model,
+            'record_id' => $recordId,
+            'message_type' => $messageType,
+            'subtype' => EventSubtypeRegistry::CUSTOMER_MESSAGE,
+            'subject' => $subject,
+            'body' => $bodyHtml,
+            'body_plain' => $bodyPlain,
+            'metadata' => $metadata,
+            'author_id' => $authorId,
+            'author_type' => 'user',
+            'status' => CommunicationMessage::STATUS_QUEUED,
+        ]);
+
+        $this->createOutboxItem($message, $channel, $channel === 'email'
+            ? ['recipient_email' => $email]
+            : ['recipient_phone' => $phone]);
+
+        ProcessOutboxBatch::dispatch($message->id);
+
+        return $message->fresh() ?? $message;
     }
 
     /**

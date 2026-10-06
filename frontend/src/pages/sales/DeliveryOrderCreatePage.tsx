@@ -33,6 +33,7 @@ import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { TagPicker } from '@/components/tags/TagPicker'
 import { ProductTrackingSelector, type TrackingSelection } from '@/components/inventory/ProductTrackingSelector'
+import { missingTrackingLineIndex } from '@/lib/lotTracking'
 
 interface LineItem {
   line_type?: 'product' | 'note' | 'section'
@@ -279,6 +280,28 @@ export function DeliveryOrderCreatePage() {
       return
     }
 
+    // Issue #689: every delivered batch/serial-tracked line needs its lot/serial.
+    const deliveredLines = (soData?.lines || []).filter((line: any) =>
+      (line.line_type || 'product') === 'product' && (lineQuantities[line.sales_order_line_id] || 0) > 0)
+    const missingTrackingIndex = missingTrackingLineIndex(deliveredLines.map((line: any) => ({
+      line_type: 'product',
+      product_id: line.product_id,
+      tracking_method: line.product?.tracking_method,
+      product_batch_id: lineTrackingSelections[line.sales_order_line_id]?.product_batch_id ?? null,
+      product_serial_id: lineTrackingSelections[line.sales_order_line_id]?.product_serial_id ?? null,
+      lot_number: lineLotNumbers[line.sales_order_line_id] || '',
+      serial_number: lineTrackingSelections[line.sales_order_line_id]?.serial_number || '',
+    })))
+    if (missingTrackingIndex >= 0) {
+      const missingLine = deliveredLines[missingTrackingIndex]
+      toast({
+        variant: 'destructive',
+        title: `Lot / serial required for ${missingLine.product_name || missingLine.description || 'a tracked product'}`,
+        description: 'Select the lot or serial number this line issues.',
+      })
+      return
+    }
+
     const lines = (soData?.lines || [])
       .filter((line: any) => (line.line_type === 'note' || line.line_type === 'section') || (lineQuantities[line.sales_order_line_id] || 0) > 0)
       .map((line: any) => ({
@@ -345,6 +368,17 @@ export function DeliveryOrderCreatePage() {
       return
     }
 
+    // Issue #689: a batch/serial-tracked line cannot be saved without its lot/serial.
+    const missingTrackingIndex = missingTrackingLineIndex(validLines)
+    if (missingTrackingIndex >= 0) {
+      toast({
+        variant: 'destructive',
+        title: `Lot / serial required on line ${standaloneLines.indexOf(validLines[missingTrackingIndex]) + 1}`,
+        description: 'Select the lot or serial number this line issues.',
+      })
+      return
+    }
+
     createMutation.mutate({
       customer_id: parseInt(customerId),
       warehouse_id: parseInt(warehouseId),
@@ -394,7 +428,7 @@ export function DeliveryOrderCreatePage() {
     setStandaloneLines((prev) => [...prev, { product_id: null, product_name: '', sku: '', model_number: '', description: '', product_notes: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '', expiry_date: '' }])
   }
   const addStandaloneTextLine = (line_type: 'note' | 'section') => setStandaloneLines((prev) => [...prev, { line_type, product_id: null, product_name: '', sku: '', model_number: '', description: '', product_notes: '', patient_name: '', quantity: 0, unit: '', unit_price: null, lot_number: '', expiry_date: '' }])
-  const addCatalogProducts = (selected: Array<{ product: any; quantity: number }>) => setStandaloneLines((prev) => [...prev, ...selected.map(({ product, quantity }) => ({ line_type: 'product' as const, product_id: product.id, product_name: product.name || '', sku: product.sku || '', model_number: product.manufacturer_part_number || '', description: product.name || '', product_notes: '', patient_name: '', quantity, unit: product.unit || 'pcs', unit_price: Number(product.price || 0), price_mode: 'auto' as const, lot_number: '', expiry_date: '' }))])
+  const addCatalogProducts = (selected: Array<{ product: any; quantity: number }>) => setStandaloneLines((prev) => [...prev, ...selected.map(({ product, quantity }) => ({ line_type: 'product' as const, product_id: product.id, product_name: product.name || '', sku: product.sku || '', model_number: product.manufacturer_part_number || '', description: product.name || '', product_notes: '', patient_name: '', quantity, unit: product.unit || 'pcs', unit_price: Number(product.price || 0), price_mode: 'auto' as const, lot_number: '', expiry_date: '', tracking_method: product.tracking_method || 'none' }))])
 
   const removeStandaloneLine = (index: number) => {
     setStandaloneLines((prev) => prev.filter((_, i) => i !== index))
@@ -779,6 +813,8 @@ export function DeliveryOrderCreatePage() {
                           trackingMethod={line.product?.tracking_method}
                           batchId={lineTrackingSelections[line.sales_order_line_id]?.product_batch_id}
                           serialId={lineTrackingSelections[line.sales_order_line_id]?.product_serial_id}
+                          lotNumber={lineLotNumbers[line.sales_order_line_id]}
+                          serialNumber={lineTrackingSelections[line.sales_order_line_id]?.serial_number}
                           onChange={(selection) => {
                             setLineTrackingSelections((current) => ({ ...current, [line.sales_order_line_id]: selection }))
                             setLineLotNumbers((current) => ({ ...current, [line.sales_order_line_id]: selection.lot_number }))
@@ -928,6 +964,8 @@ export function DeliveryOrderCreatePage() {
                           trackingMethod={line.tracking_method}
                           batchId={line.product_batch_id}
                           serialId={line.product_serial_id}
+                          lotNumber={line.lot_number}
+                          serialNumber={line.serial_number}
                           onChange={(selection) => setStandaloneLines((current) => current.map((item, itemIndex) => itemIndex === idx ? { ...item, ...selection } : item))}
                         />
                       </td>

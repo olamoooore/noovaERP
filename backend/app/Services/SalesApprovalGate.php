@@ -489,7 +489,8 @@ class SalesApprovalGate
     public function expiryDays(): int
     {
         try {
-            $raw = Setting::getValue(self::EXPIRY_SETTING_KEY);
+            // #539: one typed reader for the key (same default, same >= 1 rule).
+            return app(SalesSettings::class)->approvalExpiryDays();
         } catch (\Throwable $e) {
             Log::warning('SalesApprovalGate: failed to read the approval expiry setting', [
                 'key' => self::EXPIRY_SETTING_KEY,
@@ -498,14 +499,6 @@ class SalesApprovalGate
 
             return self::DEFAULT_EXPIRY_DAYS;
         }
-
-        if ($raw === null || $raw === '' || ! is_numeric($raw)) {
-            return self::DEFAULT_EXPIRY_DAYS;
-        }
-
-        $days = (int) $raw;
-
-        return $days >= 1 ? $days : self::DEFAULT_EXPIRY_DAYS;
     }
 
     /**

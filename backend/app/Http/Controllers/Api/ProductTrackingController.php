@@ -41,6 +41,9 @@ class ProductTrackingController extends Controller
             'tracking_method' => $method,
             'batches' => [],
             'serials' => [],
+            'suggested_batch_id' => null,
+            'suggested_serial_id' => null,
+            'near_expiry_days' => ProductBatch::NEAR_EXPIRY_DAYS,
         ];
 
         if ($method === Product::TRACKING_BATCH) {
@@ -52,8 +55,7 @@ class ProductTrackingController extends Controller
                 ->where(function ($query) {
                     $query->whereNull('expiry_date')->orWhereDate('expiry_date', '>=', now()->toDateString());
                 })
-                ->orderByRaw('expiry_date ASC NULLS LAST')
-                ->orderBy('received_date')
+                ->fefoOrder()
                 ->get()
                 ->map(fn (ProductBatch $batch) => [
                     'id' => $batch->id,
@@ -64,7 +66,12 @@ class ProductTrackingController extends Controller
                     'expiry_date' => $batch->expiry_date?->toDateString(),
                     'available_quantity' => max(0, (int) $batch->quantity - (int) $batch->quantity_reserved),
                     'status' => $batch->status,
+                    ...$this->expiryFlags($batch->expiry_date),
                 ])->values();
+
+            // Issue #689: the list is FEFO-ordered and expired lots are
+            // excluded, so the first entry is the lot the picker pre-selects.
+            $payload['suggested_batch_id'] = $payload['batches']->first()['id'] ?? null;
         }
 
         if ($method === Product::TRACKING_SERIAL) {
@@ -83,6 +90,10 @@ class ProductTrackingController extends Controller
                                 });
                         });
                 })
+                // Issue #689: FEFO across serials — the serial whose lot
+                // expires first is offered first (serials without a lot or
+                // expiry last), then by serial number.
+                ->orderByRaw('(SELECT pb.expiry_date FROM product_batches pb WHERE pb.id = product_serials.batch_id) ASC NULLS LAST')
                 ->orderBy('serial_number')
                 ->get()
                 ->map(fn (ProductSerial $serial) => [
@@ -93,10 +104,34 @@ class ProductTrackingController extends Controller
                     'lot_number' => $serial->batch?->batch_number ?: $serial->batch?->lot_number,
                     'expiry_date' => $serial->batch?->expiry_date?->toDateString(),
                     'status' => $serial->status,
+                    ...$this->expiryFlags($serial->batch?->expiry_date),
                 ])->values();
+
+            $payload['suggested_serial_id'] = $payload['serials']->first()['id'] ?? null;
         }
 
         return response()->json($payload);
+    }
+
+    /**
+     * Issue #689: expiry hints for the lot picker. Lots past expiry never
+     * reach here (filtered above); a lot within NEAR_EXPIRY_DAYS is flagged so
+     * the editor can highlight it.
+     *
+     * @return array{days_until_expiry: int|null, near_expiry: bool}
+     */
+    private function expiryFlags(?\Carbon\CarbonInterface $expiryDate): array
+    {
+        if (! $expiryDate) {
+            return ['days_until_expiry' => null, 'near_expiry' => false];
+        }
+
+        $days = (int) now()->startOfDay()->diffInDays($expiryDate->copy()->startOfDay(), false);
+
+        return [
+            'days_until_expiry' => $days,
+            'near_expiry' => $days <= ProductBatch::NEAR_EXPIRY_DAYS,
+        ];
     }
 
     // ==================== BATCH MANAGEMENT ====================

@@ -119,7 +119,12 @@ class ComplianceController extends Controller
             $query->where('country_code', strtoupper($request->get('country_code')));
         }
         if ($request->has('status')) {
-            $query->where('compliance_status', $request->get('status'));
+            // #673: the failed / invalid queue asks for several statuses at
+            // once (status=failed,rejected).
+            $statuses = array_values(array_filter(array_map('trim', explode(',', (string) $request->get('status')))));
+            count($statuses) > 1
+                ? $query->whereIn('compliance_status', $statuses)
+                : $query->where('compliance_status', $request->get('status'));
         }
         if ($request->has('document_type')) {
             $query->where('document_type', $request->get('document_type'));
@@ -142,6 +147,14 @@ class ComplianceController extends Controller
 
             foreach ($documents as $document) {
                 $document->setAttribute('latest_submission', $latest->get($document->id));
+            }
+        }
+
+        // #673 (EINV-UX4): queue rows carry their last error, explained in
+        // plain language with the record and field to fix.
+        if ($request->boolean('with_errors')) {
+            foreach ($documents as $document) {
+                $document->setAttribute('errors', $this->complianceService->documentErrors($document));
             }
         }
 
@@ -666,6 +679,9 @@ class ComplianceController extends Controller
                     'document_id' => $result['document_id'],
                     'submission_id' => $result['submission_id'],
                     'provider_reference' => $result['provider_reference'],
+                    // #668 (EI6): which supplier identity fields came from the
+                    // document's legal entity and which fell back to the tenant.
+                    'supplier_identity' => $result['supplier_identity'] ?? null,
                 ],
                 'message' => $result['message'],
             ]);
@@ -784,6 +800,33 @@ class ComplianceController extends Controller
         } else {
             return response()->json(['success' => false, 'message' => $result['message']], 400);
         }
+    }
+
+    /**
+     * #673 (EINV-UX4): retry the selected failed / invalid e-invoices.
+     * POST /api/v1/accounting/compliance/documents/bulk-retry
+     */
+    public function bulkRetryDocuments(Request $request)
+    {
+        $this->authorizeWhenConfigured('submit', ComplianceDocument::class);
+
+        $validated = $request->validate([
+            'document_ids' => 'required|array|min:1|max:'.ComplianceService::BULK_RETRY_LIMIT,
+            'document_ids.*' => 'integer',
+        ]);
+
+        $results = $this->complianceService->bulkRetryDocuments($validated['document_ids']);
+        $queued = count(array_filter($results, fn (array $result) => $result['outcome'] === 'queued'));
+
+        return response()->json([
+            'success' => true,
+            'message' => "{$queued} of ".count($results).' e-invoice(s) queued for resubmission.',
+            'data' => [
+                'queued' => $queued,
+                'skipped' => count($results) - $queued,
+                'results' => $results,
+            ],
+        ]);
     }
 
     /**

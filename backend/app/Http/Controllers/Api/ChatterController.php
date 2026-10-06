@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Api;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Models\ChatterAttachment;
+use App\Models\Customer;
 use App\Models\CustomerContact;
 use App\Models\DocumentFollower;
 use App\Services\Chatter\ChatterMentionService;
@@ -17,6 +18,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Modules\Communication\Models\CommunicationMessage;
 use Modules\Communication\Services\CommunicationEngine;
@@ -43,38 +45,27 @@ class ChatterController extends Controller
         // so the chronological timeline is preserved. CommunicationMessage is
         // now the source of truth for new posts.
         $tenantId = (string) tenant()?->id;
-        $communicationMessages = CommunicationMessage::query()
+        $communicationMessages = $this->withExternalDelivery(CommunicationMessage::query())
             ->where('model', $subjectType)
             ->where('record_id', (int) $subjectId)
             ->when($tenantId !== '', fn ($q) => $q->where('tenant_id', $tenantId))
             ->with('author')
             ->orderByDesc('created_at')
             ->get()
-            ->map(function (CommunicationMessage $m) {
-                $author = $m->author;
-
-                return [
-                    'id' => $m->id,
-                    'body' => $m->body,
-                    // Issue #635: persisted @mention payload, not a stub.
-                    'mentions' => $this->mentions->mentionsFromMessage($m),
-                    'is_internal_note' => $m->message_type === CommunicationMessage::TYPE_INTERNAL_NOTE,
-                    'created_at' => optional($m->created_at)->toIso8601String(),
-                    'source' => 'communication',
-                    'actor' => $author ? [
-                        'id' => $author->id,
-                        'name' => $author->name,
-                        'email' => $author->email,
-                        'avatar' => $author->avatar ?? null,
-                    ] : null,
-                ];
-            })
+            ->map(fn (CommunicationMessage $m) => $this->serializeCommunicationMessage($m))
             ->all();
 
         $legacyMessages = $bundle['messages'] ?? [];
         $mergedMessages = collect($communicationMessages)
             ->concat(array_map(
-                fn ($m) => array_merge($m, ['source' => 'chatter']),
+                // Issue #636: pre-cutover chatter_messages rows were never
+                // delivered outside the platform — they are internal.
+                fn ($m) => array_merge($m, [
+                    'source' => 'chatter',
+                    'category' => self::CATEGORY_INTERNAL,
+                    'is_internal_note' => true,
+                    'parent_id' => null,
+                ]),
                 $legacyMessages,
             ))
             ->sortByDesc(fn ($m) => $m['created_at'] ?? '')
@@ -130,7 +121,7 @@ class ChatterController extends Controller
         }
 
         $tenantId = (string) tenant()?->id;
-        $query = CommunicationMessage::query()
+        $query = $this->withExternalDelivery(CommunicationMessage::query())
             ->where('model', $subjectType)
             ->where('record_id', (int) $subjectId)
             ->when($tenantId !== '', fn ($q) => $q->where('tenant_id', $tenantId))
@@ -139,25 +130,7 @@ class ChatterController extends Controller
             ->orderBy('created_at');
 
         $messages = $query->get()
-            ->map(function (CommunicationMessage $m) {
-                $author = $m->author;
-
-                return [
-                    'id' => $m->id,
-                    'body' => $m->body,
-                    // Issue #635: persisted @mention payload, not a stub.
-                    'mentions' => $this->mentions->mentionsFromMessage($m),
-                    'is_internal_note' => $m->message_type === CommunicationMessage::TYPE_INTERNAL_NOTE,
-                    'created_at' => optional($m->created_at)->toIso8601String(),
-                    'source' => 'communication',
-                    'actor' => $author ? [
-                        'id' => $author->id,
-                        'name' => $author->name,
-                        'email' => $author->email,
-                        'avatar' => $author->avatar ?? null,
-                    ] : null,
-                ];
-            })
+            ->map(fn (CommunicationMessage $m) => $this->serializeCommunicationMessage($m))
             ->all();
 
         return response()->json([
@@ -385,7 +358,19 @@ class ChatterController extends Controller
         $this->authorizeSubjectAccess($request, $subjectType, $subjectId, 'write');
         $data = $request->validate([
             'body' => 'required|string|min:1|max:10000',
+            // Issue #636: the two composer modes. `customer` sends to the
+            // document's customer contact; `note` is internal only. Omitted
+            // keeps the pre-#636 comment behaviour for existing API callers.
+            'mode' => ['nullable', Rule::in([self::MODE_CUSTOMER, self::MODE_NOTE])],
+            'channel' => ['nullable', Rule::in(['email', 'whatsapp'])],
+            'subject' => 'nullable|string|max:255',
         ]);
+
+        $mode = $data['mode'] ?? null;
+
+        if ($mode === self::MODE_CUSTOMER) {
+            return $this->messageCustomer($request, $subjectType, (int) $subjectId, $data);
+        }
 
         // Issue #81: write through the canonical Communication engine so the
         // two competing chatter implementations reconcile. The legacy
@@ -396,8 +381,12 @@ class ChatterController extends Controller
             $message = $this->communication->postComment(
                 model: $subjectType,
                 recordId: (int) $subjectId,
-                body: $data['body'],
+                body: $mode === self::MODE_NOTE ? $this->chatter->sanitizeBody($data['body']) : $data['body'],
                 authorId: (int) $request->user()->id,
+                // Issue #636: a logged note is an internal note — the engine
+                // does not route it to the record's subscribers (partner
+                // contacts), so it never reaches the customer.
+                isInternalNote: $mode === self::MODE_NOTE,
                 tenantId: (string) tenant()?->id,
             );
         } catch (\Throwable $e) {
@@ -458,7 +447,248 @@ class ChatterController extends Controller
                 'email' => $author->email,
                 'avatar' => $author->avatar ?? null,
             ] : null,
-        ]], 201);
+        ] + $this->messageClassification($message)], 201);
+    }
+
+    // ─── Issue #636: customer thread vs internal notes ──────────────────────
+
+    public const MODE_CUSTOMER = 'customer';
+
+    public const MODE_NOTE = 'note';
+
+    public const CATEGORY_CUSTOMER = 'customer';
+
+    public const CATEGORY_INTERNAL = 'internal';
+
+    public const CATEGORY_SYSTEM = 'system';
+
+    /**
+     * "Message customer": send the body to the document's customer contact
+     * by email or WhatsApp and log it on the record as an outbound message.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function messageCustomer(Request $request, string $subjectType, int $subjectId, array $data): JsonResponse
+    {
+        $channel = $data['channel'] ?? 'email';
+        $record = $subjectType::find($subjectId);
+        [$email, $phone] = $this->documentContact($record);
+
+        if ($channel === 'whatsapp' && ! config('communication.channels.whatsapp.enabled', false)) {
+            return response()->json(['message' => 'WhatsApp messaging is not enabled for this workspace.'], 422);
+        }
+
+        if ($channel === 'email' && $email === null) {
+            return response()->json(['message' => 'This document has no customer email address to message.'], 422);
+        }
+
+        if ($channel === 'whatsapp' && $phone === null) {
+            return response()->json(['message' => 'This document has no customer phone number to message.'], 422);
+        }
+
+        $plain = $this->chatter->sanitizeBody((string) $data['body']);
+        if ($plain === '') {
+            return response()->json(['message' => 'The message body is empty.'], 422);
+        }
+
+        $tenantId = (string) tenant()?->id;
+        $actorId = (int) $request->user()->id;
+        $host = parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'noovaerp.local';
+
+        $message = $this->communication->sendToRecordContact(
+            model: $subjectType,
+            recordId: $subjectId,
+            channel: $channel,
+            subject: $this->customerMessageSubject($subjectType, $subjectId, $record, $data['subject'] ?? null),
+            bodyHtml: nl2br(e($plain)),
+            bodyPlain: $plain,
+            email: $email,
+            phone: $phone,
+            authorId: $actorId,
+            tenantId: $tenantId !== '' ? $tenantId : null,
+            metadata: [
+                'direction' => 'outbound',
+                'channel' => $channel,
+                'recipient' => $channel === 'email' ? $email : $phone,
+                'message_id' => '<'.Str::uuid()->toString().'@'.$host.'>',
+            ],
+        );
+
+        // Internal followers learn a customer message went out (partners are
+        // not notified here — the customer is the direct recipient).
+        $this->notifyFollowerSideEffect(
+            DocumentFollowerService::EVENT_MESSAGE,
+            $subjectType,
+            $subjectId,
+            $actorId,
+            ['body' => $plain],
+        );
+
+        $message->loadMissing('author');
+
+        return response()->json([
+            'data' => $this->serializeCommunicationMessage($message),
+        ], 201);
+    }
+
+    /**
+     * The document's contact: its own contact_email / contact_phone first,
+     * then its customer's (or, for a Customer subject, the record itself).
+     *
+     * @return array{0: ?string, 1: ?string}
+     */
+    private function documentContact(?\Illuminate\Database\Eloquent\Model $record): array
+    {
+        if ($record === null) {
+            return [null, null];
+        }
+
+        $customer = $record instanceof Customer
+            ? $record
+            : (! empty($record->customer_id) ? Customer::find($record->customer_id) : null);
+
+        $pick = static function (...$values): ?string {
+            foreach ($values as $value) {
+                if (is_string($value) && trim($value) !== '') {
+                    return trim($value);
+                }
+            }
+
+            return null;
+        };
+
+        return [
+            $pick($record->contact_email ?? null, $customer?->email),
+            $pick($record->contact_phone ?? null, $customer?->phone),
+        ];
+    }
+
+    /**
+     * Subject line carrying the "[Type-id]" token InboundEmailService matches
+     * replies on (for the document types it recognises).
+     */
+    private function customerMessageSubject(string $subjectType, int $subjectId, ?\Illuminate\Database\Eloquent\Model $record, ?string $subject): string
+    {
+        $basename = class_basename($subjectType);
+        $token = in_array($basename, ['Invoice', 'SalesOrder', 'Quotation', 'DeliveryOrder', 'Customer', 'Vendor'], true)
+            ? "[{$basename}-{$subjectId}] "
+            : '';
+
+        $subject = is_string($subject) ? trim(strip_tags($subject)) : '';
+        if ($subject === '') {
+            $number = $record?->quotation_number ?? $record?->invoice_number ?? $record?->order_number
+                ?? $record?->document_number ?? $record?->name ?? null;
+            $label = Str::headline($basename);
+            $subject = $number ? "{$label} {$number}" : "Message about your {$label}";
+        }
+
+        return $token.$subject;
+    }
+
+    /**
+     * Adds `external_delivery`: whether any outbox item for the message went
+     * to a non-user recipient (a customer contact). Pre-#636 comments were
+     * fanned out to partner followers, so this is how a legacy comment is
+     * classified honestly.
+     */
+    private function withExternalDelivery(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query->withExists([
+            'outboxItems as external_delivery' => fn ($q) => $q->whereNull('recipient_user_id'),
+        ]);
+    }
+
+    private function serializeCommunicationMessage(CommunicationMessage $m): array
+    {
+        $author = $m->author;
+        $isChannelMessage = in_array($m->message_type, [
+            CommunicationMessage::TYPE_EMAIL,
+            CommunicationMessage::TYPE_WHATSAPP,
+            CommunicationMessage::TYPE_SMS,
+        ], true);
+        $metadata = (array) ($m->metadata ?? []);
+
+        return [
+            'id' => $m->id,
+            // Channel messages keep an HTML body for the email; the chatter
+            // shows the plain text that was sent.
+            'body' => $isChannelMessage ? ($m->body_plain ?? strip_tags((string) $m->body)) : $m->body,
+            // Issue #635: persisted @mention payload, not a stub.
+            'mentions' => $this->mentions->mentionsFromMessage($m),
+            'is_internal_note' => $m->message_type === CommunicationMessage::TYPE_INTERNAL_NOTE,
+            'created_at' => optional($m->created_at)->toIso8601String(),
+            'source' => 'communication',
+            'actor' => $author ? [
+                'id' => $author->id,
+                'name' => $author->name,
+                'email' => $author->email,
+                'avatar' => $author->avatar ?? null,
+            ] : (($metadata['direction'] ?? null) === 'inbound' ? [
+                'id' => 0,
+                'name' => $metadata['from_name'] ?? $metadata['from_address'] ?? 'Customer',
+                'email' => $metadata['from_address'] ?? null,
+                'avatar' => null,
+            ] : null),
+        ] + $this->messageClassification($m);
+    }
+
+    private function hasExternalDelivery(CommunicationMessage $m): bool
+    {
+        if (array_key_exists('external_delivery', $m->getAttributes())) {
+            return (bool) $m->external_delivery;
+        }
+
+        return $m->outboxItems()->whereNull('recipient_user_id')->exists();
+    }
+
+    /**
+     * @return array{message_type: string, category: string, direction: ?string, channel: ?string, recipient: ?string, subject: ?string, status: ?string, parent_id: ?int}
+     */
+    private function messageClassification(object $m): array
+    {
+        if (! $m instanceof CommunicationMessage) {
+            // Legacy chatter store fallback (ChatterService): internal.
+            return [
+                'message_type' => CommunicationMessage::TYPE_INTERNAL_NOTE,
+                'category' => self::CATEGORY_INTERNAL,
+                'direction' => null,
+                'channel' => null,
+                'recipient' => null,
+                'subject' => null,
+                'status' => null,
+                'parent_id' => null,
+            ];
+        }
+
+        $metadata = (array) ($m->metadata ?? []);
+        $direction = $metadata['direction'] ?? null;
+
+        $category = match (true) {
+            $m->message_type === CommunicationMessage::TYPE_INTERNAL_NOTE => self::CATEGORY_INTERNAL,
+            in_array($m->message_type, [
+                CommunicationMessage::TYPE_EMAIL,
+                CommunicationMessage::TYPE_WHATSAPP,
+                CommunicationMessage::TYPE_SMS,
+            ], true) => self::CATEGORY_CUSTOMER,
+            in_array($m->message_type, [
+                CommunicationMessage::TYPE_SYSTEM,
+                CommunicationMessage::TYPE_NOTIFICATION,
+            ], true) => self::CATEGORY_SYSTEM,
+            $direction === 'inbound' => self::CATEGORY_CUSTOMER,
+            $this->hasExternalDelivery($m) => self::CATEGORY_CUSTOMER,
+            default => self::CATEGORY_INTERNAL,
+        };
+
+        return [
+            'message_type' => (string) $m->message_type,
+            'category' => $category,
+            'direction' => is_string($direction) ? $direction : null,
+            'channel' => isset($metadata['channel']) ? (string) $metadata['channel'] : null,
+            'recipient' => isset($metadata['recipient']) ? (string) $metadata['recipient'] : null,
+            'subject' => $m->subject,
+            'status' => $m->status,
+            'parent_id' => isset($metadata['parent_id']) ? (int) $metadata['parent_id'] : null,
+        ];
     }
 
     public function addActivity(Request $request, string $subjectType, int|string $subjectId): JsonResponse

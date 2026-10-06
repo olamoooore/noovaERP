@@ -24,6 +24,36 @@ class SalesOrder extends Model implements WorkflowSubject
     /** @var string[] */
     public const SHIPPING_POLICIES = [self::SHIPPING_POLICY_ASAP, self::SHIPPING_POLICY_WHEN_ALL_READY];
 
+    /**
+     * Issue #634: header fields whose edits are written to the chatter History
+     * feed as "field: old → new" (see App\Services\Chatter\FieldChangeTracker).
+     *
+     * @var array<string, array{0: string, 1: string}>
+     */
+    public const CHATTER_TRACKED_FIELDS = [
+        'customer_id' => ['Customer', 'customer'],
+        'order_date' => ['Order date', 'date'],
+        'required_date' => ['Required date', 'date'],
+        'commitment_date' => ['Commitment date', 'date'],
+        'payment_term_id' => ['Payment term', 'payment_term'],
+        'salesperson' => ['Salesperson', 'text'],
+        'discount_amount' => ['Discount', 'money'],
+    ];
+
+    /**
+     * Issue #634: line fields whose old → new values are shown in the chatter
+     * History feed (grouped per line). Keys match the audit line snapshot.
+     *
+     * @var array<string, array{0: string, 1: string}>
+     */
+    public const CHATTER_TRACKED_LINE_FIELDS = [
+        'description' => ['description', 'text'],
+        'quantity' => ['qty', 'quantity'],
+        'unit_price' => ['price', 'money'],
+        'discount_amount' => ['discount', 'money'],
+        'tax_rate' => ['tax', 'percent'],
+    ];
+
     protected $fillable = [
         'sales_order_number',
         'customer_id',
@@ -60,6 +90,9 @@ class SalesOrder extends Model implements WorkflowSubject
         // Issue #333: Incoterm code + place (free text; no statutory list).
         'incoterm_code',
         'incoterm_place',
+        // Issue #321: payment term carried from the quotation; drives the
+        // invoice due date.
+        'payment_term_id',
         'cancellation_reason',
         'cancelled_by',
         'cancelled_at',

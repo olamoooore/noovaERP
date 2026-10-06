@@ -61,7 +61,8 @@ class InvoiceApprovalService
                 'requested_by' => $user->id,
                 'requested_at' => now(),
                 'status' => 'pending',
-                'expires_at' => now()->addDays(7),
+                // #539: the tenant's approval expiry, not a hard-coded week.
+                'expires_at' => now()->addDays(app(SalesSettings::class)->approvalExpiryDays()),
             ]);
 
             $invoice->update([

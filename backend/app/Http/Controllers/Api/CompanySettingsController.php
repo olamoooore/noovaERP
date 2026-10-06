@@ -671,6 +671,48 @@ class CompanySettingsController extends Controller
         return response()->json($formats);
     }
 
+    /**
+     * #548 (SET-UX4): live next-number preview for the numbering editor.
+     * Renders the configured (or an unsaved) format and reset period through
+     * the same NumberingService peek the saved settings use — read-only, it
+     * never consumes a sequence value.
+     */
+    public function previewDocumentFormat(Request $request): JsonResponse
+    {
+        $types = array_keys(\App\Services\DocumentNumberingService::TYPE_DEFAULTS);
+
+        $validated = $request->validate([
+            'type' => 'required|string|in:'.implode(',', $types),
+            'format' => 'nullable|string|max:100',
+            'reset_period' => 'nullable|string|in:'.implode(',', \App\Platform\Numbering\NumberingService::RESET_PERIODS),
+        ]);
+
+        $service = app(\App\Services\DocumentNumberingService::class);
+        $type = $validated['type'];
+        $format = $validated['format'] ?? $service->getFormat($type, \App\Services\DocumentNumberingService::TYPE_DEFAULTS[$type]);
+        $reset = $validated['reset_period'] ?? null;
+
+        $errors = $service->validateFormat($format)['errors'];
+        if ($errors === [] && $reset !== null) {
+            $errors = $service->validateResetPeriod($format, $reset);
+        }
+
+        if ($errors !== []) {
+            return response()->json([
+                'valid' => false,
+                'preview' => null,
+                'errors' => $errors,
+            ], 422);
+        }
+
+        return response()->json([
+            'valid' => true,
+            'preview' => $service->previewNext($type, null, $format, $reset),
+            'reset_period' => $reset ?? $service->resolveResetPeriod($type, $format),
+            'errors' => [],
+        ]);
+    }
+
     public function updateDocumentFormats(Request $request): JsonResponse
     {
         // #542 (ST5): all six sales-document formats are editable here.
@@ -678,24 +720,44 @@ class CompanySettingsController extends Controller
 
         $rules = array_fill_keys($types, 'nullable|string|max:100');
         $rules['date_format'] = 'nullable|string|in:d/m/Y,m/d/Y,Y-m-d,dd/mm/yy,mm/dd/yy';
+        // #548 (SET-UX4): explicit reset period per document (decision on
+        // #538) and the next sequence value, which can only move forward.
+        $rules['reset_periods'] = 'nullable|array:'.implode(',', $types);
+        $rules['reset_periods.*'] = 'string|in:'.implode(',', \App\Platform\Numbering\NumberingService::RESET_PERIODS);
+        $rules['next_sequences'] = 'nullable|array:'.implode(',', $types);
+        $rules['next_sequences.*'] = 'integer|min:1|max:99999999';
 
         $validated = $request->validate($rules);
 
         $service = app(\App\Services\DocumentNumberingService::class);
+        $resetPeriods = $validated['reset_periods'] ?? [];
+        $nextSequences = $validated['next_sequences'] ?? [];
 
         // Validate every submitted format before saving any of them, so a bad
         // format cannot leave the settings half-updated.
         $errors = [];
 
         foreach ($types as $type) {
-            if (! isset($validated[$type])) {
-                continue;
+            if (isset($validated[$type])) {
+                $result = $service->validateFormat($validated[$type]);
+
+                if (! $result['valid']) {
+                    $errors[$type] = $result['errors'];
+
+                    continue;
+                }
             }
 
-            $result = $service->validateFormat($validated[$type]);
+            // The reset period must suit the format that will be in force:
+            // checked when either changes and an explicit period applies.
+            $period = $resetPeriods[$type] ?? app(\App\Platform\Numbering\NumberingService::class)->explicitResetPeriod($type);
+            if ($period !== null && (isset($validated[$type]) || isset($resetPeriods[$type]))) {
+                $format = $validated[$type] ?? $service->getFormat($type, \App\Services\DocumentNumberingService::TYPE_DEFAULTS[$type]);
+                $periodErrors = $service->validateResetPeriod($format, $period);
 
-            if (! $result['valid']) {
-                $errors[$type] = $result['errors'];
+                if ($periodErrors !== []) {
+                    $errors['reset_periods.'.$type] = $periodErrors;
+                }
             }
         }
 
@@ -706,14 +768,39 @@ class CompanySettingsController extends Controller
             ], 422);
         }
 
-        foreach ($types as $type) {
-            if (isset($validated[$type])) {
-                $service->setFormat($type, $validated[$type]);
-            }
-        }
+        try {
+            DB::transaction(function () use ($types, $validated, $resetPeriods, $nextSequences, $service) {
+                foreach ($types as $type) {
+                    if (isset($validated[$type])) {
+                        $service->setFormat($type, $validated[$type]);
+                    }
 
-        if (isset($validated['date_format'])) {
-            \App\Models\Setting::setValue('template_date_format', $validated['date_format']);
+                    if (isset($resetPeriods[$type])) {
+                        $service->setResetPeriod($type, $resetPeriods[$type]);
+                    }
+                }
+
+                // After the format/reset changes, so "forward" is measured
+                // against the number the new settings would issue next.
+                foreach ($nextSequences as $type => $next) {
+                    try {
+                        $service->advanceTo($type, (int) $next);
+                    } catch (\InvalidArgumentException $e) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            'next_sequences.'.$type => [$e->getMessage()],
+                        ]);
+                    }
+                }
+
+                if (isset($validated['date_format'])) {
+                    \App\Models\Setting::setValue('template_date_format', $validated['date_format']);
+                }
+            });
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'message' => 'Invalid document numbering settings.',
+                'errors' => $e->errors(),
+            ], 422);
         }
 
         return response()->json([
@@ -735,12 +822,12 @@ class CompanySettingsController extends Controller
         return response()->json([
             'data' => [
                 'invoice' => [
-                    'allow_custom_number' => (bool) \App\Models\Setting::getValue('sales.invoice.allow_custom_number', true),
-                    'field_profile' => (string) \App\Models\Setting::getValue('sales.invoice.field_profile', 'medical'),
+                    'allow_custom_number' => app(\App\Services\SalesSettings::class)->allowCustomInvoiceNumber(),
+                    'field_profile' => (string) \App\Models\Setting::getValue('sales.invoice.field_profile', \App\Services\SalesSettings::DEFAULT_FIELD_PROFILE),
                     'default_requires_approval' => (bool) \App\Models\Setting::getValue('sales.invoice.default_requires_approval', false),
-                    'default_payment_terms_days' => (int) \App\Models\Setting::getValue('sales.invoice.default_payment_terms_days', 30),
-                    'default_notes' => \App\Models\Setting::getValue('sales.invoice.default_notes', ''),
-                    'default_terms' => \App\Models\Setting::getValue('sales.invoice.default_terms', 'Payment due within 30 days.'),
+                    'default_payment_terms_days' => app(\App\Services\SalesSettings::class)->defaultPaymentTermsDays(),
+                    'default_notes' => app(\App\Services\SalesSettings::class)->defaultNotes() ?? '',
+                    'default_terms' => app(\App\Services\SalesSettings::class)->defaultTerms() ?? '',
                 ],
                 'delivery_order' => [
                     'default_requires_approval' => (bool) \App\Models\Setting::getValue('sales.delivery_order.default_requires_approval', false),
@@ -817,12 +904,12 @@ class CompanySettingsController extends Controller
                     ];
                 })(),
                 'invoice' => [
-                    'allow_custom_number' => (bool) \App\Models\Setting::getValue('sales.invoice.allow_custom_number', true),
+                    'allow_custom_number' => app(\App\Services\SalesSettings::class)->allowCustomInvoiceNumber(),
                     // D4: which extra header fields the invoice entry screen
                     // shows. 'medical' preserves the pre-setting behaviour.
-                    'field_profile' => (string) \App\Models\Setting::getValue('sales.invoice.field_profile', 'medical'),
+                    'field_profile' => (string) \App\Models\Setting::getValue('sales.invoice.field_profile', \App\Services\SalesSettings::DEFAULT_FIELD_PROFILE),
                     'default_requires_approval' => (bool) \App\Models\Setting::getValue('sales.invoice.default_requires_approval', false),
-                    'approval_expiry_days' => (int) \App\Models\Setting::getValue('sales.invoice.approval_expiry_days', 7),
+                    'approval_expiry_days' => app(\App\Services\SalesSettings::class)->approvalExpiryDays(),
                     'approval_enforcement' => $this->invoiceApprovalEnforcement(),
                     'reviewer_user_ids' => array_values(array_map('intval', (array) \App\Models\Setting::getValue('sales.invoice.reviewer_user_ids', []))),
                     'reviewer_roles' => array_values((array) \App\Models\Setting::getValue('sales.invoice.reviewer_roles', [])),
@@ -832,26 +919,26 @@ class CompanySettingsController extends Controller
                         ->map(fn ($u) => ['id' => $u->id, 'name' => $u->name, 'email' => $u->email])
                         ->values()
                         ->all(),
-                    'auto_send_to_customer_on_post' => (bool) \App\Models\Setting::getValue('sales.invoice.auto_send_to_customer_on_post', true),
-                    'allow_partial_payments' => (bool) \App\Models\Setting::getValue('sales.invoice.allow_partial_payments', true),
-                    'default_payment_terms_days' => (int) \App\Models\Setting::getValue('sales.invoice.default_payment_terms_days', 30),
-                    'default_notes' => \App\Models\Setting::getValue('sales.invoice.default_notes', ''),
-                    'default_terms' => \App\Models\Setting::getValue('sales.invoice.default_terms', 'Payment due within 30 days.'),
+                    'auto_send_to_customer_on_post' => app(\App\Services\SalesSettings::class)->autoSendToCustomerOnPost(),
+                    'allow_partial_payments' => app(\App\Services\SalesSettings::class)->allowPartialPayments(),
+                    'default_payment_terms_days' => app(\App\Services\SalesSettings::class)->defaultPaymentTermsDays(),
+                    'default_notes' => app(\App\Services\SalesSettings::class)->defaultNotes() ?? '',
+                    'default_terms' => app(\App\Services\SalesSettings::class)->defaultTerms() ?? '',
                 ],
                 'portal' => [
-                    'acceptance_enabled' => (bool) \App\Models\Setting::getValue('sales.portal.acceptance_enabled', true),
-                    'require_signature' => (bool) \App\Models\Setting::getValue('sales.portal.require_signature', true),
-                    'acceptance_link_expiry_days' => (int) \App\Models\Setting::getValue('sales.portal.acceptance_link_expiry_days', 30),
-                    'payment_link_expiry_days' => (int) \App\Models\Setting::getValue('sales.portal.payment_link_expiry_days', 14),
+                    'acceptance_enabled' => app(\App\Services\SalesSettings::class)->acceptanceEnabled(),
+                    'require_signature' => app(\App\Services\SalesSettings::class)->requireSignature(),
+                    'acceptance_link_expiry_days' => app(\App\Services\SalesSettings::class)->acceptanceLinkExpiryDays(),
+                    'payment_link_expiry_days' => app(\App\Services\SalesSettings::class)->paymentLinkExpiryDays(),
                 ],
                 // MRD R10.3: ONE tax config surface. The legacy sales.tax.*
                 // keys are now derived from the canonical Setting tax block
                 // that the engine actually reads — no orphan writes.
                 'tax' => $this->salesTaxDefaults(),
                 'delivery' => [
-                    'attach_pdf' => (bool) \App\Models\Setting::getValue('sales.delivery.attach_pdf', true),
-                    'cc_internal_email' => \App\Models\Setting::getValue('sales.delivery.cc_internal_email', ''),
-                    'document_type_on_send' => \App\Models\Setting::getValue('sales.delivery.document_type_on_send', 'final_invoice'),
+                    'attach_pdf' => app(\App\Services\SalesSettings::class)->attachPdf(),
+                    'cc_internal_email' => app(\App\Services\SalesSettings::class)->ccInternalEmail() ?? '',
+                    'document_type_on_send' => app(\App\Services\SalesSettings::class)->documentTypeOnSend() ?? \App\Models\InvoiceDelivery::DOCUMENT_FINAL_INVOICE,
                 ],
                 // Issue #645: per-request-type reviewer lists. Each type falls
                 // back to the invoice pool when nothing is configured here, so
@@ -877,7 +964,7 @@ class CompanySettingsController extends Controller
                 // salesperson_mode = current_user stamps the creating user's
                 // name; team_by_user maps a user id to their default team.
                 'defaults' => [
-                    'salesperson_mode' => (string) \App\Models\Setting::getValue('sales.defaults.salesperson_mode', 'none'),
+                    'salesperson_mode' => (string) \App\Models\Setting::getValue('sales.defaults.salesperson_mode', \App\Services\SalesSettings::DEFAULT_SALESPERSON_MODE),
                     'team_by_user' => (static function (): array {
                         $map = \App\Models\Setting::getValue('sales.defaults.team_by_user', []);
                         if (! is_array($map)) {
@@ -896,8 +983,12 @@ class CompanySettingsController extends Controller
                 ],
                 // Issue #553: line pricelist presentation on rendered documents.
                 'pricelist' => [
-                    'display' => (string) \App\Models\Setting::getValue('sales.pricelist.display', 'show_discount'),
+                    'display' => (string) \App\Models\Setting::getValue('sales.pricelist.display', \App\Services\SalesSettings::DEFAULT_PRICELIST_DISPLAY),
                 ],
+                // Issue #549: read-only defaults for the "changed from default"
+                // markers. Not accepted by updateSalesSettings; a reset is a
+                // normal PUT of the default value.
+                'default_values' => \App\Services\SalesSettings::defaults(),
             ],
         ]);
     }

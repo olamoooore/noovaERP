@@ -124,6 +124,9 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         ->middleware(RequirePermission::using('settings.view'));
     Route::put('/settings/document-formats', [CompanySettingsController::class, 'updateDocumentFormats'])
         ->middleware(RequirePermission::using('settings.write'));
+    // #548 (SET-UX4): read-only next-number preview for the numbering editor.
+    Route::get('/settings/document-formats/preview', [CompanySettingsController::class, 'previewDocumentFormat'])
+        ->middleware(RequirePermission::using('settings.view'));
     // Issue #540 (ST3): read-only document defaults for the invoice / DO
     // create pages. Gated by the roles that create those documents; the full
     // settings payload above stays OWNER/ADMIN-only.
@@ -407,6 +410,10 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::get('/invoices/{invoice}/preflight', [InvoiceController::class, 'preflight'])
             ->middleware(RequirePermission::using('invoices.view'));
 
+        // #671 (EINV-UX2): e-invoice readiness dry run shown before posting.
+        Route::get('/invoices/{invoice}/einvoice-readiness', [InvoiceController::class, 'einvoiceReadiness'])
+            ->middleware(RequirePermission::using('invoices.view'));
+
         // Issue #883 (SAU1): the Journal tab — draft preview (same builder as
         // posting, never written) or the actual posted entry with drill-down.
         Route::get('/invoices/{invoice}/journal', [InvoiceController::class, 'journal'])
@@ -510,11 +517,19 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             ->middleware(RequirePermission::using('accounting.view')); // #481
         Route::get('/payments/eligible-invoices', [PaymentController::class, 'eligibleInvoices'])
             ->middleware(RequirePermission::using('accounting.view')); // #481
+        // #490 (PAY-UX4): read-only FX settlement preview — registered before
+        // /payments/{payment} so the literal segment is not taken as an id.
+        Route::get('/payments/fx-preview', [PaymentController::class, 'fxPreview'])
+            ->middleware(RequirePermission::using('accounting.view'));
         Route::post('/payments/import', [PaymentImportController::class, 'import']);
         Route::post('/payments/bulk-delete', [PaymentController::class, 'bulkDestroy']);
         Route::post('/payments/bulk-post', [PaymentController::class, 'bulkPost'])
             ->middleware(RequirePermission::using('accounting.post')); // #480
         Route::post('/payments', [PaymentController::class, 'store']);
+        // #489 (PAY-UX3): customer-first receipt — record + post + allocate in
+        // one atomic request; it posts to the GL, so it needs accounting.post.
+        Route::post('/payments/receipts', [PaymentController::class, 'storeReceipt'])
+            ->middleware(RequirePermission::using('accounting.post'));
         Route::get('/payments/{payment}', [PaymentController::class, 'show'])
             ->middleware(RequirePermission::using('accounting.view')); // #481
         Route::put('/payments/{payment}', [PaymentController::class, 'update']);

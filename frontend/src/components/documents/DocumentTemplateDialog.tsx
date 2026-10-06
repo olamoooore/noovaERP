@@ -21,6 +21,8 @@ export type DocumentTemplateType =
   | 'delivery_order'
   | 'quotation'
   | 'sales_order'
+  | 'sales_order_confirmation'
+  | 'sales_proforma_invoice'
   | 'credit_note'
   | 'receipt'
   | 'customer_statement'

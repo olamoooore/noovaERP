@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
@@ -42,6 +42,11 @@ interface CustomerSearchComboboxProps {
   compact?: boolean
   /** Caller-owned trigger classes (e.g. the #323 sales-form control tokens). */
   className?: string
+  /**
+   * #319: called after a pick instead of returning focus to the trigger
+   * (e.g. move to the first line's product).
+   */
+  focusAfterSelect?: () => void
 }
 
 export function CustomerSearchCombobox({
@@ -51,8 +56,10 @@ export function CustomerSearchCombobox({
   compact = false,
   disabled = false,
   className,
+  focusAfterSelect,
 }: CustomerSearchComboboxProps) {
   const [open, setOpen] = useState(false)
+  const pickedRef = useRef(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
 
@@ -101,6 +108,7 @@ export function CustomerSearchCombobox({
 
   const handleSelect = (customerId: string) => {
     const customer = searchResults?.find(c => String(c.id) === customerId)
+    pickedRef.current = true
     onValueChange(customerId, customer)
     setOpen(false)
     setSearchQuery('')
@@ -133,7 +141,17 @@ export function CustomerSearchCombobox({
             <Icon icon="solar:alt-arrow-down-linear" className="h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+        <PopoverContent
+          className="w-[--radix-popover-trigger-width] p-0"
+          align="start"
+          onCloseAutoFocus={(event) => {
+            if (pickedRef.current && focusAfterSelect) {
+              event.preventDefault()
+              focusAfterSelect()
+            }
+            pickedRef.current = false
+          }}
+        >
         <Command shouldFilter={false}>
           <CommandInput
             placeholder="Type to search..."

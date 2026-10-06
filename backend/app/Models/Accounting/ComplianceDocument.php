@@ -49,11 +49,15 @@ class ComplianceDocument extends Model
         'submitted_by',
         'submitted_at',
         'original_compliance_document_id',
+        'retry_count',          // #673: retries requested from the failed / invalid queue
+        'last_retried_at',
     ];
 
     protected $casts = [
         'issued_date' => 'datetime',
         'submitted_at' => 'datetime',
+        'last_retried_at' => 'datetime',
+        'retry_count' => 'integer',
         'signature_signed_at' => 'datetime',
         'signature_certificate_valid_from' => 'datetime',
         'signature_certificate_valid_to' => 'datetime',

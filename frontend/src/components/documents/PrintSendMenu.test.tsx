@@ -245,3 +245,37 @@ describe('PrintSendMenu (#618)', () => {
     expect(await screen.findByText('Select another template before downloading.')).toBeTruthy()
   })
 })
+
+describe('PrintSendMenu — documents from the same record (#405)', () => {
+  const documents = [
+    {
+      documentType: 'sales_proforma_invoice' as const,
+      label: 'Pro-forma invoice',
+      pdfPath: '/sales/orders/9/proforma/pdf',
+      filename: 'proforma.pdf',
+      title: 'Pro-forma Invoice',
+      resolutionPath: '/documents/sales_proforma_invoice/resolution?document_id=9',
+    },
+  ]
+
+  it('lists no document picker when only one document is given', async () => {
+    renderMenu()
+    await openMenu()
+
+    expect(screen.queryByText('Document')).toBeNull()
+  })
+
+  it('keeps send actions on the primary document only', async () => {
+    renderMenu({ label: 'Invoice', documents, onEmail: vi.fn(), onWhatsApp: vi.fn() })
+    await openMenu()
+    expect(screen.getByText('Email')).toBeTruthy()
+
+    fireEvent.click(screen.getByText('Pro-forma invoice'))
+
+    await waitFor(() => {
+      expect(apiGet).toHaveBeenCalledWith('/documents/sales_proforma_invoice/resolution?document_id=9')
+    })
+    expect(screen.queryByText('Email')).toBeNull()
+    expect(screen.queryByText('WhatsApp')).toBeNull()
+  })
+})

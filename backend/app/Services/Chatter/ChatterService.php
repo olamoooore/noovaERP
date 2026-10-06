@@ -542,7 +542,7 @@ class ChatterService
      * and control characters so stored XSS can never be returned by the API,
      * regardless of how a consumer renders it.
      */
-    private function sanitizeBody(string $body): string
+    public function sanitizeBody(string $body): string
     {
         // strip_tags() keeps the CONTENT of <script>/<style> blocks, so remove
         // those blocks entirely first (their inner JS/CSS is not text content).

@@ -248,6 +248,25 @@ export const baseNavItems: NavItem[] = [
         href: '/delivery-orders',
         icon: 'solar:delivery-bold-duotone',
       },
+      // Issue #376 (O7): entry points for existing sales backends.
+      {
+        title: 'Blanket Orders',
+        href: '/sales/blanket-orders',
+        icon: 'solar:clipboard-list-bold-duotone',
+        requiredPermission: 'sales.view',
+      },
+      {
+        title: 'Recurring Orders',
+        href: '/sales/recurring-orders',
+        icon: 'solar:refresh-circle-bold-duotone',
+        requiredPermission: 'sales.view',
+      },
+      {
+        title: 'Pipeline',
+        href: '/sales/pipeline',
+        icon: 'solar:graph-up-bold-duotone',
+        requiredPermission: 'sales.view',
+      },
       {
         title: 'Price Lists',
         href: '/sales/price-lists',

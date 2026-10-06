@@ -412,6 +412,8 @@ class SalesOrderController extends Controller
                 ->mapWithKeys(fn ($line) => [$line->id => $this->auditLineSnapshot($line)])
                 ->all()
             : [];
+        // Issue #634: header snapshot for the chatter field-change list.
+        $beforeHeader = $order->getAttributes();
 
         try {
             DB::transaction(function () use ($request, $order, $validated, $lines) {
@@ -438,14 +440,32 @@ class SalesOrderController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        if ($lines !== null) {
+        $afterLines = $lines !== null
+            ? $order->lines()->get()
+                ->mapWithKeys(fn ($line) => [$line->id => $this->auditLineSnapshot($line)])
+                ->all()
+            : [];
+
+        // Issue #634: one chatter entry per save listing every tracked field
+        // (header and lines) with its old → new value.
+        $tracked = app(\App\Services\Chatter\FieldChangeTracker::class)->track(
+            SalesOrder::class,
+            $beforeHeader,
+            $order->fresh()->getAttributes(),
+            $beforeLines,
+            $afterLines,
+        );
+
+        if ($lines !== null || $tracked !== []) {
             $this->orderService->logChatter(
                 $order,
                 'updated',
                 "Updated sales order {$order->sales_order_number}",
-                ['lines' => 'line items replaced'],
+                ($lines !== null ? ['lines' => 'line items replaced'] : []) + $tracked,
             );
+        }
 
+        if ($lines !== null) {
             // Issue #895: append-only before/after line diff for the draft edit
             // (the replacement deletes and re-creates rows, bypassing model
             // events, so the snapshot is taken here).
@@ -453,11 +473,7 @@ class SalesOrderController extends Controller
                 'sales_order_updated',
                 (int) $order->id,
                 ['lines' => $beforeLines],
-                [
-                    'lines' => $order->lines()->get()
-                        ->mapWithKeys(fn ($line) => [$line->id => $this->auditLineSnapshot($line)])
-                        ->all(),
-                ],
+                ['lines' => $afterLines],
                 ['sales_order_number' => $order->sales_order_number],
             );
         }
@@ -543,12 +559,22 @@ class SalesOrderController extends Controller
             }
         }
 
+        $afterHeader = $order->fresh()->getAttributes();
+        $afterLines = $order->lines()->get()
+            ->mapWithKeys(fn ($line) => [$line->id => $this->auditLineSnapshot($line)])
+            ->all();
+
+        // Issue #634: the same audit snapshots drive the chatter field-change
+        // list — one entry per save, header and grouped line changes.
+        $tracked = app(\App\Services\Chatter\FieldChangeTracker::class)
+            ->track(SalesOrder::class, $beforeHeader, $afterHeader, $beforeLines, $afterLines);
+
         if ($lines !== null || $changedFields !== []) {
             $this->orderService->logChatter(
                 $order,
                 'updated',
                 "Amended sales order {$order->sales_order_number}",
-                ['fields' => $changedFields === [] ? 'line items' : implode(', ', $changedFields)],
+                ['fields' => $changedFields === [] ? 'line items' : implode(', ', $changedFields)] + $tracked,
             );
 
             // Issue #895: append-only, line-keyed before/after diff. Line ids
@@ -562,10 +588,8 @@ class SalesOrderController extends Controller
                     'lines' => $beforeLines,
                 ],
                 [
-                    'fields' => array_intersect_key($order->fresh()->getAttributes(), array_flip($changedFields)),
-                    'lines' => $order->lines()->get()
-                        ->mapWithKeys(fn ($line) => [$line->id => $this->auditLineSnapshot($line)])
-                        ->all(),
+                    'fields' => array_intersect_key($afterHeader, array_flip($changedFields)),
+                    'lines' => $afterLines,
                 ],
                 ['sales_order_number' => $order->sales_order_number],
             );
@@ -673,8 +697,6 @@ class SalesOrderController extends Controller
             ], 202);
         }
 
-        $creditCheck = $this->creditCheckService->checkCreditLimit($order->customer, (float) $order->total);
-
         $beforeStatus = $order->status;
 
         try {
@@ -688,10 +710,13 @@ class SalesOrderController extends Controller
                 ['sales_order_number' => $order->sales_order_number],
             );
 
+            // Issue #383: report the verdict the service gated confirmation
+            // on (committed open orders included, base currency) rather than
+            // re-running a second, differently-based check here.
             return response()->json([
                 'message' => 'Order confirmed',
                 'order' => $order,
-                'credit_check' => $creditCheck,
+                'credit_check' => $this->orderService->lastCreditCheck(),
             ]);
         } catch (CreditLimitExceededException $e) {
             // Issue #903: the confirmation transaction has rolled back by the
@@ -1066,12 +1091,73 @@ class SalesOrderController extends Controller
             'bill_by_delivered_qty' => 'required|boolean',
         ]);
 
-        $order->update(['bill_by_delivered_qty' => $validated['bill_by_delivered_qty']]);
+        // Issue #376: the invoicing basis may change only before the first
+        // invoice, and every change is an audited (#895) action. The row lock
+        // keeps a concurrent SO -> invoice from slipping in between the check
+        // and the write.
+        $refused = null;
+        $before = null;
+
+        DB::transaction(function () use ($order, $validated, &$refused, &$before) {
+            $locked = SalesOrder::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
+
+            if ($this->orderHasInvoicing($locked)) {
+                $refused = 'Bill-by-delivered can only be changed before the order is first invoiced.';
+
+                return;
+            }
+
+            $before = (bool) $locked->bill_by_delivered_qty;
+            $after = (bool) $validated['bill_by_delivered_qty'];
+
+            if ($before === $after) {
+                return;
+            }
+
+            $locked->update(['bill_by_delivered_qty' => $after]);
+
+            $this->writeAuditLog(
+                'sales_order_updated',
+                (int) $locked->id,
+                ['fields' => ['bill_by_delivered_qty' => $before]],
+                ['fields' => ['bill_by_delivered_qty' => $after]],
+                ['sales_order_number' => $locked->sales_order_number],
+            );
+        });
+
+        if ($refused !== null) {
+            return response()->json(['message' => $refused], 422);
+        }
+
+        $order->refresh();
 
         return response()->json([
             'message' => 'Bill-by-delivered setting updated',
             'bill_by_delivered_qty' => $order->bill_by_delivered_qty,
         ]);
+    }
+
+    /**
+     * Issue #376: an order counts as invoiced once any line carries invoiced
+     * quantity or any non-cancelled invoice is attached to it (through an
+     * active sales_invoice_links row or the invoice's own sales_order_id).
+     */
+    private function orderHasInvoicing(SalesOrder $order): bool
+    {
+        if ($order->lines()->where('quantity_invoiced', '>', 0)->exists()) {
+            return true;
+        }
+
+        return \App\Models\Invoice::query()
+            ->where('status', '!=', 'cancelled')
+            ->where(function ($query) use ($order) {
+                $query->where('sales_order_id', $order->id)
+                    ->orWhereIn('id', \Modules\Sales\Models\SalesInvoiceLink::query()
+                        ->where('sales_order_id', $order->id)
+                        ->where('link_state', 'active')
+                        ->select('invoice_id'));
+            })
+            ->exists();
     }
 
     /**

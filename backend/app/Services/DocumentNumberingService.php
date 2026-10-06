@@ -133,18 +133,44 @@ class DocumentNumberingService
     ];
 
     /**
-     * Get all document type formats.
+     * #548: where each document type's issued numbers live — the same lookup
+     * the type's generator passes to NumberingService::nextFor() (see
+     * Invoice::generateInvoiceNumber(), Quotation::generateQuotationNumber(),
+     * SalesOrder::generateOrderNumber(), DeliveryOrder::generateNumber(),
+     * CustomerCreditNote::generateCreditNoteNumber()). The preview must jump
+     * past the same numbers or it would not equal the next real number.
+     * Payment numbers are generated without a lookup.
+     *
+     * @var array<string, array{0: class-string<\Illuminate\Database\Eloquent\Model>, 1: string}>
+     */
+    private const ISSUED_NUMBER_SOURCES = [
+        'invoice' => [\App\Models\Invoice::class, 'invoice_number'],
+        'quotation' => [\App\Models\Quotation::class, 'quotation_number'],
+        'sales_order' => [\Modules\Sales\Models\SalesOrder::class, 'sales_order_number'],
+        'delivery_order' => [\Modules\Sales\Models\DeliveryOrder::class, 'delivery_order_number'],
+        'credit_note' => [\App\Models\CustomerCreditNote::class, 'credit_note_number'],
+    ];
+
+    /**
+     * Get all document type formats, each with the next number the generator
+     * will issue, the reset period in force and the next sequence value.
      */
     public function getAllFormats(): array
     {
         $formats = [];
 
         foreach (self::TYPE_DEFAULTS as $type => $default) {
+            $current = $this->getFormat($type, $default);
+            $preview = $this->previewNext($type, $default);
+
             $formats[$type] = [
-                'current' => $this->getFormat($type, $default),
+                'current' => $current,
                 'default' => $default,
-                'example' => $this->previewNext($type, $default),
-                'preview' => $this->previewNext($type, $default),
+                'example' => $preview,
+                'preview' => $preview,
+                'reset_period' => $this->numbering->resolveResetPeriod($type, $current),
+                'reset_period_explicit' => $this->numbering->explicitResetPeriod($type) !== null,
+                'next_sequence' => $this->numbering->peekValueFor($type, $default, null, $this->issuedNumbers($type)),
             ];
         }
 
@@ -153,12 +179,92 @@ class DocumentNumberingService
 
     /**
      * Render the number the NEXT document of this type would receive, without
-     * consuming a counter value (#542).
+     * consuming a counter value (#542, #548). Optionally renders an unsaved
+     * format / reset period for the editor's live preview.
      */
-    public function previewNext(string $documentType, ?string $defaultFormat = null): string
-    {
+    public function previewNext(
+        string $documentType,
+        ?string $defaultFormat = null,
+        ?string $format = null,
+        ?string $resetPeriod = null,
+    ): string {
         $default = $defaultFormat ?? self::TYPE_DEFAULTS[$documentType] ?? 'DOC-{YYYY}-{SEQ:4}';
 
-        return $this->numbering->peekFor($documentType, $default);
+        return $this->numbering->peekFor(
+            $documentType,
+            $default,
+            null,
+            $this->issuedNumbers($documentType),
+            $format,
+            $resetPeriod,
+        );
+    }
+
+    /**
+     * #548: a reset period must be one the format can carry. Resetting more
+     * often than the format's date tokens change would reissue numbers that
+     * already exist (e.g. monthly reset of INV-{YYYY}-{SEQ:4}).
+     *
+     * @return array<int, string>
+     */
+    public function validateResetPeriod(string $format, string $period): array
+    {
+        if (! in_array($period, NumberingService::RESET_PERIODS, true)) {
+            return ['The reset period must be one of: never, yearly, monthly.'];
+        }
+
+        $hasYear = str_contains($format, '{YYYY}') || str_contains($format, '{YY}');
+
+        if ($period === 'yearly' && ! $hasYear) {
+            return ['A yearly reset needs a year token ({YYYY} or {YY}) in the format, or numbers would repeat.'];
+        }
+
+        if ($period === 'monthly' && (! $hasYear || ! str_contains($format, '{MM}'))) {
+            return ['A monthly reset needs both a year token ({YYYY} or {YY}) and {MM} in the format, or numbers would repeat.'];
+        }
+
+        return [];
+    }
+
+    public function setResetPeriod(string $documentType, string $period): void
+    {
+        $this->numbering->setResetPeriod($documentType, $period);
+    }
+
+    public function resolveResetPeriod(string $documentType, string $format): string
+    {
+        return $this->numbering->resolveResetPeriod($documentType, $format);
+    }
+
+    /**
+     * Move the next sequence value forward (admin only, never backwards).
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function advanceTo(string $documentType, int $nextValue): void
+    {
+        $default = self::TYPE_DEFAULTS[$documentType] ?? 'DOC-{YYYY}-{SEQ:4}';
+
+        $this->numbering->advanceTo($documentType, $default, $nextValue, null, $this->issuedNumbers($documentType));
+    }
+
+    /**
+     * @return (callable(string): array<int, string>)|null
+     */
+    private function issuedNumbers(string $documentType): ?callable
+    {
+        if (! isset(self::ISSUED_NUMBER_SOURCES[$documentType])) {
+            return null;
+        }
+
+        [$model, $column] = self::ISSUED_NUMBER_SOURCES[$documentType];
+
+        return function (string $prefix) use ($model, $column): array {
+            $query = in_array(\Illuminate\Database\Eloquent\SoftDeletes::class, class_uses_recursive($model), true)
+                ? $model::withTrashed()
+                : $model::query();
+
+            return $query->where($column, 'like', $prefix.'%')->pluck($column)->all();
+        };
     }
 }

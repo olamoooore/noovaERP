@@ -482,8 +482,10 @@ class Customer extends Model
             // Issue #144: credit_limit is intentionally nullable. NULL means
             // "no credit control configured" and must survive the save — do NOT
             // coerce it to 0, which now means "zero credit / prepayment only".
+            // #539: a customer saved without terms takes the tenant's Sales
+            // Settings default (30 days when the tenant never set one).
             if ($customer->payment_terms === null) {
-                $customer->payment_terms = 30;
+                $customer->payment_terms = app(\App\Services\SalesSettings::class)->defaultPaymentTermsDays();
             }
 
             if ($customer->total_outstanding === null) {

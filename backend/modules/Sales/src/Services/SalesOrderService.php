@@ -26,6 +26,8 @@ class SalesOrderService
      */
     public const AUTO_LOCK_ON_CONFIRM_SETTING = 'sales.orders.auto_lock_on_confirm';
 
+    private ?CreditCheckResult $lastCreditCheck = null;
+
     public function __construct(
         private OrderLifecycleService $lifecycleService,
         private InvoiceService $invoiceService,
@@ -398,8 +400,20 @@ class SalesOrderService
         });
     }
 
+    /**
+     * Issue #383: the credit verdict the most recent confirmOrder() call
+     * gated on (null when the order has no customer). The controller returns
+     * this instead of running a second, differently-based check.
+     */
+    public function lastCreditCheck(): ?CreditCheckResult
+    {
+        return $this->lastCreditCheck;
+    }
+
     public function confirmOrder(SalesOrder $order): SalesOrder
     {
+        $this->lastCreditCheck = null;
+
         if (! $order->isDraft()) {
             throw new \Exception('Only draft orders can be confirmed.');
         }
@@ -428,6 +442,7 @@ class SalesOrderService
                         $this->baseCurrencyAmount($order, (float) $order->total),
                         (float) $committedOrdersTotal
                     );
+                    $this->lastCreditCheck = $creditCheck;
 
                     if (! $creditCheck->approved) {
                         // Issue #903: typed so the route boundary can notify the
@@ -920,11 +935,31 @@ class SalesOrderService
             $invoiceService = $invoiceServiceOverride ?? $this->invoiceService;
             $token = $invoiceService->issueCreationToken();
 
+            // Issue #321: the order's master payment term (carried from the
+            // quotation) sets the due date; without one the customer's day
+            // count applies as before.
+            $invoiceDate = now()->toDateString();
+            $paymentTerm = $order->payment_term_id
+                ? \App\Models\PaymentTerm::query()->find($order->payment_term_id)
+                : null;
+            $dueDate = $paymentTerm
+                ? $paymentTerm->calculateDueDate($invoiceDate)->toDateString()
+                // #539: the tenant's default terms only when the customer has none.
+                : now()->addDays(
+                    $order->customer->payment_terms ?? app(\App\Services\SalesSettings::class)->defaultPaymentTermsDays()
+                )->toDateString();
+
             $invoiceData = [
                 'customer_id' => $order->customer_id,
-                'invoice_date' => now()->toDateString(),
-                'due_date' => now()->addDays($order->customer->payment_terms ?? 30)->toDateString(),
-                'notes' => "Sales Order #{$order->sales_order_number}",
+                'invoice_date' => $invoiceDate,
+                'due_date' => $dueDate,
+                'payment_term_id' => $paymentTerm?->id,
+                // #539: the tenant's default invoice notes lead, the order
+                // reference stays for traceability.
+                'notes' => implode("\n", array_filter([
+                    app(\App\Services\SalesSettings::class)->defaultNotes(),
+                    "Sales Order #{$order->sales_order_number}",
+                ])),
                 'sales_order_id' => $order->id,
                 // Carry the order's references into the invoice for end-to-end
                 // tracing (Customer Ref. / PO / Internal Ref.).
