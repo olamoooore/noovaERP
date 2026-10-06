@@ -17,7 +17,11 @@ use Carbon\Carbon;
  */
 class MedicalCaseReportingService
 {
-    public function performance(Carbon $from, Carbon $to, string $dateField = 'case_date'): array
+    /**
+     * @param  int[]|null  $accessibleEntityIds  Issue #575: legal entities the
+     *                                           caller may see (null = unscoped)
+     */
+    public function performance(Carbon $from, Carbon $to, string $dateField = 'case_date', ?array $accessibleEntityIds = null): array
     {
         $dateField = in_array($dateField, ['case_date', 'procedure_date'], true) ? $dateField : 'case_date';
 
@@ -25,6 +29,7 @@ class MedicalCaseReportingService
             ->with(['customer:id,name', 'doctorContact:id,name', 'items.product:id,name,sku'])
             ->whereNotNull($dateField)
             ->whereBetween($dateField, [$from->toDateString(), $to->toDateString()])
+            ->when($accessibleEntityIds !== null, fn ($query) => $query->accessibleBy($accessibleEntityIds))
             ->get();
 
         $usageCaseItemIds = BonusSchemeUsage::query()

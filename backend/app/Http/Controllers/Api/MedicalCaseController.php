@@ -13,6 +13,7 @@ use App\Models\ProductBatch;
 use App\Models\ProductLot;
 use App\Platform\Workflow\WorkflowDeniedException;
 use App\Services\CustomerWideSearchService;
+use App\Services\EntityAccessService;
 use App\Services\SalesWorkflowService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,6 +32,9 @@ class MedicalCaseController extends Controller
     {
         $query = MedicalCase::with(['customer', 'invoice', 'items.product', 'doctorContact', 'requestorContact', 'buyerContact'])
             ->latest();
+
+        // Issue #575 (MC11): only the requester's legal entities.
+        $this->applyEntityScope($request, $query);
 
         if ($request->filled('customer_id')) {
             $query->where('customer_id', $request->customer_id);
@@ -78,6 +82,70 @@ class MedicalCaseController extends Controller
         return response()->json($cases);
     }
 
+    /**
+     * Issue #575 (MC11): the requester's accessible legal entities, or null
+     * when the user has no entity grants (historical unscoped view — the same
+     * fail-open default as EnsureEntityAccess / #140 / #462).
+     *
+     * @return int[]|null
+     */
+    private function accessibleEntityIds(Request $request): ?array
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return null;
+        }
+
+        $entityIds = app(EntityAccessService::class)->accessibleEntityIds((int) $user->id);
+
+        return $entityIds === [] ? null : $entityIds;
+    }
+
+    private function applyEntityScope(Request $request, $query): void
+    {
+        $entityIds = $this->accessibleEntityIds($request);
+
+        if ($entityIds !== null) {
+            $query->accessibleBy($entityIds);
+        }
+    }
+
+    /**
+     * Issue #575 (MC11): resolve a case inside the requester's entity scope;
+     * out-of-scope ids behave as missing (404).
+     *
+     * @param  array<int, string>  $with
+     */
+    private function findScopedCase(Request $request, $id, array $with = []): ?MedicalCase
+    {
+        $query = MedicalCase::query()->with($with);
+        $this->applyEntityScope($request, $query);
+
+        return $query->find($id);
+    }
+
+    /**
+     * Issue #575 (MC11): a case may only be raised for a customer inside the
+     * requester's legal entities.
+     *
+     * @throws ValidationException
+     */
+    private function assertCustomerInEntityScope(Request $request, int $customerId): void
+    {
+        $entityIds = $this->accessibleEntityIds($request);
+
+        if ($entityIds === null) {
+            return;
+        }
+
+        if (! Customer::query()->whereKey($customerId)->accessibleBy($entityIds)->exists()) {
+            throw ValidationException::withMessages([
+                'customer_id' => 'The customer belongs to a legal entity you do not have access to.',
+            ]);
+        }
+    }
+
     public function store(Request $request): JsonResponse
     {
         // Issue #187: the contact/address ids must belong to the case's own
@@ -113,6 +181,8 @@ class MedicalCaseController extends Controller
             'items.*.is_foc' => 'nullable|boolean',
             'items.*.notes' => 'nullable|string',
         ]);
+
+        $this->assertCustomerInEntityScope($request, (int) $validated['customer_id']);
 
         $this->assertLinkableInvoice($validated['invoice_id'] ?? null, (int) $validated['customer_id']);
 
@@ -295,7 +365,7 @@ class MedicalCaseController extends Controller
         return false;
     }
 
-    public function show($id): JsonResponse
+    public function show(Request $request, $id): JsonResponse
     {
         $with = [
             'customer',
@@ -317,7 +387,7 @@ class MedicalCaseController extends Controller
             $with[] = 'items.lot';
         }
 
-        $case = MedicalCase::with($with)->find($id);
+        $case = $this->findScopedCase($request, $id, $with);
 
         if (! $case) {
             return response()->json(['message' => 'Medical case not found'], 404);
@@ -328,7 +398,7 @@ class MedicalCaseController extends Controller
 
     public function update(Request $request, $id): JsonResponse
     {
-        $case = MedicalCase::find($id);
+        $case = $this->findScopedCase($request, $id);
 
         if (! $case) {
             return response()->json(['message' => 'Medical case not found'], 404);
@@ -356,6 +426,10 @@ class MedicalCaseController extends Controller
             'notes' => 'nullable|string',
         ]);
 
+        if (array_key_exists('customer_id', $validated)) {
+            $this->assertCustomerInEntityScope($request, (int) $validated['customer_id']);
+        }
+
         // Issue #566 (MC4): the (possibly new) invoice must still belong to
         // the (possibly new) case customer.
         if (array_key_exists('invoice_id', $validated) || array_key_exists('customer_id', $validated)) {
@@ -380,9 +454,9 @@ class MedicalCaseController extends Controller
         }
     }
 
-    public function destroy($id): JsonResponse
+    public function destroy(Request $request, $id): JsonResponse
     {
-        $case = MedicalCase::find($id);
+        $case = $this->findScopedCase($request, $id);
 
         if (! $case) {
             return response()->json(['message' => 'Medical case not found'], 404);
@@ -406,7 +480,7 @@ class MedicalCaseController extends Controller
 
     public function allocate(Request $request, $id): JsonResponse
     {
-        $case = MedicalCase::with('items')->find($id);
+        $case = $this->findScopedCase($request, $id, ['items']);
 
         if (! $case) {
             return response()->json(['message' => 'Medical case not found'], 404);
@@ -418,7 +492,9 @@ class MedicalCaseController extends Controller
 
         $validated = $request->validate([
             'items' => 'required|array',
-            'items.*.id' => 'required|exists:medical_case_items,id',
+            // Issue #575 (MC11): a line of another case is a validation
+            // failure (422), not a ModelNotFoundException surfaced as 500.
+            'items.*.id' => ['required', Rule::exists('medical_case_items', 'id')->where('medical_case_id', $case->id)],
             'items.*.allocated_qty' => 'required|numeric|min:0',
         ]);
 
@@ -536,7 +612,7 @@ class MedicalCaseController extends Controller
 
     public function deliver(Request $request, $id): JsonResponse
     {
-        $case = MedicalCase::with('items')->find($id);
+        $case = $this->findScopedCase($request, $id, ['items']);
 
         if (! $case) {
             return response()->json(['message' => 'Medical case not found'], 404);
@@ -551,7 +627,9 @@ class MedicalCaseController extends Controller
 
         $validated = $request->validate([
             'items' => 'required|array',
-            'items.*.id' => 'required|exists:medical_case_items,id',
+            // Issue #575 (MC11): a line of another case is a validation
+            // failure (422), not a ModelNotFoundException surfaced as 500.
+            'items.*.id' => ['required', Rule::exists('medical_case_items', 'id')->where('medical_case_id', $case->id)],
             'items.*.delivered_qty' => 'required|numeric|min:0',
             // Issue #562 (MC1): a case delivery must be recorded from a real
             // shipped document — a hand-typed quantity with no completed DO
@@ -702,7 +780,7 @@ class MedicalCaseController extends Controller
 
     public function invoice(Request $request, $id): JsonResponse
     {
-        $case = MedicalCase::with('items')->find($id);
+        $case = $this->findScopedCase($request, $id, ['items']);
 
         if (! $case) {
             return response()->json(['message' => 'Medical case not found'], 404);
@@ -719,7 +797,9 @@ class MedicalCaseController extends Controller
         $validated = $request->validate([
             'invoice_id' => 'required|exists:invoices,id',
             'items' => 'required|array',
-            'items.*.id' => 'required|exists:medical_case_items,id',
+            // Issue #575 (MC11): a line of another case is a validation
+            // failure (422), not a ModelNotFoundException surfaced as 500.
+            'items.*.id' => ['required', Rule::exists('medical_case_items', 'id')->where('medical_case_id', $case->id)],
             'items.*.invoiced_qty' => 'required|numeric|min:0',
             // Issue #566 (MC4): every case line maps to a line of the invoice.
             'items.*.invoice_item_id' => 'required|integer|exists:invoice_lines,id',
@@ -868,14 +948,16 @@ class MedicalCaseController extends Controller
             \Carbon\Carbon::parse($validated['from_date']),
             \Carbon\Carbon::parse($validated['to_date']),
             $validated['date_field'] ?? 'case_date',
+            // Issue #575 (MC11): report only the requester's legal entities.
+            $this->accessibleEntityIds($request),
         );
 
         return response()->json(['data' => $report]);
     }
 
-    public function cancel($id): JsonResponse
+    public function cancel(Request $request, $id): JsonResponse
     {
-        $case = MedicalCase::with('items')->find($id);
+        $case = $this->findScopedCase($request, $id, ['items']);
 
         if (! $case) {
             return response()->json(['message' => 'Medical case not found'], 404);
@@ -952,9 +1034,9 @@ class MedicalCaseController extends Controller
         }
     }
 
-    public function complete($id): JsonResponse
+    public function complete(Request $request, $id): JsonResponse
     {
-        $case = MedicalCase::with('items')->find($id);
+        $case = $this->findScopedCase($request, $id, ['items']);
 
         if (! $case) {
             return response()->json(['message' => 'Medical case not found'], 404);

@@ -19,6 +19,8 @@ class MedicalCase extends Model implements WorkflowSubject
         'case_no',
         'case_tag',
         'customer_id',
+        // Issue #575 (MC11): the owning legal entity (stamped at creation).
+        'legal_entity_id',
         'invoice_id',
         'delivery_address_id',
         'doctor_contact_id',
@@ -51,6 +53,17 @@ class MedicalCase extends Model implements WorkflowSubject
         static::creating(function ($model) {
             if (! $model->case_no) {
                 $model->case_no = static::generateCaseNumber();
+            }
+
+            // Issue #575 (MC11): stamp the owning legal entity through the
+            // platform resolver (customer → request entity context → the
+            // tenant's only entity), so every creation path — controller,
+            // CSV/DO import — is entity-scoped.
+            if (! $model->legal_entity_id) {
+                $model->legal_entity_id = app(\App\Services\LegalEntityContextResolver::class)->resolveEntity(
+                    customerId: $model->customer_id ? (int) $model->customer_id : null,
+                    required: false,
+                );
             }
         });
     }
@@ -174,6 +187,27 @@ class MedicalCase extends Model implements WorkflowSubject
     public function scopeForCustomer($query, $customerId)
     {
         return $query->where('customer_id', $customerId);
+    }
+
+    /**
+     * Issue #575 (MC11): scope to the caller's accessible legal entities
+     * (EntityAccessService::accessibleEntityIds). Fail-closed on an empty set.
+     * Rows created before the column existed carry NULL and are judged by
+     * their customer's entity (Customer::scopeAccessibleBy) — no backfill.
+     */
+    public function scopeAccessibleBy($query, array $accessibleEntityIds)
+    {
+        if (empty($accessibleEntityIds)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->where(function ($q) use ($accessibleEntityIds) {
+            $q->whereIn('legal_entity_id', $accessibleEntityIds)
+                ->orWhere(function ($legacy) use ($accessibleEntityIds) {
+                    $legacy->whereNull('legal_entity_id')
+                        ->whereHas('customer', fn ($customer) => $customer->accessibleBy($accessibleEntityIds));
+                });
+        });
     }
 
     public function scopeDraft($query)
