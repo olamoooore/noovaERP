@@ -25,6 +25,18 @@ use Modules\Contact\src\Models\CoreContact;
  *    email/mobile with each other (they would collapse into one person).
  *  - Legacy category/type values the sync would reject (unknown taxonomy)
  *    are flagged.
+ *
+ * W6 step 3 (linking execution plan) adds three cases the live code would
+ * get silently wrong. A foreign key (2026_08_13_000002) rules out links to
+ * records that do not exist, so these are the only "bad" links:
+ *  - `linked_contact_deleted`: the link points at a SOFT-DELETED record;
+ *    find() cannot see it, so the sync would create a new record and orphan
+ *    the old one with its addresses, relationships and sites;
+ *  - `linked_to_merged_duplicate`: the link points at a record merged into
+ *    another (`merged_into_id`); the sync keeps writing to the loser;
+ *  - `target_person_has_merge_damage`: an auto-link target already carries
+ *    suspect/unverifiable links from the matcher bug fixed in 9e389eb
+ *    (PersonMergeDamagePlanner) — step 4 repairs it first.
  */
 class ContactLinkingPlanner
 {
@@ -38,7 +50,19 @@ class ContactLinkingPlanner
 
     public const ACTION_NEEDS_REVIEW = 'needs_review';
 
-    public function __construct(private readonly CustomerContactSyncService $sync) {}
+    public function __construct(
+        private readonly CustomerContactSyncService $sync,
+        private readonly PersonMergeDamagePlanner $damage,
+    ) {}
+
+    /** @var array<string, true> soft-deleted Contact Master ids */
+    private array $deletedIds = [];
+
+    /** @var array<string, string|null> merged duplicate id → merged_into_id */
+    private array $mergedIds = [];
+
+    /** @var array<string, string> person id → merge-damage severity */
+    private array $damagedPeople = [];
 
     /**
      * @return array<string, mixed>
@@ -49,7 +73,10 @@ class ContactLinkingPlanner
 
         // Step 0 (performance): the Contact Master is read ONCE and indexed,
         // instead of reloading every record for each unlinked customer.
-        $existingIds = array_flip(CoreContact::where('tenant_id', $tenantId)->pluck('id')->all());
+        $existingIds = array_flip(CoreContact::where('tenant_id', $tenantId)->where('is_duplicate', false)->pluck('id')->all());
+        $this->deletedIds = array_flip(CoreContact::onlyTrashed()->where('tenant_id', $tenantId)->pluck('id')->all());
+        $this->mergedIds = CoreContact::where('tenant_id', $tenantId)->where('is_duplicate', true)->pluck('merged_into_id', 'id')->all();
+        $this->damagedPeople = collect($this->damage->plan($tenantId)['people'])->pluck('severity', 'person_id')->all();
         $index = $this->organisationIndex($tenantId);
         $this->personOrganisations = ContactRelationship::where('tenant_id', $tenantId)
             ->where('relationship_type', 'org_person')
@@ -65,7 +92,11 @@ class ContactLinkingPlanner
                 if ($customer->core_contact_uuid && isset($existingIds[$customer->core_contact_uuid])) {
                     continue;
                 }
-                $organisations[] = $this->planOrganisation($customer, $index, $links);
+                $organisations[] = $this->badLink($customer->core_contact_uuid, [
+                    'customer_id' => $customer->id,
+                    'customer_deleted' => $customer->trashed(),
+                    'customer_name' => $customer->name,
+                ]) ?? $this->planOrganisation($customer, $index, $links);
             }
         });
 
@@ -147,7 +178,6 @@ class ContactLinkingPlanner
             'customer_deleted' => $customer->trashed(),
             'customer_name' => $customer->name,
             'contact_type' => $type,
-            'dangling_link' => $customer->core_contact_uuid !== null,
         ];
 
         return $candidates === []
@@ -165,6 +195,10 @@ class ContactLinkingPlanner
             'name' => $contact->name,
             'customer_needs_organisation' => ! $orgUuid,
         ];
+
+        if ($bad = $this->badLink($contact->core_contact_uuid, $row)) {
+            return $bad;
+        }
 
         $legacy = $this->sync->transformLegacyPayload($contact->contact_category, $contact->contact_type);
         $flags = [];
@@ -198,6 +232,9 @@ class ContactLinkingPlanner
             if ($this->normalizeName($person->display_name) !== $this->normalizeName($contact->name)) {
                 $flags['name_differs'] = true;
             }
+            if (isset($this->damagedPeople[$person->id])) {
+                $flags['target_person_has_merge_damage'] = $this->damagedPeople[$person->id];
+            }
             $otherOrganisations = array_values(array_diff($this->personOrganisations[$person->id] ?? [], array_filter([$orgUuid])));
             if ($otherOrganisations !== []) {
                 $flags['person_belongs_to_other_organisations'] = array_map(
@@ -219,6 +256,37 @@ class ContactLinkingPlanner
         }
 
         return $row;
+    }
+
+    /**
+     * A link to a soft-deleted or merged-duplicate record: never relinked or
+     * replaced automatically.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>|null
+     */
+    private function badLink(?string $uuid, array $row): ?array
+    {
+        if ($uuid === null) {
+            return null;
+        }
+        if (array_key_exists($uuid, $this->mergedIds)) {
+            return $row + [
+                'action' => self::ACTION_NEEDS_REVIEW,
+                'reason' => 'linked_to_merged_duplicate',
+                'linked_contact_id' => $uuid,
+                'merged_into_id' => $this->mergedIds[$uuid],
+            ];
+        }
+        if (isset($this->deletedIds[$uuid])) {
+            return $row + [
+                'action' => self::ACTION_NEEDS_REVIEW,
+                'reason' => 'linked_contact_deleted',
+                'linked_contact_id' => $uuid,
+            ];
+        }
+
+        return null;
     }
 
     /**
