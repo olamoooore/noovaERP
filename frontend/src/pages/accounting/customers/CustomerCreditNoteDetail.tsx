@@ -19,6 +19,8 @@ import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import EInvoicePanel from '../components/EInvoicePanel';
 import { EInvoiceStatusChip } from '../components/EInvoiceStatusChip';
+import { CreditNoteOutcomeBadge } from '../components/CreditNoteOutcomeBadge';
+import type { CreditNoteOutcome } from '@/types/creditNote';
 import { formatCountdown } from '../components/einvoiceStatus';
 import { useEInvoiceDocument } from '../components/useEInvoice';
 
@@ -260,6 +262,52 @@ export const CustomerCreditNoteDetail: React.FC = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* #525 (CN-UX4): what happened to the credit. */}
+      {creditNote.outcome && (() => {
+        const outcome = creditNote.outcome as CreditNoteOutcome;
+        return (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm text-muted-foreground">
+                Credit outcome
+                <CreditNoteOutcomeBadge state={outcome.state} />
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {outcome.state === 'voided' ? (
+                <p className="text-sm text-muted-foreground">
+                  Voided — the credit was released from the invoice and no customer credit remains.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Applied to</p>
+                    {outcome.applied_to ? (
+                      <p className="font-medium">
+                        <Link
+                          to={`/accounting/customers/bills/${outcome.applied_to.invoice_id}`}
+                          className="text-blue-600 hover:underline"
+                        >
+                          {outcome.applied_to.invoice_number || `Invoice #${outcome.applied_to.invoice_id}`}
+                        </Link>
+                        {' · '}
+                        {formatCurrency(outcome.applied_amount, creditNote.currency_code)}
+                      </p>
+                    ) : (
+                      <p className="font-medium text-muted-foreground">Not applied — the invoice had no open balance</p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Remaining customer credit</p>
+                    <p className="font-medium">{formatCurrency(outcome.remaining_credit, creditNote.currency_code)}</p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Line Items */}
       {creditNote.lines && creditNote.lines.length > 0 && (

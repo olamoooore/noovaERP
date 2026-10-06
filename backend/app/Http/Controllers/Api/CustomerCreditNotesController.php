@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Api;
 use App\Accounting\Services\EInvoiceLifecycleGuard;
 use App\Http\Controllers\Controller;
 use App\Models\CustomerCreditNote;
+use App\Services\CustomerCreditNoteOutcomeService;
 use App\Services\CustomerCreditNoteService;
 use App\Services\CustomerWideSearchService;
 use App\Services\DocumentWideSearchService;
+use App\Support\EInvoiceListStatus;
 use Illuminate\Http\Request;
 
 class CustomerCreditNotesController extends Controller
@@ -15,6 +17,7 @@ class CustomerCreditNotesController extends Controller
     public function __construct(
         private CustomerCreditNoteService $creditNoteService,
         private EInvoiceLifecycleGuard $eInvoiceLifecycle,
+        private CustomerCreditNoteOutcomeService $outcomes,
     ) {}
 
     /**
@@ -48,6 +51,18 @@ class CustomerCreditNotesController extends Controller
             $query->where('credit_note_date', '<=', $request->end_date);
         }
 
+        // #525 (CN-UX4): filter by e-invoice status. Drafts have no e-invoice
+        // lifecycle, so they never match (not even "not submitted").
+        if ($request->filled('einvoice_status')) {
+            EInvoiceListStatus::applyFilter($query, (string) $request->einvoice_status, 'credit_note', 'customer_credit_notes.id');
+            $query->where('status', '!=', 'draft');
+        }
+
+        // #525 (CN-UX4): filter by outcome (applied / customer_credit).
+        if ($request->filled('outcome')) {
+            $this->outcomes->applyFilter($query, (string) $request->outcome);
+        }
+
         // Search — wide: document refs, customer's full surface, line contents
         // and the credited invoice number.
         $search = $request->filled('search') ? trim((string) $request->search) : '';
@@ -57,6 +72,10 @@ class CustomerCreditNotesController extends Controller
         }
 
         $creditNotes = $query->paginate(20);
+
+        // #525 (CN-UX4): applied-to / remaining credit / e-invoice status per
+        // row, computed for the whole page at once.
+        $this->outcomes->annotate($creditNotes->getCollection());
 
         if ($search !== '') {
             app(DocumentWideSearchService::class)->annotate($creditNotes, $search, $this->wideSearchConfig());
@@ -90,17 +109,20 @@ class CustomerCreditNotesController extends Controller
     {
         $creditNote = CustomerCreditNote::findOrFail($creditNote);
 
-        return response()->json(
-            $creditNote->load([
-                'customer',
-                'invoice',
-                'lines.product',
-                'lines.account',
-                'journalEntry.lines.account',
-                'createdBy',
-                'postedBy',
-            ])
-        );
+        $creditNote->load([
+            'customer',
+            'invoice',
+            'lines.product',
+            'lines.account',
+            'journalEntry.lines.account',
+            'createdBy',
+            'postedBy',
+        ]);
+
+        // #525 (CN-UX4): what happened to the credit + e-invoice status.
+        $this->outcomes->annotate([$creditNote]);
+
+        return response()->json($creditNote);
     }
 
     /**

@@ -319,78 +319,15 @@ class InvoiceController extends Controller
     }
 
     /**
-     * #670 (EINV-UX1): translate the UI's e-invoice status keys into the
-     * compliance document / submission statuses and filter the invoice query.
-     *
-     *  - queued  → document pending
-     *  - submitted → document submitted
-     *  - valid → document accepted
-     *  - invalid → document rejected or failed
-     *  - cancelled → document cancelled
-     *  - not_submitted → no compliance document at all
-     *  - buyer_rejection_requested → an open buyer rejection request lives on
-     *    the submission, because the request arrives after acceptance
+     * #670 (EINV-UX1): filter the invoice query by the UI's e-invoice status
+     * keys. The key → compliance status mapping is shared with the credit
+     * note list (#525) in EInvoiceListStatus.
      *
      * @param  \Illuminate\Database\Eloquent\Builder<Invoice>  $query
      */
     private function applyEInvoiceStatusFilter($query, string $statuses): void
     {
-        $wanted = array_values(array_filter(array_map('trim', explode(',', $statuses))));
-
-        if ($wanted === []) {
-            return;
-        }
-
-        $tenantId = tenant()->id;
-
-        $documentsWithStatus = function (array $documentStatuses) use ($tenantId): \Closure {
-            return function ($sub) use ($documentStatuses, $tenantId) {
-                $sub->selectRaw('1')
-                    ->from('acct_compliance_documents as cd')
-                    ->whereColumn('cd.document_id', 'invoices.id')
-                    ->where('cd.document_type', 'invoice')
-                    ->where('cd.tenant_id', $tenantId)
-                    ->whereIn('cd.compliance_status', $documentStatuses);
-            };
-        };
-
-        $anyDocument = function ($sub) use ($tenantId) {
-            $sub->selectRaw('1')
-                ->from('acct_compliance_documents as cd')
-                ->whereColumn('cd.document_id', 'invoices.id')
-                ->where('cd.document_type', 'invoice')
-                ->where('cd.tenant_id', $tenantId);
-        };
-
-        $openBuyerRejection = function ($sub) use ($tenantId) {
-            $sub->selectRaw('1')
-                ->from('acct_compliance_submissions as cs')
-                ->join('acct_compliance_documents as cd2', 'cd2.id', '=', 'cs.document_id')
-                ->whereColumn('cd2.document_id', 'invoices.id')
-                ->where('cd2.document_type', 'invoice')
-                ->where('cd2.tenant_id', $tenantId)
-                ->whereIn('cs.submission_status', ['rejection_requested', 'rejection_declined_pending_expiry']);
-        };
-
-        $query->where(function ($q) use ($wanted, $documentsWithStatus, $anyDocument, $openBuyerRejection) {
-            foreach ($wanted as $status) {
-                match ($status) {
-                    'queued' => $q->orWhereExists($documentsWithStatus(['pending'])),
-                    'submitted' => $q->orWhereExists($documentsWithStatus(['submitted'])),
-                    // Valid means accepted AND not contested by an open buyer
-                    // rejection request — that request has its own status.
-                    'valid' => $q->orWhere(function ($w) use ($documentsWithStatus, $openBuyerRejection) {
-                        $w->whereExists($documentsWithStatus(['accepted']))
-                            ->whereNotExists($openBuyerRejection);
-                    }),
-                    'invalid' => $q->orWhereExists($documentsWithStatus(['rejected', 'failed'])),
-                    'cancelled' => $q->orWhereExists($documentsWithStatus(['cancelled'])),
-                    'not_submitted' => $q->orWhereNotExists($anyDocument),
-                    'buyer_rejection_requested' => $q->orWhereExists($openBuyerRejection),
-                    default => null,
-                };
-            }
-        });
+        \App\Support\EInvoiceListStatus::applyFilter($query, $statuses, 'invoice', 'invoices.id');
     }
 
     /**
