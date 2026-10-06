@@ -38,6 +38,13 @@ class ContactAddressBackfillPlanner
 
     public const ACTION_CREATE_SITE = 'create_site_and_link';
 
+    public const ACTION_NO_SITE_AT_COMPANY_ADDRESS = 'no_site_at_company_address';
+
+    public const ACTION_COPY_TEXT_AS_LINES = 'copy_text_as_lines';
+
+    /** contact_addresses.line_1..line_3 are varchar(255). */
+    private const MAX_LINE_LENGTH = 255;
+
     public const ACTION_NEEDS_REVIEW = 'needs_review';
 
     private const TYPE_MAP = ['billing' => 'billing', 'shipping' => 'delivery'];
@@ -75,11 +82,13 @@ class ContactAddressBackfillPlanner
             }
 
             $people = CustomerContact::where('customer_id', $customer->id)->orderBy('id')->get();
+            $customerPeople = [];
             foreach ($people as $person) {
                 if ($this->hasAddress($person)) {
-                    $personAddresses[] = $this->planPersonAddress($customer, $person, $orgAddresses, $structured);
+                    $customerPeople[] = $this->planPersonAddress($customer, $person, $orgAddresses, $structured);
                 }
             }
+            array_push($personAddresses, ...$this->shareNewSites($customerPeople));
         }
 
         return [
@@ -140,16 +149,32 @@ class ContactAddressBackfillPlanner
             return $row + ['action' => self::ACTION_SUPERSEDED];
         }
 
-        $decoded = json_decode($value, true);
-        if (! is_array($decoded)) {
-            return $row + ['action' => self::ACTION_NEEDS_REVIEW, 'reason' => 'free_text_cannot_be_split_reliably'];
-        }
-
-        $country = $decoded['country'] ?? null;
         if (! $customer->core_contact_uuid) {
             return $row + ['action' => self::ACTION_NEEDS_REVIEW, 'reason' => 'customer_not_linked_to_organisation'];
         }
-        if (! $this->isIsoCountry($country)) {
+
+        $decoded = json_decode($value, true);
+        if (! is_array($decoded)) {
+            // Revised recommendation #3: free text is split on line breaks
+            // into line_1..line_3 without interpreting it (no guessing which
+            // line is the city or postcode); the country stays empty.
+            $lines = array_values(array_filter(
+                array_map('trim', preg_split('/\r\n|\r|\n/', $value) ?: []),
+                fn ($line) => $line !== ''
+            ));
+            if (count($lines) > 3) {
+                return $row + ['action' => self::ACTION_NEEDS_REVIEW, 'reason' => 'more_than_three_lines', 'lines' => $lines];
+            }
+            foreach ($lines as $line) {
+                if (mb_strlen($line) > self::MAX_LINE_LENGTH) {
+                    return $row + ['action' => self::ACTION_NEEDS_REVIEW, 'reason' => 'line_too_long', 'lines' => $lines];
+                }
+            }
+
+            return $row + ['action' => self::ACTION_COPY_TEXT_AS_LINES, 'lines' => $lines];
+        }
+
+        if (! $this->isIsoCountry($decoded['country'] ?? null)) {
             return $row + ['action' => self::ACTION_NEEDS_REVIEW, 'reason' => 'country_not_iso_alpha2'];
         }
 
@@ -178,20 +203,54 @@ class ContactAddressBackfillPlanner
             return $row + ['action' => self::ACTION_LINK_EXISTING_SITE, 'site_address_id' => $site->id];
         }
 
-        if (! $this->isIsoCountry($person->country) && $person->country !== null && $person->country !== '') {
-            return $row + ['action' => self::ACTION_NEEDS_REVIEW, 'reason' => 'country_not_iso_alpha2'];
-        }
-
+        // Revised recommendation #6: "no site" means the company's main
+        // address, so a person at one of the company's own addresses needs
+        // no site (no duplicate of the billing address under Sites).
         $matchesCompanyAddress = $structured->first(
             fn ($address) => $this->key($address->street, $address->street2, $address->city, $address->zip)
                 === $this->key($person->street, $person->street2, $person->city, $person->zip)
         );
+        if ($matchesCompanyAddress !== null) {
+            return $row + ['action' => self::ACTION_NO_SITE_AT_COMPANY_ADDRESS, 'matches_company_address_id' => $matchesCompanyAddress->id];
+        }
+
+        // Only a NEW site needs a valid country code.
+        if (! $this->isIsoCountry($person->country) && $person->country !== null && $person->country !== '') {
+            return $row + ['action' => self::ACTION_NEEDS_REVIEW, 'reason' => 'country_not_iso_alpha2'];
+        }
 
         return $row + [
             'action' => self::ACTION_CREATE_SITE,
-            'site_label' => $matchesCompanyAddress?->label ?: $person->name,
-            'matches_company_address_id' => $matchesCompanyAddress?->id,
+            // Named after the address, never after one person: the site may
+            // be shared by several people (see shareNewSites()).
+            'site_label' => $this->summary($person->street, $person->city),
+            'new_site_key' => $this->key($person->street, $person->street2, $person->city, $person->zip),
         ];
+    }
+
+    /**
+     * Revised recommendation #6: people of one company at the same new
+     * address share ONE new site, not one copy each.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function shareNewSites(array $rows): array
+    {
+        $byKey = [];
+        foreach ($rows as $row) {
+            if ($row['action'] === self::ACTION_CREATE_SITE) {
+                $byKey[$row['new_site_key']][] = $row['customer_contact_id'];
+            }
+        }
+
+        return array_map(function (array $row) use ($byKey) {
+            if ($row['action'] === self::ACTION_CREATE_SITE) {
+                $row['people_sharing_site'] = $byKey[$row['new_site_key']];
+            }
+
+            return $row;
+        }, $rows);
     }
 
     private function findSame($orgAddresses, string $type, ?string $street, ?string $street2, ?string $city, ?string $zip)
