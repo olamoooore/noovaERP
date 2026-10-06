@@ -269,6 +269,36 @@ class Customer extends Model
     }
 
     // ==========================================
+    // SCOPES
+    // ==========================================
+
+    /**
+     * Issue #434 (CU6): scope to the caller's accessible legal entities.
+     *
+     * Customers with legal_entity_id = NULL are entity-shared and stay
+     * visible to every scoped user — the canonical creation path
+     * (CanonicalCustomerService) does not stamp an entity, so NULL is the
+     * normal "shared customer" case. Fail-closed when the id set is empty,
+     * mirroring SalesOrder::scopeAccessibleBy(); callers use the
+     * fail-open-with-no-grants guard before invoking it.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
+     * @param  int[]  $accessibleEntityIds
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopeAccessibleBy($query, array $accessibleEntityIds)
+    {
+        if (empty($accessibleEntityIds)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->where(function ($q) use ($accessibleEntityIds) {
+            $q->whereIn('legal_entity_id', $accessibleEntityIds)
+                ->orWhereNull('legal_entity_id');
+        });
+    }
+
+    // ==========================================
     // ACCESSORS
     // ==========================================
 

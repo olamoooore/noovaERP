@@ -10,7 +10,9 @@ use App\Models\CustomerLoyaltyProgram;
 use App\Services\CanonicalCustomerService;
 use App\Services\CustomerContactSyncService;
 use App\Services\CustomerWideSearchService;
+use App\Services\EntityAccessService;
 use App\Services\TagService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -29,6 +31,45 @@ class CustomerController extends Controller
      */
     private const CONTACT_MIRROR_FIELDS = ['name', 'type', 'email', 'phone', 'mobile', 'website'];
 
+    /**
+     * Issue #434 (CU6): scope a customer query to the requester's accessible
+     * legal entities. Mirrors SalesOrderController::applyEntityScope(): users
+     * with no entity grants keep the historical unscoped view (fail-open);
+     * shared customers (legal_entity_id = NULL) stay visible to scoped users.
+     */
+    private function applyEntityScope(Request $request, Builder $query): void
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return;
+        }
+
+        $entityIds = app(EntityAccessService::class)->accessibleEntityIds((int) $user->id);
+
+        if ($entityIds !== []) {
+            $query->accessibleBy($entityIds);
+        }
+    }
+
+    /**
+     * Issue #434 (CU6): resolve a customer inside the requester's entity
+     * scope. Out-of-scope or missing ids return null -> the caller answers
+     * 404 (same behaviour as SalesOrderController::findScopedOrder()).
+     */
+    private function findScopedCustomer(Request $request, $id): ?Customer
+    {
+        $query = Customer::query();
+        $this->applyEntityScope($request, $query);
+
+        return $query->find($id);
+    }
+
+    private function customerNotFound(): JsonResponse
+    {
+        return response()->json(['message' => 'Customer not found'], 404);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $query = Customer::withCount(['invoices'])
@@ -40,6 +81,8 @@ class CustomerController extends Controller
                 'customerLoyalty.tier',
                 'customerLoyalty.program',
             ]);
+
+        $this->applyEntityScope($request, $query);
 
         // Filters — Odoo-style wide search (see CustomerWideSearchService).
         $search = $request->filled('search') ? (string) $request->search : null;
@@ -161,6 +204,7 @@ class CustomerController extends Controller
         ]);
 
         $query = Customer::query();
+        $this->applyEntityScope($request, $query);
         if ($request->filled('document_ids')) {
             $query->whereIn('id', $request->input('document_ids'));
         }
@@ -310,9 +354,13 @@ class CustomerController extends Controller
         );
     }
 
-    public function show($id): JsonResponse
+    public function show(Request $request, $id): JsonResponse
     {
-        $customer = Customer::findOrFail($id);
+        $customer = $this->findScopedCustomer($request, $id);
+
+        if (! $customer) {
+            return $this->customerNotFound();
+        }
 
         return response()->json(
             $customer->load([
@@ -333,7 +381,12 @@ class CustomerController extends Controller
 
     public function invoices(Request $request, $customer): JsonResponse
     {
-        $customerModel = Customer::findOrFail($customer);
+        $customerModel = $this->findScopedCustomer($request, $customer);
+
+        if (! $customerModel) {
+            return $this->customerNotFound();
+        }
+
         $invoices = $customerModel->invoices()->latest()->paginate($request->integer('per_page', 10));
 
         return response()->json($invoices);
@@ -341,7 +394,12 @@ class CustomerController extends Controller
 
     public function update(Request $request, $id): JsonResponse
     {
-        $customer = Customer::findOrFail($id);
+        $customer = $this->findScopedCustomer($request, $id);
+
+        if (! $customer) {
+            return $this->customerNotFound();
+        }
+
         $validated = $request->validate([
             // Basic
             'code' => [
@@ -431,9 +489,13 @@ class CustomerController extends Controller
         );
     }
 
-    public function destroy($id): JsonResponse
+    public function destroy(Request $request, $id): JsonResponse
     {
-        $customer = Customer::findOrFail($id);
+        $customer = $this->findScopedCustomer($request, $id);
+
+        if (! $customer) {
+            return $this->customerNotFound();
+        }
 
         // Issue #170 (CRITICAL): port the same dependency guard bulkDestroy()
         // already uses. Soft-deleting a customer that still has invoices or
@@ -502,7 +564,11 @@ class CustomerController extends Controller
 
     public function addAddress(Request $request, $id): JsonResponse
     {
-        $customer = Customer::findOrFail($id);
+        $customer = $this->findScopedCustomer($request, $id);
+
+        if (! $customer) {
+            return $this->customerNotFound();
+        }
 
         $validated = $request->validate([
             'type' => 'required|in:billing,shipping,other',
@@ -523,7 +589,12 @@ class CustomerController extends Controller
 
     public function updateAddress(Request $request, $customerId, $addressId): JsonResponse
     {
-        $customer = Customer::findOrFail($customerId);
+        $customer = $this->findScopedCustomer($request, $customerId);
+
+        if (! $customer) {
+            return $this->customerNotFound();
+        }
+
         $address = $customer->addresses()->findOrFail($addressId);
 
         $validated = $request->validate([
@@ -545,7 +616,12 @@ class CustomerController extends Controller
 
     public function deleteAddress($customerId, $addressId): JsonResponse
     {
-        $customer = Customer::findOrFail($customerId);
+        $customer = $this->findScopedCustomer(request(), $customerId);
+
+        if (! $customer) {
+            return $this->customerNotFound();
+        }
+
         $address = $customer->addresses()->findOrFail($addressId);
 
         $address->delete();
@@ -563,7 +639,11 @@ class CustomerController extends Controller
 
     public function addContact(Request $request, $id): JsonResponse
     {
-        $customer = Customer::findOrFail($id);
+        $customer = $this->findScopedCustomer($request, $id);
+
+        if (! $customer) {
+            return $this->customerNotFound();
+        }
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -600,7 +680,12 @@ class CustomerController extends Controller
 
     public function updateContact(Request $request, $customerId, $contactId): JsonResponse
     {
-        $customer = Customer::findOrFail($customerId);
+        $customer = $this->findScopedCustomer($request, $customerId);
+
+        if (! $customer) {
+            return $this->customerNotFound();
+        }
+
         $contact = $customer->customerContacts()->findOrFail($contactId);
 
         $validated = $request->validate([
@@ -637,7 +722,12 @@ class CustomerController extends Controller
 
     public function deleteContact($customerId, $contactId): JsonResponse
     {
-        $customer = Customer::findOrFail($customerId);
+        $customer = $this->findScopedCustomer(request(), $customerId);
+
+        if (! $customer) {
+            return $this->customerNotFound();
+        }
+
         $contact = $customer->customerContacts()->findOrFail($contactId);
 
         $contact->delete();
@@ -652,7 +742,11 @@ class CustomerController extends Controller
      */
     public function setPrimaryContact(Request $request, $customerId, $contactId): JsonResponse
     {
-        $customer = Customer::findOrFail($customerId);
+        $customer = $this->findScopedCustomer($request, $customerId);
+
+        if (! $customer) {
+            return $this->customerNotFound();
+        }
 
         try {
             $contact = app(CustomerContactSyncService::class)
@@ -751,9 +845,13 @@ class CustomerController extends Controller
     // LOYALTY
     // ==========================================
 
-    public function loyaltyHistory($id): JsonResponse
+    public function loyaltyHistory(Request $request, $id): JsonResponse
     {
-        $customer = Customer::findOrFail($id);
+        $customer = $this->findScopedCustomer($request, $id);
+
+        if (! $customer) {
+            return $this->customerNotFound();
+        }
 
         // Try to fetch from Loyalty Module first
         $moduleLoyalty = $customer->customerLoyalty;
@@ -787,7 +885,12 @@ class CustomerController extends Controller
 
     public function adjustLoyalty(Request $request, $customer): JsonResponse
     {
-        $customer = Customer::findOrFail($customer);
+        $customer = $this->findScopedCustomer($request, $customer);
+
+        if (! $customer) {
+            return $this->customerNotFound();
+        }
+
         $validated = $request->validate([
             'points' => 'required|integer|not_in:0',
             'notes' => 'nullable|string',
@@ -939,6 +1042,7 @@ class CustomerController extends Controller
         $search = $request->q;
 
         $customers = Customer::query();
+        $this->applyEntityScope($request, $customers);
         app(CustomerWideSearchService::class)->apply($customers, (string) $search);
 
         $customers = $customers
@@ -956,21 +1060,24 @@ class CustomerController extends Controller
     /**
      * Get overall customer statistics
      */
-    public function statistics(): JsonResponse
+    public function statistics(Request $request): JsonResponse
     {
-        $totalCustomers = Customer::count();
-        $activeCustomers = Customer::where('is_active', true)->count();
-        $companies = Customer::where('type', 'company')->count();
-        $individuals = Customer::where('type', 'individual')->count();
+        $base = Customer::query();
+        $this->applyEntityScope($request, $base);
 
-        $totalOutstanding = Customer::sum('total_outstanding');
-        $totalPurchases = Customer::sum('total_purchases');
+        $totalCustomers = (clone $base)->count();
+        $activeCustomers = (clone $base)->where('is_active', true)->count();
+        $companies = (clone $base)->where('type', 'company')->count();
+        $individuals = (clone $base)->where('type', 'individual')->count();
 
-        $newThisMonth = Customer::whereMonth('created_at', now()->month)
+        $totalOutstanding = (clone $base)->sum('total_outstanding');
+        $totalPurchases = (clone $base)->sum('total_purchases');
+
+        $newThisMonth = (clone $base)->whereMonth('created_at', now()->month)
             ->whereYear('created_at', now()->year)
             ->count();
 
-        $topCustomers = Customer::where('is_active', true)
+        $topCustomers = (clone $base)->where('is_active', true)
             ->orderBy('total_purchases', 'desc')
             ->limit(5)
             ->get(['id', 'name', 'company', 'total_purchases', 'total_orders']);
@@ -991,8 +1098,12 @@ class CustomerController extends Controller
      * D2 (Oct-2026 invoice review): compact AR context strip shown while
      * entering an invoice — outstanding, overdue, credit usage, last invoice.
      */
-    public function creditContext($id): JsonResponse
+    public function creditContext(Request $request, $id): JsonResponse
     {
+        if (! $this->findScopedCustomer($request, $id)) {
+            return $this->customerNotFound();
+        }
+
         return response()->json(
             app(\App\Services\AgedReceivablesService::class)->getCustomerContext((int) $id)
         );
@@ -1002,9 +1113,14 @@ class CustomerController extends Controller
      * D6 (Oct-2026 invoice review): the products this customer buys most
      * often — one-click chips on the invoice entry screen.
      */
-    public function frequentProducts($id): JsonResponse
+    public function frequentProducts(Request $request, $id): JsonResponse
     {
-        Customer::withTrashed()->findOrFail($id);
+        $query = Customer::withTrashed();
+        $this->applyEntityScope($request, $query);
+
+        if (! $query->find($id)) {
+            return $this->customerNotFound();
+        }
 
         return response()->json([
             'data' => app(\App\Services\CustomerProductHistoryService::class)->frequentProducts((int) $id),
@@ -1014,9 +1130,13 @@ class CustomerController extends Controller
     /**
      * Get individual customer statistics
      */
-    public function customerStatistics($id): JsonResponse
+    public function customerStatistics(Request $request, $id): JsonResponse
     {
-        $customer = Customer::findOrFail($id);
+        $customer = $this->findScopedCustomer($request, $id);
+
+        if (! $customer) {
+            return $this->customerNotFound();
+        }
 
         // Calculate additional stats
         $posOrderStats = $customer->posOrders()
@@ -1093,7 +1213,11 @@ class CustomerController extends Controller
      */
     public function activity($id, Request $request): JsonResponse
     {
-        $customer = Customer::findOrFail($id);
+        $customer = $this->findScopedCustomer($request, $id);
+
+        if (! $customer) {
+            return $this->customerNotFound();
+        }
 
         $limit = $request->limit ?? 20;
         $activities = collect();
@@ -1187,9 +1311,13 @@ class CustomerController extends Controller
     /**
      * Recalculate customer statistics
      */
-    public function recalculateStats($id): JsonResponse
+    public function recalculateStats(Request $request, $id): JsonResponse
     {
-        $customer = Customer::findOrFail($id);
+        $customer = $this->findScopedCustomer($request, $id);
+
+        if (! $customer) {
+            return $this->customerNotFound();
+        }
 
         $customer->updatePurchaseStats();
         $customer->updateOutstanding();
@@ -1205,7 +1333,11 @@ class CustomerController extends Controller
      */
     public function sendEmail(Request $request, $id): JsonResponse
     {
-        $customer = Customer::findOrFail($id);
+        $customer = $this->findScopedCustomer($request, $id);
+
+        if (! $customer) {
+            return $this->customerNotFound();
+        }
 
         $validated = $request->validate([
             'subject' => 'required|string|max:255',
@@ -1252,7 +1384,9 @@ class CustomerController extends Controller
         ]);
 
         $ids = $validated['ids'];
-        $customers = Customer::whereIn('id', $ids)->get();
+        $scopedQuery = Customer::whereIn('id', $ids);
+        $this->applyEntityScope($request, $scopedQuery);
+        $customers = $scopedQuery->get();
         $deletedIds = [];
         $skipped = [];
 
