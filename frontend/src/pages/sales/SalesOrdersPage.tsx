@@ -16,6 +16,7 @@ import { SortableHead } from '@/components/ui/SortableHead'
 import type { SortDirection } from '@/hooks/useSort'
 import { fetchBulkStockAvailability } from '@/components/sales/stockAvailability'
 import { StockShortageDialog, type ShortageLine } from '@/components/sales/StockShortageDialog'
+import { useAuthStore } from '@/store/authStore'
 import { SALES_ORDER_STATUSES, SALES_ORDER_STATUS_META, getSalesOrderStatusMeta } from '@/lib/salesOrderStatus'
 
 // #399 (SU1): status labels come from the shared lifecycle mapping.
@@ -33,6 +34,8 @@ const CHANNEL_FILTERS = [
 
 export function SalesOrdersPage() {
   const navigate = useNavigate()
+  // Issue #374: orders can be created/edited directly (sales.write).
+  const canWrite = useAuthStore((state) => state.hasPermission('sales.write'))
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [page, setPage] = useState(1)
@@ -217,7 +220,13 @@ export function SalesOrdersPage() {
           <h1 className="text-3xl font-bold tracking-tight">Sales Orders</h1>
           <p className="text-muted-foreground">All sales orders across every channel (POS, web, admin).</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
+          {canWrite && (
+            <Button onClick={() => navigate('/sales/orders/create')}>
+              <Icon icon="solar:add-circle-bold-duotone" className="mr-2 h-4 w-4" />
+              New Sales Order
+            </Button>
+          )}
           <input
             type="text"
             placeholder="Search order, customer, contact…"
@@ -369,6 +378,15 @@ export function SalesOrdersPage() {
                           >
                             View
                           </Button>
+                          {order.status === 'draft' && canWrite && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => navigate(`/sales/orders/${order.id}/edit`)}
+                            >
+                              Edit
+                            </Button>
+                          )}
                           {order.status === 'draft' && (
                             <Button
                               variant="ghost"

@@ -179,14 +179,25 @@ class SalesOrderController extends Controller
             // Issue #381: the fulfilment warehouse drives the reservation at
             // confirm and the allocation step.
             'warehouse_id' => 'nullable|integer|exists:warehouses,id',
+            // Issue #374: explicit price-list selection from the sales document
+            // form (FR-2.3 step 1); the service resolves the pricing context.
+            'price_list_id' => 'nullable|integer|exists:price_lists,id',
             'lines' => 'required|array|min:1',
             'lines.*.line_type' => 'nullable|in:product,note,section',
             'lines.*.sequence' => 'nullable|integer|min:0',
             'lines.*.product_id' => 'nullable|exists:products,id',
             'lines.*.variant_id' => 'nullable|integer',
             'lines.*.description' => 'required|string',
+            'lines.*.model_number' => 'nullable|string|max:100',
+            'lines.*.product_notes' => 'nullable|string',
+            'lines.*.invoicing_policy' => 'nullable|in:ordered_qty,delivered_qty',
             'lines.*.quantity' => 'nullable|numeric|min:0',
             'lines.*.unit_price' => 'nullable|numeric|min:0',
+            // Issue #374: the shared sales document form sends the pricing
+            // intent with each line (FR-6.2/FR-6.3) — auto lines are priced by
+            // the engine, manual lines run the override floor guard.
+            'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
+            'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.uom_id' => 'nullable|integer|exists:product_uoms,id',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'lines.*.discount_type' => 'nullable|in:percentage,fixed',
@@ -205,33 +216,8 @@ class SalesOrderController extends Controller
         ]);
 
         try {
-            // Issue #685: a supplied price on a line with a sales UoM is per
-            // sales UoM ("300 per Box"). The order stores stock-unit amounts
-            // (the invoice re-expresses the line in its sales unit), so the
-            // price is converted through the shared converter here. Lines
-            // without uom_id are untouched.
-            $uomConverter = app(\App\Services\ProductUomConverter::class);
-            foreach ($validated['lines'] as $index => $line) {
-                if (($line['line_type'] ?? 'product') !== 'product') {
-                    continue;
-                }
-
-                $lineUom = $uomConverter->resolveOrNull(
-                    isset($line['product_id']) ? (int) $line['product_id'] : null,
-                    isset($line['uom_id']) ? (int) $line['uom_id'] : null,
-                );
-
-                if (! $lineUom || $lineUom->isStockUnit()) {
-                    continue;
-                }
-
-                if (array_key_exists('unit_price', $line) && $line['unit_price'] !== null && (float) $line['unit_price'] > 0) {
-                    $validated['lines'][$index]['unit_price'] = $uomConverter->salesPriceToBase(
-                        $lineUom,
-                        (float) $line['unit_price'],
-                    );
-                }
-            }
+            // Issue #685: sales-UoM prices are converted to stock-unit prices.
+            $validated['lines'] = $this->convertSalesUomPrices($validated['lines']);
 
             // Issue #381: stock-tracked lines need a warehouse to reserve and
             // allocate against; default to the tenant's default warehouse.
@@ -248,6 +234,45 @@ class SalesOrderController extends Controller
         } catch (\Exception $e) {
             return response()->json(['message' => 'Failed to create sales order', 'error' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Issue #685: a supplied price on a line with a sales UoM is per sales UoM
+     * ("300 per Box"). The order stores stock-unit amounts (the invoice
+     * re-expresses the line in its sales unit), so the price is converted
+     * through the shared converter. Lines without uom_id are untouched. Used
+     * by create and by the #374 draft line edit so both behave the same.
+     *
+     * @param  array<int, array<string, mixed>>  $lines
+     * @return array<int, array<string, mixed>>
+     */
+    private function convertSalesUomPrices(array $lines): array
+    {
+        $uomConverter = app(\App\Services\ProductUomConverter::class);
+
+        foreach ($lines as $index => $line) {
+            if (($line['line_type'] ?? 'product') !== 'product') {
+                continue;
+            }
+
+            $lineUom = $uomConverter->resolveOrNull(
+                isset($line['product_id']) ? (int) $line['product_id'] : null,
+                isset($line['uom_id']) ? (int) $line['uom_id'] : null,
+            );
+
+            if (! $lineUom || $lineUom->isStockUnit()) {
+                continue;
+            }
+
+            if (array_key_exists('unit_price', $line) && $line['unit_price'] !== null && (float) $line['unit_price'] > 0) {
+                $lines[$index]['unit_price'] = $uomConverter->salesPriceToBase(
+                    $lineUom,
+                    (float) $line['unit_price'],
+                );
+            }
+        }
+
+        return $lines;
     }
 
     public function show(Request $request, $id)
@@ -339,7 +364,8 @@ class SalesOrderController extends Controller
             'incoterm_place' => 'nullable|string|max:255',
             'discount_amount' => 'nullable|numeric|min:0',
             // Issue #407: lines may be added/changed on an unlocked confirmed
-            // order (drafts keep their existing header-only behaviour).
+            // order. Issue #374: on a draft the submitted lines replace the
+            // order's lines through the service (engine-first pricing/tax).
             'lines' => 'nullable|array|min:1',
             'lines.*.id' => 'nullable|integer',
             'lines.*.line_type' => 'nullable|in:product,note,section',
@@ -355,6 +381,12 @@ class SalesOrderController extends Controller
             'lines.*.unit' => 'nullable|string|max:50',
             'lines.*.uom_id' => 'nullable|integer|exists:product_uoms,id',
             'lines.*.unit_price' => 'nullable|numeric|min:0',
+            // Issue #374: pricing intent + analytic dimensions for the draft
+            // line edit (same keys the create endpoint accepts).
+            'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
+            'lines.*.override_reason' => 'nullable|string|max:500',
+            'lines.*.project_id' => 'nullable|integer',
+            'lines.*.department_id' => 'nullable|integer',
             'lines.*.discount_type' => 'nullable|in:percentage,fixed',
             'lines.*.discount_value' => 'nullable|numeric|min:0',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
@@ -370,14 +402,31 @@ class SalesOrderController extends Controller
             return $this->amendConfirmedOrder($request, $order, $validated);
         }
 
+        $lines = isset($validated['lines']) && is_array($validated['lines'])
+            ? $this->convertSalesUomPrices($validated['lines'])
+            : null;
         unset($validated['lines']);
 
+        $beforeLines = $lines !== null
+            ? $order->lines()->get()
+                ->mapWithKeys(fn ($line) => [$line->id => $this->auditLineSnapshot($line)])
+                ->all()
+            : [];
+
         try {
-            DB::transaction(function () use ($request, $order, $validated) {
+            DB::transaction(function () use ($request, $order, $validated, $lines) {
                 // Issue #896: the row lock + version check must cover the write.
                 $this->versionGuard->assertFresh($request, $order, 'sales_order');
 
                 $order->update($validated);
+
+                // Issue #374: draft line edit through the service — the same
+                // line path as creation, then totals are recalculated.
+                if ($lines !== null) {
+                    $this->orderService->replaceDraftLines($order, $lines);
+                }
+
+                $order->refresh();
                 $order->calculateTotals();
 
                 // Issue #896: the write succeeded — advance the concurrency token.
@@ -385,6 +434,32 @@ class SalesOrderController extends Controller
             });
         } catch (RecordVersionConflictException $e) {
             return $this->versionGuard->conflictResponse($e, ['customer', 'lines.product']);
+        } catch (\DomainException|\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        if ($lines !== null) {
+            $this->orderService->logChatter(
+                $order,
+                'updated',
+                "Updated sales order {$order->sales_order_number}",
+                ['lines' => 'line items replaced'],
+            );
+
+            // Issue #895: append-only before/after line diff for the draft edit
+            // (the replacement deletes and re-creates rows, bypassing model
+            // events, so the snapshot is taken here).
+            $this->writeAuditLog(
+                'sales_order_updated',
+                (int) $order->id,
+                ['lines' => $beforeLines],
+                [
+                    'lines' => $order->lines()->get()
+                        ->mapWithKeys(fn ($line) => [$line->id => $this->auditLineSnapshot($line)])
+                        ->all(),
+                ],
+                ['sales_order_number' => $order->sales_order_number],
+            );
         }
 
         // Optional soft lock: record who last saved so a later conflicting

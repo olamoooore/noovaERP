@@ -174,101 +174,7 @@ class SalesOrderService
             app(\App\Services\SalesWorkflowService::class)->initialize($order, ['source' => 'create']);
 
             foreach ($lines as $lineIndex => $lineData) {
-                $lineProduct = ! empty($lineData['product_id'])
-                    ? \App\Models\Product::find($lineData['product_id'])
-                    : null;
-
-                $priceMode = $lineData['price_mode']
-                    ?? (((float) ($lineData['unit_price'] ?? 0) > 0) ? 'legacy' : 'auto');
-
-                // Issue #135: a line entered in a non-base UOM must be converted
-                // to base units before it can reach stock/COGS. The base-unit
-                // price is derived from the UOM rate; an explicit unit_price is
-                // treated as the per-base-unit price.
-                if (! empty($lineData['uom_id']) && ! empty($lineData['product_id'])) {
-                    $uom = $this->uomConverter->resolve((int) $lineData['product_id'], (int) $lineData['uom_id']);
-                    $lineData['quantity'] = $this->uomConverter->toBase($uom, (float) ($lineData['quantity'] ?? 0));
-
-                    // Issue #247: the persisted quantity is now BASE units — label
-                    // it with the product's base unit, not the entered UOM (1 Box
-                    // of 12 was displayed as "12 Box").
-                    $baseUnitLabel = \App\Models\ProductUom::where('product_id', $lineData['product_id'])
-                        ->where('is_base_unit', true)
-                        ->where('is_active', true)
-                        ->value('abbreviation');
-                    $lineData['unit'] = $baseUnitLabel
-                        ?: (\App\Models\Product::whereKey($lineData['product_id'])->value('unit') ?? 'pcs');
-                }
-
-                // MRD FR-4.1/FR-4.2: PricingService is the only price authority.
-                // 'legacy' mode keeps caller prices verbatim so every existing
-                // internal caller (POS/storefront/web conversions, work orders)
-                // is byte-compatible; 'auto' resolves list→tier→catalogue;
-                // 'manual' runs the override floor guard; 'carried' propagates.
-                $priced = $pricing->priceLineArray($lineProduct, $lineData, $pricingContext, $priceMode);
-
-                if (! empty($lineData['uom_id']) && $lineProduct && $priceMode === 'auto' && ($priced['unit_price'] ?? 0) > 0) {
-                    $uom = $uom ?? $this->uomConverter->resolve((int) $lineData['product_id'], (int) $lineData['uom_id']);
-                    $priced['unit_price'] = $this->uomConverter->baseUnitPrice($lineProduct, $uom, (float) $priced['unit_price']);
-                    if (isset($priced['base_unit_price'])) {
-                        $priced['base_unit_price'] = $this->uomConverter->baseUnitPrice($lineProduct, $uom, (float) $priced['base_unit_price']);
-                    }
-                    if (isset($priced['pricing_trace']) && is_array($priced['pricing_trace'])) {
-                        $priced['pricing_trace']['uom_multiplier_applied'] = true;
-                    }
-                }
-
-                $line = $order->lines()->create(array_merge([
-                    'legal_entity_id' => $order->legal_entity_id,
-                    'line_type' => $lineData['line_type'] ?? 'product',
-                    'sequence' => $lineData['sequence'] ?? $lineIndex,
-                    'product_id' => $lineData['product_id'] ?? null,
-                    'model_number' => $lineData['model_number'] ?? null,
-                    'product_notes' => $lineData['product_notes'] ?? null,
-                    'variant_id' => $lineData['variant_id'] ?? null,
-                    'description' => $lineData['description'] ?? '',
-                    'sku' => $lineData['sku'] ?? null,
-                    'quantity' => $lineData['quantity'] ?? (($lineData['line_type'] ?? 'product') === 'product' ? 1 : 0),
-                    'unit' => $lineData['unit'] ?? 'pcs',
-                    // Issue #685: remember the sales UoM the line was entered
-                    // in. The persisted quantity remains in stock units (see
-                    // the #135 conversion above); this is the provenance the
-                    // invoice and DO read to re-express the line in its sales
-                    // unit without re-implementing the conversion.
-                    'uom_id' => $lineData['uom_id'] ?? null,
-                    'unit_price' => $lineData['unit_price'] ?? 0,
-                    'list_price' => $lineData['list_price'] ?? null,
-                    'discount_type' => $lineData['discount_type'] ?? 'percentage',
-                    'discount_value' => $lineData['discount_value'] ?? 0,
-                    'discount_amount' => $lineData['discount_amount'] ?? 0,
-                    'tax_rate' => $lineData['tax_rate'] ?? 0,
-                    // #303 (X3): an explicit per-line flag wins; otherwise the
-                    // engine (rule-linked tax / product override / custom mode)
-                    // resolves it, so an inclusive-priced product is inclusive on
-                    // every document without the client having to say so.
-                    'tax_inclusive' => array_key_exists('tax_inclusive', $lineData)
-                        ? (bool) $lineData['tax_inclusive']
-                        : ($lineProduct !== null
-                            && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $data['order_date'] ?? null)),
-                    'tax_amount' => $lineData['tax_amount'] ?? 0,
-                    'income_account_id' => $lineData['income_account_id'] ?? null,
-                    // Issue #884 (UX2): the line's analytic dimensions travel
-                    // quotation → order → invoice alongside the income account.
-                    'project_id' => $lineData['project_id'] ?? null,
-                    'department_id' => $lineData['department_id'] ?? null,
-                    // Issue #151: preserve the line's invoicing policy through
-                    // any caller that reproduces lines (recurring orders).
-                    'invoicing_policy' => $lineData['invoicing_policy'] ?? 'ordered_qty',
-                    'source_line_type' => $lineData['source_line_type'] ?? null,
-                    'source_line_id' => $lineData['source_line_id'] ?? null,
-                ], array_filter([
-                    'unit_price' => array_key_exists('unit_price', $priced) ? $priced['unit_price'] : null,
-                    'base_unit_price' => $priced['base_unit_price'] ?? null,
-                    'pricing_trace' => $priced['pricing_trace'] ?? null,
-                    'list_price' => $priced['list_price'] ?? null,
-                ], fn ($v) => $v !== null)));
-                $line->calculateLineTotal();
-                $line->save();
+                $this->createPricedLine($order, (array) $lineData, (int) $lineIndex, $pricing, $pricingContext, $data['order_date'] ?? null);
             }
 
             $order->refresh();
@@ -297,6 +203,198 @@ class SalesOrderService
             ]);
 
             return $order->fresh(['customer', 'lines.product', 'statusHistory']);
+        });
+    }
+
+    /**
+     * Build, price and persist one order line. This is the single line path
+     * shared by order creation and draft line editing (#374), so both apply
+     * the same rules: sales-UoM to base conversion (#135/#247/#685),
+     * PricingService as the only price authority (MRD FR-4.1/FR-4.2),
+     * engine-first tax-inclusive resolution (#303) and the TaxEngineService
+     * line arithmetic in SalesOrderLine::calculateLineTotal().
+     *
+     * @param  array<string, mixed>  $lineData
+     * @param  array<string, mixed>  $pricingContext
+     */
+    private function createPricedLine(
+        SalesOrder $order,
+        array $lineData,
+        int $lineIndex,
+        \App\Services\PricingService $pricing,
+        array $pricingContext,
+        ?string $orderDate,
+    ): SalesOrderLine {
+        $uom = null;
+
+        $lineProduct = ! empty($lineData['product_id'])
+            ? \App\Models\Product::find($lineData['product_id'])
+            : null;
+
+        $priceMode = $lineData['price_mode']
+            ?? (((float) ($lineData['unit_price'] ?? 0) > 0) ? 'legacy' : 'auto');
+
+        // Issue #135: a line entered in a non-base UOM must be converted
+        // to base units before it can reach stock/COGS. The base-unit
+        // price is derived from the UOM rate; an explicit unit_price is
+        // treated as the per-base-unit price.
+        if (! empty($lineData['uom_id']) && ! empty($lineData['product_id'])) {
+            $uom = $this->uomConverter->resolve((int) $lineData['product_id'], (int) $lineData['uom_id']);
+            $lineData['quantity'] = $this->uomConverter->toBase($uom, (float) ($lineData['quantity'] ?? 0));
+
+            // Issue #247: the persisted quantity is now BASE units — label
+            // it with the product's base unit, not the entered UOM (1 Box
+            // of 12 was displayed as "12 Box").
+            $baseUnitLabel = \App\Models\ProductUom::where('product_id', $lineData['product_id'])
+                ->where('is_base_unit', true)
+                ->where('is_active', true)
+                ->value('abbreviation');
+            $lineData['unit'] = $baseUnitLabel
+                ?: (\App\Models\Product::whereKey($lineData['product_id'])->value('unit') ?? 'pcs');
+        }
+
+        // MRD FR-4.1/FR-4.2: PricingService is the only price authority.
+        // 'legacy' mode keeps caller prices verbatim so every existing
+        // internal caller (POS/storefront/web conversions, work orders)
+        // is byte-compatible; 'auto' resolves list→tier→catalogue;
+        // 'manual' runs the override floor guard; 'carried' propagates.
+        $priced = $pricing->priceLineArray($lineProduct, $lineData, $pricingContext, $priceMode);
+
+        if (! empty($lineData['uom_id']) && $lineProduct && $priceMode === 'auto' && ($priced['unit_price'] ?? 0) > 0) {
+            $uom = $uom ?? $this->uomConverter->resolve((int) $lineData['product_id'], (int) $lineData['uom_id']);
+            $priced['unit_price'] = $this->uomConverter->baseUnitPrice($lineProduct, $uom, (float) $priced['unit_price']);
+            if (isset($priced['base_unit_price'])) {
+                $priced['base_unit_price'] = $this->uomConverter->baseUnitPrice($lineProduct, $uom, (float) $priced['base_unit_price']);
+            }
+            if (isset($priced['pricing_trace']) && is_array($priced['pricing_trace'])) {
+                $priced['pricing_trace']['uom_multiplier_applied'] = true;
+            }
+        }
+
+        $line = $order->lines()->create(array_merge([
+            'legal_entity_id' => $order->legal_entity_id,
+            'line_type' => $lineData['line_type'] ?? 'product',
+            'sequence' => $lineData['sequence'] ?? $lineIndex,
+            'product_id' => $lineData['product_id'] ?? null,
+            'model_number' => $lineData['model_number'] ?? null,
+            'product_notes' => $lineData['product_notes'] ?? null,
+            'variant_id' => $lineData['variant_id'] ?? null,
+            'description' => $lineData['description'] ?? '',
+            'sku' => $lineData['sku'] ?? null,
+            'quantity' => $lineData['quantity'] ?? (($lineData['line_type'] ?? 'product') === 'product' ? 1 : 0),
+            'unit' => $lineData['unit'] ?? 'pcs',
+            // Issue #685: remember the sales UoM the line was entered
+            // in. The persisted quantity remains in stock units (see
+            // the #135 conversion above); this is the provenance the
+            // invoice and DO read to re-express the line in its sales
+            // unit without re-implementing the conversion.
+            'uom_id' => $lineData['uom_id'] ?? null,
+            'unit_price' => $lineData['unit_price'] ?? 0,
+            'list_price' => $lineData['list_price'] ?? null,
+            'discount_type' => $lineData['discount_type'] ?? 'percentage',
+            'discount_value' => $lineData['discount_value'] ?? 0,
+            'discount_amount' => $lineData['discount_amount'] ?? 0,
+            'tax_rate' => $lineData['tax_rate'] ?? 0,
+            // #303 (X3): an explicit per-line flag wins; otherwise the
+            // engine (rule-linked tax / product override / custom mode)
+            // resolves it, so an inclusive-priced product is inclusive on
+            // every document without the client having to say so.
+            'tax_inclusive' => array_key_exists('tax_inclusive', $lineData)
+                ? (bool) $lineData['tax_inclusive']
+                : ($lineProduct !== null
+                    && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $orderDate)),
+            'tax_amount' => $lineData['tax_amount'] ?? 0,
+            'income_account_id' => $lineData['income_account_id'] ?? null,
+            // Issue #884 (UX2): the line's analytic dimensions travel
+            // quotation → order → invoice alongside the income account.
+            'project_id' => $lineData['project_id'] ?? null,
+            'department_id' => $lineData['department_id'] ?? null,
+            // Issue #151: preserve the line's invoicing policy through
+            // any caller that reproduces lines (recurring orders).
+            'invoicing_policy' => $lineData['invoicing_policy'] ?? 'ordered_qty',
+            'source_line_type' => $lineData['source_line_type'] ?? null,
+            'source_line_id' => $lineData['source_line_id'] ?? null,
+        ], array_filter([
+            'unit_price' => array_key_exists('unit_price', $priced) ? $priced['unit_price'] : null,
+            'base_unit_price' => $priced['base_unit_price'] ?? null,
+            'pricing_trace' => $priced['pricing_trace'] ?? null,
+            'list_price' => $priced['list_price'] ?? null,
+        ], fn ($v) => $v !== null)));
+        $line->calculateLineTotal();
+        $line->save();
+
+        return $line;
+    }
+
+    /**
+     * Issue #374: replace the lines of a DRAFT order with the submitted set.
+     *
+     * Every submitted line is rebuilt through createPricedLine() — the same
+     * path order creation uses — against the order's own pricing snapshot
+     * (currency + exchange rate are not re-derived, same as the quotation
+     * draft edit), then the header totals are recalculated. Only drafts are
+     * accepted: a confirmed order is amended through amendOrderLines() under
+     * the #407 lock/amend rules, every other state is read-only.
+     *
+     * @param  array<int, array<string, mixed>>  $lines
+     */
+    public function replaceDraftLines(SalesOrder $order, array $lines): SalesOrder
+    {
+        if (! $order->isDraft()) {
+            throw new \DomainException('Only draft orders can have their lines replaced.');
+        }
+
+        if ($lines === []) {
+            throw new \InvalidArgumentException('A sales order needs at least one line.');
+        }
+
+        foreach (array_values($lines) as $index => $lineData) {
+            if (trim((string) ($lineData['description'] ?? '')) === '') {
+                $position = $index + 1;
+                throw new \InvalidArgumentException("A description is required on line {$position}.");
+            }
+        }
+
+        // A draft that was reset from cancelled may still carry fulfilment
+        // history; its lines are referenced by deliveries and must not be
+        // deleted and re-created.
+        if ($order->deliveryOrders()->exists() || $order->invoices()->exists()) {
+            throw new \DomainException('This draft order already has deliveries or invoices; its lines cannot be replaced.');
+        }
+
+        return DB::transaction(function () use ($order, $lines) {
+            $pricing = app(\App\Services\PricingService::class);
+            $pricingContext = $pricing->documentContext([
+                'customer_id' => $order->customer_id,
+                'legal_entity_id' => $order->legal_entity_id,
+                'date' => $order->order_date?->toDateString(),
+                'currency_code' => $order->currency_code,
+                'exchange_rate' => $order->exchange_rate,
+                'base_currency_code' => $order->base_currency_code,
+            ]);
+
+            $order->lines()->delete();
+
+            foreach (array_values($lines) as $lineIndex => $lineData) {
+                $lineData = (array) $lineData;
+                // Ids address existing lines only on the confirmed-order
+                // amendment path; a draft edit is a full replacement.
+                unset($lineData['id']);
+
+                $this->createPricedLine(
+                    $order,
+                    $lineData,
+                    $lineIndex,
+                    $pricing,
+                    $pricingContext,
+                    $order->order_date?->toDateString(),
+                );
+            }
+
+            $order->refresh();
+            $order->calculateTotals();
+
+            return $order;
         });
     }
 

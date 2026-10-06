@@ -857,6 +857,17 @@ export function SalesOrderDetailPage() {
               onUnlock={() => lockMutation.mutate('unlock')}
             />
           )}
+          {/* Issue #374: a draft order is edited (header + lines) on the
+              shared sales order form; confirmed orders use lock/amend (#407). */}
+          {order.status === 'draft' && canOverwrite && (
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:pen-bold-duotone"
+              onClick={() => navigate(`/sales/orders/${order.id}/edit`)}
+            >
+              Edit
+            </HeaderActionButton>
+          )}
           {order.status === 'draft' && (
             <HeaderActionButton
               variant="outline"

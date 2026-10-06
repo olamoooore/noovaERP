@@ -91,6 +91,8 @@ const DeliveryOrderImportPage = lazy(() => import('@/pages/sales/DeliveryOrderIm
 const DeliveryOrderEditPage = lazy(() => import('@/pages/sales/DeliveryOrderEditPage').then(m => ({ default: m.DeliveryOrderEditPage })))
 const SalesOrdersPage = lazy(() => import('@/pages/sales/SalesOrdersPage').then(m => ({ default: m.SalesOrdersPage })))
 const SalesOrderDetailPage = lazy(() => import('@/pages/sales/SalesOrderDetailPage').then(m => ({ default: m.SalesOrderDetailPage })))
+const SalesOrderCreatePage = lazy(() => import('@/pages/sales/SalesOrderCreatePage').then(m => ({ default: m.SalesOrderCreatePage })))
+const SalesOrderEditPage = lazy(() => import('@/pages/sales/SalesOrderEditPage').then(m => ({ default: m.SalesOrderEditPage })))
 const MedicalCasesPage = lazy(() => import('@/pages/sales/MedicalCasesPage').then(m => ({ default: m.MedicalCasesPage })))
 const MedicalCaseDetailPage = lazy(() => import('@/pages/sales/MedicalCaseDetailPage').then(m => ({ default: m.MedicalCaseDetailPage })))
 const MedicalCaseCreatePage = lazy(() => import('@/pages/sales/MedicalCaseCreatePage').then(m => ({ default: m.MedicalCaseCreatePage })))
@@ -399,7 +401,9 @@ function App() {
                 {/* Sales Routes */}
                 <Route path="/sales" element={<SalesDashboard />} />
                 <Route path="/sales/orders" element={<SalesOrdersPage />} />
+                <Route path="/sales/orders/create" element={<SalesOrderCreatePage />} />
                 <Route path="/sales/orders/:id" element={<SalesOrderDetailPage />} />
+                <Route path="/sales/orders/:id/edit" element={<SalesOrderEditPage />} />
                 <Route path="/sales/quotes" element={<QuotesPage />} />
                 <Route path="/sales/quotes/create" element={<QuotationCreatePage />} />
                 <Route path="/sales/quotes/:id" element={<QuotationDetailPage />} />
