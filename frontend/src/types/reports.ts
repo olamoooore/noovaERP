@@ -540,6 +540,42 @@ export interface UnbilledDeliveriesData {
   pos_excluded_by_tag?: boolean;
 }
 
+/**
+ * Issue #609: the hospital/doctor performance report
+ * (GET /medical-cases/reports/performance). `product_mix.quantity` is units
+ * used — delivered from a completed delivery-order line — not allocated.
+ */
+export interface MedicalCasePerformanceHospitalRow {
+  customer_id: number;
+  customer_name: string | null;
+  case_count: number;
+  invoiced_value: number;
+  bonus_case_count: number;
+}
+
+export interface MedicalCasePerformanceDoctorRow extends MedicalCasePerformanceHospitalRow {
+  doctor_contact_id: number;
+  doctor_name: string | null;
+  month: string;
+}
+
+export interface MedicalCasePerformanceProductRow {
+  product_id: number | null;
+  product_name: string | null;
+  sku: string | null;
+  quantity: number;
+}
+
+export type MedicalCaseDateField = 'case_date' | 'procedure_date';
+
+export interface MedicalCasePerformanceData {
+  period: { from: string; to: string; date_field: MedicalCaseDateField };
+  by_hospital: Array<MedicalCasePerformanceHospitalRow & { month: string }>;
+  hospital_totals: MedicalCasePerformanceHospitalRow[];
+  by_doctor: MedicalCasePerformanceDoctorRow[];
+  product_mix: MedicalCasePerformanceProductRow[];
+}
+
 export interface SalesByCategoryData {
   categories: Array<{
     category_id: number | null;

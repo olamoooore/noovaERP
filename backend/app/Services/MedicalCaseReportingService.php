@@ -40,6 +40,12 @@ class MedicalCaseReportingService
         $productMix = [];
 
         foreach ($cases as $case) {
+            // Issue #609: a cancelled case used nothing (its delivery is
+            // reversed, #189) and is not part of the performance report.
+            if ($case->status === 'cancelled') {
+                continue;
+            }
+
             $month = Carbon::parse($case->{$dateField})->format('Y-m');
             $invoicedValue = 0.0;
             $bonusCase = false;
@@ -60,7 +66,11 @@ class MedicalCaseReportingService
                         'quantity' => 0.0,
                     ];
                 }
-                $productMix[$productKey]['quantity'] += (float) $item->allocated_qty;
+                // Issue #609: units used, not planned. delivered_qty is only
+                // recorded from a completed delivery-order line (#562 route,
+                // #564 import), so it is the verified usage — allocated_qty
+                // is the reservation and over-counts unused stock.
+                $productMix[$productKey]['quantity'] += (float) $item->delivered_qty;
             }
 
             $invoicedValue = round($invoicedValue, 2);

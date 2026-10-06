@@ -47,6 +47,7 @@ import {
 import { SalesPivotView } from './SalesPivotView';
 import { DEFAULT_PIVOT_GROUPING } from './salesPivotRows';
 import { UnbilledDeliveriesView } from './UnbilledDeliveriesView';
+import { ProductUsageView } from './ProductUsageView';
 import { SavedViewBar, type SavedViewApplied } from './SavedViewBar';
 
 interface SalesAnalyticsPageProps {
@@ -1074,12 +1075,16 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
   return (
     <div className="space-y-6">
       {header}
-      <SavedViewBar
-        tab={savedViewTab}
-        filters={filters}
-        grouping={pivotGrouping}
-        onApply={applySavedView}
-      />
+      {/* Issue #609: saved views (ReportSavedView::TABS) do not cover the
+          Product Usage tab yet, so the bar is not offered there. */}
+      {activeTab !== 'product-usage' && (
+        <SavedViewBar
+          tab={savedViewTab}
+          filters={filters}
+          grouping={pivotGrouping}
+          onApply={applySavedView}
+        />
+      )}
       {filterCard}
 
       {/* MRD FR-8.1: order-currency dimension — document revenue with the
@@ -1133,6 +1138,10 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
           <TabsTrigger value="unbilled" className="gap-2 rounded-full px-4">
             <Icon icon="solar:delivery-bold" className="h-4 w-4" />
             Unbilled Deliveries
+          </TabsTrigger>
+          <TabsTrigger value="product-usage" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:medical-kit-bold" className="h-4 w-4" />
+            Product Usage
           </TabsTrigger>
         </TabsList>
 
@@ -1505,6 +1514,11 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
             periodLabel={periodLabel}
             exportRange={exportRange}
           />
+        </TabsContent>
+
+        {/* ---------------------- Product Usage (medical cases) ------------------- */}
+        <TabsContent value="product-usage" className="space-y-6">
+          <ProductUsageView filters={pivotFilters} periodLabel={periodLabel} />
         </TabsContent>
       </Tabs>
 
