@@ -26,6 +26,7 @@ import {
 import { formatCurrency } from '@/lib/utils';
 import type { SalesDashboardData } from '@/types/reports';
 import { SavedViewWidgets } from './SavedViewWidgets';
+import { SalesActionQueues } from './SalesActionQueues';
 
 // Analytics API returns `total_revenue` per product (see
 // SalesAnalyticsService::getSalesByProduct) — never `total_sales`.
@@ -354,6 +355,9 @@ export const SalesDashboard: React.FC = () => {
       {/* Issue #603: saved-view widgets pinned from the reports page. The
           section hides itself when the user has no pins (or no reports.view). */}
       <SavedViewWidgets />
+
+      {/* Issue #365: action queues — what to do next, each tile opens its filtered list. */}
+      <SalesActionQueues />
 
       {/* KPI tiles — #358: the selected period vs its comparison period */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

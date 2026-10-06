@@ -223,6 +223,10 @@ class QuotationController extends Controller
             $query->whereIn('id', $request->input('document_ids', []));
         }
 
+        // Issue #365: a Sales cockpit action-queue tile opens this list
+        // filtered to exactly the rows it counted.
+        app(\Modules\Sales\Services\SalesActionQueueService::class)->applyListFilter($request, $query, 'quotation');
+
         if ($request->filled('start_date')) {
             $query->whereDate('quotation_date', '>=', $request->start_date);
         }

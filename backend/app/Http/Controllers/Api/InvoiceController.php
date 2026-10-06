@@ -302,6 +302,10 @@ class InvoiceController extends Controller
             app(\App\Services\SalesDocumentProgress::class)->scopeInvoicedNotDelivered($query);
         }
 
+        // Issue #365: a Sales cockpit action-queue tile opens this list
+        // filtered to exactly the rows it counted.
+        app(\Modules\Sales\Services\SalesActionQueueService::class)->applyListFilter($request, $query, 'invoice');
+
         if ($request->filled('start_date')) {
             $query->whereDate('invoice_date', '>=', $request->start_date);
         }

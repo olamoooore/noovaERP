@@ -30,6 +30,12 @@ Route::middleware([
         \App\Http\Middleware\EnsureEntityAccess::class,
     ])->group(function () {
 
+        // Issue #365: Sales cockpit action queues. Same reports.view|sales.view
+        // gate as the rest of the Sales dashboard (d84241fd); each queue is
+        // further limited to its document's view permission in the service.
+        Route::get('/sales/dashboard/action-queues', [\Modules\Sales\Http\Controllers\SalesActionQueueController::class, 'index'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('reports.view|sales.view'));
+
         // Sales Orders — Core lifecycle (read vs. write split so each action
         // requires the correct one of the platform's seeded sales.view/sales.write permissions)
         Route::apiResource('sales/orders', SalesOrderController::class)

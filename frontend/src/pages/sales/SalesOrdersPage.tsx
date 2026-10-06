@@ -7,6 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
+import { ActionQueueFilterChip } from '@/components/sales/ActionQueueFilterChip'
+import { useActionQueueParam } from '@/hooks/useActionQueueParam'
 import { Icon } from '@iconify/react'
 import { useNavigate } from 'react-router-dom'
 import { formatDate, formatCurrency } from '@/lib/utils'
@@ -49,6 +51,8 @@ export function SalesOrdersPage() {
   }, [searchQuery])
   const [statusFilter, setStatusFilter] = useState('all')
   const [channelFilter, setChannelFilter] = useState('all')
+  // #365: a Sales cockpit action-queue tile links here with ?action_queue=<key>[&mine=1].
+  const { actionQueue, mine: actionQueueMine, params: actionQueueParams, clear: clearActionQueue } = useActionQueueParam()
   // Issue #382 (O13): sorting is server-side (allow-listed sort/direction on
   // GET /sales/orders) so it spans every page, not just the rows on screen.
   const [sortKey, setSortKey] = useState<string>('created_at')
@@ -70,12 +74,13 @@ export function SalesOrdersPage() {
   const confirmIntentRef = useRef<'backorder' | 'partial' | null>(null)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['sales-orders', { page, pageSize, debouncedSearchQuery, statusFilter, channelFilter, sortKey, sortDir }],
+    queryKey: ['sales-orders', { page, pageSize, debouncedSearchQuery, statusFilter, channelFilter, sortKey, sortDir, actionQueue, actionQueueMine }],
     queryFn: async () => {
       const params: any = { per_page: pageSize, page, sort: sortKey, direction: sortDir }
       if (debouncedSearchQuery.trim()) params.search = debouncedSearchQuery.trim()
       if (statusFilter !== 'all') params.status = statusFilter
       if (channelFilter !== 'all') params.channel = channelFilter
+      Object.assign(params, actionQueueParams)
       const response = await api.get('/sales/orders', { params })
       return response.data
     },
@@ -262,6 +267,16 @@ export function SalesOrdersPage() {
           <CardTitle>Sales Orders ({meta?.total ?? orders.length})</CardTitle>
         </CardHeader>
         <CardContent>
+          {actionQueue && (
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              <ActionQueueFilterChip
+                actionQueue={actionQueue}
+                mine={actionQueueMine}
+                onClear={() => { clearActionQueue(); setPage(1) }}
+              />
+            </div>
+          )}
+
           {isLoading ? (
             <div className="py-12 text-center">
               <div className="mx-auto h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />

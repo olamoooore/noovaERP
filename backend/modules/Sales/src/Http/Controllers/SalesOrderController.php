@@ -66,6 +66,10 @@ class SalesOrderController extends Controller
             $query->where('customer_id', $request->customer_id);
         }
 
+        // Issue #365: a Sales cockpit action-queue tile opens this list
+        // filtered to exactly the rows it counted.
+        app(\Modules\Sales\Services\SalesActionQueueService::class)->applyListFilter($request, $query, 'sales_order');
+
         $search = $request->filled('search') ? trim((string) $request->search) : '';
         if ($search !== '') {
             app(DocumentWideSearchService::class)->apply($query, $search, $this->wideSearchConfig());

@@ -25,6 +25,8 @@ import { SortableHead } from '@/components/ui/SortableHead'
 import { useSort } from '@/hooks/useSort'
 import { SalesOrderFilterChip } from '@/components/sales/SalesOrderFilterChip'
 import { useSalesOrderFilterParam } from '@/hooks/useSalesOrderFilterParam'
+import { ActionQueueFilterChip } from '@/components/sales/ActionQueueFilterChip'
+import { useActionQueueParam } from '@/hooks/useActionQueueParam'
 import { DeliveryOrderInvoicingChip } from '@/components/sales/DocumentProgressChip'
 
 const DELIVERY_ORDER_EXPORT_COLUMNS = [
@@ -86,6 +88,8 @@ export function DeliveryOrdersPage() {
   const [perPage, setPerPage] = useState(20)
   // #403: the Sales Order page's Deliveries smart button links here with ?sales_order_id=<id>.
   const { salesOrderId: salesOrderFilter, clear: clearSalesOrderFilter } = useSalesOrderFilterParam()
+  // #365: a Sales cockpit action-queue tile links here with ?action_queue=<key>[&mine=1].
+  const { actionQueue, mine: actionQueueMine, params: actionQueueParams, clear: clearActionQueue } = useActionQueueParam()
   const [hiddenDoColumns, setHiddenDoColumns] = useState<number[]>([])
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
 
@@ -96,7 +100,7 @@ export function DeliveryOrdersPage() {
   const filterCurrencyRows: any[] = (filterCurrencies as any)?.data ?? filterCurrencies ?? []
 
   const { data: response, isLoading } = useQuery({
-    queryKey: ['delivery-orders', page, perPage, typeFilter, progressFilter, currencyFilter, sortBy, tagFilter, debouncedSearchQuery, salesOrderFilter],
+    queryKey: ['delivery-orders', page, perPage, typeFilter, progressFilter, currencyFilter, sortBy, tagFilter, debouncedSearchQuery, salesOrderFilter, actionQueue, actionQueueMine],
     queryFn: async () => {
       const params: any = { page, per_page: perPage }
       if (typeFilter !== 'all') params.type = typeFilter
@@ -106,6 +110,7 @@ export function DeliveryOrdersPage() {
       if (debouncedSearchQuery.trim()) params.search = debouncedSearchQuery.trim()
       if (tagFilter) params.tag = tagFilter
       if (salesOrderFilter) params.sales_order_id = salesOrderFilter
+      Object.assign(params, actionQueueParams)
       const res = await api.get('/sales/delivery-orders', { params })
       return res.data
     },
@@ -125,6 +130,7 @@ export function DeliveryOrdersPage() {
     ...(debouncedSearchQuery.trim() ? { search: debouncedSearchQuery.trim() } : {}),
     ...(tagFilter ? { tag: tagFilter } : {}),
     ...(salesOrderFilter ? { sales_order_id: salesOrderFilter } : {}),
+    ...actionQueueParams,
   }
   const {
     selectedIds,
@@ -347,6 +353,16 @@ export function DeliveryOrdersPage() {
               />
             </div>
           </div>
+
+          {actionQueue && (
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              <ActionQueueFilterChip
+                actionQueue={actionQueue}
+                mine={actionQueueMine}
+                onClear={() => { clearActionQueue(); setPage(1) }}
+              />
+            </div>
+          )}
 
           {salesOrderFilter && (
             <div className="mb-4 flex flex-wrap items-center gap-2">

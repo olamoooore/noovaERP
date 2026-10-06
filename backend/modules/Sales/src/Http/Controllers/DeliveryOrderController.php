@@ -215,6 +215,10 @@ class DeliveryOrderController extends Controller
             app(\App\Services\SalesDocumentProgress::class)->scopeDeliveredNotInvoiced($query);
         }
 
+        // Issue #365: a Sales cockpit action-queue tile opens this list
+        // filtered to exactly the rows it counted.
+        app(\Modules\Sales\Services\SalesActionQueueService::class)->applyListFilter($request, $query, 'delivery_order');
+
         if ($request->filled('start_date')) {
             $query->whereDate('delivery_date', '>=', $request->start_date);
         }

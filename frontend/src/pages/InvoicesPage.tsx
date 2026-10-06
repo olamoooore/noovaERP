@@ -26,6 +26,8 @@ import { SortableHead } from '@/components/ui/SortableHead'
 import { useSort } from '@/hooks/useSort'
 import { SalesOrderFilterChip } from '@/components/sales/SalesOrderFilterChip'
 import { useSalesOrderFilterParam } from '@/hooks/useSalesOrderFilterParam'
+import { ActionQueueFilterChip } from '@/components/sales/ActionQueueFilterChip'
+import { useActionQueueParam } from '@/hooks/useActionQueueParam'
 import { InvoiceDeliveryChip } from '@/components/sales/DocumentProgressChip'
 import { RegisterPaymentDialog } from '@/components/payment/RegisterPaymentDialog'
 import { isInvoicePayable, useCanRegisterPayment } from '@/lib/registerPayment'
@@ -56,6 +58,8 @@ export function InvoicesPage() {
   const [perPage, setPerPage] = useState(20)
   // #403: the Sales Order page's Invoices smart button links here with ?sales_order_id=<id>.
   const { salesOrderId: salesOrderFilter, clear: clearSalesOrderFilter } = useSalesOrderFilterParam()
+  // #365: a Sales cockpit action-queue tile links here with ?action_queue=<key>[&mine=1].
+  const { actionQueue, mine: actionQueueMine, params: actionQueueParams, clear: clearActionQueue } = useActionQueueParam()
 
   const { data: filterCurrencies } = useQuery({
     queryKey: ['currencies', 'sellable'],
@@ -81,6 +85,7 @@ export function InvoicesPage() {
     if (debouncedSearchQuery.trim()) params.search = debouncedSearchQuery.trim()
     if (customerFilter) params.customer_id = customerFilter
     if (salesOrderFilter) params.sales_order_id = salesOrderFilter
+    Object.assign(params, actionQueueParams)
     if (tagFilter) params.tag = tagFilter
     if (dateFilter === 'yearly') {
       params.start_date = `${selectedYear}-01-01`
@@ -97,7 +102,7 @@ export function InvoicesPage() {
   }
 
   const { data: response, isLoading } = useQuery({
-    queryKey: ['invoices', page, perPage, statusFilter, progressFilter, currencyFilter, sortBy, debouncedSearchQuery, customerFilter, salesOrderFilter, tagFilter, dateFilter, selectedYear, selectedMonth, customStartDate, customEndDate],
+    queryKey: ['invoices', page, perPage, statusFilter, progressFilter, currencyFilter, sortBy, debouncedSearchQuery, customerFilter, salesOrderFilter, actionQueue, actionQueueMine, tagFilter, dateFilter, selectedYear, selectedMonth, customStartDate, customEndDate],
     queryFn: async () => {
       const params = { page, per_page: perPage, ...activeFilterParams() }
       const res = await api.get('/invoices', { params })
@@ -437,6 +442,16 @@ export function InvoicesPage() {
               />
             </div>
           </div>
+
+          {actionQueue && (
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              <ActionQueueFilterChip
+                actionQueue={actionQueue}
+                mine={actionQueueMine}
+                onClear={() => { clearActionQueue(); setPage(1) }}
+              />
+            </div>
+          )}
 
           {salesOrderFilter && (
             <div className="mb-4 flex flex-wrap items-center gap-2">
