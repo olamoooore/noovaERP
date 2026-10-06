@@ -36,6 +36,12 @@ import { SalesOrderLockControl } from '@/components/sales/SalesOrderLockControl'
 import { SaveConflictDialog } from '@/components/sales/SaveConflictDialog'
 import { extractSaveConflict, type ActiveEditor, type SaveConflict } from '@/lib/recordConflict'
 import { useAuthStore } from '@/store/authStore'
+import {
+  SALES_ORDER_DELIVERY_STATUS_META,
+  getSalesOrderDeliveryStatus,
+  getSalesOrderInvoiceStatusMeta,
+  getSalesOrderStatusMeta,
+} from '@/lib/salesOrderStatus'
 
 interface AddressSnapshot {
   address?: string
@@ -155,8 +161,9 @@ type OrderAction = 'confirm' | 'allocate' | 'invoice' | 'reset-to-draft' | null
 
 // #375 (O6): delivery orders are created from orders that are committed but
 // not yet fully delivered. The backend (DeliveryOrderService) accepts
-// confirmed / allocated / fulfilled / invoiced orders; `partially_delivered`
-// is kept because the page's status badge already knows it.
+// confirmed / allocated / fulfilled / invoiced orders. `partially_delivered`
+// is not a backend order status (#399); it is kept here only as a harmless
+// legacy value.
 const DELIVERY_ORDER_STATUSES = ['confirmed', 'allocated', 'partially_delivered', 'fulfilled', 'invoiced']
 
 const pluralize = (count: number, noun: string) => `${count} ${noun}${count === 1 ? '' : 's'}`
@@ -572,15 +579,15 @@ export function SalesOrderDetailPage() {
     setPromiseOpen(true)
   }
 
-  const getStatusBadge = (status: string) => {    const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
-      draft: { variant: 'secondary', label: 'Draft' },
-      confirmed: { variant: 'default', label: 'Confirmed' },
-      partially_delivered: { variant: 'outline', label: 'Partial' },
-      delivered: { variant: 'default', label: 'Delivered' },
-      cancelled: { variant: 'destructive', label: 'Cancelled' },
-    }
-    const config = variants[status] || { variant: 'secondary', label: status }
-    return <Badge variant={config.variant}>{config.label}</Badge>
+  // #399 (SU1): labels and colours come from the shared lifecycle mapping
+  // (also used by the order list), covering every real backend status.
+  const getStatusBadge = (status: string) => {
+    const meta = getSalesOrderStatusMeta(status)
+    return (
+      <Badge variant="secondary" className={meta.className} data-testid="sales-order-status-badge">
+        {meta.label}
+      </Badge>
+    )
   }
 
   if (isLoading) {
@@ -613,6 +620,8 @@ export function SalesOrderDetailPage() {
 
   const showFulfilmentSmartButtons = !['draft', 'cancelled'].includes(order.status)
   const fullyDelivered = isFullyDelivered(order.lines ?? [])
+  const deliveryStatusMeta = SALES_ORDER_DELIVERY_STATUS_META[getSalesOrderDeliveryStatus(order.lines ?? [])]
+  const invoiceStatusMeta = getSalesOrderInvoiceStatusMeta(order.invoice_status)
   const deliveryOrdersCount = order.delivery_orders?.length ?? 0
   const linkedInvoices = order.invoices ?? []
 
@@ -747,6 +756,25 @@ export function SalesOrderDetailPage() {
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           {getStatusBadge(order.status)}
+          {/* #399 (SU1): delivery and invoice progress, separate from the document status. */}
+          {showFulfilmentSmartButtons && (
+            <Badge
+              variant="outline"
+              className={deliveryStatusMeta.className}
+              data-testid="sales-order-delivery-status"
+            >
+              {`Delivery: ${deliveryStatusMeta.label}`}
+            </Badge>
+          )}
+          {showFulfilmentSmartButtons && invoiceStatusMeta && (
+            <Badge
+              variant="outline"
+              className={invoiceStatusMeta.className}
+              data-testid="sales-order-invoice-status"
+            >
+              {`Invoicing: ${invoiceStatusMeta.label}`}
+            </Badge>
+          )}
           {order.is_late && (
             <Badge variant="destructive" className="shrink-0" title="Commitment date has passed and the order is not fully delivered">
               Late

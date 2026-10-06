@@ -16,15 +16,12 @@ import { SortableHead } from '@/components/ui/SortableHead'
 import { useSort } from '@/hooks/useSort'
 import { fetchBulkStockAvailability } from '@/components/sales/stockAvailability'
 import { StockShortageDialog, type ShortageLine } from '@/components/sales/StockShortageDialog'
+import { SALES_ORDER_STATUSES, SALES_ORDER_STATUS_META, getSalesOrderStatusMeta } from '@/lib/salesOrderStatus'
 
+// #399 (SU1): status labels come from the shared lifecycle mapping.
 const STATUS_FILTERS = [
   { value: 'all', label: 'All Statuses' },
-  { value: 'draft', label: 'Draft' },
-  { value: 'confirmed', label: 'Confirmed' },
-  { value: 'allocated', label: 'Allocated' },
-  { value: 'fulfilled', label: 'Fulfilled' },
-  { value: 'invoiced', label: 'Invoiced' },
-  { value: 'cancelled', label: 'Cancelled' },
+  ...SALES_ORDER_STATUSES.map((status) => ({ value: status, label: SALES_ORDER_STATUS_META[status].label })),
 ]
 
 const CHANNEL_FILTERS = [
@@ -201,18 +198,6 @@ export function SalesOrdersPage() {
   const { sorted: sortedOrders, sortKey, sortDir, toggle: toggleSort } = useSort<any>(orders, 'created_at', 'desc')
   const meta = data?.meta || data
 
-  const getStatusBadge = (status: string) => {
-    const styles: Record<string, string> = {
-      draft: 'bg-gray-100 text-gray-800',
-      confirmed: 'bg-blue-100 text-blue-800',
-      allocated: 'bg-yellow-100 text-yellow-800',
-      fulfilled: 'bg-green-100 text-green-800',
-      invoiced: 'bg-purple-100 text-purple-800',
-      cancelled: 'bg-red-100 text-red-800',
-    }
-    return styles[status] || 'bg-gray-100 text-gray-800'
-  }
-
   return (
     <div className="space-y-6 p-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -354,8 +339,12 @@ export function SalesOrdersPage() {
                       <TableCell>{formatDate(order.created_at || order.order_date)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(order.total || 0)}</TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className={getStatusBadge(order.status)}>
-                          {order.status}
+                        <Badge
+                          variant="secondary"
+                          className={getSalesOrderStatusMeta(order.status).className}
+                          data-testid="sales-order-status-badge"
+                        >
+                          {getSalesOrderStatusMeta(order.status).label}
                         </Badge>
                       </TableCell>
                       <TableCell>
