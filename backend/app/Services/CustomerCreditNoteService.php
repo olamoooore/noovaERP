@@ -819,7 +819,7 @@ class CustomerCreditNoteService
      * the posting reduced, and transitions the note to 'voided'. Idempotency of
      * the GL reversal itself is handled by PostingEngine::reverse().
      */
-    public function voidCreditNote(CustomerCreditNote $creditNote): CustomerCreditNote
+    public function voidCreditNote(CustomerCreditNote $creditNote, ?string $reason = null): CustomerCreditNote
     {
         if ($creditNote->status !== 'posted') {
             throw new \Exception('Only posted credit notes can be voided');
@@ -836,7 +836,8 @@ class CustomerCreditNoteService
                 $reversal = $this->postingEngine->reverse(new ReversalRequest(
                     journalEntryId: (int) $creditNote->journal_entry_id,
                     reversalDate: now()->toDateString(),
-                    reason: "Void Credit Note {$creditNote->credit_note_number}",
+                    reason: "Void Credit Note {$creditNote->credit_note_number}"
+                        .($reason !== null && $reason !== '' ? ": {$reason}" : ''),
                     reasonCode: 'CORRECTION',
                     actorUserId: $actorId,
                     tenantId: tenant()->id ?? null,

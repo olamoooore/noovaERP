@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,11 @@ import { Badge } from '@/components/ui/badge';
 import { AuditTab } from '@/components/audit/AuditTab';
 import { StockMovesTab } from '@/components/inventory/StockMovesTab';
 import { PrintSendMenu } from '@/components/documents/PrintSendMenu';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { usePostCreditNote, useVoidCreditNote } from '@/hooks/useCustomerCreditNotes';
+import { useAuthStore } from '@/store/authStore';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import EInvoicePanel from '../components/EInvoicePanel';
@@ -20,8 +25,16 @@ import { useEInvoiceDocument } from '../components/useEInvoice';
 const statusColors: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-800',
   posted: 'bg-green-100 text-green-800',
+  voided: 'bg-red-100 text-red-800',
   cancelled: 'bg-red-100 text-red-800',
 };
+
+const errorMessage = (error: unknown, fallback: string) => {
+  const data = (error as { response?: { data?: { message?: string; error?: string } } })?.response?.data;
+  return data?.message ?? data?.error ?? fallback;
+};
+
+const journalEntryHref = (entryId: number | string) => `/accounting/core/journal-entries?entry_id=${entryId}`;
 
 const formatDate = (date: string) =>
   date ? new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '-';
@@ -44,6 +57,31 @@ export const CustomerCreditNoteDetail: React.FC = () => {
   const creditNoteId = Number(id);
   const isPosted = !!creditNote && ['posted', 'voided'].includes(creditNote.status);
   const einvoice = useEInvoiceDocument('credit_note', isPosted ? creditNoteId : undefined);
+
+  // #520: lifecycle actions. Posting, voiding and the e-invoice submission
+  // lifecycle all require accounting.post on the backend (#515), so they are
+  // hidden from a viewer who would only receive a 403.
+  const hasPermission = useAuthStore((state) => state.hasPermission);
+  const canPost = hasPermission('accounting.post');
+  const postMutation = usePostCreditNote();
+  const voidMutation = useVoidCreditNote();
+  const [voidOpen, setVoidOpen] = useState(false);
+  const [voidReason, setVoidReason] = useState('');
+
+  const openVoid = () => {
+    voidMutation.reset();
+    setVoidReason('');
+    setVoidOpen(true);
+  };
+
+  const confirmVoid = () => {
+    const reason = voidReason.trim();
+    if (!reason) return;
+    voidMutation.mutate(
+      { id: creditNoteId, reason },
+      { onSuccess: () => setVoidOpen(false) },
+    );
+  };
 
   if (isLoading) {
     return (
@@ -91,6 +129,30 @@ export const CustomerCreditNoteDetail: React.FC = () => {
           <Badge className={statusColors[creditNote.status] || 'bg-gray-100 text-gray-800'}>
             {creditNote.status?.charAt(0).toUpperCase() + creditNote.status?.slice(1)}
           </Badge>
+          {canPost && creditNote.status === 'draft' && (
+            <Button onClick={() => postMutation.mutate(creditNoteId)} disabled={postMutation.isPending}>
+              {postMutation.isPending ? 'Posting...' : 'Post'}
+            </Button>
+          )}
+          {canPost && creditNote.status === 'posted' && (
+            <Button
+              variant="outline"
+              className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={openVoid}
+            >
+              Void
+            </Button>
+          )}
+          {creditNote.journal_entry_id && (
+            <Button variant="outline" asChild>
+              <Link to={journalEntryHref(creditNote.journal_entry_id)}>View journal entry</Link>
+            </Button>
+          )}
+          {creditNote.reversal_journal_entry_id && (
+            <Button variant="outline" asChild>
+              <Link to={journalEntryHref(creditNote.reversal_journal_entry_id)}>View reversal entry</Link>
+            </Button>
+          )}
           {/* #618: one print/send menu shared with every sales document. A
               credit note has no customer send endpoint, so Email/WhatsApp are
               hidden rather than faked. */}
@@ -103,6 +165,46 @@ export const CustomerCreditNoteDetail: React.FC = () => {
           />
         </div>
       </div>
+
+      {postMutation.isError && (
+        <p className="text-sm text-red-600">{errorMessage(postMutation.error, 'Failed to post credit note.')}</p>
+      )}
+
+      <Dialog open={voidOpen} onOpenChange={(open) => !voidMutation.isPending && setVoidOpen(open)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Void credit note {creditNote.credit_note_number}?</DialogTitle>
+            <DialogDescription>
+              Voiding reverses the credit note's journal entry and restores the invoice balance. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="credit-note-void-reason">Reason</Label>
+            <Textarea
+              id="credit-note-void-reason"
+              value={voidReason}
+              maxLength={500}
+              onChange={(event) => setVoidReason(event.target.value)}
+              placeholder="Why is this credit note being voided?"
+            />
+            {voidMutation.isError && (
+              <p className="text-sm text-red-600">{errorMessage(voidMutation.error, 'Failed to void credit note.')}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setVoidOpen(false)} disabled={voidMutation.isPending}>
+              Keep credit note
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmVoid}
+              disabled={!voidReason.trim() || voidMutation.isPending}
+            >
+              {voidMutation.isPending ? 'Voiding...' : 'Confirm void'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Tabs defaultValue="document" className="space-y-6">
         <TabsList className="h-10 w-fit rounded-full">
@@ -225,7 +327,7 @@ export const CustomerCreditNoteDetail: React.FC = () => {
       )}
 
       {/* #670: shared e-invoice panel — status, provider details, actions. */}
-      {isPosted && <EInvoicePanel type="credit_note" documentId={creditNoteId} />}
+      {isPosted && <EInvoicePanel type="credit_note" documentId={creditNoteId} canManage={canPost} />}
 
       {/* Metadata */}
       <Card>

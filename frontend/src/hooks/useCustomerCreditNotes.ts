@@ -73,6 +73,25 @@ export function usePostCreditNote() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customer-credit-notes'] });
+      queryClient.invalidateQueries({ queryKey: ['customer-credit-note'] });
+    },
+  });
+}
+
+// Void a posted credit note (#520). The backend reverses the journal entry
+// through the Posting Engine and records the reason on the reversal.
+export function useVoidCreditNote() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: number; reason: string }) => {
+      const { data } = await api.post(`${API_BASE}/${id}/void`, { reason });
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customer-credit-notes'] });
+      queryClient.invalidateQueries({ queryKey: ['customer-credit-note'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-credit-notes'] });
     },
   });
 }

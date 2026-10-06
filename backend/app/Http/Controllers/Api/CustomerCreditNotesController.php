@@ -299,8 +299,16 @@ class CustomerCreditNotesController extends Controller
      * Void a posted credit note (reverses its GL entry, restores the invoice
      * balance, and unblocks invoice cancel/reset-to-draft — issue #228).
      */
-    public function void($creditNote)
+    public function void(Request $request, $creditNote)
     {
+        // #520: the detail page asks the user why the note is being voided;
+        // the reason is carried onto the ledger reversal and the audit entry.
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:500',
+        ]);
+        $reason = isset($validated['reason']) ? trim((string) $validated['reason']) : null;
+        $reason = $reason === '' ? null : $reason;
+
         $creditNote = CustomerCreditNote::findOrFail($creditNote);
 
         if ($creditNote->status !== 'posted') {
@@ -314,14 +322,14 @@ class CustomerCreditNotesController extends Controller
         }
 
         try {
-            $voided = $this->creditNoteService->voidCreditNote($creditNote);
+            $voided = $this->creditNoteService->voidCreditNote($creditNote, $reason);
 
             $this->writeAuditLog(
                 'customer_credit_note_voided',
                 (int) $voided->id,
                 ['status' => 'posted', 'journal_entry_id' => $creditNote->journal_entry_id],
                 ['status' => $voided->status, 'reversal_journal_entry_id' => $voided->reversal_journal_entry_id],
-                ['credit_note_number' => $voided->credit_note_number, 'invoice_id' => $voided->invoice_id],
+                ['credit_note_number' => $voided->credit_note_number, 'invoice_id' => $voided->invoice_id, 'reason' => $reason],
             );
 
             // Issue #632 (CH4): the void/reversal step must leave a trail in
