@@ -60,6 +60,9 @@ class SalesOrder extends Model implements WorkflowSubject
         // Issue #333: Incoterm code + place (free text; no statutory list).
         'incoterm_code',
         'incoterm_place',
+        // Issue #321: payment term carried from the quotation; drives the
+        // invoice due date.
+        'payment_term_id',
         'cancellation_reason',
         'cancelled_by',
         'cancelled_at',

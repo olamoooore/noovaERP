@@ -65,6 +65,8 @@ class Quotation extends Model implements WorkflowSubject
         'customer_reference',
         'internal_reference',
         'credit_terms',
+        // Issue #321: payment term from the payment-terms master.
+        'payment_term_id',
         'attention_to',
         'billing_contact_id',
         'shipping_contact_id',

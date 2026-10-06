@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard'
 import { Icon } from '@iconify/react'
-import { addCalendarDays, isValidProductQuantity, todayDateOnly } from '@/lib/dateOnly'
+import { addCalendarDays, diffCalendarDays, isValidProductQuantity, todayDateOnly } from '@/lib/dateOnly'
 import { followValidUntil } from '@/lib/quotationDates'
 import { useToast } from '@/hooks/use-toast'
 import { useDensity } from '@/hooks/useDensity'
@@ -114,6 +114,9 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
   const [customerReference, setCustomerReference] = useState('')
   const [internalReference, setInternalReference] = useState('')
   const [creditTerms, setCreditTerms] = useState('')
+  // Issue #321: the payment term comes from the payment-terms master; the
+  // credit-terms text follows the picked term's name.
+  const [paymentTermId, setPaymentTermId] = useState('')
   const [attentionTo, setAttentionTo] = useState('')
   const [contactEmail, setContactEmail] = useState('')
   const [contactPhone, setContactPhone] = useState('')
@@ -134,7 +137,6 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
   // Issue #333: Incoterm code + place.
   const [incotermCode, setIncotermCode] = useState('')
   const [incotermPlace, setIncotermPlace] = useState('')
-  const [validity, setValidity] = useState('')
   const [caseInformation, setCaseInformation] = useState(emptyQuotationCaseInformation)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [billingOpen, setBillingOpen] = useState(false)
@@ -164,6 +166,24 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     enabled: canViewPriceLists,
   })
   const priceListRows: any[] = (activePriceLists as any)?.data ?? activePriceLists ?? []
+
+  // Issue #321: master data for the header pickers.
+  const { data: paymentTermRows = [] } = useQuery({
+    queryKey: ['payment-terms'],
+    queryFn: async () => {
+      const response = await api.get('/accounting/payment-terms')
+      const rows = Array.isArray(response.data) ? response.data : response.data?.data
+      return (Array.isArray(rows) ? rows : []) as Array<{ id: number; name: string; type?: string; days?: number; is_active?: boolean }>
+    },
+  })
+  const { data: tenantUserRows = [] } = useQuery({
+    queryKey: ['tenant-users'],
+    queryFn: async () => {
+      const response = await api.get('/tenant-users')
+      const rows = response.data?.data ?? response.data
+      return (Array.isArray(rows) ? rows : []) as Array<{ id: number; name: string; email?: string }>
+    },
+  })
 
   const { data: sellableCurrencies = [] } = useQuery({
     queryKey: ['currencies', 'sellable'],
@@ -272,6 +292,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     setCustomerReference(quotation.customer_reference || '')
     setInternalReference(quotation.internal_reference || '')
     setCreditTerms(quotation.credit_terms || '')
+    setPaymentTermId(quotation.payment_term_id ? String(quotation.payment_term_id) : '')
     setAttentionTo(quotation.attention_to || '')
     setContactEmail(quotation.contact_email || '')
     setContactPhone(quotation.contact_phone || '')
@@ -297,7 +318,6 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     setShippingTerms(quotation.shipping_terms || '')
     setIncotermCode(quotation.incoterm_code || '')
     setIncotermPlace(quotation.incoterm_place || '')
-    setValidity(quotation.validity || '')
     // #322 (Q14): the saved document currency drives every amount on the
     // form. The header currency + rate snapshot is not re-derived on a draft
     // edit (FR-1.7), so it is shown as-is rather than falling back to the
@@ -348,9 +368,23 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     autofillField('contactPhone', contactPhone, contactDefaults.contactPhone, setContactPhone)
     autofillField('customerReference', customerReference, customerDetail.code ?? '', setCustomerReference)
 
+    // #321: prefer the master payment term matching the customer's day count;
+    // without one the day count is kept as text (no term is invented).
     const days = Number(customerDetail.payment_terms)
-    const nextCreditTerms = Number.isFinite(days) && days >= 0 ? (days > 0 ? `Net ${days} days` : 'Due on receipt') : ''
-    autofillField('creditTerms', creditTerms, nextCreditTerms, setCreditTerms)
+    const matchingTerm = Number.isFinite(days) && days >= 0
+      ? paymentTermRows.find((term) => term.is_active !== false && (
+        days === 0
+          ? term.type === 'immediate' || (term.type === 'net_days' && Number(term.days) === 0)
+          : term.type === 'net_days' && Number(term.days) === days
+      ))
+      : undefined
+    const nextCreditTerms = matchingTerm
+      ? matchingTerm.name
+      : Number.isFinite(days) && days >= 0 ? (days > 0 ? `Net ${days} days` : 'Due on receipt') : ''
+    autofillField('creditTerms', creditTerms, nextCreditTerms, (value: string) => {
+      setCreditTerms(value)
+      setPaymentTermId(matchingTerm ? String(matchingTerm.id) : '')
+    })
 
     const nextBilling = toAddressForm(pickCustomerAddress(customerDetail, 'billing'))
     const nextShipping = toAddressForm(pickCustomerAddress(customerDetail, 'shipping'))
@@ -438,6 +472,20 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     setValidUntilManuallyEdited(true)
   }
 
+  // #321: the printed "Validity" follows Valid Until so the two can never
+  // contradict each other.
+  const validityDays = validUntil && quotationDate ? diffCalendarDays(quotationDate, validUntil) : null
+  const derivedValidity = validityDays !== null && Number.isFinite(validityDays) && validityDays >= 0
+    ? `${validityDays} day${validityDays === 1 ? '' : 's'}`
+    : null
+
+  // #321: the term/salesperson already on a document stays selectable even
+  // when it is no longer in the master list (deactivated term, departed user).
+  const paymentTermOptions = paymentTermRows.filter(
+    (term) => term.is_active !== false || String(term.id) === paymentTermId,
+  )
+  const salespersonInList = tenantUserRows.some((user) => user.name === salesperson)
+
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
 
@@ -498,6 +546,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
       customer_reference: customerReference || null,
       internal_reference: internalReference || null,
       credit_terms: creditTerms || null,
+      payment_term_id: paymentTermId ? Number(paymentTermId) : null,
       attention_to: attentionTo || null,
       contact_email: contactEmail || null,
       contact_phone: contactPhone || null,
@@ -516,7 +565,8 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
       shipping_terms: shippingTerms || null,
       incoterm_code: incotermCode || null,
       incoterm_place: incotermPlace || null,
-      validity: validity || null,
+      // #321: validity is derived from Valid Until, never typed separately.
+      validity: derivedValidity,
       ...Object.fromEntries(Object.entries(caseInformation).map(([key, value]) => [key, value || null])),
       notes: notes || null,
       terms: terms || null,
@@ -943,14 +993,23 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Salesperson</label>
-                  <input
-                    type="text"
+                  <label className="block text-sm font-medium mb-1" htmlFor="quotation-salesperson">Salesperson</label>
+                  {/* #321: picked from the tenant's users (stored by name, the
+                      convention the defaults, followers and digests resolve). */}
+                  <select
+                    id="quotation-salesperson"
                     value={salesperson}
                     onChange={(event) => setSalesperson(event.target.value)}
                     className={SALES_CONTROL}
-                    placeholder="Assigned salesperson"
-                  />
+                  >
+                    <option value="">No salesperson</option>
+                    {salesperson && !salespersonInList && (
+                      <option value={salesperson}>{salesperson}</option>
+                    )}
+                    {tenantUserRows.map((user) => (
+                      <option key={user.id} value={user.name}>{user.name}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Delivery Lead Time</label>
@@ -1007,24 +1066,27 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Credit Terms</label>
-                  <input
-                    type="text"
-                    value={creditTerms}
-                    onChange={(event) => setCreditTerms(event.target.value)}
+                  <label className="block text-sm font-medium mb-1" htmlFor="quotation-payment-term">Payment Terms</label>
+                  {/* #321: picked from the payment-terms master; carried to the
+                      sales order and invoice, where it sets the due date. */}
+                  <select
+                    id="quotation-payment-term"
+                    value={paymentTermId}
+                    onChange={(event) => {
+                      const next = event.target.value
+                      setPaymentTermId(next)
+                      const term = paymentTermRows.find((row) => String(row.id) === next)
+                      setCreditTerms(term ? term.name : '')
+                    }}
                     className={SALES_CONTROL}
-                    placeholder="e.g. Net 30 days"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Validity</label>
-                  <input
-                    type="text"
-                    value={validity}
-                    onChange={(event) => setValidity(event.target.value)}
-                    className={SALES_CONTROL}
-                    placeholder="e.g. 30 days"
-                  />
+                  >
+                    {/* A saved free-text term (legacy, or a customer day count
+                        with no matching master term) is shown, not lost. */}
+                    <option value="">{!paymentTermId && creditTerms ? creditTerms : 'Select payment term'}</option>
+                    {paymentTermOptions.map((term) => (
+                      <option key={term.id} value={String(term.id)}>{term.name}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 

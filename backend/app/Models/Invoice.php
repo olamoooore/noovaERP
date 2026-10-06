@@ -207,6 +207,8 @@ class Invoice extends Model implements WorkflowSubject
         'billing_address_snapshot',
         'delivery_address_snapshot',
         'payment_terms_snapshot',
+        // Issue #321: master payment term carried from the sales order.
+        'payment_term_id',
         'company_registration_number',
         'tax_registration_number',
         'tax_exemption_code',

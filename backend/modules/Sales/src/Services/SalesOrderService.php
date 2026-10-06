@@ -935,10 +935,22 @@ class SalesOrderService
             $invoiceService = $invoiceServiceOverride ?? $this->invoiceService;
             $token = $invoiceService->issueCreationToken();
 
+            // Issue #321: the order's master payment term (carried from the
+            // quotation) sets the due date; without one the customer's day
+            // count applies as before.
+            $invoiceDate = now()->toDateString();
+            $paymentTerm = $order->payment_term_id
+                ? \App\Models\PaymentTerm::query()->find($order->payment_term_id)
+                : null;
+            $dueDate = $paymentTerm
+                ? $paymentTerm->calculateDueDate($invoiceDate)->toDateString()
+                : now()->addDays($order->customer->payment_terms ?? 30)->toDateString();
+
             $invoiceData = [
                 'customer_id' => $order->customer_id,
-                'invoice_date' => now()->toDateString(),
-                'due_date' => now()->addDays($order->customer->payment_terms ?? 30)->toDateString(),
+                'invoice_date' => $invoiceDate,
+                'due_date' => $dueDate,
+                'payment_term_id' => $paymentTerm?->id,
                 'notes' => "Sales Order #{$order->sales_order_number}",
                 'sales_order_id' => $order->id,
                 // Carry the order's references into the invoice for end-to-end
