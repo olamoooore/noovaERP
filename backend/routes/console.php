@@ -88,9 +88,27 @@ Schedule::command('sales:send-weekly-digest')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Issue #598 (RPT-UX3) - scheduled saved report views. The command iterates
+// every tenant (IteratesTenants) and sends each due schedule (daily / weekly /
+// monthly next_run_at) to recipients who still hold reports.view and entity
+// scope; unauthorized recipients are logged as skipped, never emailed.
+Schedule::command('reports:send-scheduled-views')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Issue #109 - Inventory subledger vs GL control-account reconciliation.
 Schedule::command('inventory:reconcile-gl')
     ->dailyAt('05:45')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Issue #696 - nightly per-document stock & COGS reconciliation badge sweep.
+// Records each mismatch once in #902's platform exception queue (accountant
+// owner) and fails the run when anything was found, so the scheduler alerting
+// sees it; the fix is the document's existing reversal / reset-to-draft path.
+Schedule::command('inventory:stock-cogs-reconciliation-report --fail-on-mismatch')
+    ->dailyAt('05:55')
     ->withoutOverlapping()
     ->runInBackground();
 
@@ -114,5 +132,37 @@ Schedule::command('exchange-rates:sync')
 // SKIP LOCKED inside the command make this safe to double-run.
 Schedule::command('accounting:publish-outbox')
     ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Sales Outbox (issue #901, PC7) - Publish written-but-unpublished sales
+// domain events onto the Domain Event Bus. Same contract as the accounting
+// outbox: withoutOverlapping + SKIP LOCKED make it safe to double-run.
+Schedule::command('sales:publish-outbox')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Issue #903 (PC9) - time-based sales notifications. The #901 catalogue only
+// emits invoice.overdue on a settlement transition and quotation.expired on a
+// transition, so these daily scans notify the account owner when an invoice
+// passes its due date and warn quotation owners before validity lapses. Both
+// are idempotent per document through the notification dispatcher.
+Schedule::command('sales:scan-overdue-invoices')
+    ->dailyAt('06:10')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('sales:scan-expiring-quotations')
+    ->dailyAt('06:20')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Issue #335 (Q6) - validity expiry. The daily sweep marks draft/sent
+// quotations whose valid_until has passed as `expired` through the #900
+// engine (audited), so they can no longer be confirmed or converted until
+// re-validated. The command is idempotent and iterates every tenant.
+Schedule::command('quotations:expire')
+    ->dailyAt('06:30')
     ->withoutOverlapping()
     ->runInBackground();

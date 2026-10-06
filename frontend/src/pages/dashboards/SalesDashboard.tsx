@@ -17,6 +17,7 @@ import reportApi, { formatLocalDate } from '@/lib/reportApi';
 import { mapCategoryRevenueSlices, mapRevenueTrendPoints } from '@/lib/salesDashboardMapping';
 import { formatCurrency } from '@/lib/utils';
 import type { SalesDashboardData } from '@/types/reports';
+import { SavedViewWidgets } from './SavedViewWidgets';
 
 /**
  * Sales Dashboard Page
@@ -251,6 +252,10 @@ export const SalesDashboard: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* Issue #603: saved-view widgets pinned from the reports page. The
+          section hides itself when the user has no pins (or no reports.view). */}
+      <SavedViewWidgets />
 
       {/* KPI tiles */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

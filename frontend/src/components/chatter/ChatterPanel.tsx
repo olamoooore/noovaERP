@@ -12,6 +12,7 @@ import chatterApi, {
   type ChatterBundle,
   type ChatterLogEntry,
   type ChatterAttachment,
+  type ChatterMention,
   type ChatterMessageEntry,
 } from '@/lib/chatterApi'
 import { ChatterFollowers } from '@/components/chatter/ChatterFollowers'
@@ -427,10 +428,71 @@ function MessageItem({ entry }: { entry: ChatterMessageEntry }) {
           <span className="text-sm font-medium">{actorName}</span>
           <span className="text-xs text-muted-foreground">{formatDateTime(entry.created_at)}</span>
         </div>
-        <p className="mt-1 whitespace-pre-wrap text-sm">{entry.body}</p>
+        <p className="mt-1 whitespace-pre-wrap text-sm">
+          <MentionText body={entry.body} mentions={entry.mentions} />
+        </p>
       </div>
     </div>
   )
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * Issue #635 — render resolved @mentions as chips.
+ *
+ * Only tokens the backend actually resolved are highlighted: the mention
+ * payload carries the users' names and email handles, and unknown tokens
+ * (`@nobody`) stay plain body text. A trailing sentence period after the
+ * mention is not part of the token.
+ */
+function MentionText({ body, mentions }: { body: string; mentions?: ChatterMention[] }) {
+  const tokens = useMemo(() => {
+    if (!mentions?.length) return []
+
+    const values = mentions.flatMap((mention) => {
+      const candidates = [mention.name]
+      const handle = mention.email?.split('@')[0]
+      if (handle) candidates.push(handle)
+      return candidates
+    })
+
+    return [...new Set(values.filter((value): value is string => Boolean(value && value.trim())))].sort(
+      (a, b) => b.length - a.length
+    )
+  }, [mentions])
+
+  if (tokens.length === 0) return <>{body}</>
+
+  const pattern = new RegExp(
+    `(^|[^\\p{L}\\p{N}_@.-])@(${tokens.map(escapeRegExp).join('|')})(?![\\p{L}\\p{N}_@]|\\.[\\p{L}\\p{N}]|-[\\p{L}\\p{N}])`,
+    'giu'
+  )
+
+  const parts: React.ReactNode[] = []
+  let cursor = 0
+
+  for (const match of body.matchAll(pattern)) {
+    const index = (match.index ?? 0) + match[1].length
+    if (index > cursor) parts.push(body.slice(cursor, index))
+
+    parts.push(
+      <span
+        key={`mention-${index}`}
+        className="mention-chip rounded bg-primary/10 px-1 font-medium text-primary"
+      >
+        @{match[2]}
+      </span>
+    )
+
+    cursor = index + match[0].length - match[1].length
+  }
+
+  if (cursor < body.length) parts.push(body.slice(cursor))
+
+  return <>{parts}</>
 }
 
 function AttachmentItem({

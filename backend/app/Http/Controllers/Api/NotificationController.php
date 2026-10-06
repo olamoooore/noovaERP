@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Platform\Notifications\NotificationLog;
+use App\Platform\Notifications\NotificationPreference;
 use App\Platform\Notifications\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -27,6 +28,7 @@ class NotificationController extends Controller
 
         $query = NotificationLog::query()
             ->where('user_id', $request->user()->id)
+            ->whereNotIn('event', $this->inAppMutedEvents((int) $request->user()->id))
             ->orderBy('created_at', 'desc')
             ->limit($limit);
 
@@ -38,7 +40,11 @@ class NotificationController extends Controller
             $query->whereNull('read_at');
         }
 
-        $logs = $query->get()->map(function (NotificationLog $log) {
+        // Issue #907: document-scoped mutes for this user, so each row can
+        // offer the inverse action ("un-mute this document").
+        $mutedDocumentKeys = $this->notificationService->mutedDocumentKeys((int) $request->user()->id);
+
+        $logs = $query->get()->map(function (NotificationLog $log) use ($mutedDocumentKeys) {
             return [
                 'id' => $log->id,
                 'event' => $log->event,
@@ -48,6 +54,7 @@ class NotificationController extends Controller
                 'data' => $log->data,
                 'status' => $log->status,
                 'error' => $log->error,
+                'document_muted' => $this->isDocumentMutedLog($log, $mutedDocumentKeys),
                 'sent_at' => optional($log->sent_at)->toIso8601String(),
                 'read_at' => optional($log->read_at)->toIso8601String(),
                 'created_at' => optional($log->created_at)->toIso8601String(),
@@ -65,6 +72,7 @@ class NotificationController extends Controller
         $count = NotificationLog::query()
             ->where('user_id', $request->user()->id)
             ->whereNull('read_at')
+            ->whereNotIn('event', $this->inAppMutedEvents((int) $request->user()->id))
             ->count();
 
         return response()->json(['unread' => $count]);
@@ -96,6 +104,7 @@ class NotificationController extends Controller
         $count = NotificationLog::query()
             ->where('user_id', $request->user()->id)
             ->whereNull('read_at')
+            ->whereNotIn('event', $this->inAppMutedEvents((int) $request->user()->id))
             ->update(['read_at' => now()]);
 
         return response()->json([
@@ -117,5 +126,44 @@ class NotificationController extends Controller
         $log->delete();
 
         return response()->json(['message' => 'Notification deleted']);
+    }
+
+    /**
+     * Events whose in-app channel the user has explicitly disabled. The mail
+     * leg may still be delivered (the row records it), but the bell and the
+     * notifications page hide it — the user muted the event for that channel.
+     *
+     * @return array<int, string>
+     */
+    private function inAppMutedEvents(int $userId): array
+    {
+        return NotificationPreference::query()
+            ->where('user_id', $userId)
+            ->where('channel', 'in_app')
+            ->where('mail_enabled', false)
+            ->pluck('event')
+            ->all();
+    }
+
+    /**
+     * Does this log's document carry a document-scoped mute for the user?
+     *
+     * @param  array<int, string>  $mutedDocumentKeys
+     */
+    private function isDocumentMutedLog(NotificationLog $log, array $mutedDocumentKeys): bool
+    {
+        $data = $log->data ?? [];
+        $documentType = $data['document_type'] ?? null;
+        $documentId = $data['document_id'] ?? null;
+
+        if (! is_string($documentType) || $documentType === '' || $documentId === null || $documentId === '') {
+            return false;
+        }
+
+        return in_array(
+            $log->event.'|'.$documentType.'|'.$documentId,
+            $mutedDocumentKeys,
+            true,
+        );
     }
 }

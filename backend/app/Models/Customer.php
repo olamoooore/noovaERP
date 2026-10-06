@@ -73,6 +73,12 @@ class Customer extends Model
         // Status
         'is_active',
         'notes',
+
+        // Issue #913: explicit hold state written by the automation
+        // `hold_customer` action (there was no credit-hold mechanism before).
+        'on_hold',
+        'hold_reason',
+        'held_at',
     ];
 
     protected $casts = [
@@ -88,6 +94,8 @@ class Customer extends Model
         'date_of_birth' => 'date',
         'customer_since' => 'date',
         'last_interaction_at' => 'datetime',
+        'on_hold' => 'boolean',
+        'held_at' => 'datetime',
     ];
 
     protected $hidden = [
@@ -258,6 +266,36 @@ class Customer extends Model
     public function bonusSchemeAssignments(): HasMany
     {
         return $this->hasMany(CustomerBonusScheme::class);
+    }
+
+    // ==========================================
+    // SCOPES
+    // ==========================================
+
+    /**
+     * Issue #434 (CU6): scope to the caller's accessible legal entities.
+     *
+     * Customers with legal_entity_id = NULL are entity-shared and stay
+     * visible to every scoped user — the canonical creation path
+     * (CanonicalCustomerService) does not stamp an entity, so NULL is the
+     * normal "shared customer" case. Fail-closed when the id set is empty,
+     * mirroring SalesOrder::scopeAccessibleBy(); callers use the
+     * fail-open-with-no-grants guard before invoking it.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
+     * @param  int[]  $accessibleEntityIds
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopeAccessibleBy($query, array $accessibleEntityIds)
+    {
+        if (empty($accessibleEntityIds)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->where(function ($q) use ($accessibleEntityIds) {
+            $q->whereIn('legal_entity_id', $accessibleEntityIds)
+                ->orWhereNull('legal_entity_id');
+        });
     }
 
     // ==========================================

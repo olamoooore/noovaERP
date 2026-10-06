@@ -23,6 +23,7 @@ export interface NotificationItem {
   data: Record<string, any>
   status: 'pending' | 'sent' | 'failed' | 'skipped'
   error: string | null
+  document_muted?: boolean
   sent_at: string | null
   read_at: string | null
   created_at: string | null

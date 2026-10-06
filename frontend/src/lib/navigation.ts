@@ -260,6 +260,12 @@ export const baseNavItems: NavItem[] = [
         icon: 'solar:users-group-rounded-bold-duotone',
       },
       {
+        title: 'Statements',
+        href: '/sales/statements',
+        icon: 'solar:document-text-bold-duotone',
+        requiredPermission: 'customers.view',
+      },
+      {
         title: 'Invoices',
         href: '/invoices',
         icon: 'solar:bill-list-bold-duotone',
@@ -294,6 +300,12 @@ export const baseNavItems: NavItem[] = [
         title: 'Settings',
         href: '/sales/settings',
         icon: 'solar:settings-bold-duotone',
+      },
+      {
+        title: 'Automation',
+        href: '/sales/automation-rules',
+        icon: 'solar:magic-stick-3-bold-duotone',
+        requiredPermission: 'sales.settings',
       },
     ],
   },

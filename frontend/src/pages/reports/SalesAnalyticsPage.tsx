@@ -27,7 +27,12 @@ import { PieChart } from '@/components/charts/PieChart';
 import { useReportAutoRefresh } from '@/hooks/useReportAutoRefresh';
 import reportApi, { formatLocalDate } from '@/lib/reportApi';
 import { formatCurrency, formatNumber } from '@/lib/utils';
-import type { ReportComparison, ReportFilters as ReportFiltersType } from '@/types/reports';
+import type {
+  ReportComparison,
+  ReportFilters as ReportFiltersType,
+  SalesViewGrouping,
+  SalesViewTab,
+} from '@/types/reports';
 import {
   avgBy,
   formatPeriodDate,
@@ -40,6 +45,9 @@ import {
   sumBy,
 } from './salesAnalyticsRows';
 import { SalesPivotView } from './SalesPivotView';
+import { DEFAULT_PIVOT_GROUPING } from './salesPivotRows';
+import { UnbilledDeliveriesView } from './UnbilledDeliveriesView';
+import { SavedViewBar, type SavedViewApplied } from './SavedViewBar';
 
 interface SalesAnalyticsPageProps {
   productOnly?: boolean;
@@ -195,6 +203,9 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
   const queryClient = useQueryClient();
   useReportAutoRefresh();
   const [filters, setFilters] = useState<ReportFiltersType>(defaultFilters);
+  // Issue #598: the pivot's grouping is page state so a saved view can carry
+  // and restore it (row/column dimensions and measures).
+  const [pivotGrouping, setPivotGrouping] = useState<SalesViewGrouping>(DEFAULT_PIVOT_GROUPING);
 
   const productRef = useRef<HTMLDivElement>(null);
   const customerRef = useRef<HTMLDivElement>(null);
@@ -372,6 +383,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     queryClient.invalidateQueries({ queryKey: ['sales-trends'] });
     queryClient.invalidateQueries({ queryKey: ['sales-by-category'] });
     queryClient.invalidateQueries({ queryKey: ['sales-pivot'] });
+    queryClient.invalidateQueries({ queryKey: ['sales-unbilled-deliveries'] });
   };
 
   const activeFetching = productOnly
@@ -395,6 +407,17 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
       compare_start_date: mode === 'custom' ? prev.compare_start_date : undefined,
       compare_end_date: mode === 'custom' ? prev.compare_end_date : undefined,
     }));
+
+  // Issue #598: applying a saved view restores its tab, filters and (pivot)
+  // grouping. The product-only page hosts no tabs, so it only restores the
+  // filters there.
+  const applySavedView = ({ tab: savedTab, filters: savedFilters, grouping }: SavedViewApplied) => {
+    if (!productOnly) setActiveTab(savedTab);
+    setFilters(savedFilters);
+    if (grouping) setPivotGrouping(grouping);
+  };
+
+  const savedViewTab = (productOnly ? 'by-product' : activeTab) as SalesViewTab;
 
   const hasCustomFilters =
     !!filters.tag ||
@@ -932,6 +955,12 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     return (
       <div className="space-y-6">
         {header}
+        <SavedViewBar
+          tab={savedViewTab}
+          filters={filters}
+          grouping={pivotGrouping}
+          onApply={applySavedView}
+        />
         {filterCard}
 
         <div className="space-y-6">
@@ -1045,6 +1074,12 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
   return (
     <div className="space-y-6">
       {header}
+      <SavedViewBar
+        tab={savedViewTab}
+        filters={filters}
+        grouping={pivotGrouping}
+        onApply={applySavedView}
+      />
       {filterCard}
 
       {/* MRD FR-8.1: order-currency dimension — document revenue with the
@@ -1094,6 +1129,10 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
           <TabsTrigger value="pivot" className="gap-2 rounded-full px-4">
             <Icon icon="solar:widget-5-bold" className="h-4 w-4" />
             Pivot
+          </TabsTrigger>
+          <TabsTrigger value="unbilled" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:delivery-bold" className="h-4 w-4" />
+            Unbilled Deliveries
           </TabsTrigger>
         </TabsList>
 
@@ -1451,6 +1490,17 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
         {/* -------------------------------- Pivot --------------------------------- */}
         <TabsContent value="pivot" className="space-y-6">
           <SalesPivotView
+            filters={pivotFilters}
+            periodLabel={periodLabel}
+            exportRange={exportRange}
+            config={pivotGrouping}
+            onConfigChange={setPivotGrouping}
+          />
+        </TabsContent>
+
+        {/* --------------------------- Unbilled Deliveries ------------------------ */}
+        <TabsContent value="unbilled" className="space-y-6">
+          <UnbilledDeliveriesView
             filters={pivotFilters}
             periodLabel={periodLabel}
             exportRange={exportRange}

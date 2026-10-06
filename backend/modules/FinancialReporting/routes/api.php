@@ -5,9 +5,12 @@ use Modules\FinancialReporting\Controllers\AnalyticsController;
 use Modules\FinancialReporting\Controllers\CacheController;
 use Modules\FinancialReporting\Controllers\FinancialReportController;
 use Modules\FinancialReporting\Controllers\InventoryReportController;
+use Modules\FinancialReporting\Controllers\ReportDashboardWidgetController;
 use Modules\FinancialReporting\Controllers\ReportExportController;
 use Modules\FinancialReporting\Controllers\ReportScheduleController;
 use Modules\FinancialReporting\Controllers\ReportTemplateController;
+use Modules\FinancialReporting\Controllers\SavedReportViewController;
+use Modules\FinancialReporting\Controllers\SavedReportViewScheduleController;
 use Modules\FinancialReporting\Controllers\TraceabilityReportController;
 
 /*
@@ -66,6 +69,7 @@ Route::middleware([
         Route::get('/sales/by-currency', [AnalyticsController::class, 'salesByCurrency'])->name('sales.by-currency');
         Route::get('/sales/by-category', [AnalyticsController::class, 'salesByCategory'])->name('sales.by-category');
         Route::get('/sales/pivot', [AnalyticsController::class, 'salesPivot'])->name('sales.pivot');
+        Route::get('/sales/unbilled-deliveries', [AnalyticsController::class, 'unbilledDeliveries'])->name('sales.unbilled-deliveries');
         Route::get('/sales/profit-margins', [AnalyticsController::class, 'profitMargins'])->name('sales.profit-margins');
 
         // Expense Analytics
@@ -106,6 +110,38 @@ Route::middleware([
             Route::post('/{id}/run', [ReportScheduleController::class, 'runNow'])->name('run');
             Route::post('/{id}/toggle', [ReportScheduleController::class, 'toggleActive'])->name('toggle');
         });
+    });
+
+    // Issue #598 (RPT-UX3): saved sales-report views and their schedules.
+    // reports.view (the group permission) also guards these mutations — the
+    // feature introduces no new permission; owner-only actions are enforced in
+    // the controllers (403).
+    Route::prefix('reports/saved-views')->name('reports.saved-views.')->group(function () {
+        Route::get('/', [SavedReportViewController::class, 'index'])->name('index');
+        Route::get('/recipients', [SavedReportViewController::class, 'recipients'])->name('recipients');
+        Route::post('/', [SavedReportViewController::class, 'store'])->name('store');
+
+        Route::get('/{id}/schedules', [SavedReportViewScheduleController::class, 'index'])->name('schedules.index');
+        Route::post('/{id}/schedules', [SavedReportViewScheduleController::class, 'store'])->name('schedules.store');
+        Route::put('/{id}/schedules/{scheduleId}', [SavedReportViewScheduleController::class, 'update'])->name('schedules.update');
+        Route::delete('/{id}/schedules/{scheduleId}', [SavedReportViewScheduleController::class, 'destroy'])->name('schedules.destroy');
+        Route::post('/{id}/schedules/{scheduleId}/run', [SavedReportViewScheduleController::class, 'run'])->name('schedules.run');
+
+        Route::put('/{id}', [SavedReportViewController::class, 'update'])->name('update');
+        Route::delete('/{id}', [SavedReportViewController::class, 'destroy'])->name('destroy');
+        Route::post('/{id}/default', [SavedReportViewController::class, 'setDefault'])->name('default');
+        // Issue #603: one-click favourite (owner-only; enforced in the controller).
+        Route::post('/{id}/favourite', [SavedReportViewController::class, 'setFavourite'])->name('favourite');
+    });
+
+    // Issue #603: per-user Sales-cockpit widgets pinning a saved view (#598).
+    // reports.view (the group permission) guards these routes too.
+    Route::prefix('reports/dashboard/widgets')->name('reports.dashboard.widgets.')->group(function () {
+        Route::get('/', [ReportDashboardWidgetController::class, 'index'])->name('index');
+        Route::post('/', [ReportDashboardWidgetController::class, 'store'])->name('store');
+        Route::put('/reorder', [ReportDashboardWidgetController::class, 'reorder'])->name('reorder');
+        Route::get('/{id}/data', [ReportDashboardWidgetController::class, 'data'])->name('data');
+        Route::delete('/{id}', [ReportDashboardWidgetController::class, 'destroy'])->name('destroy');
     });
 
     // Cache Management

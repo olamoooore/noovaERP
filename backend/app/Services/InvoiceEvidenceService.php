@@ -723,25 +723,35 @@ class InvoiceEvidenceService
      * Locate which tenant owns a given acceptance token.
      *
      * Customer-facing acceptance links carry no tenant in the host, so the
-     * public route must resolve the tenant from the token itself. The token is
-     * a globally-unique UUID, so scanning tenant schemas is safe and cheap
-     * (acceptance links are low-volume).
+     * public route must resolve the tenant from the token itself.
+     *
+     * Issue #466 (DO14): resolved from the central token registry with one
+     * indexed lookup instead of scanning every tenant schema per public
+     * request; the scan remains only as a fallback for tokens issued before
+     * the registry existed (a hit is registered so later requests are O(1)).
      */
     public function resolveTenantForAcceptanceToken(string $token): ?\App\Models\Tenant
     {
-        foreach (\App\Models\Tenant::all() as $tenant) {
-            $found = $tenant->run(function () use ($token) {
-                return InvoiceEvidence::where('external_id', $token)
-                    ->where('source', InvoiceEvidence::SOURCE_PORTAL_ACCEPTANCE)
-                    ->exists();
-            });
+        return app(DocumentTokenRegistry::class)->resolveTenant(
+            $token,
+            DocumentTokenRegistry::TYPE_INVOICE,
+            function (\App\Models\Tenant $tenant) use ($token): ?array {
+                $evidence = $tenant->run(function () use ($token) {
+                    return InvoiceEvidence::where('external_id', $token)
+                        ->where('source', InvoiceEvidence::SOURCE_PORTAL_ACCEPTANCE)
+                        ->first();
+                });
 
-            if ($found) {
-                return $tenant;
-            }
-        }
+                if (! $evidence) {
+                    return null;
+                }
 
-        return null;
+                return [
+                    'document_id' => (int) $evidence->getKey(),
+                    'expires_at' => $evidence->expires_at,
+                ];
+            },
+        );
     }
 
     public function sendForEsign(Invoice $invoice, array $signers = []): array

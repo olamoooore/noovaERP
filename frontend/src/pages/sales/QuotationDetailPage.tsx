@@ -22,7 +22,9 @@ import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { PrintSendMenu } from '@/components/documents/PrintSendMenu'
 import { fetchBulkStockAvailability } from '@/components/sales/stockAvailability'
 import { StockShortageDialog, type ShortageLine } from '@/components/sales/StockShortageDialog'
@@ -340,6 +342,52 @@ export function QuotationDetailPage() {
     deleteMutation.mutate()
   }
 
+  // Issue #334 (Q5): send the quotation PDF + public acceptance link.
+  const [sendDialogOpen, setSendDialogOpen] = useState(false)
+  const [sendToEmail, setSendToEmail] = useState('')
+  const [sendCc, setSendCc] = useState('')
+
+  const sendMutation = useMutation({
+    mutationFn: async ({ to, cc }: { to: string; cc: string }) => {
+      const response = await api.post(`/quotations/${id}/send`, {
+        recipient_email: to || undefined,
+        cc: cc || undefined,
+      })
+      return response.data
+    },
+    onSuccess: (data: any) => {
+      setSendDialogOpen(false)
+      queryClient.invalidateQueries({ queryKey: ['quotation', id] })
+      queryClient.invalidateQueries({ queryKey: ['quotations'] })
+      queryClient.invalidateQueries({
+        queryKey: ['chatter', String.raw`App\Models\Quotation`, id],
+      })
+      const recipient = data?.data?.delivery?.recipient
+      const acceptanceUrl = data?.data?.acceptance_url
+      if (recipient) {
+        toast({
+          title: 'Quotation sent',
+          description: `${recipient} can review and accept it through the link.`,
+        })
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Acceptance link created',
+          description: data?.data?.email_error
+            ? `The email could not be sent — share this link manually: ${acceptanceUrl}`
+            : `No customer email available — share this link manually: ${acceptanceUrl}`,
+        })
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to send quotation',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
   // Product Notes starts hidden, matching the previous default.
   const [hiddenLineColumns, setHiddenLineColumns] = useState<number[]>(
     () => QUOTATION_LINE_COLUMNS.filter((c) => c.label.toLowerCase() === 'product notes').map((c) => c.index)
@@ -355,6 +403,8 @@ export function QuotationDetailPage() {
       sent: 'bg-blue-100 text-blue-800',
       confirmed: 'bg-green-100 text-green-800',
       cancelled: 'bg-red-100 text-red-800',
+      // Issue #335 (Q6): past-due, set by the daily expiry command.
+      expired: 'bg-amber-100 text-amber-800',
     }
     return styles[status] || 'bg-gray-100 text-gray-800'
   }
@@ -405,6 +455,16 @@ export function QuotationDetailPage() {
               {quotation.is_late && (
                 <Badge variant="destructive" className="shrink-0" title="Commitment date has passed and the quotation is not converted">
                   Late
+                </Badge>
+              )}
+              {/* Issue #335 (Q6): past-due validity — confirm/convert is refused until re-validated. */}
+              {quotation.is_expired && quotation.status !== 'expired' && (
+                <Badge
+                  variant="destructive"
+                  className="shrink-0"
+                  title="Valid-until date has passed — confirm/convert is refused until re-validated"
+                >
+                  Expired
                 </Badge>
               )}
             </div>
@@ -463,7 +523,9 @@ export function QuotationDetailPage() {
               Confirm
             </HeaderActionButton>
           )}
-          {quotation.status === 'draft' && (
+          {/* Issue #335 (Q6): an expired quotation is re-validated by editing
+              its valid-until date back into the future. */}
+          {['draft', 'expired'].includes(quotation.status) && (
             <HeaderActionButton
               variant="outline"
               icon="solar:pen-bold-duotone"
@@ -496,12 +558,18 @@ export function QuotationDetailPage() {
             </HeaderActionButton>
           )}
           {/* #618: one print/send menu shared with every sales document. */}
+          {/* #334: the Email channel sends the PDF + public acceptance link. */}
           <PrintSendMenu
             documentType="quotation"
             pdfPath={`/quotations/${id}/pdf`}
             filename={`quotation-${quotation.quotation_number}.pdf`}
             title="Quotation"
             resolutionPath={`/documents/quotation/resolution?document_id=${id}`}
+            onEmail={canManageQuotation ? () => {
+              setSendToEmail((quotation as any).contact_email ?? (quotation as any).customer?.email ?? '')
+              setSendCc('')
+              setSendDialogOpen(true)
+            } : undefined}
           />
           {quotation.status === 'draft' && (
             <HeaderActionButton
@@ -517,6 +585,58 @@ export function QuotationDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Issue #334: confirm the recipient before sending the quotation PDF
+          and its public acceptance link. */}
+      <Dialog open={sendDialogOpen} onOpenChange={setSendDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Send Quotation</DialogTitle>
+            <DialogDescription>
+              Confirm the recipient for {quotation.quotation_number} — the email carries the
+              quotation PDF and a link the customer can accept online. You can add CC addresses.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="quotation-send-to">To</Label>
+              <Input
+                id="quotation-send-to"
+                type="email"
+                value={sendToEmail}
+                onChange={(e) => setSendToEmail(e.target.value)}
+                placeholder="customer@example.com"
+              />
+              {!(quotation as any).contact_email && !(quotation as any).customer?.email && (
+                <p className="text-xs text-amber-600">
+                  The customer has no email on file — enter one to send the quotation.
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="quotation-send-cc">CC (optional)</Label>
+              <Input
+                id="quotation-send-cc"
+                value={sendCc}
+                onChange={(e) => setSendCc(e.target.value)}
+                placeholder="ops@example.com, finance@example.com"
+              />
+              <p className="text-xs text-muted-foreground">Separate multiple addresses with commas.</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSendDialogOpen(false)} disabled={sendMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => sendMutation.mutate({ to: sendToEmail.trim(), cc: sendCc.trim() })}
+              disabled={sendMutation.isPending || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(sendToEmail.trim())}
+            >
+              {sendMutation.isPending ? 'Sending...' : 'Send'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Tabs defaultValue="document" className="space-y-6">
         <TabsList className="h-10 w-fit rounded-full">

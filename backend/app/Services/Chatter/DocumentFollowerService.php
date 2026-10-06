@@ -35,6 +35,9 @@ class DocumentFollowerService
 
     public const EVENT_ACTIVITY = 'chatter.activity';
 
+    /** Issue #635: direct notification to the user an activity was assigned to. */
+    public const EVENT_ACTIVITY_ASSIGNED = 'chatter.activity.assigned';
+
     public const EVENT_STAGE_CHANGE = 'chatter.stage_change';
 
     /** Lifecycle chatter events that trigger the stage-change rule. */
@@ -274,6 +277,46 @@ class DocumentFollowerService
     }
 
     /**
+     * Issue #635: an activity assigned to a specific user notifies that
+     * assignee directly. Follower fan-out only reaches users who already
+     * follow the document with the activity subscription on, so without this
+     * an assignee who is not a follower heard nothing. The actor never
+     * notifies themselves (self-assignment is silent).
+     *
+     * Best-effort side effect, like notifyFollowers: the activity row is
+     * already committed and a notification failure is surfaced, not hidden.
+     *
+     * @param  array<string, mixed>  $context
+     */
+    public function notifyAssignee(
+        string $documentType,
+        int $documentId,
+        User $assignee,
+        int $actorId,
+        array $context = [],
+    ): void {
+        if ((int) $assignee->id === $actorId) {
+            return;
+        }
+
+        try {
+            $this->notifications->dispatch(
+                self::EVENT_ACTIVITY_ASSIGNED,
+                $assignee,
+                $this->notificationData(self::EVENT_ACTIVITY_ASSIGNED, $documentType, $documentId, $actorId, $context),
+            );
+        } catch (\Throwable $e) {
+            Log::error('DocumentFollowerService: assignee notification failed', [
+                'event' => self::EVENT_ACTIVITY_ASSIGNED,
+                'document_type' => $documentType,
+                'document_id' => $documentId,
+                'user_id' => $assignee->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * @param  array<string, bool|null>  $subscriptions
      * @return array<string, bool>
      */
@@ -390,6 +433,14 @@ class DocumentFollowerService
                 $documentId,
                 (string) ($context['summary'] ?? ''),
             ),
+            self::EVENT_ACTIVITY_ASSIGNED => sprintf(
+                '%s assigned you a %s on %s #%d: %s',
+                $actorName,
+                (string) ($context['activity_type'] ?? 'activity'),
+                $label,
+                $documentId,
+                (string) ($context['summary'] ?? ''),
+            ),
             self::EVENT_STAGE_CHANGE => sprintf(
                 '%s moved %s #%d from %s to %s.',
                 $actorName,
@@ -405,6 +456,7 @@ class DocumentFollowerService
             'subject' => match ($event) {
                 self::EVENT_MESSAGE => "New message on {$label} #{$documentId}",
                 self::EVENT_ACTIVITY => "New activity on {$label} #{$documentId}",
+                self::EVENT_ACTIVITY_ASSIGNED => "Activity assigned to you: {$label} #{$documentId}",
                 self::EVENT_STAGE_CHANGE => "Stage change: {$label} #{$documentId}",
                 default => "{$label} #{$documentId} updated",
             },

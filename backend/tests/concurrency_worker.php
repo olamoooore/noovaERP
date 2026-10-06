@@ -249,6 +249,98 @@ try {
             ];
             break;
 
+        case 'setup_je_number_race':
+            // Journal entry number race: committed fixtures for concurrent
+            // POST /api/v1/accounting/journal-entries requests against one
+            // journal. Committed so every request process can see them.
+            $token = strtoupper(substr(md5(uniqid('', true)), 0, 10));
+            $user = \App\Models\User::factory()->create(['email' => "jenr-{$token}@example.test"]);
+            $raceTenantId = \Illuminate\Support\Str::uuid()->toString();
+            DB::table('tenants')->insert([
+                'id' => $raceTenantId,
+                'name' => 'JE Number Race Tenant '.$token,
+                'email' => "jenr-{$token}@example.test",
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            DB::table('user_company_access')->insert([
+                'user_id' => $user->id,
+                'tenant_id' => $raceTenantId,
+                'role' => 'admin',
+                'is_default' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $expense = \App\Models\ChartOfAccount::factory()->create(['code' => '6000-JENR-'.$token, 'name' => 'Expense JENR', 'type' => 'expense', 'is_active' => true]);
+            $payable = \App\Models\ChartOfAccount::factory()->create(['code' => '2000-JENR-'.$token, 'name' => 'Payable JENR', 'type' => 'liability', 'is_active' => true]);
+
+            $journalId = DB::table('journals')->insertGetId([
+                'code' => 'JR'.substr($token, 0, 8),
+                'name' => 'Race Journal '.$token,
+                'type' => 'General',
+                'sequence_prefix' => 'R'.substr($token, 0, 6),
+                'sequence_number' => 1,
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $today = now();
+            $period = \App\Models\FiscalPeriod::firstOrCreate(
+                [
+                    'period_start' => $today->copy()->startOfMonth()->toDateString(),
+                    'period_end' => $today->copy()->endOfMonth()->toDateString(),
+                ],
+                [
+                    'name' => $today->format('F Y'),
+                    'code' => $today->format('Y-m'),
+                    'period_type' => 'monthly',
+                    'fiscal_year' => $today->year,
+                    'is_locked' => false,
+                    'status' => 'open',
+                    'created_by' => $user->id,
+                ]
+            );
+
+            $result = [
+                'status' => 'ok',
+                'race_tenant_id' => $raceTenantId,
+                'user_id' => $user->id,
+                'api_token' => $user->createToken('je-number-race')->plainTextToken,
+                'journal_id' => $journalId,
+                'account_ids' => [$expense->id, $payable->id],
+                'fiscal_period_id' => $period->wasRecentlyCreated ? $period->id : null,
+            ];
+            break;
+
+        case 'http_request':
+            // Dispatch one real HTTP request through the application's HTTP
+            // kernel (router -> middleware -> controller), authenticated with
+            // a Sanctum bearer token, exactly as an API client would.
+            $httpKernel = $app->make(Illuminate\Contracts\Http\Kernel::class);
+            $request = Illuminate\Http\Request::create(
+                $config['uri'],
+                $config['method'],
+                [],
+                [],
+                [],
+                [
+                    'HTTP_ACCEPT' => 'application/json',
+                    'CONTENT_TYPE' => 'application/json',
+                    'HTTP_AUTHORIZATION' => 'Bearer '.$config['token'],
+                ],
+                json_encode($config['payload'] ?? [])
+            );
+            $response = $httpKernel->handle($request);
+            $httpKernel->terminate($request, $response);
+            $result = [
+                'status' => 'ok',
+                'http_status' => $response->getStatusCode(),
+                'body' => json_decode((string) $response->getContent(), true),
+            ];
+            break;
+
         case 'post_credit_note':
             $creditNote = \App\Models\CustomerCreditNote::findOrFail($config['credit_note_id']);
             $service = app(\App\Services\CustomerCreditNoteService::class);

@@ -38,7 +38,7 @@ class CreditNoteLineCapTest extends TenantTestCase
 
     private User $user;
 
-    private Customer $customer;
+    private ?Customer $customer = null;
 
     protected function setUp(): void
     {
@@ -71,7 +71,10 @@ class CreditNoteLineCapTest extends TenantTestCase
             'updated_at' => now(),
         ]);
 
-        $this->customer = Customer::factory()->create();
+        // #992: the customer is created on first use, not here. Customer is
+        // audited, and an audited write in this never-committed test
+        // transaction creates and holds the audit chain's single 'head' row;
+        // the concurrency test's worker processes would then block on it.
 
         $revenue = ChartOfAccount::factory()->create(['code' => '3000-CN4', 'name' => 'Sales Revenue', 'type' => 'revenue', 'is_active' => true]);
         $ar = ChartOfAccount::factory()->create(['code' => '1100-CN4', 'name' => 'Accounts Receivable', 'type' => 'asset', 'is_active' => true]);
@@ -82,6 +85,11 @@ class CreditNoteLineCapTest extends TenantTestCase
         AccountMapping::create(['mapping_key' => 'sales_tax_payable', 'account_id' => $tax->id]);
     }
 
+    private function customer(): Customer
+    {
+        return $this->customer ??= Customer::factory()->create();
+    }
+
     /**
      * Invoice with two lines: A = 10 x 100 (1,000), B = 2 x 50 (100), total
      * 1,100. The document cap is wide enough that a per-line violation slips
@@ -90,7 +98,7 @@ class CreditNoteLineCapTest extends TenantTestCase
     private function invoiceWithTwoLines(): array
     {
         $invoice = Invoice::factory()->create([
-            'customer_id' => $this->customer->id,
+            'customer_id' => $this->customer()->id,
             'status' => 'sent',
             'lifecycle_status' => 'posted',
             'subtotal' => 0,
@@ -136,7 +144,7 @@ class CreditNoteLineCapTest extends TenantTestCase
         $response = $this->actingAs($this->user)->postJson(
             '/api/v1/accounting/customers/credit-notes',
             [
-                'customer_id' => $this->customer->id,
+                'customer_id' => $this->customer()->id,
                 'invoice_id' => $invoice->id,
                 'credit_note_date' => now()->toDateString(),
                 'reason' => 'CN4 line cap',
@@ -247,6 +255,10 @@ class CreditNoteLineCapTest extends TenantTestCase
             $procs = [];
             foreach ($cnIds as $index => $cnId) {
                 $resultFile = tempnam(sys_get_temp_dir(), "cn4res{$index}_");
+                // #992: tempnam() creates the file; remove it so waitForFile()
+                // waits for the worker's result instead of passing at once and
+                // blocking in proc_close() on a worker that never finishes.
+                @unlink($resultFile);
                 $results[] = $resultFile;
                 $procs[] = $this->spawnPostingWorker($cnId, $resultFile, $goFile, (string) $fixture['race_tenant_id']);
             }
@@ -283,7 +295,27 @@ class CreditNoteLineCapTest extends TenantTestCase
             $postedTotal = (float) CustomerCreditNote::whereIn('id', $cnIds)->where('status', 'posted')->sum('total_amount');
             $this->assertLessThanOrEqual((float) Invoice::find($invoiceId)->total, $postedTotal, 'posted credits must never exceed the invoice total');
         } finally {
+            // #992: stop any worker still running before purging, so a stuck
+            // worker fails the test instead of hanging it.
+            $this->terminateWorkers($procs ?? []);
             $this->purgeCommittedFixtures($fixture);
+        }
+    }
+
+    /**
+     * Stop and reap worker processes that were not closed normally, e.g. after
+     * a failed wait. A worker blocked on a lock held by this test's own
+     * transaction never exits, so waiting for it would hang the test.
+     *
+     * @param  array<int, resource>  $procs
+     */
+    private function terminateWorkers(array $procs): void
+    {
+        foreach ($procs as $proc) {
+            if (is_resource($proc)) {
+                proc_terminate($proc, 9);
+                proc_close($proc);
+            }
         }
     }
 
@@ -317,7 +349,8 @@ class CreditNoteLineCapTest extends TenantTestCase
         ];
 
         $proc = proc_open(
-            'php '.base_path('tests/concurrency_worker.php').' '.escapeshellarg($workerConfig),
+            // `exec` replaces the shell, so terminateWorkers() signals PHP itself.
+            'exec php '.base_path('tests/concurrency_worker.php').' '.escapeshellarg($workerConfig),
             $desc,
             $pipes
         );
@@ -410,6 +443,10 @@ class CreditNoteLineCapTest extends TenantTestCase
             [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]
         );
 
+        // #992: a killed worker's backend can still hold row locks until its
+        // own lock wait ends; never let the best-effort purge wait on them.
+        $pdo->exec("SET lock_timeout = '5s'");
+
         $cnIds = implode(',', array_map('intval', $fixture['cn_ids'] ?? []));
         $accountIds = implode(',', array_map('intval', $fixture['account_ids'] ?? []));
         $invoiceId = (int) ($fixture['invoice_id'] ?? 0);
@@ -483,6 +520,22 @@ class CreditNoteLineCapTest extends TenantTestCase
             $purge("DELETE FROM fiscal_periods WHERE created_by = {$userId}");
             $purge("DELETE FROM user_company_access WHERE user_id = {$userId}");
             $purge("DELETE FROM users WHERE id = {$userId}");
+        }
+
+        // #992: the posting workers run with the race tenant initialized, so
+        // their audited writes commit hash-chained audit rows and advance the
+        // audit chain's 'head' row. Remove them too, or later tests in the same
+        // run start from a chain that is not empty.
+        if (! empty($fixture['race_tenant_id'])) {
+            $raceTenant = $pdo->quote((string) $fixture['race_tenant_id']);
+            $purge("DELETE FROM platform_system_logs WHERE tenant_id = {$raceTenant}");
+            if ($invoiceId > 0) {
+                $purge("DELETE FROM audit_logs WHERE reference_type = 'invoice' AND reference_id = {$invoiceId}");
+            }
+            if ($cnIds !== '') {
+                $purge("DELETE FROM audit_logs WHERE reference_type IN ('credit_note', 'customer_credit_note') AND reference_id IN ({$cnIds})");
+            }
+            $purge("DELETE FROM audit_chain_heads WHERE id = 'head' AND tenant_id = {$raceTenant}");
         }
 
         if (! empty($fixture['race_tenant_id'])) {

@@ -8,12 +8,28 @@ class CreditCheckService
 {
     /**
      * @param  float  $committedOrdersTotal  Issue #240: sum of the customer's
-     *   other confirmed-but-not-yet-invoiced orders. Those orders do not touch
-     *   total_outstanding until invoiced, so without them several individually
-     *   within-limit confirmations could cumulatively blow through the limit.
+     *                                       other confirmed-but-not-yet-invoiced orders. Those orders do not touch
+     *                                       total_outstanding until invoiced, so without them several individually
+     *                                       within-limit confirmations could cumulatively blow through the limit.
      */
     public function checkCreditLimit(Customer $customer, float $orderTotal, float $committedOrdersTotal = 0.0): CreditCheckResult
     {
+        // Issue #913: a customer put on hold by an automation rule cannot
+        // confirm new orders. The hold is checked before the NULL /
+        // unlimited-credit early return so "unlimited" cannot bypass it.
+        if ($customer->on_hold) {
+            $reason = trim((string) $customer->hold_reason);
+
+            return new CreditCheckResult(
+                approved: false,
+                reason: 'Customer is on hold'.($reason !== '' ? ": {$reason}" : ''),
+                creditLimit: (float) ($customer->credit_limit ?? 0),
+                currentBalance: (float) ($customer->total_outstanding ?? 0),
+                availableCredit: 0.0,
+                orderTotal: $orderTotal,
+            );
+        }
+
         $creditLimit = $customer->credit_limit;
         $currentBalance = (float) ($customer->total_outstanding ?? 0);
         $exposure = $currentBalance + max(0.0, $committedOrdersTotal);

@@ -200,14 +200,22 @@ Route::middleware([
     // order. Never a write path.
     Route::get('/web-shop/orders/guest/{token}', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'showGuest']);
 
-    // Invoice public acceptance links (signed, expiring — no auth required)
-    Route::get('/invoice-accept/{token}', [\App\Http\Controllers\Api\InvoiceAcceptanceController::class, 'show']);
-    Route::post('/invoice-accept/{token}/accept', [\App\Http\Controllers\Api\InvoiceAcceptanceController::class, 'accept']);
-    Route::post('/invoice-accept/{token}/evidence', [\App\Http\Controllers\Api\InvoiceAcceptanceController::class, 'uploadEvidence']);
+    // Invoice public acceptance links (signed, expiring — no auth required).
+    // Issue #466 (DO14): unauthenticated token routes are rate limited, each
+    // in its OWN bucket (explicit prefix — anonymous throttle otherwise keys
+    // only on domain|ip and sibling routes would share one counter).
+    Route::get('/invoice-accept/{token}', [\App\Http\Controllers\Api\InvoiceAcceptanceController::class, 'show'])
+        ->middleware('throttle:60,1,invoice-accept-show');
+    Route::post('/invoice-accept/{token}/accept', [\App\Http\Controllers\Api\InvoiceAcceptanceController::class, 'accept'])
+        ->middleware('throttle:10,1,invoice-accept-accept');
+    Route::post('/invoice-accept/{token}/evidence', [\App\Http\Controllers\Api\InvoiceAcceptanceController::class, 'uploadEvidence'])
+        ->middleware('throttle:10,1,invoice-accept-evidence');
 
     // Delivery-order customer portal (view DO, upload signed copy / evidence)
-    Route::get('/do-accept/{token}', [\Modules\Sales\Http\Controllers\DeliveryOrderAcceptanceController::class, 'show']);
-    Route::post('/do-accept/{token}/evidence', [\Modules\Sales\Http\Controllers\DeliveryOrderAcceptanceController::class, 'uploadEvidence']);
+    Route::get('/do-accept/{token}', [\Modules\Sales\Http\Controllers\DeliveryOrderAcceptanceController::class, 'show'])
+        ->middleware('throttle:60,1,do-accept-show');
+    Route::post('/do-accept/{token}/evidence', [\Modules\Sales\Http\Controllers\DeliveryOrderAcceptanceController::class, 'uploadEvidence'])
+        ->middleware('throttle:10,1,do-accept-evidence');
 
     // Built-in e-signature (self-hosted): the customer signs the real document.
     Route::get('/sign/{token}', [\App\Http\Controllers\Api\EsignController::class, 'show']);

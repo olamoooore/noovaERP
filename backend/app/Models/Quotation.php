@@ -106,6 +106,14 @@ class Quotation extends Model implements WorkflowSubject
         'correction_type',
         'correction_reason_code',
         'correction_reason_text',
+        // Issue #334: public acceptance link + signer metadata.
+        'acceptance_token',
+        'acceptance_expires_at',
+        'accepted_at',
+        'signer_name',
+        'signer_email',
+        'signature_data',
+        'acceptance_source',
     ];
 
     protected $casts = [
@@ -124,6 +132,9 @@ class Quotation extends Model implements WorkflowSubject
         'delivery_date' => 'date',
         'is_active_version' => 'boolean',
         'superseded_at' => 'datetime',
+        // Issue #334: acceptance token expiry + acceptance timestamp.
+        'acceptance_expires_at' => 'datetime',
+        'accepted_at' => 'datetime',
         // Issue #896: optimistic-concurrency token.
         'lock_version' => 'integer',
     ];
@@ -250,12 +261,37 @@ class Quotation extends Model implements WorkflowSubject
         return $this->status === 'sent';
     }
 
+    /**
+     * Issue #335 (Q6): a quotation whose validity date has passed without
+     * acceptance. Confirmed (already converted) and cancelled quotations are
+     * never "expired"; a null valid_until means no expiry.
+     */
+    public function isExpired(): bool
+    {
+        if ($this->valid_until === null) {
+            return false;
+        }
+
+        if (in_array((string) $this->status, ['confirmed', 'cancelled'], true)) {
+            return false;
+        }
+
+        return $this->valid_until->lt(now()->startOfDay());
+    }
+
+    public function getIsExpiredAttribute(): bool
+    {
+        return $this->isExpired();
+    }
+
     // Issue #222: patient name is PHI — encrypted at rest, exposed as the
     // virtual patient_name attribute so existing callers keep working.
     //
     // Issue #408: expected_date (computed from lead times) and is_late (past
     // the commitment date on an open quotation) ride along for the lists.
-    protected $appends = ['patient_name', 'expected_date', 'is_late'];
+    // Issue #335 (Q6): is_expired lets the list badge past-due quotations that
+    // the daily job has not swept yet.
+    protected $appends = ['patient_name', 'expected_date', 'is_late', 'is_expired'];
 
     protected $hidden = ['patient_name_encrypted'];
 

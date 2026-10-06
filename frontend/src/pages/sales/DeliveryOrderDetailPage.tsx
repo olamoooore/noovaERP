@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast'
 import { ChatterDock } from '@/components/chatter'
 import { AuditTab } from '@/components/audit/AuditTab'
 import { StockMovesTab } from '@/components/inventory/StockMovesTab'
+import { StockCogsBadge } from '@/components/inventory/StockCogsBadge'
 import { TagEditor } from '@/components/tags/TagEditor'
 import { DocumentLinkChip } from '@/components/documents/DocumentLinkChip'
 import api from '@/lib/api'
@@ -401,6 +402,13 @@ export function DeliveryOrderDetailPage() {
                 ? `For Quotation ${deliveryOrder.quotation.quotation_number}`
                 : 'Standalone Delivery'}
             </p>
+            {/* Issue #696 (INV-D3): stock & COGS reconciliation badge. */}
+            <StockCogsBadge
+              documentType="delivery_order"
+              documentId={Number(id)}
+              permission="sales.view"
+              className="mt-2"
+            />
             <TagEditor subjectType="delivery_order" subjectId={id!} />
           </div>
         </div>
@@ -422,13 +430,17 @@ export function DeliveryOrderDetailPage() {
                 Send
               </HeaderActionButton>
             )}
-          {deliveryOrder.status !== 'cancelled' && (
+          {/* #459 (DO7): the server decides billability — a delivery order is
+              only invoiced once completed, unless the tenant enables the
+              bill-before-delivery policy. Anything else (draft/confirmed
+              without the policy, fully billed, cancelled) hides the action. */}
+          {deliveryOrder.can_invoice === true && (
             <HeaderActionButton
               icon="solar:bill-list-bold-duotone"
               loading={createInvoiceMutation.isPending}
               onClick={() => createInvoiceMutation.mutate()}
-              disabled={createInvoiceMutation.isPending || deliveryOrder.can_invoice === false}
-              title={deliveryOrder.can_invoice === false ? 'Everything delivered has already been invoiced' : 'Create an invoice for the remaining delivered quantities'}
+              disabled={createInvoiceMutation.isPending}
+              title="Create an invoice for the remaining delivered quantities"
             >
               Create Invoice
             </HeaderActionButton>

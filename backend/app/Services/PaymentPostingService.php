@@ -278,6 +278,8 @@ class PaymentPostingService
                 throw new \RuntimeException($result->error);
             }
 
+            $statusBefore = $payment->payment_status;
+
             $payment->update([
                 'journal_entry_id' => $result->journalEntryId,
                 'payment_status' => 'applied',
@@ -291,6 +293,14 @@ class PaymentPostingService
             // ACC-005B: recognise the cash receipt into the settlement overlay
             // once the receipt is cash-bearing (posted).
             app(SettlementRecognitionService::class)->recognisePayment($payment->fresh());
+
+            // #901 (PC7): a posted customer payment is a sales receipt. Written
+            // to the outbox inside this transaction, published after commit.
+            // Bill/vendor payments carry no customer and are not sales events.
+            if ($payment->customer_id !== null) {
+                app(\Modules\Sales\Services\SalesDomainEventEmitter::class)
+                    ->emitPaymentReceived($payment, $statusBefore);
+            }
 
             Log::info('Payment posted to ledger', [
                 'payment_id' => $payment->id,

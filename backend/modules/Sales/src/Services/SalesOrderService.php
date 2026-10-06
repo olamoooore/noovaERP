@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
+use Modules\Sales\Exceptions\CreditLimitExceededException;
 use Modules\Sales\Models\DeliveryOrderLine;
 use Modules\Sales\Models\SalesChannelReference;
 use Modules\Sales\Models\SalesInvoiceLink;
@@ -328,7 +329,9 @@ class SalesOrderService
                     );
 
                     if (! $creditCheck->approved) {
-                        throw new \Exception('Credit check failed: '.$creditCheck->reason);
+                        // Issue #903: typed so the route boundary can notify the
+                        // account owner after this transaction has rolled back.
+                        throw new CreditLimitExceededException($creditCheck, $customer, $order);
                     }
                 }
             }

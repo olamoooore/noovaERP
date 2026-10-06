@@ -13,7 +13,10 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Modules\Sales\Exceptions\CreditLimitExceededException;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Notifications\SalesNotificationDispatcher;
 use Modules\Sales\Services\CreditCheckService;
 use Modules\Sales\Services\OrderLifecycleService;
 use Modules\Sales\Services\SalesOrderService;
@@ -569,6 +572,21 @@ class SalesOrderController extends Controller
                 'order' => $order,
                 'credit_check' => $creditCheck,
             ]);
+        } catch (CreditLimitExceededException $e) {
+            // Issue #903: the confirmation transaction has rolled back by the
+            // time this is caught, so the notification is not rolled back with
+            // the rejected order. A notification failure must not mask the
+            // credit verdict.
+            try {
+                app(SalesNotificationDispatcher::class)->dispatchCreditLimitExceeded($e);
+            } catch (\Throwable $notifyError) {
+                Log::warning('Credit limit notification failed', [
+                    'sales_order_id' => $order->id,
+                    'error' => $notifyError->getMessage(),
+                ]);
+            }
+
+            return response()->json(['message' => $e->getMessage()], 422);
         } catch (\Exception $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }

@@ -60,11 +60,22 @@ class SalesWorkflowService
     /**
      * Apply a sales transition through the engine.
      *
+     * #901 (PC7): every applied transition also records the matching
+     * SalesEventCatalogue event in the transactional outbox, in the SAME
+     * transaction as the status write. Publication to the Domain Event Bus is
+     * deferred to after the surrounding transaction commits, so a rolled-back
+     * transition never emits an event.
+     *
      * @return array{success: bool, old_status: string, new_status: string|null, reason: string|null}
      */
     public function transition(WorkflowSubject $subject, string $action, array $context = [], ?string $reason = null): array
     {
-        return $this->engine->transitionSubject($subject, $action, $context, $reason);
+        $result = $this->engine->transitionSubject($subject, $action, $context, $reason);
+
+        app(\Modules\Sales\Services\SalesDomainEventEmitter::class)
+            ->emitForTransition($subject, $action, $result, $context);
+
+        return $result;
     }
 
     /**
@@ -202,6 +213,13 @@ class SalesWorkflowService
         $this->engine->defineSchema(self::QUOTATION, 'draft', [
             [
                 'from' => 'draft',
+                'to' => 'sent',
+                'action' => 'send',
+                'label' => 'Send quotation',
+                'permission' => 'quotations.write',
+            ],
+            [
+                'from' => 'draft',
                 'to' => 'confirmed',
                 'action' => 'confirm',
                 'label' => 'Confirm quotation',
@@ -261,7 +279,34 @@ class SalesWorkflowService
                     return null;
                 },
             ],
-        ], 'Customer quotation: draft → sent → confirmed/cancelled.');
+            // Issue #335 (Q6): validity expiry. System-scheduled (no
+            // permission — the daily `quotations:expire` command runs with no
+            // actor); deliberately NOT allowed from confirmed/cancelled, and
+            // never with a handler that touches downstream documents.
+            [
+                'from' => 'draft',
+                'to' => 'expired',
+                'action' => 'expire',
+                'label' => 'Expire quotation',
+            ],
+            [
+                'from' => 'sent',
+                'to' => 'expired',
+                'action' => 'expire',
+                'label' => 'Expire quotation',
+            ],
+            // Issue #335 (Q6): re-validation — editing a command-expired
+            // quotation's valid_until back to a future date returns it to
+            // draft so it can be sent/confirmed again. Audited like every
+            // other transition.
+            [
+                'from' => 'expired',
+                'to' => 'draft',
+                'action' => 'revalidate',
+                'label' => 'Re-validate quotation',
+                'permission' => 'quotations.write',
+            ],
+        ], 'Customer quotation: draft → sent → confirmed/cancelled; past-due validity → expired.');
     }
 
     private function registerSalesOrderSchema(): void

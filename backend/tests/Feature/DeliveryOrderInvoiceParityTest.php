@@ -156,6 +156,14 @@ class DeliveryOrderInvoiceParityTest extends TenantTestCase
 
         $deliveryOrder = DeliveryOrder::with('lines')->find($response->json('data.id'));
 
+        // Issue #459: only a completed (`done`) delivery order is billable by
+        // default; this test targets the conversion arithmetic, so the fixture
+        // is put in the state a shipped delivery reaches.
+        DB::table('delivery_orders')->where('id', $deliveryOrder->id)->update([
+            'status' => 'done',
+            'completed_at' => now(),
+        ]);
+
         // Snapshot the commercial terms the delivery was entered with: a USD
         // delivery billed after FX moved must keep its own rate, and its
         // 15-day terms must not silently become 30.

@@ -7,13 +7,16 @@ import type { DocumentTemplateType } from './DocumentTemplateDialog'
  *
  *   invoice            -> POST /invoices/{id}/deliver (email | whatsapp)
  *   delivery_order     -> POST /sales/delivery-orders/{id}/customer-link (email)
- *   customer_statement -> POST /accounting/customers/{id}/statement (send_email)
+ *   customer_statement -> POST /accounting/customer-statements/send
+ *                         (email | whatsapp, #607 Sales statement surface)
+ *   quotation          -> POST /quotations/{id}/send (email, #334 — PDF +
+ *                         public acceptance link)
  */
 export const PRINT_SEND_CHANNELS: Record<DocumentTemplateType, { email: boolean; whatsapp: boolean }> = {
   invoice: { email: true, whatsapp: true },
   delivery_order: { email: true, whatsapp: false },
-  customer_statement: { email: true, whatsapp: false },
-  quotation: { email: false, whatsapp: false },
+  customer_statement: { email: true, whatsapp: true },
+  quotation: { email: true, whatsapp: false },
   sales_order: { email: false, whatsapp: false },
   credit_note: { email: false, whatsapp: false },
   receipt: { email: false, whatsapp: false },

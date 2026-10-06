@@ -62,10 +62,17 @@ export interface ChatterAttachment {
   uploaded_by_name?: string | null
 }
 
+export interface ChatterMention {
+  id: number
+  name?: string | null
+  email?: string | null
+}
+
 export interface ChatterMessageEntry {
   id: number | string
   body: string
-  mentions?: number[]
+  /** Issue #635: resolved @mentions persisted with the message. */
+  mentions?: ChatterMention[]
   created_at: string
   actor?: ChatterActor | null
 }

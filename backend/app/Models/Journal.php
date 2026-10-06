@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Journal - Configuration for journal types
@@ -56,12 +57,30 @@ class Journal extends Model
     }
 
     /**
-     * Generate the next entry number for this journal
+     * Generate the next entry number for this journal.
+     *
+     * Issue #989: the number is claimed atomically in the database. A single
+     * UPDATE ... RETURNING takes the journal row lock before the value is
+     * read, so two concurrent callers can never claim the same number; the
+     * in-memory sequence_number of a model loaded earlier is never used
+     * (the previous read-then-increment let 8 concurrent requests collide on
+     * journal_entries.entry_number and fail with a unique-key error).
      */
     public function getNextEntryNumber(): string
     {
-        $number = $this->sequence_number;
-        $this->increment('sequence_number');
+        $row = DB::selectOne(
+            'UPDATE journals SET sequence_number = sequence_number + 1, updated_at = NOW() WHERE id = ? RETURNING sequence_number - 1 AS claimed',
+            [$this->id]
+        );
+
+        if ($row === null) {
+            throw new \RuntimeException("Journal #{$this->id} no longer exists; cannot allocate an entry number.");
+        }
+
+        $number = (int) $row->claimed;
+
+        // Keep this instance consistent for callers that reuse the model.
+        $this->setAttribute('sequence_number', $number + 1);
 
         return $this->sequence_prefix.'-'.str_pad($number, 4, '0', STR_PAD_LEFT);
     }

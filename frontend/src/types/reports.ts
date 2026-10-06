@@ -429,6 +429,11 @@ export interface SalesTrendsData {
  * Issue #601: pivot-style sales analysis. Dimensions and measures are a
  * backend-validated whitelist; `values[i]` aligns with `columns[i]` and
  * `children` carries the expandable row hierarchy (parents aggregate children).
+ *
+ * Issue #602 adds the Odoo lifecycle measures: ordered / delivered / invoiced
+ * / to-invoice, as quantity and amount. `qty_to_invoice`/`amount_to_invoice`
+ * are delivered − invoiced and are NOT clamped (a negative value means more
+ * was invoiced than delivered).
  */
 export type PivotDimension =
   | 'salesperson'
@@ -439,7 +444,20 @@ export type PivotDimension =
   | 'country'
   | 'month';
 
-export type PivotMeasure = 'paid_qty' | 'foc_qty' | 'net_revenue' | 'cost' | 'margin';
+export type PivotMeasure =
+  | 'paid_qty'
+  | 'foc_qty'
+  | 'net_revenue'
+  | 'cost'
+  | 'margin'
+  | 'qty_ordered'
+  | 'qty_delivered'
+  | 'qty_invoiced'
+  | 'qty_to_invoice'
+  | 'amount_ordered'
+  | 'amount_delivered'
+  | 'amount_invoiced'
+  | 'amount_to_invoice';
 
 /** Only the measures requested are present, so every key is optional. */
 export type PivotMeasureValues = Partial<Record<PivotMeasure, number>>;
@@ -479,6 +497,49 @@ export interface SalesPivotData {
   pos_excluded_by_tag?: boolean;
 }
 
+/**
+ * Issue #602: one completed delivery-order line whose delivered quantity still
+ * exceeds what has been invoiced (the DO-side companion of the pivot's
+ * `qty_to_invoice`). `amount_to_invoice` is base-currency and tax excluded.
+ */
+export interface UnbilledDeliveryRow {
+  delivery_order_id: number;
+  delivery_order_number: string;
+  delivery_order_line_id: number;
+  delivery_date: string | null;
+  sales_order_id: number | null;
+  customer_id: number | null;
+  customer_name: string | null;
+  product_id: number | null;
+  product_name: string | null;
+  sku: string | null;
+  quantity_ordered: number;
+  quantity_delivered: number;
+  quantity_invoiced: number;
+  quantity_to_invoice: number;
+  unit_price: number;
+  amount_to_invoice: number;
+  currency_code: string | null;
+}
+
+export interface UnbilledDeliveriesData {
+  title: string;
+  deliveries: UnbilledDeliveryRow[];
+  summary: {
+    line_count: number;
+    delivery_order_count: number;
+    total_quantity_delivered: number;
+    total_quantity_invoiced: number;
+    total_quantity_to_invoice: number;
+    total_amount_to_invoice: number;
+    base_currency?: string;
+    revenue_basis?: string;
+    includes_tax?: boolean;
+  };
+  period?: { start_date: string; end_date: string };
+  pos_excluded_by_tag?: boolean;
+}
+
 export interface SalesByCategoryData {
   categories: Array<{
     category_id: number | null;
@@ -493,6 +554,90 @@ export interface SalesByCategoryData {
     revenue_percentage: number;
   }>;
   comparison?: ReportComparison;
+}
+
+// ---------------------------------------------------------------------------
+// Issue #598 (RPT-UX3): saved report views + scheduled email delivery.
+// ---------------------------------------------------------------------------
+
+/** Tabs of the sales reports page a saved view can capture. */
+export type SalesViewTab =
+  | 'by-product'
+  | 'by-customer'
+  | 'trends'
+  | 'by-category'
+  | 'pivot'
+  | 'unbilled';
+
+/** The pivot's grouping (row/column dimensions and chosen measures). */
+export interface SalesViewGrouping {
+  row_dims: PivotDimension[];
+  col_dims: PivotDimension[];
+  measures: PivotMeasure[];
+}
+
+export interface ReportSavedView {
+  id: number;
+  user_id: number;
+  name: string;
+  report_key: string;
+  tab: SalesViewTab;
+  filters: ReportFilters;
+  grouping: SalesViewGrouping | null;
+  visibility: 'personal' | 'shared';
+  is_default: boolean;
+  /** Issue #603: owner-only favourite flag; favourites list first. */
+  is_favourite?: boolean;
+  /** Issue #603: whether the current user pinned this view on the Sales cockpit. */
+  is_pinned?: boolean;
+  is_owner: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+/**
+ * Issue #603: a per-user Sales-cockpit widget pinning one saved report view
+ * (#598 storage). `position` gives the minimal manual order.
+ */
+export interface ReportDashboardWidget {
+  id: number;
+  view_id: number;
+  position: number;
+  view: ReportSavedView;
+}
+
+/**
+ * Issue #603: the compact render of a pinned saved view, produced by the same
+ * server-side renderer as its CSV/PDF export (view's filters applied).
+ */
+export interface ReportWidgetData {
+  widget_id: number;
+  view: ReportSavedView;
+  title: string;
+  tab: SalesViewTab;
+  period: { start_date: string; end_date: string };
+  columns: string[];
+  rows: Array<Record<string, string | number | null>>;
+  row_count: number;
+  generated_at: string;
+}
+
+export type ReportViewFrequency = 'daily' | 'weekly' | 'monthly';
+
+export interface ReportViewSchedule {
+  id: number;
+  view_id: number;
+  frequency: ReportViewFrequency;
+  day_of_week: number | null;
+  day_of_month: number | null;
+  time_of_day: string;
+  /** Tenant user ids. */
+  recipients: number[];
+  format: 'csv' | 'pdf';
+  is_active: boolean;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  run_count: number;
 }
 
 /**
