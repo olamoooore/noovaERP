@@ -40,8 +40,12 @@ class AcmeContactAcceptanceTest extends TenantTestCase
 
         $this->tenantUuid = \Illuminate\Support\Str::uuid()->toString();
         // Issue #123: this suite simulates a Acme (healthcare) tenant.
+        // Since #123 the per-tenant setting is authoritative; the config list
+        // only seeds that setting when the tenant's migrations run, which
+        // never happens for this in-memory test tenant, so set it directly.
         config(['contact.healthcare_tenant_ids' => [$this->tenantUuid]]);
         $this->bindTenantContext($this->tenantUuid);
+        \App\Models\Setting::setValue(ContactTaxonomyRegistry::HEALTHCARE_SETTING_KEY, true);
         try {
             Role::firstOrCreate(['name' => 'admin']);
         } catch (\Throwable $e) {
