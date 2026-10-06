@@ -1,9 +1,9 @@
-import { useContext, useEffect, useState, type ComponentType, type ReactNode } from 'react'
+import { useContext, useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
-import { SettingsDirtyContext } from './settings-leave-guard'
+import { SettingsDirtyContext, SettingsHighlightContext } from './settings-leave-guard'
 
 /**
  * Shared building blocks for the advanced settings pages
@@ -200,19 +200,84 @@ export function SettingsSectionHeader({
   )
 }
 
+/** Props that put a "changed from default" marker on a setting (#549). */
+export interface SettingsDefaultMarkerProps {
+  /** The saved value differs from the server-reported default. */
+  changedFromDefault?: boolean
+  /** Saves the default back; omitted when no default is known. */
+  onResetToDefault?: () => void
+  resetPending?: boolean
+}
+
+/** Dot + "Reset to default" shown next to a setting that differs from its default (#549). */
+export function SettingsDefaultMarker({
+  title,
+  changedFromDefault,
+  onResetToDefault,
+  resetPending,
+}: SettingsDefaultMarkerProps & { title: string }) {
+  if (!changedFromDefault) return null
+  return (
+    <span className="ml-1.5 inline-flex items-center gap-1.5 align-middle">
+      <span
+        aria-hidden="true"
+        title="Changed from default"
+        className="inline-block h-2 w-2 rounded-full bg-primary"
+        data-testid="changed-from-default"
+      />
+      <span className="sr-only">(changed from default)</span>
+      {onResetToDefault && (
+        <button
+          type="button"
+          onClick={onResetToDefault}
+          disabled={resetPending}
+          aria-label={`Reset ${title} to default`}
+          className="text-xs font-normal text-primary underline-offset-2 hover:underline disabled:opacity-50"
+        >
+          Reset to default
+        </button>
+      )}
+    </span>
+  )
+}
+
 export function SettingsRow({
   title,
   description,
   children,
+  changedFromDefault,
+  onResetToDefault,
+  resetPending,
 }: {
   title: string
   description: string
   children: ReactNode
-}) {
+} & SettingsDefaultMarkerProps) {
+  const highlighted = useContext(SettingsHighlightContext) === title
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (highlighted) ref.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+  }, [highlighted])
+
   return (
-    <div className="flex items-start justify-between gap-8 py-4">
+    <div
+      ref={ref}
+      data-highlighted={highlighted ? 'true' : undefined}
+      className={cn(
+        'flex items-start justify-between gap-8 py-4',
+        highlighted && '-mx-2 rounded-md px-2 ring-2 ring-primary/40',
+      )}
+    >
       <div className="flex-1 space-y-1">
-        <div className="text-sm font-medium leading-none">{title}</div>
+        <div className="text-sm font-medium leading-none">
+          {title}
+          <SettingsDefaultMarker
+            title={title}
+            changedFromDefault={changedFromDefault}
+            onResetToDefault={onResetToDefault}
+            resetPending={resetPending}
+          />
+        </div>
         <p className="text-sm leading-relaxed text-muted-foreground">{description}</p>
       </div>
       <div className="shrink-0 pt-0.5">{children}</div>

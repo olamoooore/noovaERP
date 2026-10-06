@@ -61,11 +61,73 @@ class SalesSettings
 
     public const DEFAULT_PAYMENT_LINK_EXPIRY_DAYS = 14;
 
+    // Issue #549: defaults of the scalar keys the settings screen reads
+    // inline (no typed accessor yet), kept here so GET /settings/sales and
+    // its read-only `default_values` block share one literal per key.
+    public const DEFAULT_FIELD_PROFILE = 'medical';
+
+    public const DEFAULT_SALESPERSON_MODE = 'none';
+
+    public const DEFAULT_PRICELIST_DISPLAY = 'show_discount';
+
     /** Document types the "document type on send" setting may select. */
     public const SENDABLE_DOCUMENT_TYPES = [
         InvoiceDelivery::DOCUMENT_FINAL_INVOICE,
         InvoiceDelivery::DOCUMENT_ACCEPTANCE_COPY,
     ];
+
+    /**
+     * Issue #549 (SET-UX5): the value each scalar Sales Settings field has
+     * for a tenant that never saved it, shaped like the GET /settings/sales
+     * payload (group => field => default). The settings screen uses it for
+     * its "changed from default" markers and per-setting reset; nothing here
+     * is writable. Lists (reviewers, team map), the tax block (owned by the
+     * tax engine's canonical setting) and the rounding account have no
+     * meaningful default and are left out.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    public static function defaults(): array
+    {
+        return [
+            'cash_rounding' => [
+                'enabled' => CashRoundingService::DEFAULTS['enabled'],
+                'method' => CashRoundingService::DEFAULTS['method'],
+                'precision' => CashRoundingService::DEFAULTS['precision'],
+            ],
+            'invoice' => [
+                'allow_custom_number' => true,
+                'field_profile' => self::DEFAULT_FIELD_PROFILE,
+                'default_requires_approval' => false,
+                'approval_expiry_days' => self::DEFAULT_APPROVAL_EXPIRY_DAYS,
+                'auto_send_to_customer_on_post' => true,
+                'allow_partial_payments' => true,
+                'default_payment_terms_days' => self::DEFAULT_PAYMENT_TERMS,
+                'default_notes' => '',
+                'default_terms' => self::DEFAULT_TERMS_TEXT,
+            ],
+            'portal' => [
+                'acceptance_enabled' => true,
+                'require_signature' => true,
+                'acceptance_link_expiry_days' => self::DEFAULT_ACCEPTANCE_LINK_EXPIRY_DAYS,
+                'payment_link_expiry_days' => self::DEFAULT_PAYMENT_LINK_EXPIRY_DAYS,
+            ],
+            'delivery' => [
+                'attach_pdf' => true,
+                'cc_internal_email' => '',
+                'document_type_on_send' => InvoiceDelivery::DOCUMENT_FINAL_INVOICE,
+            ],
+            'delivery_order' => [
+                'default_requires_approval' => false,
+            ],
+            'defaults' => [
+                'salesperson_mode' => self::DEFAULT_SALESPERSON_MODE,
+            ],
+            'pricelist' => [
+                'display' => self::DEFAULT_PRICELIST_DISPLAY,
+            ],
+        ];
+    }
 
     public function allowCustomInvoiceNumber(): bool
     {

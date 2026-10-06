@@ -823,7 +823,7 @@ class CompanySettingsController extends Controller
             'data' => [
                 'invoice' => [
                     'allow_custom_number' => app(\App\Services\SalesSettings::class)->allowCustomInvoiceNumber(),
-                    'field_profile' => (string) \App\Models\Setting::getValue('sales.invoice.field_profile', 'medical'),
+                    'field_profile' => (string) \App\Models\Setting::getValue('sales.invoice.field_profile', \App\Services\SalesSettings::DEFAULT_FIELD_PROFILE),
                     'default_requires_approval' => (bool) \App\Models\Setting::getValue('sales.invoice.default_requires_approval', false),
                     'default_payment_terms_days' => app(\App\Services\SalesSettings::class)->defaultPaymentTermsDays(),
                     'default_notes' => app(\App\Services\SalesSettings::class)->defaultNotes() ?? '',
@@ -907,7 +907,7 @@ class CompanySettingsController extends Controller
                     'allow_custom_number' => app(\App\Services\SalesSettings::class)->allowCustomInvoiceNumber(),
                     // D4: which extra header fields the invoice entry screen
                     // shows. 'medical' preserves the pre-setting behaviour.
-                    'field_profile' => (string) \App\Models\Setting::getValue('sales.invoice.field_profile', 'medical'),
+                    'field_profile' => (string) \App\Models\Setting::getValue('sales.invoice.field_profile', \App\Services\SalesSettings::DEFAULT_FIELD_PROFILE),
                     'default_requires_approval' => (bool) \App\Models\Setting::getValue('sales.invoice.default_requires_approval', false),
                     'approval_expiry_days' => app(\App\Services\SalesSettings::class)->approvalExpiryDays(),
                     'approval_enforcement' => $this->invoiceApprovalEnforcement(),
@@ -964,7 +964,7 @@ class CompanySettingsController extends Controller
                 // salesperson_mode = current_user stamps the creating user's
                 // name; team_by_user maps a user id to their default team.
                 'defaults' => [
-                    'salesperson_mode' => (string) \App\Models\Setting::getValue('sales.defaults.salesperson_mode', 'none'),
+                    'salesperson_mode' => (string) \App\Models\Setting::getValue('sales.defaults.salesperson_mode', \App\Services\SalesSettings::DEFAULT_SALESPERSON_MODE),
                     'team_by_user' => (static function (): array {
                         $map = \App\Models\Setting::getValue('sales.defaults.team_by_user', []);
                         if (! is_array($map)) {
@@ -983,8 +983,12 @@ class CompanySettingsController extends Controller
                 ],
                 // Issue #553: line pricelist presentation on rendered documents.
                 'pricelist' => [
-                    'display' => (string) \App\Models\Setting::getValue('sales.pricelist.display', 'show_discount'),
+                    'display' => (string) \App\Models\Setting::getValue('sales.pricelist.display', \App\Services\SalesSettings::DEFAULT_PRICELIST_DISPLAY),
                 ],
+                // Issue #549: read-only defaults for the "changed from default"
+                // markers. Not accepted by updateSalesSettings; a reset is a
+                // normal PUT of the default value.
+                'default_values' => \App\Services\SalesSettings::defaults(),
             ],
         ]);
     }

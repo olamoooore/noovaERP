@@ -10,6 +10,13 @@ import { useLeaveGuard } from '@/hooks/useLeaveGuard'
  */
 export const SettingsDirtyContext = createContext<((dirty: boolean) => void) | null>(null)
 
+/**
+ * #549: the setting a search result pointed at. A SettingsRow whose title
+ * matches scrolls into view and is outlined. Pages without a provider are
+ * unaffected.
+ */
+export const SettingsHighlightContext = createContext<string | null>(null)
+
 export function useSettingsLeaveGuard() {
   const [dirty, setDirty] = useState(false)
   // #317: the beforeunload + confirm-before-action mechanics are shared with

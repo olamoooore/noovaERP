@@ -14,11 +14,14 @@ import api from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { validateNumberFormat, validateResetPeriod, type ResetPeriod } from './numberingFormat'
 import {
+  SettingsDefaultMarker,
   SettingsLoadingCard,
   SettingsRow,
   SettingsSaveBar,
   SettingsSectionHeader,
+  type SettingsDefaultMarkerProps,
 } from '@/components/settings/settings-ui'
+import { isChangedFromDefault } from './salesSettingsTools'
 
 export interface ReviewerConfig {
   reviewer_user_ids?: number[]
@@ -87,7 +90,12 @@ export interface SalesSettings {
   pricelist: {
     display: 'show_discount' | 'net_price'
   }
+  // Issue #549: read-only server defaults (group => field => default) for the
+  // "changed from default" markers. Never sent back.
+  default_values?: Partial<Record<DefaultGroup, Record<string, unknown>>>
 }
+
+type DefaultGroup = 'cash_rounding' | 'invoice' | 'portal' | 'delivery' | 'delivery_order' | 'defaults' | 'pricelist'
 
 export const emptySalesSettings: SalesSettings = {
   cash_rounding: {
@@ -156,6 +164,56 @@ function useSalesSettings() {
       return (res.data?.data as SalesSettings) ?? emptySalesSettings
     },
   })
+}
+
+function omitKey<T extends object>(obj: T, key: string): T {
+  const copy = { ...obj } as Record<string, unknown>
+  delete copy[key]
+  return copy as T
+}
+
+/**
+ * Issue #549: "changed from default" marker props for one settings group.
+ * The default comes from the server's `default_values`; a reset PUTs just
+ * that field through the existing /settings/sales endpoint, then drops any
+ * unsaved local edit of it (other unsaved edits are kept).
+ */
+function useDefaultMarkers(
+  data: SalesSettings | undefined,
+  group: DefaultGroup,
+  onReset?: (field: string) => void,
+) {
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+  const mutation = useMutation({
+    mutationFn: async ({ field, value }: { field: string; value: unknown }) => {
+      await api.put('/settings/sales', { [group]: { [field]: value } })
+      return field
+    },
+    onSuccess: (field) => {
+      queryClient.invalidateQueries({ queryKey: ['sales-settings'] })
+      toast({ title: 'Setting reset to default' })
+      onReset?.(field)
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Reset failed',
+        description: error.response?.data?.message || 'Please try again.',
+      })
+    },
+  })
+
+  return (field: string): SettingsDefaultMarkerProps => {
+    const defaultValue = data?.default_values?.[group]?.[field]
+    if (defaultValue === undefined) return {}
+    const saved = (data?.[group] as Record<string, unknown> | undefined)?.[field]
+    return {
+      changedFromDefault: isChangedFromDefault(saved, defaultValue),
+      onResetToDefault: () => mutation.mutate({ field, value: defaultValue }),
+      resetPending: mutation.isPending,
+    }
+  }
 }
 
 function useSalesSettingsMutation<T extends Record<string, unknown>>(
@@ -621,6 +679,14 @@ export function ApprovalSettings() {
   const [reviewerTypes, setReviewerTypes] = useState<ReviewerDocType[]>(['invoice'])
   // Dirty approval fields per request type — saved together by the save bar.
   const [dirty, setDirty] = useState<Partial<Record<ReviewerDocType, ApprovalPatch>>>({})
+  const dropDirtyField = (group: ReviewerDocType) => (field: string) =>
+    setDirty((current) => {
+      if (!current[group]) return current
+      const rest = omitKey(current[group] as ApprovalPatch, field)
+      return Object.keys(rest).length > 0 ? { ...current, [group]: rest } : omitKey(current, group)
+    })
+  const invoiceMarker = useDefaultMarkers(data, 'invoice', dropDirtyField('invoice'))
+  const deliveryOrderMarker = useDefaultMarkers(data, 'delivery_order', dropDirtyField('delivery_order'))
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -736,6 +802,7 @@ export function ApprovalSettings() {
         <SettingsRow
           title="Require approval by default"
           description="New invoices start with the approval requirement already enabled."
+          {...invoiceMarker('default_requires_approval')}
         >
           <Switch
             checked={invoice.default_requires_approval}
@@ -746,6 +813,7 @@ export function ApprovalSettings() {
         <SettingsRow
           title="Approval expiry"
           description="Pending requests automatically expire after this many days without a decision."
+          {...invoiceMarker('approval_expiry_days')}
         >
           <div className="flex items-center gap-2">
             <Input
@@ -772,6 +840,7 @@ export function ApprovalSettings() {
         <SettingsRow
           title="Delivery orders require approval by default"
           description="New delivery orders start with the approval requirement already enabled."
+          {...deliveryOrderMarker('default_requires_approval')}
         >
           <Switch
             checked={deliveryOrder.default_requires_approval}
@@ -949,6 +1018,7 @@ export function InvoiceDefaultsSettings() {
   const { data, isLoading } = useSalesSettings()
   const [local, setLocal] = useState<Partial<SalesSettings['invoice']>>({})
   const mutation = useSalesSettingsMutation('invoice', 'Invoice defaults saved', () => setLocal({}))
+  const marker = useDefaultMarkers(data, 'invoice', (field) => setLocal((current) => omitKey(current, field)))
 
   if (isLoading || !data) return <SettingsLoadingCard />
 
@@ -965,6 +1035,7 @@ export function InvoiceDefaultsSettings() {
         <SettingsRow
           title="Industry field profile"
           description="Which extra fields the invoice entry screen shows. Medical keeps case, patient and doctor fields; Trading shows PO and delivery date; Services shows project reference. Other fields stay hidden."
+          {...marker('field_profile')}
         >
           <Select
             value={invoice.field_profile ?? 'medical'}
@@ -985,6 +1056,7 @@ export function InvoiceDefaultsSettings() {
         <SettingsRow
           title="Allow custom invoice numbers"
           description="Users may override the auto-generated number on a per-invoice basis."
+          {...marker('allow_custom_number')}
         >
           <Switch
             checked={invoice.allow_custom_number}
@@ -995,6 +1067,7 @@ export function InvoiceDefaultsSettings() {
         <SettingsRow
           title="Default payment terms"
           description="Applied to the due date when no customer-specific terms exist."
+          {...marker('default_payment_terms_days')}
         >
           <div className="flex items-center gap-2">
             <Input
@@ -1014,6 +1087,7 @@ export function InvoiceDefaultsSettings() {
         <SettingsRow
           title="Allow partial payments"
           description="Customers and staff can record payments smaller than the full invoice balance."
+          {...marker('allow_partial_payments')}
         >
           <Switch
             checked={invoice.allow_partial_payments}
@@ -1024,6 +1098,7 @@ export function InvoiceDefaultsSettings() {
         <SettingsRow
           title="Auto-send on post"
           description="When an invoice is posted, automatically email the customer the PDF and acceptance link."
+          {...marker('auto_send_to_customer_on_post')}
         >
           <Switch
             checked={invoice.auto_send_to_customer_on_post}
@@ -1033,9 +1108,12 @@ export function InvoiceDefaultsSettings() {
 
         <div className="grid gap-6 py-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="default-notes" className="text-sm font-medium">
-              Default notes
-            </Label>
+            <div className="flex items-center">
+              <Label htmlFor="default-notes" className="text-sm font-medium">
+                Default notes
+              </Label>
+              <SettingsDefaultMarker title="Default notes" {...marker('default_notes')} />
+            </div>
             <textarea
               id="default-notes"
               className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -1047,9 +1125,12 @@ export function InvoiceDefaultsSettings() {
             <p className="text-xs text-muted-foreground">Printed on every invoice below the totals.</p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="default-terms" className="text-sm font-medium">
-              Default terms
-            </Label>
+            <div className="flex items-center">
+              <Label htmlFor="default-terms" className="text-sm font-medium">
+                Default terms
+              </Label>
+              <SettingsDefaultMarker title="Default terms" {...marker('default_terms')} />
+            </div>
             <textarea
               id="default-terms"
               className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -1085,6 +1166,8 @@ export function SalesDefaultsSettings() {
   const [mode, setMode] = useState<SalespersonMode | null>(null)
   const [display, setDisplay] = useState<PricelistDisplay | null>(null)
   const [teams, setTeams] = useState<Record<string, string> | null>(null)
+  const defaultsMarker = useDefaultMarkers(data, 'defaults', () => setMode(null))
+  const pricelistMarker = useDefaultMarkers(data, 'pricelist', () => setDisplay(null))
 
   const mutation = useMutation({
     mutationFn: async (patch: {
@@ -1129,6 +1212,7 @@ export function SalesDefaultsSettings() {
         <SettingsRow
           title="Default salesperson"
           description="When enabled, new quotations and sales orders start with the creating user as the salesperson. Leave it blank to have no default."
+          {...defaultsMarker('salesperson_mode')}
         >
           <Select value={currentMode} onValueChange={(v) => setMode(v as SalespersonMode)}>
             <SelectTrigger className="w-56">
@@ -1144,6 +1228,7 @@ export function SalesDefaultsSettings() {
         <SettingsRow
           title="Pricelist display"
           description="Show discount on lines keeps the list unit price and prints the discount separately; Net price only prints the unit price after the line discount."
+          {...pricelistMarker('display')}
         >
           <Select value={currentDisplay} onValueChange={(v) => setDisplay(v as PricelistDisplay)}>
             <SelectTrigger className="w-56">
@@ -1218,6 +1303,7 @@ export function PaymentPortalSettings() {
   const { data, isLoading } = useSalesSettings()
   const [local, setLocal] = useState<Partial<SalesSettings['portal']>>({})
   const mutation = useSalesSettingsMutation('portal', 'Payment & portal settings saved', () => setLocal({}))
+  const marker = useDefaultMarkers(data, 'portal', (field) => setLocal((current) => omitKey(current, field)))
 
   if (isLoading || !data) return <SettingsLoadingCard />
 
@@ -1234,6 +1320,7 @@ export function PaymentPortalSettings() {
         <SettingsRow
           title="Customer acceptance portal"
           description="Customers receive a secure link to review and accept invoices — no login required."
+          {...marker('acceptance_enabled')}
         >
           <Switch
             checked={portal.acceptance_enabled}
@@ -1244,6 +1331,7 @@ export function PaymentPortalSettings() {
         <SettingsRow
           title="Require digital signature"
           description="Customers must draw a signature before their acceptance is recorded."
+          {...marker('require_signature')}
         >
           <Switch
             checked={portal.require_signature}
@@ -1254,6 +1342,7 @@ export function PaymentPortalSettings() {
         <SettingsRow
           title="Acceptance link validity"
           description="How long the customer's acceptance link stays active after it is issued."
+          {...marker('acceptance_link_expiry_days')}
         >
           <div className="flex items-center gap-2">
             <Input
@@ -1273,6 +1362,7 @@ export function PaymentPortalSettings() {
         <SettingsRow
           title="Payment link validity"
           description="Expiry window for online payment links generated on invoices."
+          {...marker('payment_link_expiry_days')}
         >
           <div className="flex items-center gap-2">
             <Input
@@ -1400,6 +1490,7 @@ export function CashRoundingSettings() {
   const { data, isLoading } = useSalesSettings()
   const [local, setLocal] = useState<Partial<SalesSettings['cash_rounding']>>({})
   const mutation = useSalesSettingsMutation('cash_rounding', 'Cash rounding settings saved', () => setLocal({}))
+  const marker = useDefaultMarkers(data, 'cash_rounding', (field) => setLocal((current) => omitKey(current, field)))
 
   const { data: accounts } = useQuery({
     queryKey: ['chart-of-accounts', 'cash-rounding'],
@@ -1424,6 +1515,7 @@ export function CashRoundingSettings() {
         <SettingsRow
           title="Enable cash rounding"
           description="Off by default. When enabled, invoice totals are rounded and the adjustment is posted as its own journal line."
+          {...marker('enabled')}
         >
           <Switch
             checked={rounding.enabled}
@@ -1434,6 +1526,7 @@ export function CashRoundingSettings() {
         <SettingsRow
           title="Rounding method"
           description="How each invoice total is rounded to the step."
+          {...marker('method')}
         >
           <Select
             value={rounding.method}
@@ -1458,6 +1551,7 @@ export function CashRoundingSettings() {
         <SettingsRow
           title="Rounding step"
           description="The smallest cash unit — e.g. 0.05 for MYR 5 sen."
+          {...marker('precision')}
         >
           <Input
             type="number"
@@ -1512,6 +1606,7 @@ export function DeliverySettings() {
   const { data, isLoading } = useSalesSettings()
   const [local, setLocal] = useState<Partial<SalesSettings['delivery']>>({})
   const mutation = useSalesSettingsMutation('delivery', 'Delivery settings saved', () => setLocal({}))
+  const marker = useDefaultMarkers(data, 'delivery', (field) => setLocal((current) => omitKey(current, field)))
 
   if (isLoading || !data) return <SettingsLoadingCard />
 
@@ -1528,6 +1623,7 @@ export function DeliverySettings() {
         <SettingsRow
           title="Attach PDF to email"
           description="Include the invoice PDF as an attachment on outgoing customer emails."
+          {...marker('attach_pdf')}
         >
           <Switch
             checked={delivery.attach_pdf}
@@ -1538,6 +1634,7 @@ export function DeliverySettings() {
         <SettingsRow
           title="Document type on send"
           description="Which version of the document the customer receives."
+          {...marker('document_type_on_send')}
         >
           <Select
             value={delivery.document_type_on_send}
@@ -1554,9 +1651,12 @@ export function DeliverySettings() {
         </SettingsRow>
 
         <div className="space-y-2 py-4">
-          <Label htmlFor="cc-email" className="text-sm font-medium">
-            CC internal email
-          </Label>
+          <div className="flex items-center">
+            <Label htmlFor="cc-email" className="text-sm font-medium">
+              CC internal email
+            </Label>
+            <SettingsDefaultMarker title="CC internal email" {...marker('cc_internal_email')} />
+          </div>
           <Input
             id="cc-email"
             type="email"
