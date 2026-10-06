@@ -146,6 +146,19 @@ class SalesAnalyticsService
      * The human-readable definition of every "revenue" figure in this service.
      * Surfaced in each summary so no caller has to guess (#355).
      */
+    /**
+     * Issue #360: the by-product row that carries revenue from lines with no
+     * product (service / description lines), named explicitly instead of
+     * collapsing into an unnamed group the dashboard renders as "Unknown".
+     */
+    public const UNLINKED_PRODUCT_LABEL = 'Services / unlinked lines';
+
+    /**
+     * Issue #360: layout-only line types (no quantity, no amount) that are not
+     * sales and must not count towards a product's orders.
+     */
+    private const NON_SALE_LINE_TYPES = ['note', 'section'];
+
     private const REVENUE_BASIS = 'Net revenue, tax excluded, document discounts subtracted, '
         .'reported in the tenant base currency: posted invoices less posted customer '
         .'credit notes, plus POS sales net of returns, plus un-invoiced bookings. '
@@ -186,8 +199,15 @@ class SalesAnalyticsService
                     DB::raw('SUM(li.quantity * COALESCE(p.cost, 0)) as total_cost'),
                     DB::raw('SUM(li.base_revenue - (li.quantity * COALESCE(p.cost, 0))) as total_profit'),
                     DB::raw('CASE WHEN SUM(li.base_revenue) > 0 THEN (SUM(li.base_revenue - (li.quantity * COALESCE(p.cost, 0))) / SUM(li.base_revenue) * 100) ELSE 0 END as profit_margin'),
-                    DB::raw('COUNT(*) as order_count'),
+                    // Issue #360: orders, not line rows — a product on two
+                    // lines of one order is one order.
+                    DB::raw('COUNT(DISTINCT li.order_ref) as order_count'),
                 ])
+                // Issue #360: note / section lines are layout, not sales.
+                ->where(function ($query) {
+                    $query->whereNull('li.line_type')
+                        ->orWhereNotIn('li.line_type', self::NON_SALE_LINE_TYPES);
+                })
                 ->groupBy('p.id', 'p.name', 'p.sku', 'p.cost', 'p.price')
                 ->orderByDesc('total_revenue')
                 ->get();
@@ -220,9 +240,11 @@ class SalesAnalyticsService
             ],
             'data' => $sales->map(fn ($item) => [
                 'id' => $item->id,
-                'name' => $item->name,
-                'product_name' => $item->name,
+                // Issue #360: product-less revenue is labelled, never "Unknown".
+                'name' => $item->id === null ? self::UNLINKED_PRODUCT_LABEL : $item->name,
+                'product_name' => $item->id === null ? self::UNLINKED_PRODUCT_LABEL : $item->name,
                 'sku' => $item->sku,
+                'order_count' => (int) $item->order_count,
                 'total_quantity' => $this->roundQuantity($item->total_quantity),
                 'quantity_sold' => $this->roundQuantity($item->total_quantity),
                 'total_revenue' => round((float) $item->total_revenue, 2),
@@ -1339,7 +1361,8 @@ class SalesAnalyticsService
      *
      * Returned columns: product_id, customer_id, quantity, ordered_quantity,
      * delivered_quantity, invoiced_quantity, revenue_date, channel ('pos' |
-     * 'booking' | 'invoice' | 'credit_note'), order_ref, currency_code,
+     * 'booking' | 'invoice' | 'credit_note'), order_ref, line_type (#360:
+     * the document line's type; POS and credit-note lines are 'product'), currency_code,
      * exchange_rate, document_revenue, base_revenue, base_ordered_amount,
      * base_delivered_amount, base_invoiced_amount (#602).
      *
@@ -1459,6 +1482,7 @@ class SalesAnalyticsService
                    {$posRevenueDate} AS revenue_date,
                    'pos' AS channel,
                    'pos:' || po.id AS order_ref,
+                   'product'::varchar(30) AS line_type,
                    COALESCE(po.currency, {$baseCurrency}, 'USD') AS currency_code,
                    COALESCE(po.exchange_rate, 1.0) AS exchange_rate,
                    NULL::varchar(255) AS salesperson,
@@ -1483,6 +1507,7 @@ class SalesAnalyticsService
                    {$soRevenueDate} AS revenue_date,
                    'booking' AS channel,
                    'so:' || so.id AS order_ref,
+                   sol.line_type::varchar(30) AS line_type,
                    COALESCE(so.currency_code, {$baseCurrency}, 'USD') AS currency_code,
                    COALESCE(so.exchange_rate, 1.0) AS exchange_rate,
                    so.salesperson,
@@ -1534,6 +1559,7 @@ class SalesAnalyticsService
                    i.invoice_date AS revenue_date,
                    'invoice' AS channel,
                    'inv:' || i.id AS order_ref,
+                   il.line_type::varchar(30) AS line_type,
                    COALESCE(i.currency_code, {$baseCurrency}, 'USD') AS currency_code,
                    COALESCE(i.exchange_rate, 1.0) AS exchange_rate,
                    (SELECT so.salesperson FROM sales_orders so WHERE so.id = i.sales_order_id) AS salesperson,
@@ -1567,6 +1593,7 @@ class SalesAnalyticsService
                    ccn.credit_note_date AS revenue_date,
                    'credit_note' AS channel,
                    'cn:' || ccn.id AS order_ref,
+                   'product'::varchar(30) AS line_type,
                    COALESCE(ccn.currency_code, {$baseCurrency}, 'USD') AS currency_code,
                    COALESCE(ccn.exchange_rate, 1.0) AS exchange_rate,
                    (SELECT so.salesperson FROM invoices i JOIN sales_orders so ON so.id = i.sales_order_id WHERE i.id = ccn.invoice_id) AS salesperson,
@@ -1596,6 +1623,7 @@ class SalesAnalyticsService
                        revenue_date,
                        channel,
                        order_ref,
+                       line_type,
                        currency_code,
                        exchange_rate,
                        salesperson,
