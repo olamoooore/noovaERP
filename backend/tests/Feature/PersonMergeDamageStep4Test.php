@@ -158,6 +158,91 @@ class PersonMergeDamageStep4Test extends TenantTestCase
         $this->assertSame(1, $report['summary']['issued_documents']);
     }
 
+    /**
+     * Second hostile review of the repair plan (2026-10-06): the report must
+     * also show
+     *  G. data the person OWNS (identifiers, methods, addresses, profiles…)
+     *     — users may have added a wrongly merged contact's data to it;
+     *  H. doctors referenced inside an invoice's `case_information` JSON;
+     *  I. each company relationship's current values next to what each link
+     *     at that company implies (category, roles, department);
+     *  J. soft-deleted damaged people (step 3 L3 may restore them);
+     *  K. a fingerprint that also covers roles, documents and owned data;
+     *  L. a size flag for people with very many links (one transaction each).
+     */
+    public function test_report_covers_owned_data_case_documents_relationship_values_and_deleted_people(): void
+    {
+        [$hospital, $hospitalOrg] = $this->createCustomer('Acme Hospital');
+        $siti = $this->addContact($hospital, ['name' => 'Siti', 'email' => 'siti@acme.test', 'contact_type' => 'Billing']);
+        $sitiPerson = $siti['core_contact_uuid'];
+        $lim = $this->wronglyMerged($hospital, null, 'Nurse Lim', $sitiPerson, ['contact_type' => 'Nurse', 'department_name' => 'Ward 3']);
+
+        $master = app(ContactMasterService::class);
+        // G: someone added an identifier to "Siti" in the Contact Master.
+        $master->addIdentifier($sitiPerson, 'staff_no', 'S-001', $this->tenantId);
+
+        // H: a doctor reference inside the case information of an issued invoice.
+        Invoice::factory()->create(['customer_id' => $hospital, 'status' => 'posted', 'case_information' => [['case_number' => 'C-1', 'doctor_contact_id' => $sitiPerson]]]);
+
+        // J: a damaged person that was later soft-deleted.
+        $gone = $master->create(['contact_type' => 'individual', 'display_name' => 'Gone Doc', 'source' => 'manual'], $this->tenantId);
+        $goneId = (string) $gone->id;
+        $this->wronglyMerged($hospital, null, 'Porter Ravi', $goneId);
+        $gone->delete();
+
+        // L: a person carrying very many wrong links (an import of
+        // identifier-less contacts).
+        $bulk = $master->create(['contact_type' => 'individual', 'display_name' => 'Bulk Target', 'source' => 'manual'], $this->tenantId);
+        $bulkId = (string) $bulk->id;
+        for ($i = 1; $i <= 51; $i++) {
+            $this->wronglyMerged($hospital, null, 'Imported '.$i, $bulkId);
+        }
+
+        $before = $this->tableCounts();
+        $this->artisan('contacts:person-merge-damage-report', ['--tenant' => $this->tenantId, '--json' => $this->reportPath])->assertExitCode(0);
+        $this->assertSame($before, $this->tableCounts(), 'The report must not write anything.');
+        $report = json_decode((string) file_get_contents($this->reportPath), true)[0];
+        $people = collect($report['people'])->keyBy('person_id');
+        $damaged = $people[$sitiPerson];
+
+        // G
+        $this->assertSame(1, $damaged['owned_data']['contact_identifiers']);
+        $this->assertSame(0, $damaged['owned_data']['pos_loyalty_profiles']);
+
+        // H
+        $case = collect($damaged['documents'])->first(fn ($d) => $d['column'] === 'case_information');
+        $this->assertNotNull($case, 'Person references inside case_information are documents too.');
+        $this->assertSame(1, $case['issued']);
+
+        // I
+        $relationship = collect($damaged['relationships'])->firstWhere('organisation_id', $hospitalOrg);
+        $this->assertNotNull($relationship);
+        $this->assertArrayHasKey('functional_category_code', $relationship);
+        $this->assertArrayHasKey('roles', $relationship);
+        $this->assertArrayHasKey('site_address_id', $relationship);
+        $limLink = collect($damaged['links'])->firstWhere('customer_contact_id', $lim);
+        $this->assertSame('NURSE', $limLink['implied_classification']);
+        $this->assertSame('Ward 3', $limLink['department_name']);
+        $this->assertArrayHasKey('implied_functional_category', $limLink);
+        $this->assertArrayHasKey('implied_roles', $limLink);
+
+        // J
+        $this->assertArrayHasKey($goneId, $people->all(), 'A soft-deleted damaged person is reported.');
+        $this->assertTrue($people[$goneId]['person_deleted']);
+
+        // K
+        $print = $damaged['fingerprint'];
+        $master->addIdentifier($sitiPerson, 'staff_no', 'S-002', $this->tenantId);
+        $this->artisan('contacts:person-merge-damage-report', ['--tenant' => $this->tenantId, '--json' => $this->reportPath])->assertExitCode(0);
+        $again = collect(json_decode((string) file_get_contents($this->reportPath), true)[0]['people'])->keyBy('person_id');
+        $this->assertNotSame($print, $again[$sitiPerson]['fingerprint'], 'Owned data is part of the fingerprint.');
+
+        // L
+        $this->assertTrue($people[$bulkId]['oversized']);
+        $this->assertSame(51, $people[$bulkId]['link_count']);
+        $this->assertFalse($damaged['oversized']);
+    }
+
     /** @return array{0: int, 1: string} */
     private function createCustomer(string $name): array
     {

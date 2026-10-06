@@ -35,6 +35,11 @@ use Modules\Contact\src\Services\ContactTaxonomyService;
  * organisation and whether it shares the org-person relationship with a
  * correct link; documents pointing at the person (printed live), issued vs
  * draft, by customer; and classifications no correct link explains.
+ *
+ * Second review of the repair plan adds: data the person OWNS (owned_data),
+ * doctors inside invoices' case_information JSON, each company
+ * relationship's values next to what each link implies, soft-deleted
+ * damaged people, a fingerprint over all of it, and a size flag.
  */
 class PersonMergeDamagePlanner
 {
@@ -46,6 +51,17 @@ class PersonMergeDamagePlanner
         'invoices' => ['doctor_contact_id', 'requestor_contact_id', 'buyer_contact_id', 'billing_contact_id', 'shipping_contact_id'],
         'quotations' => ['billing_contact_id', 'shipping_contact_id'],
     ];
+
+    /** Tables keyed by contact_id that hold data a person owns. */
+    private const OWNED_TABLES = [
+        'contact_identifiers', 'contact_methods', 'contact_addresses', 'contact_bank_accounts',
+        'contact_registrations', 'contact_tax_profiles', 'contact_related_record_registry', 'contact_visibility',
+        'crm_contact_profiles', 'hr_staff_profiles', 'pos_loyalty_profiles', 'project_contact_profiles',
+        'property_contact_profiles', 'accounting_customer_profiles', 'accounting_vendor_profiles',
+    ];
+
+    /** More links than this on one person: split into its own batch. */
+    public const OVERSIZED_LINKS = 50;
 
     public function __construct(private readonly CustomerContactSyncService $sync) {}
 
@@ -68,24 +84,31 @@ class PersonMergeDamagePlanner
 
         $people = [];
         foreach ($groups as $personId => $contacts) {
-            $person = CoreContact::where('tenant_id', $tenantId)->whereKey($personId)->first();
+            $person = CoreContact::withTrashed()->where('tenant_id', $tenantId)->whereKey($personId)->first();
             if (! $person) {
                 continue;
             }
 
-            $links = $contacts->map(fn (CustomerContact $contact) => [
-                'customer_contact_id' => $contact->id,
-                'contact_deleted' => $contact->trashed(),
-                'customer_id' => $contact->customer_id,
-                'customer_name' => $customers[$contact->customer_id]->name ?? null,
-                'organisation_id' => $customers[$contact->customer_id]->core_contact_uuid ?? null,
-                'name' => $contact->name,
-                'email' => $contact->email,
-                'mobile' => $contact->mobile,
-                'phone' => $contact->phone,
-                'status' => $this->linkStatus($person, $contact),
-                'implied_classification' => $this->sync->transformLegacyPayload($contact->contact_category, $contact->contact_type)['classification_code'],
-            ])->values()->all();
+            $links = $contacts->map(function (CustomerContact $contact) use ($customers, $person) {
+                $legacy = $this->sync->transformLegacyPayload($contact->contact_category, $contact->contact_type);
+
+                return [
+                    'customer_contact_id' => $contact->id,
+                    'contact_deleted' => $contact->trashed(),
+                    'customer_id' => $contact->customer_id,
+                    'customer_name' => $customers[$contact->customer_id]->name ?? null,
+                    'organisation_id' => $customers[$contact->customer_id]->core_contact_uuid ?? null,
+                    'name' => $contact->name,
+                    'email' => $contact->email,
+                    'mobile' => $contact->mobile,
+                    'phone' => $contact->phone,
+                    'status' => $this->linkStatus($person, $contact),
+                    'implied_classification' => $legacy['classification_code'],
+                    'implied_functional_category' => $legacy['functional_category_code'],
+                    'implied_roles' => $legacy['persistent_role_codes'],
+                    'department_name' => $contact->department_name,
+                ];
+            })->values()->all();
 
             $statuses = array_count_values(array_column($links, 'status'));
             $severity = null;
@@ -110,6 +133,9 @@ class PersonMergeDamagePlanner
             unset($link);
 
             $classifications = $this->classifications($tenantId, $person->id);
+            $documents = $this->documents($person->id, $links);
+            $owned = $this->ownedData($person->id);
+            $relationships = $this->relationships($tenantId, $person->id);
             $explained = array_filter(array_column(array_filter($links, fn ($l) => $l['status'] === 'ok'), 'implied_classification'));
 
             $people[] = [
@@ -118,14 +144,19 @@ class PersonMergeDamagePlanner
                 'person_email' => $person->email,
                 'person_mobile' => $person->mobile,
                 'person_source' => $person->source,
+                'person_deleted' => $person->trashed(),
+                'link_count' => count($links),
+                'oversized' => count($links) > self::OVERSIZED_LINKS,
                 'created_from_customer_contact_id' => $person->source === 'crm_customer_contact' ? (int) $person->legacy_id : null,
                 'severity' => $severity,
                 'links' => $links,
                 'impact' => $this->impact($tenantId, $person->id),
                 'classifications' => $classifications,
                 'classifications_not_explained_by_ok_links' => array_values(array_diff($classifications, $explained)),
-                'documents' => $this->documents($person->id, $links),
-                'fingerprint' => $this->fingerprint($tenantId, $person, $contacts->all(), $classifications),
+                'relationships' => $relationships,
+                'owned_data' => $owned,
+                'documents' => $documents,
+                'fingerprint' => $this->fingerprint($person, $contacts->all(), $classifications, $relationships, $owned, $documents),
             ];
         }
 
@@ -185,6 +216,25 @@ class PersonMergeDamagePlanner
             }
         }
 
+        // H: doctors inside the case_information JSON of invoices.
+        if (Schema::hasTable('invoices') && Schema::hasColumn('invoices', 'case_information')) {
+            $counts = DB::table('invoices')
+                ->whereRaw('case_information::text LIKE ?', ['%'.$personId.'%'])
+                ->selectRaw("customer_id, sum(case when status = 'draft' then 1 else 0 end) as draft, sum(case when status = 'draft' then 0 else 1 end) as issued")
+                ->groupBy('customer_id')
+                ->get();
+            foreach ($counts as $count) {
+                $rows[] = [
+                    'table' => 'invoices',
+                    'column' => 'case_information', // any person reference inside the cases (doctor today)
+                    'customer_id' => (int) $count->customer_id,
+                    'issued' => (int) $count->issued,
+                    'draft' => (int) $count->draft,
+                    'customer_has_ok_link' => in_array((int) $count->customer_id, array_map('intval', $okCustomers), true),
+                ];
+            }
+        }
+
         return $rows;
     }
 
@@ -194,24 +244,65 @@ class PersonMergeDamagePlanner
      * @param  list<CustomerContact>  $contacts
      * @param  list<string>  $classifications
      */
-    private function fingerprint(string $tenantId, CoreContact $person, array $contacts, array $classifications): string
+    private function fingerprint(CoreContact $person, array $contacts, array $classifications, array $relationships, array $owned, array $documents): string
     {
-        $relationships = ContactRelationship::where('tenant_id', $tenantId)
-            ->where('related_contact_id', $person->id)
-            ->orderBy('id')
-            ->get(['id', 'contact_id', 'functional_category_code', 'department_name', 'site_address_id'])
-            ->toArray();
-
         return hash('sha256', json_encode([
             $person->id, $person->display_name, $person->email, $person->mobile, $person->phone,
-            $person->is_duplicate, $person->updated_at?->toIso8601String(),
+            $person->is_duplicate, $person->updated_at?->toIso8601String(), $person->deleted_at?->toIso8601String(),
             array_map(fn (CustomerContact $c) => [
                 $c->id, $c->customer_id, $c->name, $c->email, $c->mobile, $c->phone,
-                $c->contact_category, $c->contact_type, $c->core_contact_uuid, $c->deleted_at?->toIso8601String(),
+                $c->contact_category, $c->contact_type, $c->department_name, $c->core_contact_uuid, $c->deleted_at?->toIso8601String(),
             ], $contacts),
             $relationships,
             $classifications,
+            $owned,
+            $documents,
         ]));
+    }
+
+    /**
+     * I: every company relationship of the person with its current values.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function relationships(string $tenantId, string $personId): array
+    {
+        return ContactRelationship::where('tenant_id', $tenantId)
+            ->where('related_contact_id', $personId)
+            ->where('relationship_type', 'org_person')
+            ->orderBy('id')
+            ->get()
+            ->map(fn (ContactRelationship $r) => [
+                'relationship_id' => $r->id,
+                'organisation_id' => $r->contact_id,
+                'functional_category_code' => $r->functional_category_code,
+                'department_name' => $r->department_name,
+                'site_address_id' => $r->site_address_id,
+                'roles' => ContactRole::where('tenant_id', $tenantId)->where('relationship_id', $r->id)->orderBy('role')->pluck('role')->all(),
+            ])
+            ->all();
+    }
+
+    /**
+     * G: rows the person owns, per table (live rows only).
+     *
+     * @return array<string, int>
+     */
+    private function ownedData(string $personId): array
+    {
+        $counts = [];
+        foreach (self::OWNED_TABLES as $table) {
+            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'contact_id')) {
+                continue;
+            }
+            $query = DB::table($table)->where('contact_id', $personId);
+            if (Schema::hasColumn($table, 'deleted_at')) {
+                $query->whereNull('deleted_at');
+            }
+            $counts[$table] = $query->count();
+        }
+
+        return $counts;
     }
 
     /** @return list<string> classification codes held by the person */
