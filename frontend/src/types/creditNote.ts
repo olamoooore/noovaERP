@@ -6,10 +6,23 @@ export interface CustomerCreditNote {
   credit_note_date: string;
   total_amount: number;
   tax_amount: number;
-  status: 'draft' | 'posted';
+  status: 'draft' | 'posted' | 'voided';
   reason: string;
   notes: string;
   created_at: string;
+  /** #525: what happened to the credit (null for drafts). */
+  outcome?: CreditNoteOutcome | null;
+  /** #525: e-invoice status key (null for drafts). */
+  einvoice_status?: string | null;
+}
+
+export type CreditNoteOutcomeState = 'applied' | 'partially_applied' | 'customer_credit' | 'voided';
+
+export interface CreditNoteOutcome {
+  state: CreditNoteOutcomeState;
+  applied_amount: number;
+  remaining_credit: number;
+  applied_to: { invoice_id: number; invoice_number: string | null } | null;
 }
 
 export interface CreditNoteFilters {
@@ -17,6 +30,8 @@ export interface CreditNoteFilters {
   status?: string;
   customer_id?: number;
   invoice_id?: number;
+  einvoice_status?: string;
+  outcome?: 'applied' | 'customer_credit';
 }
 
 export interface CreateCreditNotePayload {

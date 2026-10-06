@@ -26,6 +26,8 @@ import { useEInvoiceStatusMap } from '../components/useEInvoice';
 import { Pagination } from '@/components/ui/Pagination';
 import { SortableHead } from '@/components/ui/SortableHead';
 import { useSort } from '@/hooks/useSort';
+import { RegisterPaymentDialog } from '@/components/payment/RegisterPaymentDialog';
+import { isInvoicePayable, useCanRegisterPayment } from '@/lib/registerPayment';
 
 /**
  * Customer Invoices Page
@@ -196,6 +198,9 @@ export const CustomerBills: React.FC = () => {
   const canPost = hasPermission('accounting.post')
   // #524: drafting a credit note requires accounting.write (server enforces it since #515).
   const canWriteCreditNotes = hasPermission('accounting.write')
+  // #491: register a payment from the row, in place (existing dialog + POST /payments).
+  const canRegisterPayment = useCanRegisterPayment()
+  const [registerPaymentInvoiceId, setRegisterPaymentInvoiceId] = useState<number | null>(null)
 
 
   // Send invoice mutation
@@ -764,6 +769,21 @@ export const CustomerBills: React.FC = () => {
                           >
                             <Icon icon="solar:eye-bold-duotone" className="h-3.5 w-3.5" />
                           </Button>
+                          {canRegisterPayment && isInvoicePayable(invoice) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 w-7 p-0"
+                              title="Register payment"
+                              aria-label={`Register payment for ${invoice.invoice_number}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setRegisterPaymentInvoiceId(invoice.id);
+                              }}
+                            >
+                              <Icon icon="solar:card-bold-duotone" className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                           {canWriteCreditNotes && ['posted', 'paid', 'partial', 'overdue'].includes(invoice.status) && (
                             <Button
                               size="sm"
@@ -873,6 +893,11 @@ export const CustomerBills: React.FC = () => {
           }}
         />
       )}
+
+      <RegisterPaymentDialog
+        invoiceId={registerPaymentInvoiceId}
+        onOpenChange={(open) => !open && setRegisterPaymentInvoiceId(null)}
+      />
     </div>
   );
 };

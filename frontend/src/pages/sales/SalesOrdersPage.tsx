@@ -13,18 +13,16 @@ import { formatDate, formatCurrency } from '@/lib/utils'
 import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { Pagination } from '@/components/ui/Pagination'
 import { SortableHead } from '@/components/ui/SortableHead'
-import { useSort } from '@/hooks/useSort'
+import type { SortDirection } from '@/hooks/useSort'
 import { fetchBulkStockAvailability } from '@/components/sales/stockAvailability'
 import { StockShortageDialog, type ShortageLine } from '@/components/sales/StockShortageDialog'
+import { useAuthStore } from '@/store/authStore'
+import { SALES_ORDER_STATUSES, SALES_ORDER_STATUS_META, getSalesOrderStatusMeta } from '@/lib/salesOrderStatus'
 
+// #399 (SU1): status labels come from the shared lifecycle mapping.
 const STATUS_FILTERS = [
   { value: 'all', label: 'All Statuses' },
-  { value: 'draft', label: 'Draft' },
-  { value: 'confirmed', label: 'Confirmed' },
-  { value: 'allocated', label: 'Allocated' },
-  { value: 'fulfilled', label: 'Fulfilled' },
-  { value: 'invoiced', label: 'Invoiced' },
-  { value: 'cancelled', label: 'Cancelled' },
+  ...SALES_ORDER_STATUSES.map((status) => ({ value: status, label: SALES_ORDER_STATUS_META[status].label })),
 ]
 
 const CHANNEL_FILTERS = [
@@ -36,6 +34,8 @@ const CHANNEL_FILTERS = [
 
 export function SalesOrdersPage() {
   const navigate = useNavigate()
+  // Issue #374: orders can be created/edited directly (sales.write).
+  const canWrite = useAuthStore((state) => state.hasPermission('sales.write'))
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [page, setPage] = useState(1)
@@ -49,6 +49,19 @@ export function SalesOrdersPage() {
   }, [searchQuery])
   const [statusFilter, setStatusFilter] = useState('all')
   const [channelFilter, setChannelFilter] = useState('all')
+  // Issue #382 (O13): sorting is server-side (allow-listed sort/direction on
+  // GET /sales/orders) so it spans every page, not just the rows on screen.
+  const [sortKey, setSortKey] = useState<string>('created_at')
+  const [sortDir, setSortDir] = useState<SortDirection>('desc')
+  const toggleSort = (key: string) => {
+    if (sortKey === key) {
+      setSortDir((current) => (current === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+    setPage(1)
+  }
   // Issue #687 (UX1): confirm preflights the order's lines and, when short,
   // asks explicitly (deliver partially / backorder / change warehouse)
   // instead of silently creating backorders (#379).
@@ -57,9 +70,9 @@ export function SalesOrdersPage() {
   const confirmIntentRef = useRef<'backorder' | 'partial' | null>(null)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['sales-orders', { page, pageSize, debouncedSearchQuery, statusFilter, channelFilter }],
+    queryKey: ['sales-orders', { page, pageSize, debouncedSearchQuery, statusFilter, channelFilter, sortKey, sortDir }],
     queryFn: async () => {
-      const params: any = { per_page: pageSize, page }
+      const params: any = { per_page: pageSize, page, sort: sortKey, direction: sortDir }
       if (debouncedSearchQuery.trim()) params.search = debouncedSearchQuery.trim()
       if (statusFilter !== 'all') params.status = statusFilter
       if (channelFilter !== 'all') params.channel = channelFilter
@@ -198,20 +211,7 @@ export function SalesOrdersPage() {
   })
 
   const orders = data?.data || []
-  const { sorted: sortedOrders, sortKey, sortDir, toggle: toggleSort } = useSort<any>(orders, 'created_at', 'desc')
   const meta = data?.meta || data
-
-  const getStatusBadge = (status: string) => {
-    const styles: Record<string, string> = {
-      draft: 'bg-gray-100 text-gray-800',
-      confirmed: 'bg-blue-100 text-blue-800',
-      allocated: 'bg-yellow-100 text-yellow-800',
-      fulfilled: 'bg-green-100 text-green-800',
-      invoiced: 'bg-purple-100 text-purple-800',
-      cancelled: 'bg-red-100 text-red-800',
-    }
-    return styles[status] || 'bg-gray-100 text-gray-800'
-  }
 
   return (
     <div className="space-y-6 p-6">
@@ -220,7 +220,13 @@ export function SalesOrdersPage() {
           <h1 className="text-3xl font-bold tracking-tight">Sales Orders</h1>
           <p className="text-muted-foreground">All sales orders across every channel (POS, web, admin).</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
+          {canWrite && (
+            <Button onClick={() => navigate('/sales/orders/create')}>
+              <Icon icon="solar:add-circle-bold-duotone" className="mr-2 h-4 w-4" />
+              New Sales Order
+            </Button>
+          )}
           <input
             type="text"
             placeholder="Search order, customer, contact…"
@@ -278,7 +284,8 @@ export function SalesOrdersPage() {
                     <SortableHead label="Date" sortKey="order_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                     {/* Issue #408: promise date, computed expected date and the late flag. */}
                     <SortableHead label="Commitment" sortKey="commitment_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
-                    <SortableHead label="Expected" sortKey="expected_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    {/* #382: expected date is computed per row, so it cannot be sorted server-side. */}
+                    <TableHead>Expected</TableHead>
                     <SortableHead label="Created Date" sortKey="created_at" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                     <SortableHead label="Total" sortKey="total" activeKey={sortKey} direction={sortDir} onSort={toggleSort} align="right" />
                     <SortableHead label="Status" sortKey="status" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
@@ -286,7 +293,7 @@ export function SalesOrdersPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sortedOrders.map((order: any) => (
+                  {orders.map((order: any) => (
                     <TableRow key={order.id}>
                       <TableCell className="font-medium">
                         <div>{order.sales_order_number}</div>
@@ -354,8 +361,12 @@ export function SalesOrdersPage() {
                       <TableCell>{formatDate(order.created_at || order.order_date)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(order.total || 0)}</TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className={getStatusBadge(order.status)}>
-                          {order.status}
+                        <Badge
+                          variant="secondary"
+                          className={getSalesOrderStatusMeta(order.status).className}
+                          data-testid="sales-order-status-badge"
+                        >
+                          {getSalesOrderStatusMeta(order.status).label}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -367,6 +378,15 @@ export function SalesOrdersPage() {
                           >
                             View
                           </Button>
+                          {order.status === 'draft' && canWrite && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => navigate(`/sales/orders/${order.id}/edit`)}
+                            >
+                              Edit
+                            </Button>
+                          )}
                           {order.status === 'draft' && (
                             <Button
                               variant="ghost"

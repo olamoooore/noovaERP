@@ -9,6 +9,12 @@ import { useEInvoiceActions, useEInvoiceDocument, type EInvoiceDocumentType } fr
 interface EInvoicePanelProps {
   type: EInvoiceDocumentType;
   documentId: number;
+  /**
+   * #520: whether the viewer may run the submission lifecycle actions. The
+   * compliance submit/retry/cancel routes require accounting.post, so a
+   * read-only viewer sees the status without buttons that would only 403.
+   */
+  canManage?: boolean;
 }
 
 /**
@@ -16,7 +22,7 @@ interface EInvoicePanelProps {
  * details and the lifecycle actions (Submit, Retry, Cancel, respond to a
  * buyer rejection request) on the invoice and credit note detail pages.
  */
-export default function EInvoicePanel({ type, documentId }: EInvoicePanelProps) {
+export default function EInvoicePanel({ type, documentId, canManage = true }: EInvoicePanelProps) {
   const [countryCode, setCountryCode] = useState('MY');
   const { document, latestSubmission, status, deadline, isLoading } = useEInvoiceDocument(type, documentId);
   const actions = useEInvoiceActions(type, documentId, document, latestSubmission);
@@ -80,6 +86,7 @@ export default function EInvoicePanel({ type, documentId }: EInvoicePanelProps) 
           </p>
         )}
 
+        {canManage && (
         <div className="flex flex-wrap items-end gap-2">
           <div className="flex flex-col gap-1">
             <label className="text-xs text-muted-foreground" htmlFor={`einvoice-country-${type}-${documentId}`}>
@@ -141,6 +148,7 @@ export default function EInvoicePanel({ type, documentId }: EInvoicePanelProps) 
             </>
           )}
         </div>
+        )}
       </CardContent>
     </Card>
   );

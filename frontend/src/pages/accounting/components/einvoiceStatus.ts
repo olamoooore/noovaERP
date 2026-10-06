@@ -51,6 +51,7 @@ export function deriveEInvoiceStatus(
     case 'cancelled':
       return 'cancelled';
     case 'pending':
+    case 'queued': // #667: auto-submit waiting for (or retrying) its queued job
       return 'queued';
     default:
       return 'not_submitted';

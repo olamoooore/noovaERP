@@ -5,6 +5,7 @@ namespace Modules\AccountingCountry\Malaysia\Services;
 use App\Accounting\Contracts\ProvidesProviderName;
 use App\Accounting\Contracts\SubmissionProviderContract;
 use App\Accounting\Contracts\SupportsSigning;
+use App\Accounting\Services\ProviderRateLimit;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Carbon;
@@ -349,6 +350,7 @@ class MyInvoiceSubmissionProvider implements ProvidesProviderName, SubmissionPro
             ];
 
         } catch (RequestException $e) {
+            $this->recordRateLimit($e);
             $responseData = $this->decodeExceptionResponse($e);
             $error = $this->extractErrorDetails($responseData, $e->getMessage());
 
@@ -882,6 +884,18 @@ class MyInvoiceSubmissionProvider implements ProvidesProviderName, SubmissionPro
             $this->endpoint = $this->testMode
                 ? 'https://preprod-api.myinvois.hasil.gov.my'
                 : 'https://api.myinvois.hasil.gov.my';
+        }
+    }
+
+    /**
+     * #666 AC1: an HTTP 429 means MyInvois is throttling this client — record
+     * it so the status sweep stops calling until Retry-After has passed.
+     */
+    private function recordRateLimit(RequestException $e): void
+    {
+        $response = $e->getResponse();
+        if ($response !== null && $response->getStatusCode() === 429) {
+            ProviderRateLimit::throttle('MY', $response->getHeaderLine('Retry-After') ?: null);
         }
     }
 
@@ -1815,6 +1829,7 @@ class MyInvoiceSubmissionProvider implements ProvidesProviderName, SubmissionPro
 
             return is_array($data) ? $data : null;
         } catch (RequestException $e) {
+            $this->recordRateLimit($e);
             Log::warning('MyInvois document details lookup failed', [
                 'document_uuid' => $documentUuid,
                 'error' => $e->getMessage(),

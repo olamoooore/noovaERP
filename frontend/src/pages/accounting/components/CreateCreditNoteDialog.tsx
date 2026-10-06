@@ -29,6 +29,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { cn, formatCurrency } from '@/lib/utils';
+import { todayDateOnly } from '@/lib/dateOnly'; // #519
 import api from '@/lib/api';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 
@@ -74,7 +75,7 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
   const [formData, setFormData] = useState({
     invoice_id: invoiceId ?? 0,
     customer_id: 0,
-    credit_note_date: new Date().toISOString().split('T')[0],
+    credit_note_date: todayDateOnly(), // #519: local business date, never UTC
     reason: '',
     notes: '',
     lines: [] as any[],

@@ -24,6 +24,10 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Pagination } from '@/components/ui/Pagination'
 import { SortableHead } from '@/components/ui/SortableHead'
 import { useSort } from '@/hooks/useSort'
+import { SalesOrderFilterChip } from '@/components/sales/SalesOrderFilterChip'
+import { useSalesOrderFilterParam } from '@/hooks/useSalesOrderFilterParam'
+import { RegisterPaymentDialog } from '@/components/payment/RegisterPaymentDialog'
+import { isInvoicePayable, useCanRegisterPayment } from '@/lib/registerPayment'
 
 export function InvoicesPage() {
   const { toast } = useToast()
@@ -47,6 +51,8 @@ export function InvoicesPage() {
   const [customEndDate, setCustomEndDate] = useState('')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(20)
+  // #403: the Sales Order page's Invoices smart button links here with ?sales_order_id=<id>.
+  const { salesOrderId: salesOrderFilter, clear: clearSalesOrderFilter } = useSalesOrderFilterParam()
 
   const { data: filterCurrencies } = useQuery({
     queryKey: ['currencies', 'sellable'],
@@ -70,6 +76,7 @@ export function InvoicesPage() {
     if (sortBy === 'currency') params.sort_by = 'currency'
     if (debouncedSearchQuery.trim()) params.search = debouncedSearchQuery.trim()
     if (customerFilter) params.customer_id = customerFilter
+    if (salesOrderFilter) params.sales_order_id = salesOrderFilter
     if (tagFilter) params.tag = tagFilter
     if (dateFilter === 'yearly') {
       params.start_date = `${selectedYear}-01-01`
@@ -86,7 +93,7 @@ export function InvoicesPage() {
   }
 
   const { data: response, isLoading } = useQuery({
-    queryKey: ['invoices', page, perPage, statusFilter, currencyFilter, sortBy, debouncedSearchQuery, customerFilter, tagFilter, dateFilter, selectedYear, selectedMonth, customStartDate, customEndDate],
+    queryKey: ['invoices', page, perPage, statusFilter, currencyFilter, sortBy, debouncedSearchQuery, customerFilter, salesOrderFilter, tagFilter, dateFilter, selectedYear, selectedMonth, customStartDate, customEndDate],
     queryFn: async () => {
       const params = { page, per_page: perPage, ...activeFilterParams() }
       const res = await api.get('/invoices', { params })
@@ -153,6 +160,9 @@ export function InvoicesPage() {
   const { hasPermission } = useAuthStore()
   // Bulk posting is accounting-only (server enforces accounting.post).
   const canPost = hasPermission('accounting.post')
+  // #491: register a payment from the row, in place (existing dialog + POST /payments).
+  const canRegisterPayment = useCanRegisterPayment()
+  const [registerPaymentInvoiceId, setRegisterPaymentInvoiceId] = useState<number | null>(null)
 
   const bulkPostMutation = useMutation({
     mutationFn: async (ids: number[]) => {
@@ -411,6 +421,15 @@ export function InvoicesPage() {
             </div>
           </div>
 
+          {salesOrderFilter && (
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              <SalesOrderFilterChip
+                salesOrderId={salesOrderFilter}
+                onClear={() => { clearSalesOrderFilter(); setPage(1) }}
+              />
+            </div>
+          )}
+
           {isLoading ? (
             <div className="py-12 text-center">
               <div className="mx-auto h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
@@ -532,6 +551,18 @@ export function InvoicesPage() {
                           <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => navigate(`/invoices/${invoice.id}`)} title="View">
                             <Icon icon="solar:eye-bold-duotone" className="h-3.5 w-3.5" />
                           </Button>
+                          {canRegisterPayment && isInvoicePayable(invoice) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 w-7 p-0"
+                              onClick={() => setRegisterPaymentInvoiceId(invoice.id)}
+                              title="Register payment"
+                              aria-label={`Register payment for ${invoice.invoice_number}`}
+                            >
+                              <Icon icon="solar:card-bold-duotone" className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                           {invoice.status === 'draft' && (
                             <>
                               <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => navigate(`/invoices/${invoice.id}/edit`)} title="Edit">
@@ -604,6 +635,10 @@ export function InvoicesPage() {
         }}
       />
 
+      <RegisterPaymentDialog
+        invoiceId={registerPaymentInvoiceId}
+        onOpenChange={(open) => !open && setRegisterPaymentInvoiceId(null)}
+      />
     </div>
   )
 }

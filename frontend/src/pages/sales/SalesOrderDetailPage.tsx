@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { Progress } from '@/components/ui/progress'
 import { ChatterDialog } from '@/components/chatter'
+import { SalesOrderTimeline, type SalesOrderStatusHistoryEntry } from '@/components/sales/SalesOrderTimeline'
 import { AuditTab } from '@/components/audit/AuditTab'
 import { StockMovesTab } from '@/components/inventory/StockMovesTab'
 import { StockCogsBadge } from '@/components/inventory/StockCogsBadge'
@@ -36,6 +37,12 @@ import { SalesOrderLockControl } from '@/components/sales/SalesOrderLockControl'
 import { SaveConflictDialog } from '@/components/sales/SaveConflictDialog'
 import { extractSaveConflict, type ActiveEditor, type SaveConflict } from '@/lib/recordConflict'
 import { useAuthStore } from '@/store/authStore'
+import {
+  SALES_ORDER_DELIVERY_STATUS_META,
+  getSalesOrderDeliveryStatus,
+  getSalesOrderInvoiceStatusMeta,
+  getSalesOrderStatusMeta,
+} from '@/lib/salesOrderStatus'
 
 interface AddressSnapshot {
   address?: string
@@ -90,6 +97,8 @@ interface SalesOrder {
     code?: string
   }
   order_date: string
+  // #401 (SU3): the date the customer needs the goods (Sales Order column).
+  required_date?: string | null
   // Issue #408: promise dates + partial-delivery policy.
   commitment_date?: string | null
   expected_date?: string | null
@@ -108,8 +117,9 @@ interface SalesOrder {
   tax_amount: number
   discount_amount: number
   total: number
+  // #401 (SU3): Sales Orders have no `terms` column, so the page no longer
+  // declares or reads one.
   notes?: string
-  terms?: string
   customer_reference?: string
   internal_reference?: string
   created_at: string
@@ -118,8 +128,18 @@ interface SalesOrder {
   active_lock?: ActiveEditor | null
   lines: SalesOrderLine[]
   quotation?: { id: number; quotation_number: string }
-  invoices?: { id: number; invoice_number: string; status: string }[]
+  // #403 (SU5): total/balance/currency feed the invoice smart-button summary.
+  invoices?: {
+    id: number
+    invoice_number: string
+    status: string
+    total?: number | string | null
+    balance?: number | string | null
+    currency_code?: string | null
+  }[]
   delivery_orders?: { id: number; delivery_order_number: string; status: string }[]
+  // #404 (SU6): eager-loaded by GET /sales/orders/{id} (statusHistory.actor).
+  status_history?: SalesOrderStatusHistoryEntry[]
 }
 
 interface SalesOrderLine {
@@ -155,8 +175,9 @@ type OrderAction = 'confirm' | 'allocate' | 'invoice' | 'reset-to-draft' | null
 
 // #375 (O6): delivery orders are created from orders that are committed but
 // not yet fully delivered. The backend (DeliveryOrderService) accepts
-// confirmed / allocated / fulfilled / invoiced orders; `partially_delivered`
-// is kept because the page's status badge already knows it.
+// confirmed / allocated / fulfilled / invoiced orders. `partially_delivered`
+// is not a backend order status (#399); it is kept here only as a harmless
+// legacy value.
 const DELIVERY_ORDER_STATUSES = ['confirmed', 'allocated', 'partially_delivered', 'fulfilled', 'invoiced']
 
 const pluralize = (count: number, noun: string) => `${count} ${noun}${count === 1 ? '' : 's'}`
@@ -281,6 +302,45 @@ const APPROVAL_STATUS_LABELS: Record<string, string> = {
   rejected: 'Approval rejected',
   expired: 'Approval expired',
   withdrawn: 'Approval withdrawn',
+}
+
+const UNPAID_INVOICE_STATUSES = ['posted', 'sent', 'partial', 'overdue']
+
+/**
+ * #403 (SU5): one summary line per linked-document type ("1 unpaid · 1 draft
+ * · $60.00 due", "1 pending") instead of one chip per document.
+ */
+function summarizeInvoices(invoices: NonNullable<SalesOrder['invoices']>, fallbackCurrency?: string) {
+  const status = (invoice: { status: string }) => String(invoice.status || '').toLowerCase()
+  const live = invoices.filter((invoice) => status(invoice) !== 'cancelled')
+  const unpaid = live.filter(
+    (invoice) => UNPAID_INVOICE_STATUSES.includes(status(invoice)) && (invoice.balance == null || Number(invoice.balance) > 0),
+  )
+  const drafts = live.filter((invoice) => status(invoice) === 'draft')
+  const cancelled = invoices.length - live.length
+  const parts: string[] = []
+  if (unpaid.length > 0) parts.push(`${unpaid.length} unpaid`)
+  if (drafts.length > 0) parts.push(`${drafts.length} draft`)
+  if (cancelled > 0) parts.push(`${cancelled} cancelled`)
+  const currencies = new Set(unpaid.map((invoice) => invoice.currency_code || fallbackCurrency || ''))
+  const due = unpaid.reduce((sum, invoice) => sum + Number(invoice.balance ?? invoice.total ?? 0), 0)
+  // Only total the balance when every unpaid invoice shares one currency.
+  if (unpaid.length > 0 && currencies.size === 1) {
+    const [currency] = [...currencies]
+    parts.push(`${formatCurrency(due, currency || undefined)} due`)
+  }
+  return { live, summary: parts.join(' · ') }
+}
+
+function summarizeDeliveries(deliveries: NonNullable<SalesOrder['delivery_orders']>) {
+  const status = (delivery: { status: string }) => String(delivery.status || '').toLowerCase()
+  const live = deliveries.filter((delivery) => status(delivery) !== 'cancelled')
+  const pending = live.filter((delivery) => status(delivery) !== 'done')
+  const cancelled = deliveries.length - live.length
+  const parts: string[] = []
+  if (pending.length > 0) parts.push(`${pending.length} pending`)
+  if (cancelled > 0) parts.push(`${cancelled} cancelled`)
+  return { live, summary: parts.join(' · ') }
 }
 
 function getInvoiceStatusLabel(invoices: NonNullable<SalesOrder['invoices']>) {
@@ -572,15 +632,15 @@ export function SalesOrderDetailPage() {
     setPromiseOpen(true)
   }
 
-  const getStatusBadge = (status: string) => {    const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
-      draft: { variant: 'secondary', label: 'Draft' },
-      confirmed: { variant: 'default', label: 'Confirmed' },
-      partially_delivered: { variant: 'outline', label: 'Partial' },
-      delivered: { variant: 'default', label: 'Delivered' },
-      cancelled: { variant: 'destructive', label: 'Cancelled' },
-    }
-    const config = variants[status] || { variant: 'secondary', label: status }
-    return <Badge variant={config.variant}>{config.label}</Badge>
+  // #399 (SU1): labels and colours come from the shared lifecycle mapping
+  // (also used by the order list), covering every real backend status.
+  const getStatusBadge = (status: string) => {
+    const meta = getSalesOrderStatusMeta(status)
+    return (
+      <Badge variant="secondary" className={meta.className} data-testid="sales-order-status-badge">
+        {meta.label}
+      </Badge>
+    )
   }
 
   if (isLoading) {
@@ -613,8 +673,15 @@ export function SalesOrderDetailPage() {
 
   const showFulfilmentSmartButtons = !['draft', 'cancelled'].includes(order.status)
   const fullyDelivered = isFullyDelivered(order.lines ?? [])
-  const deliveryOrdersCount = order.delivery_orders?.length ?? 0
-  const linkedInvoices = order.invoices ?? []
+  const deliveryStatusMeta = SALES_ORDER_DELIVERY_STATUS_META[getSalesOrderDeliveryStatus(order.lines ?? [])]
+  const invoiceStatusMeta = getSalesOrderInvoiceStatusMeta(order.invoice_status)
+  // #403 (SU5): cancelled documents are summarised, not counted as live.
+  const deliverySummary = summarizeDeliveries(order.delivery_orders ?? [])
+  const deliveryOrdersCount = deliverySummary.live.length
+  const invoiceSummary = summarizeInvoices(order.invoices ?? [], order.currency_code || undefined)
+  const linkedInvoices = invoiceSummary.live
+  const showDeliveryButton = showFulfilmentSmartButtons || (order.delivery_orders?.length ?? 0) > 0
+  const showInvoiceButton = showFulfilmentSmartButtons || (order.invoices?.length ?? 0) > 0
 
   // #402 (SU4): compact order-info chips. Every value comes from the order
   // payload (snapshots/columns) or the existing credit-preview endpoint.
@@ -627,6 +694,14 @@ export function SalesOrderDetailPage() {
   const exchangeRate = Number(order.exchange_rate)
   const showExchangeRate =
     order.currency_code != null && Number.isFinite(exchangeRate) && exchangeRate > 0 && exchangeRate !== 1
+  // #406 (SU8): amounts are shown in the order's document currency (shared
+  // formatter), with the base-currency equivalent at the snapshot rate when
+  // the two differ — same convention as the invoice page (1 doc = rate base).
+  const docCurrency = order.currency_code || undefined
+  const money = (value: number | string | null | undefined) => formatCurrency(Number(value ?? 0), docCurrency)
+  const baseCurrency = order.base_currency_code || undefined
+  const showBaseEquivalent =
+    Boolean(docCurrency && baseCurrency && docCurrency !== baseCurrency) && Number.isFinite(exchangeRate) && exchangeRate > 0
   const channelLabel = order.channel ? (CHANNEL_LABELS[order.channel] ?? order.channel) : null
   const sourceLabel = order.source_document_type
     ? (SOURCE_DOCUMENT_LABELS[order.source_document_type] ?? order.source_document_type)
@@ -747,6 +822,25 @@ export function SalesOrderDetailPage() {
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           {getStatusBadge(order.status)}
+          {/* #399 (SU1): delivery and invoice progress, separate from the document status. */}
+          {showFulfilmentSmartButtons && (
+            <Badge
+              variant="outline"
+              className={deliveryStatusMeta.className}
+              data-testid="sales-order-delivery-status"
+            >
+              {`Delivery: ${deliveryStatusMeta.label}`}
+            </Badge>
+          )}
+          {showFulfilmentSmartButtons && invoiceStatusMeta && (
+            <Badge
+              variant="outline"
+              className={invoiceStatusMeta.className}
+              data-testid="sales-order-invoice-status"
+            >
+              {`Invoicing: ${invoiceStatusMeta.label}`}
+            </Badge>
+          )}
           {order.is_late && (
             <Badge variant="destructive" className="shrink-0" title="Commitment date has passed and the order is not fully delivered">
               Late
@@ -762,6 +856,17 @@ export function SalesOrderDetailPage() {
               onLock={() => lockMutation.mutate('lock')}
               onUnlock={() => lockMutation.mutate('unlock')}
             />
+          )}
+          {/* Issue #374: a draft order is edited (header + lines) on the
+              shared sales order form; confirmed orders use lock/amend (#407). */}
+          {order.status === 'draft' && canOverwrite && (
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:pen-bold-duotone"
+              onClick={() => navigate(`/sales/orders/${order.id}/edit`)}
+            >
+              Edit
+            </HeaderActionButton>
           )}
           {order.status === 'draft' && (
             <HeaderActionButton
@@ -878,22 +983,31 @@ export function SalesOrderDetailPage() {
 
         <TabsContent value="document" className="space-y-6 mt-6">
       {/* Smart Buttons */}
-      <div className="flex flex-wrap gap-3">
-        {showFulfilmentSmartButtons && (
+      {/* #403 (SU5): one summary button per document type (counts + state), wrapping on small screens. */}
+      <div className="flex flex-wrap gap-3" data-testid="sales-order-smart-buttons">
+        {showDeliveryButton && (
           <button
+            data-testid="smart-button-deliveries"
             onClick={() => navigate(`/delivery-orders?sales_order_id=${order.id}`)}
             title={`${pluralize(deliveryOrdersCount, 'delivery order')} — open the sales order's deliveries`}
             className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
           >
             <Icon icon="solar:delivery-bold-duotone" className="h-5 w-5 text-orange-600" />
             <div className="text-left">
-              <div className="font-bold text-foreground">{fullyDelivered ? 'Delivered' : 'To Deliver'}</div>
-              <div className="text-xs text-muted-foreground">{pluralize(deliveryOrdersCount, 'Delivery Order')}</div>
+              <div className="font-bold text-foreground">
+                {/* Draft/cancelled orders only show the button for existing documents — nothing is "to deliver". */}
+                {!showFulfilmentSmartButtons ? 'Deliveries' : fullyDelivered ? 'Delivered' : 'To Deliver'}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                <span>{pluralize(deliveryOrdersCount, 'Delivery Order')}</span>
+                {deliverySummary.summary && <span data-testid="smart-button-summary"> · {deliverySummary.summary}</span>}
+              </div>
             </div>
           </button>
         )}
-        {showFulfilmentSmartButtons && (
+        {showInvoiceButton && (
           <button
+            data-testid="smart-button-invoices"
             onClick={() => navigate(`/invoices?sales_order_id=${order.id}`)}
             title={`${pluralize(linkedInvoices.length, 'invoice')} — open the sales order's invoices`}
             className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
@@ -901,7 +1015,10 @@ export function SalesOrderDetailPage() {
             <Icon icon="solar:bill-list-bold-duotone" className="h-5 w-5 text-blue-600" />
             <div className="text-left">
               <div className="font-bold text-foreground">{getInvoiceStatusLabel(linkedInvoices)}</div>
-              <div className="text-xs text-muted-foreground">{pluralize(linkedInvoices.length, 'Invoice')}</div>
+              <div className="text-xs text-muted-foreground">
+                <span>{pluralize(linkedInvoices.length, 'Invoice')}</span>
+                {invoiceSummary.summary && <span data-testid="smart-button-summary"> · {invoiceSummary.summary}</span>}
+              </div>
             </div>
           </button>
         )}
@@ -917,32 +1034,6 @@ export function SalesOrderDetailPage() {
             </div>
           </button>
         )}
-        {order.invoices && order.invoices.length > 0 && order.invoices.map((inv) => (
-          <button
-            key={inv.id}
-            onClick={() => navigate(`/invoices/${inv.id}`)}
-            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
-          >
-            <Icon icon="solar:bill-list-bold-duotone" className="h-5 w-5 text-blue-600" />
-            <div className="text-left">
-              <div className="font-bold text-foreground">{inv.invoice_number}</div>
-              <div className="text-xs text-muted-foreground">Invoice</div>
-            </div>
-          </button>
-        ))}
-        {order.delivery_orders && order.delivery_orders.length > 0 && order.delivery_orders.map((d) => (
-          <button
-            key={d.id}
-            onClick={() => navigate(`/delivery-orders/${d.id}`)}
-            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
-          >
-            <Icon icon="solar:package-bold" className="h-5 w-5 text-orange-600" />
-            <div className="text-left">
-              <div className="font-bold text-foreground">{d.delivery_order_number}</div>
-              <div className="text-xs text-muted-foreground">Delivery</div>
-            </div>
-          </button>
-        ))}
       </div>
 
       {/* Order Details */}
@@ -967,6 +1058,11 @@ export function SalesOrderDetailPage() {
               <div className="flex justify-between">
                 <span className="text-sm text-muted-foreground">Order Date:</span>
                 <span className="text-sm">{formatDate(order.order_date)}</span>
+              </div>
+              {/* #401 (SU3): read the real `required_date` column. */}
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">Required Date:</span>
+                <span className="text-sm">{order.required_date ? formatDate(order.required_date) : '-'}</span>
               </div>
               {/* Issue #408: promise date + computed expected date + policy. */}
               <div className="flex justify-between">
@@ -1018,24 +1114,30 @@ export function SalesOrderDetailPage() {
             <div className="space-y-1">
               <div className="flex justify-between">
                 <span className="text-sm text-muted-foreground">Subtotal:</span>
-                <span className="text-sm">{formatCurrency(order.subtotal)}</span>
+                <span className="text-sm">{money(order.subtotal)}</span>
               </div>
               {order.tax_amount > 0 && (
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Tax:</span>
-                  <span className="text-sm">{formatCurrency(order.tax_amount)}</span>
+                  <span className="text-sm">{money(order.tax_amount)}</span>
                 </div>
               )}
               {order.discount_amount > 0 && (
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Discount:</span>
-                  <span className="text-sm">{formatCurrency(order.discount_amount)}</span>
+                  <span className="text-sm">{money(order.discount_amount)}</span>
                 </div>
               )}
               <div className="flex justify-between font-bold pt-1 border-t">
                 <span className="text-sm">Total:</span>
-                <span className="text-sm">{formatCurrency(order.total)}</span>
+                <span className="text-sm">{money(order.total)}</span>
               </div>
+              {showBaseEquivalent && (
+                <div className="flex justify-between text-xs text-muted-foreground" data-testid="sales-order-base-total">
+                  <span>Base equivalent ({baseCurrency}):</span>
+                  <span>{formatCurrency(Number(order.total ?? 0) * exchangeRate, baseCurrency)}</span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -1111,7 +1213,7 @@ export function SalesOrderDetailPage() {
                           <span>{line.description}</span>
                           {isSection && (
                             <span className="whitespace-nowrap tabular-nums">
-                              {formatCurrency(
+                              {money(
                                 getDocumentSectionTotal(order.lines, index, (item) => Number(item.line_total ?? 0)),
                               )}
                             </span>
@@ -1161,10 +1263,10 @@ export function SalesOrderDetailPage() {
                     <TableCell className="text-right">{formatQuantity(line.quantity_invoiced)}</TableCell>
                     <TableCell className="text-right">{formatQuantity(remainingToDeliver(line))}</TableCell>
                     <TableCell className="text-right">{formatQuantity(remainingToInvoice(line))}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(Number(line.discount_amount ?? 0))}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(line.tax_amount)}</TableCell>
-                    <TableCell className="text-right font-medium">{formatCurrency(line.line_total)}</TableCell>
+                    <TableCell className="text-right">{money(line.discount_amount)}</TableCell>
+                    <TableCell className="text-right">{money(line.unit_price)}</TableCell>
+                    <TableCell className="text-right">{money(line.tax_amount)}</TableCell>
+                    <TableCell className="text-right font-medium">{money(line.line_total)}</TableCell>
                   </TableRow>
                 )
               })}
@@ -1173,31 +1275,24 @@ export function SalesOrderDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Notes */}
-      {(order.notes || order.terms) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {order.notes && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Notes</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm whitespace-pre-wrap">{order.notes}</p>
-              </CardContent>
-            </Card>
-          )}
-          {order.terms && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Terms</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm whitespace-pre-wrap">{order.terms}</p>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+      {/* Notes — #401 (SU3): Sales Orders carry no terms field, so the dead
+          Terms card was removed. */}
+      {order.notes && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Notes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm whitespace-pre-wrap">{order.notes}</p>
+          </CardContent>
+        </Card>
       )}
+      {/* #404 (SU6): inline status timeline merged with chatter activity. */}
+      <SalesOrderTimeline
+        subjectType="Modules\\Sales\\Models\\SalesOrder"
+        subjectId={id as string}
+        statusHistory={order.status_history ?? []}
+      />
         </TabsContent>
 
         <TabsContent value="audit" className="mt-6">

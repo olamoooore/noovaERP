@@ -76,6 +76,8 @@ export function MedicalCaseDetailPage() {
   const [lifecycleAction, setLifecycleAction] = useState<'allocate' | 'deliver' | 'invoice' | null>(null)
   const [qtyByItem, setQtyByItem] = useState<Record<number, string>>({})
   const [invoiceId, setInvoiceId] = useState('')
+  // Issue #566 (MC4): each case line maps to a line of the selected invoice.
+  const [invoiceLineByItem, setInvoiceLineByItem] = useState<Record<number, string>>({})
 
   const { data: customerInvoices } = useQuery({
     queryKey: ['case-customer-invoices', medicalCase?.customer_id],
@@ -83,10 +85,25 @@ export function MedicalCaseDetailPage() {
       const res = await api.get('/invoices', {
         params: { customer_id: medicalCase.customer_id, per_page: 50 },
       })
-      return res.data.data || []
+      // Cancelled invoices cannot be linked to a case (#566).
+      return (res.data.data || []).filter((invoice: any) => invoice.status !== 'cancelled')
     },
     enabled: lifecycleAction === 'invoice' && !!medicalCase?.customer_id,
   })
+
+  const { data: selectedInvoice } = useQuery({
+    queryKey: ['case-selected-invoice', invoiceId],
+    queryFn: async () => {
+      const res = await api.get(`/invoices/${invoiceId}`)
+      return res.data
+    },
+    enabled: lifecycleAction === 'invoice' && !!invoiceId,
+  })
+
+  const invoiceLinesForItem = (item: any) =>
+    (selectedInvoice?.lines || []).filter(
+      (line: any) => (line.line_type ?? 'product') === 'product' && Number(line.product_id) === Number(item.product_id),
+    )
 
   const openLifecycleDialog = (action: 'allocate' | 'deliver' | 'invoice') => {
     const items = medicalCase?.items || []
@@ -102,6 +119,11 @@ export function MedicalCaseDetailPage() {
     })
     setQtyByItem(seed)
     setInvoiceId(medicalCase?.invoice_id ? String(medicalCase.invoice_id) : '')
+    const lineSeed: Record<number, string> = {}
+    items.forEach((item: any) => {
+      if (item.invoice_item_id) lineSeed[item.id] = String(item.invoice_item_id)
+    })
+    setInvoiceLineByItem(lineSeed)
     setLifecycleAction(action)
   }
 
@@ -120,7 +142,11 @@ export function MedicalCaseDetailPage() {
       }
       return api.post(`/medical-cases/${id}/invoice`, {
         invoice_id: Number(invoiceId),
-        items: items.map((item: any) => ({ id: item.id, invoiced_qty: Number(qtyByItem[item.id] ?? 0) })),
+        items: items.map((item: any) => ({
+          id: item.id,
+          invoiced_qty: Number(qtyByItem[item.id] ?? 0),
+          invoice_item_id: Number(invoiceLineByItem[item.id]),
+        })),
       })
     },
     onSuccess: () => {
@@ -361,7 +387,7 @@ export function MedicalCaseDetailPage() {
             </DialogTitle>
             <DialogDescription>
               {lifecycleAction === 'invoice'
-                ? 'Select the invoice and confirm the invoiced quantity per item.'
+                ? 'Select the invoice, the matching invoice line and the invoiced quantity per item.'
                 : 'Confirm the quantity per item.'}
             </DialogDescription>
           </DialogHeader>
@@ -373,7 +399,10 @@ export function MedicalCaseDetailPage() {
                 id="case-invoice"
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 value={invoiceId}
-                onChange={(event) => setInvoiceId(event.target.value)}
+                onChange={(event) => {
+                  setInvoiceId(event.target.value)
+                  setInvoiceLineByItem({})
+                }}
               >
                 <option value="">Select an invoice...</option>
                 {(customerInvoices || []).map((invoice: any) => (
@@ -389,6 +418,23 @@ export function MedicalCaseDetailPage() {
             {items.map((item: any) => (
               <div key={item.id} className="flex items-center justify-between gap-4">
                 <span className="text-sm">{item.product?.name || `Item #${item.id}`}</span>
+                {lifecycleAction === 'invoice' && invoiceId && (
+                  <select
+                    aria-label={`Invoice line for ${item.product?.name || `item #${item.id}`}`}
+                    className="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                    value={invoiceLineByItem[item.id] ?? ''}
+                    onChange={(event) =>
+                      setInvoiceLineByItem((previous) => ({ ...previous, [item.id]: event.target.value }))
+                    }
+                  >
+                    <option value="">Select invoice line...</option>
+                    {invoiceLinesForItem(item).map((line: any) => (
+                      <option key={line.id} value={line.id}>
+                        {line.description || line.product?.name || `Line #${line.id}`} — qty {line.quantity}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <Input
                   type="number"
                   min="0"
@@ -411,7 +457,8 @@ export function MedicalCaseDetailPage() {
               onClick={() => lifecycleMutation.mutate()}
               disabled={
                 lifecycleMutation.isPending ||
-                (lifecycleAction === 'invoice' && !invoiceId)
+                (lifecycleAction === 'invoice' &&
+                  (!invoiceId || items.some((item: any) => !invoiceLineByItem[item.id])))
               }
             >
               {lifecycleMutation.isPending ? 'Saving...' : 'Confirm'}

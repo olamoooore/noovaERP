@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -15,92 +16,107 @@ import { BarChart } from '@/components/charts/BarChart';
 import { PieChart } from '@/components/charts/PieChart';
 import reportApi, { formatLocalDate } from '@/lib/reportApi';
 import { mapCategoryRevenueSlices, mapRevenueTrendPoints } from '@/lib/salesDashboardMapping';
+import {
+  MONTH_NAMES,
+  percentChange,
+  resolveSalesDashboardPeriod,
+  type DateRange,
+  type SalesDashboardPeriod,
+} from '@/lib/salesDashboardPeriods';
 import { formatCurrency } from '@/lib/utils';
 import type { SalesDashboardData } from '@/types/reports';
 import { SavedViewWidgets } from './SavedViewWidgets';
+
+// Analytics API returns `total_revenue` per product (see
+// SalesAnalyticsService::getSalesByProduct) — never `total_sales`.
+type ProductPayload = { products?: Array<{ total_revenue?: number; total_quantity?: number }> };
+const sumRevenue = (payload: ProductPayload) =>
+  (payload?.products ?? []).reduce((sum, p) => sum + (Number(p.total_revenue) || 0), 0);
+const sumUnits = (payload: ProductPayload) =>
+  (payload?.products ?? []).reduce((sum, p) => sum + (Number(p.total_quantity) || 0), 0);
+
+const PERIODS: SalesDashboardPeriod[] = ['today', 'week', 'month', 'year', 'custom'];
+const YEARS_OFFERED = 10;
 
 /**
  * Sales Dashboard Page
  * Comprehensive sales analytics and metrics
  */
 export const SalesDashboard: React.FC = () => {
-  const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month' | 'year'>(
-    'month'
-  );
-  
-  // Add month/year selectors
   const now = new Date();
+  const [selectedPeriod, setSelectedPeriod] = useState<SalesDashboardPeriod>('month');
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth()); // 0-11
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+  const [customStart, setCustomStart] = useState(() =>
+    formatLocalDate(new Date(now.getFullYear(), now.getMonth(), 1))
+  );
+  const [customEnd, setCustomEnd] = useState(() => formatLocalDate(now));
 
-  // Calculate date range based on selected period and month/year
-  const getDateFilters = () => {
-    if (selectedPeriod === 'month') {
-      // Use custom month/year selection
-      const startDate = new Date(selectedYear, selectedMonth, 1);
-      const endDate = new Date(selectedYear, selectedMonth + 1, 0);
-      return {
-        start_date: formatLocalDate(startDate),
-        end_date: formatLocalDate(endDate),
-      };
-    }
-    
-    // For other periods, use presets based on current date
-    const datePresets = reportApi.getDateRangePresets();
-    return {
-      today: datePresets.today,
-      week: datePresets.thisWeek,
-      month: datePresets.thisMonth,
-      year: datePresets.thisYear,
-    }[selectedPeriod];
-  };
+  // #358 (S10): one resolved period drives the KPI row AND the charts, with the
+  // comparison range the KPI row is measured against.
+  const resolution = resolveSalesDashboardPeriod(
+    {
+      period: selectedPeriod,
+      month: selectedMonth,
+      year: selectedYear,
+      customStart,
+      customEnd,
+    },
+    now
+  );
+  const resolved = resolution.ok ? resolution.value : null;
+  const currentFilters: DateRange | null = resolved?.current ?? null;
+  const previousFilters: DateRange | null = resolved?.previous ?? null;
 
-  const currentFilters = getDateFilters();
-
-  // Fetch all time period metrics for the summary cards
-  const { data: allMetrics, isLoading: allMetricsLoading, refetch: refetchAllMetrics } = useQuery({
-    queryKey: ['sales-metrics-all'],
+  // KPI row: selected period vs its comparison period.
+  // #351 (S3): tile values come straight from this query, never from a value
+  // cached inside the dashboard query below.
+  const {
+    data: kpis,
+    isLoading: kpisLoading,
+    refetch: refetchKpis,
+  } = useQuery({
+    queryKey: ['sales-kpis', currentFilters, previousFilters],
+    enabled: resolved !== null,
     queryFn: async () => {
-      const now = new Date();
-      const datePresets = reportApi.getDateRangePresets();
-      
-      // Fetch metrics for all time periods
-      const [todayData, weekData, monthData, yearData] = await Promise.all([
-        reportApi.getSalesByProduct(datePresets.today),
-        reportApi.getSalesByProduct(datePresets.thisWeek),
-        reportApi.getSalesByProduct(datePresets.thisMonth),
-        reportApi.getSalesByProduct(datePresets.thisYear),
+      const [currentData, previousData] = await Promise.all([
+        reportApi.getSalesByProduct(currentFilters!),
+        reportApi.getSalesByProduct(previousFilters!),
       ]);
-      
-      // Analytics API returns `total_revenue` per product (see
-      // SalesAnalyticsService::getSalesByProduct) — never `total_sales`.
-      const sumRevenue = (payload: { products?: Array<{ total_revenue?: number }> }) =>
-        (payload?.products ?? []).reduce((sum, p) => sum + (Number(p.total_revenue) || 0), 0);
-
       return {
-        today: sumRevenue(todayData),
-        week: sumRevenue(weekData),
-        month: sumRevenue(monthData),
-        year: sumRevenue(yearData),
+        current: sumRevenue(currentData),
+        previous: sumRevenue(previousData),
+        units: sumUnits(currentData),
       };
     },
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Live pulse: today's sales, deliberately independent of the period filter
+  // and labelled as such.
+  const todayRange = { start_date: formatLocalDate(now), end_date: formatLocalDate(now) };
+  const {
+    data: todaySales,
+    isLoading: todayLoading,
+    refetch: refetchToday,
+  } = useQuery({
+    queryKey: ['sales-kpi-today', todayRange.start_date],
+    queryFn: async () => sumRevenue(await reportApi.getSalesByProduct(todayRange)),
+    staleTime: 5 * 60 * 1000,
   });
 
   // Fetch dashboard data for selected period
-  // #351 (S3): the tile values come straight from the allMetrics query below.
-  // Embedding them in this query's cached result captured allMetrics as
-  // undefined when the two queries ran in parallel, so the tiles were stored
-  // as 0 and never recomputed when allMetrics arrived.
   const { data, isLoading, error, refetch } = useQuery<Omit<SalesDashboardData, 'metrics'>>({
-    queryKey: ['sales-dashboard', selectedPeriod, selectedMonth, selectedYear],
+    queryKey: ['sales-dashboard', currentFilters],
+    enabled: currentFilters !== null,
     queryFn: async () => {
+      const filters = currentFilters!;
       // Aggregate data from multiple endpoints
       const [salesTrends, salesByProduct, salesByCustomer, salesByCategory] = await Promise.all([
-        reportApi.getSalesTrends({ ...currentFilters, interval: 'day' }),
-        reportApi.getSalesByProduct(currentFilters),
-        reportApi.getSalesByCustomer(currentFilters),
-        reportApi.getSalesByCategory(currentFilters),
+        reportApi.getSalesTrends({ ...filters, interval: 'day' }),
+        reportApi.getSalesByProduct(filters),
+        reportApi.getSalesByCustomer(filters),
+        reportApi.getSalesByCategory(filters),
       ]);
 
       return {
@@ -124,15 +140,13 @@ export const SalesDashboard: React.FC = () => {
     },
   });
 
-  // #351 (S3): tiles are loading until BOTH queries have data — otherwise a
-  // not-yet-arrived metrics query would render 0.00.
-  const metricsLoading = isLoading || allMetricsLoading;
-
   const handleRefresh = () => {
-    // Refresh must re-run the metrics query too — it used to refresh only the
-    // dashboard query, leaving stale tiles in place.
-    refetch();
-    refetchAllMetrics();
+    // Refresh must re-run the KPI queries too (#351) — not only the charts.
+    if (resolved) {
+      refetch();
+      refetchKpis();
+    }
+    refetchToday();
   };
 
   if (error) {
@@ -157,24 +171,65 @@ export const SalesDashboard: React.FC = () => {
     );
   }
 
-  const PERIODS = ['today', 'week', 'month', 'year'] as const;
-  const periodSub: Record<string, string> = {
-    today: 'Today',
-    week: 'This week',
-    month: 'Selected month',
-    year: 'This year',
-  };
+  const yearOptions = Array.from({ length: YEARS_OFFERED }, (_, i) => now.getFullYear() - i);
 
-  const MONTHS = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
-  ];
+  const change = kpis ? percentChange(kpis.current, kpis.previous) : null;
+  const delta = kpis ? kpis.current - kpis.previous : 0;
+  const changeText =
+    change === null ? '—' : `${change > 0 ? '+' : ''}${change.toFixed(1)}%`;
+  const changeTone =
+    change === null || change === 0
+      ? 'text-slate-900 dark:text-slate-100'
+      : change > 0
+        ? 'text-emerald-600 dark:text-emerald-400'
+        : 'text-rose-600 dark:text-rose-400';
+  const kpiValue = (value: number | undefined) =>
+    !resolved ? '—' : kpisLoading ? '…' : formatCurrency(value ?? 0);
 
   const KPIS = [
-    { label: "Today's sales", value: allMetrics?.today, icon: 'solar:calendar-bold-duotone', tile: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300', sub: 'Today' },
-    { label: 'This week', value: allMetrics?.week, icon: 'solar:calendar-mark-bold-duotone', tile: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300', sub: 'This week' },
-    { label: 'This month', value: allMetrics?.month, icon: 'solar:chart-2-bold-duotone', tile: 'bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300', sub: 'This month' },
-    { label: 'This year', value: allMetrics?.year, icon: 'solar:graph-up-bold-duotone', tile: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300', sub: 'This year' },
+    {
+      id: 'kpi-selected',
+      label: 'Net revenue',
+      value: kpiValue(kpis?.current),
+      valueClass: 'text-slate-900 dark:text-slate-100',
+      icon: 'solar:chart-2-bold-duotone',
+      tile: 'bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300',
+      sub: resolved
+        ? `${resolved.label}${kpis ? ` · ${kpis.units.toLocaleString()} units sold` : ''}`
+        : 'Select a valid period',
+    },
+    {
+      id: 'kpi-previous',
+      label: 'Previous period',
+      value: kpiValue(kpis?.previous),
+      valueClass: 'text-slate-900 dark:text-slate-100',
+      icon: 'solar:history-bold-duotone',
+      tile: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300',
+      sub: resolved?.previousLabel ?? '—',
+    },
+    {
+      id: 'kpi-change',
+      label: 'Change vs previous',
+      value: !resolved ? '—' : kpisLoading ? '…' : changeText,
+      valueClass: changeTone,
+      icon: 'solar:graph-up-bold-duotone',
+      tile: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300',
+      sub:
+        !resolved || !kpis
+          ? '—'
+          : change === null
+            ? 'No sales in the previous period'
+            : `${delta >= 0 ? '+' : '−'}${formatCurrency(Math.abs(delta))}`,
+    },
+    {
+      id: 'kpi-today',
+      label: "Today's sales",
+      value: todayLoading ? '…' : formatCurrency(todaySales ?? 0),
+      valueClass: 'text-slate-900 dark:text-slate-100',
+      icon: 'solar:calendar-bold-duotone',
+      tile: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300',
+      sub: 'Live — not affected by the period filter',
+    },
   ];
 
   return (
@@ -196,6 +251,7 @@ export const SalesDashboard: React.FC = () => {
                 key={period}
                 type="button"
                 onClick={() => setSelectedPeriod(period)}
+                aria-pressed={selectedPeriod === period}
                 className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize transition ${
                   selectedPeriod === period
                     ? 'bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900'
@@ -208,39 +264,66 @@ export const SalesDashboard: React.FC = () => {
           </div>
 
           {selectedPeriod === 'month' && (
-            <>
-              <Select
-                value={String(selectedMonth)}
-                onValueChange={(v) => setSelectedMonth(parseInt(v, 10))}
-              >
-                <SelectTrigger className="h-9 w-[140px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MONTHS.map((month, index) => (
-                    <SelectItem key={index} value={String(index)}>
-                      {month}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <Select
+              value={String(selectedMonth)}
+              onValueChange={(v) => setSelectedMonth(parseInt(v, 10))}
+            >
+              <SelectTrigger className="h-9 w-[140px]" aria-label="Month">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MONTH_NAMES.map((month, index) => (
+                  <SelectItem key={index} value={String(index)}>
+                    {month}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
 
-              <Select
-                value={String(selectedYear)}
-                onValueChange={(v) => setSelectedYear(parseInt(v, 10))}
-              >
-                <SelectTrigger className="h-9 w-[110px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[now.getFullYear(), now.getFullYear() - 1, now.getFullYear() - 2].map((year) => (
-                    <SelectItem key={year} value={String(year)}>
-                      {year}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </>
+          {(selectedPeriod === 'month' || selectedPeriod === 'year') && (
+            <Select
+              value={String(selectedYear)}
+              onValueChange={(v) => setSelectedYear(parseInt(v, 10))}
+            >
+              <SelectTrigger className="h-9 w-[110px]" aria-label="Year">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {yearOptions.map((year) => (
+                  <SelectItem key={year} value={String(year)}>
+                    {year}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
+          {selectedPeriod === 'custom' && (
+            <div className="flex items-center gap-2">
+              <label htmlFor="sales-dash-from" className="text-xs text-muted-foreground">
+                From
+              </label>
+              <Input
+                id="sales-dash-from"
+                type="date"
+                className="h-9 w-[150px]"
+                value={customStart}
+                max={customEnd || undefined}
+                onChange={(e) => setCustomStart(e.target.value)}
+              />
+              <label htmlFor="sales-dash-to" className="text-xs text-muted-foreground">
+                To
+              </label>
+              <Input
+                id="sales-dash-to"
+                type="date"
+                className="h-9 w-[150px]"
+                value={customEnd}
+                min={customStart || undefined}
+                onChange={(e) => setCustomEnd(e.target.value)}
+              />
+            </div>
           )}
 
           <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isLoading}>
@@ -253,14 +336,24 @@ export const SalesDashboard: React.FC = () => {
         </div>
       </div>
 
+      {!resolution.ok && (
+        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
+          {resolution.error}
+        </p>
+      )}
+
       {/* Issue #603: saved-view widgets pinned from the reports page. The
           section hides itself when the user has no pins (or no reports.view). */}
       <SavedViewWidgets />
 
-      {/* KPI tiles */}
+      {/* KPI tiles — #358: the selected period vs its comparison period */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {KPIS.map((kpi) => (
-          <Card key={kpi.label} className="rounded-xl border-slate-200/80 shadow-sm transition hover:shadow-md">
+          <Card
+            key={kpi.id}
+            data-testid={kpi.id}
+            className="rounded-xl border-slate-200/80 shadow-sm transition hover:shadow-md"
+          >
             <CardContent className="p-5">
               <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${kpi.tile}`}>
                 <Icon icon={kpi.icon} className="h-5 w-5" />
@@ -268,8 +361,10 @@ export const SalesDashboard: React.FC = () => {
               <p className="mt-4 text-[11px] font-medium uppercase tracking-wide text-slate-500">
                 {kpi.label}
               </p>
-              <p className="mt-1 text-[26px] font-semibold leading-tight tracking-tight tabular-nums text-slate-900 dark:text-slate-100">
-                {metricsLoading ? '…' : formatCurrency(kpi.value ?? 0)}
+              <p
+                className={`mt-1 text-[26px] font-semibold leading-tight tracking-tight tabular-nums ${kpi.valueClass}`}
+              >
+                {kpi.value}
               </p>
               <p className="mt-1 text-xs text-slate-500">{kpi.sub}</p>
             </CardContent>

@@ -33,6 +33,8 @@ import { useEInvoiceDocument } from '../components/useEInvoice';
 import { useAuthStore } from '@/store/authStore';
 import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow';
 import { SalesLineColumnVisibility, SalesLineColumnMenu } from '@/components/sales/DeliveryOrderColumnVisibility';
+import { RegisterPaymentDialog } from '@/components/payment/RegisterPaymentDialog';
+import { isInvoicePayable, useCanRegisterPayment } from '@/lib/registerPayment';
 
 const formatSnapshotAddress = (snapshot: string | null | undefined): string => {
   if (!snapshot) return '';
@@ -80,6 +82,9 @@ export const CustomerInvoiceDetail: React.FC = () => {
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [showCreditNoteDialog, setShowCreditNoteDialog] = useState(false);
+  // #491: register a payment in place (existing dialog + POST /payments).
+  const [showRegisterPayment, setShowRegisterPayment] = useState(false);
+  const canRegisterPayment = useCanRegisterPayment();
   const isQuoteMode = location.pathname.startsWith('/sales/quotes');
   const documentLabel = isQuoteMode ? 'Quotation' : 'Invoice';
   const backPath = isQuoteMode ? '/sales/quotes' : '/accounting/customers/bills';
@@ -292,6 +297,15 @@ export const CustomerInvoiceDetail: React.FC = () => {
             >
               Payments ({paymentsCount ?? 0})
             </HeaderActionButton>
+
+            {!isQuoteMode && canRegisterPayment && isInvoicePayable(invoice) && (
+              <HeaderActionButton
+                icon="solar:card-bold-duotone"
+                onClick={() => setShowRegisterPayment(true)}
+              >
+                Register payment
+              </HeaderActionButton>
+            )}
 
             {invoice.status === 'draft' && (
               <>
@@ -762,8 +776,8 @@ export const CustomerInvoiceDetail: React.FC = () => {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>Payment History</span>
-            {(invoice.status === 'posted' || invoice.status === 'sent') && invoice.balance > 0 && (
-              <Button size="sm" onClick={() => navigate(`/accounting/customers/payments?invoice_id=${id}`)}>
+            {!isQuoteMode && canRegisterPayment && isInvoicePayable(invoice) && (
+              <Button size="sm" onClick={() => setShowRegisterPayment(true)}>
                 <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
                 Record Payment
               </Button>
@@ -934,6 +948,11 @@ export const CustomerInvoiceDetail: React.FC = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <RegisterPaymentDialog
+        invoiceId={showRegisterPayment ? invoice.id : null}
+        onOpenChange={setShowRegisterPayment}
+      />
     </div>
   );
 };

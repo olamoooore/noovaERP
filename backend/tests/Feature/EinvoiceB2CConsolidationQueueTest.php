@@ -54,7 +54,9 @@ class EinvoiceB2CConsolidationQueueTest extends TenantTestCase
 
         // Compliance auto-submit runs post-commit; a sync-queue BI job would
         // tear the tenancy context down mid-test (JournalEntryObserver trap).
-        Queue::fake();
+        // #667: the auto-submit itself is a queued job now — let it run as
+        // the (sync) queue would; everything else stays faked.
+        Queue::fake()->except([\App\Jobs\SubmitEInvoiceJob::class]);
         Mail::fake();
 
         // Re-enable the tenant middleware the base case disables: RequirePermission

@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Api;
 use App\Accounting\Services\EInvoiceLifecycleGuard;
 use App\Http\Controllers\Controller;
 use App\Models\CustomerCreditNote;
+use App\Services\CustomerCreditNoteOutcomeService;
 use App\Services\CustomerCreditNoteService;
 use App\Services\CustomerWideSearchService;
 use App\Services\DocumentWideSearchService;
+use App\Support\EInvoiceListStatus;
 use Illuminate\Http\Request;
 
 class CustomerCreditNotesController extends Controller
@@ -15,6 +17,7 @@ class CustomerCreditNotesController extends Controller
     public function __construct(
         private CustomerCreditNoteService $creditNoteService,
         private EInvoiceLifecycleGuard $eInvoiceLifecycle,
+        private CustomerCreditNoteOutcomeService $outcomes,
     ) {}
 
     /**
@@ -48,6 +51,18 @@ class CustomerCreditNotesController extends Controller
             $query->where('credit_note_date', '<=', $request->end_date);
         }
 
+        // #525 (CN-UX4): filter by e-invoice status. Drafts have no e-invoice
+        // lifecycle, so they never match (not even "not submitted").
+        if ($request->filled('einvoice_status')) {
+            EInvoiceListStatus::applyFilter($query, (string) $request->einvoice_status, 'credit_note', 'customer_credit_notes.id');
+            $query->where('status', '!=', 'draft');
+        }
+
+        // #525 (CN-UX4): filter by outcome (applied / customer_credit).
+        if ($request->filled('outcome')) {
+            $this->outcomes->applyFilter($query, (string) $request->outcome);
+        }
+
         // Search — wide: document refs, customer's full surface, line contents
         // and the credited invoice number.
         $search = $request->filled('search') ? trim((string) $request->search) : '';
@@ -57,6 +72,10 @@ class CustomerCreditNotesController extends Controller
         }
 
         $creditNotes = $query->paginate(20);
+
+        // #525 (CN-UX4): applied-to / remaining credit / e-invoice status per
+        // row, computed for the whole page at once.
+        $this->outcomes->annotate($creditNotes->getCollection());
 
         if ($search !== '') {
             app(DocumentWideSearchService::class)->annotate($creditNotes, $search, $this->wideSearchConfig());
@@ -90,17 +109,20 @@ class CustomerCreditNotesController extends Controller
     {
         $creditNote = CustomerCreditNote::findOrFail($creditNote);
 
-        return response()->json(
-            $creditNote->load([
-                'customer',
-                'invoice',
-                'lines.product',
-                'lines.account',
-                'journalEntry.lines.account',
-                'createdBy',
-                'postedBy',
-            ])
-        );
+        $creditNote->load([
+            'customer',
+            'invoice',
+            'lines.product',
+            'lines.account',
+            'journalEntry.lines.account',
+            'createdBy',
+            'postedBy',
+        ]);
+
+        // #525 (CN-UX4): what happened to the credit + e-invoice status.
+        $this->outcomes->annotate([$creditNote]);
+
+        return response()->json($creditNote);
     }
 
     /**
@@ -172,16 +194,36 @@ class CustomerCreditNotesController extends Controller
             ], 403);
         }
 
+        // #518 (CN9): a draft's lines can be corrected (replace-all); the
+        // service recalculates totals through the same line calculation used
+        // at create time. Line rules mirror store().
         $validated = $request->validate([
             'credit_note_date' => 'date',
             'due_date' => 'nullable|date',
             'reason' => 'nullable|string',
             'notes' => 'nullable|string',
+            'lines' => 'sometimes|array|min:1',
+            'lines.*.invoice_line_id' => 'nullable|exists:invoice_lines,id',
+            'lines.*.product_id' => 'nullable|exists:products,id',
+            'lines.*.description' => 'required|string',
+            'lines.*.quantity' => 'required|numeric|min:0.01',
+            'lines.*.unit_price' => 'required|numeric|min:0',
+            'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            'lines.*.tax_inclusive' => 'nullable|boolean',
+            'lines.*.discount_amount' => 'nullable|numeric|min:0',
+            'lines.*.account_id' => 'nullable|exists:chart_of_accounts,id',
         ]);
 
-        $creditNote->update($validated);
+        try {
+            $updated = $this->creditNoteService->updateDraftCreditNote($creditNote, $validated);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'message' => 'Failed to update credit note',
+                'error' => $e->getMessage(),
+            ], 422);
+        }
 
-        return response()->json($creditNote->fresh(['customer', 'invoice', 'lines']));
+        return response()->json($updated);
     }
 
     /**
@@ -279,8 +321,16 @@ class CustomerCreditNotesController extends Controller
      * Void a posted credit note (reverses its GL entry, restores the invoice
      * balance, and unblocks invoice cancel/reset-to-draft — issue #228).
      */
-    public function void($creditNote)
+    public function void(Request $request, $creditNote)
     {
+        // #520: the detail page asks the user why the note is being voided;
+        // the reason is carried onto the ledger reversal and the audit entry.
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:500',
+        ]);
+        $reason = isset($validated['reason']) ? trim((string) $validated['reason']) : null;
+        $reason = $reason === '' ? null : $reason;
+
         $creditNote = CustomerCreditNote::findOrFail($creditNote);
 
         if ($creditNote->status !== 'posted') {
@@ -294,14 +344,14 @@ class CustomerCreditNotesController extends Controller
         }
 
         try {
-            $voided = $this->creditNoteService->voidCreditNote($creditNote);
+            $voided = $this->creditNoteService->voidCreditNote($creditNote, $reason);
 
             $this->writeAuditLog(
                 'customer_credit_note_voided',
                 (int) $voided->id,
                 ['status' => 'posted', 'journal_entry_id' => $creditNote->journal_entry_id],
                 ['status' => $voided->status, 'reversal_journal_entry_id' => $voided->reversal_journal_entry_id],
-                ['credit_note_number' => $voided->credit_note_number, 'invoice_id' => $voided->invoice_id],
+                ['credit_note_number' => $voided->credit_note_number, 'invoice_id' => $voided->invoice_id, 'reason' => $reason],
             );
 
             // Issue #632 (CH4): the void/reversal step must leave a trail in

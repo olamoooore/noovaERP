@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useCustomerCreditNotes, useDeleteCreditNote } from '@/hooks/useCustomerCreditNotes';
 import { EInvoiceStatusChip } from './components/EInvoiceStatusChip';
-import { useEInvoiceStatusMap } from './components/useEInvoice';
+import { CreditNoteOutcomeBadge } from './components/CreditNoteOutcomeBadge';
+import type { EInvoiceStatusKey } from './components/einvoiceStatus';
 import type { CreditNoteFilters } from '@/types/creditNote';
 import CreateCreditNoteDialog from './components/CreateCreditNoteDialog';
 import EditCreditNoteDialog from './components/EditCreditNoteDialog';
@@ -24,6 +25,7 @@ function StatusBadge({ status }: { status: string }) {
   const statusConfig: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
     draft: { variant: 'secondary', label: 'Draft' },
     posted: { variant: 'default', label: 'Posted' },
+    voided: { variant: 'destructive', label: 'Voided' },
     cancelled: { variant: 'destructive', label: 'Cancelled' },
   };
 
@@ -79,8 +81,8 @@ export default function CustomerCreditNotesPage() {
 
   const creditNotes = data?.data || [];
 
-  // #670: one request per page for the e-invoice status of every row.
-  const einvoiceStatusMap = useEInvoiceStatusMap('credit_note', creditNotes.map((creditNote: any) => Number(creditNote.id)));
+  // #525: e-invoice status and outcome (applied to / remaining credit) come
+  // with each row from the list API, computed server-side for the page.
   const { sorted: sortedCreditNotes, sortKey, sortDir, toggle: toggleSort } = useSort<any>(creditNotes, 'credit_note_date', 'desc');
   const pagination = data?.meta || {};
 
@@ -108,7 +110,32 @@ export default function CustomerCreditNotesPage() {
             <option value="">All Status</option>
             <option value="draft">Draft</option>
             <option value="posted">Posted</option>
+            <option value="voided">Voided</option>
+          </select>
+          <select
+            value={filters.outcome || ''}
+            onChange={(e) => handleFilterChange('outcome', e.target.value || undefined)}
+            className="h-8 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+            aria-label="Filter by outcome"
+          >
+            <option value="">All Outcomes</option>
+            <option value="applied">Fully applied</option>
+            <option value="customer_credit">Has remaining credit</option>
+          </select>
+          <select
+            value={filters.einvoice_status || ''}
+            onChange={(e) => handleFilterChange('einvoice_status', e.target.value || undefined)}
+            className="h-8 rounded-full border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+            aria-label="Filter by e-invoice status"
+          >
+            <option value="">All E-Invoice Statuses</option>
+            <option value="not_submitted">Not submitted</option>
+            <option value="queued">Queued</option>
+            <option value="submitted">Submitted</option>
+            <option value="valid">Valid</option>
+            <option value="invalid">Invalid</option>
             <option value="cancelled">Cancelled</option>
+            <option value="buyer_rejection_requested">Buyer rejection requested</option>
           </select>
           <HeaderActionButton icon="solar:add-circle-bold-duotone" onClick={() => setShowCreateDialog(true)}>
             New Credit Note
@@ -159,7 +186,10 @@ export default function CustomerCreditNotesPage() {
                     <SortableHead label="Invoice #" sortKey="invoice_number" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                     <SortableHead label="Date" sortKey="credit_note_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                     <SortableHead label="Amount" sortKey="total_amount" activeKey={sortKey} direction={sortDir} onSort={toggleSort} align="right" />
+                    <TableHead>Applied to</TableHead>
+                    <TableHead className="text-right">Remaining credit</TableHead>
                     <SortableHead label="Status" sortKey="status" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    <TableHead>E-invoice</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -197,11 +227,41 @@ export default function CustomerCreditNotesPage() {
                         {formatCurrency(Number(creditNote.total_amount) || 0, creditNote.currency_code || undefined)}
                       </TableCell>
                       <TableCell>
-                        <StatusBadge status={creditNote.status} />
-                        {einvoiceStatusMap.get(Number(creditNote.id)) && (
-                          <div className="mt-1">
-                            <EInvoiceStatusChip status={einvoiceStatusMap.get(Number(creditNote.id))!.status} />
+                        {creditNote.outcome?.applied_to ? (
+                          <div>
+                            <Link
+                              to={`/accounting/customers/bills/${creditNote.outcome.applied_to.invoice_id}`}
+                              className="text-primary hover:underline"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {creditNote.outcome.applied_to.invoice_number || `Invoice #${creditNote.outcome.applied_to.invoice_id}`}
+                            </Link>
+                            <div className="text-xs text-muted-foreground">
+                              {formatCurrency(Number(creditNote.outcome.applied_amount) || 0, creditNote.currency_code || undefined)}
+                            </div>
                           </div>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {creditNote.outcome && creditNote.outcome.state !== 'voided'
+                          ? formatCurrency(Number(creditNote.outcome.remaining_credit) || 0, creditNote.currency_code || undefined)
+                          : <span className="text-muted-foreground">-</span>}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={creditNote.status} />
+                        {creditNote.outcome && (
+                          <div className="mt-1">
+                            <CreditNoteOutcomeBadge state={creditNote.outcome.state} />
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {creditNote.einvoice_status ? (
+                          <EInvoiceStatusChip status={creditNote.einvoice_status as EInvoiceStatusKey} />
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
                         )}
                       </TableCell>
                       <TableCell className="text-right">

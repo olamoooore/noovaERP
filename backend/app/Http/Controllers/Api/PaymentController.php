@@ -268,7 +268,8 @@ class PaymentController extends Controller
             // operator reviews and posts it from the Payments page — creating
             // it previously posted to the GL immediately, which surprised
             // operators who expected a draft to review first.
-            $payment = $this->invoiceService->recordPayment($invoice, $validated, postImmediately: false);
+            // #492: tag the origin so a hand-typed draft is not shown as an import.
+            $payment = $this->invoiceService->recordPayment($invoice, $validated + ['source' => 'manual'], postImmediately: false);
 
             return response()->json([
                 'message' => 'Draft payment recorded — post it from the Payments page to hit the ledger',

@@ -547,6 +547,12 @@ class InvoiceService
             $invoice->customer->updateOutstanding();
             $invoice->customer->updatePurchaseStats();
 
+            // Issue #667 (EI5): the e-invoice is submitted by a queued job
+            // after commit, but its compliance document is created here, in
+            // the posting transaction, so a posted invoice always shows its
+            // e-invoice status (queued) even if the dispatch never happens.
+            app(\App\Accounting\Services\ComplianceService::class)->queueAutoSubmitDocuments('invoice', $invoice, $tenantId);
+
             DB::commit();
 
             \App\Accounting\Events\InvoicePosted::dispatch($invoice->fresh(), $tenantId);

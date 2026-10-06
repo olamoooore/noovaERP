@@ -263,19 +263,20 @@ class DeliveryOrderService
      */
 
     /**
-     * Resolve the requires_approval flag for a new delivery order: an explicit
-     * caller value always wins, otherwise the tenant's configured default
-     * (sales.delivery_order.default_requires_approval) applies. Server-side
-     * creation paths (quotation→DO, invoice→DO, imports) must honour the
-     * tenant setting exactly like the create form does.
+     * Resolve the requires_approval flag for a new delivery order. The
+     * tenant's configured default (sales.delivery_order.default_requires_approval)
+     * is a policy: when it is on, every delivery order requires approval and a
+     * caller's explicit false is ignored (issue #541, ST4). When it is off, a
+     * caller may still opt a document in. Server-side creation paths
+     * (quotation→DO, invoice→DO, imports) resolve through here too.
      */
     private function resolveRequiresApproval(array $data): bool
     {
-        if (array_key_exists('requires_approval', $data)) {
-            return ! empty($data['requires_approval']);
+        if ((bool) \App\Models\Setting::getValue('sales.delivery_order.default_requires_approval', false)) {
+            return true;
         }
 
-        return (bool) \App\Models\Setting::getValue('sales.delivery_order.default_requires_approval', false);
+        return ! empty($data['requires_approval']);
     }
 
     /**

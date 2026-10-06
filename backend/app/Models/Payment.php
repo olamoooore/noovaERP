@@ -46,6 +46,8 @@ class Payment extends Model
         // Issue #875: Sales documents carry their legal entity + book.
         'legal_entity_id',
         'entity_book_id',
+        // #492: origin of the payment (manual / import); NULL = unknown/legacy.
+        'source',
     ];
 
     protected $casts = [

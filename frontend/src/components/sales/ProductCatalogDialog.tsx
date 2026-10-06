@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useQuery } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Input } from '@/components/ui/input'
 import { Pagination } from '@/components/ui/Pagination'
+import api from '@/lib/api'
 
 export type CatalogProduct = {
   id: number
@@ -31,32 +33,96 @@ const productStatus = (product: CatalogProduct) => {
   return 'active'
 }
 
-export function ProductCatalogDialog({ products = [], onAdd }: {
+type ServerPage = {
+  data: CatalogProduct[]
+  current_page?: number
+  last_page?: number
+  total?: number
+  from?: number | null
+  to?: number | null
+}
+
+/**
+ * Product picker dialog.
+ *
+ * #301: when no `products` array is passed, the catalogue searches the server
+ * itself — one paginated `GET /products` page at a time (debounced search,
+ * category/type/status filters), fetched only while the dialog is open — so a
+ * sales form no longer has to preload 1,000 products on open. Passing
+ * `products` keeps the legacy in-memory mode for callers not yet migrated.
+ */
+export function ProductCatalogDialog({ products: providedProducts, onAdd }: {
   products?: CatalogProduct[]
   onAdd: (items: Array<{ product: CatalogProduct; quantity: number }>) => void
 }) {
+  const serverMode = providedProducts === undefined
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [category, setCategory] = useState('all')
   const [productType, setProductType] = useState('all')
   const [status, setStatus] = useState('all')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
   const [quantities, setQuantities] = useState<Record<number, number>>({})
+  // Picked products keyed by id, so a pick survives paging away from it.
+  const [picked, setPicked] = useState<Record<number, CatalogProduct>>({})
 
-  const categories = useMemo(
-    () => Array.from(new Set(products.map(categoryName))).sort((a, b) => a.localeCompare(b)),
-    [products],
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  const { data: serverCategories = [] } = useQuery<Array<{ id: number; name: string }>>({
+    // Own key: other screens cache /product-categories in different shapes.
+    queryKey: ['product-catalog-categories'],
+    queryFn: async () => {
+      const response = await api.get('/product-categories')
+      return Array.isArray(response.data) ? response.data : (response.data?.data || [])
+    },
+    enabled: serverMode && open,
+    staleTime: 60_000,
+  })
+
+  const { data: serverPage, isFetching: serverLoading } = useQuery<ServerPage>({
+    queryKey: ['product-catalog', debouncedSearch, category, productType, status, page, pageSize],
+    queryFn: async () => {
+      const params: Record<string, string | number | boolean> = { page, per_page: pageSize, sort_by: 'name', sort_dir: 'asc' }
+      if (debouncedSearch) params.search = debouncedSearch
+      if (category !== 'all') params.category_id = category
+      if (productType !== 'all') params.type = productType
+      if (status === 'active') params.is_active = true
+      if (status === 'inactive') params.is_active = false
+      const response = await api.get('/products', { params })
+      const body = response.data ?? {}
+      return Array.isArray(body) ? { data: body } : { ...body, data: body.data || [] }
+    },
+    enabled: serverMode && open,
+    placeholderData: (previous) => previous,
+  })
+
+  const products = useMemo(() => providedProducts ?? [], [providedProducts])
+
+  const categoryOptions = useMemo<Array<{ value: string; label: string }>>(
+    () => serverMode
+      ? serverCategories.map((item) => ({ value: String(item.id), label: item.name }))
+      : Array.from(new Set(products.map(categoryName))).sort((a, b) => a.localeCompare(b)).map((name) => ({ value: name, label: name })),
+    [serverMode, serverCategories, products],
   )
   const productTypes = useMemo(
-    () => Array.from(new Set(products.map((product) => product.type || 'product'))).sort((a, b) => a.localeCompare(b)),
-    [products],
+    () => serverMode
+      ? ['product', 'service']
+      : Array.from(new Set(products.map((product) => product.type || 'product'))).sort((a, b) => a.localeCompare(b)),
+    [serverMode, products],
   )
   const statuses = useMemo(
-    () => Array.from(new Set(products.map(productStatus))).sort((a, b) => a.localeCompare(b)),
-    [products],
+    () => serverMode
+      ? ['active', 'inactive']
+      : Array.from(new Set(products.map(productStatus))).sort((a, b) => a.localeCompare(b)),
+    [serverMode, products],
   )
   const filtered = useMemo(() => {
+    if (serverMode) return serverPage?.data ?? []
     const query = search.trim().toLowerCase()
     return products.filter((product) => {
       const searchable = `${product.name || ''} ${product.sku || ''} ${product.description || ''}`.toLowerCase()
@@ -65,17 +131,24 @@ export function ProductCatalogDialog({ products = [], onAdd }: {
         && (status === 'all' || productStatus(product) === status)
         && (!query || searchable.includes(query))
     })
-  }, [category, productType, products, search, status])
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
-  const paginatedProducts = filtered.slice((page - 1) * pageSize, page * pageSize)
-  const selected = products.filter((product) => (quantities[product.id] || 0) > 0)
+  }, [serverMode, serverPage, category, productType, products, search, status])
+  const matchingCount = serverMode ? (serverPage?.total ?? filtered.length) : filtered.length
+  const pageCount = serverMode
+    ? Math.max(1, serverPage?.last_page ?? 1)
+    : Math.max(1, Math.ceil(filtered.length / pageSize))
+  const paginatedProducts = serverMode ? filtered : filtered.slice((page - 1) * pageSize, page * pageSize)
+  const rangeFrom = serverMode ? (serverPage?.from ?? (filtered.length ? 1 : 0)) : (page - 1) * pageSize + 1
+  const rangeTo = serverMode ? (serverPage?.to ?? filtered.length) : Math.min(page * pageSize, filtered.length)
+  const selected = Object.values(picked).filter((product) => (quantities[product.id] || 0) > 0)
   const selectedUnits = selected.reduce((total, product) => total + quantities[product.id], 0)
 
-  const setQuantity = (productId: number, value: number) => {
-    setQuantities((current) => ({ ...current, [productId]: Math.max(0, value || 0) }))
+  const setQuantity = (product: CatalogProduct, value: number) => {
+    setPicked((current) => ({ ...current, [product.id]: product }))
+    setQuantities((current) => ({ ...current, [product.id]: Math.max(0, value || 0) }))
   }
   const resetAndClose = () => {
     setQuantities({})
+    setPicked({})
     setSearch('')
     setCategory('all')
     setProductType('all')
@@ -104,7 +177,7 @@ export function ProductCatalogDialog({ products = [], onAdd }: {
 
   useEffect(() => {
     setPage(1)
-  }, [search, category, productType, status])
+  }, [search, debouncedSearch, category, productType, status])
 
   const renderProductCard = (product: CatalogProduct) => {
     const quantity = quantities[product.id] || 0
@@ -127,9 +200,9 @@ export function ProductCatalogDialog({ products = [], onAdd }: {
           <div className="flex items-center justify-between gap-3 border-t pt-3">
             <span className="font-semibold">{product.price ?? '—'}</span>
             <div className="flex items-center rounded-md border bg-background">
-              <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setQuantity(product.id, quantity - 1)} disabled={quantity === 0} aria-label={`Remove one ${product.name || 'product'}`}><Icon icon="solar:minus-circle-linear" className="h-4 w-4" /></Button>
-              <Input className="h-8 w-14 border-0 px-1 text-center shadow-none focus-visible:ring-0" type="number" min={0} value={quantity || ''} placeholder="0" onChange={(event) => setQuantity(product.id, Number(event.target.value))} aria-label={`Quantity for ${product.name || 'product'}`} />
-              <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setQuantity(product.id, quantity + 1)} aria-label={`Add one ${product.name || 'product'}`}><Icon icon="solar:add-circle-linear" className="h-4 w-4" /></Button>
+              <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setQuantity(product, quantity - 1)} disabled={quantity === 0} aria-label={`Remove one ${product.name || 'product'}`}><Icon icon="solar:minus-circle-linear" className="h-4 w-4" /></Button>
+              <Input className="h-8 w-14 border-0 px-1 text-center shadow-none focus-visible:ring-0" type="number" min={0} value={quantity || ''} placeholder="0" onChange={(event) => setQuantity(product, Number(event.target.value))} aria-label={`Quantity for ${product.name || 'product'}`} />
+              <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setQuantity(product, quantity + 1)} aria-label={`Add one ${product.name || 'product'}`}><Icon icon="solar:add-circle-linear" className="h-4 w-4" /></Button>
             </div>
           </div>
         </div>
@@ -174,8 +247,8 @@ export function ProductCatalogDialog({ products = [], onAdd }: {
               <div className="mt-5">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Categories</p>
                 <div className="flex gap-2 overflow-x-auto md:flex-col md:overflow-visible">
-                  {['all', ...categories].map((name) => (
-                    <button key={name} type="button" onClick={() => setCategory(name)} className={`whitespace-nowrap rounded-md px-3 py-2 text-left text-sm transition ${category === name ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'}`}>{name === 'all' ? 'All Products' : name}</button>
+                  {[{ value: 'all', label: 'All Products' }, ...categoryOptions].map((option) => (
+                    <button key={option.value} type="button" onClick={() => setCategory(option.value)} className={`whitespace-nowrap rounded-md px-3 py-2 text-left text-sm transition ${category === option.value ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'}`}>{option.label}</button>
                   ))}
                 </div>
               </div>
@@ -183,10 +256,12 @@ export function ProductCatalogDialog({ products = [], onAdd }: {
 
             <main className="min-w-0 flex-1 overflow-y-auto bg-muted/10 p-5">
               <div className="mb-4 flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">{filtered.length} of {products.length} products</p>
+                <p className="text-sm text-muted-foreground">{serverMode ? `${matchingCount} products` : `${filtered.length} of ${products.length} products`}</p>
                 {(search || category !== 'all' || productType !== 'all' || status !== 'all') && <Button type="button" variant="ghost" size="sm" onClick={() => { setSearch(''); setCategory('all'); setProductType('all'); setStatus('all') }}>Clear filters</Button>}
               </div>
-              {filtered.length === 0 ? (
+              {serverMode && serverLoading && !serverPage ? (
+                <div className="flex min-h-80 items-center justify-center text-sm text-muted-foreground">Loading products...</div>
+              ) : filtered.length === 0 ? (
                 <div className="flex min-h-80 flex-col items-center justify-center rounded-lg border border-dashed bg-background text-center">
                   <Icon icon="solar:box-minimalistic-linear" className="mb-3 h-12 w-12 text-muted-foreground/50" />
                   <p className="font-medium">No products found</p><p className="mt-1 text-sm text-muted-foreground">Try another search or category.</p>
@@ -198,9 +273,9 @@ export function ProductCatalogDialog({ products = [], onAdd }: {
                 page={page}
                 totalPages={pageCount}
                 onPageChange={setPage}
-                from={(page - 1) * pageSize + 1}
-                to={Math.min(page * pageSize, filtered.length)}
-                total={filtered.length}
+                from={rangeFrom}
+                to={rangeTo}
+                total={matchingCount}
                 label="products"
                 pageSize={pageSize}
                 onPageSizeChange={(size) => { setPageSize(size); setPage(1) }}

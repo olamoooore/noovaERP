@@ -35,6 +35,7 @@ import {
 import pricingApi from '@/lib/pricingApi'
 import { useAuthStore } from '@/store/authStore';
 import { ContactSearchCombobox } from '@/components/ui/ContactSearchCombobox';
+import { invoiceContactPayload } from './invoiceContactPayload';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 import { CustomerForm } from '@/components/customers/CustomerForm';
 import {
@@ -525,23 +526,18 @@ export const CreateInvoicePage: React.FC = () => {
     enabled: isEditMode,
   });
 
-  // Tenant-level sales settings (only consulted when not editing)
+  // Tenant-level sales document defaults (only consulted when not editing).
+  // Issue #540: read from the defaults endpoint every invoice creator can
+  // reach — GET /settings/sales is OWNER/ADMIN-only, so other roles silently
+  // lost default notes, terms and the approval policy.
   const { data: salesSettings } = useQuery({
-    queryKey: ['sales-settings'],
+    queryKey: ['sales-settings', 'defaults'],
     queryFn: async () => {
-      const res = await api.get('/settings/sales');
+      const res = await api.get('/settings/sales/defaults');
       return res.data?.data ?? null;
     },
     enabled: !isEditMode,
     staleTime: 60_000,
-  });
-
-  const { data: customers } = useQuery<CustomerRecord[]>({
-    queryKey: ['customers-list'],
-    queryFn: async () => {
-      const response = await api.get('/customers?per_page=1000');
-      return response.data.data || response.data || [];
-    },
   });
 
   const { data: selectedCustomerDetail } = useQuery<CustomerRecord>({
@@ -553,16 +549,9 @@ export const CreateInvoicePage: React.FC = () => {
     enabled: Boolean(customerId),
   });
 
-  const selectedCustomer = selectedCustomerDetail
-    ?? customers?.find((customer) => String(customer.id) === String(customerId));
-
-  const { data: products } = useQuery({
-    queryKey: ['products-list'],
-    queryFn: async () => {
-      const response = await api.get('/products?per_page=1000');
-      return response.data.data || response.data || [];
-    },
-  });
+  // #301: the customer picker searches the server; the selected customer comes
+  // from its own detail fetch, so no 1,000-row customer preload is needed.
+  const selectedCustomer = selectedCustomerDetail;
 
   const { data: warehouses = [] } = useQuery({
     queryKey: ['warehouses-list'],
@@ -1057,24 +1046,6 @@ export const CreateInvoicePage: React.FC = () => {
   const updateLine = (index: number, field: keyof InvoiceLine, value: string | number) => {
     const updated = [...lines];
     updated[index] = { ...updated[index], [field]: value };
-
-    if (field === 'product_id' && value && products) {
-      const product = products.find((item: any) => String(item.id) === String(value));
-      if (product) {
-        updated[index].description = product.description || product.short_description || '';
-        updated[index].unit_price = parseFloat(product.price || product.selling_price || '0');
-        updated[index].model_number = product.manufacturer_part_number || '';
-        updated[index].sku = product.sku || '';
-        updated[index].price_mode = 'auto';
-        updated[index].pricing_source = null;
-        // Configured tax follows the product (product tax → linked tax →
-        // tenant default), so a picked product is never silently zero-rated.
-        updated[index].tax_rate = resolveLineTaxRate(product, defaultTaxRate);
-        setLines(updated);
-        void resolvePricingForLines(customerId, updated);
-        return;
-      }
-    }
 
     // A hand-typed price is an override (FR-6.2 manual chip / FR-6.3 floor).
     if (field === 'unit_price') {
@@ -1705,7 +1676,7 @@ export const CreateInvoicePage: React.FC = () => {
       case_number: caseNumber || undefined,
       cases: buildCasesPayload(),
       pr_no: prNo || undefined, contract_no: contractNo || undefined,
-      buyer_contact_id: buyerContactId.includes('-') ? buyerContactId : null,
+      ...invoiceContactPayload('buyer', buyerContactId),
       plant_code: plantCode || undefined, company_code: companyCode || undefined,
       date_of_case: dateOfCase || undefined,
       case_location: caseLocation || undefined,
@@ -1714,20 +1685,13 @@ export const CreateInvoicePage: React.FC = () => {
       delivery_date: deliveryDate || undefined,
       warehouse_id: warehouseId ? Number(warehouseId) : undefined,
       po_number: poNumber || undefined,
-      doctor_contact_id: doctorContactId.includes('-') ? doctorContactId : null,
-      requestor_contact_id: requestorContactId.includes('-') ? requestorContactId : null,
-      // Customer-contact selections populate the document snapshot. The legacy
-      // UUID contact links are retained only when loading an existing invoice.
-      billing_contact_id: billingContactId.includes('-') ? billingContactId : null,
-      shipping_contact_id: shippingContactId.includes('-') ? shippingContactId : null,
-      billing_contact_name: (selectedCustomerDetail?.customer_contacts ?? selectedCustomerDetail?.customerContacts ?? [])
-        .find((contact) => String(contact.id) === billingContactId)?.name || null,
-      shipping_contact_name: (selectedCustomerDetail?.customer_contacts ?? selectedCustomerDetail?.customerContacts ?? [])
-        .find((contact) => String(contact.id) === shippingContactId)?.name || null,
-      doctor_contact_name: (selectedCustomerDetail?.customer_contacts ?? selectedCustomerDetail?.customerContacts ?? [])
-        .find((contact) => String(contact.id) === doctorContactId)?.name || null,
-      requestor_contact_name: (selectedCustomerDetail?.customer_contacts ?? selectedCustomerDetail?.customerContacts ?? [])
-        .find((contact) => String(contact.id) === requestorContactId)?.name || null,
+      // #300: send the picked contact's stable id (customer-contact id or
+      // existing core contact UUID) — never its name, which the server would
+      // resolve by name and could merge or duplicate contacts.
+      ...invoiceContactPayload('doctor', doctorContactId),
+      ...invoiceContactPayload('requestor', requestorContactId),
+      ...invoiceContactPayload('billing', billingContactId),
+      ...invoiceContactPayload('shipping', shippingContactId),
       notes: notes || undefined,
       terms: terms || undefined,
       payment_terms: paymentTerms,
@@ -1736,7 +1700,8 @@ export const CreateInvoicePage: React.FC = () => {
       ...(currencyCode ? { currency_code: currencyCode } : {}),
       // FR-2.3 step 1: explicit list selection wins over applicability.
       ...(priceListId ? { price_list_id: Number(priceListId) } : {}),
-      requires_approval: requiresApproval,
+      // Issue #540: requires_approval is never sent — the server applies the
+      // tenant approval policy on create and keeps it on edit.
       ...(!isEditMode && tags.length ? { tags } : {}),
       ...(customInvoiceNumber && (isQuoteMode || allowCustomNumber) ? { invoice_number: customInvoiceNumber } : {}),
       // Issue #896/#906: echo the loaded version so a concurrent editor's
@@ -3070,7 +3035,7 @@ export const CreateInvoicePage: React.FC = () => {
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2">
-                <ProductCatalogDialog products={products || []} onAdd={addCatalogProducts} />
+                <ProductCatalogDialog onAdd={addCatalogProducts} />
                 <HeaderActionButton type="button" variant="outline" icon="solar:add-circle-bold-duotone" onClick={addLine}>
                   Add Line
                 </HeaderActionButton>

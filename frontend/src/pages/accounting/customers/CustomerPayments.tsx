@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { todayDateOnly } from '@/lib/dateOnly'; // #484
 import DepositAccountSelect from '@/components/payment/DepositAccountSelect';
-import { defaultDepositAccountId, readDepositMemory, rememberDeposit, type DepositAccountOption } from '@/lib/paymentDepositAccount';
+import { rememberDeposit, type DepositAccountOption } from '@/lib/paymentDepositAccount';
 import { buildMethodOptions, type PaymentMethodRow } from '@/lib/paymentMethods'; // #486
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,7 +18,8 @@ import { PrintSendMenu } from '@/components/documents/PrintSendMenu';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { InvoiceSearchCombobox, type InvoiceSearchItem } from '@/components/ui/InvoiceSearchCombobox';
+import { InvoiceSearchCombobox } from '@/components/ui/InvoiceSearchCombobox';
+import { RecordPaymentForm } from '@/components/payment/RegisterPaymentDialog'; // #491
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 import {
   AlertDialog,
@@ -80,6 +80,8 @@ interface Payment {
   matched_addresses?: string[];
   bank_account_id?: number | string | null;
   bank_account?: { id: number; account_name: string; gl_account_code?: string | null } | null;
+  /** #492: origin of the payment; null for legacy rows recorded before tracking. */
+  source?: 'manual' | 'import' | string | null;
 }
 
 interface PaginatedPayments {
@@ -105,12 +107,33 @@ interface PaymentStatusOption {
 }
 
 const PAYMENT_STATUS_OPTIONS: PaymentStatusOption[] = [
-  { value: 'recorded', label: 'Draft (imported, not yet posted)', shortLabel: 'Draft', icon: 'solar:document-bold-duotone', variant: 'secondary' },
+  { value: 'recorded', label: 'Draft (not yet posted)', shortLabel: 'Draft', icon: 'solar:document-bold-duotone', variant: 'secondary' },
   { value: 'applied', label: 'Applied (posted to ledger)', shortLabel: 'Applied', icon: 'solar:check-circle-bold-duotone', variant: 'default' },
   { value: 'unapplied', label: 'Unapplied', shortLabel: 'Unapplied', icon: 'solar:link-broken-bold-duotone', variant: 'outline' },
   { value: 'reversed', label: 'Reversed', shortLabel: 'Reversed', icon: 'solar:undo-left-round-bold', variant: 'destructive' },
   { value: 'refunded', label: 'Refunded', shortLabel: 'Refunded', icon: 'solar:refresh-circle-bold-duotone', variant: 'destructive' },
 ];
+
+// #492: the draft status is shared by hand-typed and imported payments, so the
+// origin is shown as its own badge instead of being baked into the status label.
+const PAYMENT_SOURCE_LABELS: Record<string, string> = {
+  manual: 'Manual',
+  import: 'Imported',
+};
+
+const PaymentSourceBadge: React.FC<{ source?: string | null }> = ({ source }) => {
+  if (!source) return null;
+  const label = PAYMENT_SOURCE_LABELS[source] ?? source;
+  return (
+    <Badge
+      variant="outline"
+      title={`Source: ${label}`}
+      className="whitespace-nowrap px-1.5 py-0 text-[10px] leading-4"
+    >
+      {label}
+    </Badge>
+  );
+};
 
 // Statuses that represent a completed terminal state — no further correction is
 // allowed once a payment reaches one of these. Mirrors the backend guard in
@@ -669,6 +692,11 @@ export const CustomerPayments: React.FC = () => {
                           <TableCell>{formatDate(payment.payment_date)}</TableCell>
                           <TableCell className="w-[1%] whitespace-nowrap">
                             {getStatusBadge(payment.payment_status)}
+                            {payment.source && (
+                              <div className="mt-1">
+                                <PaymentSourceBadge source={payment.source} />
+                              </div>
+                            )}
                             {refundNoteStatusMap.get(Number(payment.id)) && (
                               <div className="mt-1">
                                 <EInvoiceStatusChip status={refundNoteStatusMap.get(Number(payment.id))!.status} />
@@ -1056,6 +1084,7 @@ const ViewPaymentDialog: React.FC<{
               ) : (
                 <Badge variant="secondary">{detail.payment_status}</Badge>
               )}
+              <PaymentSourceBadge source={detail.source} />
             </div>
           </div>
 
@@ -1196,231 +1225,6 @@ const ViewPaymentDialog: React.FC<{
 
 
 // Record Payment Form Component
-const RecordPaymentForm: React.FC<{
-  unpaidInvoices: any[];
-  initialInvoiceId?: string;
-  onSuccess: () => void;
-}> = ({ unpaidInvoices, initialInvoiceId, onSuccess }) => {
-  // Pin the deep-link id on mount: the parent strips ?invoice_id right after
-  // opening the dialog, and reading the live prop made the preselect query
-  // switch keys (and cancel) before its data arrived — leaving Amount blank
-  // on the first open.
-  const [pinnedInvoiceId] = useState(initialInvoiceId ?? '');
-
-  const [formData, setFormData] = useState({
-    customer_id: '',
-    invoice_id: pinnedInvoiceId,
-    amount: '',
-    payment_date: todayDateOnly(), // #484: local business date, never UTC
-    method: 'bank_transfer',
-    reference: '',
-    notes: '',
-    bank_account_id: '',
-  });
-
-  const { user: authUser } = useAuthStore();
-  const { data: depositOptions, isLoading: depositLoading } = useQuery<DepositAccountOption[]>({
-    queryKey: ['bank-accounts'],
-    queryFn: async () => {
-      const response = await api.get('/accounting/bank-accounts');
-      return response.data.data as DepositAccountOption[];
-    },
-  });
-  const { data: methodRows } = useQuery<PaymentMethodRow[]>({
-    queryKey: ['payment-methods'],
-    queryFn: async () => {
-      const response = await api.get('/accounting/payment-methods');
-      return response.data.data as PaymentMethodRow[];
-    },
-  });
-  const methodOptions = buildMethodOptions(methodRows);
-
-  // #485: default the deposit account per method, remembered per user.
-  useEffect(() => {
-    if (formData.bank_account_id || !depositOptions?.length) return;
-    const next = defaultDepositAccountId(
-      formData.method,
-      depositOptions,
-      authUser ? readDepositMemory(authUser.id) : {},
-    );
-    if (next != null) setFormData((prev) => ({ ...prev, bank_account_id: String(next) }));
-  }, [formData.bank_account_id, formData.method, depositOptions, authUser]);
-
-  // When deep-linked from an invoice, fetch that invoice and pre-fill
-  // customer + amount. Works regardless of whether the unpaid-invoices list
-  // has loaded yet.
-  const { data: preselectedInvoice } = useQuery<InvoiceSearchItem>({
-    queryKey: ['invoice-preselect', pinnedInvoiceId],
-    queryFn: async () => {
-      const res = await api.get(`/invoices/${pinnedInvoiceId}`);
-      return res.data;
-    },
-    enabled: !!pinnedInvoiceId,
-  });
-
-  useEffect(() => {
-    if (! pinnedInvoiceId || formData.customer_id) return;
-
-    // Prefer the dedicated fetch; fall back to the page's unpaid-invoice list
-    // (covers the case where the preselect request is still in flight).
-    const source = preselectedInvoice
-      ?? unpaidInvoices.find((invoice) => String(invoice.id) === String(pinnedInvoiceId));
-
-    if (! source) return;
-
-    setFormData((prev) => ({
-      ...prev,
-      invoice_id: String(source.id),
-      customer_id: String(source.customer_id || ''),
-      amount: String(source.balance ?? source.total ?? ''),
-    }));
-  }, [pinnedInvoiceId, preselectedInvoice, unpaidInvoices]);
-
-  const { toast } = useToast();
-
-  const recordPaymentMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const response = await api.post('/payments', data);
-      return response.data;
-    },
-    onSuccess: () => onSuccess(),
-    onError: (error: any) => {
-      toast({
-        variant: 'destructive',
-        title: 'Failed to record payment',
-        description: error.response?.data?.message || 'An error occurred',
-      });
-    },
-  });
-
-  const handleRecordMethodChange = (value: string) => {
-    const next = defaultDepositAccountId(
-      value,
-      depositOptions ?? [],
-      authUser ? readDepositMemory(authUser.id) : {},
-    );
-    setFormData({
-      ...formData,
-      method: value,
-      bank_account_id: next != null ? String(next) : '',
-    });
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (authUser && formData.bank_account_id) {
-      rememberDeposit(authUser.id, formData.method, Number(formData.bank_account_id));
-    }
-    recordPaymentMutation.mutate({
-      ...formData,
-      bank_account_id: formData.bank_account_id ? Number(formData.bank_account_id) : null,
-    });
-  };
-
-  const handleInvoiceChange = (value: string, invoice?: InvoiceSearchItem) => {
-    setFormData({
-      ...formData,
-      invoice_id: value,
-      customer_id: invoice ? String(invoice.customer_id || '') : '',
-      amount: invoice ? String(invoice.balance ?? invoice.total ?? '') : '',
-    });
-  };
-
-  const selectedBalance = formData.invoice_id
-    ? (preselectedInvoice?.id === parseInt(formData.invoice_id)
-        ? preselectedInvoice.balance
-        : unpaidInvoices.find((inv) => inv.id === parseInt(formData.invoice_id))?.balance)
-    : null;
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="invoice_id">Invoice</Label>
-          <InvoiceSearchCombobox
-            value={formData.invoice_id}
-            onValueChange={handleInvoiceChange}
-            placeholder="Search invoice number, customer code, or name..."
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="amount">Amount</Label>
-          <Input
-            id="amount"
-            type="number"
-            step="0.01"
-            value={formData.amount}
-            onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-            required
-          />
-          {selectedBalance != null && (
-            <p className="text-xs text-muted-foreground">
-              Invoice balance: ${selectedBalance}
-            </p>
-          )}
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="payment_date">Payment Date</Label>
-          <Input
-            id="payment_date"
-            type="date"
-            value={formData.payment_date}
-            onChange={(e) => setFormData({ ...formData, payment_date: e.target.value })}
-            required
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="method">Payment Method</Label>
-          <Select value={formData.method} onValueChange={handleRecordMethodChange}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {methodOptions.map((m) => (
-                <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="reference">Reference Number</Label>
-        <Input
-          id="reference"
-          value={formData.reference}
-          onChange={(e) => setFormData({ ...formData, reference: e.target.value })}
-          placeholder="Transaction ID, check number, etc."
-          required={methodOptions.find((o) => o.value === formData.method)?.requiresReference || false}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="notes">Notes (Optional)</Label>
-        <Input
-          id="notes"
-          value={formData.notes}
-          onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-        />
-      </div>
-      <DepositAccountSelect
-        id="deposit_account_id"
-        value={formData.bank_account_id}
-        onChange={(value) => {
-          if (authUser && value) rememberDeposit(authUser.id, formData.method, Number(value));
-          setFormData({ ...formData, bank_account_id: value });
-        }}
-        options={depositOptions}
-        isLoading={depositLoading}
-      />
-
-      <div className="flex justify-end gap-2 pt-4">
-        <Button type="submit" disabled={recordPaymentMutation.isPending}>
-          {recordPaymentMutation.isPending ? 'Recording...' : 'Record Payment'}
-        </Button>
-      </div>
-    </form>
-  );
-};
-
 const EditPaymentForm: React.FC<{
   payment: Payment;
   unpaidInvoices: any[];

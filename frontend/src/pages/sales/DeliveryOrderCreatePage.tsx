@@ -130,16 +130,19 @@ export function DeliveryOrderCreatePage() {
     },
   })
 
-  // Tenant sales settings — drives the requires-approval default.
-  const { data: salesSettings } = useQuery<{ delivery_order?: { default_requires_approval?: boolean } }>({
-    queryKey: ['sales-settings'],
+  // Issue #540: tenant document defaults via the read-only endpoint every
+  // DO creator can reach (GET /settings/sales is OWNER/ADMIN-only). Used for
+  // display only — the server applies the approval policy, so the payload
+  // never carries requires_approval.
+  const { data: salesDefaults } = useQuery<{ delivery_order?: { default_requires_approval?: boolean } }>({
+    queryKey: ['sales-settings', 'defaults'],
     queryFn: async () => {
-      const res = await api.get('/settings/sales')
+      const res = await api.get('/settings/sales/defaults')
       return res.data?.data ?? res.data ?? {}
     },
   })
 
-  const requiresApproval = salesSettings?.delivery_order?.default_requires_approval ?? false
+  const requiresApproval = salesDefaults?.delivery_order?.default_requires_approval ?? false
 
   // Fetch products for standalone mode
   const { data: productsData } = useQuery({
@@ -310,7 +313,6 @@ export function DeliveryOrderCreatePage() {
       payment_terms: paymentTerms || undefined,
       invoice_id: invoiceId ? parseInt(invoiceId) : undefined,
       quotation_id: quotationId ? parseInt(quotationId) : undefined,
-      requires_approval: requiresApproval,
       ...(tags.length ? { tags } : {}),
       lines,
     })
@@ -358,7 +360,6 @@ export function DeliveryOrderCreatePage() {
       payment_terms: paymentTerms || undefined,
       invoice_id: invoiceId ? parseInt(invoiceId) : undefined,
       quotation_id: quotationId ? parseInt(quotationId) : undefined,
-      requires_approval: requiresApproval,
       ...(tags.length ? { tags } : {}),
       lines: validLines.map((l) => ({
         line_type: l.line_type || 'product',

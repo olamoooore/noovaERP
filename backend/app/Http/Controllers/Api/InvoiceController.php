@@ -262,6 +262,21 @@ class InvoiceController extends Controller
             $query->where('customer_id', $request->customer_id);
         }
 
+        // #403: the Sales Order page's Invoices smart button opens the list
+        // filtered by order. Match the invoices the order page counts (linked
+        // through sales_invoice_links) plus any carrying the order directly.
+        if ($request->filled('sales_order_id')) {
+            $salesOrderId = (int) $request->sales_order_id;
+            $query->where(function ($q) use ($salesOrderId) {
+                $q->where('invoices.sales_order_id', $salesOrderId)
+                    ->orWhereIn('invoices.id', function ($links) use ($salesOrderId) {
+                        $links->select('invoice_id')
+                            ->from('sales_invoice_links')
+                            ->where('sales_order_id', $salesOrderId);
+                    });
+            });
+        }
+
         // MRD pricelist-multicurrency FR-8: filter/sort by document currency.
         if ($request->filled('currency_code')) {
             $query->where('currency_code', strtoupper((string) $request->currency_code));
@@ -304,78 +319,15 @@ class InvoiceController extends Controller
     }
 
     /**
-     * #670 (EINV-UX1): translate the UI's e-invoice status keys into the
-     * compliance document / submission statuses and filter the invoice query.
-     *
-     *  - queued  → document pending
-     *  - submitted → document submitted
-     *  - valid → document accepted
-     *  - invalid → document rejected or failed
-     *  - cancelled → document cancelled
-     *  - not_submitted → no compliance document at all
-     *  - buyer_rejection_requested → an open buyer rejection request lives on
-     *    the submission, because the request arrives after acceptance
+     * #670 (EINV-UX1): filter the invoice query by the UI's e-invoice status
+     * keys. The key → compliance status mapping is shared with the credit
+     * note list (#525) in EInvoiceListStatus.
      *
      * @param  \Illuminate\Database\Eloquent\Builder<Invoice>  $query
      */
     private function applyEInvoiceStatusFilter($query, string $statuses): void
     {
-        $wanted = array_values(array_filter(array_map('trim', explode(',', $statuses))));
-
-        if ($wanted === []) {
-            return;
-        }
-
-        $tenantId = tenant()->id;
-
-        $documentsWithStatus = function (array $documentStatuses) use ($tenantId): \Closure {
-            return function ($sub) use ($documentStatuses, $tenantId) {
-                $sub->selectRaw('1')
-                    ->from('acct_compliance_documents as cd')
-                    ->whereColumn('cd.document_id', 'invoices.id')
-                    ->where('cd.document_type', 'invoice')
-                    ->where('cd.tenant_id', $tenantId)
-                    ->whereIn('cd.compliance_status', $documentStatuses);
-            };
-        };
-
-        $anyDocument = function ($sub) use ($tenantId) {
-            $sub->selectRaw('1')
-                ->from('acct_compliance_documents as cd')
-                ->whereColumn('cd.document_id', 'invoices.id')
-                ->where('cd.document_type', 'invoice')
-                ->where('cd.tenant_id', $tenantId);
-        };
-
-        $openBuyerRejection = function ($sub) use ($tenantId) {
-            $sub->selectRaw('1')
-                ->from('acct_compliance_submissions as cs')
-                ->join('acct_compliance_documents as cd2', 'cd2.id', '=', 'cs.document_id')
-                ->whereColumn('cd2.document_id', 'invoices.id')
-                ->where('cd2.document_type', 'invoice')
-                ->where('cd2.tenant_id', $tenantId)
-                ->whereIn('cs.submission_status', ['rejection_requested', 'rejection_declined_pending_expiry']);
-        };
-
-        $query->where(function ($q) use ($wanted, $documentsWithStatus, $anyDocument, $openBuyerRejection) {
-            foreach ($wanted as $status) {
-                match ($status) {
-                    'queued' => $q->orWhereExists($documentsWithStatus(['pending'])),
-                    'submitted' => $q->orWhereExists($documentsWithStatus(['submitted'])),
-                    // Valid means accepted AND not contested by an open buyer
-                    // rejection request — that request has its own status.
-                    'valid' => $q->orWhere(function ($w) use ($documentsWithStatus, $openBuyerRejection) {
-                        $w->whereExists($documentsWithStatus(['accepted']))
-                            ->whereNotExists($openBuyerRejection);
-                    }),
-                    'invalid' => $q->orWhereExists($documentsWithStatus(['rejected', 'failed'])),
-                    'cancelled' => $q->orWhereExists($documentsWithStatus(['cancelled'])),
-                    'not_submitted' => $q->orWhereNotExists($anyDocument),
-                    'buyer_rejection_requested' => $q->orWhereExists($openBuyerRejection),
-                    default => null,
-                };
-            }
-        });
+        \App\Support\EInvoiceListStatus::applyFilter($query, $statuses, 'invoice', 'invoices.id');
     }
 
     /**
@@ -519,6 +471,14 @@ class InvoiceController extends Controller
             'shipping_contact_id' => 'nullable|exists:core_contacts,id',
             'billing_contact_name' => 'nullable|string|max:255',
             'shipping_contact_name' => 'nullable|string|max:255',
+            // #300: the form picks people from the customer's own contact list
+            // (numeric customer_contacts ids); these resolve to that contact's
+            // linked core contact instead of a name lookup.
+            'doctor_customer_contact_id' => 'nullable|integer',
+            'requestor_customer_contact_id' => 'nullable|integer',
+            'buyer_customer_contact_id' => 'nullable|integer',
+            'billing_customer_contact_id' => 'nullable|integer',
+            'shipping_customer_contact_id' => 'nullable|integer',
             'lines' => 'required|array|min:1',
             'lines.*.line_type' => 'nullable|in:product,note,section',
             'lines.*.product_id' => 'nullable|exists:products,id',
@@ -600,14 +560,7 @@ class InvoiceController extends Controller
             ], 422);
         }
 
-        foreach (['doctor', 'requestor', 'billing', 'shipping'] as $contactType) {
-            $nameKey = $contactType.'_contact_name';
-            $idKey = $contactType.'_contact_id';
-            if (! empty($validated[$nameKey])) {
-                $validated[$idKey] = $this->resolveOrCreateContact($validated[$nameKey], 'person', 'invoice_form');
-            }
-            unset($validated[$nameKey]);
-        }
+        $this->applyFormContactSelections($validated, isset($validated['customer_id']) ? (int) $validated['customer_id'] : null);
 
         try {
             $tagNames = $validated['tags'] ?? [];
@@ -1363,6 +1316,14 @@ class InvoiceController extends Controller
             'shipping_contact_id' => 'nullable|exists:core_contacts,id',
             'billing_contact_name' => 'nullable|string|max:255',
             'shipping_contact_name' => 'nullable|string|max:255',
+            // #300: the form picks people from the customer's own contact list
+            // (numeric customer_contacts ids); these resolve to that contact's
+            // linked core contact instead of a name lookup.
+            'doctor_customer_contact_id' => 'nullable|integer',
+            'requestor_customer_contact_id' => 'nullable|integer',
+            'buyer_customer_contact_id' => 'nullable|integer',
+            'billing_customer_contact_id' => 'nullable|integer',
+            'shipping_customer_contact_id' => 'nullable|integer',
             'requires_approval' => 'nullable|boolean',
             'lines' => 'sometimes|array|min:1',
             'lines.*.line_type' => 'nullable|in:product,note,section',
@@ -1404,6 +1365,28 @@ class InvoiceController extends Controller
             'invoice_number.unique' => 'This invoice number is already used by another invoice (including deleted ones). Choose a different number.',
         ]);
 
+        // Issue #541 (ST4): the tenant approval policy is not opt-out per
+        // document. A draft edit may not clear requires_approval while
+        // sales.invoice.default_requires_approval is on, nor while an approval
+        // request is pending. Echoing the unchanged flag stays allowed.
+        if (
+            array_key_exists('requires_approval', $validated)
+            && ! $validated['requires_approval']
+            && $invoice->requires_approval
+        ) {
+            if ($invoice->approval_status === Invoice::APPROVAL_PENDING) {
+                throw ValidationException::withMessages([
+                    'requires_approval' => 'This invoice has a pending approval request; approval cannot be cleared by editing.',
+                ]);
+            }
+
+            if ((bool) \App\Models\Setting::getValue('sales.invoice.default_requires_approval', false)) {
+                throw ValidationException::withMessages([
+                    'requires_approval' => 'Approval is required for every invoice by the sales setting sales.invoice.default_requires_approval and cannot be switched off per document.',
+                ]);
+            }
+        }
+
         // #315: renumbering is a custom-number action too. An unchanged number
         // echoed back by the edit form is not a renumber and stays allowed.
         $requestedNumber = trim((string) ($validated['invoice_number'] ?? ''));
@@ -1417,14 +1400,7 @@ class InvoiceController extends Controller
             ]);
         }
 
-        foreach (['doctor', 'requestor', 'billing', 'shipping'] as $contactType) {
-            $nameKey = $contactType.'_contact_name';
-            $idKey = $contactType.'_contact_id';
-            if (! empty($validated[$nameKey])) {
-                $validated[$idKey] = $this->resolveOrCreateContact($validated[$nameKey], 'person', 'invoice_form');
-            }
-            unset($validated[$nameKey]);
-        }
+        $this->applyFormContactSelections($validated, (int) ($validated['customer_id'] ?? $invoice->customer_id));
 
         // Reject document discount exceeding the line subtotal
         $subtotal = isset($validated['lines'])
@@ -3503,6 +3479,57 @@ class InvoiceController extends Controller
         }
 
         return mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+    }
+
+    /**
+     * #300: resolve the invoice form's contact selections to stable core
+     * contact ids. Precedence per role: a selected customer contact (must
+     * belong to the invoice's customer) → an explicit core contact id → a
+     * bare name (legacy API callers only; the form no longer sends names).
+     * A sent id is never overridden by a name lookup, so two people with the
+     * same name are not merged and no duplicate contact is created.
+     *
+     * @param  array<string, mixed>  $validated
+     */
+    private function applyFormContactSelections(array &$validated, ?int $customerId): void
+    {
+        $customer = null;
+
+        foreach (['doctor', 'requestor', 'buyer', 'billing', 'shipping'] as $contactType) {
+            $nameKey = $contactType.'_contact_name';
+            $idKey = $contactType.'_contact_id';
+            $customerContactKey = $contactType.'_customer_contact_id';
+
+            if (! empty($validated[$customerContactKey])) {
+                $customerContact = $customerId
+                    ? \App\Models\CustomerContact::query()
+                        ->where('customer_id', $customerId)
+                        ->find((int) $validated[$customerContactKey])
+                    : null;
+                if (! $customerContact) {
+                    throw ValidationException::withMessages([
+                        $customerContactKey => 'The selected contact does not belong to this customer.',
+                    ]);
+                }
+
+                $personId = $customerContact->core_contact_uuid
+                    && \Modules\Contact\src\Models\CoreContact::query()->whereKey($customerContact->core_contact_uuid)->exists()
+                    ? $customerContact->core_contact_uuid
+                    : null;
+                if (! $personId) {
+                    // Unlinked legacy customer contact: link it to its canonical
+                    // person once (ADR-003A sync), then reuse that link.
+                    $customer ??= Customer::findOrFail($customerId);
+                    $personId = app(\App\Services\CustomerContactSyncService::class)
+                        ->syncPersonForCustomerContact($customer, $customerContact);
+                }
+                $validated[$idKey] = $personId;
+            } elseif (empty($validated[$idKey]) && ! empty($validated[$nameKey])) {
+                $validated[$idKey] = $this->resolveOrCreateContact($validated[$nameKey], 'person', 'invoice_form');
+            }
+
+            unset($validated[$nameKey], $validated[$customerContactKey]);
+        }
     }
 
     /**

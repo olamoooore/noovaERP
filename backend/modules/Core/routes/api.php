@@ -124,6 +124,11 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         ->middleware(RequirePermission::using('settings.view'));
     Route::put('/settings/document-formats', [CompanySettingsController::class, 'updateDocumentFormats'])
         ->middleware(RequirePermission::using('settings.write'));
+    // Issue #540 (ST3): read-only document defaults for the invoice / DO
+    // create pages. Gated by the roles that create those documents; the full
+    // settings payload above stays OWNER/ADMIN-only.
+    Route::get('/settings/sales/defaults', [CompanySettingsController::class, 'getSalesDocumentDefaults'])
+        ->middleware(RequirePermission::using('sales.view|invoices.write'));
     Route::get('/settings/sales', [CompanySettingsController::class, 'getSalesSettings'])
         ->middleware(RequirePermission::using('settings.view'));
     Route::put('/settings/sales', [CompanySettingsController::class, 'updateSalesSettings'])

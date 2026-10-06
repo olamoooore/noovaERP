@@ -46,6 +46,12 @@ export interface SalesSettings {
     reviewer_user_ids?: number[]
     reviewer_roles?: string[]
     available_reviewers?: Array<{ id: number; name: string; email: string }>
+    // Issue #544: server-reported posting-approval state (never assumed).
+    approval_enforcement?: {
+      mode: 'all_invoices' | 'per_document'
+      policy_enabled: boolean
+      drafts_without_approval: number
+    }
   }
   portal: {
     acceptance_enabled: boolean
@@ -416,6 +422,35 @@ const REVIEWER_DOC_TYPES: Array<{ value: ReviewerDocType; label: string; descrip
   { value: 'delivery_order', label: 'Delivery orders', description: 'Delivery orders that require approval.', icon: 'solar:delivery-bold-duotone' },
 ]
 
+// Issue #544: the badge shows only what the server reports. Posting is
+// blocked per invoice (requires_approval), so "all invoices" is claimed only
+// when the tenant policy is on and no draft has approval switched off.
+function ApprovalEnforcementBadge({ state }: { state?: SalesSettings['invoice']['approval_enforcement'] }) {
+  if (!state) return null
+
+  if (state.mode === 'all_invoices') {
+    return (
+      <Badge variant="outline" className="gap-1 border-green-300 text-green-700 dark:border-green-800 dark:text-green-400">
+        <Icon icon="solar:shield-check-bold-duotone" className="h-3.5 w-3.5" />
+        Enforced for all invoices
+      </Badge>
+    )
+  }
+
+  const count = state.drafts_without_approval
+  const label =
+    count > 0
+      ? `Per document — ${count} ${count === 1 ? 'draft has' : 'drafts have'} approval switched off`
+      : 'Per document — only invoices flagged “requires approval”'
+
+  return (
+    <Badge variant="outline" className="gap-1 border-amber-300 text-amber-700 dark:border-amber-800 dark:text-amber-400">
+      <Icon icon="solar:shield-warning-bold-duotone" className="h-3.5 w-3.5" />
+      {label}
+    </Badge>
+  )
+}
+
 type ApprovalPatch = ReviewerConfig & {
   default_requires_approval?: boolean
   approval_expiry_days?: number
@@ -572,12 +607,9 @@ export function ApprovalSettings() {
 
         <SettingsRow
           title="Block posting without approval"
-          description="When enabled, unapproved invoices cannot be posted to the general ledger."
+          description="Invoices that require approval cannot be posted to the general ledger until approved. Reflects the saved policy and current drafts."
         >
-          <Badge variant="outline" className="gap-1 border-green-300 text-green-700 dark:border-green-800 dark:text-green-400">
-            <Icon icon="solar:shield-check-bold-duotone" className="h-3.5 w-3.5" />
-            Enforced
-          </Badge>
+          <ApprovalEnforcementBadge state={data.invoice.approval_enforcement} />
         </SettingsRow>
 
         <SettingsRow
