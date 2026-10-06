@@ -67,6 +67,13 @@ Schedule::command('compliance:sync-einvoice-status')
     ->withoutOverlapping()
     ->runInBackground();
 
+// #667 EI5: daily digest to finance of posted invoices whose e-invoice is not
+// yet Valid (queued, failed, rejected, awaiting validation).
+Schedule::command('compliance:send-einvoice-digest')
+    ->dailyAt('07:30')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Issue #151 - Recurring/subscription sales order generation.
 Schedule::command('sales:generate-recurring-orders')
     ->dailyAt('04:30')

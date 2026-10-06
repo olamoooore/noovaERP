@@ -65,7 +65,9 @@ class PaymentRefundComplianceAutoSubmitTest extends TenantTestCase
         // runs the queue synchronously, and that job calls tenancy()->end(),
         // which unbinds the tenant mid-test and forces a reconnect (losing
         // the uncommitted fixture transaction) on the next HTTP request.
-        \Illuminate\Support\Facades\Queue::fake();
+        // #667: the auto-submit itself is a queued job now — let it run as
+        // the (sync) queue would; everything else stays faked.
+        \Illuminate\Support\Facades\Queue::fake()->except([\App\Jobs\SubmitEInvoiceJob::class]);
 
         // Re-enable the tenant middleware the base test case disables: the
         // compliance listener resolves the tenant from tenancy, so this suite

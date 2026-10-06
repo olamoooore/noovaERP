@@ -768,10 +768,12 @@ class ComplianceService
     private function resolveInvoiceForSubmission(ComplianceSubmission $submission): ?Invoice
     {
         $document = $submission->document;
-        if (! $document) {
-            return null;
-        }
 
+        return $document ? $this->resolveInvoiceForDocument($document) : null;
+    }
+
+    private function resolveInvoiceForDocument(ComplianceDocument $document): ?Invoice
+    {
         return match ($document->document_type) {
             'invoice' => Invoice::find($document->document_id),
             'credit_note' => CustomerCreditNote::find($document->document_id)?->invoice,
@@ -809,6 +811,227 @@ class ComplianceService
         }
 
         return User::whereIn('email', $emails)->get();
+    }
+
+    /**
+     * #667 (EI5): the countries a posted document is auto-submitted to — the
+     * tenant's enabled configurations with settings.auto_submit on, limited
+     * to the tenant's own country (no cross-country submission).
+     *
+     * @return array<int, string>
+     */
+    public function autoSubmitCountryCodes(?string $tenantId = null): array
+    {
+        $tenantId ??= $this->currentTenantId();
+        if ($tenantId === null) {
+            return [];
+        }
+
+        $tenant = tenancy()->tenant ?? (function_exists('tenant') ? tenant() : null);
+        $tenantCountry = strtoupper((string) ($tenant?->tenant_country_code ?? ''));
+
+        return CountryConfiguration::where('tenant_id', $tenantId)
+            ->where('is_enabled', true)
+            ->get()
+            ->filter(fn (CountryConfiguration $config) => ($config->settings['auto_submit'] ?? false)
+                && ($tenantCountry === '' || $tenantCountry === strtoupper((string) $config->country_code)))
+            ->map(fn (CountryConfiguration $config) => strtoupper((string) $config->country_code))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * #667 (EI5): record a posted document as `queued` for auto-submission.
+     * Idempotent — the posting transaction and the post-commit listener may
+     * both call it; an existing document is never downgraded.
+     */
+    public function queueForAutoSubmit(
+        string $documentType,
+        Invoice|CustomerCreditNote|Payment $source,
+        string $countryCode,
+        ?string $tenantId = null,
+    ): ComplianceDocument {
+        $attributes = match ($documentType) {
+            'credit_note' => [
+                'document_number' => $source->credit_note_number,
+                'issued_date' => $source->credit_note_date,
+                'total_amount' => $source->total_amount,
+                'currency_code' => $source->currency_code ?? 'MYR',
+            ],
+            'refund_note' => [
+                'document_number' => $source->payment_number,
+                'issued_date' => $source->payment_date,
+                'total_amount' => abs((float) $source->amount),
+                'currency_code' => $source->invoice?->currency_code ?? 'MYR',
+            ],
+            default => [
+                'document_number' => $source->invoice_number,
+                'issued_date' => $source->invoice_date ?? $source->issued_date,
+                'total_amount' => $source->total ?? $source->total_amount,
+                'currency_code' => $source->currency_code ?: $source->base_currency_code ?: \App\Services\DocumentCurrencyResolver::resolve(),
+            ],
+        };
+
+        return ComplianceDocument::firstOrCreate(
+            [
+                'tenant_id' => $tenantId ?? $this->currentTenantId(),
+                'country_code' => strtoupper($countryCode),
+                'document_type' => $documentType,
+                'document_id' => $source->id,
+            ],
+            array_merge($attributes, [
+                'compliance_status' => 'queued',
+                'created_by' => \Auth::id(),
+            ])
+        );
+    }
+
+    /**
+     * #667 (EI5): queue the document for every auto-submit country. Called
+     * inside the posting transaction so a posted document always has its
+     * compliance record. The posting path passes its tenant id explicitly:
+     * the Tenancy singleton is not guaranteed to be populated there.
+     *
+     * @return array<int, string> the country codes queued
+     */
+    public function queueAutoSubmitDocuments(
+        string $documentType,
+        Invoice|CustomerCreditNote|Payment $source,
+        ?string $tenantId = null,
+    ): array {
+        $countries = $this->autoSubmitCountryCodes($tenantId);
+
+        foreach ($countries as $countryCode) {
+            $this->queueForAutoSubmit($documentType, $source, $countryCode, $tenantId);
+        }
+
+        return $countries;
+    }
+
+    /**
+     * #667 (EI5): a queued auto-submission failed for good — tell the
+     * invoice owner and finance, linking the invoice whose e-invoice panel
+     * shows the failed status and reason.
+     *
+     * The document is already marked failed and the platform exception is
+     * raised by the caller, so a notification problem is logged rather than
+     * failing that work (same policy as the status-change notifications).
+     */
+    public function notifySubmissionFailed(ComplianceDocument $document, string $reason): void
+    {
+        try {
+            $invoice = $this->resolveInvoiceForDocument($document);
+
+            $recipients = $this->financeRecipients();
+            if ($invoice?->created_by) {
+                $owner = User::find($invoice->created_by);
+                if ($owner) {
+                    $recipients->push($owner);
+                }
+            }
+
+            $recipients = $recipients->filter()->unique('id')->values();
+            if ($recipients->isEmpty()) {
+                return;
+            }
+
+            $number = $document->document_number ?: ($invoice?->invoice_number ?? (string) $document->document_id);
+
+            $data = array_merge([
+                'subject' => "E-invoice submission failed for {$number}",
+                'body' => "The e-invoice for {$number} could not be submitted after all retries: {$reason}. Correct the issue and resubmit from the document.",
+                'type' => 'einvoice_submission_failed',
+                'status' => 'failed',
+                'reason' => $reason,
+                'document_type' => $document->document_type,
+                'compliance_document_id' => $document->id,
+                'invoice_id' => $invoice?->id,
+                'invoice_number' => $invoice?->invoice_number,
+            ], $invoice ? NotificationReferences::forInvoice($invoice) : []);
+
+            $notificationService = app(NotificationService::class);
+            foreach ($recipients as $recipient) {
+                $notificationService->dispatch('einvoice.submission_failed', $recipient, $data);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('E-invoice submission failure notification failed', [
+                'compliance_document_id' => $document->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * #667 (EI5) AC2: daily digest to finance of posted invoices whose
+     * e-invoice is not yet Valid. B2C receipts held for the monthly
+     * consolidated e-invoice (#815) are waiting by design and not listed.
+     *
+     * @return int number of invoices listed
+     */
+    public function sendUnvalidatedInvoiceDigest(): int
+    {
+        $documents = ComplianceDocument::query()
+            ->where('tenant_id', $this->currentTenantId())
+            ->where('document_type', 'invoice')
+            ->whereNotIn('compliance_status', ['accepted', 'valid', 'cancelled', 'queued_for_consolidation'])
+            ->orderBy('id')
+            ->get();
+
+        if ($documents->isEmpty()) {
+            return 0;
+        }
+
+        $invoices = Invoice::posted()
+            ->whereIn('id', $documents->pluck('document_id')->filter()->unique())
+            ->get()
+            ->keyBy('id');
+
+        $rows = $documents
+            ->filter(fn (ComplianceDocument $document) => $invoices->has($document->document_id))
+            ->map(fn (ComplianceDocument $document) => [
+                'invoice_id' => (int) $document->document_id,
+                'invoice_number' => $invoices[$document->document_id]->invoice_number,
+                'country_code' => $document->country_code,
+                'compliance_status' => $document->compliance_status,
+                'reason' => $document->compliance_notes,
+            ])
+            ->values();
+
+        if ($rows->isEmpty()) {
+            return 0;
+        }
+
+        $recipients = $this->financeRecipients();
+        if ($recipients->isEmpty()) {
+            Log::warning('E-invoice daily digest has no finance recipients', [
+                'tenant_id' => $this->currentTenantId(),
+                'invoices' => $rows->count(),
+            ]);
+
+            return $rows->count();
+        }
+
+        $lines = $rows->take(50)
+            ->map(fn (array $row) => "{$row['invoice_number']} ({$row['country_code']}): {$row['compliance_status']}"
+                .($row['reason'] ? " — {$row['reason']}" : ''))
+            ->implode("\n");
+        $more = $rows->count() > 50 ? "\n…and ".($rows->count() - 50).' more.' : '';
+
+        $data = [
+            'subject' => "{$rows->count()} posted invoice(s) without a Valid e-invoice",
+            'body' => "These posted invoices do not have a Valid e-invoice yet:\n{$lines}{$more}",
+            'type' => 'einvoice_daily_digest',
+            'total' => $rows->count(),
+            'invoices' => $rows->take(200)->all(),
+        ];
+
+        $notificationService = app(NotificationService::class);
+        foreach ($recipients as $recipient) {
+            $notificationService->dispatch('einvoice.daily_digest', $recipient, $data);
+        }
+
+        return $rows->count();
     }
 
     /**

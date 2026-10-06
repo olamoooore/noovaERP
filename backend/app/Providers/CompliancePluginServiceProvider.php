@@ -7,7 +7,7 @@ use App\Accounting\Events\InvoicePosted;
 use App\Accounting\Events\RefundPosted;
 use App\Accounting\Plugin\CountryPluginRegistry;
 use App\Accounting\Services\ComplianceService;
-use App\Models\Accounting\CountryConfiguration;
+use App\Jobs\SubmitEInvoiceJob;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 // Singapore plugins
@@ -155,67 +155,57 @@ class CompliancePluginServiceProvider extends ServiceProvider
     /**
      * Register event listeners for compliance workflow.
      *
-     * InvoicePosted, CreditNotePosted → auto-submit to each country plugin
-     *   where CountryConfiguration.is_enabled = true AND
-     *   settings.auto_submit = true
+     * InvoicePosted, CreditNotePosted, RefundPosted → auto-submit to each
+     *   country plugin where CountryConfiguration.is_enabled = true AND
+     *   settings.auto_submit = true.
+     *
+     * #667 (EI5): the submission is never run inline in the posting request.
+     * The listener records the compliance document as `queued` and dispatches
+     * SubmitEInvoiceJob, which retries with backoff and marks the document
+     * `failed` (with notification and platform exception) on terminal failure.
      */
     private function registerEventListeners(): void
     {
         Event::listen(InvoicePosted::class, function (InvoicePosted $event) {
-            $this->autoSubmit(
-                fn (ComplianceService $service, string $countryCode) => $service->submitInvoice($event->invoice, $countryCode),
-                'invoice',
-                (int) $event->invoice->id,
-                $event->tenantId,
-            );
+            $this->autoSubmit($event->invoice, 'invoice', $event->tenantId);
         });
 
         // #516 (CN7): a posted credit note is a statutory document of its own
         // (MyInvois type 02) and must reference the original invoice's UUID, so
         // it follows the same auto_submit rules as an invoice.
         Event::listen(CreditNotePosted::class, function (CreditNotePosted $event) {
-            $this->autoSubmit(
-                fn (ComplianceService $service, string $countryCode) => $service->submitCreditNote($event->creditNote, $countryCode),
-                'credit_note',
-                (int) $event->creditNote->id,
-                $event->tenantId,
-            );
+            $this->autoSubmit($event->creditNote, 'credit_note', $event->tenantId);
         });
 
         // #816 (EP5): money returned to the buyer is a refund note (MyInvois
         // type 04), so a posted customer refund follows the same auto_submit
         // rules as an invoice or a credit note.
         Event::listen(RefundPosted::class, function (RefundPosted $event) {
-            $this->autoSubmit(
-                fn (ComplianceService $service, string $countryCode) => $service->submitRefundNote($event->refundPayment, $countryCode),
-                'refund_note',
-                (int) $event->refundPayment->id,
-                $event->tenantId,
-            );
+            $this->autoSubmit($event->refundPayment, 'refund_note', $event->tenantId);
         });
     }
 
     /**
-     * Submit a posted document to every country plugin the tenant has enabled
-     * with auto_submit on. Shared by the invoice and credit note listeners so
-     * the country rules cannot drift apart.
-     *
-     * @param  callable(ComplianceService, string): mixed  $submit
+     * Queue a posted document for every country plugin the tenant has enabled
+     * with auto_submit on. Shared by the invoice, credit note and refund
+     * listeners so the country rules cannot drift apart.
      */
-    private function autoSubmit(callable $submit, string $documentType, int $documentId, ?string $eventTenantId = null): void
-    {
+    private function autoSubmit(
+        \App\Models\Invoice|\App\Models\CustomerCreditNote|\App\Models\Payment $source,
+        string $documentType,
+        ?string $eventTenantId = null,
+    ): void {
         $tenantId = $eventTenantId ?? tenancy()->tenant?->id;
         if (! $tenantId) {
             return;
         }
 
         // #516 (CN7): the posting path tears the tenancy context down before
-        // the post-commit dispatch, so restore it for the duration of the
-        // submission — every compliance write (documents, submissions, the
-        // event trail) is tenant-scoped and would otherwise be written with no
-        // tenant at all. Released again when the submission is done.
-        // Only the context object is set — stancl's initialize()/end() would
-        // reset the schema and connection for the request still in flight.
+        // the post-commit dispatch, so restore it while queueing — every
+        // compliance write is tenant-scoped, and the queued job carries the
+        // tenant it was dispatched under. Only the context object is set —
+        // stancl's initialize()/end() would reset the schema and connection
+        // for the request still in flight.
         $tenancy = app(\Stancl\Tenancy\Tenancy::class);
         $previousTenant = $tenancy->tenant;
         $previousInitialized = $tenancy->initialized;
@@ -234,7 +224,7 @@ class CompliancePluginServiceProvider extends ServiceProvider
             } catch (\Throwable $e) {
                 \Log::error('Compliance auto-submit could not restore the tenant context', [
                     'document_type' => $documentType,
-                    'document_id' => $documentId,
+                    'document_id' => $source->id,
                     'tenant_id' => $eventTenantId,
                     'error' => $e->getMessage(),
                 ]);
@@ -242,7 +232,7 @@ class CompliancePluginServiceProvider extends ServiceProvider
         }
 
         try {
-            $this->submitToEnabledCountries($submit, $documentType, $documentId, $tenantId);
+            $this->queueForEnabledCountries($source, $documentType, (string) $tenantId);
         } finally {
             if ($restoredTenant) {
                 $tenancy->tenant = $previousTenant;
@@ -251,110 +241,34 @@ class CompliancePluginServiceProvider extends ServiceProvider
         }
     }
 
-    /**
-     * @param  callable(ComplianceService, string): mixed  $submit
-     */
-    private function submitToEnabledCountries(callable $submit, string $documentType, int $documentId, string $tenantId): void
-    {
-        $enabledConfigs = CountryConfiguration::where('tenant_id', $tenantId)
-            ->where('is_enabled', true)
-            ->get();
+    private function queueForEnabledCountries(
+        \App\Models\Invoice|\App\Models\CustomerCreditNote|\App\Models\Payment $source,
+        string $documentType,
+        string $tenantId,
+    ): void {
+        /** @var ComplianceService $complianceService */
+        $complianceService = app(ComplianceService::class);
 
-        foreach ($enabledConfigs as $config) {
-            // Only process if tenant_country_code matches — prevents cross-country submission
-            $tenant = tenancy()->tenant;
-            if ($tenant && $tenant->tenant_country_code &&
-                strtoupper($tenant->tenant_country_code) !== strtoupper($config->country_code)) {
-                continue;
-            }
-
-            $autoSubmit = $config->settings['auto_submit'] ?? false;
-            if (! $autoSubmit) {
-                continue;
-            }
-
+        foreach ($complianceService->autoSubmitCountryCodes() as $countryCode) {
             try {
-                /** @var ComplianceService $complianceService */
-                $complianceService = app(ComplianceService::class);
-                $result = $submit($complianceService, $config->country_code);
+                // Idempotent: an invoice's document was already created as
+                // queued inside its posting transaction.
+                $complianceService->queueForAutoSubmit($documentType, $source, $countryCode);
 
-                // Issue #902: the provider path reports logical failures as
-                // `success => false` (validation rejected, provider refused)
-                // without throwing. Auto-submit must not silently drop those
-                // documents — queue them for the accountant.
-                if (is_array($result) && ($result['success'] ?? true) === false) {
-                    \Log::error('Compliance auto-submit failed', [
-                        'document_type' => $documentType,
-                        'document_id' => $documentId,
-                        'country_code' => $config->country_code,
-                        'error' => $result['message'] ?? 'unknown error',
-                    ]);
-
-                    $this->raiseAutoSubmitException(
-                        $documentType,
-                        $documentId,
-                        $config->country_code,
-                        (string) ($result['message'] ?? 'Unknown e-invoice submission failure'),
-                        $result,
-                    );
-                }
+                SubmitEInvoiceJob::dispatch($tenantId, $documentType, (int) $source->id, $countryCode);
             } catch (\Throwable $e) {
-                \Log::error('Compliance auto-submit failed', [
+                // The job could not be queued — the document stays `queued`
+                // (listed by the daily digest) and the accountant gets the
+                // platform exception with its re-submit retry (#902).
+                \Log::error('Compliance auto-submit could not be queued', [
                     'document_type' => $documentType,
-                    'document_id' => $documentId,
-                    'country_code' => $config->country_code,
+                    'document_id' => $source->id,
+                    'country_code' => $countryCode,
                     'error' => $e->getMessage(),
                 ]);
 
-                $this->raiseAutoSubmitException(
-                    $documentType,
-                    $documentId,
-                    $config->country_code,
-                    $e->getMessage(),
-                    null,
-                );
+                SubmitEInvoiceJob::reportException($documentType, (int) $source->id, $countryCode, $e->getMessage(), null);
             }
         }
-    }
-
-    /**
-     * Issue #902: queue a failed e-invoice auto-submit with the affected
-     * document, its legal entity, a payload snapshot and the re-submit retry.
-     */
-    private function raiseAutoSubmitException(
-        string $documentType,
-        int $documentId,
-        string $countryCode,
-        string $error,
-        ?array $result,
-    ): void {
-        $source = match ($documentType) {
-            'credit_note' => \App\Models\CustomerCreditNote::find($documentId),
-            'refund_note' => \App\Models\Payment::find($documentId),
-            default => \App\Models\Invoice::find($documentId),
-        };
-
-        $documentNumber = $source?->credit_note_number
-            ?? $source?->invoice_number
-            ?? $source?->payment_number
-            ?? null;
-
-        app(\App\Platform\Exceptions\ExceptionService::class)->report(
-            new \App\Platform\Exceptions\ExceptionReport(
-                type: \App\Platform\Exceptions\ExceptionType::SALES_EINVOICE_AUTO_SUBMIT_FAILED,
-                message: "Auto-submit of {$documentType} ".($documentNumber ? "#{$documentNumber}" : "#{$documentId}")
-                    ." to {$countryCode} failed: {$error}",
-                documentId: $documentId,
-                documentType: $documentType,
-                legalEntityId: $source?->legal_entity_id ? (int) $source->legal_entity_id : null,
-                payload: [
-                    'country_code' => $countryCode,
-                    'document_number' => $documentNumber,
-                    'error' => $error,
-                    'submission_id' => $result['submission_id'] ?? null,
-                    'error_code' => $result['error_code'] ?? null,
-                ],
-            ),
-        );
     }
 }
