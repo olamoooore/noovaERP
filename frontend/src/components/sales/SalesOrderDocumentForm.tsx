@@ -30,6 +30,8 @@ import { isValidProductQuantity, todayDateOnly } from '@/lib/dateOnly'
 import { extractSaveConflict, type SaveConflict } from '@/lib/recordConflict'
 import { cn, formatCurrency, getApiErrorMessage } from '@/lib/utils'
 import { emptySalesDocumentLine, isBlankSalesDocumentLine, type SalesDocumentLine } from '@/lib/salesDocumentLines'
+import { useDocumentDraftGuard } from '@/hooks/useDocumentDraftGuard'
+import { DocumentDraftBanner, DocumentLeaveDialog } from '@/components/sales/DocumentDraftControls'
 
 /**
  * Issue #374 (SALES-SO / O5): create and edit a Sales Order directly.
@@ -91,6 +93,8 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
   // Issue #906: what to show when the server rejects a save as stale.
   const [conflict, setConflict] = useState<SaveConflict | null>(null)
   const lastPayloadRef = useRef<Record<string, any> | null>(null)
+  // #317: edit mode is "ready" for dirty tracking once the order is loaded.
+  const [hydrated, setHydrated] = useState(false)
 
   const { data: order, isLoading, refetch: refetchOrder } = useQuery({
     queryKey: ['sales-order', documentId],
@@ -168,8 +172,41 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
         invoicing_policy: line.invoicing_policy ?? null,
       }))
     setLines(mapped.length > 0 ? mapped : [emptySalesDocumentLine()])
+    setHydrated(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order])
+
+  // #317: unsaved-changes guard + local (this device only) draft autosave.
+  // Only a draft order is editable here, so only then is anything guarded.
+  const draftGuard = useDocumentDraftGuard({
+    kind: 'sales-order',
+    documentId: mode === 'edit' ? documentId : null,
+    version: mode === 'edit' ? order?.lock_version ?? null : null,
+    ready: mode === 'create' || (hydrated && order?.status === 'draft'),
+    snapshot: {
+      customerId, orderDate, requiredDate, commitmentDate, shippingPolicy, customerReference, salesperson,
+      incotermCode, incotermPlace, notes, internalNotes, discountAmount, discountMode, lines,
+      currencyCode, priceListId,
+    },
+    apply: (draft) => {
+      setCustomerId(draft.customerId)
+      setOrderDate(draft.orderDate)
+      setRequiredDate(draft.requiredDate)
+      setCommitmentDate(draft.commitmentDate)
+      setShippingPolicy(draft.shippingPolicy)
+      setCustomerReference(draft.customerReference)
+      setSalesperson(draft.salesperson)
+      setIncotermCode(draft.incotermCode)
+      setIncotermPlace(draft.incotermPlace)
+      setNotes(draft.notes)
+      setInternalNotes(draft.internalNotes)
+      setDiscountAmount(draft.discountAmount)
+      setDiscountMode(draft.discountMode)
+      setLines(draft.lines)
+      setCurrencyCode(draft.currencyCode)
+      setPriceListId(draft.priceListId)
+    },
+  })
 
   // A new order re-resolves engine prices when the customer changes (FR-2.3).
   useEffect(() => {
@@ -184,6 +221,7 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
       return response.data
     },
     onSuccess: (data) => {
+      draftGuard.clearDraft()
       queryClient.invalidateQueries({ queryKey: ['sales-orders'] })
       toast({ title: 'Sales order created' })
       const id = data?.data?.id ?? data?.id
@@ -202,6 +240,7 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
     },
     onSuccess: () => {
       setConflict(null)
+      draftGuard.clearDraft()
       queryClient.invalidateQueries({ queryKey: ['sales-order', documentId] })
       queryClient.invalidateQueries({ queryKey: ['sales-orders'] })
       toast({ title: 'Sales order updated' })
@@ -364,7 +403,7 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
   const isPending = mode === 'edit' ? updateMutation.isPending : createMutation.isPending
 
   return (
-    <div className={cn('space-y-6 p-6', SALES_FORM_CLASS)} data-density={density}>
+    <div className={cn('space-y-6 p-6', SALES_FORM_CLASS)} data-density={density} {...draftGuard.trackProps}>
       <PageHeader
         title={mode === 'create' ? 'Create Sales Order' : 'Edit Sales Order'}
         description={
@@ -375,9 +414,12 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
               : 'Update the draft sales order'
         }
         backTo={mode === 'create' ? '/sales/orders' : `/sales/orders/${documentId}`}
+        guardBack={draftGuard.guard}
       />
 
       {mode === 'edit' && <EditingBanner activeEditor={order?.active_lock} currentUserId={currentUserId} />}
+
+      <DocumentDraftBanner guard={draftGuard} label="sales order" />
 
       <form onSubmit={handleSubmit} onKeyDown={preventImplicitSubmit}>
         <Card className="mb-6">
@@ -623,7 +665,7 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
           <Button
             type="button"
             variant="outline"
-            onClick={() => navigate(mode === 'edit' ? `/sales/orders/${documentId}` : '/sales/orders')}
+            onClick={() => draftGuard.guard(() => navigate(mode === 'edit' ? `/sales/orders/${documentId}` : '/sales/orders'))}
           >
             Cancel
           </Button>
@@ -646,6 +688,8 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
           onOverwrite={handleOverwrite}
         />
       )}
+
+      <DocumentLeaveDialog guard={draftGuard} />
     </div>
   )
 }

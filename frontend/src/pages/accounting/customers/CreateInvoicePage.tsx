@@ -65,6 +65,9 @@ import { extractSaveConflict, type SaveConflict } from '@/lib/recordConflict'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useDensity } from '@/hooks/useDensity'
 import { TagPicker } from '@/components/tags/TagPicker'
+import { useDocumentDraftGuard } from '@/hooks/useDocumentDraftGuard'
+import { DocumentDraftBanner, DocumentLeaveDialog } from '@/components/sales/DocumentDraftControls'
+import { openAppPathInNewTab } from '@/lib/openInNewTab'
 import {
   LINE_CELL,
   LINE_CELL_BOX,
@@ -416,6 +419,9 @@ export const CreateInvoicePage: React.FC = () => {
   const [commandResults, setCommandResults] = useState<Array<{ id: number; name: string; sku?: string | null }>>([]);
   const warehouseTouchedRef = useRef(false);
   const appliedLastInvoiceRef = useRef<number | null>(null);
+  // #317: customer id of a restored local draft — its header values are the
+  // user's own, so the customer-default effects must not overwrite them.
+  const restoredCustomerRef = useRef<string | null>(null);
   const [customInvoiceNumber, setCustomInvoiceNumber] = useState('');
   const calcDueDate = (invDate: string, termsDays: number) => addCalendarDays(invDate, termsDays);
   const [dueDate, setDueDate] = useState(() => calcDueDate(todayDateOnly(), 30));
@@ -560,6 +566,10 @@ export const CreateInvoicePage: React.FC = () => {
     if (!selectedCustomer) {
       return;
     }
+    if (restoredCustomerRef.current !== null) {
+      if (String(selectedCustomer.id) === restoredCustomerRef.current) return;
+      restoredCustomerRef.current = null;
+    }
 
     const addresses = selectedCustomer.addresses ?? [];
     const billingAddressRecord = addresses.find((address) => address.type === 'billing' && address.is_default)
@@ -661,6 +671,7 @@ export const CreateInvoicePage: React.FC = () => {
     if (!lastInvoice || isEditMode || !selectedCustomerDetail) return;
     if (appliedLastInvoiceRef.current === lastInvoice.id) return;
     appliedLastInvoiceRef.current = lastInvoice.id;
+    if (restoredCustomerRef.current !== null && restoredCustomerRef.current === customerId) return;
 
     const reused: string[] = [];
 
@@ -865,6 +876,65 @@ export const CreateInvoicePage: React.FC = () => {
     void resolvePricingForLines(customerId, lines);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerId]);
+  // #317: unsaved-changes guard + local (this device only) draft autosave.
+  // A new document keeps a draft; an existing one is guarded only (its
+  // hydration is spread over several effects, so it is not re-applied).
+  const draftGuard = useDocumentDraftGuard({
+    kind: isQuoteMode ? 'invoice-quote' : 'invoice',
+    documentId: isEditMode ? id : null,
+    version: isEditMode ? existingInvoice?.lock_version ?? null : null,
+    ready: !isEditMode || invoiceLoaded,
+    persist: !isEditMode,
+    snapshot: {
+      customerId, invoiceDate, paymentTerms, termsOverridden, requiresApproval, customInvoiceNumber, dueDate,
+      caseNumber, prNo, contractNo, buyerContactId, plantCode, companyCode, dateOfCase, caseLocation,
+      patientName, costCenterId, deliveryDate, warehouseId, poNumber, doctorContactId, requestorContactId,
+      extraCases, primaryMedicalCaseId, billingContactId, shippingContactId, billingAddress, shippingAddress,
+      notes, terms, discountMode, discountAmount, lines, documentSnapshot, tags, currencyCode, priceListId,
+    },
+    apply: (draft) => {
+      restoredCustomerRef.current = draft.customerId || null;
+      warehouseTouchedRef.current = true;
+      setCustomerId(draft.customerId);
+      setInvoiceDate(draft.invoiceDate);
+      setPaymentTerms(draft.paymentTerms);
+      setTermsOverridden(draft.termsOverridden);
+      setRequiresApproval(draft.requiresApproval);
+      setCustomInvoiceNumber(draft.customInvoiceNumber);
+      setDueDate(draft.dueDate);
+      setCaseNumber(draft.caseNumber);
+      setPrNo(draft.prNo);
+      setContractNo(draft.contractNo);
+      setBuyerContactId(draft.buyerContactId);
+      setPlantCode(draft.plantCode);
+      setCompanyCode(draft.companyCode);
+      setDateOfCase(draft.dateOfCase);
+      setCaseLocation(draft.caseLocation);
+      setPatientName(draft.patientName);
+      setCostCenterId(draft.costCenterId);
+      setDeliveryDate(draft.deliveryDate);
+      setWarehouseId(draft.warehouseId);
+      setPoNumber(draft.poNumber);
+      setDoctorContactId(draft.doctorContactId);
+      setRequestorContactId(draft.requestorContactId);
+      setExtraCases(draft.extraCases);
+      setPrimaryMedicalCaseId(draft.primaryMedicalCaseId);
+      setBillingContactId(draft.billingContactId);
+      setShippingContactId(draft.shippingContactId);
+      setBillingAddress(draft.billingAddress);
+      setShippingAddress(draft.shippingAddress);
+      setNotes(draft.notes);
+      setTerms(draft.terms);
+      setDiscountMode(draft.discountMode);
+      setDiscountAmount(draft.discountAmount);
+      setLines(draft.lines);
+      setDocumentSnapshot(draft.documentSnapshot);
+      setTags(draft.tags);
+      setCurrencyCode(draft.currencyCode);
+      setPriceListId(draft.priceListId);
+    },
+  });
+
   const saveMutation = useMutation({
     mutationFn: async (data: Record<string, any>) => {
       // Issue #906: keep the failed payload so "Overwrite" can resend it
@@ -877,6 +947,7 @@ export const CreateInvoicePage: React.FC = () => {
     },
     onSuccess: async (data) => {
       setConflict(null);
+      draftGuard.clearDraft();
       toast({ title: `${documentLabel} ${isEditMode ? 'updated' : 'created'} successfully` });
       const invoiceId = id || data?.id || data?.data?.id;
       const savedStatus = data?.status ?? data?.data?.status;
@@ -1791,7 +1862,7 @@ export const CreateInvoicePage: React.FC = () => {
       label: 'All Customers',
       description: 'Open the full customer workspace in a separate screen.',
       icon: 'solar:users-group-rounded-bold-duotone',
-      onClick: () => navigate('/customers'),
+      onClick: () => openAppPathInNewTab('/customers'),
       disabled: false,
     },
     {
@@ -1803,7 +1874,7 @@ export const CreateInvoicePage: React.FC = () => {
       icon: 'solar:user-id-bold-duotone',
       onClick: () => {
         if (selectedCustomer) {
-          navigate(`/customers/${selectedCustomer.id}`);
+          openAppPathInNewTab(`/customers/${selectedCustomer.id}`);
         }
       },
       disabled: !selectedCustomer,
@@ -1816,14 +1887,14 @@ export const CreateInvoicePage: React.FC = () => {
       label: 'Product List',
       description: 'Browse existing products and reuse them in line items.',
       icon: 'solar:box-bold-duotone',
-      onClick: () => navigate('/products'),
+      onClick: () => openAppPathInNewTab('/products'),
     },
     {
       key: 'create-product',
       label: 'New Product',
       description: 'Add a missing product, service, or catalog item.',
       icon: 'solar:add-square-bold-duotone',
-      onClick: () => navigate('/products/new'),
+      onClick: () => openAppPathInNewTab('/products/new'),
     },
   ];
 
@@ -1898,12 +1969,12 @@ export const CreateInvoicePage: React.FC = () => {
 
   return (
     <TooltipProvider delayDuration={150}>
-      <div className="p-6 space-y-6" data-density={density}>
+      <div className="p-6 space-y-6" data-density={density} {...draftGuard.trackProps}>
         <div>
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => navigate(backPath)}
+            onClick={() => draftGuard.guard(() => navigate(backPath))}
             className="-ml-2 mb-3 text-muted-foreground hover:text-foreground"
           >
             <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
@@ -1928,6 +1999,8 @@ export const CreateInvoicePage: React.FC = () => {
           activeEditor={isEditMode ? existingInvoice?.active_lock : null}
           currentUserId={currentUserId}
         />
+
+        <DocumentDraftBanner guard={draftGuard} label={documentLabel.toLowerCase()} />
 
         <form onSubmit={handleSubmit} onKeyDown={preventImplicitSubmit}>
           <Card className="mb-6">
@@ -3092,7 +3165,7 @@ export const CreateInvoicePage: React.FC = () => {
           </Card>
 
           <div className="flex justify-end gap-3">
-            <Button type="button" variant="outline" onClick={() => navigate(backPath)}>
+            <Button type="button" variant="outline" onClick={() => draftGuard.guard(() => navigate(backPath))}>
               Cancel
             </Button>
             <Button type="submit" onClick={() => setSendAfterSave(false)} disabled={saveMutation.isPending || isInvoiceLoading}>
@@ -3341,6 +3414,8 @@ export const CreateInvoicePage: React.FC = () => {
         onReloadTheirs={handleReloadTheirs}
         onOverwrite={handleOverwrite}
       />
+
+      <DocumentLeaveDialog guard={draftGuard} />
     </TooltipProvider>
   );
 };

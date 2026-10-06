@@ -1,4 +1,5 @@
-import { createContext, useCallback, useEffect, useRef, useState } from 'react'
+import { createContext, useState } from 'react'
+import { useLeaveGuard } from '@/hooks/useLeaveGuard'
 
 /**
  * Unsaved-changes tracking for settings pages that swap one section component
@@ -11,44 +12,11 @@ export const SettingsDirtyContext = createContext<((dirty: boolean) => void) | n
 
 export function useSettingsLeaveGuard() {
   const [dirty, setDirty] = useState(false)
-  const pendingAction = useRef<(() => void) | null>(null)
-  const [confirmOpen, setConfirmOpen] = useState(false)
-
-  useEffect(() => {
-    if (!dirty) return
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault()
-      e.returnValue = ''
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [dirty])
-
-  /** Run `action` now, or after the user confirms discarding unsaved changes. */
-  const guard = useCallback(
-    (action: () => void) => {
-      if (!dirty) {
-        action()
-        return
-      }
-      pendingAction.current = action
-      setConfirmOpen(true)
-    },
-    [dirty],
-  )
-
-  const confirmDiscard = useCallback(() => {
-    const action = pendingAction.current
-    pendingAction.current = null
-    setConfirmOpen(false)
-    setDirty(false)
-    action?.()
-  }, [])
-
-  const keepEditing = useCallback(() => {
-    pendingAction.current = null
-    setConfirmOpen(false)
-  }, [])
+  // #317: the beforeunload + confirm-before-action mechanics are shared with
+  // the sales document forms (useLeaveGuard).
+  const { guard, confirmOpen, confirmDiscard, keepEditing } = useLeaveGuard(dirty, {
+    onDiscard: () => setDirty(false),
+  })
 
   return { dirty, reportDirty: setDirty, guard, confirmOpen, confirmDiscard, keepEditing }
 }

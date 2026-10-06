@@ -42,6 +42,9 @@ import {
   SALES_TEXT_SIZE,
 } from '@/components/sales/salesDesignTokens'
 import { emptySalesDocumentLine, isBlankSalesDocumentLine, type SalesDocumentLine } from '@/lib/salesDocumentLines'
+import { useDocumentDraftGuard } from '@/hooks/useDocumentDraftGuard'
+import { DocumentDraftBanner, DocumentLeaveDialog } from '@/components/sales/DocumentDraftControls'
+import { openAppPathInNewTab } from '@/lib/openInNewTab'
 
 /**
  * Issue #314: the single quotation create/edit implementation.
@@ -147,6 +150,9 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
   const [conflict, setConflict] = useState<SaveConflict | null>(null)
   const lastPayloadRef = useRef<Record<string, any> | null>(null)
   const autofilledCustomerRef = useRef<string | null>(null)
+  // #317: edit mode is "ready" for dirty tracking once the saved document
+  // has been put into the form.
+  const [hydrated, setHydrated] = useState(false)
   const { fill: autofillField, setBaseline: setAutofillBaseline } = useCustomerAutofill()
 
   // One pick fills everything (invoice parity): primary contact, references
@@ -218,12 +224,70 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     setLines,
   })
 
+  // #317: unsaved-changes guard + local (this device only) draft autosave.
+  const draftGuard = useDocumentDraftGuard({
+    kind: 'quotation',
+    documentId: mode === 'edit' ? documentId : null,
+    version: mode === 'edit' ? quotation?.lock_version ?? null : null,
+    ready: mode === 'create' || hydrated,
+    snapshot: {
+      tags, customerId, quotationDate, validUntil, validUntilManuallyEdited, commitmentDate, shippingPolicy,
+      notes, terms, discountAmount, discountMode, lines, customerReference, internalReference, creditTerms,
+      paymentTermId, attentionTo, contactEmail, contactPhone, billingAddress, shippingAddress,
+      billingAddressSnapshot, shippingAddressSnapshot, billingContactId, shippingContactId, salesperson,
+      salesTeam, deliveryLeadTime, shippingMethod, shippingTerms, incotermCode, incotermPlace,
+      caseInformation, customQuoteNumber, currencyCode, priceListId,
+    },
+    apply: (draft) => {
+      // The restored values are the user's own: the customer auto-fill must
+      // not overwrite them when the restored customer's detail loads.
+      autofilledCustomerRef.current = draft.customerId
+      setTags(draft.tags)
+      setCustomerId(draft.customerId)
+      setQuotationDate(draft.quotationDate)
+      setValidUntil(draft.validUntil)
+      setValidUntilManuallyEdited(draft.validUntilManuallyEdited)
+      setCommitmentDate(draft.commitmentDate)
+      setShippingPolicy(draft.shippingPolicy)
+      setNotes(draft.notes)
+      setTerms(draft.terms)
+      setDiscountAmount(draft.discountAmount)
+      setDiscountMode(draft.discountMode)
+      setLines(draft.lines)
+      setCustomerReference(draft.customerReference)
+      setInternalReference(draft.internalReference)
+      setCreditTerms(draft.creditTerms)
+      setPaymentTermId(draft.paymentTermId)
+      setAttentionTo(draft.attentionTo)
+      setContactEmail(draft.contactEmail)
+      setContactPhone(draft.contactPhone)
+      setBillingAddress(draft.billingAddress)
+      setShippingAddress(draft.shippingAddress)
+      setBillingAddressSnapshot(draft.billingAddressSnapshot)
+      setShippingAddressSnapshot(draft.shippingAddressSnapshot)
+      setBillingContactId(draft.billingContactId)
+      setShippingContactId(draft.shippingContactId)
+      setSalesperson(draft.salesperson)
+      setSalesTeam(draft.salesTeam)
+      setDeliveryLeadTime(draft.deliveryLeadTime)
+      setShippingMethod(draft.shippingMethod)
+      setShippingTerms(draft.shippingTerms)
+      setIncotermCode(draft.incotermCode)
+      setIncotermPlace(draft.incotermPlace)
+      setCaseInformation(draft.caseInformation)
+      setCustomQuoteNumber(draft.customQuoteNumber)
+      setCurrencyCode(draft.currencyCode)
+      setPriceListId(draft.priceListId)
+    },
+  })
+
   const createMutation = useMutation({
     mutationFn: async (data: unknown) => {
       const response = await api.post('/quotations', data)
       return response.data
     },
     onSuccess: (data) => {
+      draftGuard.clearDraft()
       toast({ title: 'Quotation created successfully' })
       const id = data?.data?.id ?? data?.id
       if (id) {
@@ -252,6 +316,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     },
     onSuccess: () => {
       setConflict(null)
+      draftGuard.clearDraft()
       queryClient.invalidateQueries({ queryKey: ['quotation', documentId] })
       queryClient.invalidateQueries({ queryKey: ['quotations'] })
       toast({ title: 'Quotation updated successfully' })
@@ -352,6 +417,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
       price_mode: (line.line_type ?? 'product') === 'product' && line.unit_price != null ? 'carried' : undefined,
     }))
     setLines(mappedLines.length > 0 ? mappedLines : [emptySalesDocumentLine()])
+    setHydrated(true)
   }, [quotation, setAutofillBaseline, setCurrencyCode])
 
   useEffect(() => {
@@ -633,12 +699,13 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
   const isPending = mode === 'edit' ? updateMutation.isPending : createMutation.isPending
 
   return (
-    <div className={cn('p-6 space-y-6', SALES_FORM_CLASS)} data-density={density}>
+    <div className={cn('p-6 space-y-6', SALES_FORM_CLASS)} data-density={density} {...draftGuard.trackProps}>
       {mode === 'create' ? (
         <PageHeader
           title="Create Quotation"
           description="Prepare a quotation for your customer. Confirm to create a Sales Order."
           backTo="/quotations"
+          guardBack={draftGuard.guard}
         >
           <div className="mt-2">
             <TagPicker value={tags} onChange={setTags} />
@@ -650,7 +717,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
             variant="ghost"
             size="sm"
             className="-ml-2 mb-3 text-muted-foreground hover:text-foreground"
-            onClick={() => navigate(`/quotations/${documentId}`)}
+            onClick={() => draftGuard.guard(() => navigate(`/quotations/${documentId}`))}
           >
             <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
             Back
@@ -668,6 +735,8 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
       {mode === 'edit' && (
         <EditingBanner activeEditor={quotation?.active_lock} currentUserId={currentUserId} />
       )}
+
+      <DocumentDraftBanner guard={draftGuard} label="quotation" />
 
       <form onSubmit={handleSubmit} onKeyDown={preventImplicitSubmit}>
         <Card className="mb-6">
@@ -887,10 +956,10 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                 <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Quick Actions</div>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {[
-                    { key: 'customers', label: 'Manage Customers', icon: 'solar:users-group-rounded-bold-duotone', onClick: () => navigate('/customers') },
-                    { key: 'profile', label: 'Open Profile', icon: 'solar:user-id-bold-duotone', onClick: () => customerId && navigate(`/customers/${customerId}`), disabled: !customerId },
-                    { key: 'products', label: 'Product List', icon: 'solar:box-bold-duotone', onClick: () => navigate('/products') },
-                    { key: 'new-product', label: 'New Product', icon: 'solar:add-square-bold-duotone', onClick: () => navigate('/products/new') },
+                    { key: 'customers', label: 'Manage Customers', icon: 'solar:users-group-rounded-bold-duotone', onClick: () => openAppPathInNewTab('/customers') },
+                    { key: 'profile', label: 'Open Profile', icon: 'solar:user-id-bold-duotone', onClick: () => customerId && openAppPathInNewTab(`/customers/${customerId}`), disabled: !customerId },
+                    { key: 'products', label: 'Product List', icon: 'solar:box-bold-duotone', onClick: () => openAppPathInNewTab('/products') },
+                    { key: 'new-product', label: 'New Product', icon: 'solar:add-square-bold-duotone', onClick: () => openAppPathInNewTab('/products/new') },
                   ].map((action) => (
                     <button
                       key={action.key}
@@ -1332,7 +1401,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
           <Button
             type="button"
             variant="outline"
-            onClick={() => navigate(mode === 'edit' ? `/quotations/${documentId}` : '/quotations')}
+            onClick={() => draftGuard.guard(() => navigate(mode === 'edit' ? `/quotations/${documentId}` : '/quotations'))}
           >
             Cancel
           </Button>
@@ -1362,6 +1431,8 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
           onOverwrite={handleOverwrite}
         />
       )}
+
+      <DocumentLeaveDialog guard={draftGuard} />
     </div>
   )
 }
