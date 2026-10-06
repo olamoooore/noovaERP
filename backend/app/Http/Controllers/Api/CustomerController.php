@@ -976,6 +976,13 @@ class CustomerController extends Controller
             if ($legacy['is_primary'] && ! $canonical['classification_code'] && ! $canonical['persistent_role_codes']) {
                 $rowType = $data['contact_type'] ?? null; // Primary only: keep as-is; flag carries it.
             }
+        } elseif (! array_key_exists('contact_type', $data)) {
+            // ADR-003B W4 / CT-VEN-021: a canonical-only payload (the contact
+            // dialog) still gets its legacy type projected, never blanked.
+            $rowType = LegacyContactTypeMapping::projectLegacyContactType(
+                array_filter([$canonical['classification_code']]),
+                $canonical['persistent_role_codes']
+            );
         }
 
         $attributes = collect($data)->only([

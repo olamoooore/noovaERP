@@ -25,10 +25,11 @@ import { TagEditor } from '@/components/tags/TagEditor'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { AuditTab } from '@/components/audit/AuditTab'
 import { CustomerForm } from '@/components/customers/CustomerForm'
+import { CustomerContactDialog } from '@/components/customers/CustomerContactDialog'
+import { siteLabel, type SiteAddress } from '@/lib/customerContacts'
 import { customerFormToUpdatePayload, customerToFormValues, emptyCustomerFormValues, type CustomerFormValues } from '@/lib/customerPayload'
 import { downloadReportDocx, downloadReportXlsx } from '@/lib/reportFiles'
 
-const numericPhoneValue = (value: string) => value.replace(/\D/g, '')
 
 const formatLegacyAddress = (address: string) => {
   if (!address) return null
@@ -112,6 +113,7 @@ const statementExportRows = (payload: any): string[][] => {
 
 interface Customer {
   id: number
+  core_contact_uuid?: string | null
   code: string
   type: 'individual' | 'company'
   name: string
@@ -165,6 +167,7 @@ interface CustomerAddress {  id: number
 
 interface CustomerContact {
   id: number
+  core_contact_uuid?: string | null
   name: string
   job_title: string
   contact_category: string
@@ -270,7 +273,7 @@ export function CustomerDetailsPage() {
   const [addressDialogOpen, setAddressDialogOpen] = useState(false)
   const [editingAddressId, setEditingAddressId] = useState<number | null>(null)
   const [contactDialogOpen, setContactDialogOpen] = useState(false)
-  const [editingContactId, setEditingContactId] = useState<number | null>(null)
+  const [editingContact, setEditingContact] = useState<CustomerContact | null>(null)
   const [loyaltyDialogOpen, setLoyaltyDialogOpen] = useState(false)
   const [noteDialogOpen, setNoteDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -280,7 +283,6 @@ export function CustomerDetailsPage() {
   
   // Form states
   const [addressForm, setAddressForm] = useState<Partial<CustomerAddress>>({})
-  const [contactForm, setContactForm] = useState<Partial<CustomerContact>>({})
   const [loyaltyAdjustment, setLoyaltyAdjustment] = useState({ points: 0, notes: '' })
   const [customerNote, setCustomerNote] = useState('')
   const [editForm, setEditForm] = useState<CustomerFormValues>(emptyCustomerFormValues())
@@ -416,39 +418,28 @@ export function CustomerDetailsPage() {
     },
   })
 
-  // Add contact mutation
-  const addContactMutation = useMutation({
-    mutationFn: async (data: Partial<CustomerContact>) => {
-      const response = await api.post(`/customers/${id}/contacts`, data)
-      return response.data
+  // ADR-003B: each person's company Site, for the contact cards.
+  const organisationId = customer?.core_contact_uuid
+  const { data: personSites = {} } = useQuery<Record<string, string>>({
+    queryKey: ['customer-contact-sites', organisationId],
+    queryFn: async () => {
+      const [relationships, addresses] = await Promise.all([
+        api.get(`/contacts/${organisationId}/relationships`),
+        api.get(`/contacts/${organisationId}/addresses`),
+      ])
+      const sites = new Map<string, SiteAddress>(
+        ((addresses.data?.data ?? []) as SiteAddress[])
+          .filter((address) => address.address_type === 'site')
+          .map((site) => [site.id, site]),
+      )
+      const byPerson: Record<string, string> = {}
+      for (const row of (relationships.data?.data ?? []) as { relationship_type: string; related_contact_id: string; site_address_id?: string | null }[]) {
+        const site = row.relationship_type === 'org_person' && row.site_address_id ? sites.get(row.site_address_id) : undefined
+        if (site) byPerson[row.related_contact_id] = siteLabel(site)
+      }
+      return byPerson
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['customer', id] })
-      setContactDialogOpen(false)
-      setContactForm({})
-      toast({ title: 'Contact added successfully' })
-    },
-  })
-
-  const updateContactMutation = useMutation({
-    mutationFn: async ({ contactId, data }: { contactId: number; data: Partial<CustomerContact> }) => {
-      const response = await api.put(`/customers/${id}/contacts/${contactId}`, data)
-      return response.data
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['customer', id] })
-      setContactDialogOpen(false)
-      setEditingContactId(null)
-      setContactForm({})
-      toast({ title: 'Contact updated successfully' })
-    },
-    onError: (error: any) => {
-      toast({
-        variant: 'destructive',
-        title: 'Failed to update contact',
-        description: getApiErrorMessage(error),
-      })
-    },
+    enabled: Boolean(organisationId),
   })
 
   // Delete contact mutation
@@ -1450,8 +1441,7 @@ export function CustomerDetailsPage() {
               <HeaderActionButton
                 icon="solar:add-circle-bold"
                 onClick={() => {
-                  setEditingContactId(null)
-                  setContactForm({})
+                  setEditingContact(null)
                   setContactDialogOpen(true)
                 }}
               >
@@ -1478,8 +1468,7 @@ export function CustomerDetailsPage() {
                             variant="ghost"
                             className="h-7 w-7 p-0"
                             onClick={() => {
-                              setEditingContactId(contact.id)
-                              setContactForm({ ...contact })
+                              setEditingContact(contact)
                               setContactDialogOpen(true)
                             }}
                             title="Edit contact"
@@ -1528,6 +1517,12 @@ export function CustomerDetailsPage() {
                               </div>
                             )}
                             <div className="mt-3 space-y-1.5 text-sm">
+                              {contact.core_contact_uuid && personSites[contact.core_contact_uuid] && (
+                                <div className="flex items-center gap-2 text-muted-foreground" data-testid="contact-site">
+                                  <Icon icon="solar:buildings-2-bold" className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="truncate">Site: {personSites[contact.core_contact_uuid]}</span>
+                                </div>
+                              )}
                               {contact.email && (
                                 <a href={`mailto:${contact.email}`} className="flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground">
                                   <Icon icon="solar:letter-bold" className="h-3.5 w-3.5 shrink-0" />
@@ -1547,9 +1542,13 @@ export function CustomerDetailsPage() {
                                 </a>
                               )}
                               {hasAddress && (
-                                <div className="flex items-start gap-2 pt-0.5 text-muted-foreground">
-                                  <Icon icon="solar:map-point-bold" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                // ADR-003B: people no longer hold addresses; an
+                                // older record's address is shown read-only until
+                                // it is moved to a company site.
+                                <div className="flex items-start gap-2 pt-0.5 text-xs text-muted-foreground/80" title="Older record — people no longer hold addresses">
+                                  <Icon icon="solar:map-point-linear" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                                   <p className="leading-relaxed">
+                                    Older personal address:{' '}
                                     {[contact.street, contact.street2, contact.city, contact.state, contact.zip, contact.country]
                                       .filter(Boolean)
                                       .join(', ')}
@@ -1931,194 +1930,21 @@ export function CustomerDetailsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Add/Edit Contact Dialog */}
-      <Dialog
+      {/* Add/Edit Contact Dialog (ADR-003B W4) */}
+      <CustomerContactDialog
         open={contactDialogOpen}
         onOpenChange={(open) => {
           setContactDialogOpen(open)
-          if (!open) {
-            setEditingContactId(null)
-            setContactForm({})
-          }
+          if (!open) setEditingContact(null)
         }}
-      >
-        <DialogContent className="max-h-[90dvh] w-[calc(100%-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden p-0 sm:max-w-2xl">
-          <DialogHeader className="px-6 pt-6">
-            <DialogTitle>{editingContactId ? 'Edit Contact' : 'Add Contact'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 overflow-y-auto px-6 py-1">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Name *</Label>
-                <Input 
-                  value={contactForm.name || ''}
-                  onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Job Title</Label>
-                <Input 
-                  value={contactForm.job_title || ''}
-                  onChange={(e) => setContactForm({ ...contactForm, job_title: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Contact Category</Label>
-                <Select
-                  value={contactForm.contact_category || ''}
-                  onValueChange={(value) => setContactForm({ ...contactForm, contact_category: value || undefined })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Clinical">Clinical</SelectItem>
-                    <SelectItem value="Finance">Finance</SelectItem>
-                    <SelectItem value="Procurement">Procurement</SelectItem>
-                    <SelectItem value="Operations">Operations</SelectItem>
-                    <SelectItem value="Administration">Administration</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Contact Type</Label>
-                <Select
-                  value={contactForm.contact_type || ''}
-                  onValueChange={(value) => setContactForm({ ...contactForm, contact_type: value || undefined })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Primary">Primary</SelectItem>
-                    <SelectItem value="Doctor">Doctor</SelectItem>
-                    <SelectItem value="Nurse">Nurse</SelectItem>
-                    <SelectItem value="Billing">Billing</SelectItem>
-                    <SelectItem value="Delivery">Delivery</SelectItem>
-                    <SelectItem value="Clinical">Clinical</SelectItem>
-                    <SelectItem value="OT">OT</SelectItem>
-                    <SelectItem value="Admin">Admin</SelectItem>
-                    <SelectItem value="Procurement">Procurement</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Email</Label>
-              <Input
-                type="email"
-                value={contactForm.email || ''}
-                onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Phone</Label>
-                <Input
-                  value={contactForm.phone || ''}
-                  onChange={(e) => setContactForm({ ...contactForm, phone: numericPhoneValue(e.target.value) })}
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Mobile</Label>
-                <Input
-                  value={contactForm.mobile || ''}
-                  onChange={(e) => setContactForm({ ...contactForm, mobile: numericPhoneValue(e.target.value) })}
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Street</Label>
-              <Input
-                value={contactForm.street || ''}
-                onChange={(e) => setContactForm({ ...contactForm, street: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Street 2</Label>
-              <Input
-                value={contactForm.street2 || ''}
-                onChange={(e) => setContactForm({ ...contactForm, street2: e.target.value })}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>City</Label>
-                <Input
-                  value={contactForm.city || ''}
-                  onChange={(e) => setContactForm({ ...contactForm, city: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>State</Label>
-                <Input
-                  value={contactForm.state || ''}
-                  onChange={(e) => setContactForm({ ...contactForm, state: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>ZIP / Postal Code</Label>
-                <Input
-                  value={contactForm.zip || ''}
-                  onChange={(e) => setContactForm({ ...contactForm, zip: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Country</Label>
-                <Input
-                  value={contactForm.country || ''}
-                  onChange={(e) => setContactForm({ ...contactForm, country: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Notes</Label>
-              <Textarea 
-                value={contactForm.notes || ''}
-                onChange={(e) => setContactForm({ ...contactForm, notes: e.target.value })}
-              />
-            </div>
-            <div className="flex items-center space-x-2">
-              <input
-                type="checkbox"
-                id="is_primary"
-                checked={contactForm.is_primary || false}
-                onChange={(e) => setContactForm({ ...contactForm, is_primary: e.target.checked })}
-                className="h-4 w-4 rounded border-gray-300"
-              />
-              <Label htmlFor="is_primary" className="font-normal">Primary contact</Label>
-            </div>
-          </div>
-          <DialogFooter className="border-t bg-background px-6 py-4">
-            <Button variant="outline" onClick={() => setContactDialogOpen(false)}>Cancel</Button>
-            <Button
-              onClick={() => {
-                if (editingContactId) {
-                  updateContactMutation.mutate({ contactId: editingContactId, data: contactForm })
-                } else {
-                  addContactMutation.mutate(contactForm)
-                }
-              }}
-              disabled={!contactForm.name || addContactMutation.isPending || updateContactMutation.isPending}
-            >
-              {editingContactId
-                ? (updateContactMutation.isPending ? 'Saving...' : 'Save Changes')
-                : (addContactMutation.isPending ? 'Adding...' : 'Add Contact')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        customerId={id!}
+        organisationId={customer.core_contact_uuid}
+        contact={editingContact}
+        onSaved={() => {
+          queryClient.invalidateQueries({ queryKey: ['customer', id] })
+          queryClient.invalidateQueries({ queryKey: ['customer-contact-sites', customer.core_contact_uuid] })
+        }}
+      />
 
       {/* Adjust Loyalty Dialog */}
       <Dialog open={loyaltyDialogOpen} onOpenChange={setLoyaltyDialogOpen}>
