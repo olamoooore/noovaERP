@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
 import fieldServiceApi, { type Technician } from '@/lib/fieldServiceApi'
+import { formatCurrency } from '@/lib/utils'
 
 export function TechniciansPage() {
   const { toast } = useToast()
@@ -143,7 +144,7 @@ export function TechniciansPage() {
                 </div>
               )}
               {tech.hourly_rate && (
-                <p className="text-xs text-muted-foreground">Rate: ${Number(tech.hourly_rate).toFixed(2)}/hr</p>
+                <p className="text-xs text-muted-foreground">Rate: {formatCurrency(Number(tech.hourly_rate) || 0)}/hr</p>
               )}
             </CardContent>
           </Card>

@@ -3,17 +3,29 @@
  * Helper functions for chart formatting and data manipulation
  */
 
-/**
- * Format number as currency
- */
-export const formatCurrency = (value: number, currency: string = 'USD'): string => {
-  const code = typeof currency === 'string' && /^[A-Za-z]{3}$/.test(currency) ? currency : 'USD';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: code,
+import { getCurrencySymbol } from '@/lib/utils';
+
+const normalizeChartCurrency = (currency?: unknown): string | undefined =>
+  typeof currency === 'string' && /^[A-Za-z]{3}$/.test(currency) ? currency : undefined;
+
+const withCurrencySymbol = (value: number, currency: unknown, options: Intl.NumberFormatOptions): string => {
+  const symbol = getCurrencySymbol(normalizeChartCurrency(currency));
+  const sign = value < 0 ? '-' : '';
+  const number = new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(value);
+    ...options,
+  }).format(Math.abs(value));
+  const spacing = /[A-Za-z]$/.test(symbol) ? ' ' : '';
+
+  return `${sign}${symbol}${spacing}${number}`;
+};
+
+/**
+ * Format number as currency using the tenant's configured currency and display format.
+ */
+export const formatCurrency = (value: number, currency?: string): string => {
+  return withCurrencySymbol(value, currency, {});
 };
 
 /**
@@ -47,20 +59,11 @@ export const formatCompactNumber = (value: number): string => {
 };
 
 /**
- * Compact currency (e.g. $3.7M) for axis ticks, where full precision is noise.
+ * Compact currency (e.g. S$3.7M) for axis ticks, where full precision is noise.
  */
-export const formatCompactCurrency = (value: number, currency: string = 'USD'): string => {
+export const formatCompactCurrency = (value: number, currency?: string): string => {
   if (!Number.isFinite(value)) return '';
-  // Recharts calls tick formatters as (value, index); a bare function reference
-  // would otherwise pass the index as the currency code and throw
-  // "Invalid currency code : 4".
-  const code = typeof currency === 'string' && /^[A-Za-z]{3}$/.test(currency) ? currency : 'USD';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: code,
-    notation: 'compact',
-    maximumFractionDigits: 1,
-  }).format(value);
+  return withCurrencySymbol(value, currency, { notation: 'compact', maximumFractionDigits: 1 });
 };
 
 /**
@@ -77,7 +80,7 @@ export const makeAxisTickFormatter = (
     // Always wrap: the returned function is handed straight to Recharts, which
     // invokes formatters with (value, index).
     return compact
-      ? (v: number) => formatCompactCurrency(v, 'USD')
+      ? (v: number) => formatCompactCurrency(v)
       : (v: number) => formatCurrency(v);
   }
   if (mode === 'percent') {

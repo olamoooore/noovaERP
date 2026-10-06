@@ -43,8 +43,7 @@ export function RefundNotePreview({
         <div className="flex justify-between gap-4">
           <span className="text-muted-foreground">Refund amount</span>
           <span className="font-medium">
-            {currency ? `${currency} ` : ''}
-            {formatCurrency(Math.abs(amount))}
+            {formatCurrency(Math.abs(amount), currency || undefined)}
           </span>
         </div>
       </div>

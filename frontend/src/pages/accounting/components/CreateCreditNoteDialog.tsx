@@ -28,7 +28,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 import api from '@/lib/api';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 
@@ -46,6 +46,7 @@ interface Invoice {
   total: number;
   balance: number;
   status: string;
+  currency_code?: string;
   lines: InvoiceLine[];
 }
 
@@ -165,7 +166,7 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
     if (!selectedInvoice) return 'Select an invoice...';
     const customerName = selectedInvoice.customer?.name ?? 'Unknown';
     const total = Number(selectedInvoice.total) || 0;
-    return `${selectedInvoice.invoice_number} — ${customerName} ($${total.toFixed(2)})`;
+    return `${selectedInvoice.invoice_number} — ${customerName} (${formatCurrency(total, selectedInvoice.currency_code || undefined)})`;
   };
 
   const filteredInvoices = searchQuery
@@ -236,7 +237,7 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
           </DialogTitle>
           <DialogDescription>
             {isPreselected
-              ? `Customer: ${selectedInvoice.customer?.name ?? 'Unknown'} · Total: $${Number(selectedInvoice.total).toFixed(2)}`
+              ? `Customer: ${selectedInvoice.customer?.name ?? 'Unknown'} · Total: ${formatCurrency(Number(selectedInvoice.total) || 0, selectedInvoice.currency_code || undefined)}`
               : 'Create a credit note for a customer invoice'}
           </DialogDescription>
         </DialogHeader>
@@ -308,7 +309,7 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
                                   <div className="flex flex-col">
                                     <span className="font-medium">{invoice.invoice_number}</span>
                                     <span className="text-xs text-muted-foreground">
-                                      {invoice.customer?.name ?? 'Unknown'} · ${(Number(invoice.total) || 0).toFixed(2)}
+                                      {invoice.customer?.name ?? 'Unknown'} · {formatCurrency(Number(invoice.total) || 0, invoice.currency_code || undefined)}
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-2">
@@ -426,7 +427,7 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
                         </td>
                         <td className="px-4 py-2 text-sm">{line.tax_rate}%</td>
                         <td className="px-4 py-2 text-sm font-medium">
-                          ${calculateLineTotal(line).toFixed(2)}
+                          {formatCurrency(calculateLineTotal(line), selectedInvoice?.currency_code || undefined)}
                         </td>
                       </tr>
                     ))}
@@ -435,7 +436,7 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
                     <tr>
                       <td colSpan={4} className="px-4 py-2 text-right font-semibold">Total:</td>
                       <td className="px-4 py-2 font-bold">
-                        ${calculateTotal().toFixed(2)}
+                        {formatCurrency(calculateTotal(), selectedInvoice?.currency_code || undefined)}
                       </td>
                     </tr>
                   </tfoot>

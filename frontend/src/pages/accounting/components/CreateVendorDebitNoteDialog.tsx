@@ -28,7 +28,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 import api from '@/lib/api';
 
 interface CreateVendorDebitNoteDialogProps {
@@ -45,6 +45,7 @@ interface Bill {
   total: number;
   balance: number;
   status: string;
+  currency_code?: string;
   lines: BillLine[];
 }
 
@@ -133,7 +134,7 @@ export default function CreateVendorDebitNoteDialog({ onClose, onSuccess, billId
     if (!selectedBill) return 'Select a bill...';
     const vendorName = selectedBill.vendor?.name ?? 'Unknown';
     const total = Number(selectedBill.total) || 0;
-    return `${selectedBill.bill_number} — ${vendorName} ($${total.toFixed(2)})`;
+    return `${selectedBill.bill_number} — ${vendorName} (${formatCurrency(total, selectedBill.currency_code || undefined)})`;
   };
 
   const filteredBills = searchQuery
@@ -232,7 +233,7 @@ export default function CreateVendorDebitNoteDialog({ onClose, onSuccess, billId
                             <CommandItem key={bill.id} value={String(bill.id)} onSelect={handleSelect} className="flex items-center justify-between py-3">
                               <div className="flex flex-col">
                                 <span className="font-medium">{bill.bill_number}</span>
-                                <span className="text-xs text-muted-foreground">{bill.vendor?.name ?? 'Unknown'} · ${(Number(bill.total) || 0).toFixed(2)}</span>
+                                <span className="text-xs text-muted-foreground">{bill.vendor?.name ?? 'Unknown'} · {formatCurrency(Number(bill.total) || 0, bill.currency_code || undefined)}</span>
                               </div>
                               <div className="flex items-center gap-2">
                                 <span className="text-xs text-muted-foreground capitalize">{bill.status}</span>
@@ -284,7 +285,7 @@ export default function CreateVendorDebitNoteDialog({ onClose, onSuccess, billId
                 <div className="mb-4 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-destructive">
                   <Icon icon="solar:danger-triangle-bold" className="h-5 w-5 shrink-0" />
                   <p className="text-sm">
-                    <strong>Warning:</strong> Debit note total (${debitNoteTotal.toFixed(2)}) exceeds bill total (${billTotal.toFixed(2)}). The bill's remaining balance may not cover this amount.
+                    <strong>Warning:</strong> Debit note total ({formatCurrency(debitNoteTotal, selectedBill?.currency_code || undefined)}) exceeds bill total ({formatCurrency(billTotal, selectedBill?.currency_code || undefined)}). The bill's remaining balance may not cover this amount.
                   </p>
                 </div>
               )}
@@ -311,18 +312,18 @@ export default function CreateVendorDebitNoteDialog({ onClose, onSuccess, billId
                           <input type="number" value={line.unit_price} onChange={(e) => handleLineChange(index, 'unit_price', Number(e.target.value))} min="0" step="0.01" className="w-24 rounded border border-input bg-background px-2 py-1" />
                         </td>
                         <td className="px-4 py-2 text-sm">{line.tax_rate}%</td>
-                        <td className="px-4 py-2 text-sm font-medium">${calculateLineTotal(line).toFixed(2)}</td>
+                        <td className="px-4 py-2 text-sm font-medium">{formatCurrency(calculateLineTotal(line), selectedBill?.currency_code || undefined)}</td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot className="bg-muted/50">
                     <tr>
                       <td colSpan={4} className="px-4 py-2 text-right text-sm text-muted-foreground">Bill Total:</td>
-                      <td className="px-4 py-2 text-sm font-medium">${billTotal.toFixed(2)}</td>
+                      <td className="px-4 py-2 text-sm font-medium">{formatCurrency(billTotal, selectedBill?.currency_code || undefined)}</td>
                     </tr>
                     <tr>
                       <td colSpan={4} className="px-4 py-2 text-right font-semibold">Debit Note Total:</td>
-                      <td className={cn('px-4 py-2 font-bold', exceedsBill && 'text-destructive')}>${debitNoteTotal.toFixed(2)}</td>
+                      <td className={cn('px-4 py-2 font-bold', exceedsBill && 'text-destructive')}>{formatCurrency(debitNoteTotal, selectedBill?.currency_code || undefined)}</td>
                     </tr>
                   </tfoot>
                 </table>

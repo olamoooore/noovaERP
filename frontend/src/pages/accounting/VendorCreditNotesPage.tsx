@@ -16,6 +16,7 @@ import { Pagination } from '@/components/ui/Pagination';
 import { Icon } from '@iconify/react';
 import { SortableHead } from '@/components/ui/SortableHead';
 import { useSort } from '@/hooks/useSort';
+import { formatCurrency } from '@/lib/utils';
 
 function StatusBadge({ status }: { status: string }) {
   const statusConfig: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
@@ -166,7 +167,7 @@ export default function VendorCreditNotesPage() {
                       <TableCell>{creditNote.bill_number || '-'}</TableCell>
                       <TableCell>{new Date(creditNote.credit_note_date).toLocaleDateString()}</TableCell>
                       <TableCell className="text-right font-medium">
-                        {creditNote.currency_code} {parseFloat(creditNote.total_amount).toFixed(2)}
+                        {formatCurrency(Number(creditNote.total_amount) || 0, creditNote.currency_code || undefined)}
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={creditNote.status} />

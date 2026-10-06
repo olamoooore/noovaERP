@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
+import { formatCurrency } from '@/lib/utils'
 import { prettyLabel } from './format'
 
 const today = () => new Date().toISOString().slice(0, 10)
@@ -90,7 +91,7 @@ export function StorefrontReportsPage() {
               <Kpi label="Failed payments (7d)" value={ov.failed_payments_7d} icon="solar:danger-triangle-bold-duotone" tone="bg-rose-100 text-rose-700" />
               <Kpi label="Low-stock products" value={ov.low_stock_products} icon="solar:box-minimalistic-bold-duotone" tone="bg-orange-100 text-orange-700" />
               <Kpi label="Failed messages (24h)" value={ov.failed_messages_24h} icon="solar:letter-bold-duotone" tone="bg-neutral-200 text-neutral-700" />
-              <Kpi label="Revenue today" value={(ov.revenue_today ?? []).map((x: { currency: string; gross: string }) => `${x.currency} ${x.gross}`).join(' · ') || '—'} icon="solar:dollar-bold-duotone" tone="bg-green-100 text-green-700" />
+              <Kpi label="Revenue today" value={(ov.revenue_today ?? []).map((x: { currency: string; gross: string }) => formatCurrency(Number(x.gross) || 0, x.currency || undefined)).join(' · ') || '—'} icon="solar:dollar-bold-duotone" tone="bg-green-100 text-green-700" />
             </div>
           ) : <Loading />}
         </TabsContent>

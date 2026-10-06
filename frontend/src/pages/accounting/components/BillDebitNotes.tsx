@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
+import { formatCurrency } from '@/lib/utils';
 
 interface BillDebitNotesProps {
   billId: number;
@@ -71,7 +72,7 @@ export default function BillDebitNotes({ billId, billTotal, currencyCode }: Bill
           <div className="text-sm text-gray-600">
             <span className="font-medium">Remaining Balance:</span>{' '}
             <span className={remainingBalance < billTotal ? 'text-green-600 font-semibold' : ''}>
-              {currencyCode} {remainingBalance.toFixed(2)}
+              {formatCurrency(Number(remainingBalance) || 0, currencyCode || undefined)}
             </span>
           </div>
         )}
@@ -106,7 +107,7 @@ export default function BillDebitNotes({ billId, billTotal, currencyCode }: Bill
                     {new Date(debitNote.debit_note_date).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900">
-                    {debitNote.currency_code} {Number(debitNote.total_amount).toFixed(2)}
+                    {formatCurrency(Number(debitNote.total_amount) || 0, debitNote.currency_code || undefined)}
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge status={debitNote.status} />
@@ -134,7 +135,7 @@ export default function BillDebitNotes({ billId, billTotal, currencyCode }: Bill
               <tr>
                 <td colSpan={2} className="px-4 py-3 text-sm font-semibold text-gray-900">Total Debited (Posted):</td>
                 <td colSpan={4} className="px-4 py-3 text-sm font-bold text-green-600">
-                  {currencyCode} {totalDebited.toFixed(2)}
+                  {formatCurrency(Number(totalDebited) || 0, currencyCode || undefined)}
                 </td>
               </tr>
             </tfoot>

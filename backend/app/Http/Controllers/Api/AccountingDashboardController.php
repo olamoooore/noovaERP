@@ -3,12 +3,18 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\TenantCurrencyFormatter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class AccountingDashboardController extends Controller
 {
+    private function formatAmount(float $amount): string
+    {
+        return app(TenantCurrencyFormatter::class)->format($amount);
+    }
+
     /**
      * Get accounting dashboard metrics
      */
@@ -88,7 +94,7 @@ class AccountingDashboardController extends Controller
 
         return [
             'amount' => $amount,
-            'formatted' => '$'.number_format($amount, 2),
+            'formatted' => $this->formatAmount($amount),
         ];
     }
 
@@ -112,7 +118,7 @@ class AccountingDashboardController extends Controller
 
         return [
             'amount' => $amount,
-            'formatted' => '$'.number_format($amount, 2),
+            'formatted' => $this->formatAmount($amount),
         ];
     }
 
@@ -134,7 +140,7 @@ class AccountingDashboardController extends Controller
 
         return [
             'amount' => round((float) $total, 2),
-            'formatted' => '$'.number_format(round((float) $total, 2), 2),
+            'formatted' => $this->formatAmount(round((float) $total, 2)),
         ];
     }
 

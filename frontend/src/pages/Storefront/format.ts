@@ -2,11 +2,13 @@
 // non-component module so react-refresh is happy and the pages share one
 // implementation.
 
+import { formatCurrency } from '@/lib/utils'
+
 export const money = (value?: string | null, currency?: string | null): string => {
   if (value === null || value === undefined || value === '') return '—'
   const n = Number(value)
-  const amount = Number.isFinite(n) ? n.toFixed(2) : value
-  return currency ? `${currency} ${amount}` : amount
+  if (!Number.isFinite(n)) return value
+  return formatCurrency(n, currency || undefined)
 }
 
 export const prettyLabel = (s?: string | null): string =>

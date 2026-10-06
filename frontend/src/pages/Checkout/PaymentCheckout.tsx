@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
+import { formatCurrency } from '@/lib/utils'
 import { loadAceStripe } from '@/lib/stripe'
 
 interface PaymentData {
@@ -74,7 +75,7 @@ function CheckoutForm({ paymentData }: { paymentData: PaymentData }) {
 
         toast({
           title: 'Payment successful!',
-          description: `Your payment of ${paymentData.currency.toUpperCase()} ${Number(paymentData.amount).toFixed(2)} has been processed.`,
+          description: `Your payment of ${formatCurrency(Number(paymentData.amount), paymentData.currency || undefined)} has been processed.`,
         })
         
         // Redirect to success page or invoices
@@ -99,7 +100,7 @@ function CheckoutForm({ paymentData }: { paymentData: PaymentData }) {
         <div className="flex justify-between items-center">
           <span className="text-sm text-muted-foreground">Amount</span>
           <span className="text-2xl font-bold">
-            {paymentData.currency.toUpperCase()} {Number(paymentData.amount).toFixed(2)}
+            {formatCurrency(Number(paymentData.amount), paymentData.currency || undefined)}
           </span>
         </div>
       </div>
@@ -139,7 +140,7 @@ function CheckoutForm({ paymentData }: { paymentData: PaymentData }) {
         ) : (
           <>
             <Icon icon="material-symbols:lock" className="mr-2 h-5 w-5" />
-            Pay {paymentData.currency.toUpperCase()} {Number(paymentData.amount).toFixed(2)}
+            Pay {formatCurrency(Number(paymentData.amount), paymentData.currency || undefined)}
           </>
         )}
       </Button>

@@ -15,7 +15,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { cn } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 import api from '@/lib/api'
 
 export interface InvoiceSearchItem {
@@ -28,6 +28,7 @@ export interface InvoiceSearchItem {
   balance?: number
   status?: string
   invoice_date?: string
+  currency_code?: string
 }
 
 interface InvoiceSearchComboboxProps {
@@ -96,14 +97,14 @@ export function InvoiceSearchCombobox({
       const customerName = fromResults.customer?.name || ''
       const balance = fromResults.balance ?? fromResults.total
       const customerCode = fromResults.customer?.code
-      return `${fromResults.invoice_number}${customerCode ? ` - ${customerCode}` : ''}${customerName ? ` - ${customerName}` : ''} ($${balance})`
+      return `${fromResults.invoice_number}${customerCode ? ` - ${customerCode}` : ''}${customerName ? ` - ${customerName}` : ''} (${formatCurrency(Number(balance) || 0, fromResults.currency_code || undefined)})`
     }
 
     if (selectedInvoice) {
       const customerName = selectedInvoice.customer?.name || ''
       const balance = selectedInvoice.balance ?? selectedInvoice.total
       const customerCode = selectedInvoice.customer?.code
-      return `${selectedInvoice.invoice_number}${customerCode ? ` - ${customerCode}` : ''}${customerName ? ` - ${customerName}` : ''} ($${balance})`
+      return `${selectedInvoice.invoice_number}${customerCode ? ` - ${customerCode}` : ''}${customerName ? ` - ${customerName}` : ''} (${formatCurrency(Number(balance) || 0, selectedInvoice.currency_code || undefined)})`
     }
 
     return 'Loading...'
@@ -177,7 +178,7 @@ export function InvoiceSearchCombobox({
                       {invoice.invoice_number} - {invoice.customer?.code ? `${invoice.customer.code} - ` : ''}{invoice.customer?.name || 'Unknown'}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      ${invoice.balance ?? invoice.total}
+                      {formatCurrency(Number(invoice.balance ?? invoice.total) || 0, invoice.currency_code || undefined)}
                       {invoice.status ? ` · ${invoice.status}` : ''}
                     </span>
                   </div>

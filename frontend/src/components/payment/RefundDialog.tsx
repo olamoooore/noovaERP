@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { getApiErrorMessage } from '@/lib/utils';
+import { formatCurrency, getApiErrorMessage } from '@/lib/utils';
 import {
   Dialog,
   DialogContent,
@@ -78,7 +78,7 @@ export function RefundDialog({
     }
 
     if (amount > availableForRefund) {
-      setError(`Refund amount cannot exceed ${availableForRefund.toFixed(2)} ${transaction.currency}`);
+      setError(`Refund amount cannot exceed ${formatCurrency(availableForRefund, transaction.currency || undefined)}`);
       return;
     }
 

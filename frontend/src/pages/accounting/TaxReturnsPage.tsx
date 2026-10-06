@@ -108,8 +108,8 @@ const exportReturnCsv = (
   });
 };
 
-const money = (value: number) =>
-  value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = (value: number, currencyCode?: string) =>
+  formatCurrency(Number(value) || 0, currencyCode);
 
 /** "Box 1 — Standard-rated supplies (value)" → { number: '1', label: 'Standard-rated supplies (value)' } */
 const splitBoxLabel = (key: string) => {
@@ -533,7 +533,7 @@ export default function TaxReturnsPage() {
                           </TableCell>
                           <TableCell>{box.label}</TableCell>
                           <TableCell className={`text-right tabular-nums ${isNet ? '' : 'font-mono'}`}>
-                            {money(Number(value))}
+                            {money(Number(value), currency)}
                           </TableCell>
                         </TableRow>
                       );
@@ -574,8 +574,8 @@ export default function TaxReturnsPage() {
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/50 px-4 py-2.5">
                   <span className="text-sm font-semibold">{label}</span>
                   <span className="text-xs text-muted-foreground">
-                    Taxable value: <strong className="font-semibold tabular-nums text-foreground">{money(section?.taxable_value ?? 0)}</strong>
-                    {' · '}Due: <strong className="font-semibold tabular-nums text-foreground">{money(section?.tax_due ?? 0)}</strong>
+                    Taxable value: <strong className="font-semibold tabular-nums text-foreground">{money(section?.taxable_value ?? 0, currency)}</strong>
+                    {' · '}Due: <strong className="font-semibold tabular-nums text-foreground">{money(section?.tax_due ?? 0, currency)}</strong>
                   </span>
                 </div>
                 <Table>
@@ -590,8 +590,8 @@ export default function TaxReturnsPage() {
                     {(section?.by_rate ?? []).map((row) => (
                       <TableRow key={row.rate}>
                         <TableCell className="font-mono text-xs">{row.rate}%</TableCell>
-                        <TableCell className="text-right tabular-nums">{money(row.taxable_value)}</TableCell>
-                        <TableCell className="text-right tabular-nums">{money(row.tax_amount)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{money(row.taxable_value, currency)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{money(row.tax_amount, currency)}</TableCell>
                       </TableRow>
                     ))}
                     {(section?.by_rate ?? []).length === 0 && (
@@ -607,7 +607,7 @@ export default function TaxReturnsPage() {
             ))}
             <div className="flex items-center justify-between border-t pt-3">
               <span className="text-sm font-medium">Total SST payable</span>
-              <span className="text-lg font-bold tabular-nums">{money(returnData.data.total_tax_payable ?? 0)}</span>
+              <span className="text-lg font-bold tabular-nums">{money(returnData.data.total_tax_payable ?? 0, currency)}</span>
             </div>
             <p className="text-xs text-muted-foreground">
               MY SST is single-stage — no input-tax credit. Sales tax (goods) and service tax are
@@ -714,13 +714,13 @@ export default function TaxReturnsPage() {
                                 <span>{meta.label}</span>
                               </div>
                             </TableCell>
-                            <TableCell className="text-right font-mono">{money(Number(f7Data.data!.baseline.boxes?.[box] ?? 0))}</TableCell>
-                            <TableCell className="text-right font-mono">{money(Number(f7Data.data!.corrected.boxes?.[box] ?? 0))}</TableCell>
+                            <TableCell className="text-right font-mono">{money(Number(f7Data.data!.baseline.boxes?.[box] ?? 0), currency)}</TableCell>
+                            <TableCell className="text-right font-mono">{money(Number(f7Data.data!.corrected.boxes?.[box] ?? 0), currency)}</TableCell>
                             <TableCell className={`text-right font-mono ${
                               Number(delta) > 0 ? 'text-rose-600 dark:text-rose-400'
                                 : Number(delta) < 0 ? 'text-emerald-600 dark:text-emerald-400' : ''
                             }`}>
-                              {money(Number(delta))}
+                              {money(Number(delta), currency)}
                             </TableCell>
                             <TableCell>
                               <Badge variant="outline" className="font-normal">
@@ -735,7 +735,7 @@ export default function TaxReturnsPage() {
                 </div>
                 <div className="flex items-center justify-between border-t pt-3">
                   <span className="text-sm font-medium">Net GST error (positive = additional tax payable)</span>
-                  <span className="text-lg font-bold tabular-nums">{money(f7Data.data.net_gst_error ?? 0)}</span>
+                  <span className="text-lg font-bold tabular-nums">{money(f7Data.data.net_gst_error ?? 0, currency)}</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Baseline filed at: {f7Data.data.baseline.filed_at ?? '—'}. Disclose via myTax Portal GST

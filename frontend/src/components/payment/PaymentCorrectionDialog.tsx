@@ -147,8 +147,7 @@ export const PaymentCorrectionDialog: React.FC<{
             <div className="flex justify-between">
               <span className="text-muted-foreground">Amount</span>
               <span className="font-medium">
-                {payment.currency ? `${payment.currency} ` : ''}
-                {formatCurrency(payment.amount || 0)}
+                {formatCurrency(payment.amount || 0, payment.currency || undefined)}
               </span>
             </div>
             {payment.invoice && (

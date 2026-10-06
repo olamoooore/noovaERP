@@ -12,6 +12,7 @@ import {
   User, Mail, Hash, Clock, CheckCircle2, Ticket, RefreshCcw,
 } from 'lucide-react';
 import { useCustomerDashboard, useCancelBooking, useRefundBooking } from '@/hooks/queries/useEventManagement';
+import { formatCurrency } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { PromptDialog } from '@/components/ui/prompt-dialog';
@@ -54,7 +55,6 @@ const BookingDetailModal: React.FC<{ booking: any; open: boolean; onClose: () =>
   if (!booking) return null;
   const status   = booking.status ?? booking.state ?? 'confirmed';
   const amount   = booking.total_amount ?? booking.amount ?? 0;
-  const currency = booking.currency ?? 'SGD';
   const style    = getStyle(status);
   const eventDate = booking.event_date ?? booking.event_start;
 
@@ -107,7 +107,7 @@ const BookingDetailModal: React.FC<{ booking: any; open: boolean; onClose: () =>
           <Row
             icon={<CreditCard className="h-4 w-4" />}
             label="Amount"
-            value={amount === 0 ? 'FREE' : `${currency} ${Number(amount).toFixed(2)}`}
+            value={amount === 0 ? 'FREE' : formatCurrency(Number(amount) || 0, booking.currency || undefined)}
           />
           {booking.queue_number != null && (
             <Row
@@ -270,7 +270,6 @@ const MyBookingsPage: React.FC = () => {
                 {filteredBookings.map((booking) => {
                   const status    = booking.status ?? booking.state ?? 'confirmed';
                   const amount    = booking.total_amount ?? booking.amount ?? 0;
-                  const currency  = booking.currency ?? 'SGD';
                   const eventDate = booking.event_date ?? booking.event_start;
                   const bookedAt  = booking.booking_date ?? booking.created_at;
                   const style     = getStyle(status);
@@ -310,7 +309,7 @@ const MyBookingsPage: React.FC = () => {
                               )}
                               <span className="flex items-center gap-1.5">
                                 <CreditCard className="h-3.5 w-3.5" />
-                                {amount === 0 ? 'FREE' : `${currency} ${Number(amount).toFixed(2)}`}
+                                {amount === 0 ? 'FREE' : formatCurrency(Number(amount) || 0, booking.currency || undefined)}
                               </span>
                             </div>
 

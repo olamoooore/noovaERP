@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Ticket, QrCode, Download, Calendar, MapPin, Clock, Loader2, User } from 'lucide-react';
 import { useCustomerDashboard } from '@/hooks/queries/useEventManagement';
+import { formatCurrency } from '@/lib/utils';
 import { format } from 'date-fns';
 
 /**
@@ -85,7 +86,6 @@ const MyTicketsPage: React.FC = () => {
                   const status    = booking.status ?? booking.state ?? 'confirmed';
                   const eventDate = booking.event_date ?? booking.event_start;
                   const amount    = booking.total_amount ?? booking.amount ?? 0;
-                  const currency  = booking.currency ?? 'SGD';
                   const tickets   = Array.isArray(booking.tickets) ? booking.tickets : [];
                   const ref       = tickets[0]?.ticket_code ?? booking.booking_reference ?? `#${booking.id}`;
 
@@ -138,7 +138,7 @@ const MyTicketsPage: React.FC = () => {
                         <div className="flex items-center justify-between pt-4 border-t">
                           <div>
                             <p className="font-medium">
-                              {amount === 0 ? 'FREE' : `${currency} ${Number(amount).toFixed(2)}`}
+                              {amount === 0 ? 'FREE' : formatCurrency(Number(amount) || 0, booking.currency || undefined)}
                             </p>
                             <p className="text-xs text-muted-foreground">General Admission</p>
                             <p className="text-xs text-muted-foreground">{tickets.length} issued ticket{tickets.length === 1 ? '' : 's'}</p>

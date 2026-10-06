@@ -27,6 +27,7 @@ import type { Event } from '@/lib/event-management-api';
 import { LoadingSpinner } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { storefrontRoutes } from '@/storefront/lib/paths';
+import { formatCurrency } from '@/lib/utils';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 type EventFormState = {
@@ -482,7 +483,7 @@ const MyEventsDashboard: React.FC = () => {
                         <div className="flex justify-between">
                           <span className="text-gray-500">Amount:</span>
                           <span className="font-bold">
-                            {booking.total_amount === 0 ? 'FREE' : `SGD ${Number(booking.total_amount).toFixed(2)}`}
+                            {booking.total_amount === 0 ? 'FREE' : formatCurrency(Number(booking.total_amount) || 0, b.currency || undefined)}
                           </span>
                         </div>
                       </div>

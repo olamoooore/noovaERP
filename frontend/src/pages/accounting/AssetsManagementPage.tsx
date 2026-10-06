@@ -37,6 +37,7 @@ import { useToast } from '@/hooks/use-toast';
 import fixedAssetsApi, { type FixedAsset, type CreateAssetRequest } from '@/lib/fixedAssetsApi';
 import chartOfAccountsApi from '@/lib/chartOfAccountsApi';
 import { SalesDocumentExportMenu, type SalesExportColumn } from '@/components/sales/SalesDocumentExportMenu';
+import { formatCurrency } from '@/lib/utils';
 
 const ASSET_EXPORT_COLUMNS = [
   { key: 'asset_number', label: 'Asset No', group: 'Asset', default: true }, { key: 'name', label: 'Asset Name', group: 'Asset', default: true },
@@ -418,10 +419,10 @@ export default function AssetsManagementPage() {
                       <TableCell className="font-medium">{asset.name}</TableCell>
                       <TableCell>{asset.category}</TableCell>
                       <TableCell className="font-mono">
-                        ${asset.purchase_cost.toLocaleString()}
+                        {formatCurrency(Number(asset.purchase_cost) || 0)}
                       </TableCell>
                       <TableCell className="font-mono">
-                        ${asset.book_value.toLocaleString()}
+                        {formatCurrency(Number(asset.book_value) || 0)}
                       </TableCell>
                       <TableCell>
                         <Badge className={getStatusBadge(asset.status)}>
@@ -534,16 +535,16 @@ export default function AssetsManagementPage() {
                     <TableRow key={entry.id || idx}>
                       <TableCell>{entry.period_date || entry.period || entry.date || '-'}</TableCell>
                       <TableCell className="text-right font-mono">
-                        ${Number(entry.beginning_value || entry.opening_value || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        {formatCurrency(Number(entry.beginning_value || entry.opening_value || 0))}
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        ${Number(entry.depreciation_amount || entry.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        {formatCurrency(Number(entry.depreciation_amount || entry.amount || 0))}
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        ${Number(entry.accumulated_depreciation || entry.accumulated || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        {formatCurrency(Number(entry.accumulated_depreciation || entry.accumulated || 0))}
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        ${Number(entry.ending_book_value || entry.book_value || entry.closing_value || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        {formatCurrency(Number(entry.ending_book_value || entry.book_value || entry.closing_value || 0))}
                       </TableCell>
                     </TableRow>
                   ))}

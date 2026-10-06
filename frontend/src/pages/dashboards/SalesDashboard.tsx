@@ -15,6 +15,7 @@ import { BarChart } from '@/components/charts/BarChart';
 import { PieChart } from '@/components/charts/PieChart';
 import reportApi, { formatLocalDate } from '@/lib/reportApi';
 import { mapCategoryRevenueSlices, mapRevenueTrendPoints } from '@/lib/salesDashboardMapping';
+import { formatCurrency } from '@/lib/utils';
 import type { SalesDashboardData } from '@/types/reports';
 
 /**
@@ -154,14 +155,6 @@ export const SalesDashboard: React.FC = () => {
       </div>
     );
   }
-
-  const formatCurrency = (value: number | undefined | null) => {
-    const numValue = Number(value) || 0;
-    return numValue.toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  };
 
   const PERIODS = ['today', 'week', 'month', 'year'] as const;
   const periodSub: Record<string, string> = {

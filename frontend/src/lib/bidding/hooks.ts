@@ -8,6 +8,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from '@/hooks/use-toast'
 import { biddingAPI } from './api'
+import { formatCurrency } from '@/lib/utils'
 import type {
   SubmitBidRequest,
   ProcessBidRequest,
@@ -124,7 +125,7 @@ export const useSubmitBid = () => {
       
       toast({
         title: "Bid Submitted",
-        description: `Your bid of $${variables.bid_amount} has been submitted successfully`,
+        description: `Your bid of ${formatCurrency(Number(variables.bid_amount) || 0)} has been submitted successfully`,
       })
     },
     onError: (error: any) => {

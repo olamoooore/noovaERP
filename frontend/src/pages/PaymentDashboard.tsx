@@ -24,6 +24,7 @@ import {
   RefreshCcw,
   CreditCard,
 } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils';
 
 interface AnalyticsData {
   summary: {
@@ -135,7 +136,7 @@ export function PaymentDashboard() {
             ) : (
               <>
                 <div className="text-2xl font-bold">
-                  ${parseFloat(String(analytics?.summary.total_revenue || 0)).toFixed(2)}
+                  {formatCurrency(Number(analytics?.summary.total_revenue) || 0)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   {analytics?.summary.total_transactions || 0} transactions
@@ -175,7 +176,7 @@ export function PaymentDashboard() {
             ) : (
               <>
                 <div className="text-2xl font-bold">
-                  ${parseFloat(String(analytics?.summary.average_transaction_value || 0)).toFixed(2)}
+                  {formatCurrency(Number(analytics?.summary.average_transaction_value) || 0)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">Average value</p>
               </>
@@ -232,7 +233,7 @@ export function PaymentDashboard() {
             ) : (
               <>
                 <div className="text-2xl font-bold text-orange-600">
-                  ${parseFloat(String(analytics?.summary.refunded_amount || 0)).toFixed(2)}
+                  {formatCurrency(Number(analytics?.summary.refunded_amount) || 0)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">Total refunds</p>
               </>
@@ -268,7 +269,7 @@ export function PaymentDashboard() {
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="font-semibold">${parseFloat(String(gateway.revenue || 0)).toFixed(2)}</p>
+                    <p className="font-semibold">{formatCurrency(Number(gateway.revenue) || 0)}</p>
                     <p className="text-sm text-green-600">{gateway.successful} successful</p>
                   </div>
                 </div>
@@ -318,7 +319,7 @@ export function PaymentDashboard() {
                   </div>
                   <div className="text-right">
                     <p className="font-semibold text-red-700">
-                      ${payment.amount.toFixed(2)} {payment.currency}
+                      {formatCurrency(Number(payment.amount) || 0, payment.currency || undefined)}
                     </p>
                   </div>
                 </div>

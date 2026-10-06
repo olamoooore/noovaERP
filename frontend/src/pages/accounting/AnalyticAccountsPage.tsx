@@ -34,6 +34,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import analyticAccountsApi, { type AnalyticAccount, type CreateAnalyticAccountRequest } from '@/lib/analyticAccountsApi';
+import { formatCurrency } from '@/lib/utils';
 
 export default function AnalyticAccountsPage() {
   const navigate = useNavigate();
@@ -203,7 +204,7 @@ export default function AnalyticAccountsPage() {
           <div className="flex items-center gap-2">
             {account.budget_amount && (
               <span className="font-mono text-sm">
-                Budget: ${account.budget_amount.toLocaleString()}
+                Budget: {formatCurrency(Number(account.budget_amount) || 0)}
               </span>
             )}
             <div className="flex gap-1">
@@ -323,7 +324,7 @@ export default function AnalyticAccountsPage() {
                         {account.parent?.name || '-'}
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        {account.budget_amount ? `$${account.budget_amount.toLocaleString()}` : '-'}
+                        {account.budget_amount ? formatCurrency(Number(account.budget_amount) || 0) : '-'}
                       </TableCell>
                       <TableCell>
                         <Badge variant={account.is_active ? 'default' : 'secondary'}>

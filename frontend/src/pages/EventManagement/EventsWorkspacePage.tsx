@@ -29,7 +29,7 @@ import { EnhancedBadge, getSemanticColor } from '@/components/ui/EnhancedBadge';
 import { LoadingSpinner } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { useCreateEvent, useCustomerDashboard, useDeleteEvent, useDownloadTicket, useEvents, useUpdateEvent } from '@/hooks/queries';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 import { fetchPublicEvents, type ApiEvent } from '@/storefront/lib/api';
 import { useProducts } from '@/storefront/hooks/useProducts';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -678,7 +678,7 @@ const EventsWorkspacePage: React.FC = () => {
                             <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-stone-600">
                               <span>Total capacity: {event.totalCapacity ?? 'N/A'}</span>
                               <span>Sold: {soldCount ?? 'N/A'}</span>
-                              <span>{event.price != null ? `SGD ${event.price.toFixed(2)}` : 'Price hidden'}</span>
+                              <span>{event.price != null ? formatCurrency(Number(event.price) || 0) : 'Price hidden'}</span>
                             </div>
                           </div>
 
@@ -823,7 +823,7 @@ const EventsWorkspacePage: React.FC = () => {
                           <div className="flex justify-between gap-3">
                             <span className="text-stone-500">Amount</span>
                             <span className="font-semibold text-stone-900">
-                              {booking.total_amount === 0 ? 'FREE' : `SGD ${Number(booking.total_amount).toFixed(2)}`}
+                              {booking.total_amount === 0 ? 'FREE' : formatCurrency(Number(booking.total_amount) || 0, detail.currency || undefined)}
                             </span>
                           </div>
                           <div className="flex justify-between gap-3">
