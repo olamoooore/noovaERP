@@ -481,13 +481,39 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
           : value,
     },
     { key: 'sku', label: 'SKU', sortable: true, filterable: true },
+    // Issue #600: free (FOC) units are shown apart from the paid quantity;
+    // average price and margin are on paid units.
     {
-      key: 'total_quantity',
-      label: 'Qty Sold',
+      key: 'paid_quantity',
+      label: 'Paid Qty',
       sortable: true,
       align: 'right',
       className: 'tabular-nums',
       format: (value) => formatNumber(value),
+    },
+    {
+      key: 'foc_quantity',
+      label: 'FOC Qty',
+      sortable: true,
+      align: 'right',
+      className: 'tabular-nums',
+      format: (value) => formatNumber(value),
+    },
+    {
+      key: 'foc_list_value',
+      label: 'FOC Value',
+      sortable: true,
+      align: 'right',
+      className: 'tabular-nums',
+      format: (value) => formatCurrency(value),
+    },
+    {
+      key: 'average_price',
+      label: 'Avg Price',
+      sortable: true,
+      align: 'right',
+      className: 'tabular-nums',
+      format: (value) => formatCurrency(value),
     },
     {
       key: 'total_revenue',
@@ -550,6 +576,31 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
       align: 'right',
       className: 'tabular-nums',
       format: (value) => formatNumber(value),
+    },
+    // Issue #600: paid vs free (FOC) units and the FOC list value.
+    {
+      key: 'paid_quantity',
+      label: 'Paid Qty',
+      sortable: true,
+      align: 'right',
+      className: 'tabular-nums',
+      format: (value) => formatNumber(value),
+    },
+    {
+      key: 'foc_quantity',
+      label: 'FOC Qty',
+      sortable: true,
+      align: 'right',
+      className: 'tabular-nums',
+      format: (value) => formatNumber(value),
+    },
+    {
+      key: 'foc_list_value',
+      label: 'FOC Value',
+      sortable: true,
+      align: 'right',
+      className: 'tabular-nums',
+      format: (value) => formatCurrency(value),
     },
     {
       key: 'total_revenue',
@@ -686,11 +737,14 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
   // ── Full export datasets ────────────────────────────────────────────────
   // CSV/PDF/Print export every row, not just the page the detail table shows.
   const productExportRows = [
-    ['Product', 'SKU', 'Qty Sold', 'Revenue', 'Cost', 'Profit', 'Margin %'],
+    ['Product', 'SKU', 'Paid Qty', 'FOC Qty', 'FOC Value', 'Avg Price', 'Revenue', 'Cost', 'Profit', 'Margin %'],
     ...products.map((p) => [
       p.name,
       p.sku,
-      formatNumber(p.total_quantity),
+      formatNumber(p.paid_quantity),
+      formatNumber(p.foc_quantity),
+      formatCurrency(p.foc_list_value),
+      formatCurrency(p.average_price),
       formatCurrency(p.total_revenue),
       formatCurrency(p.total_cost),
       formatCurrency(p.total_profit),
@@ -698,10 +752,13 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     ]),
   ];
   const customerExportRows = [
-    ['Customer', 'Orders', 'Total Revenue', 'Avg Order Value', 'Last Purchase'],
+    ['Customer', 'Orders', 'Paid Qty', 'FOC Qty', 'FOC Value', 'Total Revenue', 'Avg Order Value', 'Last Purchase'],
     ...customers.map((c) => [
       c.name,
       formatNumber(c.total_orders),
+      formatNumber(c.paid_quantity),
+      formatNumber(c.foc_quantity),
+      formatCurrency(c.foc_list_value),
       formatCurrency(c.total_revenue),
       formatCurrency(c.average_order_value),
       safeDate(c.last_purchase_date),
@@ -975,7 +1032,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
               subtitle={`For the period ${periodLabel}`}
               filename={`sales-by-product-${exportRange}`}
               rows={productExportRows}
-              columnAligns={['left','left','right','right','right','right','right']}
+              columnAligns={['left','left','right','right','right','right','right','right','right','right']}
             />
           </ReportHeading>
 
@@ -1157,7 +1214,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
               subtitle={`For the period ${periodLabel}`}
               filename={`sales-by-customer-${exportRange}`}
               rows={customerExportRows}
-              columnAligns={['left','right','right','right','left']}
+              columnAligns={['left','right','right','right','right','right','right','left']}
             />
           </ReportHeading>
 
