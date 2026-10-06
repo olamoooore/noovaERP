@@ -40,7 +40,11 @@ class NotificationController extends Controller
             $query->whereNull('read_at');
         }
 
-        $logs = $query->get()->map(function (NotificationLog $log) {
+        // Issue #907: document-scoped mutes for this user, so each row can
+        // offer the inverse action ("un-mute this document").
+        $mutedDocumentKeys = $this->notificationService->mutedDocumentKeys((int) $request->user()->id);
+
+        $logs = $query->get()->map(function (NotificationLog $log) use ($mutedDocumentKeys) {
             return [
                 'id' => $log->id,
                 'event' => $log->event,
@@ -50,6 +54,7 @@ class NotificationController extends Controller
                 'data' => $log->data,
                 'status' => $log->status,
                 'error' => $log->error,
+                'document_muted' => $this->isDocumentMutedLog($log, $mutedDocumentKeys),
                 'sent_at' => optional($log->sent_at)->toIso8601String(),
                 'read_at' => optional($log->read_at)->toIso8601String(),
                 'created_at' => optional($log->created_at)->toIso8601String(),
@@ -138,5 +143,27 @@ class NotificationController extends Controller
             ->where('mail_enabled', false)
             ->pluck('event')
             ->all();
+    }
+
+    /**
+     * Does this log's document carry a document-scoped mute for the user?
+     *
+     * @param  array<int, string>  $mutedDocumentKeys
+     */
+    private function isDocumentMutedLog(NotificationLog $log, array $mutedDocumentKeys): bool
+    {
+        $data = $log->data ?? [];
+        $documentType = $data['document_type'] ?? null;
+        $documentId = $data['document_id'] ?? null;
+
+        if (! is_string($documentType) || $documentType === '' || $documentId === null || $documentId === '') {
+            return false;
+        }
+
+        return in_array(
+            $log->event.'|'.$documentType.'|'.$documentId,
+            $mutedDocumentKeys,
+            true,
+        );
     }
 }

@@ -82,6 +82,28 @@ export default function NotificationsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   })
 
+  // Issue #907: "mute all from this document" — one preference row scoped to
+  // this user + event + document, so nothing else from that document arrives.
+  const documentMuteMutation = useMutation({
+    mutationFn: async (vars: {
+      event: string
+      documentType: string
+      documentId: number | string
+      muted: boolean
+    }) => {
+      await api.put('/notifications/preferences/document', {
+        event: vars.event,
+        document_type: vars.documentType,
+        document_id: vars.documentId,
+        muted: vars.muted,
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      queryClient.invalidateQueries({ queryKey: ['notification-preferences'] })
+    },
+  })
+
   const items = (data?.data ?? []).filter((item) => {
     if (isApprovalOnly) return item.event.startsWith('approval.')
     return true
@@ -175,6 +197,10 @@ export default function NotificationsPage() {
             <div className="space-y-2">
               {items.map((item) => {
                 const text = notificationText(item)
+                const documentType = item.data?.document_type as string | undefined
+                const documentId = item.data?.document_id as number | string | undefined
+                const hasDocument =
+                  !!documentType && documentId !== undefined && documentId !== null && documentId !== ''
                 return (
                 <div
                   key={item.id}
@@ -193,6 +219,33 @@ export default function NotificationsPage() {
                       </div>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <span>{formatRelativeTime(item.created_at)}</span>
+                        {hasDocument && (
+                          <button
+                            className={`transition-opacity hover:text-primary group-hover:opacity-100 ${
+                              item.document_muted ? 'text-primary opacity-100' : 'opacity-0'
+                            }`}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              documentMuteMutation.mutate({
+                                event: item.event,
+                                documentType: documentType!,
+                                documentId: documentId!,
+                                muted: !item.document_muted,
+                              })
+                            }}
+                            aria-label={item.document_muted ? 'Un-mute this document' : 'Mute this document'}
+                            title={
+                              item.document_muted
+                                ? 'Un-mute notifications for this document'
+                                : 'Mute all notifications from this document'
+                            }
+                          >
+                            <Icon
+                              icon={item.document_muted ? 'solar:bell-off-bold' : 'solar:bell-bing-bold'}
+                              className="h-4 w-4"
+                            />
+                          </button>
+                        )}
                         <button
                           className="opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
                           onClick={(e) => {

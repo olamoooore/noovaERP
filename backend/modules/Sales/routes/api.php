@@ -22,6 +22,8 @@ Route::middleware([
     // it sits outside ResolveEntityContext/EnsureEntityAccess.
     Route::get('/notifications/preferences', [SalesNotificationPreferenceController::class, 'index']);
     Route::put('/notifications/preferences', [SalesNotificationPreferenceController::class, 'update']);
+    // Issue #907 (PCU3): per-document mute ("mute all from this document").
+    Route::put('/notifications/preferences/document', [SalesNotificationPreferenceController::class, 'updateDocument']);
 
     Route::middleware([
         \App\Http\Middleware\ResolveEntityContext::class,

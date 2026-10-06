@@ -13,6 +13,13 @@ class NotificationService implements NotificationServiceContract
     public const CHANNELS = ['in_app', 'mail'];
 
     /**
+     * Issue #907: the channel stored on a document-scoped mute row. A row
+     * keyed (user, event, document_type, document_id) with this channel and
+     * mail_enabled = false mutes every channel for that document.
+     */
+    public const DOCUMENT_MUTE_CHANNEL = 'all';
+
+    /**
      * Dispatch a notification to a user via mail.
      * Checks user preferences before sending.
      */
@@ -50,6 +57,24 @@ class NotificationService implements NotificationServiceContract
      */
     public function dispatchOnChannels(string $event, User $user, array $data, array $channels): void
     {
+        // Issue #907: a document-scoped mute suppresses every channel of that
+        // one document for this user, before any log row is written.
+        if ($this->isDocumentMuted(
+            (int) $user->id,
+            $event,
+            isset($data['document_type']) ? (string) $data['document_type'] : null,
+            $data['document_id'] ?? null,
+        )) {
+            Log::info('Notification skipped — document muted for this user', [
+                'user_id' => $user->id,
+                'event' => $event,
+                'document_type' => $data['document_type'] ?? null,
+                'document_id' => $data['document_id'] ?? null,
+            ]);
+
+            return;
+        }
+
         $channels = array_values(array_intersect($channels, self::CHANNELS));
 
         if ($channels === []) {
@@ -153,6 +178,80 @@ class NotificationService implements NotificationServiceContract
             ['user_id' => $userId, 'event' => $event, 'channel' => $channel],
             ['mail_enabled' => $enabled, 'tenant_id' => tenant()?->id]
         );
+    }
+
+    /**
+     * Issue #907 — mute or un-mute every channel for one document, for one
+     * user. A mute is a single additive row beyond the #903 event-wide
+     * preference; un-muting deletes it so delivery returns to the event
+     * preference.
+     */
+    public function setDocumentMute(
+        int $userId,
+        string $event,
+        string $documentType,
+        string $documentId,
+        bool $muted,
+    ): void {
+        if (! $muted) {
+            NotificationPreference::query()
+                ->where('user_id', $userId)
+                ->where('event', $event)
+                ->where('document_type', $documentType)
+                ->where('document_id', $documentId)
+                ->delete();
+
+            return;
+        }
+
+        NotificationPreference::updateOrCreate(
+            [
+                'user_id' => $userId,
+                'event' => $event,
+                'channel' => self::DOCUMENT_MUTE_CHANNEL,
+                'document_type' => $documentType,
+                'document_id' => $documentId,
+            ],
+            ['mail_enabled' => false, 'tenant_id' => tenant()?->id]
+        );
+    }
+
+    /**
+     * Is every channel of this document muted for this user?
+     */
+    public function isDocumentMuted(int $userId, string $event, ?string $documentType, mixed $documentId): bool
+    {
+        if ($documentType === null || $documentType === '' || $documentId === null || $documentId === '') {
+            return false;
+        }
+
+        return NotificationPreference::query()
+            ->where('user_id', $userId)
+            ->where('event', $event)
+            ->where('document_type', $documentType)
+            ->where('document_id', (string) $documentId)
+            ->where('mail_enabled', false)
+            ->exists();
+    }
+
+    /**
+     * The document mutes that apply to a user, as "event|document_type|document_id"
+     * keys, so inbox listings can flag muted documents without an N+1 query.
+     *
+     * @return array<int, string>
+     */
+    public function mutedDocumentKeys(int $userId): array
+    {
+        return NotificationPreference::query()
+            ->where('user_id', $userId)
+            ->whereNotNull('document_type')
+            ->whereNotNull('document_id')
+            ->where('mail_enabled', false)
+            ->get()
+            ->map(fn (NotificationPreference $preference) => $preference->event
+                .'|'.$preference->document_type
+                .'|'.$preference->document_id)
+            ->all();
     }
 
     /**
