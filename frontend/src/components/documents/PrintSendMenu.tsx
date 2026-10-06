@@ -24,6 +24,21 @@ export interface TemplateResolution {
   rule_label: string | null
 }
 
+/**
+ * Issue #405: another printable document built from the same source record
+ * (e.g. a sales order's order confirmation and pro-forma invoice). Each one
+ * has its own template type, render endpoint and resolver lookup.
+ */
+export interface PrintSendDocumentOption {
+  documentType: DocumentTemplateType
+  /** Menu label, e.g. "Pro-forma invoice". */
+  label: string
+  pdfPath: string
+  filename: string
+  title: string
+  resolutionPath?: string
+}
+
 interface PrintSendMenuProps {
   documentType: DocumentTemplateType
   /** Render endpoint; may already carry query params (statement period). */
@@ -40,6 +55,18 @@ interface PrintSendMenuProps {
   onEmail?: () => void
   /** Reuses the page's existing WhatsApp send service; hidden when omitted. */
   onWhatsApp?: () => void
+  /**
+   * Issue #405: label for the primary document when `documents` is given,
+   * e.g. "Sales order".
+   */
+  label?: string
+  /**
+   * Issue #405: further documents from the same record. When present the
+   * menu lists the primary document plus these, and every action (Preview,
+   * Download, Print, Choose template, resolver label, send channels) applies
+   * to the selected one.
+   */
+  documents?: PrintSendDocumentOption[]
 }
 
 /**
@@ -49,14 +76,33 @@ interface PrintSendMenuProps {
  * (issue #612 context) and is shown as "Using: <template name> (<rule>)".
  */
 export function PrintSendMenu({
-  documentType,
-  pdfPath,
-  filename,
-  title,
-  resolutionPath,
+  documentType: primaryDocumentType,
+  pdfPath: primaryPdfPath,
+  filename: primaryFilename,
+  title: primaryTitle,
+  resolutionPath: primaryResolutionPath,
   onEmail,
   onWhatsApp,
+  label,
+  documents,
 }: PrintSendMenuProps) {
+  const options = useMemo<PrintSendDocumentOption[]>(() => [
+    {
+      documentType: primaryDocumentType,
+      label: label ?? primaryTitle,
+      pdfPath: primaryPdfPath,
+      filename: primaryFilename,
+      title: primaryTitle,
+      resolutionPath: primaryResolutionPath,
+    },
+    ...(documents ?? []),
+  ], [documents, label, primaryDocumentType, primaryFilename, primaryPdfPath, primaryResolutionPath, primaryTitle])
+  const [selectedIndex, setSelectedIndex] = useState(0)
+  const selected = options[selectedIndex] ?? options[0]
+  const { documentType, pdfPath, filename, title, resolutionPath } = selected
+  // Send actions belong to the primary document's existing send service.
+  const isPrimary = selectedIndex === 0
+
   const { toast } = useToast()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogStep, setDialogStep] = useState<'default' | 'choose'>('default')
@@ -82,8 +128,8 @@ export function PrintSendMenu({
   }, [resolutionPath, resolving, resolution])
 
   const channels = PRINT_SEND_CHANNELS[documentType] ?? { email: false, whatsapp: false }
-  const showEmail = channels.email && Boolean(onEmail)
-  const showWhatsApp = channels.whatsapp && Boolean(onWhatsApp)
+  const showEmail = isPrimary && channels.email && Boolean(onEmail)
+  const showWhatsApp = isPrimary && channels.whatsapp && Boolean(onWhatsApp)
 
   /** Fetch the rendered PDF as an object URL, resolved with the document's template. */
   const fetchObjectUrl = useCallback(async (): Promise<string> => {
@@ -168,6 +214,32 @@ export function PrintSendMenu({
           </HeaderActionButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-72">
+          {options.length > 1 && (
+            <>
+              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                Document
+              </DropdownMenuLabel>
+              {options.map((option, index) => (
+                <DropdownMenuItem
+                  key={option.documentType}
+                  // Keep the menu open: choosing a document re-targets the actions below.
+                  onSelect={(event) => {
+                    event.preventDefault()
+                    setSelectedIndex(index)
+                  }}
+                  aria-checked={index === selectedIndex}
+                  role="menuitemradio"
+                >
+                  <Icon
+                    icon="solar:check-read-linear"
+                    className={`mr-2 h-4 w-4 ${index === selectedIndex ? '' : 'invisible'}`}
+                  />
+                  {option.label}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+            </>
+          )}
           {usingLabel && (
             <>
               <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">

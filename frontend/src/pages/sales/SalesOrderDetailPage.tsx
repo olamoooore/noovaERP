@@ -953,6 +953,26 @@ export function SalesOrderDetailPage() {
             filename={`SO-${order.sales_order_number}.pdf`}
             title="Sales Order"
             resolutionPath={`/documents/sales_order/resolution?document_id=${id}`}
+            label="Sales order"
+            // #405: order confirmation and pro-forma invoice (#615 templates).
+            documents={[
+              {
+                documentType: 'sales_order_confirmation',
+                label: 'Order confirmation',
+                pdfPath: `/sales/orders/${id}/confirmation/pdf`,
+                filename: `SO-${order.sales_order_number}-confirmation.pdf`,
+                title: 'Order Confirmation',
+                resolutionPath: `/documents/sales_order_confirmation/resolution?document_id=${id}`,
+              },
+              {
+                documentType: 'sales_proforma_invoice',
+                label: 'Pro-forma invoice',
+                pdfPath: `/sales/orders/${id}/proforma/pdf`,
+                filename: `SO-${order.sales_order_number}-proforma.pdf`,
+                title: 'Pro-forma Invoice',
+                resolutionPath: `/documents/sales_proforma_invoice/resolution?document_id=${id}`,
+              },
+            ]}
           />
           <ChatterDialog
             open={chatterOpen}
