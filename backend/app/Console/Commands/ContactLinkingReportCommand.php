@@ -29,6 +29,9 @@ class ContactLinkingReportCommand extends Command
 
     public function handle(ContactLinkingPlanner $planner): int
     {
+        // The command instance can be reused (e.g. several calls in one
+        // process); each run reports only its own tenants.
+        $this->reports = [];
         $tenantId = (string) ($this->option('tenant') ?? '');
 
         if ($tenantId !== '') {

@@ -6,8 +6,11 @@ use App\Models\Customer;
 use App\Models\CustomerContact;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Modules\Contact\src\Models\ContactRegistration;
 use Modules\Contact\src\Models\ContactRelationship;
 use Modules\Contact\src\Models\CoreContact;
+use Modules\Contact\src\Services\ContactTaxonomyService;
+use Modules\Contact\src\Support\ContactTaxonomyRegistry;
 
 /**
  * ADR-003B W6 pre-step — REPORT ONLY. Predicts what linking every unlinked
@@ -37,6 +40,26 @@ use Modules\Contact\src\Models\CoreContact;
  *  - `target_person_has_merge_damage`: an auto-link target already carries
  *    suspect/unverifiable links from the matcher bug fixed in 9e389eb
  *    (PersonMergeDamagePlanner) — step 4 repairs it first.
+ *
+ * Second hostile review of the linking plan (2026-10-06):
+ *  - a customer merged into another (CustomerMergeService: inactive, still
+ *    linked to the losing record whose survivor another customer links to)
+ *    keeps its link by design: `keep_merged_customer_link`;
+ *  - category/type codes are checked like the Contact Master checks them
+ *    (ContactTaxonomyService::assertValidCode — seeded, or in the tenant's
+ *    healthcare/generic vocabulary): `taxonomy_code_not_valid_for_tenant`;
+ *  - the run is SEQUENTIAL: people the run would create earlier are match
+ *    targets for later contacts, compared exactly as matchPersonIdentity()
+ *    compares (lower-case email; mobile/phone digits against the stored
+ *    value as typed): `person_id = batch:<customer_contact_id>`;
+ *  - every row carries a `fingerprint` of its source data, so a review
+ *    decision can be refused once the row has changed;
+ *  - a contact of an INDIVIDUAL customer matching the customer's own person
+ *    record: `would_link_to_customer_itself`;
+ *  - company registration numbers: linked customers and Contact Master
+ *    registrations with the same number are candidates; unlinked customers
+ *    sharing one are flagged `same_registration_number_in_batch`.
+ *    (Encrypted ContactIdentifier values are not compared.)
  */
 class ContactLinkingPlanner
 {
@@ -50,9 +73,12 @@ class ContactLinkingPlanner
 
     public const ACTION_NEEDS_REVIEW = 'needs_review';
 
+    public const ACTION_KEEP_MERGED_CUSTOMER = 'keep_merged_customer_link';
+
     public function __construct(
         private readonly CustomerContactSyncService $sync,
         private readonly PersonMergeDamagePlanner $damage,
+        private readonly ContactTaxonomyService $taxonomy,
     ) {}
 
     /** @var array<string, true> soft-deleted Contact Master ids */
@@ -63,6 +89,18 @@ class ContactLinkingPlanner
 
     /** @var array<string, string> person id → merge-damage severity */
     private array $damagedPeople = [];
+
+    /** @var array<string, list<string>> registration number → Contact Master ids */
+    private array $registrationIndex = [];
+
+    /** @var array<string, list<int>> registration number → unlinked customer ids */
+    private array $unlinkedRegistrations = [];
+
+    /** @var list<array<string, mixed>> people the run would create, in run order */
+    private array $batchPeople = [];
+
+    /** @var array<int, Customer> */
+    private array $customersById = [];
 
     /**
      * @return array<string, mixed>
@@ -77,6 +115,9 @@ class ContactLinkingPlanner
         $this->deletedIds = array_flip(CoreContact::onlyTrashed()->where('tenant_id', $tenantId)->pluck('id')->all());
         $this->mergedIds = CoreContact::where('tenant_id', $tenantId)->where('is_duplicate', true)->pluck('merged_into_id', 'id')->all();
         $this->damagedPeople = collect($this->damage->plan($tenantId)['people'])->pluck('severity', 'person_id')->all();
+        $this->batchPeople = [];
+        $this->buildRegistrationIndexes($tenantId, $existingIds);
+        $survivorCustomers = Customer::whereNotNull('core_contact_uuid')->pluck('id', 'core_contact_uuid')->all();
         $index = $this->organisationIndex($tenantId);
         $this->personOrganisations = ContactRelationship::where('tenant_id', $tenantId)
             ->where('relationship_type', 'org_person')
@@ -87,16 +128,21 @@ class ContactLinkingPlanner
 
         // Step 0: soft-deleted customers and contacts are planned too, marked.
         $organisations = [];
-        Customer::withTrashed()->orderBy('id')->chunkById(500, function ($customers) use (&$organisations, $existingIds, $index, $links) {
+        Customer::withTrashed()->orderBy('id')->chunkById(500, function ($customers) use (&$organisations, $existingIds, $index, $links, $survivorCustomers) {
             foreach ($customers as $customer) {
+                $this->customersById[$customer->id] = $customer;
                 if ($customer->core_contact_uuid && isset($existingIds[$customer->core_contact_uuid])) {
                     continue;
                 }
-                $organisations[] = $this->badLink($customer->core_contact_uuid, [
+                $base = [
                     'customer_id' => $customer->id,
                     'customer_deleted' => $customer->trashed(),
                     'customer_name' => $customer->name,
-                ]) ?? $this->planOrganisation($customer, $index, $links);
+                    'fingerprint' => $this->customerFingerprint($customer),
+                ];
+                $organisations[] = $this->mergedCustomer($customer, $base, $survivorCustomers)
+                    ?? $this->badLink($customer->core_contact_uuid, $base)
+                    ?? $this->planOrganisation($customer, $index, $links) + ['fingerprint' => $base['fingerprint']];
             }
         });
 
@@ -161,17 +207,37 @@ class ContactLinkingPlanner
             ? 'individual' : 'company';
 
         $found = [];
+        $matchedOn = [];
         foreach (['name' => $this->normalizeName($customer->name), 'email' => $this->normalizeEmail($customer->email), 'phone' => $this->normalizePhone($customer->phone)] as $field => $value) {
             foreach ($value !== null ? ($index[$type][$field][$value] ?? []) : [] as $contact) {
-                $found[$contact->id] = $contact;
+                $found[$contact->id] = $contact->display_name;
+                $matchedOn[$contact->id][] = $field;
             }
         }
 
-        $candidates = array_values(array_map(fn (CoreContact $contact) => [
-            'contact_id' => $contact->id,
-            'display_name' => $contact->display_name,
-            'linked_to' => $links[$contact->id] ?? [],
-        ], $found));
+        $registration = $this->normalizeRegistration($customer->company_registration_number);
+        if ($registration !== null) {
+            foreach ($this->registrationIndex[$registration] ?? [] as $contactId => $displayName) {
+                $found[$contactId] ??= $displayName;
+                $matchedOn[$contactId][] = 'registration_number';
+            }
+        }
+
+        $candidates = [];
+        foreach ($found as $contactId => $displayName) {
+            $candidates[] = [
+                'contact_id' => $contactId,
+                'display_name' => $displayName,
+                'matched_on' => array_values(array_unique($matchedOn[$contactId])),
+                'linked_to' => $links[$contactId] ?? [],
+            ];
+        }
+
+        $flags = [];
+        $sameInBatch = $registration !== null ? ($this->unlinkedRegistrations[$registration] ?? []) : [];
+        if (count($sameInBatch) > 1) {
+            $flags['same_registration_number_in_batch'] = $sameInBatch;
+        }
 
         $row = [
             'customer_id' => $customer->id,
@@ -180,9 +246,14 @@ class ContactLinkingPlanner
             'contact_type' => $type,
         ];
 
-        return $candidates === []
+        if ($candidates !== []) {
+            return $row + ['action' => self::ACTION_NEEDS_REVIEW, 'reason' => 'possible_existing_organisation', 'candidates' => $candidates]
+                + ($flags !== [] ? ['flags' => $flags] : []);
+        }
+
+        return $flags === []
             ? $row + ['action' => self::ACTION_CREATE_ORGANISATION]
-            : $row + ['action' => self::ACTION_NEEDS_REVIEW, 'reason' => 'possible_existing_organisation', 'candidates' => $candidates];
+            : $row + ['action' => self::ACTION_NEEDS_REVIEW, 'reason' => implode(',', array_keys($flags)), 'flags' => $flags];
     }
 
     private function planPerson(string $tenantId, CustomerContact $contact, array $links, array $sharedInBatch): array
@@ -194,6 +265,7 @@ class ContactLinkingPlanner
             'customer_id' => $contact->customer_id,
             'name' => $contact->name,
             'customer_needs_organisation' => ! $orgUuid,
+            'fingerprint' => $this->contactFingerprint($contact),
         ];
 
         if ($bad = $this->badLink($contact->core_contact_uuid, $row)) {
@@ -205,6 +277,9 @@ class ContactLinkingPlanner
         if (! empty($legacy['unknown_values'])) {
             $flags['unknown_taxonomy_values'] = array_values($legacy['unknown_values']);
         }
+        if ($invalid = $this->codesNotValidForTenant($legacy)) {
+            $flags['taxonomy_code_not_valid_for_tenant'] = $invalid;
+        }
 
         foreach (['email' => $this->normalizeEmail($contact->email), 'mobile' => $this->normalizePhone($contact->mobile)] as $key => $value) {
             if ($value !== null && isset($sharedInBatch[$key][$value])) {
@@ -215,7 +290,28 @@ class ContactLinkingPlanner
         $match = $this->sync->matchPersonIdentity($tenantId, $orgUuid, $contact->name, $contact->email, $contact->mobile, $contact->phone);
         $person = $match['contact'];
 
-        if ($person && in_array($match['tier'], [1, 2], true)) {
+        // The run is sequential: people it creates earlier are match targets
+        // too, in the live matcher's tier order (DB first within a tier).
+        $orgKey = $orgUuid ?? 'new:'.$contact->customer_id;
+        $batch = null;
+        if ($match['tier'] !== 1) {
+            $batch = $this->matchBatchPerson($contact, $orgKey, 1)
+                ?? ($match['tier'] !== 2 ? $this->matchBatchPerson($contact, $orgKey, 2) : null)
+                ?? ($match['tier'] === null ? $this->matchBatchPerson($contact, $orgKey, 3) : null);
+        }
+
+        if ($batch !== null && in_array($batch['tier'], [1, 2], true)) {
+            $row += [
+                'action' => self::ACTION_AUTO_LINK,
+                'tier' => $batch['tier'],
+                'person_id' => 'batch:'.$batch['person']['source_id'],
+                'person_name' => $batch['person']['name'],
+            ];
+            if ($this->normalizeName($batch['person']['name']) !== $this->normalizeName($contact->name)) {
+                $flags['matches_person_created_earlier_in_batch'] = $batch['person']['source_id'];
+                $flags['name_differs'] = true;
+            }
+        } elseif ($person && in_array($match['tier'], [1, 2], true)) {
             $row += [
                 'action' => self::ACTION_AUTO_LINK,
                 'tier' => $match['tier'],
@@ -232,6 +328,10 @@ class ContactLinkingPlanner
             if ($this->normalizeName($person->display_name) !== $this->normalizeName($contact->name)) {
                 $flags['name_differs'] = true;
             }
+            $customer = $this->customersById[$contact->customer_id] ?? null;
+            if ($customer && $customer->core_contact_uuid === $person->id) {
+                $flags['would_link_to_customer_itself'] = true;
+            }
             if (isset($this->damagedPeople[$person->id])) {
                 $flags['target_person_has_merge_damage'] = $this->damagedPeople[$person->id];
             }
@@ -244,6 +344,8 @@ class ContactLinkingPlanner
             }
         } elseif ($person && $match['tier'] === 3) {
             $row += ['action' => self::ACTION_CREATE_PERSON_WITH_CANDIDATE, 'candidate_person_id' => $person->id];
+        } elseif ($batch !== null) {
+            $row += ['action' => self::ACTION_CREATE_PERSON_WITH_CANDIDATE, 'candidate_person_id' => 'batch:'.$batch['person']['source_id']];
         } else {
             $row += ['action' => self::ACTION_CREATE_PERSON];
         }
@@ -255,7 +357,184 @@ class ContactLinkingPlanner
             $row['flags'] = $flags;
         }
 
+        // Only rows the run would actually execute create a person.
+        if (in_array($row['action'], [self::ACTION_CREATE_PERSON, self::ACTION_CREATE_PERSON_WITH_CANDIDATE], true)) {
+            $this->batchPeople[] = [
+                'source_id' => $contact->id,
+                'org_key' => $orgKey,
+                'name' => $contact->name,
+                'email' => $contact->email,
+                'mobile' => $contact->mobile,
+                'phone' => $contact->phone,
+            ];
+        }
+
         return $row;
+    }
+
+    /**
+     * matchPersonIdentity() against the people the run would create earlier:
+     * tier 1 email/mobile anywhere, tier 2 email/mobile/phone in the same
+     * organisation, tier 3 same name in the same organisation. Stored values
+     * are compared as the database compares them (LOWER(email) = ?,
+     * mobile/phone = digits), so "019-888 7777" stored does not match.
+     *
+     * @return array{person: array<string, mixed>, tier: int}|null
+     */
+    private function matchBatchPerson(CustomerContact $contact, string $orgKey, int $tier): ?array
+    {
+        $email = $this->normalizeEmail($contact->email);
+        $mobile = $this->normalizePhone($contact->mobile);
+        $phone = $this->normalizePhone($contact->phone);
+        $name = $this->normalizeName($contact->name);
+
+        foreach ($this->batchPeople as $person) {
+            $sameEmail = $email !== null && strtolower((string) $person['email']) === $email;
+            $sameMobile = $mobile !== null && (string) $person['mobile'] === $mobile;
+            $samePhone = $phone !== null && (string) $person['phone'] === $phone;
+            $sameOrg = $person['org_key'] === $orgKey;
+
+            $hit = match ($tier) {
+                1 => $sameEmail || $sameMobile,
+                2 => $sameOrg && ($sameEmail || $sameMobile || $samePhone),
+                3 => $sameOrg && $name !== null && $this->normalizeName($person['name']) === $name,
+                default => false,
+            };
+            if ($hit) {
+                return ['person' => $person, 'tier' => $tier];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Codes the Contact Master would reject for this tenant (the same check
+     * assignClassification / updateRelationship / setRelationshipRoles run).
+     *
+     * @param  array<string, mixed>  $legacy
+     * @return list<string>
+     */
+    private function codesNotValidForTenant(array $legacy): array
+    {
+        $checks = [];
+        if (! empty($legacy['functional_category_code'])) {
+            $checks[] = [ContactTaxonomyRegistry::TYPE_FUNCTIONAL_CATEGORY, $legacy['functional_category_code']];
+        }
+        if (! empty($legacy['classification_code'])) {
+            $checks[] = [ContactTaxonomyRegistry::TYPE_CLASSIFICATION, $legacy['classification_code']];
+        }
+        foreach ((array) ($legacy['persistent_role_codes'] ?? []) as $role) {
+            $checks[] = [ContactTaxonomyRegistry::TYPE_PERSISTENT_ROLE, $role];
+        }
+
+        $invalid = [];
+        foreach ($checks as [$type, $code]) {
+            try {
+                $this->taxonomy->assertValidCode($type, (string) $code);
+            } catch (\DomainException) {
+                $invalid[] = (string) $code;
+            }
+        }
+
+        return array_values(array_unique($invalid));
+    }
+
+    /**
+     * A customer merged into another by CustomerMergeService: inactive, linked
+     * to the losing Contact Master record, whose survivor another customer
+     * links to. The link is kept by design — moving it to the survivor would
+     * make two customers overwrite one organisation.
+     *
+     * @param  array<string, mixed>  $base
+     * @param  array<string, int>  $survivorCustomers  org id → customer id
+     * @return array<string, mixed>|null
+     */
+    private function mergedCustomer(Customer $customer, array $base, array $survivorCustomers): ?array
+    {
+        $uuid = $customer->core_contact_uuid;
+        if ($uuid === null || ! array_key_exists($uuid, $this->mergedIds) || $customer->is_active) {
+            return null;
+        }
+
+        $survivor = $this->mergedIds[$uuid];
+        $seen = [];
+        while ($survivor !== null && array_key_exists($survivor, $this->mergedIds) && ! isset($seen[$survivor])) {
+            $seen[$survivor] = true;
+            $survivor = $this->mergedIds[$survivor];
+        }
+
+        $survivorCustomer = $survivor !== null ? ($survivorCustomers[$survivor] ?? null) : null;
+        if ($survivorCustomer === null || (int) $survivorCustomer === (int) $customer->id) {
+            return null;
+        }
+
+        return $base + [
+            'action' => self::ACTION_KEEP_MERGED_CUSTOMER,
+            'linked_contact_id' => $uuid,
+            'merged_into_id' => $survivor,
+            'merged_into_customer_id' => (int) $survivorCustomer,
+        ];
+    }
+
+    /**
+     * @param  array<string, true>  $existingIds
+     */
+    private function buildRegistrationIndexes(string $tenantId, array $existingIds): void
+    {
+        $this->registrationIndex = [];
+        $this->unlinkedRegistrations = [];
+
+        $names = CoreContact::where('tenant_id', $tenantId)->where('is_duplicate', false)->pluck('display_name', 'id')->all();
+
+        Customer::withTrashed()->whereNotNull('company_registration_number')->orderBy('id')
+            ->get(['id', 'company_registration_number', 'core_contact_uuid'])
+            ->each(function (Customer $customer) use ($existingIds, $names) {
+                $number = $this->normalizeRegistration($customer->company_registration_number);
+                if ($number === null) {
+                    return;
+                }
+                if ($customer->core_contact_uuid && isset($existingIds[$customer->core_contact_uuid])) {
+                    $this->registrationIndex[$number][$customer->core_contact_uuid] = $names[$customer->core_contact_uuid] ?? null;
+                } else {
+                    $this->unlinkedRegistrations[$number][] = (int) $customer->id;
+                }
+            });
+
+        if (Schema::hasTable('contact_registrations')) {
+            ContactRegistration::where('tenant_id', $tenantId)->get(['contact_id', 'registration_value'])
+                ->each(function (ContactRegistration $registration) use ($existingIds, $names) {
+                    $number = $this->normalizeRegistration($registration->registration_value);
+                    if ($number !== null && isset($existingIds[$registration->contact_id])) {
+                        $this->registrationIndex[$number][$registration->contact_id] = $names[$registration->contact_id] ?? null;
+                    }
+                });
+        }
+    }
+
+    private function normalizeRegistration(?string $value): ?string
+    {
+        $value = strtoupper((string) preg_replace('/[^A-Za-z0-9]+/', '', (string) $value));
+
+        return $value === '' ? null : $value;
+    }
+
+    private function customerFingerprint(Customer $customer): string
+    {
+        return hash('sha256', json_encode([
+            $customer->id, $customer->name, $customer->type, $customer->email, $customer->phone, $customer->mobile,
+            $customer->company_registration_number, $customer->core_contact_uuid, (bool) $customer->is_active,
+            $customer->deleted_at?->toIso8601String(),
+        ]));
+    }
+
+    private function contactFingerprint(CustomerContact $contact): string
+    {
+        return hash('sha256', json_encode([
+            $contact->id, $contact->customer_id, $contact->name, $contact->email, $contact->mobile, $contact->phone,
+            $contact->contact_category, $contact->contact_type, $contact->department_name, $contact->core_contact_uuid,
+            $contact->deleted_at?->toIso8601String(),
+        ]));
     }
 
     /**
