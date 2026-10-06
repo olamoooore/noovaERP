@@ -13,7 +13,7 @@ import { formatDate, formatCurrency } from '@/lib/utils'
 import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { Pagination } from '@/components/ui/Pagination'
 import { SortableHead } from '@/components/ui/SortableHead'
-import { useSort } from '@/hooks/useSort'
+import type { SortDirection } from '@/hooks/useSort'
 import { fetchBulkStockAvailability } from '@/components/sales/stockAvailability'
 import { StockShortageDialog, type ShortageLine } from '@/components/sales/StockShortageDialog'
 import { SALES_ORDER_STATUSES, SALES_ORDER_STATUS_META, getSalesOrderStatusMeta } from '@/lib/salesOrderStatus'
@@ -46,6 +46,19 @@ export function SalesOrdersPage() {
   }, [searchQuery])
   const [statusFilter, setStatusFilter] = useState('all')
   const [channelFilter, setChannelFilter] = useState('all')
+  // Issue #382 (O13): sorting is server-side (allow-listed sort/direction on
+  // GET /sales/orders) so it spans every page, not just the rows on screen.
+  const [sortKey, setSortKey] = useState<string>('created_at')
+  const [sortDir, setSortDir] = useState<SortDirection>('desc')
+  const toggleSort = (key: string) => {
+    if (sortKey === key) {
+      setSortDir((current) => (current === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+    setPage(1)
+  }
   // Issue #687 (UX1): confirm preflights the order's lines and, when short,
   // asks explicitly (deliver partially / backorder / change warehouse)
   // instead of silently creating backorders (#379).
@@ -54,9 +67,9 @@ export function SalesOrdersPage() {
   const confirmIntentRef = useRef<'backorder' | 'partial' | null>(null)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['sales-orders', { page, pageSize, debouncedSearchQuery, statusFilter, channelFilter }],
+    queryKey: ['sales-orders', { page, pageSize, debouncedSearchQuery, statusFilter, channelFilter, sortKey, sortDir }],
     queryFn: async () => {
-      const params: any = { per_page: pageSize, page }
+      const params: any = { per_page: pageSize, page, sort: sortKey, direction: sortDir }
       if (debouncedSearchQuery.trim()) params.search = debouncedSearchQuery.trim()
       if (statusFilter !== 'all') params.status = statusFilter
       if (channelFilter !== 'all') params.channel = channelFilter
@@ -195,7 +208,6 @@ export function SalesOrdersPage() {
   })
 
   const orders = data?.data || []
-  const { sorted: sortedOrders, sortKey, sortDir, toggle: toggleSort } = useSort<any>(orders, 'created_at', 'desc')
   const meta = data?.meta || data
 
   return (
@@ -263,7 +275,8 @@ export function SalesOrdersPage() {
                     <SortableHead label="Date" sortKey="order_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                     {/* Issue #408: promise date, computed expected date and the late flag. */}
                     <SortableHead label="Commitment" sortKey="commitment_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
-                    <SortableHead label="Expected" sortKey="expected_date" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
+                    {/* #382: expected date is computed per row, so it cannot be sorted server-side. */}
+                    <TableHead>Expected</TableHead>
                     <SortableHead label="Created Date" sortKey="created_at" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
                     <SortableHead label="Total" sortKey="total" activeKey={sortKey} direction={sortDir} onSort={toggleSort} align="right" />
                     <SortableHead label="Status" sortKey="status" activeKey={sortKey} direction={sortDir} onSort={toggleSort} />
@@ -271,7 +284,7 @@ export function SalesOrdersPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sortedOrders.map((order: any) => (
+                  {orders.map((order: any) => (
                     <TableRow key={order.id}>
                       <TableCell className="font-medium">
                         <div>{order.sales_order_number}</div>

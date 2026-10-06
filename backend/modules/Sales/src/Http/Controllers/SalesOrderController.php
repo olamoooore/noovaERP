@@ -35,8 +35,9 @@ class SalesOrderController extends Controller
     public function index(Request $request)
     {
         $query = SalesOrder::with(['customer', 'lines.product', 'channelReferences'])
-            ->withCount(['invoiceLinks', 'deliveryOrders'])
-            ->orderBy('created_at', 'desc');
+            ->withCount(['invoiceLinks', 'deliveryOrders']);
+
+        $this->applyListSort($request, $query);
 
         $this->applyEntityScope($request, $query);
 
@@ -89,6 +90,39 @@ class SalesOrderController extends Controller
         }
 
         return response()->json($orders);
+    }
+
+    /**
+     * Issue #382 (O13): server-side sort for the paginated list so the order
+     * spans every page, not just the rows on screen. Only allow-listed
+     * columns are accepted; anything else falls back to newest first. `id`
+     * is a tie-breaker so page boundaries are stable.
+     */
+    private const LIST_SORTS = [
+        'sales_order_number', 'channel', 'order_date', 'commitment_date',
+        'created_at', 'total', 'status', 'customer.name',
+    ];
+
+    private function applyListSort(Request $request, $query): void
+    {
+        $sort = (string) $request->query('sort', 'created_at');
+        if (! in_array($sort, self::LIST_SORTS, true)) {
+            $sort = 'created_at';
+        }
+        $direction = strtolower((string) $request->query('direction', 'desc')) === 'asc' ? 'asc' : 'desc';
+
+        if ($sort === 'customer.name') {
+            $query->orderBy(
+                \App\Models\Customer::select('name')
+                    ->whereColumn('customers.id', 'sales_orders.customer_id')
+                    ->limit(1),
+                $direction
+            );
+        } else {
+            $query->orderBy('sales_orders.'.$sort, $direction);
+        }
+
+        $query->orderBy('sales_orders.id', $direction);
     }
 
     /**
