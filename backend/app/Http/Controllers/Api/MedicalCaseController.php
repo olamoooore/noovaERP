@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\BonusSchemeUsage;
 use App\Models\Customer;
+use App\Models\Invoice;
+use App\Models\InvoiceLine;
 use App\Models\MedicalCase;
 use App\Models\MedicalCaseItem;
 use App\Models\ProductBatch;
@@ -109,6 +111,8 @@ class MedicalCaseController extends Controller
             'items.*.is_foc' => 'nullable|boolean',
             'items.*.notes' => 'nullable|string',
         ]);
+
+        $this->assertLinkableInvoice($validated['invoice_id'] ?? null, (int) $validated['customer_id']);
 
         $items = $this->prepareItems($validated['items'] ?? [], (int) $validated['customer_id']);
         unset($validated['items']);
@@ -349,6 +353,15 @@ class MedicalCaseController extends Controller
             'location' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
         ]);
+
+        // Issue #566 (MC4): the (possibly new) invoice must still belong to
+        // the (possibly new) case customer.
+        if (array_key_exists('invoice_id', $validated) || array_key_exists('customer_id', $validated)) {
+            $this->assertLinkableInvoice(
+                array_key_exists('invoice_id', $validated) ? $validated['invoice_id'] : $case->invoice_id,
+                (int) ($validated['customer_id'] ?? $case->customer_id),
+            );
+        }
 
         try {
             $case->update($validated);
@@ -698,23 +711,79 @@ class MedicalCaseController extends Controller
             'items' => 'required|array',
             'items.*.id' => 'required|exists:medical_case_items,id',
             'items.*.invoiced_qty' => 'required|numeric|min:0',
-            'items.*.invoice_item_id' => 'nullable|exists:invoice_lines,id',
+            // Issue #566 (MC4): every case line maps to a line of the invoice.
+            'items.*.invoice_item_id' => 'required|integer|exists:invoice_lines,id',
         ]);
+
+        $this->assertLinkableInvoice((int) $validated['invoice_id'], (int) $case->customer_id);
 
         try {
             DB::transaction(function () use ($case, $validated) {
-                foreach ($validated['items'] as $itemData) {
-                    $item = MedicalCaseItem::where('medical_case_id', $case->id)
+                $items = collect($validated['items'])->map(function ($itemData) use ($case) {
+                    return MedicalCaseItem::where('medical_case_id', $case->id)
                         ->where('id', $itemData['id'])
                         ->firstOrFail();
+                });
 
-                    if ($itemData['invoiced_qty'] > $item->delivered_qty) {
-                        throw new \RuntimeException("Invoiced quantity cannot exceed delivered quantity for item {$item->id}");
+                $invoiceLineIds = collect($validated['items'])->pluck('invoice_item_id')->unique()->values()->all();
+
+                $invoiceLines = InvoiceLine::query()
+                    ->whereIn('id', $invoiceLineIds)
+                    ->lockForUpdate()
+                    ->get()
+                    ->keyBy('id');
+
+                // Quantities other live case lines already invoiced against
+                // the same invoice lines (this payload's items excluded).
+                $invoicedElsewhere = MedicalCaseItem::query()
+                    ->whereIn('invoice_item_id', $invoiceLineIds)
+                    ->whereNotIn('id', $items->pluck('id')->all())
+                    ->whereHas('medicalCase', fn ($query) => $query->where('status', '!=', 'cancelled'))
+                    ->groupBy('invoice_item_id')
+                    ->selectRaw('invoice_item_id, SUM(invoiced_qty) as total_invoiced')
+                    ->pluck('total_invoiced', 'invoice_item_id');
+
+                $invoicedInPayload = [];
+
+                foreach ($validated['items'] as $index => $itemData) {
+                    $item = $items[$index];
+                    $quantity = (float) $itemData['invoiced_qty'];
+
+                    if (round($quantity, 4) > round((float) $item->delivered_qty, 4)) {
+                        throw ValidationException::withMessages([
+                            "items.{$index}.invoiced_qty" => "The invoiced quantity cannot exceed the delivered quantity of {$item->delivered_qty} for this case line.",
+                        ]);
                     }
+
+                    $invoiceLine = $invoiceLines->get((int) $itemData['invoice_item_id']);
+
+                    if (! $invoiceLine || (int) $invoiceLine->invoice_id !== (int) $validated['invoice_id']) {
+                        throw ValidationException::withMessages([
+                            "items.{$index}.invoice_item_id" => 'The invoice line must belong to the selected invoice.',
+                        ]);
+                    }
+
+                    if (($invoiceLine->line_type ?? 'product') !== 'product' || (int) $invoiceLine->product_id !== (int) $item->product_id) {
+                        throw ValidationException::withMessages([
+                            "items.{$index}.invoice_item_id" => 'The invoice line must be for the same product as the case line.',
+                        ]);
+                    }
+
+                    $alreadyInvoiced = (float) ($invoicedElsewhere[$invoiceLine->id] ?? 0)
+                        + (float) ($invoicedInPayload[$invoiceLine->id] ?? 0);
+                    $openQty = round((float) $invoiceLine->quantity - $alreadyInvoiced, 4);
+
+                    if (round($quantity, 4) > $openQty) {
+                        throw ValidationException::withMessages([
+                            "items.{$index}.invoiced_qty" => "The invoiced quantity exceeds the invoice line's remaining quantity of {$openQty}.",
+                        ]);
+                    }
+
+                    $invoicedInPayload[$invoiceLine->id] = (float) ($invoicedInPayload[$invoiceLine->id] ?? 0) + $quantity;
 
                     $item->update([
                         'invoiced_qty' => $itemData['invoiced_qty'],
-                        'invoice_item_id' => $itemData['invoice_item_id'] ?? $item->invoice_item_id,
+                        'invoice_item_id' => $invoiceLine->id,
                     ]);
                 }
 
@@ -728,11 +797,42 @@ class MedicalCaseController extends Controller
                 'message' => 'Medical case invoiced successfully',
                 'data' => $case->fresh()->load(['customer', 'items.product', 'invoice']),
             ]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             return response()->json([
                 'message' => 'Failed to invoice medical case',
                 'error' => $e->getMessage(),
             ], 500);
+        }
+    }
+
+    /**
+     * Issue #566 (MC4): a case may only be linked to an invoice of its own
+     * customer (module spec §9 rule 6) that is still live — not cancelled,
+     * voided, reversed or superseded.
+     *
+     * @throws ValidationException
+     */
+    private function assertLinkableInvoice(?int $invoiceId, int $customerId): void
+    {
+        if ($invoiceId === null) {
+            return;
+        }
+
+        $invoice = Invoice::query()->find($invoiceId);
+
+        if (! $invoice || (int) $invoice->customer_id !== $customerId) {
+            throw ValidationException::withMessages([
+                'invoice_id' => 'The invoice must belong to the case customer.',
+            ]);
+        }
+
+        if ($invoice->status === 'cancelled'
+            || in_array($invoice->lifecycle_status, ['cancelled', 'voided', 'reversed', 'superseded'], true)) {
+            throw ValidationException::withMessages([
+                'invoice_id' => 'A cancelled, voided, reversed or superseded invoice cannot be linked to a case.',
+            ]);
         }
     }
 
