@@ -6,6 +6,8 @@ namespace Tests\Feature;
 
 use App\Models\Customer;
 use App\Models\User;
+use App\Models\Vendor;
+use App\Models\VendorAddress;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TenantTestCase;
@@ -104,6 +106,51 @@ class CustomerTaxJurisdictionReportTest extends TenantTestCase
 
         $this->assertSame(['Malaysia' => 1], $report['summary']['unrecognised_values']);
         $this->assertSame(3, $report['summary']['jurisdiction_would_change']);
+    }
+
+    public function test_report_flags_vendor_country_text_and_non_default_addresses(): void
+    {
+        $clean = $this->vendorWithAddress('MY', true);
+        $named = $this->vendorWithAddress('Malaysia', true);
+        $firstOnly = $this->vendorWithAddress('SG', false);
+        $noAddress = Vendor::factory()->create();
+
+        $before = [DB::table('vendors')->count(), DB::table('vendor_addresses')->count()];
+
+        $this->artisan('tax:customer-jurisdiction-report', ['--tenant' => $this->tenantId, '--json' => $this->reportPath])
+            ->assertExitCode(0);
+
+        $this->assertSame($before, [DB::table('vendors')->count(), DB::table('vendor_addresses')->count()], 'The report must not write anything.');
+
+        $report = json_decode((string) file_get_contents($this->reportPath), true)[0];
+        $rows = collect($report['vendors'])->keyBy('vendor_id');
+
+        $this->assertArrayNotHasKey($clean->id, $rows->all());
+        $this->assertArrayNotHasKey($noAddress->id, $rows->all());
+
+        $this->assertSame('MALAYSIA', $rows[$named->id]['current_jurisdiction'], 'Today the text itself becomes the input-tax jurisdiction.');
+        $this->assertSame(['unrecognised_country_text'], $rows[$named->id]['flags']);
+
+        $this->assertSame('SG', $rows[$firstOnly->id]['current_jurisdiction']);
+        $this->assertSame(['country_from_non_default_address'], $rows[$firstOnly->id]['flags']);
+
+        $this->assertSame(['Malaysia' => 1], $report['vendor_summary']['unrecognised_values']);
+        $this->assertSame(2, $report['vendor_summary']['vendors_flagged']);
+    }
+
+    private function vendorWithAddress(string $country, bool $default): Vendor
+    {
+        $vendor = Vendor::factory()->create();
+        VendorAddress::create([
+            'vendor_id' => $vendor->id,
+            'type' => 'billing',
+            'street' => '1 Probe Road',
+            'city' => 'Probe City',
+            'country' => $country,
+            'is_default' => $default,
+        ]);
+
+        return $vendor;
     }
 
     private function customerWithAddress(string $country, bool $default): Customer

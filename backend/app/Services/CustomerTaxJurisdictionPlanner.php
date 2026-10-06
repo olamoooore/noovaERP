@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\Customer;
 use App\Models\CustomerAddress;
+use App\Models\Vendor;
+use App\Models\VendorAddress;
 
 /**
  * ADR-003B W6 step 2 (tax) — REPORT ONLY, input for the tax agent.
@@ -16,7 +18,14 @@ use App\Models\CustomerAddress;
  * older text → primary contact).
  *
  * For every customer this lists the jurisdiction tax uses today next to the
- * one the shared address rule would give, and why they differ. It changes
+ * one the shared address rule would give, and why they differ.
+ *
+ * Vendors (step 4 of the tax hostile review): jurisdictionForVendor() takes
+ * the country of the vendor's default address of ANY type, else its first
+ * address, through the same function — so bills, vendor credit/debit notes
+ * record input tax under that text (TaxBillVendorJurisdictionTest). Each
+ * vendor whose country is not a 2-letter code, or comes from a non-default
+ * address, is listed. It changes
  * nothing; the rule to adopt is a statutory decision (CLAUDE.md: tax agent,
  * two approvals).
  */
@@ -88,6 +97,8 @@ class CustomerTaxJurisdictionPlanner
 
         arsort($unrecognised);
         $count = fn (string $flag) => count(array_filter($rows, fn ($row) => in_array($flag, $row['flags'], true)));
+        [$vendorRows, $vendorUnrecognised] = $this->vendors();
+        $vendorCount = fn (string $flag) => count(array_filter($vendorRows, fn ($row) => in_array($flag, $row['flags'], true)));
 
         return [
             'tenant_id' => $tenantId,
@@ -102,7 +113,70 @@ class CustomerTaxJurisdictionPlanner
                 'unrecognised_values' => $unrecognised,
             ],
             'customers' => $rows,
+            'vendor_summary' => [
+                'vendors_flagged' => count($vendorRows),
+                'unrecognised_country_text' => $vendorCount('unrecognised_country_text'),
+                'country_from_non_default_address' => $vendorCount('country_from_non_default_address'),
+                'unrecognised_values' => $vendorUnrecognised,
+            ],
+            'vendors' => $vendorRows,
         ];
+    }
+
+    /**
+     * The vendor rule as jurisdictionForVendor() applies it today.
+     *
+     * @return array{0: list<array<string, mixed>>, 1: array<string, int>}
+     */
+    private function vendors(): array
+    {
+        $rows = [];
+        $unrecognised = [];
+
+        Vendor::withTrashed()->orderBy('id')->chunkById(500, function ($vendors) use (&$rows, &$unrecognised) {
+            $addresses = VendorAddress::whereIn('vendor_id', $vendors->pluck('id'))
+                ->orderBy('id')
+                ->get()
+                ->groupBy('vendor_id');
+
+            foreach ($vendors as $vendor) {
+                $list = $addresses[$vendor->id] ?? collect();
+                $default = $list->firstWhere('is_default', true);
+                $used = $default ?? $list->first();
+                $country = $this->clean($used?->country);
+
+                if ($country === null) {
+                    continue;
+                }
+
+                $flags = [];
+                if (! $this->isCode($country)) {
+                    $flags[] = 'unrecognised_country_text';
+                    $unrecognised[$country] = ($unrecognised[$country] ?? 0) + 1;
+                }
+                if ($default === null) {
+                    $flags[] = 'country_from_non_default_address';
+                }
+
+                if ($flags === []) {
+                    continue;
+                }
+
+                $rows[] = [
+                    'vendor_id' => $vendor->id,
+                    'vendor_code' => $vendor->code,
+                    'vendor_deleted' => $vendor->trashed(),
+                    'address_type' => $used->type,
+                    'current_country' => $country,
+                    'current_jurisdiction' => $this->packs->jurisdictionForCountry($country),
+                    'flags' => $flags,
+                ];
+            }
+        });
+
+        arsort($unrecognised);
+
+        return [$rows, $unrecognised];
     }
 
     private function clean(?string $country): ?string

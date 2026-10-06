@@ -21,7 +21,7 @@ class CustomerTaxJurisdictionReportCommand extends Command
         {--tenant= : Report a single tenant id instead of every tenant}
         {--json= : Also write the full report (every flagged customer) to this file}';
 
-    protected $description = 'Report-only list of customers whose tax jurisdiction comes from unrecognised country text or would change under the shared address rule';
+    protected $description = 'Report-only list of customers and vendors whose tax jurisdiction comes from unrecognised country text, a non-default address, or would change under the shared address rule';
 
     /** @var list<array<string, mixed>> */
     private array $reports = [];
@@ -56,6 +56,10 @@ class CustomerTaxJurisdictionReportCommand extends Command
         $this->table(
             ['Measure', 'Customers'],
             collect($report['summary'])->except('unrecognised_values')->map(fn ($count, $key) => [$key, $count])->values()->all()
+        );
+        $this->table(
+            ['Measure', 'Vendors'],
+            collect($report['vendor_summary'])->except('unrecognised_values')->map(fn ($count, $key) => [$key, $count])->values()->all()
         );
 
         return self::SUCCESS;
