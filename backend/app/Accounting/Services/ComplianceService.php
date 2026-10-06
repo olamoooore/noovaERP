@@ -6,6 +6,7 @@ use App\Accounting\BuyerTypeResolver;
 use App\Accounting\Contracts\ProvidesProviderName;
 use App\Accounting\Contracts\SupportsCredentialValidation;
 use App\Accounting\Contracts\SupportsPayloadDefaults;
+use App\Accounting\Contracts\SupportsReadinessCheck;
 use App\Accounting\Contracts\SupportsSigning;
 use App\Accounting\Plugin\CountryPluginRegistry;
 use App\Enums\UserRole;
@@ -879,6 +880,17 @@ class ComplianceService
      */
     public function autoSubmitCountryCodes(?string $tenantId = null, ?string $documentCountry = null): array
     {
+        return $this->enabledCountryCodes($tenantId, $documentCountry, requireAutoSubmit: true);
+    }
+
+    /**
+     * The tenant's enabled e-invoicing countries for a document country
+     * (#667/#668 gate), optionally only those with auto_submit on.
+     *
+     * @return array<int, string>
+     */
+    private function enabledCountryCodes(?string $tenantId, ?string $documentCountry, bool $requireAutoSubmit): array
+    {
         $tenantId ??= $this->currentTenantId();
         if ($tenantId === null) {
             return [];
@@ -893,7 +905,7 @@ class ComplianceService
         return CountryConfiguration::where('tenant_id', $tenantId)
             ->where('is_enabled', true)
             ->get()
-            ->filter(fn (CountryConfiguration $config) => ($config->settings['auto_submit'] ?? false)
+            ->filter(fn (CountryConfiguration $config) => (! $requireAutoSubmit || ($config->settings['auto_submit'] ?? false))
                 && ($gateCountry === '' || $gateCountry === strtoupper((string) $config->country_code)))
             ->map(fn (CountryConfiguration $config) => strtoupper((string) $config->country_code))
             ->unique()
@@ -912,6 +924,79 @@ class ComplianceService
         ?string $tenantId = null,
     ): array {
         return $this->autoSubmitCountryCodes($tenantId, $this->supplierIdentityResolver()->countryFor($source));
+    }
+
+    /**
+     * #671 (EINV-UX2): the e-invoice readiness checklist for an invoice — a
+     * dry run of each applicable country pack's own submission rules with
+     * the same provider context (and #668 entity supplier identity) that a
+     * real submission uses. Read-only: nothing is recorded and no provider
+     * is called. Applicable countries are the tenant's enabled e-invoicing
+     * configurations for the invoice's issuing country (auto-submit or not).
+     *
+     * @return array<string, mixed>
+     */
+    public function invoiceReadiness(Invoice $invoice): array
+    {
+        $countries = $this->enabledCountryCodes(
+            null,
+            $this->supplierIdentityResolver()->countryFor($invoice),
+            requireAutoSubmit: false,
+        );
+
+        $issues = [];
+        $supplierIdentity = [];
+
+        foreach ($countries as $countryCode) {
+            ['context' => $context, 'report' => $report] = $this->providerContextFor($this->getCountryConfig($countryCode), $invoice);
+            $supplierIdentity[$countryCode] = $report;
+
+            if ($report['source'] === EInvoiceSupplierIdentityResolver::SOURCE_LEGAL_ENTITY) {
+                $context['supplier_identity_legal_entity_id'] = $report['legal_entity_id'];
+            }
+
+            $validator = $this->pluginRegistry->has($countryCode)
+                ? $this->pluginRegistry->resolve($countryCode, 'validator')
+                : null;
+
+            if ($validator === null) {
+                $countryIssues = [[
+                    'code' => 'no_plugin',
+                    'severity' => 'blocking',
+                    'message' => "No e-invoicing plugin is available for {$countryCode}.",
+                    'fix' => null,
+                ]];
+            } elseif ($validator instanceof SupportsReadinessCheck) {
+                $countryIssues = $validator->readinessIssues($invoice, $context);
+            } else {
+                // A pack without the capability still gets its validator's
+                // verdict — as plain blocking messages without a fix target.
+                $countryIssues = array_map(fn (string $error) => [
+                    'code' => 'validation',
+                    'severity' => 'blocking',
+                    'message' => $error,
+                    'fix' => null,
+                ], $validator->validateInvoice($invoice, $context)['errors'] ?? []);
+            }
+
+            foreach ($countryIssues as $issue) {
+                $issues[] = ['country_code' => $countryCode] + $issue;
+            }
+        }
+
+        $blocking = count(array_filter($issues, fn (array $issue) => $issue['severity'] === 'blocking'));
+
+        return [
+            'applicable' => $countries !== [],
+            'ready' => $blocking === 0,
+            'countries' => $countries,
+            'summary' => [
+                'blocking' => $blocking,
+                'warnings' => count($issues) - $blocking,
+            ],
+            'issues' => $issues,
+            'supplier_identity' => $supplierIdentity,
+        ];
     }
 
     /**

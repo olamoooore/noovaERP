@@ -2140,6 +2140,25 @@ class InvoiceController extends Controller
     }
 
     /**
+     * #671 (EINV-UX2): the e-invoice readiness checklist shown before Post —
+     * a read-only dry run of the country pack's submission rules, each gap
+     * pointing at the record (customer, product, legal entity, settings)
+     * that fixes it.
+     */
+    public function einvoiceReadiness($id): JsonResponse
+    {
+        $invoice = Invoice::with(['customer', 'lines.product'])->find($id);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        return response()->json(
+            app(\App\Accounting\Services\ComplianceService::class)->invoiceReadiness($invoice)
+        );
+    }
+
+    /**
      * Issue #883 (SAU1): the Journal tab — for a draft, the would-be entry
      * computed by the same builder posting uses (never written); for a posted
      * invoice, the actual journal entry with per-line account drill-down.

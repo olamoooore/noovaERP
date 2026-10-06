@@ -18,6 +18,7 @@ import { ChatterDock } from '@/components/chatter'
 import { AuditTab } from '@/components/audit/AuditTab'
 import { InvoiceJournalTab } from '@/components/accounting/InvoiceJournalTab'
 import { InvoiceWriteOffDialog } from '@/components/accounting/InvoiceWriteOffDialog'
+import { EInvoiceReadinessPanel } from '@/components/accounting/EInvoiceReadinessPanel'
 import { StockMovesTab } from '@/components/inventory/StockMovesTab'
 import { StockCogsBadge } from '@/components/inventory/StockCogsBadge'
 import { TagEditor } from '@/components/tags/TagEditor'
@@ -906,6 +907,16 @@ export function InvoiceDetailPage() {
             className="hidden sm:block h-5 w-5 shrink-0 text-red-500/70"
           />
         </div>
+      )}
+
+      {/* #671 (EINV-UX2): e-invoice gaps (TIN, classification, address)
+          shown before Post, with customer fixes in place. */}
+      {id && (
+        <EInvoiceReadinessPanel
+          invoiceId={id}
+          enabled={invoice.status === 'draft'}
+          canEditCustomer={hasPermission('customers.write')}
+        />
       )}
 
       <Tabs defaultValue="document" className="space-y-6">
