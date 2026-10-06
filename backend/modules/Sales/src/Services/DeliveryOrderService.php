@@ -2118,24 +2118,32 @@ class DeliveryOrderService
      * Locate which tenant owns a given delivery-order customer token.
      * Mirrors InvoiceEvidenceService::resolveTenantForAcceptanceToken for the
      * public /do-accept route.
+     *
+     * Issue #466 (DO14): the tenant is resolved from the central token
+     * registry in one indexed lookup instead of scanning every tenant schema
+     * per public request. The scan survives only as a fallback for tokens
+     * issued before the registry existed; a token found that way is registered
+     * so later requests are O(1).
      */
     public function resolveTenantForCustomerToken(string $token): ?\App\Models\Tenant
     {
-        foreach (\App\Models\Tenant::all() as $tenant) {
-            try {
-                $found = $tenant->run(function () use ($token) {
-                    return DeliveryOrder::where('acceptance_token', $token)->exists();
+        return app(\App\Services\DocumentTokenRegistry::class)->resolveTenant(
+            $token,
+            \App\Services\DocumentTokenRegistry::TYPE_DELIVERY_ORDER,
+            function (\App\Models\Tenant $tenant) use ($token): ?array {
+                $deliveryOrder = $tenant->run(function () use ($token) {
+                    return DeliveryOrder::where('acceptance_token', $token)->first();
                 });
 
-                if ($found) {
-                    return $tenant;
+                if (! $deliveryOrder) {
+                    return null;
                 }
-            } catch (\Throwable $e) {
-                // A tenant whose schema predates the acceptance_token column.
-                continue;
-            }
-        }
 
-        return null;
+                return [
+                    'document_id' => (int) $deliveryOrder->getKey(),
+                    'expires_at' => $deliveryOrder->acceptance_expires_at,
+                ];
+            },
+        );
     }
 }

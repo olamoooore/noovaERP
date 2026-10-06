@@ -88,6 +88,16 @@ class EsignService
             ['esign_request_id' => $request->id, 'expires_at' => $request->expires_at?->toIso8601String()],
         );
 
+        // Issue #466 (DO14): public signing links carry no tenant in the host,
+        // so the token → tenant mapping is registered centrally at issuance.
+        app(DocumentTokenRegistry::class)->register(
+            $request->token,
+            tenant('id'),
+            $documentType,
+            $documentId,
+            $request->expires_at,
+        );
+
         return $request;
     }
 
