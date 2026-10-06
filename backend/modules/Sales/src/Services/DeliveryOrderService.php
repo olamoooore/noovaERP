@@ -694,6 +694,14 @@ class DeliveryOrderService
             return;
         }
 
+        // #464 (DO12): COGS belongs to the shipping document's date, not to
+        // the day the completion happened to be keyed. The posting engine
+        // validates this date against lock dates and fiscal periods exactly
+        // like any other operational posting, so a delivery dated inside a
+        // locked period is rejected (and the completion rolls back) instead
+        // of silently shifting the cost into the current period.
+        $cogsDate = $this->resolveCogsPostingDate($deliveryOrder);
+
         $result = $this->postingEngine->domainPosting(new \App\Accounting\DTOs\DomainPostingRequest(
             postingRequestId: \App\Accounting\DTOs\DomainPostingRequest::generateRequestId(),
             idempotencyKey: "delivery_order:{$deliveryOrder->id}:cogs",
@@ -708,8 +716,8 @@ class DeliveryOrderService
             sourceRecordId: (string) $deliveryOrder->id,
             sourceRecordVersion: 1,
             postingProfileCode: 'DELIVERY_ORDER_COGS',
-            transactionDate: now()->toDateString(),
-            postingDate: now()->toDateString(),
+            transactionDate: $cogsDate,
+            postingDate: $cogsDate,
             lines: [
                 new \App\Accounting\DTOs\DomainPostingLine(
                     accountRole: 'cogs',
@@ -735,9 +743,39 @@ class DeliveryOrderService
     }
 
     /**
+     * #464 (DO12): the ledger date for a delivery order's COGS — the shipping
+     * document's delivery date when set, otherwise the completion timestamp
+     * (the moment this completion is being posted; completed_at is written
+     * after posting, so `now()` is that instant).
+     *
+     * This is the same "delivery or completion date" the acceptance criteria
+     * name, and it is what lets the invoice/revenue side (which posts on the
+     * invoice date) and the stock issue agree on a period.
+     */
+    private function resolveCogsPostingDate(DeliveryOrder $deliveryOrder): string
+    {
+        $date = $deliveryOrder->delivery_date
+            ?? $deliveryOrder->completed_at
+            ?? now();
+
+        return $date instanceof \DateTimeInterface
+            ? $date->format('Y-m-d')
+            : (string) $date;
+    }
+
+    /**
      * Issue #176: reversing a completed DO must also reverse its COGS entry.
      * domainPosting() dedupes by source record, so the reversal goes through
      * PostingEngine::reverse() (relation_type=reversal links to the same DO).
+     *
+     * #464 (DO12): the reversal is dated TODAY — the current, open period —
+     * never back into the original delivery period, which may already have
+     * been closed. The original COGS entry/date is carried in the reversal's
+     * ledger description so the lineage survives even when the periods differ.
+     * NOTE: PostingEngine::reverse() (ReversalCorrectionEngine) does not run
+     * the lock-date/fiscal-period gates — reversals post on the supplied date
+     * regardless — so the date choice here is the whole period policy; no
+     * parallel lock check is added.
      */
     private function postDeliveryCogsReversal(DeliveryOrder $deliveryOrder, int $warehouseId, int $actorId): void
     {
@@ -750,10 +788,19 @@ class DeliveryOrderService
             return; // nothing posted (e.g. zero-cost delivery)
         }
 
+        $originalEntry = \App\Models\JournalEntry::find((int) $link->journal_entry_id);
+        $originalDate = $originalEntry?->entry_date?->toDateString()
+            ?? $deliveryOrder->delivery_date?->toDateString()
+            ?? 'unknown';
+
+        $reversalReason = $originalEntry
+            ? "Delivery order {$deliveryOrder->delivery_order_number} reversed (original COGS entry {$originalEntry->entry_number} dated {$originalDate})"
+            : "Delivery order {$deliveryOrder->delivery_order_number} reversed (original COGS dated {$originalDate})";
+
         $result = $this->postingEngine->reverse(new \App\Accounting\DTOs\ReversalRequest(
             journalEntryId: (int) $link->journal_entry_id,
             reversalDate: now()->toDateString(),
-            reason: 'Delivery order reversed',
+            reason: $reversalReason,
             reasonCode: 'DELIVERY_ORDER_REVERSAL',
             actorUserId: $actorId,
             tenantId: (string) (function_exists('tenant') && tenant() ? tenant('id') : ''),
