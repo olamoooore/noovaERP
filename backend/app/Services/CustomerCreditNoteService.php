@@ -65,13 +65,19 @@ class CustomerCreditNoteService
                 $data['base_currency_code'] = $data['base_currency_code'] ?? $sourceInvoice->base_currency_code;
             }
 
-            $data['currency_code'] = $data['currency_code'] ?? 'USD';
             if ($sourceInvoice && empty($data['base_currency_code'])) {
                 $data['base_currency_code'] = $sourceInvoice->base_currency_code;
             }
             if (empty($data['base_currency_code'])) {
                 $data['base_currency_code'] = $sourceInvoice?->base_currency_code
                     ?: \App\Services\DocumentCurrencyResolver::baseFor(null, $data['customer_id'] ?? null);
+            }
+            // #521 (CN12): a legacy/imported invoice with no currency_code
+            // means the document is in the tenant's base currency — never a
+            // hard-coded 'USD', which booked an MYR tenant's credit note as a
+            // foreign-currency document at a 1.0 rate.
+            if (empty($data['currency_code'])) {
+                $data['currency_code'] = $data['base_currency_code'];
             }
             if (($data['exchange_rate'] ?? null) === null) {
                 $data['exchange_rate'] = 1.000000;
@@ -358,10 +364,11 @@ class CustomerCreditNoteService
             // reverses at the INVOICE's snapshot rate — its own column was
             // inherited at creation; convert doc amounts to base there and
             // carry the original side on the GL lines.
-            $cnDocCurrency = strtoupper((string) ($creditNote->currency_code ?: 'USD'));
             $cnBaseCurrency = strtoupper((string) ($creditNote->base_currency_code
                 ?: $invoice?->base_currency_code
                 ?: \App\Services\DocumentCurrencyResolver::baseFor(null, $creditNote->customer_id)));
+            // #521 (CN12): no document currency → the base currency, not 'USD'.
+            $cnDocCurrency = strtoupper((string) ($creditNote->currency_code ?: $cnBaseCurrency));
             $cnForeign = $cnDocCurrency !== $cnBaseCurrency;
             $cnRate = $cnForeign
                 ? (float) ($creditNote->exchange_rate
