@@ -80,6 +80,8 @@ interface Payment {
   matched_addresses?: string[];
   bank_account_id?: number | string | null;
   bank_account?: { id: number; account_name: string; gl_account_code?: string | null } | null;
+  /** #492: origin of the payment; null for legacy rows recorded before tracking. */
+  source?: 'manual' | 'import' | string | null;
 }
 
 interface PaginatedPayments {
@@ -105,12 +107,33 @@ interface PaymentStatusOption {
 }
 
 const PAYMENT_STATUS_OPTIONS: PaymentStatusOption[] = [
-  { value: 'recorded', label: 'Draft (imported, not yet posted)', shortLabel: 'Draft', icon: 'solar:document-bold-duotone', variant: 'secondary' },
+  { value: 'recorded', label: 'Draft (not yet posted)', shortLabel: 'Draft', icon: 'solar:document-bold-duotone', variant: 'secondary' },
   { value: 'applied', label: 'Applied (posted to ledger)', shortLabel: 'Applied', icon: 'solar:check-circle-bold-duotone', variant: 'default' },
   { value: 'unapplied', label: 'Unapplied', shortLabel: 'Unapplied', icon: 'solar:link-broken-bold-duotone', variant: 'outline' },
   { value: 'reversed', label: 'Reversed', shortLabel: 'Reversed', icon: 'solar:undo-left-round-bold', variant: 'destructive' },
   { value: 'refunded', label: 'Refunded', shortLabel: 'Refunded', icon: 'solar:refresh-circle-bold-duotone', variant: 'destructive' },
 ];
+
+// #492: the draft status is shared by hand-typed and imported payments, so the
+// origin is shown as its own badge instead of being baked into the status label.
+const PAYMENT_SOURCE_LABELS: Record<string, string> = {
+  manual: 'Manual',
+  import: 'Imported',
+};
+
+const PaymentSourceBadge: React.FC<{ source?: string | null }> = ({ source }) => {
+  if (!source) return null;
+  const label = PAYMENT_SOURCE_LABELS[source] ?? source;
+  return (
+    <Badge
+      variant="outline"
+      title={`Source: ${label}`}
+      className="whitespace-nowrap px-1.5 py-0 text-[10px] leading-4"
+    >
+      {label}
+    </Badge>
+  );
+};
 
 // Statuses that represent a completed terminal state — no further correction is
 // allowed once a payment reaches one of these. Mirrors the backend guard in
@@ -669,6 +692,11 @@ export const CustomerPayments: React.FC = () => {
                           <TableCell>{formatDate(payment.payment_date)}</TableCell>
                           <TableCell className="w-[1%] whitespace-nowrap">
                             {getStatusBadge(payment.payment_status)}
+                            {payment.source && (
+                              <div className="mt-1">
+                                <PaymentSourceBadge source={payment.source} />
+                              </div>
+                            )}
                             {refundNoteStatusMap.get(Number(payment.id)) && (
                               <div className="mt-1">
                                 <EInvoiceStatusChip status={refundNoteStatusMap.get(Number(payment.id))!.status} />
@@ -1056,6 +1084,7 @@ const ViewPaymentDialog: React.FC<{
               ) : (
                 <Badge variant="secondary">{detail.payment_status}</Badge>
               )}
+              <PaymentSourceBadge source={detail.source} />
             </div>
           </div>
 

@@ -420,6 +420,7 @@ class AccountingImportService
             'method' => $method,
             'payment_date' => $data['payment_date'] ?? now()->toDateString(),
             'payment_status' => 'recorded',
+            'source' => 'import', // #492
             'notes' => $data['notes'] ?? null,
             'customer_id' => $data['customer_id'] ?? null,
             'received_by' => $userId,

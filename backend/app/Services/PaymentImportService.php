@@ -376,6 +376,7 @@ class PaymentImportService
             'currency' => $data['currency'],
             'received_by' => $userId,
             'payment_status' => 'recorded',
+            'source' => 'import', // #492
         ]);
     }
 
