@@ -79,6 +79,9 @@ class PersonMergeDamageReportTest extends TenantTestCase
         $sitiPerson = $siti['core_contact_uuid'];
         $ali = $this->wronglyMerged($clinic, $clinicOrg, 'Ali', $sitiPerson);
         $sitiNamesake = $this->wronglyMerged($pharmacy, null, 'Siti', $sitiPerson);
+        // Step 0: a soft-deleted wrong merge is still reported, marked.
+        $formerStaff = $this->wronglyMerged($pharmacy, null, 'Former Staff', $sitiPerson);
+        DB::table('customer_contacts')->where('id', $formerStaff)->update(['deleted_at' => now()]);
 
         $before = $this->tableCounts();
 
@@ -103,8 +106,11 @@ class PersonMergeDamageReportTest extends TenantTestCase
         $this->assertSame('unverifiable', $links[$sitiNamesake]['status'], 'Same name, no shared identifier.');
         $this->assertEqualsCanonicalizing([$hospitalOrg, $clinicOrg], $damaged['impact']['organisations']);
 
+        $this->assertSame(['suspect', true], [$links[$formerStaff]['status'], $links[$formerStaff]['contact_deleted']]);
+        $this->assertFalse($links[$ali]['contact_deleted']);
+
         $this->assertSame(1, $report['summary']['people_with_suspect_links']);
-        $this->assertSame(1, $report['summary']['suspect_links']);
+        $this->assertSame(2, $report['summary']['suspect_links']);
         $this->assertSame(1, $report['summary']['unverifiable_links']);
     }
 

@@ -47,20 +47,37 @@ class ContactLinkingPlanner
     {
         $links = $this->organisationLinks();
 
-        $organisations = [];
-        foreach (Customer::query()->orderBy('id')->get() as $customer) {
-            if ($customer->core_contact_uuid && CoreContact::where('tenant_id', $tenantId)->whereKey($customer->core_contact_uuid)->exists()) {
-                continue;
-            }
-            $organisations[] = $this->planOrganisation($tenantId, $customer, $links);
-        }
+        // Step 0 (performance): the Contact Master is read ONCE and indexed,
+        // instead of reloading every record for each unlinked customer.
+        $existingIds = array_flip(CoreContact::where('tenant_id', $tenantId)->pluck('id')->all());
+        $index = $this->organisationIndex($tenantId);
+        $this->personOrganisations = ContactRelationship::where('tenant_id', $tenantId)
+            ->where('relationship_type', 'org_person')
+            ->get(['contact_id', 'related_contact_id'])
+            ->groupBy('related_contact_id')
+            ->map(fn ($rows) => $rows->pluck('contact_id')->unique()->values()->all())
+            ->all();
 
-        $unlinkedPeople = CustomerContact::query()
-            ->with('customer')
+        // Step 0: soft-deleted customers and contacts are planned too, marked.
+        $organisations = [];
+        Customer::withTrashed()->orderBy('id')->chunkById(500, function ($customers) use (&$organisations, $existingIds, $index, $links) {
+            foreach ($customers as $customer) {
+                if ($customer->core_contact_uuid && isset($existingIds[$customer->core_contact_uuid])) {
+                    continue;
+                }
+                $organisations[] = $this->planOrganisation($customer, $index, $links);
+            }
+        });
+
+        $unlinkedPeople = collect();
+        CustomerContact::withTrashed()
+            ->with(['customer' => fn ($query) => $query->withTrashed()])
             ->orderBy('id')
-            ->get()
-            ->filter(fn (CustomerContact $contact) => ! $contact->core_contact_uuid
-                || ! CoreContact::where('tenant_id', $tenantId)->whereKey($contact->core_contact_uuid)->exists());
+            ->chunkById(500, function ($contacts) use (&$unlinkedPeople, $existingIds) {
+                $unlinkedPeople = $unlinkedPeople->merge($contacts->filter(
+                    fn (CustomerContact $contact) => ! $contact->core_contact_uuid || ! isset($existingIds[$contact->core_contact_uuid])
+                ));
+            });
 
         $sharedInBatch = $this->sharedIdentifiers($unlinkedPeople);
 
@@ -76,38 +93,58 @@ class ContactLinkingPlanner
             'summary' => [
                 'organisations' => $this->countActions($organisations),
                 'people' => $this->countActions($people),
+                'deleted_customers_included' => count(array_filter($organisations, fn ($row) => $row['customer_deleted'])),
+                'deleted_contacts_included' => count(array_filter($people, fn ($row) => $row['contact_deleted'])),
             ],
             'organisations' => $organisations,
             'people' => $people,
         ];
     }
 
-    private function planOrganisation(string $tenantId, Customer $customer, array $links): array
+    /** @var array<string, list<string>> person id → organisation ids (org_person) */
+    private array $personOrganisations = [];
+
+    /**
+     * Existing Contact Master organisations/people indexed by entity type and
+     * normalised name, email and phone.
+     *
+     * @return array<string, array<string, array<string, list<CoreContact>>>>
+     */
+    private function organisationIndex(string $tenantId): array
+    {
+        $index = [];
+        foreach (CoreContact::where('tenant_id', $tenantId)->where('is_duplicate', false)->cursor() as $contact) {
+            foreach (['name' => $this->normalizeName($contact->display_name), 'email' => $this->normalizeEmail($contact->email), 'phone' => $this->normalizePhone($contact->phone)] as $field => $value) {
+                if ($value !== null) {
+                    $index[$contact->contact_type][$field][$value][] = $contact;
+                }
+            }
+        }
+
+        return $index;
+    }
+
+    private function planOrganisation(Customer $customer, array $index, array $links): array
     {
         $type = \Modules\Contact\src\Services\ContactMasterService::normalizeEntityType($customer->type) === 'individual'
             ? 'individual' : 'company';
 
-        $name = $this->normalizeName($customer->name);
-        $email = $this->normalizeEmail($customer->email);
-        $phone = $this->normalizePhone($customer->phone);
+        $found = [];
+        foreach (['name' => $this->normalizeName($customer->name), 'email' => $this->normalizeEmail($customer->email), 'phone' => $this->normalizePhone($customer->phone)] as $field => $value) {
+            foreach ($value !== null ? ($index[$type][$field][$value] ?? []) : [] as $contact) {
+                $found[$contact->id] = $contact;
+            }
+        }
 
-        $candidates = CoreContact::where('tenant_id', $tenantId)
-            ->where('contact_type', $type)
-            ->where('is_duplicate', false)
-            ->get()
-            ->filter(fn (CoreContact $contact) => ($name !== null && $this->normalizeName($contact->display_name) === $name)
-                || ($email !== null && $this->normalizeEmail($contact->email) === $email)
-                || ($phone !== null && $this->normalizePhone($contact->phone) === $phone))
-            ->map(fn (CoreContact $contact) => [
-                'contact_id' => $contact->id,
-                'display_name' => $contact->display_name,
-                'linked_to' => $links[$contact->id] ?? [],
-            ])
-            ->values()
-            ->all();
+        $candidates = array_values(array_map(fn (CoreContact $contact) => [
+            'contact_id' => $contact->id,
+            'display_name' => $contact->display_name,
+            'linked_to' => $links[$contact->id] ?? [],
+        ], $found));
 
         $row = [
             'customer_id' => $customer->id,
+            'customer_deleted' => $customer->trashed(),
             'customer_name' => $customer->name,
             'contact_type' => $type,
             'dangling_link' => $customer->core_contact_uuid !== null,
@@ -123,6 +160,7 @@ class ContactLinkingPlanner
         $orgUuid = $contact->customer?->core_contact_uuid;
         $row = [
             'customer_contact_id' => $contact->id,
+            'contact_deleted' => $contact->trashed(),
             'customer_id' => $contact->customer_id,
             'name' => $contact->name,
             'customer_needs_organisation' => ! $orgUuid,
@@ -160,7 +198,7 @@ class ContactLinkingPlanner
             if ($this->normalizeName($person->display_name) !== $this->normalizeName($contact->name)) {
                 $flags['name_differs'] = true;
             }
-            $otherOrganisations = array_values(array_diff($this->organisationsOf($tenantId, $person->id), array_filter([$orgUuid])));
+            $otherOrganisations = array_values(array_diff($this->personOrganisations[$person->id] ?? [], array_filter([$orgUuid])));
             if ($otherOrganisations !== []) {
                 $flags['person_belongs_to_other_organisations'] = array_map(
                     fn ($org) => ['organisation_id' => $org, 'linked_to' => $links[$org] ?? []],
@@ -221,18 +259,6 @@ class ContactLinkingPlanner
         }
 
         return $on;
-    }
-
-    /** @return list<string> organisation ids the person is related to (org_person) */
-    private function organisationsOf(string $tenantId, string $personId): array
-    {
-        return ContactRelationship::where('tenant_id', $tenantId)
-            ->where('related_contact_id', $personId)
-            ->where('relationship_type', 'org_person')
-            ->pluck('contact_id')
-            ->unique()
-            ->values()
-            ->all();
     }
 
     /**

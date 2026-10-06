@@ -32,14 +32,15 @@ class PersonMergeDamagePlanner
      */
     public function plan(string $tenantId): array
     {
-        $groups = CustomerContact::query()
+        // Step 0: soft-deleted contacts and customers are included, marked.
+        $groups = CustomerContact::withTrashed()
             ->whereNotNull('core_contact_uuid')
             ->orderBy('id')
             ->get()
             ->groupBy('core_contact_uuid')
             ->filter(fn ($contacts) => $contacts->count() > 1);
 
-        $customers = Customer::query()->whereIn('id', $groups->flatten()->pluck('customer_id')->unique())->pluck('name', 'id');
+        $customers = Customer::withTrashed()->whereIn('id', $groups->flatten()->pluck('customer_id')->unique())->pluck('name', 'id');
 
         $people = [];
         foreach ($groups as $personId => $contacts) {
@@ -50,6 +51,7 @@ class PersonMergeDamagePlanner
 
             $links = $contacts->map(fn (CustomerContact $contact) => [
                 'customer_contact_id' => $contact->id,
+                'contact_deleted' => $contact->trashed(),
                 'customer_id' => $contact->customer_id,
                 'customer_name' => $customers[$contact->customer_id] ?? null,
                 'name' => $contact->name,

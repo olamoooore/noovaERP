@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Console\Concerns\IteratesTenants;
 use App\Models\Tenant;
 use App\Services\ContactLinkingPlanner;
+use App\Support\ReportRedactor;
 use Illuminate\Console\Command;
 
 /**
@@ -18,7 +19,8 @@ class ContactLinkingReportCommand extends Command
 
     protected $signature = 'contacts:linking-report
         {--tenant= : Report a single tenant id instead of every tenant}
-        {--json= : Also write the full report (every row) to this file}';
+        {--json= : Also write the full report (every row) to this file}
+        {--redact : Replace names, emails, phones and address text in the JSON file (personal data)}';
 
     protected $description = 'Report-only plan for linking customers and their contacts to the Contact Master (ADR-003B W6)';
 
@@ -39,7 +41,8 @@ class ContactLinkingReportCommand extends Command
         }
 
         if ($path = $this->option('json')) {
-            file_put_contents($path, json_encode($this->reports, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            $reports = $this->option('redact') ? ReportRedactor::redact($this->reports) : $this->reports;
+            file_put_contents($path, json_encode($reports, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
             $this->info("Full report written to {$path}");
         }
 

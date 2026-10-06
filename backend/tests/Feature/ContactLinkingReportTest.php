@@ -85,6 +85,11 @@ class ContactLinkingReportTest extends TenantTestCase
         $wizard = $this->legacyContact($fresh->id, 'Wizard Man', ['contact_type' => 'Wizard']);
         $plain = $this->legacyContact($fresh->id, 'Plain Person');
 
+        // Step 0: soft-deleted rows are planned too, marked as deleted.
+        $deletedCustomer = Customer::factory()->create(['name' => 'Closed Trading', 'type' => 'company', 'email' => null, 'phone' => null, 'core_contact_uuid' => null]);
+        $deletedCustomer->delete();
+        $deletedContact = $this->legacyContact($fresh->id, 'Former Staff', ['deleted_at' => now()]);
+
         $before = $this->tableCounts();
 
         $this->artisan('contacts:linking-report', ['--tenant' => $this->tenantId, '--json' => $this->reportPath])
@@ -99,6 +104,8 @@ class ContactLinkingReportTest extends TenantTestCase
         $orgs = collect($report['organisations'])->keyBy('customer_id');
         $this->assertArrayNotHasKey($linkedId, $orgs->all(), 'Linked customers are not planned.');
         $this->assertSame('create_organisation', $orgs[$fresh->id]['action']);
+        $this->assertFalse($orgs[$fresh->id]['customer_deleted']);
+        $this->assertTrue($orgs[$deletedCustomer->id]['customer_deleted']);
         $this->assertSame(['needs_review', 'possible_existing_organisation'], [$orgs[$lookalike->id]['action'], $orgs[$lookalike->id]['reason']]);
         $this->assertSame(['customer:'.$linkedId], $orgs[$lookalike->id]['candidates'][0]['linked_to']);
 
@@ -130,6 +137,9 @@ class ContactLinkingReportTest extends TenantTestCase
         // A contact with no email and no mobile gets a new person: nothing
         // links it automatically (fixed matcher, ADR-003A §9).
         $this->assertSame('create_person', $people[$plain]['action']);
+        $this->assertTrue($people[$deletedContact]['contact_deleted']);
+        $this->assertSame(1, $report['summary']['deleted_customers_included']);
+        $this->assertSame(1, $report['summary']['deleted_contacts_included']);
         $this->assertArrayNotHasKey('flags', $people[$plain]);
         $this->assertTrue($people[$plain]['customer_needs_organisation']);
     }
