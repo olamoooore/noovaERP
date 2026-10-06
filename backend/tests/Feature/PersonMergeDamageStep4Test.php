@@ -167,7 +167,8 @@ class PersonMergeDamageStep4Test extends TenantTestCase
      *  I. each company relationship's current values next to what each link
      *     at that company implies (category, roles, department);
      *  J. soft-deleted damaged people (step 3 L3 may restore them);
-     *  K. a fingerprint that also covers roles, documents and owned data;
+     *  K. a fingerprint that covers relationships and roles (owned data and
+     *     documents are listed, not fingerprinted — third review);
      *  L. a size flag for people with very many links (one transaction each).
      */
     public function test_report_covers_owned_data_case_documents_relationship_values_and_deleted_people(): void
@@ -235,12 +236,78 @@ class PersonMergeDamageStep4Test extends TenantTestCase
         $master->addIdentifier($sitiPerson, 'staff_no', 'S-002', $this->tenantId);
         $this->artisan('contacts:person-merge-damage-report', ['--tenant' => $this->tenantId, '--json' => $this->reportPath])->assertExitCode(0);
         $again = collect(json_decode((string) file_get_contents($this->reportPath), true)[0]['people'])->keyBy('person_id');
-        $this->assertNotSame($print, $again[$sitiPerson]['fingerprint'], 'Owned data is part of the fingerprint.');
+        // Revised by the third review of the repair plan: owned data and
+        // documents change with normal use, so they are listed, not
+        // fingerprinted (otherwise busy people could never be reviewed).
+        $this->assertSame($print, $again[$sitiPerson]['fingerprint'], 'Owned data is listed, not fingerprinted.');
 
         // L
         $this->assertTrue($people[$bulkId]['oversized']);
         $this->assertSame(51, $people[$bulkId]['link_count']);
         $this->assertFalse($damaged['oversized']);
+    }
+
+    /**
+     * Third hostile review of the repair plan (2026-10-06):
+     *  M. the fingerprint covers what a repair decision depends on (links,
+     *     relationships with roles, classifications) and NOT documents or
+     *     owned data, which change with normal daily use;
+     *  N. owned data is a flag (`has_owned_data`), and money-bearing owned
+     *     data (POS loyalty points, accounting balances) is listed apart —
+     *     moving it needs finance sign-off;
+     *  O. a company relationship with no linked contact at that company is
+     *     marked (`has_linked_contact` false): it stays with the person.
+     */
+    public function test_fingerprint_scope_financial_owned_data_and_relationships_without_contacts(): void
+    {
+        [$hospital, $hospitalOrg] = $this->createCustomer('Acme Hospital');
+        [, $otherOrg] = $this->createCustomer('Unlinked Clinic');
+        $siti = $this->addContact($hospital, ['name' => 'Siti', 'email' => 'siti@acme.test']);
+        $sitiPerson = $siti['core_contact_uuid'];
+        $this->wronglyMerged($hospital, null, 'Nurse Lim', $sitiPerson);
+
+        // O: a relationship at a company where no contact links the person.
+        DB::table('contact_relationships')->insert([
+            'id' => (string) Str::uuid(), 'tenant_id' => $this->tenantId, 'contact_id' => $otherOrg,
+            'related_contact_id' => $sitiPerson, 'relationship_type' => 'org_person', 'is_primary' => false,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        // N: loyalty points on the (shared) person.
+        \Modules\Contact\src\Models\PosLoyaltyProfile::create([
+            'id' => (string) Str::uuid(), 'tenant_id' => $this->tenantId, 'contact_id' => $sitiPerson,
+            'loyalty_points' => 120, 'lifetime_points' => 300,
+        ]);
+
+        $first = $this->report()[$sitiPerson];
+
+        // N
+        $this->assertTrue($first['has_owned_data']);
+        $this->assertSame(120, $first['financial_owned_data']['pos_loyalty_points']);
+        $this->assertSame(0.0, (float) $first['financial_owned_data']['accounting_balance']);
+
+        // O
+        $relationships = collect($first['relationships'])->keyBy('organisation_id');
+        $this->assertTrue($relationships[$hospitalOrg]['has_linked_contact']);
+        $this->assertFalse($relationships[$otherOrg]['has_linked_contact']);
+
+        // M: a new document for the person does not change the fingerprint…
+        Invoice::factory()->create(['customer_id' => $hospital, 'status' => 'draft', 'doctor_contact_id' => $sitiPerson]);
+        $this->assertSame($first['fingerprint'], $this->report()[$sitiPerson]['fingerprint'], 'Documents are listed, not fingerprinted.');
+
+        // …but a role on one of its relationships does.
+        app(ContactMasterService::class)->setRelationshipRoles($relationships[$hospitalOrg]['relationship_id'], ['BILLING_CONTACT'], $this->tenantId);
+        $this->assertNotSame($first['fingerprint'], $this->report()[$sitiPerson]['fingerprint'], 'Relationship roles are part of the fingerprint.');
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    private function report(): array
+    {
+        $before = $this->tableCounts();
+        $this->artisan('contacts:person-merge-damage-report', ['--tenant' => $this->tenantId, '--json' => $this->reportPath])->assertExitCode(0);
+        $this->assertSame($before, $this->tableCounts(), 'The report must not write anything.');
+
+        return collect(json_decode((string) file_get_contents($this->reportPath), true)[0]['people'])->keyBy('person_id')->all();
     }
 
     /** @return array{0: int, 1: string} */

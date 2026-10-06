@@ -40,6 +40,13 @@ use Modules\Contact\src\Services\ContactTaxonomyService;
  * doctors inside invoices' case_information JSON, each company
  * relationship's values next to what each link implies, soft-deleted
  * damaged people, a fingerprint over all of it, and a size flag.
+ *
+ * Third review: the fingerprint covers only what a repair decision depends
+ * on (person, links, relationships with roles, classifications) — owned
+ * data and documents change with normal use and are listed instead;
+ * `has_owned_data` and money-bearing `financial_owned_data` (POS loyalty
+ * points, accounting balances); relationships with no linked contact at
+ * their company are marked (`has_linked_contact`).
  */
 class PersonMergeDamagePlanner
 {
@@ -136,6 +143,11 @@ class PersonMergeDamagePlanner
             $documents = $this->documents($person->id, $links);
             $owned = $this->ownedData($person->id);
             $relationships = $this->relationships($tenantId, $person->id);
+            $linkedOrganisations = array_filter(array_column($links, 'organisation_id'));
+            foreach ($relationships as &$relationship) {
+                $relationship['has_linked_contact'] = in_array($relationship['organisation_id'], $linkedOrganisations, true);
+            }
+            unset($relationship);
             $explained = array_filter(array_column(array_filter($links, fn ($l) => $l['status'] === 'ok'), 'implied_classification'));
 
             $people[] = [
@@ -155,8 +167,10 @@ class PersonMergeDamagePlanner
                 'classifications_not_explained_by_ok_links' => array_values(array_diff($classifications, $explained)),
                 'relationships' => $relationships,
                 'owned_data' => $owned,
+                'has_owned_data' => array_sum($owned) > 0,
+                'financial_owned_data' => $this->financialOwnedData($person->id),
                 'documents' => $documents,
-                'fingerprint' => $this->fingerprint($person, $contacts->all(), $classifications, $relationships, $owned, $documents),
+                'fingerprint' => $this->fingerprint($person, $contacts->all(), $classifications, $relationships),
             ];
         }
 
@@ -239,12 +253,13 @@ class PersonMergeDamagePlanner
     }
 
     /**
-     * F: person, every linked contact, its relationships and classifications.
+     * F/M: person, every linked contact, its relationships (with roles) and
+     * classifications — what a repair decision depends on.
      *
      * @param  list<CustomerContact>  $contacts
      * @param  list<string>  $classifications
      */
-    private function fingerprint(CoreContact $person, array $contacts, array $classifications, array $relationships, array $owned, array $documents): string
+    private function fingerprint(CoreContact $person, array $contacts, array $classifications, array $relationships): string
     {
         return hash('sha256', json_encode([
             $person->id, $person->display_name, $person->email, $person->mobile, $person->phone,
@@ -255,8 +270,6 @@ class PersonMergeDamagePlanner
             ], $contacts),
             $relationships,
             $classifications,
-            $owned,
-            $documents,
         ]));
     }
 
@@ -281,6 +294,23 @@ class PersonMergeDamagePlanner
                 'roles' => ContactRole::where('tenant_id', $tenantId)->where('relationship_id', $r->id)->orderBy('role')->pluck('role')->all(),
             ])
             ->all();
+    }
+
+    /**
+     * N: owned data that carries money — moving it needs finance sign-off.
+     *
+     * @return array{pos_loyalty_points: int, accounting_balance: float}
+     */
+    private function financialOwnedData(string $personId): array
+    {
+        $points = Schema::hasTable('pos_loyalty_profiles')
+            ? (int) DB::table('pos_loyalty_profiles')->where('contact_id', $personId)->sum('loyalty_points')
+            : 0;
+        $balance = Schema::hasTable('accounting_customer_profiles')
+            ? round((float) DB::table('accounting_customer_profiles')->where('contact_id', $personId)->sum('current_balance'), 2)
+            : 0.0;
+
+        return ['pos_loyalty_points' => $points, 'accounting_balance' => $balance];
     }
 
     /**
