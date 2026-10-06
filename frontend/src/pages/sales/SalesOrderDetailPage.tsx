@@ -642,6 +642,14 @@ export function SalesOrderDetailPage() {
   const exchangeRate = Number(order.exchange_rate)
   const showExchangeRate =
     order.currency_code != null && Number.isFinite(exchangeRate) && exchangeRate > 0 && exchangeRate !== 1
+  // #406 (SU8): amounts are shown in the order's document currency (shared
+  // formatter), with the base-currency equivalent at the snapshot rate when
+  // the two differ — same convention as the invoice page (1 doc = rate base).
+  const docCurrency = order.currency_code || undefined
+  const money = (value: number | string | null | undefined) => formatCurrency(Number(value ?? 0), docCurrency)
+  const baseCurrency = order.base_currency_code || undefined
+  const showBaseEquivalent =
+    Boolean(docCurrency && baseCurrency && docCurrency !== baseCurrency) && Number.isFinite(exchangeRate) && exchangeRate > 0
   const channelLabel = order.channel ? (CHANNEL_LABELS[order.channel] ?? order.channel) : null
   const sourceLabel = order.source_document_type
     ? (SOURCE_DOCUMENT_LABELS[order.source_document_type] ?? order.source_document_type)
@@ -1057,24 +1065,30 @@ export function SalesOrderDetailPage() {
             <div className="space-y-1">
               <div className="flex justify-between">
                 <span className="text-sm text-muted-foreground">Subtotal:</span>
-                <span className="text-sm">{formatCurrency(order.subtotal)}</span>
+                <span className="text-sm">{money(order.subtotal)}</span>
               </div>
               {order.tax_amount > 0 && (
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Tax:</span>
-                  <span className="text-sm">{formatCurrency(order.tax_amount)}</span>
+                  <span className="text-sm">{money(order.tax_amount)}</span>
                 </div>
               )}
               {order.discount_amount > 0 && (
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Discount:</span>
-                  <span className="text-sm">{formatCurrency(order.discount_amount)}</span>
+                  <span className="text-sm">{money(order.discount_amount)}</span>
                 </div>
               )}
               <div className="flex justify-between font-bold pt-1 border-t">
                 <span className="text-sm">Total:</span>
-                <span className="text-sm">{formatCurrency(order.total)}</span>
+                <span className="text-sm">{money(order.total)}</span>
               </div>
+              {showBaseEquivalent && (
+                <div className="flex justify-between text-xs text-muted-foreground" data-testid="sales-order-base-total">
+                  <span>Base equivalent ({baseCurrency}):</span>
+                  <span>{formatCurrency(Number(order.total ?? 0) * exchangeRate, baseCurrency)}</span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -1150,7 +1164,7 @@ export function SalesOrderDetailPage() {
                           <span>{line.description}</span>
                           {isSection && (
                             <span className="whitespace-nowrap tabular-nums">
-                              {formatCurrency(
+                              {money(
                                 getDocumentSectionTotal(order.lines, index, (item) => Number(item.line_total ?? 0)),
                               )}
                             </span>
@@ -1200,10 +1214,10 @@ export function SalesOrderDetailPage() {
                     <TableCell className="text-right">{formatQuantity(line.quantity_invoiced)}</TableCell>
                     <TableCell className="text-right">{formatQuantity(remainingToDeliver(line))}</TableCell>
                     <TableCell className="text-right">{formatQuantity(remainingToInvoice(line))}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(Number(line.discount_amount ?? 0))}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(line.tax_amount)}</TableCell>
-                    <TableCell className="text-right font-medium">{formatCurrency(line.line_total)}</TableCell>
+                    <TableCell className="text-right">{money(line.discount_amount)}</TableCell>
+                    <TableCell className="text-right">{money(line.unit_price)}</TableCell>
+                    <TableCell className="text-right">{money(line.tax_amount)}</TableCell>
+                    <TableCell className="text-right font-medium">{money(line.line_total)}</TableCell>
                   </TableRow>
                 )
               })}
