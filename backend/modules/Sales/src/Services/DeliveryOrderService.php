@@ -3,7 +3,10 @@
 namespace Modules\Sales\Services;
 
 use App\Models\Product;
+use App\Models\ProductSerial;
+use App\Models\StockMovement;
 use App\Models\Warehouse;
+use App\Services\BatchSerialConsumptionService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -1442,6 +1445,11 @@ class DeliveryOrderService
      * completion. A delivery whose goods an invoice had already issued restocks
      * nothing — putting the delivered quantity back would conjure stock nobody
      * ever received.
+     *
+     * Issue #460 (DO8): the restock is now driven by the stock movements
+     * completion recorded — the same components, quantities, lots and expiry —
+     * instead of being recomputed from the lines, and the serials completion
+     * marked sold are returned to stock.
      */
     public function reverseDeliveryOrder(DeliveryOrder $deliveryOrder, string $reason): DeliveryOrder
     {
@@ -1455,41 +1463,13 @@ class DeliveryOrderService
 
             $deliveryOrder->load(['lines.product', 'lines.salesOrderLine']);
 
+            // #460 (DO8): replay the completion's stock movements in reverse —
+            // same product/component, quantity, lot and expiry — and un-mark
+            // the serials the completion marked sold.
+            $this->restockReversingCompletionMovements($deliveryOrder, $reason);
+            $this->returnDeliverySerials($deliveryOrder);
+
             foreach ($deliveryOrder->lines as $line) {
-                if (! $line->product_id) {
-                    continue;
-                }
-
-                $product = $line->product;
-                $isStockTracked = $product && (bool) ($product->track_inventory ?? false);
-
-                if ($isStockTracked) {
-                    // #457 (DO5): reverse exactly what was issued, fraction included.
-                    $qty = (float) $line->quantity_delivered;
-
-                    foreach ($this->bundleDecomposition->stockConsumingComponents($product, $qty) as $component) {
-                        $issuedQty = (float) $this->goodsIssueLedger->issuedByDeliveryOrder($deliveryOrder, (int) $component['product']->id);
-
-                        if ($issuedQty <= 0) {
-                            continue;
-                        }
-
-                        // Compensating inbound movement (restock)
-                        $this->inventoryService->adjustStock(
-                            productId: $component['product']->id,
-                            warehouseId: $warehouseId,
-                            quantity: $issuedQty,
-                            type: 'return',
-                            reference: "REVERSAL-{$deliveryOrder->delivery_order_number}",
-                            referenceType: 'DeliveryOrder',
-                            referenceId: $deliveryOrder->id,
-                            notes: "Reversal: {$reason}",
-                            idempotencyKey: "do-reverse-{$deliveryOrder->id}-line-{$line->id}".
-                                ($product->is_bundle ? "-component-{$component['product']->id}" : ''),
-                        );
-                    }
-                }
-
                 // Subtract from SO line delivered_qty (always, regardless of stock tracking)
                 if ($deliveryOrder->sales_order_id && $line->salesOrderLine) {
                     $soLine = $line->salesOrderLine;
@@ -1628,6 +1608,162 @@ class DeliveryOrderService
                 ->where('delivery_order_id', $deliveryOrder->id)
                 ->whereIn('invoice_id', $invoices->pluck('id')->all())
                 ->delete();
+        }
+    }
+
+    /**
+     * Issue #460 (DO8): the reverse replay of a completion.
+     *
+     * Completion records one `sale` movement per component it consumed (bundle
+     * decomposition, #130) carrying the line's lot and expiry; this method
+     * walks those same rows and posts the compensating `return` for each — same
+     * product/component, same quantity, same batch_number and expiry_date. A
+     * virtual bundle therefore restocks its components (it has no stock of its
+     * own), and a lot delivery restores its named lot with the FEFO trail
+     * intact instead of a lot-less aggregate.
+     *
+     * A delivery whose completion recorded no `sale` movement issued no goods
+     * (an invoice already shipped them — #682), and a legacy delivery completed
+     * before the movement trail existed has none either; both fall back to
+     * {@see restockLegacyLines()}, which restocks only what the goods-issue
+     * ledger attributes to this delivery and never conjures stock.
+     */
+    private function restockReversingCompletionMovements(DeliveryOrder $deliveryOrder, string $reason): void
+    {
+        $saleMovements = StockMovement::query()
+            ->where('reference_type', 'DeliveryOrder')
+            ->where('reference_id', $deliveryOrder->id)
+            ->where('type', 'sale')
+            ->orderBy('id')
+            ->get();
+
+        if ($saleMovements->isEmpty()) {
+            $this->restockLegacyLines($deliveryOrder, $reason);
+
+            return;
+        }
+
+        foreach ($saleMovements as $movement) {
+            $this->inventoryService->adjustStock(
+                productId: (int) $movement->product_id,
+                warehouseId: (int) $movement->warehouse_id,
+                quantity: (float) $movement->quantity,
+                type: 'return',
+                reference: "REVERSAL-{$deliveryOrder->delivery_order_number}",
+                referenceType: 'DeliveryOrder',
+                referenceId: $deliveryOrder->id,
+                notes: "Reversal: {$reason} — reverses stock movement #{$movement->id}",
+                batchNumber: $movement->batch_number,
+                expiryDate: $movement->expiry_date
+                    ? new \DateTime($movement->expiry_date->toDateString())
+                    : null,
+                idempotencyKey: "do-reverse-{$deliveryOrder->id}-movement-{$movement->id}",
+            );
+        }
+    }
+
+    /**
+     * The pre-#460 reversal logic, kept as the fallback for delivery orders
+     * with no recorded `sale` movement (a legacy completion, or goods an
+     * invoice had already issued — #682). It recomputes the bundle demand and
+     * restocks exactly what the goods-issue ledger attributes to this delivery:
+     * zero when completion shipped nothing, so it can never conjure stock.
+     */
+    private function restockLegacyLines(DeliveryOrder $deliveryOrder, string $reason): void
+    {
+        foreach ($deliveryOrder->lines as $line) {
+            if (! $line->product_id) {
+                continue;
+            }
+
+            $product = $line->product;
+            $isStockTracked = $product && (bool) ($product->track_inventory ?? false);
+
+            if (! $isStockTracked) {
+                continue;
+            }
+
+            // #457 (DO5): reverse exactly what was issued, fraction included.
+            $qty = (float) $line->quantity_delivered;
+
+            foreach ($this->bundleDecomposition->stockConsumingComponents($product, $qty) as $component) {
+                $issuedQty = (float) $this->goodsIssueLedger->issuedByDeliveryOrder($deliveryOrder, (int) $component['product']->id);
+
+                if ($issuedQty <= 0) {
+                    continue;
+                }
+
+                // Compensating inbound movement (restock)
+                $this->inventoryService->adjustStock(
+                    productId: $component['product']->id,
+                    warehouseId: (int) $deliveryOrder->warehouse_id,
+                    quantity: $issuedQty,
+                    type: 'return',
+                    reference: "REVERSAL-{$deliveryOrder->delivery_order_number}",
+                    referenceType: 'DeliveryOrder',
+                    referenceId: $deliveryOrder->id,
+                    notes: "Reversal: {$reason}",
+                    idempotencyKey: "do-reverse-{$deliveryOrder->id}-line-{$line->id}".
+                        ($product->is_bundle ? "-component-{$component['product']->id}" : ''),
+                );
+            }
+        }
+    }
+
+    /**
+     * Issue #460 (DO8): the inverse of completion's markSerialsSold() — the
+     * serials this delivery marked sold return to `available` so they can be
+     * sold again.
+     *
+     * Two guards keep the inverse exact: the serial must currently be `sold`
+     * with this delivery order's number as its sale reference (a serial another
+     * document sold is never touched), and this delivery must have issued one
+     * of the line's stock-consuming products (a delivery whose goods an invoice
+     * already shipped recorded no movement and is left for the invoice — #682).
+     */
+    private function returnDeliverySerials(DeliveryOrder $deliveryOrder): void
+    {
+        $serialService = app(BatchSerialConsumptionService::class);
+
+        foreach ($deliveryOrder->lines as $line) {
+            if (! $line->product || empty($line->serial_numbers)) {
+                continue;
+            }
+
+            $lineProductIds = array_map(
+                fn (array $component) => (int) $component['product']->id,
+                $this->bundleDecomposition->stockConsumingComponents(
+                    $line->product,
+                    (float) $line->quantity_delivered,
+                ),
+            );
+
+            if ($lineProductIds === []) {
+                continue;
+            }
+
+            $issuedByThisDelivery = StockMovement::query()
+                ->where('reference_type', 'DeliveryOrder')
+                ->where('reference_id', $deliveryOrder->id)
+                ->where('type', 'sale')
+                ->whereIn('product_id', $lineProductIds)
+                ->exists();
+
+            if (! $issuedByThisDelivery) {
+                continue;
+            }
+
+            $serials = ProductSerial::query()
+                ->where('product_id', $line->product_id)
+                ->whereIn('serial_number', (array) $line->serial_numbers)
+                ->where('status', ProductSerial::STATUS_SOLD)
+                ->where('sale_reference', $deliveryOrder->delivery_order_number)
+                ->pluck('serial_number')
+                ->all();
+
+            if ($serials !== []) {
+                $serialService->markSerialsReturned($line->product, $serials);
+            }
         }
     }
 
