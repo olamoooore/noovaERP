@@ -412,6 +412,8 @@ class SalesOrderController extends Controller
                 ->mapWithKeys(fn ($line) => [$line->id => $this->auditLineSnapshot($line)])
                 ->all()
             : [];
+        // Issue #634: header snapshot for the chatter field-change list.
+        $beforeHeader = $order->getAttributes();
 
         try {
             DB::transaction(function () use ($request, $order, $validated, $lines) {
@@ -438,14 +440,32 @@ class SalesOrderController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        if ($lines !== null) {
+        $afterLines = $lines !== null
+            ? $order->lines()->get()
+                ->mapWithKeys(fn ($line) => [$line->id => $this->auditLineSnapshot($line)])
+                ->all()
+            : [];
+
+        // Issue #634: one chatter entry per save listing every tracked field
+        // (header and lines) with its old → new value.
+        $tracked = app(\App\Services\Chatter\FieldChangeTracker::class)->track(
+            SalesOrder::class,
+            $beforeHeader,
+            $order->fresh()->getAttributes(),
+            $beforeLines,
+            $afterLines,
+        );
+
+        if ($lines !== null || $tracked !== []) {
             $this->orderService->logChatter(
                 $order,
                 'updated',
                 "Updated sales order {$order->sales_order_number}",
-                ['lines' => 'line items replaced'],
+                ($lines !== null ? ['lines' => 'line items replaced'] : []) + $tracked,
             );
+        }
 
+        if ($lines !== null) {
             // Issue #895: append-only before/after line diff for the draft edit
             // (the replacement deletes and re-creates rows, bypassing model
             // events, so the snapshot is taken here).
@@ -453,11 +473,7 @@ class SalesOrderController extends Controller
                 'sales_order_updated',
                 (int) $order->id,
                 ['lines' => $beforeLines],
-                [
-                    'lines' => $order->lines()->get()
-                        ->mapWithKeys(fn ($line) => [$line->id => $this->auditLineSnapshot($line)])
-                        ->all(),
-                ],
+                ['lines' => $afterLines],
                 ['sales_order_number' => $order->sales_order_number],
             );
         }
@@ -543,12 +559,22 @@ class SalesOrderController extends Controller
             }
         }
 
+        $afterHeader = $order->fresh()->getAttributes();
+        $afterLines = $order->lines()->get()
+            ->mapWithKeys(fn ($line) => [$line->id => $this->auditLineSnapshot($line)])
+            ->all();
+
+        // Issue #634: the same audit snapshots drive the chatter field-change
+        // list — one entry per save, header and grouped line changes.
+        $tracked = app(\App\Services\Chatter\FieldChangeTracker::class)
+            ->track(SalesOrder::class, $beforeHeader, $afterHeader, $beforeLines, $afterLines);
+
         if ($lines !== null || $changedFields !== []) {
             $this->orderService->logChatter(
                 $order,
                 'updated',
                 "Amended sales order {$order->sales_order_number}",
-                ['fields' => $changedFields === [] ? 'line items' : implode(', ', $changedFields)],
+                ['fields' => $changedFields === [] ? 'line items' : implode(', ', $changedFields)] + $tracked,
             );
 
             // Issue #895: append-only, line-keyed before/after diff. Line ids
@@ -562,10 +588,8 @@ class SalesOrderController extends Controller
                     'lines' => $beforeLines,
                 ],
                 [
-                    'fields' => array_intersect_key($order->fresh()->getAttributes(), array_flip($changedFields)),
-                    'lines' => $order->lines()->get()
-                        ->mapWithKeys(fn ($line) => [$line->id => $this->auditLineSnapshot($line)])
-                        ->all(),
+                    'fields' => array_intersect_key($afterHeader, array_flip($changedFields)),
+                    'lines' => $afterLines,
                 ],
                 ['sales_order_number' => $order->sales_order_number],
             );

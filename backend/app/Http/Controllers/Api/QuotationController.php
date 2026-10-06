@@ -774,13 +774,25 @@ class QuotationController extends Controller
             Auth::user(),
         );
 
+        // Issue #895 snapshots, reused by #634 for the chatter field-change list.
+        $afterHeader = $quotation->fresh()->getAttributes();
+        $afterLines = $quotation->lines()->get()
+            ->map(fn ($line) => $this->auditLineSnapshot($line))
+            ->values()
+            ->all();
+
+        // Issue #634: one chatter entry per save listing every tracked field
+        // (header and lines) with its old → new value.
+        $tracked = app(\App\Services\Chatter\FieldChangeTracker::class)
+            ->track(Quotation::class, $before, $afterHeader, $beforeLines, $afterLines);
+
         $extra = $request->has('lines') ? ['lines' => 'line items replaced'] : [];
-        if ($changedFields !== [] || $extra !== []) {
+        if ($changedFields !== [] || $extra !== [] || $tracked !== []) {
             $this->logQuotationChatter(
                 $quotation,
                 'updated',
                 "Updated quotation {$quotation->quotation_number}",
-                $extra + ['fields' => $changedFields === [] ? 'line items' : implode(', ', $changedFields)],
+                $extra + ['fields' => $changedFields === [] ? 'line items' : implode(', ', $changedFields)] + $tracked,
             );
 
             // Issue #895: field-level, append-only audit of what the edit
@@ -793,11 +805,8 @@ class QuotationController extends Controller
                     'lines' => $beforeLines,
                 ],
                 [
-                    'fields' => array_intersect_key($quotation->fresh()->getAttributes(), array_flip($changedFields)),
-                    'lines' => $quotation->lines()->get()
-                        ->map(fn ($line) => $this->auditLineSnapshot($line))
-                        ->values()
-                        ->all(),
+                    'fields' => array_intersect_key($afterHeader, array_flip($changedFields)),
+                    'lines' => $afterLines,
                 ],
                 ['quotation_number' => $quotation->quotation_number],
             );

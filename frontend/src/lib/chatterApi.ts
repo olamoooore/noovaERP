@@ -28,6 +28,23 @@ export interface ChatterActor {
   email?: string | null
 }
 
+/** Issue #634: one tracked field's old → new value on an edit. */
+export interface ChatterFieldChange {
+  field: string
+  label: string
+  old: string
+  new: string
+}
+
+/** Issue #634: the tracked changes of one document line, grouped. */
+export interface ChatterLineChange {
+  line: number
+  action: 'changed' | 'added' | 'removed'
+  description?: string
+  changes: ChatterFieldChange[]
+  summary: string
+}
+
 export interface ChatterLogEntry {
   id: number | string
   event: ChatterEventType

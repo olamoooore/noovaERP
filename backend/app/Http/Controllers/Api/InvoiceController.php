@@ -1586,14 +1586,26 @@ class InvoiceController extends Controller
         $newNumber = (string) $invoice->fresh()->invoice_number;
         $numberChanged = $oldNumber !== '' && $newNumber !== '' && $oldNumber !== $newNumber;
 
+        // Issue #895 snapshots, reused by #634 for the chatter field-change list.
+        $afterHeader = $invoice->fresh()->getAttributes();
+        $afterLines = $invoice->lines()->get()
+            ->map(fn ($line) => $this->auditLineSnapshot($line))
+            ->values()
+            ->all();
+
+        // Issue #634: one chatter entry per save listing every tracked field
+        // (header and lines) with its old → new value.
+        $tracked = app(\App\Services\Chatter\FieldChangeTracker::class)
+            ->track(Invoice::class, $beforeHeader, $afterHeader, $beforeLines, $afterLines);
+
         $linesReplaced = array_key_exists('lines', (array) ($request->all()));
-        if ($changedFields !== [] || $linesReplaced) {
+        if ($changedFields !== [] || $linesReplaced || $tracked !== []) {
             $metadata = [
                 'invoice_number' => $invoice->invoice_number,
                 'fields' => $changedFields === []
                     ? 'line items'
                     : implode(', ', $changedFields).($linesReplaced ? ', line items' : ''),
-            ];
+            ] + $tracked;
 
             if ($numberChanged) {
                 $metadata['invoice_number_from'] = $oldNumber;
@@ -1617,11 +1629,8 @@ class InvoiceController extends Controller
                     'lines' => $beforeLines,
                 ],
                 [
-                    'fields' => array_intersect_key($invoice->fresh()->getAttributes(), array_flip($changedFields)),
-                    'lines' => $invoice->lines()->get()
-                        ->map(fn ($line) => $this->auditLineSnapshot($line))
-                        ->values()
-                        ->all(),
+                    'fields' => array_intersect_key($afterHeader, array_flip($changedFields)),
+                    'lines' => $afterLines,
                 ],
                 ['invoice_number' => $invoice->invoice_number],
             );

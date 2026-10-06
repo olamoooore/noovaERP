@@ -96,6 +96,13 @@ class InvoiceActivityService
             // Names of the fields an edit actually touched.
             $properties['fields'] = (string) $metadata['fields'];
         }
+        // Issue #634: structured "field: old → new" list (header + grouped
+        // line changes) produced by FieldChangeTracker on a draft edit.
+        foreach (['changes', 'line_changes'] as $key) {
+            if (! empty($metadata[$key]) && is_array($metadata[$key])) {
+                $properties[$key] = $metadata[$key];
+            }
+        }
         if ($fromState !== $toState && $fromState !== null && $toState !== null) {
             $properties['state'] = "{$fromState} → {$toState}";
         }

@@ -10,6 +10,8 @@ import chatterApi, {
   type ActivityType,
   type ChatterActivity,
   type ChatterBundle,
+  type ChatterFieldChange,
+  type ChatterLineChange,
   type ChatterLogEntry,
   type ChatterAttachment,
   type ChatterMention,
@@ -546,12 +548,20 @@ function LogItem({ entry }: { entry: ChatterLogEntry }) {
     'unlinked_sales_order_id',
     'unlinked_sales_order_number',
   ])
+  // Issue #634: an edit carries the tracked "field: old → new" list and the
+  // per-line groups; when present they replace the bare field-name summary.
+  const fieldChanges = asFieldChanges(entry.properties?.changes)
+  const lineChanges = asLineChanges(entry.properties?.line_changes)
+  const hasTrackedChanges = fieldChanges.length > 0 || lineChanges.length > 0
+  const SUPERSEDED_KEYS = new Set(hasTrackedChanges ? ['fields', 'lines'] : [])
+
   // Only primitive values are rendered. Objects/arrays are internal payloads
   // (they used to render as "[object Object]") and booleans alone are noise.
   const meaningfulProps = entry.properties
     ? Object.entries(entry.properties).filter(
         ([k, v]) =>
           !INTERNAL_KEYS.has(k) &&
+          !SUPERSEDED_KEYS.has(k) &&
           v !== null &&
           v !== undefined &&
           typeof v !== 'object' &&
@@ -572,6 +582,25 @@ function LogItem({ entry }: { entry: ChatterLogEntry }) {
         <p className="text-sm text-foreground/80 mt-0.5">
           {entry.description || readableEvent(entry.event)}
         </p>
+        {fieldChanges.length > 0 && (
+          <ul aria-label="Field changes" className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+            {fieldChanges.map((change) => (
+              <li key={change.field}>
+                <span className="font-medium text-foreground/80">{change.label}:</span>{' '}
+                <span className="line-through decoration-muted-foreground/60">{change.old}</span>
+                {' → '}
+                <span className="text-foreground/90">{change.new}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {lineChanges.length > 0 && (
+          <ul aria-label="Line changes" className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+            {lineChanges.map((line) => (
+              <li key={`${line.line}-${line.action}`}>{line.summary}</li>
+            ))}
+          </ul>
+        )}
         {meaningfulProps.length > 0 && (
           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
             {meaningfulProps.map(([k, v]) => (
@@ -584,6 +613,24 @@ function LogItem({ entry }: { entry: ChatterLogEntry }) {
         )}
       </div>
     </div>
+  )
+}
+
+/** Issue #634: defensive read of the tracked header changes. */
+function asFieldChanges(value: unknown): ChatterFieldChange[] {
+  if (!Array.isArray(value)) return []
+  return value.filter(
+    (c): c is ChatterFieldChange =>
+      typeof c === 'object' && c !== null && typeof (c as ChatterFieldChange).field === 'string'
+  )
+}
+
+/** Issue #634: defensive read of the grouped line changes. */
+function asLineChanges(value: unknown): ChatterLineChange[] {
+  if (!Array.isArray(value)) return []
+  return value.filter(
+    (l): l is ChatterLineChange =>
+      typeof l === 'object' && l !== null && typeof (l as ChatterLineChange).summary === 'string'
   )
 }
 
