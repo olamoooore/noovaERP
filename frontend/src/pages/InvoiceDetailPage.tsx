@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link, useParams, useNavigate, useLocation } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
@@ -449,7 +449,16 @@ export function InvoiceDetailPage() {
   const [resetDialogOpen, setResetDialogOpen] = useState(false)
   const [writeOffDialogOpen, setWriteOffDialogOpen] = useState(false)
   // #491: register a payment in place (existing dialog + POST /payments).
-  const [registerPaymentOpen, setRegisterPaymentOpen] = useState(false)
+  // #487: the retired /invoices/:id/payment page redirects here with
+  // ?register_payment=1 — open the shared dialog once, then drop the flag.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [registerPaymentOpen, setRegisterPaymentOpen] = useState(() => searchParams.get('register_payment') === '1')
+  useEffect(() => {
+    if (searchParams.get('register_payment') !== '1') return
+    const next = new URLSearchParams(searchParams)
+    next.delete('register_payment')
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
   const canRegisterPayment = useCanRegisterPayment()
   const [sendDialogUrl, setSendDialogUrl] = useState<string | null>(null)
   const [sendDialogPaymentUrl, setSendDialogPaymentUrl] = useState<string | null>(null)
