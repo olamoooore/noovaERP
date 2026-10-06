@@ -25,6 +25,9 @@ final class EventSubtypeRegistry
 
     public const RECORD_COMMENT = 'record.comment';
 
+    /** Issue #636: chatter "Message customer" — outbound to the record's contact. */
+    public const CUSTOMER_MESSAGE = 'customer.message';
+
     public const INVOICE_SENT = 'invoice.sent';
 
     public const INVOICE_PAID = 'invoice.paid';
@@ -49,6 +52,7 @@ final class EventSubtypeRegistry
         self::SYSTEM_LOG,
         self::INTERNAL_NOTE,
         self::RECORD_COMMENT,
+        self::CUSTOMER_MESSAGE,
         self::INVOICE_SENT,
         self::INVOICE_PAID,
         self::INVOICE_OVERDUE,

@@ -58,6 +58,16 @@ class EmailChannel implements ChannelInterface
                 if ($message->email_from) {
                     $mail->from($message->email_from);
                 }
+
+                // Issue #636: stamp the Message-ID recorded on the message so
+                // the customer's reply (In-Reply-To) threads back under it in
+                // InboundEmailService.
+                $messageId = $message->metadata['message_id'] ?? null;
+                if (is_string($messageId) && trim($messageId, '<> ') !== '') {
+                    $headers = $mail->getSymfonyMessage()->getHeaders();
+                    $headers->remove('Message-ID');
+                    $headers->addIdHeader('Message-ID', trim($messageId, '<> '));
+                }
             });
 
             Log::info('Communication: Email sent', [

@@ -14,6 +14,9 @@ import chatterApi, {
   type ChatterAttachment,
   type ChatterMention,
   type ChatterMessageEntry,
+  type ChatterMessageCategory,
+  type ChatterCustomerChannel,
+  type CreateMessageRequest,
 } from '@/lib/chatterApi'
 import { ChatterFollowers } from '@/components/chatter/ChatterFollowers'
 
@@ -75,6 +78,63 @@ const activityTypeColors: Record<ActivityType, string> = {
   reminder: 'bg-rose-100 text-rose-700',
 }
 
+// Issue #636: All / Customer / Internal / System filter for the Messages tab.
+type MessageFilter = 'all' | ChatterMessageCategory
+
+const MESSAGE_FILTERS: { id: MessageFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'customer', label: 'Customer' },
+  { id: 'internal', label: 'Internal' },
+  { id: 'system', label: 'System' },
+]
+
+type ComposerMode = 'note' | 'customer'
+
+/** Messages without a category (older API payloads) are treated as internal. */
+const messageCategory = (entry: ChatterMessageEntry): ChatterMessageCategory =>
+  entry.category ?? (entry.is_internal_note === false ? 'customer' : 'internal')
+
+const channelLabel = (channel?: string | null): string =>
+  channel === 'whatsapp' ? 'WhatsApp' : channel === 'sms' ? 'SMS' : 'Email'
+
+interface MessageThread {
+  entry: ChatterMessageEntry
+  replies: ChatterMessageEntry[]
+}
+
+/**
+ * Issue #636: nest replies (parent_id) under the message they answer. A reply
+ * whose parent is not in the visible list stays top-level.
+ */
+function buildThreads(entries: ChatterMessageEntry[]): MessageThread[] {
+  const visible = new Set(entries.map((e) => String(e.id)))
+  const replies = new Map<string, ChatterMessageEntry[]>()
+
+  for (const entry of entries) {
+    const parent = entry.parent_id != null ? String(entry.parent_id) : null
+    if (parent !== null && parent !== String(entry.id) && visible.has(parent)) {
+      replies.set(parent, [...(replies.get(parent) ?? []), entry])
+    }
+  }
+
+  return entries
+    .filter((entry) => {
+      const parent = entry.parent_id != null ? String(entry.parent_id) : null
+      return parent === null || parent === String(entry.id) || !visible.has(parent)
+    })
+    .map((entry) => ({
+      entry,
+      replies: [...(replies.get(String(entry.id)) ?? [])].sort((a, b) =>
+        (a.created_at ?? '').localeCompare(b.created_at ?? '')
+      ),
+    }))
+}
+
+const apiErrorMessage = (error: unknown): string | undefined => {
+  const data = (error as { response?: { data?: { message?: unknown } } })?.response?.data
+  return typeof data?.message === 'string' ? data.message : undefined
+}
+
 const formatDateTime = (iso?: string | null): string => {
   if (!iso) return ''
   return new Date(iso).toLocaleString('en-GB', {
@@ -118,6 +178,11 @@ export function ChatterPanel({
   const { toast } = useToast()
   const [tab, setTab] = useState<'activity' | 'messages' | 'attachments' | 'log'>('activity')
   const [message, setMessage] = useState('')
+  // Issue #636: composer defaults to an internal note — reaching the customer
+  // is always an explicit choice.
+  const [composerMode, setComposerMode] = useState<ComposerMode>('note')
+  const [channel, setChannel] = useState<ChatterCustomerChannel>('email')
+  const [messageFilter, setMessageFilter] = useState<MessageFilter>('all')
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const feedRef = useRef<HTMLDivElement | null>(null)
 
@@ -133,13 +198,35 @@ export function ChatterPanel({
   const invalidate = () => queryClient.invalidateQueries({ queryKey })
 
   const sendMessage = useMutation({
-    mutationFn: (body: string) => chatterApi.addMessage(subjectType, subjectId, { body }),
+    mutationFn: (payload: CreateMessageRequest) =>
+      chatterApi.addMessage(subjectType, subjectId, payload),
     onSuccess: () => {
       setMessage('')
       invalidate()
     },
-    onError: () => toast({ title: 'Failed to send message', variant: 'destructive' }),
+    onError: (err: unknown, payload) =>
+      toast({
+        title: payload.mode === 'customer' ? 'Failed to message customer' : 'Failed to log note',
+        description: apiErrorMessage(err),
+        variant: 'destructive',
+      }),
   })
+
+  const allMessages = useMemo(() => data?.messages ?? [], [data?.messages])
+  const messageCounts = useMemo(() => {
+    const counts: Record<MessageFilter, number> = { all: allMessages.length, customer: 0, internal: 0, system: 0 }
+    for (const m of allMessages) counts[messageCategory(m)] += 1
+    return counts
+  }, [allMessages])
+  const threads = useMemo(
+    () =>
+      buildThreads(
+        messageFilter === 'all'
+          ? allMessages
+          : allMessages.filter((m) => messageCategory(m) === messageFilter)
+      ),
+    [allMessages, messageFilter]
+  )
 
   const uploadAttachment = useMutation({
     mutationFn: (file: File) => chatterApi.uploadAttachment(subjectType, subjectId, file),
@@ -174,7 +261,11 @@ export function ChatterPanel({
     e.preventDefault()
     const trimmed = message.trim()
     if (!trimmed || sendMessage.isPending) return
-    sendMessage.mutate(trimmed)
+    sendMessage.mutate(
+      composerMode === 'customer'
+        ? { body: trimmed, mode: 'customer', channel }
+        : { body: trimmed, mode: 'note' }
+    )
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -246,11 +337,47 @@ export function ChatterPanel({
 
         {tab === 'messages' && (
           <div className="flex flex-col gap-3">
-            {(data?.messages ?? []).map((msg) => (
-              <MessageItem key={String(msg.id)} entry={msg} />
+            {/* Issue #636: All / Customer / Internal / System */}
+            <div role="group" aria-label="Message filter" className="flex flex-wrap gap-1">
+              {MESSAGE_FILTERS.map(({ id, label }) => (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={messageFilter === id}
+                  onClick={() => setMessageFilter(id)}
+                  className={`flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition ${
+                    messageFilter === id
+                      ? 'border-primary/40 bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  {label}
+                  <span className="text-[10px] opacity-70">{messageCounts[id]}</span>
+                </button>
+              ))}
+            </div>
+            {threads.map(({ entry, replies }) => (
+              <div key={String(entry.id)} data-message-id={String(entry.id)} className="flex flex-col gap-2">
+                <MessageItem entry={entry} />
+                {replies.length > 0 && (
+                  <div className="ml-6 flex flex-col gap-2 border-l-2 border-muted pl-3">
+                    {replies.map((reply) => (
+                      <div key={String(reply.id)} data-message-id={String(reply.id)}>
+                        <MessageItem entry={reply} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             ))}
-            {(data?.messages ?? []).length === 0 && (
-              <EmptyHint text="No messages yet. Post the first one below." />
+            {threads.length === 0 && (
+              <EmptyHint
+                text={
+                  allMessages.length === 0
+                    ? 'No messages yet. Post the first one below.'
+                    : 'No messages match this filter.'
+                }
+              />
             )}
           </div>
         )}
@@ -286,22 +413,73 @@ export function ChatterPanel({
       {/* Footer — message composer (only on Messages tab) */}
       {tab === 'messages' && !readOnly && (
         <form onSubmit={handleSubmit} className="border-t p-3">
+          {/* Issue #636: two composer modes */}
+          <div role="group" aria-label="Composer mode" className="mb-2 flex flex-wrap items-center gap-1">
+            {([
+              { id: 'note', label: 'Log note', icon: 'solar:notes-bold-duotone' },
+              { id: 'customer', label: 'Message customer', icon: 'solar:letter-bold-duotone' },
+            ] as const).map(({ id, label, icon }) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={composerMode === id}
+                onClick={() => setComposerMode(id)}
+                className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                  composerMode === id
+                    ? id === 'note'
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                <Icon icon={icon} width={14} />
+                {label}
+              </button>
+            ))}
+            {composerMode === 'customer' && (
+              <label className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
+                Channel
+                <select
+                  aria-label="Channel"
+                  value={channel}
+                  onChange={(e) => setChannel(e.target.value as ChatterCustomerChannel)}
+                  className="h-7 rounded-md border bg-background px-1.5 text-xs text-foreground"
+                >
+                  <option value="email">Email</option>
+                  <option value="whatsapp">WhatsApp</option>
+                </select>
+              </label>
+            )}
+          </div>
           <Textarea
-            placeholder="Write a message…"
+            placeholder={
+              composerMode === 'customer'
+                ? 'Write a message to the customer…'
+                : 'Write an internal note (only your team sees this)…'
+            }
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             rows={3}
-            className="resize-none"
+            className={`resize-none ${composerMode === 'note' ? 'bg-amber-50/60' : ''}`}
           />
-          <div className="mt-2 flex justify-end">
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <span className="text-[11px] text-muted-foreground">
+              {composerMode === 'customer'
+                ? `Sent to the document's customer contact by ${channelLabel(channel)}.`
+                : 'Internal only — never sent to the customer.'}
+            </span>
             <Button
               type="submit"
               size="sm"
               className="h-8 rounded-full px-3 text-xs"
               disabled={!message.trim() || sendMessage.isPending}
             >
-              <Icon icon="solar:send-square-bold" width={16} className="mr-1" />
-              {sendMessage.isPending ? 'Sending…' : 'Send'}
+              <Icon
+                icon={composerMode === 'customer' ? 'solar:send-square-bold' : 'solar:notes-bold'}
+                width={16}
+                className="mr-1"
+              />
+              {sendMessage.isPending ? 'Sending…' : composerMode === 'customer' ? 'Send' : 'Log'}
             </Button>
           </div>
         </form>
@@ -417,16 +595,46 @@ function humanPropLabel(key: string): string {
 
 function MessageItem({ entry }: { entry: ChatterMessageEntry }) {
   const actorName = entry.actor?.name ?? 'System'
+  const category = messageCategory(entry)
+
+  // Issue #636: make the audience of every message obvious.
+  const badge =
+    category === 'internal'
+      ? { text: 'Internal note', className: 'bg-amber-100 text-amber-800' }
+      : category === 'system'
+        ? { text: 'System', className: 'bg-slate-100 text-slate-600' }
+        : entry.direction === 'inbound'
+          ? { text: `From customer · ${channelLabel(entry.channel)}`, className: 'bg-emerald-100 text-emerald-700' }
+          : {
+              text: entry.channel ? `To customer · ${channelLabel(entry.channel)}` : 'Customer',
+              className: 'bg-blue-100 text-blue-700',
+            }
+
+  const surface =
+    category === 'internal'
+      ? 'bg-amber-50/70 border border-amber-100'
+      : category === 'system'
+        ? 'bg-muted/30'
+        : 'bg-muted/40'
 
   return (
-    <div className="flex gap-3 rounded-md bg-muted/40 p-3">
+    <div className={`flex gap-3 rounded-md p-3 ${surface}`}>
       <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700">
-        <Icon icon="solar:user-circle-bold-duotone" width={16} />
+        <Icon
+          icon={category === 'internal' ? 'solar:notes-bold-duotone' : 'solar:user-circle-bold-duotone'}
+          width={16}
+        />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium">{actorName}</span>
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${badge.className}`}>
+            {badge.text}
+          </span>
           <span className="text-xs text-muted-foreground">{formatDateTime(entry.created_at)}</span>
+          {entry.direction === 'outbound' && entry.recipient && (
+            <span className="text-xs text-muted-foreground">→ {entry.recipient}</span>
+          )}
         </div>
         <p className="mt-1 whitespace-pre-wrap text-sm">
           <MentionText body={entry.body} mentions={entry.mentions} />

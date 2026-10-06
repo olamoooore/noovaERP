@@ -68,6 +68,11 @@ export interface ChatterMention {
   email?: string | null
 }
 
+/** Issue #636: which thread a message belongs to. */
+export type ChatterMessageCategory = 'customer' | 'internal' | 'system'
+
+export type ChatterCustomerChannel = 'email' | 'whatsapp'
+
 export interface ChatterMessageEntry {
   id: number | string
   body: string
@@ -75,6 +80,17 @@ export interface ChatterMessageEntry {
   mentions?: ChatterMention[]
   created_at: string
   actor?: ChatterActor | null
+  /** Issue #636: customer thread, internal note, or system message. */
+  category?: ChatterMessageCategory
+  is_internal_note?: boolean
+  /** Issue #636: `outbound` = sent to the customer, `inbound` = their reply. */
+  direction?: 'inbound' | 'outbound' | null
+  channel?: string | null
+  recipient?: string | null
+  subject?: string | null
+  status?: string | null
+  /** Issue #636: the message this one replies to (inbound replies). */
+  parent_id?: number | null
 }
 
 export interface ChatterBundle {
@@ -94,6 +110,13 @@ export interface CreateActivityRequest {
 
 export interface CreateMessageRequest {
   body: string
+  /**
+   * Issue #636: `customer` sends to the document's customer contact;
+   * `note` is internal only and never reaches the customer.
+   */
+  mode?: 'customer' | 'note'
+  /** Only for mode `customer`. */
+  channel?: ChatterCustomerChannel
 }
 
 // ─── Issue #639: document followers ─────────────────────────────────────────

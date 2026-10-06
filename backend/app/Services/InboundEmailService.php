@@ -57,11 +57,11 @@ class InboundEmailService
         $headers = $payload['headers'] ?? [];
         $tenantId = $payload['tenant_id'] ?? null;
 
-        [$model, $recordId, $strategy] = $this->resolveTarget($subject, $inReplyTo, $tenantId);
+        [$model, $recordId, $strategy, $parentId] = $this->resolveTarget($subject, $inReplyTo, $tenantId);
 
         return DB::transaction(function () use (
             $messageId, $inReplyTo, $fromAddress, $fromName, $subject, $bodyPlain, $bodyHtml,
-            $headers, $tenantId, $model, $recordId, $strategy
+            $headers, $tenantId, $model, $recordId, $strategy, $parentId
         ) {
             $inbound = InboundEmail::create([
                 'tenant_id' => $tenantId,
@@ -91,6 +91,16 @@ class InboundEmailService
                     body: $bodyPlain !== '' ? $bodyPlain : $subject,
                     authorId: 0,
                     tenantId: $tenantId,
+                    // Issue #636: thread the reply under the outbound message
+                    // it answers and mark it as customer-originated so the
+                    // chatter files it under "Customer", not internal notes.
+                    parentId: $parentId,
+                    metadata: array_filter([
+                        'direction' => 'inbound',
+                        'channel' => 'email',
+                        'from_address' => $fromAddress,
+                        'from_name' => $fromName,
+                    ], fn ($value) => $value !== null && $value !== ''),
                 );
                 $inbound->update(['communication_message_id' => $message->id]);
             }
@@ -108,7 +118,11 @@ class InboundEmailService
     }
 
     /**
-     * @return array{0: ?string, 1: ?int, 2: ?string}  [model, record_id, strategy]
+     * Issue #636: the 4th element is the message the reply threads under —
+     * the exact outbound message for an In-Reply-To match, otherwise the
+     * record's latest outbound customer message (if any).
+     *
+     * @return array{0: ?string, 1: ?int, 2: ?string, 3: ?int} [model, record_id, strategy, parent_id]
      */
     private function resolveTarget(string $subject, ?string $inReplyTo, ?string $tenantId): array
     {
@@ -116,7 +130,12 @@ class InboundEmailService
         if (preg_match('/\[(Invoice|SalesOrder|Quotation|DeliveryOrder|Customer|Vendor)-(\d+)\]/i', $subject, $m)) {
             $model = $this->mapModelAlias($m[1]);
             if ($model !== null) {
-                return [$model, (int) $m[2], InboundEmail::STRATEGY_SUBJECT_TOKEN];
+                return [
+                    $model,
+                    (int) $m[2],
+                    InboundEmail::STRATEGY_SUBJECT_TOKEN,
+                    $this->latestOutboundMessageId($model, (int) $m[2], $tenantId),
+                ];
             }
         }
 
@@ -129,11 +148,24 @@ class InboundEmailService
                 ->where('metadata->message_id', $inReplyTo)
                 ->first();
             if ($reply !== null) {
-                return [$reply->model, (int) $reply->record_id, InboundEmail::STRATEGY_IN_REPLY_TO];
+                return [$reply->model, (int) $reply->record_id, InboundEmail::STRATEGY_IN_REPLY_TO, (int) $reply->id];
             }
         }
 
-        return [null, null, null];
+        return [null, null, null, null];
+    }
+
+    private function latestOutboundMessageId(string $model, int $recordId, ?string $tenantId): ?int
+    {
+        $id = CommunicationMessage::query()
+            ->when($tenantId !== null, fn ($q) => $q->where('tenant_id', $tenantId))
+            ->where('model', $model)
+            ->where('record_id', $recordId)
+            ->where('metadata->direction', 'outbound')
+            ->orderByDesc('id')
+            ->value('id');
+
+        return $id !== null ? (int) $id : null;
     }
 
     private function mapModelAlias(string $alias): ?string
