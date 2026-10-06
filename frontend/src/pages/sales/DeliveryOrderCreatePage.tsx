@@ -19,6 +19,7 @@ import {
   ProductLineActions,
 } from '@/components/sales/ProductLineTable'
 import { cn, formatCurrency } from '@/lib/utils'
+import { todayDateOnly } from '@/lib/dateOnly'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
@@ -86,7 +87,7 @@ export function DeliveryOrderCreatePage() {
   const [salesOrderId, setSalesOrderId] = useState<string>(preselectedSoId || '')
   const [customerId, setCustomerId] = useState<string>('')
   const [warehouseId, setWarehouseId] = useState<string>('')
-  const [deliveryDate, setDeliveryDate] = useState(new Date().toISOString().split('T')[0])
+  const [deliveryDate, setDeliveryDate] = useState(() => todayDateOnly())
   const [expectedDate, setExpectedDate] = useState('')
   const [paymentTerms, setPaymentTerms] = useState('')
   const [invoiceId, setInvoiceId] = useState('')
