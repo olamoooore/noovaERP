@@ -159,6 +159,17 @@ class SalesAnalyticsService
      */
     private const NON_SALE_LINE_TYPES = ['note', 'section'];
 
+    /**
+     * Issue #596: the trend period key per interval — the same TO_CHAR formats
+     * buildSalesTrends() buckets by, so a period row drills to its own lines.
+     */
+    private const DRILLDOWN_PERIOD_FORMATS = [
+        'day' => 'YYYY-MM-DD',
+        'week' => 'IYYY-IW',
+        'month' => 'YYYY-MM',
+        'year' => 'YYYY',
+    ];
+
     private const REVENUE_BASIS = 'Net revenue, tax excluded, document discounts subtracted, '
         .'reported in the tenant base currency: posted invoices less posted customer '
         .'credit notes, plus POS sales net of returns, plus un-invoiced bookings. '
@@ -1308,6 +1319,154 @@ class SalesAnalyticsService
                 ),
                 'total_amount_to_invoice' => round((float) $rows->sum('amount_to_invoice'), 2),
                 'channels_included' => self::CHANNELS_INCLUDED,
+            ]),
+            'generated_at' => now()->toISOString(),
+        ];
+    }
+
+    /**
+     * Issue #596 (RPT-UX1): the source documents behind one report row.
+     *
+     * A row is identified by its tab's dimension and key — `customer`,
+     * `product` or `category` with an id (`null` for the walk-in /
+     * unlinked-lines / Uncategorized bucket), or `period` with the trend
+     * period key for `$interval`. The documents are read from the SAME
+     * lineItemsUnion() as the row, with the same filter (and therefore the
+     * same #593 dimensions, tag and currency), narrowed to the row exactly the
+     * way the row's own GROUP BY buckets it. Each document's net amount is
+     * the sum of its base-currency line revenue, so the documents add up to
+     * the row value to the cent (both sum the same rounded line amounts).
+     *
+     * @return array<string, mixed>
+     */
+    public function getSalesDrilldown(ReportFilter $filter, string $dimension, ?string $key, string $interval = 'day'): array
+    {
+        $startDate = $filter->startDate ?? Carbon::now()->startOfMonth();
+        $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
+
+        [$salesOrderIds, $invoiceIds] = $this->documentIdsForTag($filter->tag ?? null);
+
+        $query = DB::query()
+            ->fromSub($this->lineItemsUnion($filter, $salesOrderIds, $invoiceIds), 'li')
+            ->leftJoin('customers as cust', 'cust.id', '=', 'li.customer_id');
+
+        $id = $key === null ? null : (int) $key;
+
+        switch ($dimension) {
+            case 'customer':
+                // buildSalesByCustomer groups by li.customer_id.
+                $id === null ? $query->whereNull('li.customer_id') : $query->where('li.customer_id', $id);
+                break;
+
+            case 'product':
+                // buildSalesByProduct groups by p.id over a LEFT JOIN, and
+                // drops layout (note / section) lines.
+                $query->leftJoin('products as p', 'p.id', '=', 'li.product_id')
+                    ->where(function ($q) {
+                        $q->whereNull('li.line_type')->orWhereNotIn('li.line_type', self::NON_SALE_LINE_TYPES);
+                    });
+                $id === null ? $query->whereNull('p.id') : $query->where('p.id', $id);
+                break;
+
+            case 'category':
+                // buildSalesByCategory groups by c.id over two LEFT JOINs.
+                $query->leftJoin('products as p', 'p.id', '=', 'li.product_id')
+                    ->leftJoin('product_categories as c', 'c.id', '=', 'p.category_id');
+                $id === null ? $query->whereNull('c.id') : $query->where('c.id', $id);
+                break;
+
+            case 'period':
+                // buildSalesTrends buckets by TO_CHAR(revenue_date, format).
+                $format = self::DRILLDOWN_PERIOD_FORMATS[$interval] ?? null;
+                if ($format === null || $key === null) {
+                    throw new \InvalidArgumentException('A period drill-down needs a period key and a valid interval.');
+                }
+                $query->whereRaw("TO_CHAR(li.revenue_date, '{$format}') = ?", [$key]);
+                break;
+
+            default:
+                throw new \InvalidArgumentException("Unknown drill-down dimension: {$dimension}");
+        }
+
+        try {
+            $rows = $query
+                ->select([
+                    'li.order_ref',
+                    'li.channel',
+                    'li.customer_id',
+                    'cust.name as customer_name',
+                    DB::raw('MIN(li.revenue_date) as document_date'),
+                    DB::raw('MAX(li.currency_code) as currency_code'),
+                    DB::raw('SUM(li.document_revenue) as document_amount'),
+                    DB::raw('SUM(li.base_revenue) as net_amount'),
+                ])
+                ->groupBy('li.order_ref', 'li.channel', 'li.customer_id', 'cust.name')
+                ->orderByDesc('document_date')
+                ->orderBy('li.order_ref')
+                ->get();
+        } catch (\Throwable $e) {
+            Log::error('SalesAnalyticsService getSalesDrilldown error', [
+                'error' => $e->getMessage(),
+            ]);
+
+            throw $e;
+        }
+
+        // order_ref is '<prefix>:<id>' (lineItemsUnion); resolve each document's
+        // own number in one query per document type.
+        $types = [
+            'inv' => ['invoice', 'invoices', 'invoice_number'],
+            'cn' => ['credit_note', 'customer_credit_notes', 'credit_note_number'],
+            'pos' => ['pos_order', 'pos_orders', 'order_number'],
+            'so' => ['sales_order', 'sales_orders', 'sales_order_number'],
+        ];
+
+        $idsByPrefix = [];
+        foreach ($rows as $row) {
+            [$prefix, $docId] = explode(':', (string) $row->order_ref, 2);
+            $idsByPrefix[$prefix][] = (int) $docId;
+        }
+
+        $numbers = [];
+        foreach ($idsByPrefix as $prefix => $ids) {
+            [, $table, $column] = $types[$prefix];
+            $numbers[$prefix] = DB::table($table)->whereIn('id', array_unique($ids))->pluck($column, 'id')->all();
+        }
+
+        $documents = $rows->map(function ($row) use ($types, $numbers) {
+            [$prefix, $docId] = explode(':', (string) $row->order_ref, 2);
+            $docId = (int) $docId;
+
+            return [
+                'document_type' => $types[$prefix][0],
+                'document_id' => $docId,
+                'document_number' => $numbers[$prefix][$docId] ?? ('#'.$docId),
+                'document_date' => $row->document_date !== null
+                    ? Carbon::parse($row->document_date)->format('Y-m-d')
+                    : null,
+                'channel' => $row->channel,
+                'customer_id' => $row->customer_id !== null ? (int) $row->customer_id : null,
+                'customer_name' => $row->customer_name ?? 'Walk-in Customer',
+                'currency_code' => $row->currency_code,
+                'document_amount' => round((float) $row->document_amount, 2),
+                'net_amount' => round((float) $row->net_amount, 2),
+            ];
+        })->values()->all();
+
+        return [
+            'title' => 'Sales Drill-down',
+            'dimension' => $dimension,
+            'key' => $key,
+            'interval' => $dimension === 'period' ? $interval : null,
+            'pos_excluded_by_tag' => $filter->tag !== null,
+            'period' => [
+                'start_date' => $startDate->format('Y-m-d'),
+                'end_date' => $endDate->format('Y-m-d'),
+            ],
+            'documents' => $documents,
+            'summary' => $this->baseSummary([
+                'document_count' => count($documents),
+                'total_net_amount' => round((float) $rows->sum('net_amount'), 2),
             ]),
             'generated_at' => now()->toISOString(),
         ];

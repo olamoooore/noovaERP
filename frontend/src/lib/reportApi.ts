@@ -18,6 +18,8 @@ import type {
   SalesReconciliationData,
   SalesPivotData,
   UnbilledDeliveriesData,
+  SalesDrilldownData,
+  SalesDrilldownTarget,
   MedicalCasePerformanceData,
   MedicalCaseDateField,
   PivotDimension,
@@ -677,6 +679,33 @@ class ReportApiClient {
       return response.data.data;
     } catch (error) {
       this.handleError(error, 'Failed to fetch Sales Pivot');
+      throw error;
+    }
+  }
+
+  /**
+   * Issue #596: the source documents behind one report row, read with the
+   * same #593 filters as the row. The endpoint takes no comparison window
+   * (422), and `interval` only for a period row.
+   */
+  async getSalesDrilldown(filters: ReportFilters, target: SalesDrilldownTarget): Promise<SalesDrilldownData> {
+    const params: ReportFilters & Record<string, unknown> = { ...this.salesParams(filters) };
+    delete params.comparison;
+    delete params.compare_start_date;
+    delete params.compare_end_date;
+    params.dimension = target.dimension;
+    params.key = target.key;
+    if (target.dimension === 'period') {
+      params.interval = target.interval ?? 'day';
+    }
+    try {
+      const response = await api.get<ApiResponse<SalesDrilldownData>>(
+        '/analytics/sales/drilldown',
+        { params }
+      );
+      return response.data.data;
+    } catch (error) {
+      this.handleError(error, 'Failed to fetch Sales drill-down');
       throw error;
     }
   }

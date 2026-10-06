@@ -339,6 +339,68 @@ class AnalyticsController extends Controller
     }
 
     /**
+     * Issue #596 (RPT-UX1): the source documents behind one report row.
+     *
+     * `dimension` names the tab (customer | product | category | period) and
+     * `key` the row: an id, `none` for the walk-in / unlinked / Uncategorized
+     * bucket, or the trend period key for `interval`. Same #593 filter
+     * contract as the row it drills from; a comparison window is rejected (a
+     * drill lists one period's documents).
+     */
+    public function salesDrilldown(Request $request): JsonResponse
+    {
+        $filter = $this->salesFilter($request, [
+            'dimension' => 'required|in:customer,product,category,period',
+            'key' => 'required|string|max:20',
+            'interval' => 'nullable|in:day,week,month,year',
+        ], allowComparison: false);
+
+        $dimension = (string) $request->query('dimension');
+        $key = (string) $request->query('key');
+        $interval = $filter->interval ?? 'day';
+
+        if ($dimension === 'period') {
+            $pattern = match ($interval) {
+                'year' => '/^\d{4}$/',
+                'week' => '/^\d{4}-(0[1-9]|[1-4]\d|5[0-3])$/',
+                'month' => '/^\d{4}-(0[1-9]|1[0-2])$/',
+                default => '/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/',
+            };
+            if (! preg_match($pattern, $key)) {
+                throw ValidationException::withMessages([
+                    'key' => "The period key does not match the {$interval} interval.",
+                ]);
+            }
+        } elseif ($key !== 'none' && ! ctype_digit($key)) {
+            throw ValidationException::withMessages([
+                'key' => 'The key must be a record id or "none".',
+            ]);
+        }
+
+        try {
+            return response()->json([
+                'success' => true,
+                'data' => $this->salesAnalyticsService->getSalesDrilldown(
+                    $filter,
+                    $dimension,
+                    $key === 'none' ? null : $key,
+                    $interval,
+                ),
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Sales drill-down failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to generate analytics. Please try again.',
+            ], 500);
+        }
+    }
+
+    /**
      * Issue #601: pivot-style sales analysis.
      *
      * Group rows by up to three whitelisted dimensions (`row_dims[]`), spread

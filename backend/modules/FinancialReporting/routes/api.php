@@ -41,6 +41,9 @@ Route::middleware([...$tenantMiddleware, \App\Http\Middleware\RequirePermission:
             Route::get('/sales/trends', [AnalyticsController::class, 'salesTrends'])->name('sales.trends');
             Route::get('/sales/by-customer', [AnalyticsController::class, 'salesByCustomer'])->name('sales.by-customer');
             Route::get('/sales/by-category', [AnalyticsController::class, 'salesByCategory'])->name('sales.by-category');
+            // Issue #596: a report row's source documents — same read model
+            // and filters as the row, so it is readable wherever the row is.
+            Route::get('/sales/drilldown', [AnalyticsController::class, 'salesDrilldown'])->name('sales.drilldown');
         });
 
         // Issue #603: per-user Sales-cockpit widgets pinning a saved view (#598).

@@ -541,6 +541,45 @@ export interface UnbilledDeliveriesData {
 }
 
 /**
+ * Issue #596: one sales-report row drilled to its source documents
+ * (GET /analytics/sales/drilldown). `net_amount` is the document's share of
+ * the row in the tenant base currency, so the documents add up to the row.
+ */
+export type SalesDrilldownDimension = 'customer' | 'product' | 'category' | 'period';
+
+export interface SalesDrilldownTarget {
+  dimension: SalesDrilldownDimension;
+  /** Row id, 'none' for the walk-in / unlinked / Uncategorized bucket, or the period key. */
+  key: string;
+  /** Only for dimension = period: the trend interval the key belongs to. */
+  interval?: 'day' | 'week' | 'month' | 'year';
+}
+
+export interface SalesDrilldownDocument {
+  document_type: 'invoice' | 'credit_note' | 'pos_order' | 'sales_order';
+  document_id: number;
+  document_number: string;
+  document_date: string | null;
+  channel?: string;
+  customer_id: number | null;
+  customer_name: string;
+  currency_code?: string | null;
+  document_amount?: number;
+  net_amount: number;
+}
+
+export interface SalesDrilldownData {
+  dimension: SalesDrilldownDimension;
+  key: string | null;
+  documents: SalesDrilldownDocument[];
+  summary: {
+    document_count: number;
+    total_net_amount: number;
+    base_currency?: string;
+  };
+}
+
+/**
  * Issue #609: the hospital/doctor performance report
  * (GET /medical-cases/reports/performance). `product_mix.quantity` is units
  * used — delivered from a completed delivery-order line — not allocated.

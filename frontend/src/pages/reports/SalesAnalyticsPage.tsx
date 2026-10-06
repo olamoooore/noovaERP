@@ -49,6 +49,7 @@ import { DEFAULT_PIVOT_GROUPING } from './salesPivotRows';
 import { UnbilledDeliveriesView } from './UnbilledDeliveriesView';
 import { ProductUsageView } from './ProductUsageView';
 import { SavedViewBar, type SavedViewApplied } from './SavedViewBar';
+import { SalesDrilldownPanel, type SalesDrilldownRequest } from './SalesDrilldownPanel';
 
 interface SalesAnalyticsPageProps {
   /** Open on the Product tab (kept for callers of the old product-only page). */
@@ -124,6 +125,48 @@ const FilterSelect = ({
     </Select>
   </div>
 );
+
+/**
+ * Issue #596: a report row's label as a drill-down trigger (opens the source
+ * documents panel), with the record's own page one click away when it has
+ * one.
+ */
+function DrillCell({
+  label,
+  onDrill,
+  recordHref,
+}: {
+  label: string;
+  onDrill: () => void;
+  recordHref?: string;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <button
+        type="button"
+        aria-label={`Show documents for ${label}`}
+        onClick={(event) => {
+          event.stopPropagation();
+          onDrill();
+        }}
+        className="text-left font-medium text-primary hover:underline"
+      >
+        {label}
+      </button>
+      {recordHref && (
+        <Link
+          to={recordHref}
+          aria-label={`Open ${label}`}
+          title={`Open ${label}`}
+          onClick={(event) => event.stopPropagation()}
+          className="text-muted-foreground hover:text-foreground"
+        >
+          <Icon icon="solar:arrow-right-up-linear" className="h-3.5 w-3.5" />
+        </Link>
+      )}
+    </span>
+  );
+}
 
 /** True revenue-weighted AOV; averaging per-row AOVs skews large order counts. */
 const aov = (revenue: number, orders: number) => (orders > 0 ? revenue / orders : 0);
@@ -232,6 +275,8 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
   // Issue #598: the pivot's grouping is page state so a saved view can carry
   // and restore it (row/column dimensions and measures).
   const [pivotGrouping, setPivotGrouping] = useState<SalesViewGrouping>(DEFAULT_PIVOT_GROUPING);
+  // Issue #596: the row whose source documents the side panel shows.
+  const [drilldown, setDrilldown] = useState<SalesDrilldownRequest | null>(null);
 
   const productRef = useRef<HTMLDivElement>(null);
   const customerRef = useRef<HTMLDivElement>(null);
@@ -499,10 +544,20 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
       label: 'Product',
       sortable: true,
       filterable: true,
-      format: (value: any, row: any) =>
-        row?.id
-          ? <Link to={`/products/${row.id}`} className="font-medium hover:underline">{value}</Link>
-          : value,
+      format: (value: any, row: any) => (
+        <DrillCell
+          label={String(value)}
+          recordHref={row?.id ? `/products/${row.id}` : undefined}
+          onDrill={() =>
+            setDrilldown({
+              dimension: 'product',
+              key: row?.id ? String(row.id) : 'none',
+              label: String(value),
+              rowValue: row?.total_revenue ?? 0,
+            })
+          }
+        />
+      ),
     },
     { key: 'sku', label: 'SKU', sortable: true, filterable: true },
     // Issue #600: free (FOC) units are shown apart from the paid quantity;
@@ -588,10 +643,20 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
       label: 'Customer',
       sortable: true,
       filterable: true,
-      format: (value: any, row: any) =>
-        row?.id
-          ? <Link to={`/customers/${row.id}`} className="font-medium hover:underline">{value}</Link>
-          : value,
+      format: (value: any, row: any) => (
+        <DrillCell
+          label={String(value)}
+          recordHref={row?.id ? `/customers/${row.id}` : undefined}
+          onDrill={() =>
+            setDrilldown({
+              dimension: 'customer',
+              key: row?.id ? String(row.id) : 'none',
+              label: String(value),
+              rowValue: row?.total_revenue ?? 0,
+            })
+          }
+        />
+      ),
     },
     {
       key: 'total_orders',
@@ -658,10 +723,20 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
       label: 'Category',
       sortable: true,
       filterable: true,
-      format: (value: any, row: any) =>
-        row?.category_id
-          ? <Link to={`/products?category=${row.category_id}`} className="font-medium hover:underline">{value}</Link>
-          : value,
+      format: (value: any, row: any) => (
+        <DrillCell
+          label={String(value)}
+          recordHref={row?.category_id ? `/products?category=${row.category_id}` : undefined}
+          onDrill={() =>
+            setDrilldown({
+              dimension: 'category',
+              key: row?.category_id ? String(row.category_id) : 'none',
+              label: String(value),
+              rowValue: row?.total_revenue ?? 0,
+            })
+          }
+        />
+      ),
     },
     {
       key: 'product_count',
@@ -725,7 +800,23 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
       label: 'Period',
       sortable: true,
       className: 'whitespace-nowrap',
-      format: (value) => formatTrendPeriod(String(value), filters.interval),
+      format: (value: any, row: any) => {
+        const label = formatTrendPeriod(String(value), filters.interval);
+        return (
+          <DrillCell
+            label={label}
+            onDrill={() =>
+              setDrilldown({
+                dimension: 'period',
+                key: String(value),
+                interval: filters.interval ?? 'day',
+                label,
+                rowValue: row?.total_revenue ?? 0,
+              })
+            }
+          />
+        );
+      },
     },
     {
       key: 'invoice_count',
@@ -1043,6 +1134,11 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
         />
       )}
       {filterCard}
+      <SalesDrilldownPanel
+        request={drilldown}
+        filters={queryFilters}
+        onClose={() => setDrilldown(null)}
+      />
 
       {/* MRD FR-8.1: order-currency dimension — document revenue with the
           snapshot-rate base equivalent per currency. */}
