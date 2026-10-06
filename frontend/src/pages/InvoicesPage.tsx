@@ -26,6 +26,8 @@ import { SortableHead } from '@/components/ui/SortableHead'
 import { useSort } from '@/hooks/useSort'
 import { SalesOrderFilterChip } from '@/components/sales/SalesOrderFilterChip'
 import { useSalesOrderFilterParam } from '@/hooks/useSalesOrderFilterParam'
+import { RegisterPaymentDialog } from '@/components/payment/RegisterPaymentDialog'
+import { isInvoicePayable, useCanRegisterPayment } from '@/lib/registerPayment'
 
 export function InvoicesPage() {
   const { toast } = useToast()
@@ -158,6 +160,9 @@ export function InvoicesPage() {
   const { hasPermission } = useAuthStore()
   // Bulk posting is accounting-only (server enforces accounting.post).
   const canPost = hasPermission('accounting.post')
+  // #491: register a payment from the row, in place (existing dialog + POST /payments).
+  const canRegisterPayment = useCanRegisterPayment()
+  const [registerPaymentInvoiceId, setRegisterPaymentInvoiceId] = useState<number | null>(null)
 
   const bulkPostMutation = useMutation({
     mutationFn: async (ids: number[]) => {
@@ -546,6 +551,18 @@ export function InvoicesPage() {
                           <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => navigate(`/invoices/${invoice.id}`)} title="View">
                             <Icon icon="solar:eye-bold-duotone" className="h-3.5 w-3.5" />
                           </Button>
+                          {canRegisterPayment && isInvoicePayable(invoice) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 w-7 p-0"
+                              onClick={() => setRegisterPaymentInvoiceId(invoice.id)}
+                              title="Register payment"
+                              aria-label={`Register payment for ${invoice.invoice_number}`}
+                            >
+                              <Icon icon="solar:card-bold-duotone" className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                           {invoice.status === 'draft' && (
                             <>
                               <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => navigate(`/invoices/${invoice.id}/edit`)} title="Edit">
@@ -618,6 +635,10 @@ export function InvoicesPage() {
         }}
       />
 
+      <RegisterPaymentDialog
+        invoiceId={registerPaymentInvoiceId}
+        onOpenChange={(open) => !open && setRegisterPaymentInvoiceId(null)}
+      />
     </div>
   )
 }

@@ -31,6 +31,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Textarea } from '@/components/ui/textarea'
+import { RegisterPaymentDialog } from '@/components/payment/RegisterPaymentDialog'
+import { isInvoicePayable, useCanRegisterPayment } from '@/lib/registerPayment'
 
 interface Invoice {
   id: number
@@ -437,6 +439,9 @@ export function InvoiceDetailPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [resetDialogOpen, setResetDialogOpen] = useState(false)
   const [writeOffDialogOpen, setWriteOffDialogOpen] = useState(false)
+  // #491: register a payment in place (existing dialog + POST /payments).
+  const [registerPaymentOpen, setRegisterPaymentOpen] = useState(false)
+  const canRegisterPayment = useCanRegisterPayment()
   const [sendDialogUrl, setSendDialogUrl] = useState<string | null>(null)
   const [sendDialogPaymentUrl, setSendDialogPaymentUrl] = useState<string | null>(null)
   const [sendRecipientEmail, setSendRecipientEmail] = useState('')
@@ -741,12 +746,12 @@ export function InvoiceDetailPage() {
                 Edit
               </HeaderActionButton>
             )}
-            {['posted', 'sent', 'partial', 'overdue'].includes(invoice.status) && invoice.balance > 0 && (
+            {canRegisterPayment && isInvoicePayable(invoice) && (
               <HeaderActionButton
                 icon="solar:card-bold-duotone"
-                onClick={() => navigate(`/invoices/${id}/payment`)}
+                onClick={() => setRegisterPaymentOpen(true)}
               >
-                Record Payment
+                Register payment
               </HeaderActionButton>
             )}
             {/* Issue #886 (UX4): write off (part of) an open receivable as bad
@@ -1655,6 +1660,10 @@ export function InvoiceDetailPage() {
         documentLabel={invoice.invoice_number}
         open={chatterOpen}
         onOpenChange={setChatterOpen}
+      />
+      <RegisterPaymentDialog
+        invoiceId={registerPaymentOpen ? invoice.id : null}
+        onOpenChange={setRegisterPaymentOpen}
       />
     </div>
   )
