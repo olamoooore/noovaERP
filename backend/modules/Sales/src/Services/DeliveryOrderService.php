@@ -1538,6 +1538,100 @@ class DeliveryOrderService
     }
 
     /**
+     * #459 (DO7): whether this tenant allows billing a delivery order before
+     * it is completed. Off by default — the invoice then waits until the goods
+     * actually shipped, so no never-shipped invoice can exist. Enabling it does
+     * not relax any permission: the conversion still travels the same
+     * sales.write route chain as before (no new permission string).
+     */
+    public function billBeforeDeliveryEnabled(): bool
+    {
+        return (bool) \App\Models\Setting::getValue('sales.delivery.bill_before_delivery', false);
+    }
+
+    /**
+     * #459 (DO7): a delivery order may be billed only when its stock already
+     * moved (`done`), or — under the explicit tenant policy above — while it is
+     * still draft/confirmed. Cancelled/reversed orders are never billable.
+     */
+    public function isInvoiceableStatus(DeliveryOrder $deliveryOrder): bool
+    {
+        if ($deliveryOrder->isDone()) {
+            return true;
+        }
+
+        if ($deliveryOrder->isCancelled()) {
+            return false;
+        }
+
+        return $this->billBeforeDeliveryEnabled()
+            && ($deliveryOrder->isDraft() || $deliveryOrder->isConfirmed());
+    }
+
+    /**
+     * #459 (DO7): every invoice linked to a delivery order — the legacy
+     * `invoice_id` pointer plus the `invoice_delivery_orders` pivot.
+     */
+    private function linkedInvoices(DeliveryOrder $deliveryOrder): \Illuminate\Support\Collection
+    {
+        $invoices = collect();
+
+        if ($deliveryOrder->invoice_id) {
+            $found = \App\Models\Invoice::find($deliveryOrder->invoice_id);
+            if ($found) {
+                $invoices->push($found);
+            }
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('invoice_delivery_orders')) {
+            $pivotIds = \Illuminate\Support\Facades\DB::table('invoice_delivery_orders')
+                ->where('delivery_order_id', $deliveryOrder->id)
+                ->pluck('invoice_id');
+
+            if ($pivotIds->isNotEmpty()) {
+                $invoices = $invoices
+                    ->merge(\App\Models\Invoice::whereIn('id', $pivotIds)->get())
+                    ->unique('id')
+                    ->values();
+            }
+        }
+
+        return $invoices;
+    }
+
+    /**
+     * #459 (DO7): a draft/voided/cancelled invoice does not own delivered
+     * quantities — the same stale-link states resetToDraft() detaches.
+     */
+    private function invoiceIsHarmless($invoice): bool
+    {
+        return ! $invoice // orphaned pointer — nothing to protect
+            || in_array($invoice->status, ['draft', 'cancelled'], true)
+            || in_array((string) $invoice->lifecycle_status, ['draft', 'cancelled', 'voided', 'reversed', 'superseded'], true);
+    }
+
+    /**
+     * #459 (DO7): drop stale (harmless) invoice links so a cancelled/reset
+     * delivery order cannot be billed again through them. The draft invoice
+     * itself is left untouched — it was never posted and owns nothing.
+     */
+    private function detachInvoiceLinks(DeliveryOrder $deliveryOrder, \Illuminate\Support\Collection $invoices): void
+    {
+        if ($invoices->isEmpty()) {
+            return;
+        }
+
+        $deliveryOrder->update(['invoice_id' => null]);
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('invoice_delivery_orders')) {
+            \Illuminate\Support\Facades\DB::table('invoice_delivery_orders')
+                ->where('delivery_order_id', $deliveryOrder->id)
+                ->whereIn('invoice_id', $invoices->pluck('id')->all())
+                ->delete();
+        }
+    }
+
+    /**
      * DRAFT|CONFIRMED → CANCELLED (pre-completion cancellation — no stock effect)
      */
     public function cancelDeliveryOrder(DeliveryOrder $deliveryOrder, ?string $reason = null): DeliveryOrder
@@ -1550,6 +1644,18 @@ class DeliveryOrderService
             throw new \Exception('Delivery order is already cancelled.');
         }
 
+        // #459 (DO7): an issued invoice owns the delivered quantities, so a
+        // cancellation underneath it would leave a billed-but-never-shipped
+        // invoice. Only stale (draft/cancelled/voided) links are detachable.
+        $linkedInvoices = $this->linkedInvoices($deliveryOrder);
+
+        $blockingInvoice = $linkedInvoices->first(fn ($invoice) => ! $this->invoiceIsHarmless($invoice));
+        if ($blockingInvoice) {
+            throw new \Exception(
+                'Cannot cancel a delivery order linked to an issued invoice ('.$blockingInvoice->invoice_number.'). Issue a credit note instead.'
+            );
+        }
+
         // #900 (PC6): cancellation status through the engine.
         app(\App\Services\SalesWorkflowService::class)->transition(
             $deliveryOrder,
@@ -1557,6 +1663,8 @@ class DeliveryOrderService
             ['reason' => $reason],
             $reason,
         );
+
+        $this->detachInvoiceLinks($deliveryOrder, $linkedInvoices);
 
         $deliveryOrder->update([
             'notes' => $reason
@@ -1596,44 +1704,17 @@ class DeliveryOrderService
         // delivered quantities, so the order cannot be re-opened underneath it.
         // A draft / cancelled / voided invoice does NOT — the link is stale and
         // previously blocked resets forever on a cancelled DO (422), so those
-        // links are detached here instead.
-        $harmlessInvoiceStates = ['draft', 'cancelled', 'voided', 'reversed', 'superseded'];
-        $invoiceIsHarmless = fn ($invoice): bool => ! $invoice // orphaned pointer — nothing to protect
-            || in_array($invoice->status, ['draft', 'cancelled'], true)
-            || in_array((string) $invoice->lifecycle_status, $harmlessInvoiceStates, true);
+        // links are detached here instead (#459 shares these helpers).
+        $linkedInvoices = $this->linkedInvoices($deliveryOrder);
 
-        $linkedInvoices = collect();
-        if ($deliveryOrder->invoice_id) {
-            $linkedInvoices->push(\App\Models\Invoice::find($deliveryOrder->invoice_id));
-        }
-        if (\Illuminate\Support\Facades\Schema::hasTable('invoice_delivery_orders')) {
-            $pivotInvoiceIds = \Illuminate\Support\Facades\DB::table('invoice_delivery_orders')
-                ->where('delivery_order_id', $deliveryOrder->id)
-                ->pluck('invoice_id');
-            if ($pivotInvoiceIds->isNotEmpty()) {
-                $linkedInvoices = $linkedInvoices
-                    ->merge(\App\Models\Invoice::whereIn('id', $pivotInvoiceIds)->get())
-                    ->filter();
-            }
-        }
-
-        $blockingInvoice = $linkedInvoices->first(fn ($invoice) => ! $invoiceIsHarmless($invoice));
+        $blockingInvoice = $linkedInvoices->first(fn ($invoice) => ! $this->invoiceIsHarmless($invoice));
         if ($blockingInvoice) {
             throw new \Exception(
                 'Cannot reset a delivery order that is linked to an issued invoice ('.$blockingInvoice->invoice_number.'). Cancel or reset that invoice first.'
             );
         }
 
-        if ($linkedInvoices->isNotEmpty()) {
-            // Detach every non-issued link so the order can be edited and billed again.
-            $deliveryOrder->update(['invoice_id' => null]);
-            if (\Illuminate\Support\Facades\Schema::hasTable('invoice_delivery_orders')) {
-                \Illuminate\Support\Facades\DB::table('invoice_delivery_orders')
-                    ->where('delivery_order_id', $deliveryOrder->id)
-                    ->whereIn('invoice_id', $linkedInvoices->pluck('id')->all())
-                    ->delete();
-            }
-        }
+        $this->detachInvoiceLinks($deliveryOrder, $linkedInvoices);
 
         if ($deliveryOrder->isDone()) {
             // DONE → CANCELLED via the canonical reversal: posts compensating

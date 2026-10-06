@@ -530,8 +530,11 @@ class DeliveryOrderController extends Controller
         }
 
         // A DO can be invoiced more than once; the button stays available while
-        // some delivered quantity is not yet billed.
-        $deliveryOrder->can_invoice = $deliveryOrder->status !== 'cancelled'
+        // some delivered quantity is not yet billed. #459 (DO7): billable only
+        // once `done` (stock moved), or under the explicit tenant
+        // bill-before-delivery policy — never from a cancelled/reversed order.
+        $deliveryOrder->bill_before_delivery = $this->deliveryService->billBeforeDeliveryEnabled();
+        $deliveryOrder->can_invoice = $this->deliveryService->isInvoiceableStatus($deliveryOrder)
             && $deliveryOrder->hasInvoiceableLines();
 
         return response()->json($deliveryOrder);
@@ -580,6 +583,20 @@ class DeliveryOrderController extends Controller
 
         if ($deliveryOrder->status === 'cancelled') {
             return response()->json(['message' => 'Cancelled delivery orders cannot be invoiced'], 403);
+        }
+
+        // #459 (DO7): the physical delivery must have happened before it can be
+        // billed — a draft/confirmed DO bills its planned `quantity_delivered`,
+        // which would create an invoice for goods that never shipped. The
+        // explicit tenant policy (sales.delivery.bill_before_delivery) opts into
+        // that, still behind the same sales.write route chain.
+        if (! $this->deliveryService->isInvoiceableStatus($deliveryOrder)) {
+            return response()->json([
+                'message' => 'A delivery order can only be invoiced once it is completed (status done). '
+                    .'Enable the sales.delivery.bill_before_delivery tenant setting to invoice before delivery.',
+                'delivery_order_status' => $deliveryOrder->status,
+                'bill_before_delivery' => $this->deliveryService->billBeforeDeliveryEnabled(),
+            ], 422);
         }
 
         // Issue #456 (DO4): the physical delivery already happened, so the

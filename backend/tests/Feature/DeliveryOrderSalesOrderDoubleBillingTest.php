@@ -130,7 +130,17 @@ class DeliveryOrderSalesOrderDoubleBillingTest extends TenantTestCase
         ]);
         $response->assertStatus(201, $response->getContent());
 
-        return DeliveryOrder::with('lines')->find($response->json('data.id'));
+        $deliveryOrder = DeliveryOrder::with('lines')->find($response->json('data.id'));
+
+        // Issue #459: only a completed (`done`) delivery order is billable by
+        // default. This test targets the double-billing arithmetic, so the
+        // fixture is put in the state a shipped delivery reaches.
+        DB::table('delivery_orders')->where('id', $deliveryOrder->id)->update([
+            'status' => 'done',
+            'completed_at' => now(),
+        ]);
+
+        return $deliveryOrder->fresh('lines');
     }
 
     public function test_invoice_from_a_delivery_order_stops_the_sales_order_from_billing_again(): void
