@@ -89,6 +89,14 @@ class AppServiceProvider extends ServiceProvider
             }
         );
 
+        // Scope Spatie's global permission cache to the active tenant schema:
+        // the cached catalogue holds another schema's permission ids and makes
+        // valid permission checks fail (403 for sales after a re-seed).
+        Event::listen(
+            \Stancl\Tenancy\Events\TenancyInitialized::class,
+            \App\Tenancy\TenantPermissionCacheScope::class,
+        );
+
         // Log dangerous migrations (migrate:fresh, db:wipe) for audit trail
         Event::listen(\Illuminate\Console\Events\CommandFinished::class, PreventDangerousMigrations::class);
 
