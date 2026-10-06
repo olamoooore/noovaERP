@@ -180,6 +180,20 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
   })
   const priceListRows: any[] = (activePriceLists as any)?.data ?? activePriceLists ?? []
 
+  // Issue #316 (D4): the tenant's industry field profile decides whether the
+  // Case Information group renders. Read from the defaults endpoint every
+  // document creator can reach (#540). Until it resolves (or if it fails) the
+  // historical behaviour ('medical' = shown) is kept.
+  const { data: salesDefaults } = useQuery({
+    queryKey: ['sales-settings', 'defaults'],
+    queryFn: async () => {
+      const response = await api.get('/settings/sales/defaults')
+      return response.data?.data ?? null
+    },
+    staleTime: 60_000,
+  })
+  const fieldProfile = String((salesDefaults as any)?.invoice?.field_profile ?? 'medical')
+
   // Issue #321: master data for the header pickers.
   const { data: paymentTermRows = [] } = useQuery({
     queryKey: ['payment-terms'],
@@ -495,6 +509,9 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     setter((current) => ({ ...current, [field]: value }))
   }
   const caseCount = Object.values(caseInformation).some((value) => value) ? 1 : 0
+  // #316: a document that already carries case data keeps showing it, so
+  // existing data stays readable/editable whatever the profile says.
+  const showCaseInformation = fieldProfile === 'medical' || caseCount > 0
 
   const hasPricingFeedback = Boolean(
     (currencyCode && pricingMeta?.base_currency_code && pricingMeta.base_currency_code !== currencyCode)
@@ -1391,10 +1408,12 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                 </div>
               </section>
 
-              <section className="space-y-3 border-t pt-4">
-                <h3 className="text-sm font-semibold">Case information</h3>
-                <QuotationCaseInformation value={caseInformation} onChange={setCaseInformation} embedded />
-              </section>
+              {showCaseInformation && (
+                <section className="space-y-3 border-t pt-4">
+                  <h3 className="text-sm font-semibold">Case information</h3>
+                  <QuotationCaseInformation value={caseInformation} onChange={setCaseInformation} embedded />
+                </section>
+              )}
             </div>
           </SheetContent>
         </Sheet>

@@ -527,19 +527,22 @@ export const CreateInvoicePage: React.FC = () => {
     enabled: isEditMode,
   });
 
-  // Tenant-level sales document defaults (only consulted when not editing).
+  // Tenant-level sales document defaults.
   // Issue #540: read from the defaults endpoint every invoice creator can
   // reach — GET /settings/sales is OWNER/ADMIN-only, so other roles silently
   // lost default notes, terms and the approval policy.
-  const { data: salesSettings } = useQuery({
+  // Issue #316: also fetched in edit mode, because the industry field profile
+  // gates the Cases card there too. The create-only defaults below keep
+  // ignoring it when editing (`salesSettings` is null in edit mode).
+  const { data: salesDefaults } = useQuery({
     queryKey: ['sales-settings', 'defaults'],
     queryFn: async () => {
       const res = await api.get('/settings/sales/defaults');
       return res.data?.data ?? null;
     },
-    enabled: !isEditMode,
     staleTime: 60_000,
   });
+  const salesSettings = isEditMode ? null : salesDefaults;
 
   const { data: selectedCustomerDetail } = useQuery<CustomerRecord>({
     queryKey: ['customer-document', customerId],
@@ -836,7 +839,7 @@ export const CreateInvoicePage: React.FC = () => {
   const defaultTaxRate = Number((salesSettings as any)?.tax?.default_tax_rate ?? 0);
   // D4: the tenant's industry field profile decides which extra header
   // fields render. 'medical' preserves the pre-setting behaviour.
-  const fieldProfile = ((salesSettings as any)?.invoice?.field_profile ?? 'medical') as
+  const fieldProfile = ((salesDefaults as any)?.invoice?.field_profile ?? 'medical') as
     'general' | 'medical' | 'trading' | 'services';
   // #315: the tenant setting gates the hand-typed invoice number. Until the
   // settings resolve (or if that request fails) the historical behaviour
@@ -1942,11 +1945,14 @@ export const CreateInvoicePage: React.FC = () => {
   const caseCount =
     (caseNumber || patientName || dateOfCase || caseLocation || primaryMedicalCaseId ? 1 : 0)
     + extraCases.length;
+  // #316: the Cases card follows the field profile, but an invoice that
+  // already carries case data keeps showing it so the data stays readable.
+  const showCases = fieldProfile === 'medical' || caseCount > 0;
 
   const detailsSummary = [
     documentSnapshot.customer_reference ? `PO ${documentSnapshot.customer_reference}` : null,
     contactNameById(billingContactId) || documentSnapshot.attention_to || null,
-    fieldProfile === 'medical' && caseCount > 0 ? `cases ${caseCount}` : null,
+    showCases && caseCount > 0 ? `cases ${caseCount}` : null,
     notes ? 'notes' : null,
   ]
     .filter(Boolean)
@@ -2636,9 +2642,10 @@ export const CreateInvoicePage: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* D4: case/patient fields render only for the Medical profile, and stay
-              collapsed behind a one-line summary until they are needed. */}
-          {fieldProfile === 'medical' && (
+          {/* D4: case/patient fields render only for the Medical profile (or when
+              the invoice already has case data, #316), and stay collapsed
+              behind a one-line summary until they are needed. */}
+          {showCases && (
           <Card className="mb-6">
             <CardHeader className="pb-3">
               <CardTitle>Cases</CardTitle>
