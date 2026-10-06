@@ -775,6 +775,30 @@ class CompanySettingsController extends Controller
         ];
     }
 
+    /**
+     * Issue #544 (ST7): the real posting-approval state. The posting guard
+     * (InvoiceApprovalService::checkGuard) only blocks invoices whose
+     * requires_approval is true, so approval is enforced for ALL invoices
+     * only while the tenant policy is on AND no unposted draft has the flag
+     * off (e.g. drafts created before the policy was switched on).
+     *
+     * @return array{mode: 'all_invoices'|'per_document', policy_enabled: bool, drafts_without_approval: int}
+     */
+    private function invoiceApprovalEnforcement(): array
+    {
+        $policyEnabled = (bool) \App\Models\Setting::getValue('sales.invoice.default_requires_approval', false);
+        $draftsWithoutApproval = \App\Models\Invoice::query()
+            ->where('status', 'draft')
+            ->where('requires_approval', false)
+            ->count();
+
+        return [
+            'mode' => $policyEnabled && $draftsWithoutApproval === 0 ? 'all_invoices' : 'per_document',
+            'policy_enabled' => $policyEnabled,
+            'drafts_without_approval' => $draftsWithoutApproval,
+        ];
+    }
+
     public function getSalesSettings(): JsonResponse
     {
         return response()->json([
@@ -799,6 +823,7 @@ class CompanySettingsController extends Controller
                     'field_profile' => (string) \App\Models\Setting::getValue('sales.invoice.field_profile', 'medical'),
                     'default_requires_approval' => (bool) \App\Models\Setting::getValue('sales.invoice.default_requires_approval', false),
                     'approval_expiry_days' => (int) \App\Models\Setting::getValue('sales.invoice.approval_expiry_days', 7),
+                    'approval_enforcement' => $this->invoiceApprovalEnforcement(),
                     'reviewer_user_ids' => array_values(array_map('intval', (array) \App\Models\Setting::getValue('sales.invoice.reviewer_user_ids', []))),
                     'reviewer_roles' => array_values((array) \App\Models\Setting::getValue('sales.invoice.reviewer_roles', [])),
                     'available_reviewers' => \App\Models\User::query()
