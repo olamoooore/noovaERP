@@ -1428,6 +1428,28 @@ class InvoiceController extends Controller
             'invoice_number.unique' => 'This invoice number is already used by another invoice (including deleted ones). Choose a different number.',
         ]);
 
+        // Issue #541 (ST4): the tenant approval policy is not opt-out per
+        // document. A draft edit may not clear requires_approval while
+        // sales.invoice.default_requires_approval is on, nor while an approval
+        // request is pending. Echoing the unchanged flag stays allowed.
+        if (
+            array_key_exists('requires_approval', $validated)
+            && ! $validated['requires_approval']
+            && $invoice->requires_approval
+        ) {
+            if ($invoice->approval_status === Invoice::APPROVAL_PENDING) {
+                throw ValidationException::withMessages([
+                    'requires_approval' => 'This invoice has a pending approval request; approval cannot be cleared by editing.',
+                ]);
+            }
+
+            if ((bool) \App\Models\Setting::getValue('sales.invoice.default_requires_approval', false)) {
+                throw ValidationException::withMessages([
+                    'requires_approval' => 'Approval is required for every invoice by the sales setting sales.invoice.default_requires_approval and cannot be switched off per document.',
+                ]);
+            }
+        }
+
         // #315: renumbering is a custom-number action too. An unchanged number
         // echoed back by the edit form is not a renumber and stays allowed.
         $requestedNumber = trim((string) ($validated['invoice_number'] ?? ''));
