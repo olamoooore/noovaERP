@@ -52,6 +52,7 @@ import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard';
 import { CustomerContextStrip } from '@/components/sales/CustomerContextStrip';
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
 import { ProductTrackingSelector } from '@/components/inventory/ProductTrackingSelector';
+import { missingTrackingLineIndex } from '@/lib/lotTracking';
 import { StockAvailabilityChip } from '@/components/sales/StockAvailabilityChip';
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
 import { LineItemsTable } from '@/components/sales/LineItemsTable'
@@ -1096,6 +1097,8 @@ export const CreateInvoicePage: React.FC = () => {
           // as a line-row pick (product tax → linked tax → tenant default) —
           // they were silently saved as 0% tax.
           tax_rate: resolveLineTaxRate(product, defaultTaxRate),
+          // Issue #689: the lot/serial picker and its required check key off this.
+          tracking_method: product.tracking_method || 'none',
         });
       }
     });
@@ -1626,6 +1629,20 @@ export const CreateInvoicePage: React.FC = () => {
         variant: 'destructive',
         title: `Product required on line ${missingProductIndex + 1}`,
         description: 'Select a product before saving.',
+      });
+      return;
+    }
+
+    // Issue #689: a batch/serial-tracked product line cannot be saved without
+    // the lot or serial it issues (quotations reserve nothing, so exempt).
+    const missingTrackingIndex = isQuoteMode ? -1 : missingTrackingLineIndex(submissionLines);
+    if (missingTrackingIndex >= 0) {
+      toast({
+        variant: 'destructive',
+        title: `Lot / serial required on line ${missingTrackingIndex + 1}`,
+        description: visibleLineColumns.lot_number
+          ? 'Select the lot or serial number this line issues.'
+          : 'Show the Lot Number column and select the lot or serial number this line issues.',
       });
       return;
     }
@@ -2880,6 +2897,8 @@ export const CreateInvoicePage: React.FC = () => {
                             trackingMethod={line.tracking_method}
                             batchId={line.product_batch_id}
                             serialId={line.product_serial_id}
+                            lotNumber={line.lot_number}
+                            serialNumber={line.serial_number}
                             onChange={(selection) => setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...selection } : item))}
                           />
                           {line.tracking_method === 'none' || line.tracking_method === 'quantity' ? <span className="text-xs text-muted-foreground">Not tracked</span> : null}

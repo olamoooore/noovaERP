@@ -27,6 +27,7 @@ import { DeliveryOrderColumnVisibility, SalesLineColumnMenu } from '@/components
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog'
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow'
 import { ProductTrackingSelector } from '@/components/inventory/ProductTrackingSelector'
+import { missingTrackingLineIndex } from '@/lib/lotTracking'
 
 interface LineItem {
   line_type?: 'product' | 'note' | 'section'
@@ -201,7 +202,7 @@ export function DeliveryOrderEditPage() {
   }
   const addNote = () => setLines((prev) => [...prev, { line_type: 'note', product_id: null, product_name: '', model_number: '', description: '', product_notes: '', patient_name: '', quantity: 0, unit: '', unit_price: null, lot_number: '', expiry_date: '' }])
   const addSection = () => setLines((prev) => [...prev, { line_type: 'section', product_id: null, product_name: '', model_number: '', description: '', product_notes: '', patient_name: '', quantity: 0, unit: '', unit_price: null, lot_number: '', expiry_date: '' }])
-  const addCatalogProducts = (selected: Array<{ product: any; quantity: number }>) => setLines((prev) => [...prev, ...selected.map(({ product, quantity }) => ({ line_type: 'product' as const, product_id: product.id, product_name: product.name || '', model_number: '', description: product.name || '', product_notes: '', patient_name: '', quantity, unit: product.unit || 'pcs', unit_price: Number(product.price || 0), price_mode: 'auto' as const, lot_number: '', expiry_date: '' }))])
+  const addCatalogProducts = (selected: Array<{ product: any; quantity: number }>) => setLines((prev) => [...prev, ...selected.map(({ product, quantity }) => ({ line_type: 'product' as const, product_id: product.id, product_name: product.name || '', model_number: '', description: product.name || '', product_notes: '', patient_name: '', quantity, unit: product.unit || 'pcs', unit_price: Number(product.price || 0), price_mode: 'auto' as const, lot_number: '', expiry_date: '', tracking_method: product.tracking_method || 'none' }))])
 
   const removeLine = (index: number) => {
     setLines((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev))
@@ -240,6 +241,16 @@ export function DeliveryOrderEditPage() {
         variant: 'destructive',
         title: `Product required on line ${missingProductIndex + 1}`,
         description: 'Select a product before saving.',
+      })
+      return
+    }
+    // Issue #689: a batch/serial-tracked line cannot be saved without its lot/serial.
+    const missingTrackingIndex = missingTrackingLineIndex(validLines)
+    if (missingTrackingIndex >= 0) {
+      toast({
+        variant: 'destructive',
+        title: `Lot / serial required on line ${lines.indexOf(validLines[missingTrackingIndex]) + 1}`,
+        description: 'Select the lot or serial number this line issues.',
       })
       return
     }
@@ -563,7 +574,7 @@ export function DeliveryOrderEditPage() {
                   </TableCell>
                   <TableCell className={cn(LINE_CELL, 'min-w-[7.5rem]')}>
                     <div className={LINE_CELL_BOX}>
-                      <ProductTrackingSelector productId={line.product_id} warehouseId={warehouseId} trackingMethod={line.tracking_method} batchId={line.product_batch_id} serialId={line.product_serial_id} onChange={(selection) => setLines((current) => current.map((item, itemIndex) => itemIndex === idx ? { ...item, ...selection } : item))} />
+                      <ProductTrackingSelector productId={line.product_id} warehouseId={warehouseId} trackingMethod={line.tracking_method} batchId={line.product_batch_id} serialId={line.product_serial_id} lotNumber={line.lot_number} serialNumber={line.serial_number} onChange={(selection) => setLines((current) => current.map((item, itemIndex) => itemIndex === idx ? { ...item, ...selection } : item))} />
                     </div>
                   </TableCell>
 

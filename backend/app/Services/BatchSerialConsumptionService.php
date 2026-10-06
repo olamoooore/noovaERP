@@ -535,9 +535,7 @@ class BatchSerialConsumptionService
             ->where('quantity', '>', 0)
             ->whereIn('status', [ProductBatch::STATUS_AVAILABLE, ProductBatch::STATUS_QUARANTINE])
             // FEFO: earliest expiry first (nulls last), then oldest receipt.
-            ->orderByRaw('expiry_date ASC NULLS LAST')
-            ->orderByRaw('received_date ASC NULLS LAST')
-            ->orderBy('id');
+            ->fefoOrder();
 
         if ($lock) {
             $query->lockForUpdate();
