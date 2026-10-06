@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
@@ -24,6 +24,7 @@ import api from '@/lib/api'
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-800',
   allocated: 'bg-blue-100 text-blue-800',
+  partially_delivered: 'bg-amber-100 text-amber-800',
   delivered: 'bg-yellow-100 text-yellow-800',
   invoiced: 'bg-purple-100 text-purple-800',
   completed: 'bg-green-100 text-green-800',
@@ -100,6 +101,81 @@ export function MedicalCaseDetailPage() {
     enabled: lifecycleAction === 'invoice' && !!invoiceId,
   })
 
+  // Issue #578 (UX3): completed DO lines that can back each case line's
+  // delivery, keyed by case item id (#562 requires a DO line per delivery).
+  const { data: deliveryLineCandidates } = useQuery({
+    queryKey: ['case-delivery-order-lines', id],
+    queryFn: async () => {
+      const res = await api.get(`/medical-cases/${id}/delivery-order-lines`)
+      return (res.data?.data || {}) as Record<string, any[]>
+    },
+    enabled: lifecycleAction === 'deliver' && !!id,
+  })
+  const [deliveryLineByItem, setDeliveryLineByItem] = useState<Record<number, string>>({})
+
+  const deliveryLinesForItem = (item: any): any[] => deliveryLineCandidates?.[item.id] || []
+
+  const remainingToDeliver = (item: any) =>
+    Math.max(Number(item.allocated_qty ?? 0) - Number(item.delivered_qty ?? 0), 0)
+
+  const defaultDeliveredQty = (item: any, line: any) =>
+    String(line ? Math.min(remainingToDeliver(item), Number(line.remaining_qty ?? 0)) : 0)
+
+  // Seed each case line with its linked DO line (or the first candidate)
+  // once the candidates arrive.
+  useEffect(() => {
+    if (lifecycleAction !== 'deliver' || !deliveryLineCandidates) return
+    const lineSeed: Record<number, string> = {}
+    const qtySeed: Record<number, string> = {}
+    ;(medicalCase?.items || []).forEach((item: any) => {
+      const candidates = deliveryLineCandidates[item.id] || []
+      const chosen =
+        candidates.find((line: any) => Number(line.id) === Number(item.delivery_order_item_id)) || candidates[0]
+      if (chosen && remainingToDeliver(item) > 0) {
+        lineSeed[item.id] = String(chosen.id)
+        qtySeed[item.id] = defaultDeliveredQty(item, chosen)
+      } else {
+        qtySeed[item.id] = '0'
+      }
+    })
+    setDeliveryLineByItem(lineSeed)
+    setQtyByItem(qtySeed)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lifecycleAction, deliveryLineCandidates])
+
+  const createDeliveryOrderMutation = useMutation({
+    mutationFn: async () => api.post(`/medical-cases/${id}/create-delivery-order`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['medical-case', id] })
+      queryClient.invalidateQueries({ queryKey: ['medical-cases'] })
+      toast({ title: 'Success', description: 'Delivery order created from the case' })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || 'Failed to create the delivery order',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const createInvoiceMutation = useMutation({
+    mutationFn: async () => api.post(`/medical-cases/${id}/create-invoice`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['medical-case', id] })
+      queryClient.invalidateQueries({ queryKey: ['medical-cases'] })
+      toast({ title: 'Success', description: 'Invoice created from the case' })
+      setLifecycleAction(null)
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || 'Failed to create the invoice',
+        variant: 'destructive',
+      })
+    },
+  })
+
   const invoiceLinesForItem = (item: any) =>
     (selectedInvoice?.lines || []).filter(
       (line: any) => (line.line_type ?? 'product') === 'product' && Number(line.product_id) === Number(item.product_id),
@@ -112,7 +188,8 @@ export function MedicalCaseDetailPage() {
       if (action === 'allocate') {
         seed[item.id] = String(item.allocated_qty ?? 0)
       } else if (action === 'deliver') {
-        seed[item.id] = String(item.allocated_qty ?? 0)
+        // Seeded from the chosen DO line once the candidates load.
+        seed[item.id] = '0'
       } else {
         seed[item.id] = String(item.delivered_qty ?? 0)
       }
@@ -136,8 +213,16 @@ export function MedicalCaseDetailPage() {
         })
       }
       if (lifecycleAction === 'deliver') {
+        // Issue #562/#578: every delivery is recorded against a completed DO
+        // line; lines without one (or with nothing to deliver) are skipped.
         return api.post(`/medical-cases/${id}/deliver`, {
-          items: items.map((item: any) => ({ id: item.id, delivered_qty: Number(qtyByItem[item.id] ?? 0) })),
+          items: items
+            .filter((item: any) => deliveryLineByItem[item.id] && Number(qtyByItem[item.id] ?? 0) > 0)
+            .map((item: any) => ({
+              id: item.id,
+              delivered_qty: Number(qtyByItem[item.id] ?? 0),
+              delivery_order_item_id: Number(deliveryLineByItem[item.id]),
+            })),
         })
       }
       return api.post(`/medical-cases/${id}/invoice`, {
@@ -228,21 +313,26 @@ export function MedicalCaseDetailPage() {
                 </HeaderActionButton>
               </>
             )}
-            {medicalCase.status === 'allocated' && (
+            {(medicalCase.status === 'allocated' || medicalCase.status === 'partially_delivered') && (
               <>
-                <HeaderActionButton icon="solar:delivery-bold-duotone" onClick={() => openLifecycleDialog('deliver')}>
-                  Record Delivery
+                {/* Issue #578 (UX3): the DO is created from the case lines. */}
+                <HeaderActionButton
+                  icon="solar:delivery-bold-duotone"
+                  onClick={() => createDeliveryOrderMutation.mutate()}
+                  disabled={createDeliveryOrderMutation.isPending}
+                >
+                  {createDeliveryOrderMutation.isPending ? 'Creating DO...' : 'Create DO'}
                 </HeaderActionButton>
                 <HeaderActionButton
                   variant="outline"
-                  icon="solar:file-text-bold-duotone"
-                  onClick={() => openLifecycleDialog('invoice')}
+                  icon="solar:link-bold-duotone"
+                  onClick={() => openLifecycleDialog('deliver')}
                 >
-                  Invoice
+                  Record Delivery
                 </HeaderActionButton>
               </>
             )}
-            {medicalCase.status === 'delivered' && (
+            {(medicalCase.status === 'partially_delivered' || medicalCase.status === 'delivered') && (
               <HeaderActionButton icon="solar:file-text-bold-duotone" onClick={() => openLifecycleDialog('invoice')}>
                 Invoice
               </HeaderActionButton>
@@ -264,6 +354,19 @@ export function MedicalCaseDetailPage() {
             {medicalCase.patient_name}
           </span>
         )}
+        {/* Issue #578 (UX3): linked delivery orders with their status. */}
+        {(medicalCase.linked_delivery_orders || []).map((deliveryOrder: any) => (
+          <button
+            key={deliveryOrder.id}
+            type="button"
+            onClick={() => navigate(`/delivery-orders/${deliveryOrder.id}`)}
+            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 text-xs font-medium text-primary transition-colors hover:border-primary/50 hover:bg-primary/10"
+          >
+            <Icon icon="solar:delivery-bold-duotone" className="h-3.5 w-3.5" />
+            {deliveryOrder.delivery_order_number}
+            <span className="text-muted-foreground">· {deliveryOrder.status}</span>
+          </button>
+        ))}
         {medicalCase.invoice && (
           <button
             type="button"
@@ -272,6 +375,9 @@ export function MedicalCaseDetailPage() {
           >
             <Icon icon="solar:file-text-bold-duotone" className="h-3.5 w-3.5" />
             {medicalCase.invoice.invoice_number}
+            {medicalCase.invoice.status && (
+              <span className="text-muted-foreground">· {medicalCase.invoice.status}</span>
+            )}
           </button>
         )}
         <button
@@ -387,10 +493,27 @@ export function MedicalCaseDetailPage() {
             </DialogTitle>
             <DialogDescription>
               {lifecycleAction === 'invoice'
-                ? 'Select the invoice, the matching invoice line and the invoiced quantity per item.'
-                : 'Confirm the quantity per item.'}
+                ? 'Create the invoice from the delivered case lines, or link an existing invoice line per item.'
+                : lifecycleAction === 'deliver'
+                  ? 'Pick the completed delivery order line each item was delivered from.'
+                  : 'Confirm the quantity per item.'}
             </DialogDescription>
           </DialogHeader>
+
+          {lifecycleAction === 'invoice' && (
+            <div className="flex items-center justify-between gap-3 rounded-md border border-dashed p-3">
+              <span className="text-sm text-muted-foreground">
+                Bill the delivered, chargeable lines from their delivery orders.
+              </span>
+              <Button
+                type="button"
+                onClick={() => createInvoiceMutation.mutate()}
+                disabled={createInvoiceMutation.isPending}
+              >
+                {createInvoiceMutation.isPending ? 'Creating...' : 'Create invoice'}
+              </Button>
+            </div>
+          )}
 
           {lifecycleAction === 'invoice' && (
             <div className="space-y-2">
@@ -418,6 +541,28 @@ export function MedicalCaseDetailPage() {
             {items.map((item: any) => (
               <div key={item.id} className="flex items-center justify-between gap-4">
                 <span className="text-sm">{item.product?.name || `Item #${item.id}`}</span>
+                {lifecycleAction === 'deliver' && (
+                  <select
+                    aria-label={`Delivery order line for ${item.product?.name || `item #${item.id}`}`}
+                    className="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                    value={deliveryLineByItem[item.id] ?? ''}
+                    onChange={(event) => {
+                      const value = event.target.value
+                      setDeliveryLineByItem((previous) => ({ ...previous, [item.id]: value }))
+                      const line = deliveryLinesForItem(item).find((candidate: any) => String(candidate.id) === value)
+                      setQtyByItem((previous) => ({ ...previous, [item.id]: defaultDeliveredQty(item, line) }))
+                    }}
+                  >
+                    <option value="">
+                      {deliveryLinesForItem(item).length === 0 ? 'No completed DO line' : 'Select DO line...'}
+                    </option>
+                    {deliveryLinesForItem(item).map((line: any) => (
+                      <option key={line.id} value={line.id}>
+                        {line.delivery_order_number} — {line.remaining_qty} available
+                      </option>
+                    ))}
+                  </select>
+                )}
                 {lifecycleAction === 'invoice' && invoiceId && (
                   <select
                     aria-label={`Invoice line for ${item.product?.name || `item #${item.id}`}`}
@@ -458,7 +603,9 @@ export function MedicalCaseDetailPage() {
               disabled={
                 lifecycleMutation.isPending ||
                 (lifecycleAction === 'invoice' &&
-                  (!invoiceId || items.some((item: any) => !invoiceLineByItem[item.id])))
+                  (!invoiceId || items.some((item: any) => !invoiceLineByItem[item.id]))) ||
+                (lifecycleAction === 'deliver' &&
+                  !items.some((item: any) => deliveryLineByItem[item.id] && Number(qtyByItem[item.id] ?? 0) > 0))
               }
             >
               {lifecycleMutation.isPending ? 'Saving...' : 'Confirm'}

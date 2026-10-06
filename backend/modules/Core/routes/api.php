@@ -1187,7 +1187,19 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             Route::post('/medical-cases/{id}/invoice', [MedicalCaseController::class, 'invoice']);
             Route::post('/medical-cases/{id}/complete', [MedicalCaseController::class, 'complete']);
             Route::post('/medical-cases/{id}/cancel', [MedicalCaseController::class, 'cancel']);
+
+            // Issue #578 (UX3): create the DO / invoice from the case. These
+            // raise sales documents, so the existing sales.write permission is
+            // required on top of medical_cases.write.
+            Route::post('/medical-cases/{id}/create-delivery-order', [MedicalCaseController::class, 'createDeliveryOrder'])
+                ->middleware(RequirePermission::using('sales.write'));
+            Route::post('/medical-cases/{id}/create-invoice', [MedicalCaseController::class, 'createInvoice'])
+                ->middleware(RequirePermission::using('sales.write'));
         });
+
+        // Issue #578 (UX3): completed DO lines that can back a case delivery.
+        Route::get('/medical-cases/{id}/delivery-order-lines', [MedicalCaseController::class, 'deliveryOrderLines'])
+            ->middleware(RequirePermission::using('medical_cases.view'));
     });
 
     // Bonus Schemes (issues #161/#186)

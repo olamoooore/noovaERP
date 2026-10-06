@@ -2,8 +2,6 @@
 
 namespace Modules\Sales\Http\Controllers;
 
-use App\Accounting\DTOs\AccountingDocumentLineData;
-use App\Accounting\DTOs\AccountingOriginInvoiceData;
 use App\Exports\DeliveryOrdersExport;
 use App\Http\Middleware\RequirePermission;
 use App\Platform\BulkDelete\BulkDeleteService;
@@ -21,7 +19,6 @@ use Maatwebsite\Excel\Facades\Excel;
 use Modules\Sales\Models\DeliveryOrder;
 use Modules\Sales\Models\DeliveryOrderLine;
 use Modules\Sales\Models\SalesOrder;
-use Modules\Sales\Models\SalesOrderLine;
 use Modules\Sales\Services\DeliveryOrderService;
 
 class DeliveryOrderController extends Controller
@@ -459,29 +456,6 @@ class DeliveryOrderController extends Controller
     }
 
     /**
-     * Issue #456: payment terms on the delivery order are free text (e.g.
-     * "15", "Net 30"); fall back to the customer's terms, then 30 days.
-     */
-    private function deliveryPaymentTermDays(DeliveryOrder $deliveryOrder): int
-    {
-        foreach ([$deliveryOrder->payment_terms, $deliveryOrder->customer?->payment_terms] as $term) {
-            if ($term === null || $term === '') {
-                continue;
-            }
-
-            if (is_numeric($term)) {
-                return max(0, (int) $term);
-            }
-
-            if (preg_match('/\d+/', (string) $term, $matches) === 1) {
-                return max(0, (int) $matches[0]);
-            }
-        }
-
-        return 30;
-    }
-
-    /**
      * Attach tags supplied on a create request to the freshly created document.
      */
     private function attachTags(DeliveryOrder $deliveryOrder, array $tags, ?int $userId): void
@@ -622,51 +596,21 @@ class DeliveryOrderController extends Controller
             ], 422);
         }
 
-        // Issue #456 (DO4): the physical delivery already happened, so the
-        // invoice must inherit the delivery's commercial terms — not rebuild
-        // them from defaults. Tax is resolved server-side through the shared
-        // engine (the SO line's browser-sent rate may be stale), discounts
-        // come from the originating order line, and the currency snapshot and
-        // payment terms travel with the conversion.
-        $invoiceDate = now()->toDateString();
-        $taxResolver = app(\App\Services\TaxResolutionService::class);
-
         // A delivery order may be billed across several invoices: bill only the
         // quantity earlier invoices have not already covered (Odoo-style
         // "qty to invoice"), so repeated Create Invoice never double-bills.
+        // Issue #578: the conversion itself (tax, terms, currency, DO/SO
+        // invoiced quantities) lives in DeliveryOrderService so the medical
+        // case "Create invoice" shares exactly this path.
         $lines = [];
-        $invoicedByLine = [];
         foreach ($deliveryOrder->lines as $line) {
             $quantity = $deliveryOrder->invoiceableQuantityForLine($line);
             if ($quantity <= 0) {
                 continue; // note/section row, or nothing left to invoice
             }
 
-            $soLine = $line->salesOrderLine;
-
-            $taxRate = 0.0;
-            if ($line->product !== null) {
-                $resolved = $taxResolver->resolveTaxForProduct(
-                    $line->product,
-                    null,
-                    null,
-                    'output',
-                    $invoiceDate,
-                );
-                $taxRate = (float) ($resolved['rate'] ?? 0.0);
-            }
-
-            $lines[] = new AccountingDocumentLineData(
-                lineType: 'product',
-                description: $line->description ?: 'Delivered item',
-                quantity: $quantity,
-                unitPrice: (float) $line->unit_price,
-                productId: $line->product_id,
-                taxRate: $taxRate,
-                discountAmount: (float) ($soLine?->discount_amount ?? 0),
-                salesOrderLineId: $line->sales_order_line_id !== null ? (int) $line->sales_order_line_id : null,
-            );
-            $invoicedByLine[$line->id] = $quantity;
+            $line->setRelation('deliveryOrder', $deliveryOrder);
+            $lines[] = ['line' => $line, 'quantity' => $quantity];
         }
 
         if (empty($lines)) {
@@ -676,83 +620,21 @@ class DeliveryOrderController extends Controller
             ], 422);
         }
 
-        // Approval gate no matter the route: a DO that came from a quotation
-        // (or a sales order) may only be invoiced after that document's
-        // approval request is approved; a standalone DO is gated on itself.
-        $gateSubject = $deliveryOrder->quotation ?? $deliveryOrder->salesOrder;
-        $gateType = $deliveryOrder->quotation
-            ? \App\Services\SalesApprovalGate::REQUEST_TYPE_QUOTATION
-            : \App\Services\SalesApprovalGate::REQUEST_TYPE_SALES_ORDER;
-        $gateAmount = $gateSubject ? (float) $gateSubject->total : (float) $deliveryOrder->total;
-
-        if (! $gateSubject) {
-            $gateSubject = $deliveryOrder;
-            $gateType = \App\Services\SalesApprovalGate::REQUEST_TYPE_DELIVERY_ORDER;
-        }
-
-        if ($approval = $this->approvalGate->requestIfNeeded($gateSubject, $gateType, $gateAmount, Auth::user())) {
+        // Approval gate no matter the route (shared with the medical case
+        // "Create invoice", issue #578).
+        if ($gate = $this->deliveryService->requestInvoiceApprovalIfNeeded($deliveryOrder, Auth::user())) {
             return response()->json([
                 'message' => 'Approval required before this delivery order can be invoiced',
                 'requires_approval' => true,
-                'approval_request' => $approval,
+                'approval_request' => $gate['approval_request'],
                 // #649: the threshold that actually applied to the gated
                 // subject (quotation / sales order / delivery order).
-                'threshold' => $this->approvalGate->threshold($gateSubject),
+                'threshold' => $gate['threshold'],
             ], 202);
         }
 
         try {
-            $termDays = $this->deliveryPaymentTermDays($deliveryOrder);
-
-            $invoice = DB::transaction(function () use ($deliveryOrder, $lines, $invoicedByLine, $invoiceDate, $termDays) {
-                $invoice = $this->accountingOriginInvoices->create(new AccountingOriginInvoiceData(
-                    customerId: (int) $deliveryOrder->customer_id,
-                    lines: $lines,
-                    invoiceDate: $invoiceDate,
-                    dueDate: \Illuminate\Support\Carbon::parse($invoiceDate)->addDays($termDays)->toDateString(),
-                    notes: "Delivery Order #{$deliveryOrder->delivery_order_number}",
-                    customerReference: $deliveryOrder->customer_reference ?: $deliveryOrder->po_number,
-                    internalReference: $deliveryOrder->internal_reference,
-                    // Issue #456: keep the delivery's currency snapshot and
-                    // sales-order link on the converted invoice.
-                    currencyCode: $deliveryOrder->currency_code,
-                    baseCurrencyCode: $deliveryOrder->base_currency_code,
-                    exchangeRate: $deliveryOrder->exchange_rate !== null ? (float) $deliveryOrder->exchange_rate : null,
-                    salesOrderId: $deliveryOrder->sales_order_id !== null ? (int) $deliveryOrder->sales_order_id : null,
-                    originContext: [
-                        'delivery_order_id' => $deliveryOrder->id,
-                        'delivery_order_number' => $deliveryOrder->delivery_order_number,
-                    ],
-                ));
-
-                foreach ($invoicedByLine as $lineId => $quantity) {
-                    DeliveryOrderLine::whereKey($lineId)->increment('quantity_invoiced', $quantity);
-
-                    // #455 (DO3): for a DO linked to a Sales Order, the order
-                    // line's invoiced quantity must move with it — otherwise
-                    // SO "Create Invoice" would bill the same goods again.
-                    $deliveryOrderLine = $deliveryOrder->lines->firstWhere('id', $lineId);
-                    if ($deliveryOrderLine?->sales_order_line_id) {
-                        SalesOrderLine::whereKey($deliveryOrderLine->sales_order_line_id)
-                            ->increment('quantity_invoiced', $quantity);
-                    }
-                }
-
-                // The first invoice stays the legacy primary pointer; every
-                // invoice is linked through the pivot (source of truth for the
-                // linked-invoices smart button).
-                if (! $deliveryOrder->invoice_id) {
-                    $deliveryOrder->update(['invoice_id' => $invoice->id]);
-                } else {
-                    $deliveryOrder->invoices()->syncWithoutDetaching([$invoice->id]);
-                }
-
-                if ($deliveryOrder->quotation_id) {
-                    $invoice->update(['quotation_id' => $deliveryOrder->quotation_id]);
-                }
-
-                return $invoice;
-            });
+            $invoice = $this->deliveryService->createInvoiceFromDeliveryLines($lines);
 
             $this->logChatter(
                 'App\\Models\\Invoice',
