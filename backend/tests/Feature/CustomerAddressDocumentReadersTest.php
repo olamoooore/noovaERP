@@ -154,6 +154,66 @@ class CustomerAddressDocumentReadersTest extends TenantTestCase
         $this->assertSectionContains('BILLTO', '1 Finance Road', $html);
     }
 
+    /**
+     * Decision 2026-10-06: a quotation's customer "Bill To" follows the
+     * document's own billing address when it has one.
+     */
+    public function test_printed_quotation_bill_to_follows_the_quotations_own_address(): void
+    {
+        $quotation = Quotation::create([
+            'quotation_number' => 'QT-W2B-'.Str::random(5),
+            'quotation_date' => now()->toDateString(),
+            'customer_id' => $this->customer->id,
+            'status' => 'draft',
+            'created_by' => $this->admin->id,
+            'billing_address_snapshot' => "88 Snapshot Road\nIpoh",
+        ]);
+        $this->publishedTemplate('quotation', '<div>BILLTO[{{ customer.billing_address }}]</div>');
+
+        $html = $this->actingAs($this->admin)->get("/api/v1/invoices/{$quotation->id}/html?as=quotation")->assertOk()->getContent();
+
+        $this->assertSectionContains('BILLTO', '88 Snapshot Road', $html);
+        $this->assertSame(1, preg_match('/BILLTO\[(.*?)\]/s', $html, $match));
+        $this->assertStringNotContainsString('1 Finance Road', $match[1]);
+    }
+
+    /**
+     * Decision 2026-10-06: a credit note bills the same address as the
+     * invoice it corrects; the customer's current address is the fallback.
+     */
+    public function test_printed_credit_note_uses_the_original_invoices_billing_address(): void
+    {
+        $invoice = Invoice::factory()->create([
+            'customer_id' => $this->customer->id,
+            'status' => 'sent',
+            'lifecycle_status' => 'posted',
+            'subtotal' => 100,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'total' => 100,
+            'paid_amount' => 0,
+            'balance' => 100,
+            'billing_address_snapshot' => json_encode(['address' => '9 Invoice Street', 'city' => 'Ipoh', 'country' => 'MY']),
+            'created_by' => $this->admin->id,
+        ]);
+        $creditNote = \App\Models\CustomerCreditNote::create([
+            'customer_id' => $this->customer->id,
+            'invoice_id' => $invoice->id,
+            'credit_note_date' => now()->toDateString(),
+            'status' => 'draft',
+            'subtotal' => 100,
+            'tax_amount' => 0,
+            'total_amount' => 100,
+            'created_by' => $this->admin->id,
+            'reason' => 'Damaged goods',
+        ]);
+        $this->publishedTemplate('credit_note', '<div>BILLTO[{{ credit_note.billing_address }}]</div>', 'ar_credit_note');
+
+        $html = $this->actingAs($this->admin)->get("/api/v1/credit-notes/{$creditNote->id}/html")->assertOk()->getContent();
+
+        $this->assertSectionContains('BILLTO', '9 Invoice Street', $html);
+    }
+
     public function test_statement_uses_the_customers_saved_billing_address_even_when_not_default(): void
     {
         $this->customer->addresses()->where('type', 'billing')->update(['is_default' => false]);
@@ -162,7 +222,7 @@ class CustomerAddressDocumentReadersTest extends TenantTestCase
             ->getJson("/api/v1/accounting/customers/{$this->customer->id}/statement?format=json")
             ->assertOk();
 
-        $this->assertStringContainsString('1 Finance Road', (string) $response->json('customer.billing_address'));
+        $this->assertStringContainsString('1 Finance Road', (string) $response->json('payload.customer.billing_address'));
     }
 
     public function test_delivery_order_import_fills_the_customers_saved_delivery_address(): void

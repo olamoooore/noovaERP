@@ -37,3 +37,20 @@ export function resolvedCustomerAddress(
 
   return customer.resolved_addresses[type] ?? null
 }
+
+/**
+ * ADR-003B W2b: a resolved address as free text, one part per line, for
+ * screens that hold a text address (e.g. a delivery order's ship-to).
+ */
+export function resolvedAddressText(address: ResolvedCustomerAddress | null | undefined): string {
+  if (!address) return ''
+
+  return [
+    address.street,
+    address.street2,
+    [address.city, address.state, address.zip].filter(Boolean).join(' '),
+    address.country,
+  ]
+    .filter(Boolean)
+    .join('\n')
+}

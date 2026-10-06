@@ -59,6 +59,39 @@ class CustomerAddressResolver
     }
 
     /**
+     * ADR-003B W2b: the bill-to or ship-to for a document that has no saved
+     * address of its own, in the snapshot shape (null when nothing resolves
+     * or the document has no customer).
+     *
+     * @return array{address: string, city: ?string, state: ?string, zip: ?string, country: ?string}|null
+     */
+    public function snapshotFor(?Customer $customer, string $type): ?array
+    {
+        if (! $customer) {
+            return null;
+        }
+
+        return self::toSnapshot($type === 'shipping' ? $this->shipping($customer) : $this->billing($customer));
+    }
+
+    /**
+     * The address as text lines (street, city/state/zip, country), for
+     * screens and documents that hold a free-text address.
+     */
+    public static function toText(?array $snapshot, string $separator = "\n"): string
+    {
+        if ($snapshot === null) {
+            return '';
+        }
+
+        return collect([
+            $snapshot['address'] ?? null,
+            collect([$snapshot['city'] ?? null, $snapshot['state'] ?? null, $snapshot['zip'] ?? null])->filter()->implode(' '),
+            $snapshot['country'] ?? null,
+        ])->filter()->implode($separator);
+    }
+
+    /**
      * The document snapshot shape stored on sales orders and invoices.
      *
      * @return array{address: string, city: ?string, state: ?string, zip: ?string, country: ?string}|null

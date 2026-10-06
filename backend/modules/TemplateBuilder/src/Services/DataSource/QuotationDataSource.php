@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\TemplateBuilder\Services\DataSource;
 
 use App\Models\Quotation;
+use App\Services\CustomerAddressResolver;
 use Modules\TemplateBuilder\Contracts\DataSourceContract;
 
 /**
@@ -67,6 +68,12 @@ final class QuotationDataSource implements DataSourceContract
         $baseCurrencyCode = $q->base_currency_code ?: $companyCurrency;
         $exchangeRate = $q->exchange_rate !== null ? (float) $q->exchange_rate : 1.0;
 
+        // ADR-003B W2b: the quotation's own address, else the customer's
+        // address from the one shared rule (never the older text columns).
+        $addresses = app(CustomerAddressResolver::class);
+        $billingAddress = $this->formatAddress($q->billing_address_snapshot ?? $addresses->snapshotFor($q->customer, 'billing'));
+        $shippingAddress = $this->formatAddress($q->shipping_address_snapshot ?? $addresses->snapshotFor($q->customer, 'shipping'));
+
         $lines = [];
         $salesperson = $q->customer?->salesperson?->name ?? $q->salesperson ?? '';
         foreach ($q->lines as $i => $line) {
@@ -123,8 +130,8 @@ final class QuotationDataSource implements DataSourceContract
                 'due_date' => optional($q->valid_until)->format('Y-m-d'),
                 'status' => $q->status,
                 'reference' => $q->customer_reference ?? '',
-                'billing_address' => $this->formatAddress($q->billing_address_snapshot ?? $q->customer?->billing_address ?? ''),
-                'shipping_address' => $this->formatAddress($q->shipping_address_snapshot ?? $q->customer?->shipping_address ?? ''),
+                'billing_address' => $billingAddress,
+                'shipping_address' => $shippingAddress,
                 'notes' => $q->notes ?? '',
                 'terms' => $q->terms ?? '',
                 'attention_to' => $q->attention_to ?? '',
@@ -146,7 +153,9 @@ final class QuotationDataSource implements DataSourceContract
                 'email' => $q->customer?->email ?? '',
                 'phone' => $q->customer?->phone ?? '',
                 'tax_id' => $q->customer?->tax_number ?? '',
-                'billing_address' => $this->formatAddress($q->customer?->billing_address ?? ''),
+                // Decision 2026-10-06: the customer Bill To follows the
+                // document's own billing address.
+                'billing_address' => $billingAddress,
             ],
             'company' => $company,
             'lines' => $lines,

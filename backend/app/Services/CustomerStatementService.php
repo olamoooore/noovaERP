@@ -99,21 +99,11 @@ class CustomerStatementService
         $companySettings = DB::table('company_settings')->select('company_logo_url')->first();
         $bank = DB::table('bank_accounts')->first();
 
-        $billingAddress = $customer->addresses()
-            ->where('type', 'billing')
-            ->where('is_default', true)
-            ->first();
-
-        $address = $billingAddress
-            ? collect([
-                $billingAddress->street,
-                $billingAddress->street2,
-                $billingAddress->city,
-                $billingAddress->state,
-                $billingAddress->zip,
-                $billingAddress->country,
-            ])->filter()->implode(', ')
-            : $customer->billing_address;
+        // ADR-003B W2b: the statement uses the one shared address rule.
+        $address = CustomerAddressResolver::toText(
+            app(CustomerAddressResolver::class)->snapshotFor($customer, 'billing'),
+            ', '
+        );
 
         $attentionTo = $customer->customerContacts()
             ->where('is_primary', true)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolvedCustomerAddress } from './customerAddresses'
+import { resolvedAddressText, resolvedCustomerAddress } from './customerAddresses'
 
 /**
  * ADR-003B R4: screens pre-fill bill-to/ship-to from the backend resolver's
@@ -24,5 +24,16 @@ describe('resolvedCustomerAddress', () => {
   it('returns undefined when the response has no resolved_addresses', () => {
     expect(resolvedCustomerAddress({}, 'billing')).toBeUndefined()
     expect(resolvedCustomerAddress(null, 'billing')).toBeUndefined()
+  })
+})
+
+describe('resolvedAddressText', () => {
+  it('writes one address part per line', () => {
+    expect(resolvedAddressText({ street: '22 Warehouse Way', city: 'Shah Alam', state: 'Selangor', zip: '40000', country: 'MY' }))
+      .toBe('22 Warehouse Way\nShah Alam Selangor 40000\nMY')
+  })
+
+  it('is empty when there is no address', () => {
+    expect(resolvedAddressText(null)).toBe('')
   })
 })

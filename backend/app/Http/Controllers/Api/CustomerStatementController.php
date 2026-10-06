@@ -364,7 +364,8 @@ class CustomerStatementController extends Controller
                 'code' => $customer->code,
                 'name' => $customer->name,
                 'email' => $customer->email,
-                'billing_address' => $customer->billing_address,
+                // ADR-003B W2b: same address as the statement itself.
+                'billing_address' => $context['customer']['billing_address'],
                 'payment_terms' => $customer->payment_terms,
             ],
             'company' => $context['company'],
