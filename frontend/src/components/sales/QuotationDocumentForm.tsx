@@ -45,6 +45,9 @@ import { emptySalesDocumentLine, isBlankSalesDocumentLine, type SalesDocumentLin
 import { useDocumentDraftGuard } from '@/hooks/useDocumentDraftGuard'
 import { DocumentDraftBanner, DocumentLeaveDialog } from '@/components/sales/DocumentDraftControls'
 import { openAppPathInNewTab } from '@/lib/openInNewTab'
+import { useFieldErrors } from '@/hooks/useFieldErrors'
+import { FieldErrorsProvider, FieldSlot } from '@/components/ui/field-errors'
+import { lineFieldKey, payloadRowIndexes } from '@/lib/serverValidation'
 
 /**
  * Issue #314: the single quotation create/edit implementation.
@@ -150,6 +153,10 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
   const [conflict, setConflict] = useState<SaveConflict | null>(null)
   const lastPayloadRef = useRef<Record<string, any> | null>(null)
   const autofilledCustomerRef = useRef<string | null>(null)
+  // #318: inline field errors; server line indexes map back through the grid
+  // rows that were actually sent.
+  const fieldErrors = useFieldErrors()
+  const payloadRowsRef = useRef<number[]>([])
   // #317: edit mode is "ready" for dirty tracking once the saved document
   // has been put into the form.
   const [hydrated, setHydrated] = useState(false)
@@ -297,9 +304,10 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
       }
     },
     onError: (error: any) => {
+      const inline = fieldErrors.showServer(error, payloadRowsRef.current)
       toast({
         variant: 'destructive',
-        title: 'Failed to create quotation',
+        title: inline ? 'Please fix the highlighted fields' : 'Failed to create quotation',
         description: getApiErrorMessage(error),
       })
     },
@@ -330,9 +338,10 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
         setConflict(saveConflict)
         return
       }
+      const inline = fieldErrors.showServer(error, payloadRowsRef.current)
       toast({
         variant: 'destructive',
-        title: 'Failed to update quotation',
+        title: inline ? 'Please fix the highlighted fields' : 'Failed to update quotation',
         description: getApiErrorMessage(error),
       })
     },
@@ -554,8 +563,10 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
+    fieldErrors.clearAll()
 
     if (!customerId) {
+      fieldErrors.show({ customer_id: 'Please select a customer' })
       toast({ variant: 'destructive', title: 'Please select a customer' })
       return
     }
@@ -563,8 +574,11 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     // #290: ignore fully-empty untouched rows consistently (same as the payload
     // filter below) so a lingering starter row never blocks saving.
     const submissionLines = lines.filter((line) => !isBlankSalesDocumentLine(line))
+    // #318: grid row of each submission line, for inline line errors.
+    const submissionRows = payloadRowIndexes(lines, (line) => !isBlankSalesDocumentLine(line))
 
     if (submissionLines.length === 0 || submissionLines.every((line) => !line.description && !line.product_id)) {
+      fieldErrors.show({ lines: 'Add at least one line item' })
       toast({ variant: 'destructive', title: 'Please add at least one line item' })
       return
     }
@@ -573,6 +587,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
       (line.line_type ?? 'product') === 'product' && !line.product_id
     )
     if (missingProductIndex >= 0) {
+      fieldErrors.show({ [lineFieldKey(submissionRows[missingProductIndex], 'product_id')]: 'Select a product before saving.' })
       toast({
         variant: 'destructive',
         title: `Product required on line ${missingProductIndex + 1}`,
@@ -582,6 +597,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     }
 
     if (discountMode === 'percentage' && discountValue > 100) {
+      fieldErrors.show({ discount_value: 'Percentage discount cannot exceed 100%' })
       toast({ variant: 'destructive', title: 'Percentage discount cannot exceed 100%' })
       return
     }
@@ -593,6 +609,9 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
       (line.line_type ?? 'product') === 'product' && !isValidProductQuantity(line.quantity)
     )
     if (invalidQuantityIndex >= 0) {
+      fieldErrors.show({
+        [lineFieldKey(submissionRows[invalidQuantityIndex], 'quantity')]: 'Enter a quantity greater than 0 with at most 4 decimals.',
+      })
       toast({
         variant: 'destructive',
         title: `Invalid quantity on line ${invalidQuantityIndex + 1}`,
@@ -664,6 +683,11 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
           discount_amount: line.discount_amount === '' ? 0 : line.discount_amount,
         })),
     }
+
+    payloadRowsRef.current = payloadRowIndexes(
+      lines,
+      (line) => !isBlankSalesDocumentLine(line) && Boolean(line.description || line.product_id),
+    )
 
     if (mode === 'edit') {
       updateMutation.mutate(payload)
@@ -738,7 +762,10 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
 
       <DocumentDraftBanner guard={draftGuard} label="quotation" />
 
-      <form onSubmit={handleSubmit} onKeyDown={preventImplicitSubmit}>
+      <FieldErrorsProvider value={fieldErrors}>
+      {/* #318: validation is reported inline on the field (scroll + focus);
+          native browser bubbles would block submit before it can run. */}
+      <form noValidate onSubmit={handleSubmit} onKeyDown={preventImplicitSubmit}>
         <Card className="mb-6">
           <CardHeader>
             <CardTitle>Quotation Details</CardTitle>
@@ -749,20 +776,23 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
             <div className="grid grid-cols-2 items-end gap-3 md:grid-cols-4 xl:grid-cols-12">
               <div className="col-span-2 md:col-span-2 xl:col-span-6">
                 <label className="mb-1 block text-xs font-medium">Customer *</label>
-                <CustomerSearchCombobox
-                  className={cn(SALES_CONTROL, 'justify-between')}
-                  value={customerId}
-                  onValueChange={(id, customer) => {
-                    autofilledCustomerRef.current = null
-                    setCustomerId(id)
-                    setCustomerMatch(customer ? {
-                      contacts: (customer as any).matched_contacts ?? [],
-                      tags: (customer as any).matched_tags ?? [],
-                      addresses: (customer as any).matched_addresses ?? [],
-                    } : null)
-                  }}
-                  placeholder="Search customers..."
-                />
+                <FieldSlot name="customer_id">
+                  <CustomerSearchCombobox
+                    className={cn(SALES_CONTROL, 'justify-between')}
+                    value={customerId}
+                    onValueChange={(id, customer) => {
+                      fieldErrors.clear('customer_id')
+                      autofilledCustomerRef.current = null
+                      setCustomerId(id)
+                      setCustomerMatch(customer ? {
+                        contacts: (customer as any).matched_contacts ?? [],
+                        tags: (customer as any).matched_tags ?? [],
+                        addresses: (customer as any).matched_addresses ?? [],
+                      } : null)
+                    }}
+                    placeholder="Search customers..."
+                  />
+                </FieldSlot>
                 {customerMatch && (customerMatch.contacts.length > 0 || customerMatch.tags.length > 0 || customerMatch.addresses.length > 0) && (
                   <p className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] leading-snug text-muted-foreground">
                     {customerMatch.contacts.length > 0 && (
@@ -779,21 +809,25 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
               </div>
               <div className="col-span-1 md:col-span-1 xl:col-span-3">
                 <label className="mb-1 block text-xs font-medium">Quote Date</label>
-                <input
-                  type="date"
-                  value={quotationDate}
-                  onChange={(event) => handleQuotationDateChange(event.target.value)}
-                  className={SALES_CONTROL}
-                />
+                <FieldSlot name="quotation_date">
+                  <input
+                    type="date"
+                    value={quotationDate}
+                    onChange={(event) => handleQuotationDateChange(event.target.value)}
+                    className={SALES_CONTROL}
+                  />
+                </FieldSlot>
               </div>
               <div className="col-span-1 md:col-span-1 xl:col-span-3">
                 <label className="mb-1 block text-xs font-medium">Valid Until</label>
-                <input
-                  type="date"
-                  value={validUntil}
-                  onChange={(event) => handleValidUntilChange(event.target.value)}
-                  className={SALES_CONTROL}
-                />
+                <FieldSlot name="valid_until">
+                  <input
+                    type="date"
+                    value={validUntil}
+                    onChange={(event) => handleValidUntilChange(event.target.value)}
+                    className={SALES_CONTROL}
+                  />
+                </FieldSlot>
               </div>
             </div>
 
@@ -1372,14 +1406,16 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <SalesDocumentLineGrid
-              lines={lines}
-              setLines={setLines}
-              money={money}
-              resolvePricing={(nextLines) => { void resolvePricingForLines(nextLines) }}
-              defaultHiddenColumns={[6]}
-              tableClass="quotation-document-columns"
-            />
+            <FieldSlot name="lines" highlight={false}>
+              <SalesDocumentLineGrid
+                lines={lines}
+                setLines={setLines}
+                money={money}
+                resolvePricing={(nextLines) => { void resolvePricingForLines(nextLines) }}
+                defaultHiddenColumns={[6]}
+                tableClass="quotation-document-columns"
+              />
+            </FieldSlot>
 
             <DocumentTotalsCard
               subtotal={subtotal}
@@ -1387,6 +1423,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
               total={total}
               money={money}
               discountLabel="Discount"
+              discountFieldKey="discount_value"
               discountMode={discountMode}
               onDiscountModeChange={setDiscountMode}
               discountAmount={discountAmount}
@@ -1420,6 +1457,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
           </Button>
         </div>
       </form>
+      </FieldErrorsProvider>
 
       {mode === 'edit' && (
         <SaveConflictDialog

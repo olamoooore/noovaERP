@@ -66,6 +66,9 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { useDensity } from '@/hooks/useDensity'
 import { TagPicker } from '@/components/tags/TagPicker'
 import { useDocumentDraftGuard } from '@/hooks/useDocumentDraftGuard'
+import { useFieldErrors } from '@/hooks/useFieldErrors'
+import { FieldErrorsProvider, FieldSlot } from '@/components/ui/field-errors'
+import { lineFieldKey, payloadRowIndexes } from '@/lib/serverValidation'
 import { DocumentDraftBanner, DocumentLeaveDialog } from '@/components/sales/DocumentDraftControls'
 import { openAppPathInNewTab } from '@/lib/openInNewTab'
 import {
@@ -357,6 +360,10 @@ export const CreateInvoicePage: React.FC = () => {
   // Issue #906: stale-save conflict state (dialog) + the payload to resend.
   const [conflict, setConflict] = useState<SaveConflict | null>(null);
   const lastSavePayloadRef = useRef<Record<string, any> | null>(null);
+  // #318: inline field errors; server line indexes map back through the grid
+  // rows that were actually sent.
+  const fieldErrors = useFieldErrors();
+  const payloadRowsRef = useRef<number[]>([]);
   const currentUserId = useAuthStore((state) => state.user?.id);
   const canOverwriteConflict = useAuthStore((state) =>
     state.hasPermission(isQuoteMode ? 'quotations.write' : 'invoices.write'));
@@ -1002,9 +1009,10 @@ export const CreateInvoicePage: React.FC = () => {
         setConflict(saveConflict);
         return;
       }
+      const inline = fieldErrors.showServer(error, payloadRowsRef.current);
       toast({
         variant: 'destructive',
-        title: `Failed to ${isEditMode ? 'update' : 'create'} ${documentLabel.toLowerCase()}`,
+        title: inline ? 'Please fix the highlighted fields' : `Failed to ${isEditMode ? 'update' : 'create'} ${documentLabel.toLowerCase()}`,
         description: message,
       });
     },
@@ -1515,18 +1523,22 @@ export const CreateInvoicePage: React.FC = () => {
   });
 
   const duplicateLine = (index: number) => {
+    fieldErrors.clearLines();
     setLines((current) => duplicateSalesDocumentLine(current, index));
   };
 
   const moveLine = (index: number, direction: 'up' | 'down') => {
+    fieldErrors.clearLines();
     setLines((current) => moveSalesDocumentLine(current, index, direction));
   };
 
   const removeLine = (index: number) => {
+    fieldErrors.clearLines();
     setLines((current) => removeSalesDocumentLine(current, index));
   };
 
   const resetLine = (index: number) => {
+    fieldErrors.clearLines();
     setLines((current) => resetSalesDocumentLine(current, index, emptyLine()));
   };
 
@@ -1680,14 +1692,20 @@ export const CreateInvoicePage: React.FC = () => {
     // F4/#290: untouched placeholder rows are ignored everywhere — they used to
     // block saving ("Product required on line 1") after catalogue adds while
     // an empty starting row remained.
-    const submissionLines = (linesOverride ?? lines).filter((line) => !isBlankPlaceholderLine(line));
+    const sourceLines = linesOverride ?? lines;
+    const submissionLines = sourceLines.filter((line) => !isBlankPlaceholderLine(line));
+    // #318: grid row of each submission line, for inline line errors.
+    const submissionRows = payloadRowIndexes(sourceLines, (line) => !isBlankPlaceholderLine(line));
+    fieldErrors.clearAll();
 
     if (!customerId) {
+      fieldErrors.show({ customer_id: 'Please select a customer' });
       toast({ variant: 'destructive', title: 'Please select a customer' });
       return;
     }
 
     if (submissionLines.length === 0 || submissionLines.every((line) => !line.description && !line.product_id)) {
+      fieldErrors.show({ lines: 'Add at least one line item' });
       toast({ variant: 'destructive', title: 'Please add at least one line item' });
       return;
     }
@@ -1696,6 +1714,7 @@ export const CreateInvoicePage: React.FC = () => {
       (line.line_type ?? 'product') === 'product' && !line.product_id
     );
     if (missingProductIndex >= 0) {
+      fieldErrors.show({ [lineFieldKey(submissionRows[missingProductIndex], 'product_id')]: 'Select a product before saving.' });
       toast({
         variant: 'destructive',
         title: `Product required on line ${missingProductIndex + 1}`,
@@ -1708,6 +1727,7 @@ export const CreateInvoicePage: React.FC = () => {
     // the lot or serial it issues (quotations reserve nothing, so exempt).
     const missingTrackingIndex = isQuoteMode ? -1 : missingTrackingLineIndex(submissionLines);
     if (missingTrackingIndex >= 0) {
+      fieldErrors.show({ [lineFieldKey(submissionRows[missingTrackingIndex], 'lot_number')]: 'Select the lot or serial number this line issues.' });
       toast({
         variant: 'destructive',
         title: `Lot / serial required on line ${missingTrackingIndex + 1}`,
@@ -1719,6 +1739,7 @@ export const CreateInvoicePage: React.FC = () => {
     }
 
     if (discountMode === 'percentage' && (discountAmount === '' ? 0 : discountAmount) > 100) {
+      fieldErrors.show({ discount_amount: 'Percentage discount cannot exceed 100%' });
       toast({ variant: 'destructive', title: 'Percentage discount cannot exceed 100%' });
       return;
     }
@@ -1736,6 +1757,7 @@ export const CreateInvoicePage: React.FC = () => {
     });
     if (badQty) {
       const idx = lines.indexOf(badQty) + 1;
+      fieldErrors.show({ [lineFieldKey(idx - 1, 'quantity')]: 'Quantity must be a positive number (up to 4 decimal places).' });
       toast({
         variant: 'destructive',
         title: `Invalid quantity on line ${idx}`,
@@ -1808,6 +1830,10 @@ export const CreateInvoicePage: React.FC = () => {
         })),
     };
 
+    payloadRowsRef.current = payloadRowIndexes(
+      sourceLines,
+      (line) => !isBlankPlaceholderLine(line) && Boolean(line.description || line.product_id),
+    );
     saveMutation.mutate(payload);
   };
 
@@ -2002,7 +2028,10 @@ export const CreateInvoicePage: React.FC = () => {
 
         <DocumentDraftBanner guard={draftGuard} label={documentLabel.toLowerCase()} />
 
-        <form onSubmit={handleSubmit} onKeyDown={preventImplicitSubmit}>
+        {/* #318: validation is reported inline on the field (scroll + focus);
+            native browser bubbles would block submit before it can run. */}
+        <FieldErrorsProvider value={fieldErrors}>
+        <form noValidate onSubmit={handleSubmit} onKeyDown={preventImplicitSubmit}>
           <Card className="mb-6">
             <CardHeader>
               <CardTitle>{documentLabel} Details</CardTitle>
@@ -2017,26 +2046,29 @@ export const CreateInvoicePage: React.FC = () => {
               <div className="grid grid-cols-2 items-end gap-3 md:grid-cols-4 xl:grid-cols-12">
                 <div className="col-span-2 md:col-span-2 xl:col-span-6">
                   <label className="mb-1 block text-xs font-medium">Customer *</label>
-                  <CustomerSearchCombobox
-                    compact
-                    value={customerId}
-                    onValueChange={(id, customer) => {
-                      setCustomerId(id)
-                      // D1: keep the match explanation so the operator can see
-                      // the pick came from a contact/tag/address search.
-                      setCustomerMatch(customer ? {
-                        contacts: (customer as any).matched_contacts ?? [],
-                        tags: (customer as any).matched_tags ?? [],
-                        addresses: (customer as any).matched_addresses ?? [],
-                      } : null)
-                      if (customer) {
-                        // Auto-populate customer reference if available
-                        if ((customer as any).code) {
-                          setDocumentSnapshot(prev => ({ ...prev, customer_reference: (customer as any).code }))
+                  <FieldSlot name="customer_id">
+                    <CustomerSearchCombobox
+                      compact
+                      value={customerId}
+                      onValueChange={(id, customer) => {
+                        fieldErrors.clear('customer_id')
+                        setCustomerId(id)
+                        // D1: keep the match explanation so the operator can see
+                        // the pick came from a contact/tag/address search.
+                        setCustomerMatch(customer ? {
+                          contacts: (customer as any).matched_contacts ?? [],
+                          tags: (customer as any).matched_tags ?? [],
+                          addresses: (customer as any).matched_addresses ?? [],
+                        } : null)
+                        if (customer) {
+                          // Auto-populate customer reference if available
+                          if ((customer as any).code) {
+                            setDocumentSnapshot(prev => ({ ...prev, customer_reference: (customer as any).code }))
+                          }
                         }
-                      }
-                    }}
-                  />
+                      }}
+                    />
+                  </FieldSlot>
                   {customerMatch && (customerMatch.contacts.length > 0 || customerMatch.tags.length > 0 || customerMatch.addresses.length > 0) && (
                     <p className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] leading-snug text-muted-foreground">
                       {customerMatch.contacts.length > 0 && (
@@ -2876,6 +2908,7 @@ export const CreateInvoicePage: React.FC = () => {
                   ))}
                 </div>
               )}
+              <FieldSlot name="lines" highlight={false}>
               <div
                 className="overflow-x-auto"
                 onChangeCapture={() => { linesTouchedRef.current = true }}
@@ -2899,57 +2932,62 @@ export const CreateInvoicePage: React.FC = () => {
                   })}
                 >
                     {lines.map((line, index) => (
-                      <tr key={index} className="doc-line-row border-b transition-colors hover:bg-muted/20" draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }}>
-                        {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={13 + (visibleLineColumns.stock ? 1 : 0)} total={line.line_type === 'section' ? money(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }} /> : <>
+                      <tr key={index} className="doc-line-row border-b transition-colors hover:bg-muted/20" draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) { fieldErrors.clearLines(); setLines(reorderDocumentLines(lines, draggedLineIndex, index)); } setDraggedLineIndex(null); }}>
+                        {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={13 + (visibleLineColumns.stock ? 1 : 0)} total={line.line_type === 'section' ? money(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) { fieldErrors.clearLines(); setLines(reorderDocumentLines(lines, draggedLineIndex, index)); } setDraggedLineIndex(null); }} /> : <>
                         <td data-label="#" className={cn(LINE_CELL, 'w-10')}>
                           <div className={cn(LINE_CELL_BOX, 'justify-center text-xs font-medium text-muted-foreground')}>
                             {lines.slice(0, index + 1).filter((item) => (item.line_type ?? 'product') === 'product').length}
                           </div>
                         </td>
                         <td data-label="Product" className={cn(LINE_CELL, 'min-w-[17rem]', LINE_PRODUCT_WRAP)}>
-                          <ProductSearchCombobox
-                            value={line.product_id}
-                            onValueChange={(productId, product) => {
-                              const updated = [...lines];
-                              updated[index] = { ...updated[index], product_id: productId };
-                              updated[index].lot_number = '';
-                              updated[index].serial_number = '';
-                              updated[index].product_batch_id = null;
-                              updated[index].product_serial_id = null;
-                              updated[index].expiry_date = '';
-                              if (product) {
-                                updated[index].description = getProductLineDescription(product);
-                                updated[index].unit_price = parseFloat((product as any).price || (product as any).selling_price || '0');
-                                updated[index].model_number = (product as any).manufacturer_part_number || '';
-                                updated[index].sku = (product as any).sku || '';
-                                updated[index].tracking_method = (product as any).tracking_method || 'none';
-                                updated[index].tax_rate = resolveLineTaxRate(product, defaultTaxRate);
-                                // #287: a row product-pick must take the SAME pricing
-                                // path as updateLine() — mark the line 'auto' and run
-                                // the price-list resolver so the customer list price +
-                                // floor/minimum check apply (not the raw product price).
-                                updated[index].price_mode = 'auto';
-                                updated[index].pricing_source = null;
-                              }
-                              setLines(updated);
-                              if (product) void resolvePricingForLines(customerId, updated);
-                              // D6(e): picking on the last row advances to a new one.
-                              if (product) appendLineIfLast(index);
-                            }}
-                            wrapText
-                          />
+                          <FieldSlot name={lineFieldKey(index, 'product_id')}>
+                            <ProductSearchCombobox
+                              value={line.product_id}
+                              onValueChange={(productId, product) => {
+                                fieldErrors.clear(lineFieldKey(index, 'product_id'));
+                                const updated = [...lines];
+                                updated[index] = { ...updated[index], product_id: productId };
+                                updated[index].lot_number = '';
+                                updated[index].serial_number = '';
+                                updated[index].product_batch_id = null;
+                                updated[index].product_serial_id = null;
+                                updated[index].expiry_date = '';
+                                if (product) {
+                                  updated[index].description = getProductLineDescription(product);
+                                  updated[index].unit_price = parseFloat((product as any).price || (product as any).selling_price || '0');
+                                  updated[index].model_number = (product as any).manufacturer_part_number || '';
+                                  updated[index].sku = (product as any).sku || '';
+                                  updated[index].tracking_method = (product as any).tracking_method || 'none';
+                                  updated[index].tax_rate = resolveLineTaxRate(product, defaultTaxRate);
+                                  // #287: a row product-pick must take the SAME pricing
+                                  // path as updateLine() — mark the line 'auto' and run
+                                  // the price-list resolver so the customer list price +
+                                  // floor/minimum check apply (not the raw product price).
+                                  updated[index].price_mode = 'auto';
+                                  updated[index].pricing_source = null;
+                                }
+                                setLines(updated);
+                                if (product) void resolvePricingForLines(customerId, updated);
+                                // D6(e): picking on the last row advances to a new one.
+                                if (product) appendLineIfLast(index);
+                              }}
+                              wrapText
+                            />
+                          </FieldSlot>
                         </td>
                         {visibleLineColumns.sku && <td data-label="SKU" className={cn(LINE_CELL, 'min-w-[7rem]')}>
                           <div className={LINE_VALUE}>{line.sku || <span className="opacity-60">SKU</span>}</div>
                         </td>}
                         {visibleLineColumns.description && <td data-label="Description" className={cn(LINE_CELL, 'min-w-[16rem]')}>
-                          <textarea
-                            value={line.description}
-                            onChange={(event) => updateLine(index, 'description', event.target.value)}
-                            rows={2}
-                            className={LINE_TEXTAREA}
-                            placeholder="Description"
-                          />
+                          <FieldSlot name={lineFieldKey(index, 'description')}>
+                            <textarea
+                              value={line.description}
+                              onChange={(event) => updateLine(index, 'description', event.target.value)}
+                              rows={2}
+                              className={LINE_TEXTAREA}
+                              placeholder="Description"
+                            />
+                          </FieldSlot>
                         </td>}
                         {visibleLineColumns.model_number && <td data-label="Model #" className={cn(LINE_CELL, 'min-w-[7rem]')}>
                           <div className={LINE_VALUE}>{line.model_number || <span className="opacity-60">Model #</span>}</div>
@@ -2964,45 +3002,52 @@ export const CreateInvoicePage: React.FC = () => {
                           />
                         </td>}
                         {visibleLineColumns.lot_number && <td data-label="Lot / Serial" className={cn(LINE_CELL, 'min-w-[7.5rem]')}>
-                          <ProductTrackingSelector
-                            productId={line.product_id}
-                            warehouseId={warehouseId}
-                            trackingMethod={line.tracking_method}
-                            batchId={line.product_batch_id}
-                            serialId={line.product_serial_id}
-                            lotNumber={line.lot_number}
-                            serialNumber={line.serial_number}
-                            onChange={(selection) => setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...selection } : item))}
-                          />
+                          <FieldSlot name={lineFieldKey(index, 'lot_number')}>
+                            <ProductTrackingSelector
+                              productId={line.product_id}
+                              warehouseId={warehouseId}
+                              trackingMethod={line.tracking_method}
+                              batchId={line.product_batch_id}
+                              serialId={line.product_serial_id}
+                              lotNumber={line.lot_number}
+                              serialNumber={line.serial_number}
+                              onChange={(selection) => {
+                                fieldErrors.clear(lineFieldKey(index, 'lot_number'));
+                                setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...selection } : item));
+                              }}
+                            />
+                          </FieldSlot>
                           {line.tracking_method === 'none' || line.tracking_method === 'quantity' ? <span className="text-xs text-muted-foreground">Not tracked</span> : null}
                         </td>}
                         {visibleLineColumns.expiry_date && <td data-label="Expiry" className={cn(LINE_CELL, 'min-w-[9.5rem]')}>
                           <div className={LINE_VALUE}>{line.expiry_date || <span className="opacity-60">Expiry</span>}</div>
                         </td>}
                         <td data-label="Qty" className={cn(LINE_CELL, 'w-[5.5rem] min-w-[4.5rem]')}>
-                          <div className={LINE_CELL_BOX}>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.0001"
-                              inputMode="decimal"
-                              value={line.quantity}
-                              onChange={(event) => {
-                                const raw = event.target.value;
-                                if (raw === '') { updateLine(index, 'quantity', ''); return; }
-                                const parsed = Number(raw);
-                                if (!Number.isNaN(parsed)) updateLine(index, 'quantity', parsed);
-                              }}
-                              onKeyDown={(event) => {
-                                // D6(e): Enter on the last row starts a new line.
-                                if (event.key === 'Enter') {
-                                  event.preventDefault();
-                                  appendLineIfLast(index);
-                                }
-                              }}
-                              className={LINE_INPUT_NUMERIC}
-                            />
-                          </div>
+                          <FieldSlot name={lineFieldKey(index, 'quantity')}>
+                            <div className={LINE_CELL_BOX}>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.0001"
+                                inputMode="decimal"
+                                value={line.quantity}
+                                onChange={(event) => {
+                                  const raw = event.target.value;
+                                  if (raw === '') { updateLine(index, 'quantity', ''); return; }
+                                  const parsed = Number(raw);
+                                  if (!Number.isNaN(parsed)) updateLine(index, 'quantity', parsed);
+                                }}
+                                onKeyDown={(event) => {
+                                  // D6(e): Enter on the last row starts a new line.
+                                  if (event.key === 'Enter') {
+                                    event.preventDefault();
+                                    appendLineIfLast(index);
+                                  }
+                                }}
+                                className={LINE_INPUT_NUMERIC}
+                              />
+                            </div>
+                          </FieldSlot>
                         </td>
                         {visibleLineColumns.stock && <td data-label="Available" className={cn(LINE_CELL, 'w-[8.5rem] min-w-[7.5rem]')}>
                           <div className={cn(LINE_CELL_BOX, 'justify-end')}>
@@ -3014,80 +3059,84 @@ export const CreateInvoicePage: React.FC = () => {
                           </div>
                         </td>}
                         <td data-label="Unit price" className={cn(LINE_CELL, 'w-[7rem] min-w-[6rem]')}>
-                          <div className={LINE_CELL_BOX}>
-                            <div className="flex w-full flex-col gap-0.5">
+                          <FieldSlot name={lineFieldKey(index, 'unit_price')}>
+                            <div className={LINE_CELL_BOX}>
+                              <div className="flex w-full flex-col gap-0.5">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  placeholder="0.00"
+                                  value={line.unit_price === '' ? '' : line.unit_price}
+                                  onChange={(event) => updateLine(index, 'unit_price', event.target.value === '' ? '' : parseFloat(event.target.value))}
+                                  onKeyDown={(event) => {
+                                    // D6(e): Enter on the last row starts a new line.
+                                    if (event.key === 'Enter') {
+                                      event.preventDefault();
+                                      appendLineIfLast(index);
+                                    }
+                                  }}
+                                  className={LINE_INPUT_NUMERIC}
+                                />
+                                {/* FR-6.2 + D5: pricing source chip — hover explains exactly
+                                    how the price was reached (list/rule, tier, FX, manual reason). */}
+                                {line.price_mode === 'manual' && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="self-start cursor-help rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                                        Manual
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-64 text-xs">
+                                      <ul className="space-y-1">
+                                        {priceExplanation(line).map((note, noteIndex) => <li key={noteIndex}>{note}</li>)}
+                                      </ul>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
+                                {line.price_mode !== 'manual' && line.pricing_source && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="self-start max-w-full cursor-help truncate rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300">
+                                        {line.pricing_source}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-64 text-xs">
+                                      <ul className="space-y-1">
+                                        {priceExplanation(line).map((note, noteIndex) => <li key={noteIndex}>{note}</li>)}
+                                      </ul>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
+                                {line.list_price != null && Number(line.list_price) > Number(line.unit_price || 0) && (
+                                  <span className="self-start text-[10px] text-muted-foreground line-through">
+                                    {money(Number(line.list_price))}
+                                  </span>
+                                )}
+                                {currencyCode && pricingMeta?.base_currency_code && currencyCode !== pricingMeta.base_currency_code && line.unit_price !== '' && (
+                                  <span className="self-start text-[10px] text-muted-foreground">
+                                    ≈ {formatCurrency(Number(line.unit_price) * Number(pricingMeta.exchange_rate || 1), pricingMeta.base_currency_code)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </FieldSlot>
+                        </td>
+                        {visibleLineColumns.tax_rate && <td data-label="Tax %" className={cn(LINE_CELL, 'w-[5rem] min-w-[4rem]')}>
+                          <FieldSlot name={lineFieldKey(index, 'tax_rate')}>
+                            <div className={LINE_CELL_BOX}>
                               <input
                                 type="number"
                                 min="0"
+                                max="100"
                                 step="0.01"
-                                placeholder="0.00"
-                                value={line.unit_price === '' ? '' : line.unit_price}
-                                onChange={(event) => updateLine(index, 'unit_price', event.target.value === '' ? '' : parseFloat(event.target.value))}
-                                onKeyDown={(event) => {
-                                  // D6(e): Enter on the last row starts a new line.
-                                  if (event.key === 'Enter') {
-                                    event.preventDefault();
-                                    appendLineIfLast(index);
-                                  }
-                                }}
+                                placeholder="0"
+                                value={line.tax_rate === '' ? '' : line.tax_rate}
+                                onChange={(event) => updateLine(index, 'tax_rate', event.target.value === '' ? '' : parseFloat(event.target.value))}
                                 className={LINE_INPUT_NUMERIC}
                               />
-                              {/* FR-6.2 + D5: pricing source chip — hover explains exactly
-                                  how the price was reached (list/rule, tier, FX, manual reason). */}
-                              {line.price_mode === 'manual' && (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="self-start cursor-help rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                                      Manual
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top" className="max-w-64 text-xs">
-                                    <ul className="space-y-1">
-                                      {priceExplanation(line).map((note, noteIndex) => <li key={noteIndex}>{note}</li>)}
-                                    </ul>
-                                  </TooltipContent>
-                                </Tooltip>
-                              )}
-                              {line.price_mode !== 'manual' && line.pricing_source && (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="self-start max-w-full cursor-help truncate rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300">
-                                      {line.pricing_source}
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top" className="max-w-64 text-xs">
-                                    <ul className="space-y-1">
-                                      {priceExplanation(line).map((note, noteIndex) => <li key={noteIndex}>{note}</li>)}
-                                    </ul>
-                                  </TooltipContent>
-                                </Tooltip>
-                              )}
-                              {line.list_price != null && Number(line.list_price) > Number(line.unit_price || 0) && (
-                                <span className="self-start text-[10px] text-muted-foreground line-through">
-                                  {money(Number(line.list_price))}
-                                </span>
-                              )}
-                              {currencyCode && pricingMeta?.base_currency_code && currencyCode !== pricingMeta.base_currency_code && line.unit_price !== '' && (
-                                <span className="self-start text-[10px] text-muted-foreground">
-                                  ≈ {formatCurrency(Number(line.unit_price) * Number(pricingMeta.exchange_rate || 1), pricingMeta.base_currency_code)}
-                                </span>
-                              )}
                             </div>
-                          </div>
-                        </td>
-                        {visibleLineColumns.tax_rate && <td data-label="Tax %" className={cn(LINE_CELL, 'w-[5rem] min-w-[4rem]')}>
-                          <div className={LINE_CELL_BOX}>
-                            <input
-                              type="number"
-                              min="0"
-                              max="100"
-                              step="0.01"
-                              placeholder="0"
-                              value={line.tax_rate === '' ? '' : line.tax_rate}
-                              onChange={(event) => updateLine(index, 'tax_rate', event.target.value === '' ? '' : parseFloat(event.target.value))}
-                              className={LINE_INPUT_NUMERIC}
-                            />
-                          </div>
+                          </FieldSlot>
                         </td>}
                         <td data-label="Total" className={cn(LINE_CELL, 'w-[7.5rem] min-w-[6.5rem]')}>
                           <div className={cn(LINE_CELL_BOX, 'justify-end text-sm font-semibold tabular-nums')}>
@@ -3112,6 +3161,7 @@ export const CreateInvoicePage: React.FC = () => {
                     ))}
                 </LineItemsTable>
               </div>
+              </FieldSlot>
 
               <div className="mt-3 flex flex-wrap gap-2">
                 <ProductCatalogDialog onAdd={addCatalogProducts} />
@@ -3201,6 +3251,7 @@ export const CreateInvoicePage: React.FC = () => {
             )}
           </div>
         </form>
+        </FieldErrorsProvider>
 
         <Dialog open={overrideDialogOpen} onOpenChange={setOverrideDialogOpen}>
           <DialogContent>

@@ -32,6 +32,9 @@ import {
   resetSalesDocumentLine,
   type SalesDocumentLine,
 } from '@/lib/salesDocumentLines'
+import { lineFieldKey } from '@/lib/serverValidation'
+import { FieldSlot } from '@/components/ui/field-errors'
+import { useFieldErrorsContext } from '@/hooks/useFieldErrors'
 
 /**
  * Issue #314: one line grid for every sales-document editor.
@@ -99,6 +102,13 @@ export function SalesDocumentLineGrid({
   const [draggedLineIndex, setDraggedLineIndex] = useState<number | null>(null)
   const [hiddenLineColumns, setHiddenLineColumns] = useState<number[]>(defaultHiddenColumns)
   const isNarrow = useMediaQuery(SALES_LINE_CARDS_MEDIA_QUERY)
+  // #318: inline line errors are keyed by row — a move/insert/delete makes
+  // them point at the wrong row, so those drop the line errors.
+  const fieldErrors = useFieldErrorsContext()
+  const restructure = (next: SalesDocumentLine[]) => {
+    fieldErrors?.clearLines()
+    setLines(next)
+  }
   const emptyLine = (): SalesDocumentLine => emptySalesDocumentLine()
   const getLineTotal = (line: SalesDocumentLine) => getSalesDocumentLineTotal(line)
 
@@ -165,9 +175,11 @@ export function SalesDocumentLineGrid({
 
   const pickProduct = (index: number, value: string, product?: any) => {
     if (!product) {
+      fieldErrors?.clear(lineFieldKey(index, 'product_id'))
       updateLine(index, 'product_id', value)
       return
     }
+    fieldErrors?.clear(lineFieldKey(index, 'product_id'))
     const productChanged = value !== lines[index]?.product_id
     const updated = lines.map((line, currentIndex) =>
       currentIndex === index
@@ -229,27 +241,27 @@ export function SalesDocumentLineGrid({
         })
       }
     })
-    setLines(next)
+    restructure(next)
     // #288(a): catalogue additions must price through the engine too.
     resolvePricing?.(next)
   }
 
   const handleDrop = (index: number) => {
     if (draggedLineIndex !== null && draggedLineIndex !== index) {
-      setLines(reorderDocumentLines(lines, draggedLineIndex, index))
+      restructure(reorderDocumentLines(lines, draggedLineIndex, index))
     }
     setDraggedLineIndex(null)
   }
 
   const lineActions = (index: number, canMoveDown: boolean) => (
     <ProductLineActions
-      onMoveUp={() => setLines(moveSalesDocumentLine(lines, index, 'up'))}
-      onMoveDown={() => setLines(moveSalesDocumentLine(lines, index, 'down'))}
+      onMoveUp={() => restructure(moveSalesDocumentLine(lines, index, 'up'))}
+      onMoveDown={() => restructure(moveSalesDocumentLine(lines, index, 'down'))}
       canMoveUp={index !== 0}
       canMoveDown={canMoveDown}
-      onDuplicate={() => setLines(duplicateSalesDocumentLine(lines, index))}
-      onReset={() => setLines(resetSalesDocumentLine(lines, index, emptyLine()))}
-      onDelete={() => setLines(removeSalesDocumentLine(lines, index))}
+      onDuplicate={() => restructure(duplicateSalesDocumentLine(lines, index))}
+      onReset={() => restructure(resetSalesDocumentLine(lines, index, emptyLine()))}
+      onDelete={() => restructure(removeSalesDocumentLine(lines, index))}
     />
   )
 
@@ -295,7 +307,7 @@ export function SalesDocumentLineGrid({
         variant="ghost"
         size="sm"
         aria-label="Delete line"
-        onClick={() => setLines(removeSalesDocumentLine(lines, index))}
+        onClick={() => restructure(removeSalesDocumentLine(lines, index))}
       >
         <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-4 w-4 text-destructive" />
       </Button>
@@ -317,7 +329,7 @@ export function SalesDocumentLineGrid({
         <span className="text-sm font-semibold tabular-nums">{money(getLineTotal(line))}</span>
       </div>
 
-      <div>
+      <FieldSlot name={lineFieldKey(index, 'product_id')}>
         <label className="mb-0.5 block text-xs font-medium text-muted-foreground">Product</label>
         <ProductSearchCombobox
           value={line.product_id}
@@ -325,7 +337,7 @@ export function SalesDocumentLineGrid({
           placeholder="Search product..."
           wrapText
         />
-      </div>
+      </FieldSlot>
 
       {columnVisible('sku') && (
         <div>
@@ -334,7 +346,7 @@ export function SalesDocumentLineGrid({
         </div>
       )}
 
-      <div>
+      <FieldSlot name={lineFieldKey(index, 'description')}>
         <label className="mb-0.5 block text-xs font-medium text-muted-foreground">Description</label>
         <textarea
           value={line.description}
@@ -344,7 +356,7 @@ export function SalesDocumentLineGrid({
           placeholder="Description"
           required
         />
-      </div>
+      </FieldSlot>
 
       {columnVisible('model_number') && (
         <div>
@@ -373,7 +385,7 @@ export function SalesDocumentLineGrid({
       )}
 
       <div className="grid grid-cols-2 gap-2">
-        <div>
+        <FieldSlot name={lineFieldKey(index, 'quantity')}>
           <label className="mb-0.5 block text-xs font-medium text-muted-foreground">Qty</label>
           <input
             type="number"
@@ -390,8 +402,8 @@ export function SalesDocumentLineGrid({
             }}
             className={LINE_INPUT_NUMERIC_TOKEN}
           />
-        </div>
-        <div>
+        </FieldSlot>
+        <FieldSlot name={lineFieldKey(index, 'unit_price')}>
           <label className="mb-0.5 block text-xs font-medium text-muted-foreground">Unit price</label>
           <input
             type="number"
@@ -403,9 +415,9 @@ export function SalesDocumentLineGrid({
             onChange={(event) => updateLine(index, 'unit_price', event.target.value === '' ? '' : parseFloat(event.target.value))}
             className={LINE_INPUT_NUMERIC_TOKEN}
           />
-        </div>
+        </FieldSlot>
         {columnVisible('tax_rate') && (
-          <div>
+          <FieldSlot name={lineFieldKey(index, 'tax_rate')}>
             <label className="mb-0.5 block text-xs font-medium text-muted-foreground">Tax %</label>
             <input
               type="number"
@@ -418,10 +430,10 @@ export function SalesDocumentLineGrid({
               onChange={(event) => updateLine(index, 'tax_rate', event.target.value === '' ? '' : parseFloat(event.target.value))}
               className={LINE_INPUT_NUMERIC_TOKEN}
             />
-          </div>
+          </FieldSlot>
         )}
         {columnVisible('discount') && (
-          <div>
+          <FieldSlot name={lineFieldKey(index, 'discount_amount')}>
             <label className="mb-0.5 block text-xs font-medium text-muted-foreground">Disc</label>
             <input
               type="number"
@@ -433,7 +445,7 @@ export function SalesDocumentLineGrid({
               onChange={(event) => updateLine(index, 'discount_amount', event.target.value === '' ? '' : parseFloat(event.target.value))}
               className={LINE_INPUT_NUMERIC_TOKEN}
             />
-          </div>
+          </FieldSlot>
         )}
       </div>
 
@@ -487,11 +499,11 @@ export function SalesDocumentLineGrid({
                       colSpan={visibleColumnCount}
                       total={line.line_type === 'section' ? money(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined}
                       onChange={(text) => updateLine(index, 'description', text)}
-                      onDelete={() => setLines(removeSalesDocumentLine(lines, index))}
+                      onDelete={() => restructure(removeSalesDocumentLine(lines, index))}
                       onDragStart={() => setDraggedLineIndex(index)}
                       onDrop={() => {
                         if (draggedLineIndex !== null) {
-                          setLines(reorderDocumentLines(lines, draggedLineIndex, index))
+                          restructure(reorderDocumentLines(lines, draggedLineIndex, index))
                         }
                         setDraggedLineIndex(null)
                       }}
@@ -505,12 +517,14 @@ export function SalesDocumentLineGrid({
                       </td>
 
                       <td data-label="Product" className={cn(LINE_CELL, 'min-w-[17rem]', LINE_PRODUCT_WRAP)}>
-                        <ProductSearchCombobox
-                          value={line.product_id}
-                          onValueChange={(val, product) => pickProduct(index, val, product)}
-                          placeholder="Search product..."
-                          wrapText
-                        />
+                        <FieldSlot name={lineFieldKey(index, 'product_id')}>
+                          <ProductSearchCombobox
+                            value={line.product_id}
+                            onValueChange={(val, product) => pickProduct(index, val, product)}
+                            placeholder="Search product..."
+                            wrapText
+                          />
+                        </FieldSlot>
                       </td>
 
                       {showSku && (
@@ -520,14 +534,16 @@ export function SalesDocumentLineGrid({
                       )}
 
                       <td data-label="Description" className={cn(LINE_CELL, 'min-w-[16rem]')}>
-                        <textarea
-                          value={line.description}
-                          onChange={(event) => updateLine(index, 'description', event.target.value)}
-                          rows={2}
-                          className={LINE_TEXTAREA_TOKEN}
-                          placeholder="Description"
-                          required
-                        />
+                        <FieldSlot name={lineFieldKey(index, 'description')}>
+                          <textarea
+                            value={line.description}
+                            onChange={(event) => updateLine(index, 'description', event.target.value)}
+                            rows={2}
+                            className={LINE_TEXTAREA_TOKEN}
+                            placeholder="Description"
+                            required
+                          />
+                        </FieldSlot>
                       </td>
 
                       {showModelNumber && (
@@ -557,73 +573,81 @@ export function SalesDocumentLineGrid({
                       )}
 
                       <td data-label="Qty" className={cn(LINE_CELL, 'w-[5.5rem] min-w-[4.5rem]')}>
-                        <div className={LINE_CELL_BOX}>
-                          <input
-                            type="number"
-                            min="0"
-                            aria-label="Quantity"
-                            value={line.quantity}
-                            onChange={(event) => {
-                              // HR71-08: keep literal intent — empty is allowed
-                              // while typing (caught on submit), no silent
-                              // substitution of 0.
-                              const raw = event.target.value
-                              if (raw === '') { updateLine(index, 'quantity', ''); return }
-                              const parsed = parseFloat(raw)
-                              if (!Number.isNaN(parsed) && parsed >= 0) updateLine(index, 'quantity', parsed)
-                            }}
-                            className={LINE_INPUT_NUMERIC_TOKEN}
-                          />
-                        </div>
-                      </td>
-
-                      <td data-label="Unit price" className={cn(LINE_CELL, 'w-[7rem] min-w-[6rem]')}>
-                        <div className={LINE_CELL_BOX}>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="0.00"
-                            aria-label="Unit price"
-                            value={line.unit_price === '' ? '' : line.unit_price}
-                            onChange={(event) => updateLine(index, 'unit_price', event.target.value === '' ? '' : parseFloat(event.target.value))}
-                            className={LINE_INPUT_NUMERIC_TOKEN}
-                          />
-                        </div>
-                      </td>
-
-                      {showTaxRate && (
-                        <td data-label="Tax %" className={cn(LINE_CELL, 'w-[5rem] min-w-[4rem]')}>
+                        <FieldSlot name={lineFieldKey(index, 'quantity')}>
                           <div className={LINE_CELL_BOX}>
                             <input
                               type="number"
                               min="0"
-                              max="100"
-                              step="0.01"
-                              placeholder="0"
-                              aria-label="Tax rate"
-                              value={line.tax_rate === '' ? '' : line.tax_rate}
-                              onChange={(event) => updateLine(index, 'tax_rate', event.target.value === '' ? '' : parseFloat(event.target.value))}
+                              aria-label="Quantity"
+                              value={line.quantity}
+                              onChange={(event) => {
+                                // HR71-08: keep literal intent — empty is allowed
+                                // while typing (caught on submit), no silent
+                                // substitution of 0.
+                                const raw = event.target.value
+                                if (raw === '') { updateLine(index, 'quantity', ''); return }
+                                const parsed = parseFloat(raw)
+                                if (!Number.isNaN(parsed) && parsed >= 0) updateLine(index, 'quantity', parsed)
+                              }}
                               className={LINE_INPUT_NUMERIC_TOKEN}
                             />
                           </div>
-                        </td>
-                      )}
+                        </FieldSlot>
+                      </td>
 
-                      {showDiscount && (
-                        <td data-label="Disc" className={cn(LINE_CELL, 'w-[5.5rem] min-w-[4.5rem]')}>
+                      <td data-label="Unit price" className={cn(LINE_CELL, 'w-[7rem] min-w-[6rem]')}>
+                        <FieldSlot name={lineFieldKey(index, 'unit_price')}>
                           <div className={LINE_CELL_BOX}>
                             <input
                               type="number"
                               min="0"
                               step="0.01"
                               placeholder="0.00"
-                              aria-label="Line discount"
-                              value={line.discount_amount === '' ? '' : line.discount_amount}
-                              onChange={(event) => updateLine(index, 'discount_amount', event.target.value === '' ? '' : parseFloat(event.target.value))}
+                              aria-label="Unit price"
+                              value={line.unit_price === '' ? '' : line.unit_price}
+                              onChange={(event) => updateLine(index, 'unit_price', event.target.value === '' ? '' : parseFloat(event.target.value))}
                               className={LINE_INPUT_NUMERIC_TOKEN}
                             />
                           </div>
+                        </FieldSlot>
+                      </td>
+
+                      {showTaxRate && (
+                        <td data-label="Tax %" className={cn(LINE_CELL, 'w-[5rem] min-w-[4rem]')}>
+                          <FieldSlot name={lineFieldKey(index, 'tax_rate')}>
+                            <div className={LINE_CELL_BOX}>
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.01"
+                                placeholder="0"
+                                aria-label="Tax rate"
+                                value={line.tax_rate === '' ? '' : line.tax_rate}
+                                onChange={(event) => updateLine(index, 'tax_rate', event.target.value === '' ? '' : parseFloat(event.target.value))}
+                                className={LINE_INPUT_NUMERIC_TOKEN}
+                              />
+                            </div>
+                          </FieldSlot>
+                        </td>
+                      )}
+
+                      {showDiscount && (
+                        <td data-label="Disc" className={cn(LINE_CELL, 'w-[5.5rem] min-w-[4.5rem]')}>
+                          <FieldSlot name={lineFieldKey(index, 'discount_amount')}>
+                            <div className={LINE_CELL_BOX}>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="0.00"
+                                aria-label="Line discount"
+                                value={line.discount_amount === '' ? '' : line.discount_amount}
+                                onChange={(event) => updateLine(index, 'discount_amount', event.target.value === '' ? '' : parseFloat(event.target.value))}
+                                className={LINE_INPUT_NUMERIC_TOKEN}
+                              />
+                            </div>
+                          </FieldSlot>
                         </td>
                       )}
 
