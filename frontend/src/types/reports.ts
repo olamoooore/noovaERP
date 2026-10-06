@@ -568,12 +568,61 @@ export interface MedicalCasePerformanceProductRow {
 
 export type MedicalCaseDateField = 'case_date' | 'procedure_date';
 
+/**
+ * Issue #608: one Product usage pivot row at the finest grain — legal entity
+ * → hospital group → hospital → doctor × product. Units used = delivered from
+ * a completed DO line; paid = used − FOC; net_value = linked invoice lines net
+ * of credit notes in base currency (#574). case_ids lets the client count
+ * distinct cases in subtotals and drill down.
+ */
+export interface MedicalCaseUsageRow {
+  legal_entity_id: number | null;
+  legal_entity_name: string | null;
+  hospital_group_id: number | null;
+  hospital_group_name: string | null;
+  hospital_id: number;
+  hospital_name: string | null;
+  doctor_contact_id: number | null;
+  doctor_name: string;
+  product_id: number | null;
+  product_name: string | null;
+  sku: string | null;
+  category_id: number | null;
+  category_name: string | null;
+  used_units: number;
+  paid_units: number;
+  foc_units: number;
+  net_value: number;
+  case_count: number;
+  case_ids: number[];
+}
+
+/** Issue #608: drill-down case; patient fields are masked server-side without medical_cases.phi.view. */
+export interface MedicalCaseUsageCase {
+  id: number;
+  case_no: string | null;
+  status: string;
+  case_date: string | null;
+  procedure_date: string | null;
+  hospital_id: number;
+  hospital_name: string | null;
+  doctor_contact_id: number | null;
+  doctor_name: string;
+  patient_name: string | null;
+  patient_reference: string | null;
+}
+
 export interface MedicalCasePerformanceData {
   period: { from: string; to: string; date_field: MedicalCaseDateField };
   by_hospital: Array<MedicalCasePerformanceHospitalRow & { month: string }>;
   hospital_totals: MedicalCasePerformanceHospitalRow[];
   by_doctor: MedicalCasePerformanceDoctorRow[];
   product_mix: MedicalCasePerformanceProductRow[];
+  usage?: {
+    rows: MedicalCaseUsageRow[];
+    cases: MedicalCaseUsageCase[];
+    phi_masked: boolean;
+  };
 }
 
 export interface SalesByCategoryData {

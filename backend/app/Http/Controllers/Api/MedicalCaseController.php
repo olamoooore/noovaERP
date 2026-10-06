@@ -935,6 +935,8 @@ class MedicalCaseController extends Controller
 
     /**
      * Issue #185: hospital/doctor performance report.
+     * Issue #608: also the Product usage pivot (`usage`), with optional
+     * filters and PHI masking on the drill-down cases.
      */
     public function performanceReport(Request $request): JsonResponse
     {
@@ -942,6 +944,13 @@ class MedicalCaseController extends Controller
             'from_date' => 'required|date',
             'to_date' => 'required|date|after_or_equal:from_date',
             'date_field' => 'nullable|in:case_date,procedure_date',
+            'legal_entity_id' => 'nullable|integer',
+            'hospital_group_id' => 'nullable|integer',
+            'customer_id' => 'nullable|integer',
+            'doctor_contact_id' => 'nullable|integer',
+            'salesperson_id' => 'nullable|integer',
+            'product_id' => 'nullable|integer',
+            'category_id' => 'nullable|integer',
         ]);
 
         $report = app(\App\Services\MedicalCaseReportingService::class)->performance(
@@ -950,6 +959,13 @@ class MedicalCaseController extends Controller
             $validated['date_field'] ?? 'case_date',
             // Issue #575 (MC11): report only the requester's legal entities.
             $this->accessibleEntityIds($request),
+            array_map('intval', array_filter(\Illuminate\Support\Arr::only($validated, [
+                'legal_entity_id', 'hospital_group_id', 'customer_id', 'doctor_contact_id',
+                'salesperson_id', 'product_id', 'category_id',
+            ]), fn ($value) => $value !== null && $value !== '')),
+            // Issue #608: patient names in the drill-down are masked unless
+            // the caller holds medical_cases.phi.view (#567).
+            \App\Http\Middleware\RequirePermission::allows($request, 'medical_cases.phi.view'),
         );
 
         return response()->json(['data' => $report]);
