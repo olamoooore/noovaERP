@@ -6,6 +6,8 @@ export interface ChartTooltipProps {
   payload?: any[];
   label?: any;
   valueFormat?: 'currency' | 'number' | 'percent';
+  /** ISO currency for 'currency' formatting (e.g. the report's base currency); defaults to the tenant setting. */
+  currency?: string;
   /** Shorten the label shown on top (full label is used by default). */
   labelFormat?: (label: any) => string;
 }
@@ -20,12 +22,13 @@ export const ChartTooltip: React.FC<ChartTooltipProps> = ({
   label,
   valueFormat = 'number',
   labelFormat,
+  currency,
 }) => {
   if (!active || !payload || payload.length === 0) return null;
 
   const formatValue = (value: number) => {
     if (!Number.isFinite(value)) return '—';
-    if (valueFormat === 'currency') return formatCurrency(value);
+    if (valueFormat === 'currency') return formatCurrency(value, currency);
     if (valueFormat === 'percent') return formatPercent(value);
     return formatNumber(value, 2);
   };

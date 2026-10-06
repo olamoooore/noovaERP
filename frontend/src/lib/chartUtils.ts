@@ -73,15 +73,16 @@ export const formatCompactCurrency = (value: number, currency?: string): string 
  */
 export const makeAxisTickFormatter = (
   mode: 'currency' | 'number' | 'percent',
-  maxValue: number
+  maxValue: number,
+  currency?: string
 ): ((value: number) => string) => {
   const compact = Math.abs(maxValue) >= 10000;
   if (mode === 'currency') {
     // Always wrap: the returned function is handed straight to Recharts, which
     // invokes formatters with (value, index).
     return compact
-      ? (v: number) => formatCompactCurrency(v)
-      : (v: number) => formatCurrency(v);
+      ? (v: number) => formatCompactCurrency(v, currency)
+      : (v: number) => formatCurrency(v, currency);
   }
   if (mode === 'percent') {
     return (v: number) => (Number.isFinite(v) ? `${formatCompactNumber(v)}%` : '');

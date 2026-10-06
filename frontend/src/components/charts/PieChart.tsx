@@ -19,6 +19,8 @@ interface PieChartProps {
   showLegend?: boolean;
   showLabels?: boolean;
   formatValue?: 'currency' | 'number' | 'percent';
+  /** ISO currency for 'currency' formatting (e.g. the report's base currency); defaults to the tenant setting. */
+  currency?: string;
   innerRadius?: number; // For donut chart — also enables the centre total.
 }
 
@@ -27,13 +29,14 @@ const DonutCenter: React.FC<{
   viewBox?: { cx?: number; cy?: number };
   total: number;
   formatValue: 'currency' | 'number' | 'percent';
-}> = ({ viewBox, total, formatValue }) => {
+  currency?: string;
+}> = ({ viewBox, total, formatValue, currency }) => {
   const cx = viewBox?.cx ?? 0;
   const cy = viewBox?.cy ?? 0;
   const value =
     formatValue === 'currency'
       ? // Compact (e.g. $3.46M) so long totals never overflow the donut hole.
-        makeAxisTickFormatter('currency', total)(total)
+        makeAxisTickFormatter('currency', total, currency)(total)
       : formatValue === 'percent'
         ? formatPercent(total)
         : formatNumber(total, 2);
@@ -96,6 +99,7 @@ export const PieChart: React.FC<PieChartProps> = ({
   showLegend = true,
   showLabels = false,
   formatValue = 'number',
+  currency,
   innerRadius = 0,
 }) => {
   const total = (data ?? []).reduce((sum, entry) => sum + Number(entry?.[valueKey] ?? 0), 0);
@@ -126,11 +130,11 @@ export const PieChart: React.FC<PieChartProps> = ({
             {innerRadius > 0 && (
               <Label
                 position="center"
-                content={<DonutCenter total={total} formatValue={formatValue} /> as any}
+                content={<DonutCenter total={total} formatValue={formatValue} currency={currency} /> as any}
               />
             )}
           </Pie>
-          <Tooltip content={<ChartTooltip valueFormat={formatValue} />} />
+          <Tooltip content={<ChartTooltip valueFormat={formatValue} currency={currency} />} />
         </RechartsPieChart>
       </ResponsiveContainer>
 
