@@ -543,12 +543,43 @@ class ContactMasterService
         if (array_key_exists('department_id', $data)) {
             $updates['department_id'] = $data['department_id'];
         }
+        if (array_key_exists('site_address_id', $data)) {
+            $updates['site_address_id'] = $this->assertValidSiteAddress($relationship, $data['site_address_id']);
+        }
 
         if ($updates) {
             $relationship->update($updates);
         }
 
         return $relationship->fresh();
+    }
+
+    /**
+     * ADR-003B R1: a person's site must be a live `site` address of the
+     * organisation on this org_person relationship. Returns the id to store
+     * (null clears the site).
+     */
+    private function assertValidSiteAddress(ContactRelationship $relationship, ?string $siteAddressId): ?string
+    {
+        if ($siteAddressId === null || $siteAddressId === '') {
+            return null;
+        }
+
+        if ($relationship->relationship_type !== 'org_person') {
+            throw new \DomainException('CONTACT_SITE_REQUIRES_ORG_PERSON');
+        }
+
+        $isOrganisationSite = ContactAddress::where('tenant_id', $relationship->tenant_id)
+            ->where('id', $siteAddressId)
+            ->where('contact_id', $relationship->contact_id)
+            ->where('address_type', 'site')
+            ->exists();
+
+        if (! $isOrganisationSite) {
+            throw new \DomainException('CONTACT_SITE_ADDRESS_INVALID');
+        }
+
+        return $siteAddressId;
     }
 
     /**

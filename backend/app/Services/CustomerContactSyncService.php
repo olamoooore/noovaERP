@@ -139,6 +139,10 @@ class CustomerContactSyncService
             if (array_key_exists('department_name', $canonical)) {
                 $updates['department_name'] = $canonical['department_name'];
             }
+            if (array_key_exists('site_address_id', $canonical)) {
+                // ADR-003B R1 is enforced by ContactMasterService.
+                $updates['site_address_id'] = $canonical['site_address_id'];
+            }
             if ($updates) {
                 $this->contacts->updateRelationship($relationship->id, $tenantId, $updates);
             }

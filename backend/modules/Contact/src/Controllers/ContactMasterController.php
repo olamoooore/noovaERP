@@ -380,6 +380,8 @@ class ContactMasterController extends Controller
             'functional_category_code' => 'present|nullable|string|max:50',
             'department_name' => 'present|nullable|string|max:150',
             'department_id' => 'nullable|uuid',
+            // ADR-003B: optional; omitted keeps the current site, null clears it.
+            'site_address_id' => 'sometimes|nullable|uuid',
         ]);
 
         try {

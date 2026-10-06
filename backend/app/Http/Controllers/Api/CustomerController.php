@@ -802,6 +802,9 @@ class CustomerController extends Controller
             'classification_code' => 'nullable|string|max:50',
             'persistent_role_codes' => 'sometimes|array',
             'persistent_role_codes.*' => 'string|max:50',
+            // ADR-003B: the company site where the person works; omitted
+            // keeps the current site, null clears it.
+            'site_address_id' => 'sometimes|nullable|uuid',
             'email' => 'nullable|email',
             'phone' => self::NUMERIC_PHONE_RULE,
             'mobile' => self::NUMERIC_PHONE_RULE,
@@ -818,7 +821,7 @@ class CustomerController extends Controller
         try {
             [$contact] = $this->syncContact($customer, $validated, null);
         } catch (\DomainException $e) {
-            throw ValidationException::withMessages(['contact_type' => [$e->getMessage()]]);
+            throw ValidationException::withMessages([$this->contactErrorField($e) => [$e->getMessage()]]);
         }
 
         return response()->json($contact, 201);
@@ -844,6 +847,9 @@ class CustomerController extends Controller
             'classification_code' => 'nullable|string|max:50',
             'persistent_role_codes' => 'sometimes|array',
             'persistent_role_codes.*' => 'string|max:50',
+            // ADR-003B: the company site where the person works; omitted
+            // keeps the current site, null clears it.
+            'site_address_id' => 'sometimes|nullable|uuid',
             'email' => 'nullable|email',
             'phone' => self::NUMERIC_PHONE_RULE,
             'mobile' => self::NUMERIC_PHONE_RULE,
@@ -860,7 +866,7 @@ class CustomerController extends Controller
         try {
             [$contact] = $this->syncContact($customer, $validated, $contact);
         } catch (\DomainException $e) {
-            throw ValidationException::withMessages(['contact_type' => [$e->getMessage()]]);
+            throw ValidationException::withMessages([$this->contactErrorField($e) => [$e->getMessage()]]);
         }
 
         return response()->json($contact);
@@ -904,6 +910,11 @@ class CustomerController extends Controller
         return response()->json($contact);
     }
 
+    private function contactErrorField(\DomainException $e): string
+    {
+        return str_starts_with($e->getMessage(), 'CONTACT_SITE_') ? 'site_address_id' : 'contact_type';
+    }
+
     /**
      * Create/update a customer contact and synchronize canonical Contact
      * Master structures. Returns [CustomerContact, array $canonical].
@@ -930,6 +941,9 @@ class CustomerController extends Controller
             'persistent_role_codes' => $data['persistent_role_codes'] ?? $legacy['persistent_role_codes'],
             'department_name' => $data['department_name'] ?? null,
         ];
+        if (array_key_exists('site_address_id', $data)) {
+            $canonical['site_address_id'] = $data['site_address_id'];
+        }
 
         if ($canonical['functional_category_code'] !== null) {
             $canonical['functional_category_code'] = ContactTaxonomyRegistry::resolveCode(
@@ -974,17 +988,21 @@ class CustomerController extends Controller
         // is_primary is never written directly; it is applied atomically below.
         unset($attributes['is_primary']);
 
-        $contact = $existing
-            ? tap($existing)->update($attributes)
-            : $customer->customerContacts()->create($attributes);
+        // One transaction: a canonical-sync rejection (e.g. an invalid site,
+        // ADR-003B R1) must not leave a half-saved contact row behind.
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($customer, $existing, $attributes, $sync, $canonical, $isPrimary) {
+            $contact = $existing
+                ? tap($existing)->update($attributes)
+                : $customer->customerContacts()->create($attributes);
 
-        $personUuid = $sync->syncPersonForCustomerContact($customer, $contact, $canonical);
+            $personUuid = $sync->syncPersonForCustomerContact($customer, $contact, $canonical);
 
-        if ($isPrimary) {
-            $contact = $sync->setPrimaryContact($customer, $contact->id);
-        }
+            if ($isPrimary) {
+                $contact = $sync->setPrimaryContact($customer, $contact->id);
+            }
 
-        return [$contact->fresh(), array_merge($canonical, ['core_contact_uuid' => $personUuid])];
+            return [$contact->fresh(), array_merge($canonical, ['core_contact_uuid' => $personUuid])];
+        });
     }
 
     // ==========================================
