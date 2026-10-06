@@ -18,6 +18,7 @@ import { StatCard } from '@/components/ui/stat-card';
 import { Icon } from '@iconify/react';
 import { ReportExportToolbar } from '@/components/reports/ReportExportToolbar';
 import api from '@/lib/api';
+import { formatCurrency } from '@/lib/utils';
 
 interface JournalRow {
   reporting_period: string;
@@ -60,8 +61,7 @@ interface FilingsResponse {
   };
 }
 
-const money = (value: number) =>
-  Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = (value: number) => formatCurrency(Number(value) || 0);
 
 const DOC_LABELS: Record<string, string> = {
   invoice: 'Invoice',

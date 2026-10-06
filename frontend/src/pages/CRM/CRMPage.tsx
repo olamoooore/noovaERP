@@ -4,6 +4,7 @@ import { Icon } from '@iconify/react'
 import api from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { formatCurrency } from '@/lib/utils'
 
 export function CRMPage() {
   const { data: stats, isLoading } = useQuery({
@@ -61,7 +62,7 @@ export function CRMPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ${isLoading ? '-' : Number(stats?.total_value || 0).toLocaleString()}
+              {isLoading ? '-' : formatCurrency(Number(stats?.total_value) || 0)}
             </div>
             <p className="text-xs text-muted-foreground">Estimated revenue</p>
           </CardContent>

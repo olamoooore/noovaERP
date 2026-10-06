@@ -6,6 +6,7 @@
  */
 
 import type { BidData, BidStatus, Event, AcquisitionMode } from './types'
+import { formatCurrency } from '@/lib/utils'
 
 // Bid status utilities
 export const getBidStatusColor = (status: BidStatus): string => {
@@ -62,9 +63,9 @@ export const getAcquisitionModeLabel = (mode: AcquisitionMode): string => {
 
 export const getEventPriceDisplay = (event: Event): string => {
   if (event.ticket_acquisition_mode === 'buy' && event.price) {
-    return `$${event.price.toFixed(2)}`
+    return formatCurrency(Number(event.price) || 0)
   } else if (event.ticket_acquisition_mode === 'bid' && event.starting_bid) {
-    return `$${event.starting_bid.toFixed(2)}+`
+    return `${formatCurrency(Number(event.starting_bid) || 0)}+`
   }
   return 'TBD'
 }
@@ -150,7 +151,7 @@ export const validateBidAmount = (amount: number, startingBid?: number): { isVal
   }
   
   if (startingBid && amount < startingBid) {
-    return { isValid: false, error: `Bid amount must be at least $${startingBid.toFixed(2)}` }
+    return { isValid: false, error: `Bid amount must be at least ${formatCurrency(Number(startingBid) || 0)}` }
   }
   
   return { isValid: true }
@@ -158,10 +159,7 @@ export const validateBidAmount = (amount: number, startingBid?: number): { isVal
 
 // Formatting utilities
 export const formatBidAmount = (amount: number): string => {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(amount)
+  return formatCurrency(Number(amount) || 0)
 }
 
 export const formatBidDate = (dateString: string): string => {

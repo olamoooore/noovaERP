@@ -22,6 +22,11 @@ class DeliveryOrderLine extends Model
         'patient_name_encrypted',
         'quantity_ordered',
         'quantity_delivered',
+        // Issue #461: remainder split to a back-order DO / cancelled by policy.
+        'quantity_backordered',
+        'quantity_cancelled',
+        // Issue #461: how much of this line customers already returned.
+        'quantity_returned',
         'quantity_invoiced',
         'unit_price',
         'base_unit_price',
@@ -44,6 +49,9 @@ class DeliveryOrderLine extends Model
         'sequence' => 'integer',
         'quantity_ordered' => 'decimal:4',
         'quantity_delivered' => 'decimal:4',
+        'quantity_backordered' => 'decimal:4',
+        'quantity_cancelled' => 'decimal:4',
+        'quantity_returned' => 'decimal:4',
         'quantity_invoiced' => 'decimal:4',
         'unit_price' => 'decimal:2',
         'base_unit_price' => 'decimal:4',

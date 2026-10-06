@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
-import { formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate } from '@/lib/utils'
 import api from '@/lib/api'
 
 const STATUS_COLORS: Record<string, string> = {
@@ -201,7 +201,7 @@ export function BonusSchemeDetailPage() {
                       <Badge variant="outline">{SCHEME_TYPE_LABELS[p.scheme_type] || p.scheme_type}</Badge>
                     </TableCell>
                     <TableCell>
-                      {p.scheme_type === 'fixed_discount' && `- $${p.discount_amount}`}
+                      {p.scheme_type === 'fixed_discount' && `- ${formatCurrency(Number(p.discount_amount) || 0)}`}
                       {p.scheme_type === 'percentage_discount' && `- ${p.discount_percentage}%`}
                       {p.scheme_type === 'buy_x_get_y' && '-'}
                     </TableCell>

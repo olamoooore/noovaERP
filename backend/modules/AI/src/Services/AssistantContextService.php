@@ -9,17 +9,14 @@ use Modules\AI\Functions\ProductFunctions;
 use Modules\AI\Models\AIConversation;
 
 /**
- * Retrieval-augmented context for the chat pipeline.
+ * Grounding context for the chat pipeline.
  *
  * Runs before every LLM call (ProcessAIMessage) and appends a grounded
  * context block to the system prompt:
  *
- *  1. Knowledge retrieval — the tenant's own Q&A/policy entries (the
- *     authoritative source for policy-style questions, which the old
- *     prompt explicitly refused to answer).
- *  2. Catalog matches (storefront conversations) — live product rows for
+ *  1. Catalog matches (storefront conversations) — live product rows for
  *     whatever the shopper is asking about, so recommendations are real.
- *  3. Shopper account snapshot (storefront conversations) — the shopper's
+ *  2. Shopper account snapshot (storefront conversations) — the shopper's
  *     recent orders and loyalty balance, or a guest order lookup when the
  *     message contains an order number.
  *
@@ -29,20 +26,9 @@ use Modules\AI\Models\AIConversation;
  */
 class AssistantContextService
 {
-    public function __construct(private readonly KnowledgeRetriever $knowledge) {}
-
     public function build(AIConversation $conversation, string $message): string
     {
         $blocks = [];
-
-        try {
-            $hits = $this->knowledge->retrieve($message, 5, (string) ($conversation->language ?: 'en'));
-            if ($hits->isNotEmpty()) {
-                $blocks[] = $this->knowledge->formatContext($hits);
-            }
-        } catch (\Throwable $e) {
-            Log::warning('AssistantContextService: knowledge retrieval failed', ['error' => $e->getMessage()]);
-        }
 
         if ($conversation->channel === 'storefront') {
             try {
@@ -65,6 +51,36 @@ class AssistantContextService
         return $blocks === [] ? '' : "\n\n".implode("\n\n", $blocks);
     }
 
+    /** Words ignored when extracting search terms. */
+    private const STOPWORDS = [
+        'the', 'and', 'for', 'with', 'what', 'where', 'when', 'who', 'why',
+        'how', 'does', 'did', 'your', 'you', 'are', 'can', 'could', 'would',
+        'should', 'will', 'have', 'has', 'had', 'from', 'about', 'this',
+        'that', 'these', 'those', 'there', 'their', 'them', 'they', 'please',
+        'hello', 'hi', 'hey', 'just', 'some', 'any', 'all', 'not', 'but',
+        'was', 'were', 'been', 'being', 'get', 'got', 'into', 'out', 'our',
+    ];
+
+    /**
+     * Meaningful lowercase terms in a text (stopwords and short words
+     * removed, de-duplicated) — used to search the catalog.
+     *
+     * @return string[]
+     */
+    private function keywords(string $text): array
+    {
+        $words = preg_split('/[^a-z0-9]+/i', mb_strtolower($text)) ?: [];
+        $terms = [];
+        foreach ($words as $word) {
+            if (mb_strlen($word) < 3 || in_array($word, self::STOPWORDS, true)) {
+                continue;
+            }
+            $terms[$word] = true;
+        }
+
+        return array_keys($terms);
+    }
+
     /**
      * Live catalog matches for the shopper's message. Uses the same
      * ProductFunctions search the tool-calling path uses, so the assistant
@@ -72,7 +88,7 @@ class AssistantContextService
      */
     private function catalogContext(string $message): ?string
     {
-        $terms = array_slice($this->knowledge->keywords($message), 0, 3);
+        $terms = array_slice($this->keywords($message), 0, 3);
         if ($terms === []) {
             return null;
         }

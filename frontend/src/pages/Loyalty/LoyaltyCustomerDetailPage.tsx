@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
+import { formatCurrency, getCurrencySymbol } from '@/lib/utils'
 
 export function LoyaltyCustomerDetailPage() {
   const { customerId } = useParams<{ customerId: string }>()
@@ -400,7 +401,7 @@ export function LoyaltyCustomerDetailPage() {
                 </Button>
               </div>
               <p className="text-sm text-muted-foreground">
-                100 points = $1 discount. Minimum 100 points required.
+                100 points = {getCurrencySymbol()}1 discount. Minimum 100 points required.
               </p>
             </CardContent>
           </Card>
@@ -488,7 +489,7 @@ export function LoyaltyCustomerDetailPage() {
                         <TableCell>
                           {redemption.type === 'reward'
                             ? redemption.reward?.name || 'Reward'
-                            : `Discount: $${redemption.discount_amount}`}
+                            : `Discount: ${formatCurrency(Number(redemption.discount_amount) || 0)}`}
                         </TableCell>
                         <TableCell className="text-right">{redemption.points_used.toLocaleString()}</TableCell>
                         <TableCell>

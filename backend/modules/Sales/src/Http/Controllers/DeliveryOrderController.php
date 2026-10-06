@@ -496,6 +496,8 @@ class DeliveryOrderController extends Controller
             'invoice',
             'invoices:id,invoice_number,invoice_date,due_date,total,balance,status,lifecycle_status',
             'quotation',
+            // Issue #461: partial returns recorded against this delivery.
+            'returns.lines',
         ]);
 
         // Issue #462: a user must not read another legal entity's delivery order.
@@ -1193,8 +1195,29 @@ class DeliveryOrderController extends Controller
 
         $beforeStatus = $deliveryOrder->status;
 
+        // Issue #461 (DO9): completion may record the ACTUAL delivered
+        // quantity per line (a short shipment). Lines omitted from the payload
+        // keep their full planned quantity; a quantity above the planned one is
+        // refused by the service and surfaces as 422 below.
+        $validated = $request->validate([
+            'lines' => 'nullable|array',
+            'lines.*.line_id' => 'required_with:lines|integer',
+            'lines.*.quantity_delivered' => 'required_with:lines|numeric|min:0',
+            'short_close_reason' => 'nullable|string|max:500',
+        ]);
+
+        $lineQuantities = [];
+        foreach ($validated['lines'] ?? [] as $row) {
+            $lineQuantities[(int) $row['line_id']] = (float) $row['quantity_delivered'];
+        }
+
         try {
-            $deliveryOrder = $this->deliveryService->completeDeliveryOrder($deliveryOrder);
+            $deliveryOrder = $this->deliveryService->completeDeliveryOrder(
+                $deliveryOrder,
+                null,
+                $lineQuantities,
+                $validated['short_close_reason'] ?? null,
+            );
 
             $this->writeAuditLog(
                 'delivery_order_completed',
@@ -1208,6 +1231,61 @@ class DeliveryOrderController extends Controller
                 'message' => 'Delivery order completed — stock deducted',
                 'data' => $deliveryOrder,
             ]);
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+    }
+
+    /**
+     * Issue #461 (DO9): record a partial customer return against a completed
+     * delivery order. Restocks exactly what came back through the movement
+     * path and (optionally) drafts a credit note. The delivery order stays
+     * `done` — this is not a reversal.
+     */
+    public function recordReturn(Request $request, $id)
+    {
+        $deliveryOrder = $this->findScopedDeliveryOrder($request, $id)?->load('lines.product');
+
+        if (! $deliveryOrder) {
+            return response()->json(['message' => 'Delivery order not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'lines' => 'required|array|min:1',
+            'lines.*.delivery_order_line_id' => 'required|integer',
+            'lines.*.quantity' => 'required|numeric|min:0.0001',
+            'lines.*.reason' => 'nullable|string|max:500',
+            'lines.*.lot_number' => 'nullable|string|max:100',
+            'lines.*.batch_number' => 'nullable|string|max:100',
+            'lines.*.expiry_date' => 'nullable|date',
+            'lines.*.product_batch_id' => 'nullable|integer',
+            'lines.*.product_serial_id' => 'nullable|integer',
+            'lines.*.serial_numbers' => 'nullable|array',
+            'lines.*.serial_numbers.*' => 'string|max:255',
+            'reason' => 'nullable|string|max:500',
+            'notes' => 'nullable|string|max:2000',
+            'create_credit_note_draft' => 'nullable|boolean',
+        ]);
+
+        try {
+            $return = $this->deliveryService->recordDeliveryOrderReturn($deliveryOrder, $validated);
+
+            $this->writeAuditLog(
+                'delivery_order_return_recorded',
+                (int) $deliveryOrder->id,
+                ['status' => $deliveryOrder->status],
+                ['status' => $deliveryOrder->status, 'return_number' => $return->return_number],
+                [
+                    'delivery_order_number' => $deliveryOrder->delivery_order_number,
+                    'return_number' => $return->return_number,
+                    'credit_note_id' => $return->credit_note_id,
+                ],
+            );
+
+            return response()->json([
+                'message' => "Return {$return->return_number} recorded — stock restocked",
+                'data' => $return,
+            ], 201);
         } catch (\Exception $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }

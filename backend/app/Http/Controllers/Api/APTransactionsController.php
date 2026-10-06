@@ -3,12 +3,31 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\DocumentCurrencyResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class APTransactionsController extends Controller
 {
+    private function resolveBalanceCurrency(int $vendorId): string
+    {
+        $currencies = DB::table('ap_transactions')
+            ->where('vendor_id', $vendorId)
+            ->whereNotNull('currency_code')
+            ->distinct()
+            ->pluck('currency_code')
+            ->filter(fn ($code) => is_string($code) && trim($code) !== '')
+            ->unique();
+
+        if ($currencies->count() === 1) {
+            return strtoupper(trim((string) $currencies->first()));
+        }
+
+        return DocumentCurrencyResolver::baseFor();
+    }
+
+
     /**
      * List AP transactions with filtering and running balance
      *
@@ -147,7 +166,7 @@ class APTransactionsController extends Controller
                 'balance' => round((float) ($balance ?? 0), 2),
                 'total_bills' => round((float) ($totalBills ?? 0), 2),
                 'total_payments' => round((float) ($totalPayments ?? 0), 2),
-                'currency_code' => 'USD',
+                'currency_code' => $this->resolveBalanceCurrency((int) $vendorId),
             ]);
 
         } catch (\Exception $e) {

@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import api from '@/lib/api';
+import { formatCurrency } from '@/lib/utils';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 
 interface AgingData {
@@ -59,19 +60,12 @@ interface ComparisonResponse {
   generated_at: string;
 }
 
-const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount || 0);
-};
-
-const DeltaIndicator: React.FC<{ value: number; showSign?: boolean }> = ({ value, showSign = true }) => {
+const DeltaIndicator: React.FC<{ value: number; showSign?: boolean; currency?: string }> = ({ value, showSign = true, currency }) => {
   if (value === 0) return <span className="text-muted-foreground">—</span>;
   const isPositive = value > 0;
   return (
     <span className={`text-xs font-medium ${isPositive ? 'text-red-600' : 'text-green-600'}`}>
-      {isPositive ? '▲' : '▼'} {isPositive && showSign ? '+' : ''}{formatCurrency(value)}
+      {isPositive ? '▲' : '▼'} {isPositive && showSign ? '+' : ''}{formatCurrency(value, currency || undefined)}
     </span>
   );
 };
@@ -282,10 +276,10 @@ export const CustomerStatementComparison: React.FC = () => {
                     <TableCell className="font-medium">Total Outstanding ({comparison.currency ?? 'MYR'})</TableCell>
                     {comparison.comparisons.map((comp, i) => (
                       <TableCell key={comp.as_of_date} className="text-right">
-                        <div className="font-medium">{formatCurrency(comp.total_outstanding)}</div>
+                        <div className="font-medium">{formatCurrency(comp.total_outstanding, comparison.currency || undefined)}</div>
                         {i > 0 && comparison.deltas[i - 1] && (
                           <div className="mt-1">
-                            <DeltaIndicator value={comparison.deltas[i - 1].outstanding_change} />
+                            <DeltaIndicator value={comparison.deltas[i - 1].outstanding_change} currency={comparison.currency || undefined} />
                             <span className="ml-1">
                               <DeltaPercent value={comparison.deltas[i - 1].outstanding_change_pct} />
                             </span>
@@ -311,7 +305,7 @@ export const CustomerStatementComparison: React.FC = () => {
                     <TableCell className="font-bold">Total Invoice Value ({comparison.currency ?? 'MYR'})</TableCell>
                     {comparison.comparisons.map((comp) => (
                       <TableCell key={comp.as_of_date} className="text-right font-bold">
-                        {formatCurrency(comp.total_invoice_value)}
+                        {formatCurrency(comp.total_invoice_value, comparison.currency || undefined)}
                       </TableCell>
                     ))}
                   </TableRow>
@@ -349,10 +343,10 @@ export const CustomerStatementComparison: React.FC = () => {
                       <TableCell className="font-medium">{label}</TableCell>
                       {comparison.comparisons.map((comp, i) => (
                         <TableCell key={comp.as_of_date} className="text-right">
-                          <div>{formatCurrency((comp.aging as any)[key])}</div>
+                          <div>{formatCurrency((comp.aging as any)[key], comparison.currency || undefined)}</div>
                           {i > 0 && comparison.deltas[i - 1] && (
                             <div className="mt-1">
-                              <DeltaIndicator value={(comparison.deltas[i - 1].aging_changes as any)[key]} />
+                              <DeltaIndicator value={(comparison.deltas[i - 1].aging_changes as any)[key]} currency={comparison.currency || undefined} />
                             </div>
                           )}
                         </TableCell>
@@ -363,7 +357,7 @@ export const CustomerStatementComparison: React.FC = () => {
                     <TableCell>Total</TableCell>
                     {comparison.comparisons.map((comp) => (
                       <TableCell key={comp.as_of_date} className="text-right">
-                        {formatCurrency(comp.total_outstanding)}
+                        {formatCurrency(comp.total_outstanding, comparison.currency || undefined)}
                       </TableCell>
                     ))}
                   </TableRow>

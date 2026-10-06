@@ -114,6 +114,10 @@ class PaymentAllocationService
                 $this->invoiceService->applyAllocatedPayment($invoice, $amount, $payment);
             }
 
+            // ACC-005B: keep the settlement overlay in step with the
+            // authoritative application ledger.
+            app(SettlementRecognitionService::class)->recognisePayment($payment->fresh());
+
             return $payment->fresh(['applications.invoice']);
         });
     }
@@ -159,5 +163,8 @@ class PaymentAllocationService
 
             $application->update(['reversed_at' => now()]);
         }
+
+        // ACC-005B: a correction/reversal must be visible on the settlement too.
+        app(SettlementRecognitionService::class)->recognisePayment($payment->fresh());
     }
 }

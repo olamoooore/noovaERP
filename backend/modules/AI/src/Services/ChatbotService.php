@@ -166,14 +166,10 @@ class ChatbotService
      */
     protected function identityAnswer(string $message): string
     {
-        $askingProvider = (bool) preg_match('/model|llama|gpt|ollama|cerebras/i', mb_strtolower($message));
+        $askingProvider = (bool) preg_match('/model|llama|gpt|ollama/i', mb_strtolower($message));
 
         if ($askingProvider) {
-            $providerLabel = $this->ollama->provider() === 'cerebras'
-                ? 'running on Cerebras cloud'
-                : 'running locally on your system';
-
-            return "I'm the NoovaERP AI Assistant, powered by ".$this->ollama->model().", {$providerLabel}.";
+            return "I'm the NoovaERP AI Assistant, powered by ".$this->ollama->model().', running locally on your system.';
         }
 
         return "I'm the NoovaERP AI Assistant — your NoovaERP copilot. I can help with orders, invoices, loyalty points, products, stock, accounting and more.";
@@ -268,11 +264,7 @@ class ChatbotService
         $aiPatterns = ['model', 'ai', 'llama', 'gpt', 'who are you', 'what are you'];
         foreach ($aiPatterns as $pattern) {
             if (str_contains($message, $pattern)) {
-                $providerLabel = $this->ollama->provider() === 'cerebras'
-            ? 'running on Cerebras cloud'
-            : 'running locally on your system';
-
-                return "I'm powered by ".$this->ollama->model().', '.$providerLabel.'. How can I help with your orders or loyalty points?';
+                return "I'm powered by ".$this->ollama->model().', running locally on your system. How can I help with your orders or loyalty points?';
             }
         }
 

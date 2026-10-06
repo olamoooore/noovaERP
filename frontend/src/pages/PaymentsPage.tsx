@@ -97,7 +97,7 @@ export function PaymentsPage() {
                       )}
                     </TableCell>
                     <TableCell className="font-semibold">
-                      {formatCurrency(transaction.amount)} {transaction.currency}
+                      {formatCurrency(transaction.amount, transaction.currency || undefined)}
                     </TableCell>
                     <TableCell>{getStatusBadge(transaction.status)}</TableCell>
                     <TableCell className="text-right">

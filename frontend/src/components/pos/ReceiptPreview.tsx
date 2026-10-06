@@ -1,6 +1,7 @@
 import { Card } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { QRCodeGenerator } from './QRCodeGenerator'
+import { formatCurrency } from '@/lib/utils'
 
 interface ReceiptItem {
   name: string
@@ -194,9 +195,9 @@ export function ReceiptPreview({ data, loading }: ReceiptPreviewProps) {
                 </div>
                 <div className={`flex justify-between ${fontSizeDetailClasses[fontSize]}`}>
                   <span>
-                    {item.quantity} x ${price.toFixed(2)}
+                    {item.quantity} x {formatCurrency(price)}
                   </span>
-                  <span>${total.toFixed(2)}</span>
+                  <span>{formatCurrency(total)}</span>
                 </div>
               </div>
             )
@@ -209,24 +210,24 @@ export function ReceiptPreview({ data, loading }: ReceiptPreviewProps) {
         <div className={`${lineSpacingClasses[lineSpacing]} ${fontSizeDetailClasses[fontSize]}`}>
           <div className="flex justify-between">
             <span>Subtotal:</span>
-            <span>${data.subtotal.toFixed(2)}</span>
+            <span>{formatCurrency(Number(data.subtotal) || 0)}</span>
           </div>
           {showTaxBreakdown && (
             <div className="flex justify-between">
               <span>Tax:</span>
-              <span>${data.tax.toFixed(2)}</span>
+              <span>{formatCurrency(Number(data.tax) || 0)}</span>
             </div>
           )}
           {data.discount > 0 && (
             <div className="flex justify-between text-destructive">
               <span>Discount:</span>
-              <span>-${data.discount.toFixed(2)}</span>
+              <span>-{formatCurrency(Number(data.discount) || 0)}</span>
             </div>
           )}
           <Separator className="my-1" />
           <div className={`flex justify-between font-bold ${fontSizeClasses[fontSize]}`}>
             <span>TOTAL:</span>
-            <span>${data.total.toFixed(2)}</span>
+            <span>{formatCurrency(Number(data.total) || 0)}</span>
           </div>
         </div>
 
@@ -240,12 +241,12 @@ export function ReceiptPreview({ data, loading }: ReceiptPreviewProps) {
           </div>
           <div className="flex justify-between">
             <span>Amount:</span>
-            <span>${data.payment_amount.toFixed(2)}</span>
+            <span>{formatCurrency(Number(data.payment_amount) || 0)}</span>
           </div>
           {data.change > 0 && (
             <div className="flex justify-between font-bold">
               <span>Change:</span>
-              <span>${data.change.toFixed(2)}</span>
+              <span>{formatCurrency(Number(data.change) || 0)}</span>
             </div>
           )}
         </div>

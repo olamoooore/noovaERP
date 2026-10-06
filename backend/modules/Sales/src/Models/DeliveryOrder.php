@@ -16,6 +16,8 @@ class DeliveryOrder extends Model implements WorkflowSubject
     protected $fillable = [
         'delivery_order_number',
         'sales_order_id',
+        // Issue #461: the short delivery this DO is a back-order of.
+        'backorder_of_id',
         'customer_id',
         // Issue #462: the legal entity that owns this document (inherited).
         'legal_entity_id',
@@ -47,6 +49,8 @@ class DeliveryOrder extends Model implements WorkflowSubject
         'completed_at',
         'reversed_at',
         'reversal_reason',
+        // Issue #461: why the undelivered remainder was cancelled (cancel policy).
+        'short_close_reason',
         'source',
         'external_reference',
         'po_number',
@@ -185,6 +189,31 @@ class DeliveryOrder extends Model implements WorkflowSubject
             ->orderBy('id');
     }
 
+    /**
+     * Issue #461: the back-order DO this document was created from (a short
+     * delivery left a remainder behind).
+     */
+    public function backorderOf(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'backorder_of_id');
+    }
+
+    /**
+     * Issue #461: back-order DOs split off this short delivery.
+     */
+    public function backorders(): HasMany
+    {
+        return $this->hasMany(self::class, 'backorder_of_id');
+    }
+
+    /**
+     * Issue #461: partial customer returns recorded against this delivery.
+     */
+    public function returns(): HasMany
+    {
+        return $this->hasMany(DeliveryOrderReturn::class);
+    }
+
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(\App\Models\User::class, 'created_by');
@@ -227,7 +256,9 @@ class DeliveryOrder extends Model implements WorkflowSubject
 
     /**
      * Quantity of a line that can still be invoiced: delivered (or ordered when
-     * nothing has shipped) minus whatever earlier invoices already billed.
+     * nothing has shipped) minus whatever earlier invoices already billed and
+     * minus what customers have since returned — Issue #461, returned goods are
+     * back on the shelf and must not be billed again.
      */
     public function invoiceableQuantityForLine(DeliveryOrderLine $line): float
     {
@@ -236,7 +267,8 @@ class DeliveryOrder extends Model implements WorkflowSubject
         }
 
         $billable = (float) ($line->quantity_delivered ?: $line->quantity_ordered)
-            - (float) $line->quantity_invoiced;
+            - (float) $line->quantity_invoiced
+            - (float) $line->quantity_returned;
 
         return round(max($billable, 0), 4);
     }

@@ -85,12 +85,12 @@ const METHOD_LABELS: Record<string, string> = {
 }
 
 const CASH_DENOMINATIONS = [
-  { label: '$100', value: 100, type: 'note' as const },
-  { label: '$50', value: 50, type: 'note' as const },
-  { label: '$10', value: 10, type: 'note' as const },
-  { label: '$5', value: 5, type: 'note' as const },
-  { label: '$2', value: 2, type: 'note' as const },
-  { label: '$1', value: 1, type: 'coin' as const },
+  { label: '100', value: 100, type: 'note' as const },
+  { label: '50', value: 50, type: 'note' as const },
+  { label: '10', value: 10, type: 'note' as const },
+  { label: '5', value: 5, type: 'note' as const },
+  { label: '2', value: 2, type: 'note' as const },
+  { label: '1', value: 1, type: 'coin' as const },
   { label: '50¢', value: 0.5, type: 'coin' as const },
   { label: '20¢', value: 0.2, type: 'coin' as const },
   { label: '10¢', value: 0.1, type: 'coin' as const },
@@ -2813,7 +2813,7 @@ export function POSTerminal() {
                                   const rowTotal = qty * denom.value
                                   return (
                                     <div key={denom.label} className="grid grid-cols-[60px_1fr_84px] items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 p-1.5">
-                                      <span className="text-xs font-semibold text-slate-700">{denom.label}</span>
+                                      <span className="text-xs font-semibold text-slate-700">{denom.value >= 1 ? `${getCurrencySymbol()}${denom.value}` : denom.label}</span>
                                       <div className="grid grid-cols-[26px_1fr_26px] items-center gap-1">
                                         <Button type="button" variant="outline" className="h-7 w-7 p-0" onClick={() => adjustCashDenominationCount(denom.label, -1)}>
                                           -
@@ -2845,7 +2845,7 @@ export function POSTerminal() {
                                   const rowTotal = qty * denom.value
                                   return (
                                     <div key={denom.label} className="grid grid-cols-[60px_1fr_84px] items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 p-1.5">
-                                      <span className="text-xs font-semibold text-slate-700">{denom.label}</span>
+                                      <span className="text-xs font-semibold text-slate-700">{denom.value >= 1 ? `${getCurrencySymbol()}${denom.value}` : denom.label}</span>
                                       <div className="grid grid-cols-[26px_1fr_26px] items-center gap-1">
                                         <Button type="button" variant="outline" className="h-7 w-7 p-0" onClick={() => adjustCashDenominationCount(denom.label, -1)}>
                                           -

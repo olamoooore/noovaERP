@@ -8,6 +8,7 @@ import { BarChart } from '@/components/charts/BarChart';
 import { PieChart } from '@/components/charts/PieChart';
 import reportApi from '@/lib/reportApi';
 import api from '@/lib/api';
+import { formatCurrency } from '@/lib/utils';
 import type { FinancialDashboardData } from '@/types/reports';
 
 /**
@@ -163,13 +164,6 @@ export const FinancialDashboard: React.FC = () => {
       </div>
     );
   }
-
-  const formatCurrency = (value: number) => {
-    return `${value.toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
-  };
 
   const profitMargin = data
     ? ((data.profit_loss_summary.net_profit / data.profit_loss_summary.revenue) * 100).toFixed(1)

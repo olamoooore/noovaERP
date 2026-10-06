@@ -443,7 +443,7 @@ export function AIChatPage() {
                 <div>
                   <p className="text-sm font-medium">AI settings have moved</p>
                   <p className="text-xs text-muted-foreground">
-                    Provider, model and API key (BYOK — Ollama local or Cerebras cloud) are configured
+                    The local model is configured
                     under Settings → General → AI Configuration.
                   </p>
                 </div>

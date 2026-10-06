@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Icon } from '@iconify/react'
 import { QRParsedData } from '@/lib/iotApi'
+import { formatCurrency } from '@/lib/utils'
 
 interface QRScanResultProps {
   rawData: string
@@ -71,7 +72,7 @@ export function QRScanResult({ rawData, parsed, timestamp, onAction, onCopy }: Q
               {parsed.data.price && (
                 <div className="flex justify-between p-2 bg-background rounded">
                   <span className="text-muted-foreground">Price:</span>
-                  <span className="font-mono font-medium">${parsed.data.price}</span>
+                  <span className="font-mono font-medium">{formatCurrency(Number(parsed.data.price) || 0)}</span>
                 </div>
               )}
             </div>

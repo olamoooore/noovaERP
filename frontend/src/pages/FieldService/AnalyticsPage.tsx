@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Pagination } from '@/components/ui/Pagination'
 import fieldServiceApi, { type WorkOrderStatus } from '@/lib/fieldServiceApi'
+import { formatCurrency } from '@/lib/utils'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -320,7 +321,7 @@ export function AnalyticsPage() {
               <KpiCard label="Invoiced" value={jobsData.summary.invoiced} icon="solar:bill-list-bold-duotone" />
               <KpiCard
                 label="Revenue"
-                value={`$${kpiFormat(jobsData.summary.revenue ?? 0)}`}
+                value={formatCurrency(Number(jobsData.summary.revenue) || 0)}
                 icon="solar:dollar-minimalistic-bold-duotone"
               />
             </div>
@@ -361,7 +362,7 @@ export function AnalyticsPage() {
                         <td className="px-4 py-2.5 whitespace-nowrap text-xs">
                           {wo.scheduled_start ? new Date(wo.scheduled_start).toLocaleDateString('en-GB') : '—'}
                         </td>
-                        <td className="px-4 py-2.5 tabular-nums">${Number(wo.total_amount ?? 0).toFixed(2)}</td>
+                        <td className="px-4 py-2.5 tabular-nums">{formatCurrency(Number(wo.total_amount) || 0)}</td>
                       </tr>
                     ))
                   )}
@@ -434,7 +435,7 @@ export function AnalyticsPage() {
                           <td className="px-4 py-2.5 font-medium">{t.name}</td>
                           <td className="px-4 py-2.5">{t.completed}</td>
                           <td className="px-4 py-2.5">{t.avg_hours?.toFixed(1) ?? '—'}h</td>
-                          <td className="px-4 py-2.5">${Number(t.revenue ?? 0).toFixed(2)}</td>
+                          <td className="px-4 py-2.5">{formatCurrency(Number(t.revenue) || 0)}</td>
                           <td className="px-4 py-2.5">
                             {t.rating ? (
                               <span className="flex items-center gap-1">
@@ -469,8 +470,8 @@ export function AnalyticsPage() {
                     <LineChart data={revenueDailyData} margin={{ left: 0, right: 16 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} />
                       <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={d => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} />
-                      <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `$${kpiFormat(v)}`} />
-                      <Tooltip formatter={(v: unknown) => [`$${(v as number).toFixed(2)}`, 'Revenue']} />
+                      <YAxis tick={{ fontSize: 11 }} tickFormatter={v => formatCurrency(Number(v) || 0)} />
+                      <Tooltip formatter={(v: unknown) => [formatCurrency(Number(v) || 0), 'Revenue']} />
                       <Line type="monotone" dataKey="revenue" stroke="#8b5cf6" strokeWidth={2} dot={false} />
                     </LineChart>
                   </ResponsiveContainer>

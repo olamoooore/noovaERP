@@ -6,6 +6,7 @@ import { Calendar, MapPin, Search, Ticket, Users, Loader2, Settings, Sparkles, A
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchPublicEvents } from '@/storefront/lib/api';
+import { formatCurrency } from '@/lib/utils';
 import { storefrontRoutes } from '@/storefront/lib/paths';
 
 /**
@@ -163,7 +164,7 @@ const BrowseEventsPage: React.FC = () => {
 
                   <div className="flex items-center justify-between gap-4">
                     <span className="font-bold text-xl text-stone-900">
-                      {event.price === 0 ? 'FREE' : `SGD ${Number(event.price).toFixed(2)}`}
+                      {event.price === 0 ? 'FREE' : formatCurrency(Number(event.price) || 0)}
                     </span>
                     <Link to={storefrontRoutes.events}>
                       <Button size="sm" className="flex items-center gap-2 rounded-xl">

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { WorkOrderCard } from '@/components/field-service/WorkOrderCard'
 import fieldServiceApi from '@/lib/fieldServiceApi'
+import { formatCurrency } from '@/lib/utils'
 
 interface Kpis {
   open: number
@@ -26,7 +27,7 @@ export function FieldServiceDashboard() {
     { title: 'Open Work Orders',  value: kpis.open,            icon: 'solar:clipboard-list-bold-duotone',      color: 'text-blue-600',   bg: 'bg-blue-50' },
     { title: 'In Progress',       value: kpis.in_progress,     icon: 'solar:running-bold-duotone',             color: 'text-amber-600',  bg: 'bg-amber-50' },
     { title: 'Completed Today',   value: kpis.completed_today,icon: 'solar:check-circle-bold-duotone',         color: 'text-green-600',  bg: 'bg-green-50' },
-    { title: 'MTD Revenue',       value: `$${Number(kpis.mtd_revenue).toLocaleString('en-US', { minimumFractionDigits: 2 })}`, icon: 'solar:dollar-bold-duotone', color: 'text-purple-600', bg: 'bg-purple-50' },
+    { title: 'MTD Revenue',       value: formatCurrency(Number(kpis.mtd_revenue) || 0), icon: 'solar:dollar-bold-duotone', color: 'text-purple-600', bg: 'bg-purple-50' },
   ]
 
   return (

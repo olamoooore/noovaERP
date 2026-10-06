@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { PaymentRetry } from '@/components/payment/PaymentRetry'
 import api from '@/lib/api'
+import { formatCurrency } from '@/lib/utils'
 
 export default function PaymentSuccess() {
   const navigate = useNavigate()
@@ -209,13 +210,13 @@ export default function PaymentSuccess() {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Total Amount:</span>
                 <span className="font-medium">
-                  {invoice.currency} {invoice.total_amount}
+                  {formatCurrency(Number(invoice.total_amount) || 0, invoice.currency || undefined)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Balance:</span>
                 <span className="font-medium">
-                  {invoice.currency} {invoice.balance}
+                  {formatCurrency(Number(invoice.balance) || 0, invoice.currency || undefined)}
                 </span>
               </div>
               <div className="flex justify-between">

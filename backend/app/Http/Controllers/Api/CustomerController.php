@@ -6,9 +6,10 @@ use App\Exports\CustomersExport;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\CustomerCategory;
-use App\Models\CustomerLoyaltyProgram;
 use App\Services\CanonicalCustomerService;
 use App\Services\CustomerContactSyncService;
+use App\Services\CustomerDuplicateService;
+use App\Services\CustomerMergeService;
 use App\Services\CustomerWideSearchService;
 use App\Services\EntityAccessService;
 use App\Services\TagService;
@@ -30,6 +31,32 @@ class CustomerController extends Controller
      * (issue #432 / CU4). Editing any of these must refresh the contact.
      */
     private const CONTACT_MIRROR_FIELDS = ['name', 'type', 'email', 'phone', 'mobile', 'website'];
+
+    /**
+     * Issue #439 (CU11): the only columns GET /customers may be ordered by.
+     * These are real `customers` columns (no relations/aggregates), covering
+     * the columns the customer list UI displays and exports.
+     */
+    private const SORTABLE_COLUMNS = [
+        'id',
+        'name',
+        'code',
+        'email',
+        'phone',
+        'mobile',
+        'company',
+        'tax_number',
+        'type',
+        'credit_limit',
+        'payment_terms',
+        'total_outstanding',
+        'total_purchases',
+        'total_orders',
+        'customer_since',
+        'is_active',
+        'created_at',
+        'updated_at',
+    ];
 
     /**
      * Issue #434 (CU6): scope a customer query to the requester's accessible
@@ -114,9 +141,17 @@ class CustomerController extends Controller
         }
 
         if ($request->boolean('has_balance')) {
+            // Issue #438 (CU10): "has balance" must mean a real open
+            // receivable, not merely "not paid and not draft" — that old test
+            // also matched voided/reversed/superseded/cancelled and fully
+            // credited invoices whose remaining balance is zero. Mirror the AR
+            // context/aging definition (AgedReceivablesService::
+            // getCustomerContext) so this filter can never disagree with the
+            // figures the user is shown.
             $query->whereHas('invoices', function ($q) {
-                $q->where('status', '!=', 'paid')
-                    ->where('status', '!=', 'draft');
+                $q->whereIn('status', ['sent', 'posted', 'partial', 'overdue'])
+                    ->where('balance', '>', 0)
+                    ->notSuperseded();
             });
         }
 
@@ -128,10 +163,14 @@ class CustomerController extends Controller
             $query->whereIn('id', $taggedIds !== [] ? $taggedIds : [-1]);
         }
 
-        // Sorting
-        $sortBy = $request->sort_by ?? 'name';
-        $sortDir = $request->sort_dir ?? 'asc';
-        $query->orderBy($sortBy, $sortDir);
+        // Sorting — issue #439 (CU11): validate against an allow-list first,
+        // so an unknown column or direction is a 422 validation error instead
+        // of an unhandled SQL/InvalidArgumentException (500).
+        $sort = $request->validate([
+            'sort_by' => ['nullable', 'string', Rule::in(self::SORTABLE_COLUMNS)],
+            'sort_dir' => ['nullable', 'string', Rule::in(['asc', 'desc'])],
+        ]);
+        $query->orderBy($sort['sort_by'] ?? 'name', $sort['sort_dir'] ?? 'asc');
 
         if ($request->boolean('ids_only')) {
             $ids = $query->pluck('id');
@@ -237,8 +276,11 @@ class CustomerController extends Controller
         );
     }
 
-    public function store(Request $request, CanonicalCustomerService $canonicalCustomers): JsonResponse
-    {
+    public function store(
+        Request $request,
+        CanonicalCustomerService $canonicalCustomers,
+        CustomerDuplicateService $duplicates,
+    ): JsonResponse {
         $validated = $request->validate([
             // Basic
             'code' => [
@@ -288,6 +330,11 @@ class CustomerController extends Controller
             'category_ids' => 'nullable|array',
             'category_ids.*' => 'exists:customer_categories,id',
 
+            // Issue #435 (CU7): tiered duplicate acknowledgement. A medium
+            // match needs a reason; a strong match needs the explicit override.
+            'duplicate_acknowledgement_reason' => 'nullable|string|max:500',
+            'allow_duplicate' => 'boolean',
+
             // Addresses array
             'addresses' => 'nullable|array',
             'addresses.*.type' => 'required|in:billing,shipping,other',
@@ -320,34 +367,54 @@ class CustomerController extends Controller
         ]);
 
         $validated = $this->normalizeCustomerIdentityFields($validated);
-        $this->ensureUniqueCustomerIdentity($validated);
+
+        // Issue #435 (CU7): tiered duplicate detection replaces the old
+        // all-or-nothing email/phone rejection.
+        $duplicateInspection = $duplicates->inspect($validated);
+        if ($blocked = $duplicateInspection->blockedResponse()) {
+            return $blocked;
+        }
+
+        $allowDuplicate = (bool) ($validated['allow_duplicate'] ?? false);
+        $acknowledgementReason = isset($validated['duplicate_acknowledgement_reason'])
+            ? (string) $validated['duplicate_acknowledgement_reason']
+            : null;
+
         $validated['price_list_id'] = Customer::normalizePriceListId($validated['price_list_id'] ?? null);
 
         // Extract relations
         $categoryIds = $validated['category_ids'] ?? [];
         $addresses = $validated['addresses'] ?? [];
         $contacts = $validated['contacts'] ?? [];
-        unset($validated['category_ids'], $validated['addresses'], $validated['contacts']);
+        unset(
+            $validated['category_ids'],
+            $validated['addresses'],
+            $validated['contacts'],
+            $validated['allow_duplicate'],
+            $validated['duplicate_acknowledgement_reason'],
+        );
 
         // Issue #433 (CU5): customer creation goes through the single canonical
         // service (SOP §4). It wraps customer + Contact Master organisation
         // contact + related records in one transaction, so a failure rolls the
         // whole operation back — no partial state.
+        //
+        // Issue #440 (CU12): the canonical service also initialises a zero
+        // balance for every active loyalty programme inside that same
+        // transaction.
         $customer = $canonicalCustomers->create($validated, [
             'category_ids' => $categoryIds,
             'addresses' => $addresses,
             'contacts' => $contacts,
         ]);
 
-        // Initialize loyalty if program exists
-        $program = CustomerLoyaltyProgram::where('is_active', true)->first();
-        if ($program) {
-            $customer->loyaltyBalances()->create([
-                'program_id' => $program->id,
-                'points_balance' => 0,
-            ]);
-        }
+        // Issue #435 (CU7): record the collisions a human accepted, so the
+        // duplicate review queue can see them.
+        $duplicates->recordAcknowledgedMatches($customer, $duplicateInspection, $allowDuplicate, $acknowledgementReason);
 
+        // Issue #440 (CU12): loyalty balances are initialised inside the
+        // canonical service's transaction for every active programme — not
+        // here after the commit.
         return response()->json(
             $customer->load(['categories', 'addresses', 'customerContacts', 'loyaltyBalances']),
             201
@@ -456,17 +523,37 @@ class CustomerController extends Controller
             // Relations
             'category_ids' => 'nullable|array',
             'category_ids.*' => 'exists:customer_categories,id',
+
+            // Issue #435 (CU7): see store().
+            'duplicate_acknowledgement_reason' => 'nullable|string|max:500',
+            'allow_duplicate' => 'boolean',
         ]);
 
         $validated = $this->normalizeCustomerIdentityFields($validated);
-        $this->ensureUniqueCustomerIdentity($validated, $customer);
+
+        // Issue #435 (CU7): tiered duplicate detection replaces the old
+        // all-or-nothing email/phone rejection.
+        $duplicateInspection = app(CustomerDuplicateService::class)->inspect($validated, $customer);
+        if ($blocked = $duplicateInspection->blockedResponse()) {
+            return $blocked;
+        }
+
+        $allowDuplicate = (bool) ($validated['allow_duplicate'] ?? false);
+        $acknowledgementReason = isset($validated['duplicate_acknowledgement_reason'])
+            ? (string) $validated['duplicate_acknowledgement_reason']
+            : null;
+
         if (array_key_exists('price_list_id', $validated)) {
             $validated['price_list_id'] = Customer::normalizePriceListId($validated['price_list_id']);
         }
 
         // Extract category IDs
         $categoryIds = $validated['category_ids'] ?? null;
-        unset($validated['category_ids']);
+        unset(
+            $validated['category_ids'],
+            $validated['allow_duplicate'],
+            $validated['duplicate_acknowledgement_reason'],
+        );
 
         // Issue #432 (CU4): the customer profile and its canonical Contact
         // Master contact are edited in the same transaction. Without this the
@@ -483,6 +570,14 @@ class CustomerController extends Controller
                 app(CustomerContactSyncService::class)->ensureOrganisationContact($customer);
             }
         });
+
+        // Issue #435 (CU7): record the collisions a human accepted.
+        app(CustomerDuplicateService::class)->recordAcknowledgedMatches(
+            $customer,
+            $duplicateInspection,
+            $allowDuplicate,
+            $acknowledgementReason,
+        );
 
         return response()->json(
             $customer->load(['categories', 'addresses', 'customerContacts', 'priceList', 'salesperson'])
@@ -941,65 +1036,57 @@ class CustomerController extends Controller
         return $validated;
     }
 
-    private function ensureUniqueCustomerIdentity(array $validated, ?Customer $ignoreCustomer = null): void
+    /**
+     * Issue #435 (CU7): merge a duplicate customer into a surviving one.
+     *
+     * The route-level merge is owned by CustomerMergeService: documents are
+     * re-pointed, the merged customer is archived (not deleted) and the
+     * ContactMergeHistory row is written through the Contact Master service.
+     */
+    public function merge(Request $request, $id, CustomerMergeService $merges): JsonResponse
     {
-        $messages = [];
+        $primary = $this->findScopedCustomer($request, $id);
 
-        $email = $validated['email'] ?? null;
-        $emailChanged = ! $ignoreCustomer
-            || (array_key_exists('email', $validated)
-                && $email !== $this->normalizeEmail($ignoreCustomer->email));
-
-        if ($email && $emailChanged) {
-            $duplicateEmail = Customer::query()
-                ->when($ignoreCustomer, fn ($query) => $query->whereKeyNot($ignoreCustomer->id))
-                ->whereRaw('LOWER(email) = ?', [$email])
-                ->first();
-
-            if ($duplicateEmail) {
-                $messages['email'][] = 'A customer with this email address already exists.';
-            }
+        if (! $primary) {
+            return $this->customerNotFound();
         }
 
-        $incomingPhones = collect(['phone', 'mobile'])
-            ->filter(function (string $field) use ($validated, $ignoreCustomer) {
-                if (empty($validated[$field])) {
-                    return false;
-                }
+        $validated = $request->validate([
+            'merged_customer_id' => 'required|integer',
+            'reason' => 'nullable|string|max:1000',
+        ]);
 
-                if (! $ignoreCustomer) {
-                    return true;
-                }
+        $merged = $this->findScopedCustomer($request, $validated['merged_customer_id']);
 
-                return array_key_exists($field, $validated)
-                    && $validated[$field] !== $this->normalizePhone($ignoreCustomer->{$field});
-            })
-            ->mapWithKeys(fn (string $field) => [$field => $validated[$field]]);
-
-        if ($incomingPhones->isNotEmpty()) {
-            $candidates = Customer::query()
-                ->select(['id', 'phone', 'mobile'])
-                ->when($ignoreCustomer, fn ($query) => $query->whereKeyNot($ignoreCustomer->id))
-                ->where(function ($query) {
-                    $query->whereNotNull('phone')->orWhereNotNull('mobile');
-                })
-                ->get();
-
-            foreach ($incomingPhones as $field => $phone) {
-                $duplicatePhone = $candidates->first(function (Customer $candidate) use ($phone) {
-                    return $phone === $this->normalizePhone($candidate->phone)
-                        || $phone === $this->normalizePhone($candidate->mobile);
-                });
-
-                if ($duplicatePhone) {
-                    $messages[$field][] = 'A customer with this phone number already exists.';
-                }
-            }
+        if (! $merged) {
+            return $this->customerNotFound();
         }
 
-        if (! empty($messages)) {
-            throw ValidationException::withMessages($messages);
+        if ((int) $primary->id === (int) $merged->id) {
+            throw ValidationException::withMessages([
+                'merged_customer_id' => ['A customer cannot be merged into itself.'],
+            ]);
         }
+
+        if ($merges->isAlreadyMerged($merged)) {
+            throw ValidationException::withMessages([
+                'merged_customer_id' => ['This customer has already been merged.'],
+            ]);
+        }
+
+        $summary = $merges->merge(
+            $primary,
+            $merged,
+            (int) $request->user()->id,
+            $validated['reason'] ?? null,
+        );
+
+        return response()->json([
+            'message' => 'Customer merged successfully',
+            'primary_customer_id' => $summary['primary_customer_id'],
+            'merged_customer_id' => $summary['merged_customer_id'],
+            'moved' => $summary['moved'],
+        ]);
     }
 
     private function normalizeEmail(?string $value): ?string

@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
+import { formatCurrency } from '@/lib/utils'
 import iotApi, { DeviceConfiguration, ScanResult, BarcodeScannedEvent } from '@/lib/iotApi'
 import { QRScanResult } from './QRScanResult'
 import { PalmVeinResult } from './PalmVeinResult'
@@ -578,7 +579,7 @@ export function ScannerControl({ device, agentId, agentOnline }: ScannerControlP
                       {quickScanResult.parsed.data.price && (
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Price:</span>
-                          <span className="font-medium">${quickScanResult.parsed.data.price}</span>
+                          <span className="font-medium">{formatCurrency(Number(quickScanResult.parsed.data.price) || 0)}</span>
                         </div>
                       )}
                     </div>

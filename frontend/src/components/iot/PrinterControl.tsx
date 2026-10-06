@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
+import { formatCurrency } from '@/lib/utils'
 import iotApi, { DeviceConfiguration, PrintJob } from '@/lib/iotApi'
 
 interface PrinterControlProps {
@@ -498,21 +499,21 @@ export function PrinterControl({ device, agentId, agentOnline }: PrinterControlP
                 {receiptItems.map((item, idx) => (
                   <div key={idx} className="flex justify-between text-sm">
                     <span>{item.name} x{item.quantity}</span>
-                    <span className="font-medium">${(item.quantity * item.price).toFixed(2)}</span>
+                    <span className="font-medium">{formatCurrency(Number(item.quantity * item.price) || 0)}</span>
                   </div>
                 ))}
                 <div className="border-t pt-2 mt-2">
                   <div className="flex justify-between text-sm">
                     <span>Subtotal:</span>
-                    <span>${receiptItems.reduce((sum, item) => sum + (item.quantity * item.price), 0).toFixed(2)}</span>
+                    <span>{formatCurrency(Number(receiptItems.reduce((sum, item) => sum + (item.quantity * item.price), 0)) || 0)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span>Tax (10%):</span>
-                    <span>${(receiptItems.reduce((sum, item) => sum + (item.quantity * item.price), 0) * 0.1).toFixed(2)}</span>
+                    <span>{formatCurrency(Number(receiptItems.reduce((sum, item) => sum + (item.quantity * item.price), 0) * 0.1) || 0)}</span>
                   </div>
                   <div className="flex justify-between font-bold">
                     <span>Total:</span>
-                    <span>${(receiptItems.reduce((sum, item) => sum + (item.quantity * item.price), 0) * 1.1).toFixed(2)}</span>
+                    <span>{formatCurrency(Number(receiptItems.reduce((sum, item) => sum + (item.quantity * item.price), 0) * 1.1) || 0)}</span>
                   </div>
                 </div>
               </div>

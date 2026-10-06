@@ -28,7 +28,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 import api from '@/lib/api';
 
 interface CreateVendorCreditNoteDialogProps {
@@ -45,6 +45,7 @@ interface Bill {
   total: number;
   balance: number;
   status: string;
+  currency_code?: string;
   lines: BillLine[];
 }
 
@@ -140,7 +141,7 @@ export default function CreateVendorCreditNoteDialog({ onClose, onSuccess, billI
     if (!selectedBill) return 'Select a bill...';
     const vendorName = selectedBill.vendor?.name ?? 'Unknown';
     const total = Number(selectedBill.total) || 0;
-    return `${selectedBill.bill_number} — ${vendorName} ($${total.toFixed(2)})`;
+    return `${selectedBill.bill_number} — ${vendorName} (${formatCurrency(total, selectedBill.currency_code || undefined)})`;
   };
 
   // Filter bills locally by search query
@@ -264,7 +265,7 @@ export default function CreateVendorCreditNoteDialog({ onClose, onSuccess, billI
                               <div className="flex flex-col">
                                 <span className="font-medium">{bill.bill_number}</span>
                                 <span className="text-xs text-muted-foreground">
-                                  {bill.vendor?.name ?? 'Unknown'} · ${(Number(bill.total) || 0).toFixed(2)}
+                                  {bill.vendor?.name ?? 'Unknown'} · {formatCurrency(Number(bill.total) || 0, bill.currency_code || undefined)}
                                 </span>
                               </div>
                               <div className="flex items-center gap-2">
@@ -327,7 +328,7 @@ export default function CreateVendorCreditNoteDialog({ onClose, onSuccess, billI
                 <div className="mb-4 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-destructive">
                   <Icon icon="solar:danger-triangle-bold" className="h-5 w-5 shrink-0" />
                   <p className="text-sm">
-                    <strong>Warning:</strong> Credit note total (${creditNoteTotal.toFixed(2)}) exceeds bill total (${billTotal.toFixed(2)}). The bill's remaining balance may not cover this amount.
+                    <strong>Warning:</strong> Credit note total ({formatCurrency(creditNoteTotal, selectedBill?.currency_code || undefined)}) exceeds bill total ({formatCurrency(billTotal, selectedBill?.currency_code || undefined)}). The bill's remaining balance may not cover this amount.
                   </p>
                 </div>
               )}
@@ -369,7 +370,7 @@ export default function CreateVendorCreditNoteDialog({ onClose, onSuccess, billI
                         </td>
                         <td className="px-4 py-2 text-sm">{line.tax_rate}%</td>
                         <td className="px-4 py-2 text-sm font-medium">
-                          ${calculateLineTotal(line).toFixed(2)}
+                          {formatCurrency(calculateLineTotal(line), selectedBill?.currency_code || undefined)}
                         </td>
                       </tr>
                     ))}
@@ -377,11 +378,11 @@ export default function CreateVendorCreditNoteDialog({ onClose, onSuccess, billI
                   <tfoot className="bg-muted/50">
                     <tr>
                       <td colSpan={4} className="px-4 py-2 text-right text-sm text-muted-foreground">Bill Total:</td>
-                      <td className="px-4 py-2 text-sm font-medium">${billTotal.toFixed(2)}</td>
+                      <td className="px-4 py-2 text-sm font-medium">{formatCurrency(billTotal, selectedBill?.currency_code || undefined)}</td>
                     </tr>
                     <tr>
                       <td colSpan={4} className="px-4 py-2 text-right font-semibold">Credit Note Total:</td>
-                      <td className={cn('px-4 py-2 font-bold', exceedsBill && 'text-destructive')}>${creditNoteTotal.toFixed(2)}</td>
+                      <td className={cn('px-4 py-2 font-bold', exceedsBill && 'text-destructive')}>{formatCurrency(creditNoteTotal, selectedBill?.currency_code || undefined)}</td>
                     </tr>
                   </tfoot>
                 </table>

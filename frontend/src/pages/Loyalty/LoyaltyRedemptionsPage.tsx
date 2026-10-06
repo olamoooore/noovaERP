@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
+import { formatCurrency } from '@/lib/utils'
 
 export function LoyaltyRedemptionsPage() {
   const { toast } = useToast()
@@ -245,7 +246,7 @@ export function LoyaltyRedemptionsPage() {
                       <TableCell>
                         {redemption.type === 'reward'
                           ? redemption.reward?.name || 'Reward'
-                          : `Discount: $${redemption.discount_amount}`}
+                          : `Discount: ${formatCurrency(Number(redemption.discount_amount) || 0)}`}
                       </TableCell>
                       <TableCell className="text-right font-semibold">
                         {redemption.points_used.toLocaleString()}

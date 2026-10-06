@@ -19,7 +19,7 @@ use Modules\AI\Services\ChatbotService;
  * — every poll/send is bound to it so guests can't address each other's
  * conversations. Replies run through the same ChatbotService →
  * ProcessAIMessage → OllamaService pipeline as the staff chatbot, so the
- * tenant's provider/model/BYOK selection applies automatically.
+ * tenant's local model selection applies automatically.
  */
 class StorefrontAssistantController extends Controller
 {

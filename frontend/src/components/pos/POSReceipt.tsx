@@ -1,4 +1,5 @@
 import { forwardRef } from 'react'
+import { formatCurrency, getCurrencySymbol } from '@/lib/utils'
 
 interface ReceiptItem {
   name: string
@@ -61,8 +62,7 @@ interface POSReceiptProps {
 export const POSReceipt = forwardRef<HTMLDivElement, POSReceiptProps>(
   ({ data, businessName = 'Point of Sale', businessAddresses, businessAddress, businessPhone, whatsapp, instagram, facebook, businessWebsite, gstRegNo, footerMessage }, ref) => {
 
-    const fmt = (n: number) =>
-      n.toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    const fmt = (n: number) => formatCurrency(Number(n) || 0)
 
     const formatDate = (date: Date) => {
       const m = date.toLocaleString('en-US', { month: 'short' })
@@ -85,7 +85,7 @@ export const POSReceipt = forwardRef<HTMLDivElement, POSReceiptProps>(
     const primaryQrUrl = `https://quickchart.io/qr?size=120&text=${encodeURIComponent(qrPayload)}`
     const fallbackQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qrPayload)}`
 
-    const paymentLabel = `${(data.paymentMethod || 'CASH').toUpperCase()} SG$`
+    const paymentLabel = `${(data.paymentMethod || 'CASH').toUpperCase()} ${getCurrencySymbol()}`
     const itemQty = data.items.reduce((s, i) => s + i.quantity, 0)
     const taxRate = data.taxAmount > 0 && data.subtotal > 0
       ? Math.round(data.taxAmount / (data.total - data.taxAmount) * 100)

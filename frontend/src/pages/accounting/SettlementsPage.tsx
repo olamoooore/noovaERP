@@ -31,10 +31,21 @@ import { SortableHead } from '@/components/ui/SortableHead';
 import { useSort } from '@/hooks/useSort';
 
 const STATE_COLORS: Record<string, string> = {
-  pending: 'bg-gray-100 text-gray-800',
-  partially_allocated: 'bg-yellow-100 text-yellow-800',
-  fully_allocated: 'bg-green-100 text-green-800',
-  reversed: 'bg-red-100 text-red-800',
+  UNRECOGNISED: 'bg-gray-100 text-gray-800',
+  UNALLOCATED: 'bg-blue-100 text-blue-800',
+  PARTIALLY_ALLOCATED: 'bg-yellow-100 text-yellow-800',
+  FULLY_ALLOCATED: 'bg-green-100 text-green-800',
+  DISPUTED: 'bg-orange-100 text-orange-800',
+  REVIEW_REQUIRED: 'bg-purple-100 text-purple-800',
+  REVERSED: 'bg-red-100 text-red-800',
+};
+
+const SOURCE_LABELS: Record<string, string> = {
+  'App\\Models\\Payment': 'Payment',
+  'App\\Models\\BillPayment': 'Bill Payment',
+  'App\\Models\\CustomerCreditNote': 'Credit Note',
+  'App\\Models\\VendorCreditNote': 'Vendor Credit Note',
+  'App\\Models\\VendorDebitNote': 'Vendor Debit Note',
 };
 
 export default function SettlementsPage() {
@@ -145,19 +156,20 @@ export default function SettlementsPage() {
             <SelectTrigger className="h-8 w-44 rounded-full text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All States</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="partially_allocated">Partially Allocated</SelectItem>
-              <SelectItem value="fully_allocated">Fully Allocated</SelectItem>
-              <SelectItem value="reversed">Reversed</SelectItem>
+              <SelectItem value="UNRECOGNISED">Unrecognised</SelectItem>
+              <SelectItem value="UNALLOCATED">Unallocated</SelectItem>
+              <SelectItem value="PARTIALLY_ALLOCATED">Partially Allocated</SelectItem>
+              <SelectItem value="FULLY_ALLOCATED">Fully Allocated</SelectItem>
+              <SelectItem value="REVERSED">Reversed</SelectItem>
             </SelectContent>
           </Select>
           <Select value={sourceTypeFilter} onValueChange={setSourceTypeFilter}>
             <SelectTrigger className="h-8 w-40 rounded-full text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="payment">Payment</SelectItem>
-              <SelectItem value="credit_note">Credit Note</SelectItem>
-              <SelectItem value="debit_note">Debit Note</SelectItem>
+              <SelectItem value={'App\\Models\\Payment'}>Payment</SelectItem>
+              <SelectItem value={'App\\Models\\BillPayment'}>Bill Payment</SelectItem>
+              <SelectItem value={'App\\Models\\CustomerCreditNote'}>Credit Note</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -200,7 +212,7 @@ export default function SettlementsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {settlement.source_record_type?.split('\\').pop() || '-'}
+                      {SOURCE_LABELS[settlement.source_record_type || ''] || settlement.source_record_type?.split('\\').pop() || '-'}
                     </TableCell>
                     <TableCell className="text-right font-mono">{formatCurrency(settlement.total_amount)}</TableCell>
                     <TableCell className="text-right font-mono">{formatCurrency(settlement.allocated_amount)}</TableCell>
@@ -210,12 +222,12 @@ export default function SettlementsPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
-                        {(settlement.settlement_state === 'pending' || settlement.settlement_state === 'partially_allocated') && (
+                        {(settlement.settlement_state === 'UNALLOCATED' || settlement.settlement_state === 'PARTIALLY_ALLOCATED') && (
                           <Button size="sm" variant="outline" onClick={() => openAllocate(settlement)}>
                             Allocate
                           </Button>
                         )}
-                        {settlement.settlement_state !== 'reversed' && (
+                        {settlement.settlement_state !== 'REVERSED' && (
                           <Button size="sm" variant="outline" onClick={() => openReverse(settlement)}>
                             Reverse
                           </Button>
@@ -266,9 +278,9 @@ export default function SettlementsPage() {
                       <Select value={alloc.source_record_type} onValueChange={(v) => updateAllocation(index, 'source_record_type', v)}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="App\\Models\\Invoice">Invoice</SelectItem>
-                          <SelectItem value="App\\Models\\VendorBill">Vendor Bill</SelectItem>
-                          <SelectItem value="App\\Models\\CustomerCreditNote">Credit Note</SelectItem>
+                          <SelectItem value={'App\\Models\\Invoice'}>Invoice</SelectItem>
+                          <SelectItem value={'App\\Models\\VendorBill'}>Vendor Bill</SelectItem>
+                          <SelectItem value={'App\\Models\\CustomerCreditNote'}>Credit Note</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

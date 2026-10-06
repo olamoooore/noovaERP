@@ -31,6 +31,7 @@ class Settlement extends Model
         'metadata',
         'reversed_at',
         'reversal_reason',
+        'settled_at',
     ];
 
     protected $casts = [
@@ -41,17 +42,27 @@ class Settlement extends Model
         'reversed_at' => 'datetime',
     ];
 
+    protected $appends = ['total_amount'];
+
     protected static function booted(): void
     {
         static::creating(function (Settlement $model) {
             $model->settlement_state ??= SettlementState::UNRECOGNISED->value;
-            if (!$model->settlement_number) {
-                $model->settlement_number = 'STL-' . strtoupper(uniqid('', true));
+            if (! $model->settlement_number) {
+                $model->settlement_number = 'STL-'.strtoupper(uniqid('', true));
             }
         });
     }
 
     // ── Accessors ──────────────────────────────────────
+
+    /**
+     * The settlement capacity preserved by the allocated/unapplied invariant.
+     */
+    public function getTotalAmountAttribute(): float
+    {
+        return round((float) $this->allocated_amount + (float) $this->unapplied_amount, 2);
+    }
 
     public function getStateEnumAttribute(): SettlementState
     {

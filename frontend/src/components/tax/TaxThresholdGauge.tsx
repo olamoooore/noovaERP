@@ -1,4 +1,5 @@
 import { Icon } from '@iconify/react';
+import { formatCurrency } from '@/lib/utils';
 import type { GaugeRow } from '@/lib/thresholdGauge';
 
 /**
@@ -22,7 +23,7 @@ const TONE_TEXT: Record<GaugeRow['tone'], string> = {
 };
 
 function formatAmount(value: number, currency: string): string {
-  return `${Number(value).toLocaleString()} ${currency}`;
+  return formatCurrency(Number(value) || 0, currency || undefined);
 }
 
 export function TaxThresholdGauge({ row }: { row: GaugeRow }) {

@@ -4,6 +4,7 @@ import { useARTransactions, useCustomerBalance, useExportARTransactions } from '
 import type { TransactionFilters } from '@/types/transactions';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 import { Pagination } from '@/components/ui/Pagination';
+import { formatCurrency } from '@/lib/utils';
 
 function StatusBadge({ status }: { status: string }) {
   const colors = {
@@ -110,19 +111,19 @@ export default function ARTransactionsPage() {
             <div>
               <p className="text-sm text-gray-600">Current Balance</p>
               <p className="text-lg font-semibold text-blue-600">
-                {balanceData.currency_code} {parseFloat(balanceData.balance).toFixed(2)}
+                {formatCurrency(parseFloat(balanceData.balance) || 0, balanceData.currency_code || undefined)}
               </p>
             </div>
             <div>
               <p className="text-sm text-gray-600">Total Invoices</p>
               <p className="text-lg font-semibold text-gray-900">
-                {balanceData.currency_code} {parseFloat(balanceData.total_invoices).toFixed(2)}
+                {formatCurrency(parseFloat(balanceData.total_invoices) || 0, balanceData.currency_code || undefined)}
               </p>
             </div>
             <div>
               <p className="text-sm text-gray-600">Total Payments</p>
               <p className="text-lg font-semibold text-green-600">
-                {balanceData.currency_code} {parseFloat(balanceData.total_payments).toFixed(2)}
+                {formatCurrency(parseFloat(balanceData.total_payments) || 0, balanceData.currency_code || undefined)}
               </p>
             </div>
           </div>
@@ -250,14 +251,14 @@ export default function ARTransactionsPage() {
                         {transaction.customer_name}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
-                        {transaction.debit > 0 ? `${transaction.currency_code} ${parseFloat(transaction.debit).toFixed(2)}` : '-'}
+                        {transaction.debit > 0 ? formatCurrency(parseFloat(transaction.debit) || 0, transaction.currency_code || undefined) : '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-green-600">
-                        {transaction.credit > 0 ? `${transaction.currency_code} ${parseFloat(transaction.credit).toFixed(2)}` : '-'}
+                        {transaction.credit > 0 ? formatCurrency(parseFloat(transaction.credit) || 0, transaction.currency_code || undefined) : '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900">
                         {transaction.balance !== undefined 
-                          ? `${transaction.currency_code} ${parseFloat(transaction.balance).toFixed(2)}`
+                          ? formatCurrency(parseFloat(transaction.balance) || 0, transaction.currency_code || undefined)
                           : '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">

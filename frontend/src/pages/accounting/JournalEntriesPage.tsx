@@ -283,7 +283,7 @@ export default function JournalEntriesPage() {
       queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
       toast({
         title: 'Success',
-        description: `Partial reversal posted. Reversed: ${data.reversed_amount}. Remaining: ${data.remaining_amount}`,
+        description: `Partial reversal posted. Reversed: ${formatCurrency(Number(data.reversed_amount) || 0)}. Remaining: ${formatCurrency(Number(data.remaining_amount) || 0)}`,
       });
       setReverseOpen(false);
       setReverseEntryId(null);
@@ -936,15 +936,15 @@ export default function JournalEntriesPage() {
                       <TableCell colSpan={2} className="text-right">
                         Total:
                       </TableCell>
-                      <TableCell className="text-right">${totals.totalDebit.toFixed(2)}</TableCell>
-                      <TableCell className="text-right">${totals.totalCredit.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(totals.totalDebit)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(totals.totalCredit)}</TableCell>
                       <TableCell></TableCell>
                     </TableRow>
                     {!totals.isBalanced && (
                       <TableRow>
                         <TableCell colSpan={5} className="text-center text-red-600">
                           <Icon icon="solar:danger-triangle-linear" className="w-4 h-4 inline mr-2" />
-                          Entry is not balanced. Difference: ${Math.abs(totals.difference).toFixed(2)}
+                          Entry is not balanced. Difference: {formatCurrency(Math.abs(totals.difference))}
                         </TableCell>
                       </TableRow>
                     )}

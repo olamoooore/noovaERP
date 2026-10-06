@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
+import { formatCurrency } from '@/lib/utils'
 
 interface Activity {
   id: number
@@ -156,7 +157,7 @@ const addActivityMutation = useMutation({
             </div>
             <div>
               <div className="text-sm text-muted-foreground">Estimated Value</div>
-              <div>{lead.estimated_value ? `$${Number(lead.estimated_value).toLocaleString()}` : '-'}</div>
+              <div>{lead.estimated_value ? formatCurrency(Number(lead.estimated_value) || 0) : '-'}</div>
             </div>
             <div>
               <div className="text-sm text-muted-foreground">Expected Close</div>

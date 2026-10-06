@@ -1067,8 +1067,7 @@ const ViewPaymentDialog: React.FC<{
             <div>
               <p className="text-xs text-muted-foreground">Amount</p>
               <p className="font-medium text-lg">
-                {detail.currency ? `${detail.currency} ` : ''}
-                {formatCurrency(detail.amount || 0)}
+                {formatCurrency(detail.amount || 0, detail.currency || undefined)}
               </p>
             </div>
             <div>

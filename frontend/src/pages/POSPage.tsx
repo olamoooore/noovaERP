@@ -30,28 +30,20 @@ import {
 import { POSOrdersPage } from './POS/POSOrdersPage'
 import { useToast } from '@/hooks/use-toast'
 import { usePosSessionStore, PosTerminal } from '@/store/posSessionStore'
-import { cn } from '@/lib/utils'
+import { cn, formatCurrency, getCurrencySymbol } from '@/lib/utils'
 
 const OPENING_DENOMINATIONS = [
-  { label: 'S$100', value: 100, type: 'note' as const },
-  { label: 'S$50', value: 50, type: 'note' as const },
-  { label: 'S$10', value: 10, type: 'note' as const },
-  { label: 'S$5', value: 5, type: 'note' as const },
-  { label: 'S$2', value: 2, type: 'note' as const },
-  { label: 'S$1', value: 1, type: 'coin' as const },
+  { label: '100', value: 100, type: 'note' as const },
+  { label: '50', value: 50, type: 'note' as const },
+  { label: '10', value: 10, type: 'note' as const },
+  { label: '5', value: 5, type: 'note' as const },
+  { label: '2', value: 2, type: 'note' as const },
+  { label: '1', value: 1, type: 'coin' as const },
   { label: '50¢', value: 0.5, type: 'coin' as const },
   { label: '20¢', value: 0.2, type: 'coin' as const },
   { label: '10¢', value: 0.1, type: 'coin' as const },
   { label: '5¢', value: 0.05, type: 'coin' as const },
 ]
-
-const formatSgMoney = (amount: number) => {
-  return new Intl.NumberFormat('en-SG', {
-    style: 'currency',
-    currency: 'SGD',
-    minimumFractionDigits: 2,
-  }).format(amount)
-}
 
 interface Warehouse {
   id: number
@@ -645,7 +637,7 @@ export function POSPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="relative w-32">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">$</span>
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">{getCurrencySymbol()}</span>
                       <Input
                         type="number"
                         min="0"
@@ -686,7 +678,7 @@ export function POSPage() {
                         const rowTotal = qty * item.value
                         return (
                           <div key={item.label} className="grid grid-cols-[70px_1fr_90px] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
-                            <span className="text-sm font-semibold text-slate-700">{item.label}</span>
+                            <span className="text-sm font-semibold text-slate-700">{item.value >= 1 ? `${getCurrencySymbol()}${item.value}` : item.label}</span>
                             <div className="grid grid-cols-[30px_1fr_30px] items-center gap-1">
                               <Button type="button" variant="outline" className="h-8 w-8 p-0" onClick={() => adjustOpeningDenominationCount(item.label, -1)}>
                                 -
@@ -703,7 +695,7 @@ export function POSPage() {
                                 +
                               </Button>
                             </div>
-                            <span className="text-right text-xs font-semibold text-slate-600">{formatSgMoney(rowTotal)}</span>
+                            <span className="text-right text-xs font-semibold text-slate-600">{formatCurrency(rowTotal)}</span>
                           </div>
                         )
                       })}
@@ -718,7 +710,7 @@ export function POSPage() {
                         const rowTotal = qty * item.value
                         return (
                           <div key={item.label} className="grid grid-cols-[70px_1fr_90px] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
-                            <span className="text-sm font-semibold text-slate-700">{item.label}</span>
+                            <span className="text-sm font-semibold text-slate-700">{item.value >= 1 ? `${getCurrencySymbol()}${item.value}` : item.label}</span>
                             <div className="grid grid-cols-[30px_1fr_30px] items-center gap-1">
                               <Button type="button" variant="outline" className="h-8 w-8 p-0" onClick={() => adjustOpeningDenominationCount(item.label, -1)}>
                                 -
@@ -735,7 +727,7 @@ export function POSPage() {
                                 +
                               </Button>
                             </div>
-                            <span className="text-right text-xs font-semibold text-slate-600">{formatSgMoney(rowTotal)}</span>
+                            <span className="text-right text-xs font-semibold text-slate-600">{formatCurrency(rowTotal)}</span>
                           </div>
                         )
                       })}
@@ -746,11 +738,11 @@ export function POSPage() {
                 <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
                   <div className="rounded-lg border border-slate-200 bg-white p-3">
                     <div className="text-xs text-slate-500">Notes Total</div>
-                    <div className="text-base font-semibold text-slate-800">{formatSgMoney(notesTotal)}</div>
+                    <div className="text-base font-semibold text-slate-800">{formatCurrency(notesTotal)}</div>
                   </div>
                   <div className="rounded-lg border border-slate-200 bg-white p-3">
                     <div className="text-xs text-slate-500">Coins Total</div>
-                    <div className="text-base font-semibold text-slate-800">{formatSgMoney(coinsTotal)}</div>
+                    <div className="text-base font-semibold text-slate-800">{formatCurrency(coinsTotal)}</div>
                   </div>
                   <div className="rounded-lg border border-slate-200 bg-white p-3">
                     <div className="text-xs text-slate-500">Total Pieces</div>

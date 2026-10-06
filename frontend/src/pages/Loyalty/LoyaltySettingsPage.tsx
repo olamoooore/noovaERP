@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
+import { getCurrencySymbol } from '@/lib/utils'
 
 interface Tier {
   id: number
@@ -386,7 +387,7 @@ export function LoyaltySettingsPage() {
                       onChange={(e) => handleInputChange('points_per_currency', e.target.value)}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Current: {pointsPerCurrency} points per $1
+                      Current: {pointsPerCurrency} points per {getCurrencySymbol()}1
                     </p>
                   </div>
 
@@ -420,7 +421,7 @@ export function LoyaltySettingsPage() {
                       onChange={(e) => handleInputChange('currency_per_point', e.target.value)}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Current: ${currencyPerPoint} per point
+                      Current: {getCurrencySymbol()}{currencyPerPoint} per point
                     </p>
                   </div>
 
@@ -458,9 +459,9 @@ export function LoyaltySettingsPage() {
               <div className="rounded-lg bg-muted p-4">
                 <h4 className="font-semibold mb-2">Example Calculation</h4>
                 <div className="space-y-1 text-sm">
-                  <p>• Customer spends $100 → Earns {(pointsPerCurrency * 100).toFixed(0)} points (base)</p>
+                  <p>• Customer spends {getCurrencySymbol()}100 → Earns {(pointsPerCurrency * 100).toFixed(0)} points (base)</p>
                   <p>• With Silver tier (1.2x) → Earns {(pointsPerCurrency * 100 * 1.2).toFixed(0)} points</p>
-                  <p>• Redeem 100 points → ${(currencyPerPoint * 100).toFixed(2)} discount</p>
+                  <p>• Redeem 100 points → {getCurrencySymbol()}{(currencyPerPoint * 100).toFixed(2)} discount</p>
                   <p>• Points expire after {pointsExpiryMonths} months</p>
                 </div>
               </div>

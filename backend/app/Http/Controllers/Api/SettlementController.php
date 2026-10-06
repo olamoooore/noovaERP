@@ -53,10 +53,20 @@ class SettlementController extends Controller
         }
 
         if ($request->has('source_type')) {
-            $query->where('source_record_type', $request->input('source_type'));
+            $sourceType = (string) $request->input('source_type');
+            $query->where(function ($q) use ($sourceType) {
+                $q->where('source_record_type', $sourceType);
+                // Accept a short form ("payment", "BillPayment") as well as
+                // the stored FQCN ("App\Models\Payment").
+                if (! str_contains($sourceType, '\\')) {
+                    $q->orWhere('source_record_type', 'like', '%'.addcslashes($sourceType, '%_\\'));
+                }
+            });
         }
 
-        $settlements = $query->orderByDesc('created_at')->paginate(25);
+        $perPage = max(1, min((int) $request->input('per_page', 25), 100));
+
+        $settlements = $query->orderByDesc('created_at')->paginate($perPage);
 
         return response()->json([
             'success' => true,

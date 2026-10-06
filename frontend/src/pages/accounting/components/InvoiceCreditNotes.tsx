@@ -1,4 +1,5 @@
 import { useCreditNotesByInvoice } from '@/hooks/useCustomerCreditNotes';
+import { formatCurrency } from '@/lib/utils';
 
 interface InvoiceCreditNotesProps {
   invoiceId: number;
@@ -45,7 +46,7 @@ export default function InvoiceCreditNotes({ invoiceId, invoiceTotal, currencyCo
           <div className="text-sm text-gray-600">
             <span className="font-medium">Remaining Balance:</span>{' '}
             <span className={remainingBalance < invoiceTotal ? 'text-green-600 font-semibold' : ''}>
-              {currencyCode} {(remainingBalance || 0).toFixed(2)}
+              {formatCurrency(Number(remainingBalance) || 0, currencyCode || undefined)}
             </span>
           </div>
         )}
@@ -89,7 +90,7 @@ export default function InvoiceCreditNotes({ invoiceId, invoiceTotal, currencyCo
                     {new Date(creditNote.credit_note_date).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900">
-                    {creditNote.currency_code} {(Number(creditNote.total_amount) || 0).toFixed(2)}
+                    {formatCurrency(Number(creditNote.total_amount) || 0, creditNote.currency_code || undefined)}
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge status={creditNote.status} />
@@ -106,7 +107,7 @@ export default function InvoiceCreditNotes({ invoiceId, invoiceTotal, currencyCo
                   Total Credited (Posted):
                 </td>
                 <td colSpan={3} className="px-4 py-3 text-sm font-bold text-green-600">
-                  {currencyCode} {(totalCredited || 0).toFixed(2)}
+                  {formatCurrency(Number(totalCredited) || 0, currencyCode || undefined)}
                 </td>
               </tr>
             </tfoot>

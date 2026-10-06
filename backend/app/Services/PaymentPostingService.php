@@ -290,6 +290,10 @@ class PaymentPostingService
             // draft never touched the invoice; this is where it finally does.
             app(\App\Services\InvoiceService::class)->settlePostedPayment($payment->fresh());
 
+            // ACC-005B: recognise the cash receipt into the settlement overlay
+            // once the receipt is cash-bearing (posted).
+            app(SettlementRecognitionService::class)->recognisePayment($payment->fresh());
+
             // #901 (PC7): a posted customer payment is a sales receipt. Written
             // to the outbox inside this transaction, published after commit.
             // Bill/vendor payments carry no customer and are not sales events.

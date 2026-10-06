@@ -3,7 +3,7 @@ import api from './api';
 export interface Settlement {
   id: number;
   tenant_id: string;
-  settlement_state: 'pending' | 'partially_allocated' | 'fully_allocated' | 'reversed';
+  settlement_state: 'UNRECOGNISED' | 'UNALLOCATED' | 'PARTIALLY_ALLOCATED' | 'FULLY_ALLOCATED' | 'DISPUTED' | 'REVIEW_REQUIRED' | 'REVERSED';
   source_record_type?: string;
   source_record_id?: number;
   total_amount: number;

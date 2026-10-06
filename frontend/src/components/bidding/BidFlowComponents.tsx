@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Loader2, CheckCircle, XCircle, AlertCircle, DollarSign } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
+import { formatCurrency, getCurrencySymbol } from '@/lib/utils'
 
 // Mock types for bidding functionality
 interface BidFlowResult<T = any> {
@@ -182,7 +183,7 @@ export function BidSubmissionForm({ eventId, customerId, eventName, onBidSubmitt
     if (result.success && result.data) {
       toast({
         title: "Bid Submitted",
-        description: `Your bid of $${bidAmount} has been submitted successfully`,
+        description: `Your bid of ${formatCurrency(Number(bidAmount) || 0)} has been submitted successfully`,
       })
       setBidAmount('')
       setQuantity('1')
@@ -245,7 +246,7 @@ export function BidSubmissionForm({ eventId, customerId, eventName, onBidSubmitt
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="bidAmount">Bid Amount ($)</Label>
+              <Label htmlFor="bidAmount">Bid Amount ({getCurrencySymbol()})</Label>
               <Input
                 id="bidAmount"
                 type="number"
@@ -381,7 +382,7 @@ export function BidManagementCard({ bid, onBidProcessed }: BidManagementProps) {
           <div>
             <CardTitle className="text-lg">Bid #{bid.id}</CardTitle>
             <CardDescription>
-              {bid.customer?.name} • ${bid.bid_amount} • Qty: {bid.quantity}
+              {bid.customer?.name} • {formatCurrency(Number(bid.bid_amount) || 0)} • Qty: {bid.quantity}
             </CardDescription>
           </div>
           {getStatusBadge(bid.status)}
@@ -655,7 +656,7 @@ export function BidStatistics({ eventId }: BidStatisticsProps) {
         <div className="mt-4 pt-4 border-t">
           <div className="grid grid-cols-2 gap-4">
             <div className="text-center">
-              <div className="text-lg font-semibold">${statistics.averageBidAmount.toFixed(2)}</div>
+              <div className="text-lg font-semibold">{formatCurrency(Number(statistics.averageBidAmount) || 0)}</div>
               <div className="text-sm text-gray-600">Average Bid</div>
             </div>
             <div className="text-center">

@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
+import { formatCurrency } from '@/lib/utils';
 
 interface BillCreditNotesProps {
   billId: number;
@@ -71,7 +72,7 @@ export default function BillCreditNotes({ billId, billTotal, currencyCode }: Bil
           <div className="text-sm text-gray-600">
             <span className="font-medium">Remaining Balance:</span>{' '}
             <span className={remainingBalance < billTotal ? 'text-green-600 font-semibold' : ''}>
-              {currencyCode} {remainingBalance.toFixed(2)}
+              {formatCurrency(Number(remainingBalance) || 0, currencyCode || undefined)}
             </span>
           </div>
         )}
@@ -118,7 +119,7 @@ export default function BillCreditNotes({ billId, billTotal, currencyCode }: Bil
                     {new Date(creditNote.credit_note_date).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900">
-                    {creditNote.currency_code} {Number(creditNote.total_amount).toFixed(2)}
+                    {formatCurrency(Number(creditNote.total_amount) || 0, creditNote.currency_code || undefined)}
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge status={creditNote.status} />
@@ -148,7 +149,7 @@ export default function BillCreditNotes({ billId, billTotal, currencyCode }: Bil
                   Total Credited (Posted):
                 </td>
                 <td colSpan={4} className="px-4 py-3 text-sm font-bold text-green-600">
-                  {currencyCode} {totalCredited.toFixed(2)}
+                  {formatCurrency(Number(totalCredited) || 0, currencyCode || undefined)}
                 </td>
               </tr>
             </tfoot>

@@ -16,6 +16,7 @@ use Modules\Inventory\Services\StockReservationService;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Modules\Sales\Models\DeliveryOrder;
 use Modules\Sales\Models\DeliveryOrderLine;
+use Modules\Sales\Models\DeliveryOrderReturn;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderLine;
 
@@ -436,9 +437,12 @@ class DeliveryOrderService
 
         $deliveryOrder = DeliveryOrder::create([
             'sales_order_id' => $order->id,
+            // Issue #461: a back-order DO links to the short delivery it was
+            // split from.
+            'backorder_of_id' => $data['backorder_of_id'] ?? null,
             'customer_id' => $order->customer_id,
             'warehouse_id' => $warehouseId,
-            'source' => 'sales_order',
+            'source' => $data['source'] ?? 'sales_order',
             // MRD pricelist-multicurrency FR-5.6: DOs inherit the SO/quote
             // currency + rate snapshot; delivery never re-prices.
             'currency_code' => $order->currency_code,
@@ -1015,6 +1019,9 @@ class DeliveryOrderService
 
             $deliveryOrder = DeliveryOrder::create([
                 'sales_order_id' => null,
+                // Issue #461: a back-order DO links to the short delivery it
+                // was split from.
+                'backorder_of_id' => $data['backorder_of_id'] ?? null,
                 'customer_id' => $customerId,
                 'warehouse_id' => $warehouseId,
                 'source' => $data['source'] ?? 'standalone',
@@ -1264,9 +1271,23 @@ class DeliveryOrderService
      * CONFIRMED → DONE
      * Posts inventory movements (stock deduction), updates SO line delivered_qty,
      * fulfils stock reservations. Atomic — all or nothing.
+     *
+     * Issue #461 (DO9): a short shipment (7 of 10) is recorded by passing the
+     * ACTUAL delivered quantity per line in `$lineQuantities` (keyed by
+     * delivery-order line id). Only that quantity leaves the warehouse and
+     * posts COGS; the undelivered remainder follows the tenant's
+     * `sales.delivery.short_close_policy` — a linked back-order DO (default)
+     * or a cancellation with a reason. An empty `$lineQuantities` preserves
+     * the pre-#461 full-quantity behaviour.
+     *
+     * @param  array<int|string, float|array<string, mixed>>  $lineQuantities
      */
-    public function completeDeliveryOrder(DeliveryOrder $deliveryOrder, ?string $idempotencyKey = null): DeliveryOrder
-    {
+    public function completeDeliveryOrder(
+        DeliveryOrder $deliveryOrder,
+        ?string $idempotencyKey = null,
+        array $lineQuantities = [],
+        ?string $shortCloseReason = null,
+    ): DeliveryOrder {
         // Allow completing from DRAFT for convenience (auto-confirms first)
         if ($deliveryOrder->isDraft()) {
             $deliveryOrder = $this->confirmDeliveryOrder($deliveryOrder);
@@ -1291,11 +1312,18 @@ class DeliveryOrderService
             throw new \Exception('Cannot complete a delivery order without a warehouse.');
         }
 
-        return DB::transaction(function () use ($deliveryOrder, $idempotencyKey) {
+        return DB::transaction(function () use ($deliveryOrder, $idempotencyKey, $lineQuantities, $shortCloseReason) {
             $actorId = TenantUserHelper::requireTenantUserId(Auth::id());
             $warehouseId = (int) $deliveryOrder->warehouse_id;
 
             $deliveryOrder->load(['lines.product', 'lines.salesOrderLine']);
+
+            // Issue #461 (DO9): actual delivered quantities per line. An empty
+            // payload keeps the pre-#461 behaviour — every line ships its full
+            // planned quantity. A short line records the actual quantity and
+            // hands the remainder to the tenant's short-close policy.
+            $actualByLine = $this->resolveActualDeliveredQuantities($deliveryOrder, $lineQuantities);
+            $shortClosePolicy = $this->shortClosePolicy();
 
             // Update SO line delivered quantities (for linked DOs) — always, before stock deduction.
             // #373 (O4): fulfilment is DERIVED from deliveries — mirror the
@@ -1330,7 +1358,8 @@ class DeliveryOrderService
                         continue;
                     }
 
-                    $newDelivered = (float) $soLine->quantity_delivered + (float) $line->quantity_delivered;
+                    $lineActual = $actualByLine[$line->id] ?? (float) $line->quantity_delivered;
+                    $newDelivered = (float) $soLine->quantity_delivered + $lineActual;
                     $deliverable = max(
                         (float) $soLine->quantity - (float) $soLine->quantity_cancelled,
                         0
@@ -1343,13 +1372,26 @@ class DeliveryOrderService
                         );
                     }
 
-                    $soLine->update([
+                    $soUpdates = [
                         'quantity_delivered' => $newDelivered,
                         'quantity_fulfilled' => max(
                             (float) $soLine->quantity_fulfilled,
                             min($newDelivered, $deliverable)
                         ),
-                    ]);
+                    ];
+
+                    // Issue #461: under the cancel short-close policy the
+                    // undelivered remainder is cancelled on the order line too,
+                    // so the order is finished (delivered + cancelled = ordered)
+                    // instead of waiting on a back-order that will never come.
+                    if ($shortClosePolicy === 'cancel') {
+                        $lineRemainder = max((float) $line->quantity_delivered - $lineActual, 0.0);
+                        if ($lineRemainder > 0.0001) {
+                            $soUpdates['quantity_cancelled'] = (float) $soLine->quantity_cancelled + $lineRemainder;
+                        }
+                    }
+
+                    $soLine->update($soUpdates);
                 }
             }
 
@@ -1385,7 +1427,9 @@ class DeliveryOrderService
                 // #457 (DO5): stock must move the same fractional base-UOM
                 // quantity the COGS recognises — (int) round() moved 0 for
                 // 0.4 and 3 for 2.5 while the GL posted the float.
-                $qty = (float) $line->quantity_delivered;
+                // Issue #461: this is the ACTUAL delivered quantity, which may
+                // be short of the line's planned quantity.
+                $qty = $actualByLine[$line->id] ?? (float) $line->quantity_delivered;
                 if ($qty <= 0) {
                     continue;
                 }
@@ -1431,11 +1475,15 @@ class DeliveryOrderService
 
                 // Issue #131: mark the line's serials sold (customer, date,
                 // warranty) now that stock has left for this delivery.
-                if (! empty($line->serial_numbers) && $product) {
+                // Issue #461: a short line ships only the first N serials; the
+                // unshipped remainder stays available and moves to the
+                // back-order that carries it.
+                $shippedSerials = array_slice((array) ($line->serial_numbers ?? []), 0, (int) round($qty));
+                if ($shippedSerials !== [] && $product) {
                     try {
                         app(\App\Services\BatchSerialConsumptionService::class)->markSerialsSold(
                             product: $product,
-                            serialNumbers: (array) $line->serial_numbers,
+                            serialNumbers: $shippedSerials,
                             customerId: (int) $deliveryOrder->customer_id,
                             saleReference: $deliveryOrder->delivery_order_number,
                             soldAt: now(),
@@ -1464,6 +1512,58 @@ class DeliveryOrderService
             // Issue #176: recognise COGS at completion time.
             $this->postDeliveryCogs($deliveryOrder, $warehouseId, $actorId, $issuedQuantities);
 
+            // Issue #461 (DO9): persist the actual delivered quantity on each
+            // line and record the short-close remainder — a back-order line, or
+            // a cancellation with the operator's reason when the tenant policy
+            // says so. Back-orders are created after the status transition below
+            // so the source DO no longer counts as open committed quantity and
+            // the back-order passes the over-delivery guard.
+            $backorderLines = [];
+            $cancelledRemainder = 0.0;
+            $lineWasShortened = false;
+
+            foreach ($deliveryOrder->lines as $line) {
+                $planned = (float) $line->quantity_delivered;
+                $actual = $actualByLine[$line->id] ?? $planned;
+                $remainder = max($planned - $actual, 0.0);
+
+                if (abs($actual - $planned) > 0.0001) {
+                    $lineUpdates = ['quantity_delivered' => $actual];
+                    if ($line->unit_price !== null) {
+                        $lineUpdates['line_total'] = round((float) $line->unit_price * $actual, 2);
+                    }
+                    $line->update($lineUpdates);
+                    $lineWasShortened = true;
+                }
+
+                if (($line->line_type ?? 'product') !== 'product' || $remainder <= 0.0001) {
+                    continue;
+                }
+
+                if ($shortClosePolicy === 'cancel') {
+                    $line->update([
+                        'quantity_cancelled' => (float) $line->quantity_cancelled + $remainder,
+                    ]);
+                    $cancelledRemainder += $remainder;
+                } else {
+                    $line->update([
+                        'quantity_backordered' => (float) $line->quantity_backordered + $remainder,
+                    ]);
+                    $backorderLines[] = $this->backorderLineData($line, $actual, $remainder);
+                }
+            }
+
+            if ($lineWasShortened) {
+                // The document total follows the goods that actually shipped.
+                $deliveryOrder->update([
+                    'total' => $deliveryOrder->lines()->sum('line_total'),
+                ]);
+            }
+
+            if ($shortClosePolicy === 'cancel' && $cancelledRemainder > 0.0001 && $shortCloseReason) {
+                $deliveryOrder->update(['short_close_reason' => $shortCloseReason]);
+            }
+
             // #900 (PC6): completion status through the engine.
             app(\App\Services\SalesWorkflowService::class)->transition($deliveryOrder, 'complete');
 
@@ -1472,6 +1572,11 @@ class DeliveryOrderService
                 'completed_by' => $actorId,
             ]);
 
+            // Issue #461: create the linked back-order DO for the undelivered
+            // remainder (source is now `done`, so it no longer counts as open
+            // committed quantity against the sales order).
+            $backorder = $this->createBackorderForRemainder($deliveryOrder, $backorderLines, $shortCloseReason);
+
             $this->logChatter(
                 $deliveryOrder,
                 'status_changed',
@@ -1479,8 +1584,193 @@ class DeliveryOrderService
                 ['from_state' => 'confirmed', 'to_state' => 'done'],
             );
 
-            return $deliveryOrder->fresh(['lines.salesOrderLine', 'lines.product', 'customer', 'salesOrder']);
+            if ($backorder) {
+                $this->logChatter(
+                    $deliveryOrder,
+                    'short_delivery',
+                    "Short delivery: back-order {$backorder->delivery_order_number} created for the undelivered remainder",
+                    ['backorder_id' => $backorder->id],
+                );
+            } elseif ($cancelledRemainder > 0.0001) {
+                $this->logChatter(
+                    $deliveryOrder,
+                    'short_delivery',
+                    'Short delivery: undelivered remainder cancelled'
+                        .($shortCloseReason ? " — {$shortCloseReason}" : ''),
+                    ['cancelled_quantity' => $cancelledRemainder],
+                );
+            }
+
+            return $deliveryOrder->fresh(['lines.salesOrderLine', 'lines.product', 'customer', 'salesOrder', 'backorders']);
         });
+    }
+
+    /**
+     * Issue #461 (DO9): the tenant's short-delivery policy. `backorder`
+     * (default) splits the undelivered remainder into a linked back-order DO;
+     * `cancel` closes it with the operator's reason and moves the remainder to
+     * `quantity_cancelled` so the order can finish. Unknown values fail safe to
+     * the default instead of silently shipping nothing.
+     */
+    public function shortClosePolicy(): string
+    {
+        $policy = \App\Models\Setting::getValue('sales.delivery.short_close_policy', 'backorder');
+
+        return in_array($policy, ['backorder', 'cancel'], true) ? $policy : 'backorder';
+    }
+
+    /**
+     * Issue #461: normalise the completion payload into actual delivered
+     * quantities per delivery-order line id.
+     *
+     * Accepted shapes (both tolerated so service callers stay simple):
+     *   [['line_id' => 12, 'quantity_delivered' => 7], ...]
+     *   [12 => 7.0, ...]
+     *
+     * Lines absent from the payload keep their full planned quantity; a line
+     * submitted above its planned quantity (or referencing another document's
+     * line) refuses the whole completion.
+     *
+     * @param  array<int|string, float|array<string, mixed>>  $lineQuantities
+     * @return array<int, float> keyed by delivery-order line id
+     */
+    private function resolveActualDeliveredQuantities(DeliveryOrder $deliveryOrder, array $lineQuantities): array
+    {
+        $provided = [];
+
+        foreach ($lineQuantities as $key => $entry) {
+            if (is_array($entry)) {
+                $lineId = (int) ($entry['line_id'] ?? $entry['delivery_order_line_id'] ?? 0);
+                $quantity = (float) ($entry['quantity_delivered'] ?? $entry['quantity'] ?? 0);
+            } else {
+                $lineId = (int) $key;
+                $quantity = (float) $entry;
+            }
+
+            if ($lineId <= 0) {
+                throw new \Exception('Each completion line must reference a delivery order line id.');
+            }
+
+            $provided[$lineId] = $quantity;
+        }
+
+        $actual = [];
+
+        foreach ($deliveryOrder->lines as $line) {
+            $planned = (float) $line->quantity_delivered;
+
+            if (! array_key_exists((int) $line->id, $provided)) {
+                $actual[$line->id] = $planned;
+
+                continue;
+            }
+
+            $quantity = $provided[(int) $line->id];
+            unset($provided[(int) $line->id]);
+
+            if ($quantity < -0.0000001 || $quantity > $planned + 0.0001) {
+                throw new \Exception(
+                    "Cannot complete delivery order {$deliveryOrder->delivery_order_number}: "
+                    ."line #{$line->id} was planned for {$planned} but {$quantity} was submitted."
+                );
+            }
+
+            $actual[$line->id] = round(max($quantity, 0.0), 4);
+        }
+
+        if ($provided !== []) {
+            throw new \Exception(
+                'Delivery order line(s) '.implode(', ', array_keys($provided))
+                ." do not belong to delivery order {$deliveryOrder->delivery_order_number}."
+            );
+        }
+
+        return $actual;
+    }
+
+    /**
+     * Issue #461: the create payload for one back-order line. The unshipped
+     * serials travel with it so a serial-tracked remainder stays traceable.
+     *
+     * @return array<string, mixed>
+     */
+    private function backorderLineData(DeliveryOrderLine $line, float $actual, float $remainder): array
+    {
+        $remainingSerials = array_slice((array) ($line->serial_numbers ?? []), (int) round($actual));
+
+        return array_filter([
+            'sales_order_line_id' => $line->sales_order_line_id,
+            'product_id' => $line->product_id,
+            'line_type' => 'product',
+            'sequence' => $line->sequence,
+            'description' => $line->description,
+            'model_number' => $line->model_number,
+            'product_notes' => $line->product_notes,
+            'unit' => $line->unit,
+            'unit_price' => $line->unit_price,
+            'quantity_delivered' => $remainder,
+            'lot_number' => $line->lot_number,
+            'batch_number' => $line->batch_number,
+            'product_batch_id' => $line->product_batch_id,
+            'expiry_date' => $line->expiry_date?->toDateString(),
+            'serial_numbers' => $remainingSerials !== [] ? $remainingSerials : null,
+        ], fn ($value) => $value !== null);
+    }
+
+    /**
+     * Issue #461: create the linked back-order DO for a short delivery's
+     * remainder, reusing the exact creation paths (numbering advisory lock,
+     * line validation) of the regular create endpoints — never a forked
+     * insert. Linked deliveries reuse createDeliveryOrder(); standalone
+     * deliveries reuse createStandaloneDeliveryOrder().
+     *
+     * @param  array<int, array<string, mixed>>  $backorderLines
+     */
+    private function createBackorderForRemainder(DeliveryOrder $source, array $backorderLines, ?string $reason): ?DeliveryOrder
+    {
+        if ($backorderLines === []) {
+            return null;
+        }
+
+        $notes = "Back-order for {$source->delivery_order_number}";
+        if ($reason) {
+            $notes .= " — {$reason}";
+        }
+
+        $data = [
+            'warehouse_id' => $source->warehouse_id,
+            'delivery_date' => $source->delivery_date?->toDateString() ?? now()->toDateString(),
+            'expected_date' => $source->expected_date?->toDateString(),
+            'payment_terms' => $source->payment_terms,
+            'carrier' => $source->carrier,
+            'tracking_number' => $source->tracking_number,
+            'shipping_address' => $source->shipping_address,
+            'po_number' => $source->po_number,
+            'salesperson' => $source->salesperson,
+            'attention_to' => $source->attention_to,
+            'customer_reference' => $source->customer_reference,
+            'internal_reference' => $source->internal_reference,
+            'quotation_id' => $source->quotation_id,
+            'notes' => $notes,
+            'source' => 'backorder',
+            'backorder_of_id' => $source->id,
+            'created_by' => Auth::id(),
+            'lines' => $backorderLines,
+        ];
+
+        if ($source->sales_order_id) {
+            $order = SalesOrder::find($source->sales_order_id);
+
+            if ($order) {
+                return $this->createDeliveryOrder($order, $data);
+            }
+        }
+
+        return $this->createStandaloneDeliveryOrder(array_merge($data, [
+            'customer_id' => $source->customer_id,
+            // A back-order exists precisely because the goods were not on hand.
+            'allow_backorder' => true,
+        ]));
     }
 
     /**
@@ -1562,6 +1852,284 @@ class DeliveryOrderService
 
             return $deliveryOrder->fresh(['lines.salesOrderLine', 'lines.product', 'customer', 'salesOrder']);
         });
+    }
+
+    /**
+     * Issue #461 (DO9): record a partial customer return against a completed
+     * delivery order.
+     *
+     * A return document (`delivery_order_returns` + lines) records, per line,
+     * how much came back, why, and which lot/serials. Restocking runs through
+     * the same movement path the #460 reversal uses — one `return` movement per
+     * stock-consuming product/component through InventoryService, linked to the
+     * return document, carrying the same lot/expiry — and returns the serials
+     * to stock. The delivery order itself stays `done`: a partial return is
+     * never a whole-order reversal, and the line tracks `quantity_returned`.
+     *
+     * `create_credit_note_draft` additionally generates a DRAFT credit note for
+     * the returned value through CustomerCreditNoteService — draft only, never
+     * posted here.
+     *
+     * @param  array{lines: array<int, array<string, mixed>>, reason?: string|null, notes?: string|null, create_credit_note_draft?: bool}  $data
+     */
+    public function recordDeliveryOrderReturn(DeliveryOrder $deliveryOrder, array $data): DeliveryOrderReturn
+    {
+        if (! $deliveryOrder->isDone()) {
+            throw new \Exception('Only completed delivery orders can have returns recorded.');
+        }
+
+        $lines = $data['lines'] ?? [];
+        if ($lines === []) {
+            throw new \Exception('At least one return line is required.');
+        }
+
+        return DB::transaction(function () use ($deliveryOrder, $data, $lines) {
+            $actorId = TenantUserHelper::requireTenantUserId($data['created_by'] ?? Auth::id());
+
+            $deliveryOrder->load(['lines.product', 'lines.salesOrderLine']);
+
+            $lineIds = array_values(array_unique(array_map(
+                fn ($line) => (int) ($line['delivery_order_line_id'] ?? 0),
+                $lines,
+            )));
+
+            $lockedLines = DeliveryOrderLine::whereIn('id', $lineIds)->lockForUpdate()->get()->keyBy('id');
+
+            $return = DeliveryOrderReturn::create([
+                'delivery_order_id' => $deliveryOrder->id,
+                'customer_id' => $deliveryOrder->customer_id,
+                'warehouse_id' => $deliveryOrder->warehouse_id,
+                'status' => 'completed',
+                'reason' => $data['reason'] ?? null,
+                'notes' => $data['notes'] ?? null,
+                'created_by' => $actorId,
+                'returned_at' => now(),
+            ]);
+
+            $resolved = [];
+
+            foreach ($lines as $lineData) {
+                $lineId = (int) ($lineData['delivery_order_line_id'] ?? 0);
+                $quantity = (float) ($lineData['quantity'] ?? 0);
+
+                $line = $lockedLines->get($lineId);
+
+                if (! $line || (int) $line->delivery_order_id !== (int) $deliveryOrder->id) {
+                    throw new \Exception(
+                        "Return line #{$lineId} does not belong to delivery order {$deliveryOrder->delivery_order_number}."
+                    );
+                }
+
+                if (($line->line_type ?? 'product') !== 'product' || ! $line->product_id) {
+                    throw new \Exception("Only product lines can be returned (line #{$lineId}).");
+                }
+
+                if ($quantity <= 0) {
+                    throw new \Exception("Return quantity for line #{$lineId} must be greater than zero.");
+                }
+
+                $returnable = max(
+                    (float) $line->quantity_delivered - (float) $line->quantity_returned,
+                    0.0
+                );
+
+                if ($quantity > $returnable + 0.0001) {
+                    throw new \Exception(
+                        "Cannot return {$quantity} of line #{$lineId}: only {$returnable} is still returnable "
+                        ."({$line->quantity_delivered} delivered, {$line->quantity_returned} already returned)."
+                    );
+                }
+
+                $serials = $this->resolveReturnSerials($line, $lineData, $quantity);
+
+                $returnLine = $return->lines()->create([
+                    'delivery_order_line_id' => $line->id,
+                    'product_id' => $line->product_id,
+                    'quantity' => $quantity,
+                    'reason' => $lineData['reason'] ?? null,
+                    'lot_number' => $lineData['lot_number'] ?? $line->lot_number,
+                    'batch_number' => $lineData['batch_number'] ?? $line->batch_number,
+                    'expiry_date' => $lineData['expiry_date'] ?? $line->expiry_date?->toDateString(),
+                    'product_batch_id' => $lineData['product_batch_id'] ?? $line->product_batch_id,
+                    'product_serial_id' => $lineData['product_serial_id'] ?? $line->product_serial_id,
+                    'serial_numbers' => $serials !== [] ? $serials : null,
+                ]);
+
+                $resolved[] = [
+                    'line' => $line,
+                    'return_line' => $returnLine,
+                    'quantity' => $quantity,
+                    'lot_number' => $lineData['lot_number'] ?? $line->lot_number,
+                    'batch_number' => $lineData['batch_number'] ?? $line->batch_number,
+                    'expiry_date' => $lineData['expiry_date'] ?? $line->expiry_date?->toDateString(),
+                    'serials' => $serials,
+                ];
+            }
+
+            foreach ($resolved as $entry) {
+                $line = $entry['line'];
+                $quantity = $entry['quantity'];
+                $product = $line->product;
+
+                // Restock exactly what came back. Bundle lines (#130) put their
+                // COMPONENTS back, exactly as completion consumed them.
+                foreach ($this->bundleDecomposition->stockConsumingComponents($product, $quantity) as $component) {
+                    $componentQty = (float) $component['quantity'];
+                    if ($componentQty <= 0) {
+                        continue;
+                    }
+
+                    $this->inventoryService->adjustStock(
+                        productId: (int) $component['product']->id,
+                        warehouseId: (int) $deliveryOrder->warehouse_id,
+                        quantity: $componentQty,
+                        type: 'return',
+                        reference: $return->return_number,
+                        referenceType: 'DeliveryOrderReturn',
+                        referenceId: $return->id,
+                        notes: "Return {$return->return_number} for delivery order {$deliveryOrder->delivery_order_number}",
+                        batchNumber: $product->is_bundle ? null : $entry['batch_number'],
+                        expiryDate: (! $product->is_bundle && $entry['expiry_date'])
+                            ? new \DateTime($entry['expiry_date'])
+                            : null,
+                        idempotencyKey: "do-return-{$return->id}-line-{$line->id}"
+                            .($product->is_bundle ? "-component-{$component['product']->id}" : ''),
+                    );
+                }
+
+                if ($entry['serials'] !== [] && $product) {
+                    app(BatchSerialConsumptionService::class)->markSerialsReturned($product, $entry['serials']);
+                }
+
+                $remainingSerials = array_values(array_diff(
+                    (array) ($line->serial_numbers ?? []),
+                    $entry['serials'],
+                ));
+
+                $line->update([
+                    'quantity_returned' => (float) $line->quantity_returned + $quantity,
+                    'serial_numbers' => $remainingSerials !== [] ? $remainingSerials : null,
+                ]);
+            }
+
+            if (! empty($data['create_credit_note_draft'])) {
+                $creditNote = $this->createReturnCreditNoteDraft($deliveryOrder, $return, $resolved);
+
+                if ($creditNote) {
+                    $return->update(['credit_note_id' => $creditNote->id]);
+                }
+            }
+
+            $this->logChatter(
+                $deliveryOrder,
+                'return_recorded',
+                "Return {$return->return_number} recorded for delivery order {$deliveryOrder->delivery_order_number}"
+                    .(! empty($data['reason']) ? " — {$data['reason']}" : ''),
+                [
+                    'return_id' => $return->id,
+                    'return_number' => $return->return_number,
+                    'lines' => count($resolved),
+                ],
+            );
+
+            return $return->fresh(['lines.product', 'creditNote']);
+        });
+    }
+
+    /**
+     * Issue #461: validate the serials coming back with a return line. When the
+     * shipped line carries serials, they must come back with the goods — one
+     * per returned unit — and must be serials this delivery actually shipped.
+     * Lines without tracked serials may omit them.
+     *
+     * @return string[]
+     */
+    private function resolveReturnSerials(DeliveryOrderLine $line, array $lineData, float $quantity): array
+    {
+        $product = $line->product;
+        $lineSerials = array_values(array_filter((array) ($line->serial_numbers ?? [])));
+        $provided = array_values(array_filter((array) ($lineData['serial_numbers'] ?? [])));
+
+        if ($provided === []) {
+            $isSerialTracked = $product && ($product->tracking_method ?? null) === \App\Models\Product::TRACKING_SERIAL;
+
+            if ($lineSerials !== [] && $isSerialTracked) {
+                throw new \Exception("Serial numbers are required to return line #{$line->id}.");
+            }
+
+            return [];
+        }
+
+        if (count($provided) !== count(array_unique($provided))) {
+            throw new \Exception("Return line #{$line->id} lists the same serial more than once.");
+        }
+
+        if ((int) round($quantity) !== count($provided)) {
+            throw new \Exception(
+                "Return line #{$line->id} must list exactly ".(int) round($quantity).' serial(s).'
+            );
+        }
+
+        foreach ($provided as $serial) {
+            if (! in_array($serial, $lineSerials, true)) {
+                throw new \Exception("Serial {$serial} was not shipped on line #{$line->id}.");
+            }
+        }
+
+        return $provided;
+    }
+
+    /**
+     * Issue #461: the optional DRAFT credit note for a return's value. Created
+     * through the shared CustomerCreditNoteService (tax resolved by the same
+     * engine as any other credit note); it is never posted here.
+     *
+     * A credit note reverses an INVOICE — `customer_credit_notes.invoice_id`
+     * is NOT NULL and posting caps the credit against that invoice. An
+     * uninvoiced delivery therefore has nothing to credit and the optional
+     * draft is skipped (the return itself still restocks); the flag never
+     * turns a valid return into an error.
+     *
+     * @param  array<int, array<string, mixed>>  $resolved
+     */
+    private function createReturnCreditNoteDraft(
+        DeliveryOrder $deliveryOrder,
+        DeliveryOrderReturn $return,
+        array $resolved,
+    ): ?\App\Models\CustomerCreditNote {
+        $invoiceId = $deliveryOrder->invoice_id
+            ?: $deliveryOrder->invoices()->orderByDesc('invoices.id')->value('invoices.id');
+
+        if (! $invoiceId) {
+            return null;
+        }
+
+        $lines = [];
+
+        foreach ($resolved as $entry) {
+            $line = $entry['line'];
+            $lines[] = [
+                'product_id' => $line->product_id,
+                'description' => $line->description ?: 'Returned item',
+                'quantity' => $entry['quantity'],
+                'unit_price' => (float) $line->unit_price,
+            ];
+        }
+
+        if ($lines === []) {
+            return null;
+        }
+
+        return app(\App\Services\CustomerCreditNoteService::class)->createCreditNote([
+            'customer_id' => $deliveryOrder->customer_id,
+            'invoice_id' => $invoiceId,
+            'sales_order_id' => $deliveryOrder->sales_order_id,
+            'credit_note_date' => now()->toDateString(),
+            'reason' => 'Delivery return '.$return->return_number,
+            'notes' => "Draft credit note for return {$return->return_number} "
+                ."of delivery order {$deliveryOrder->delivery_order_number}",
+            'lines' => $lines,
+        ]);
     }
 
     /**

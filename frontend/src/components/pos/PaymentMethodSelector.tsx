@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
+import { formatCurrency } from '@/lib/utils'
 import api from '@/lib/api'
 
 interface PaymentMethod {
@@ -83,7 +84,7 @@ export function PaymentMethodSelector({ amount, onSelect, onCancel }: PaymentMet
       <div className="space-y-4">
         <div className="text-center mb-4">
           <h3 className="text-lg font-semibold">{selectedMethod.name}</h3>
-          <p className="text-muted-foreground">Amount: ${amount.toFixed(2)}</p>
+          <p className="text-muted-foreground">Amount: {formatCurrency(Number(amount) || 0)}</p>
         </div>
 
         {selectedMethod.config?.instructions && (
@@ -140,7 +141,7 @@ export function PaymentMethodSelector({ amount, onSelect, onCancel }: PaymentMet
     <div className="space-y-4">
       <div className="text-center mb-4">
         <h3 className="text-lg font-semibold">Select Payment Method</h3>
-        <p className="text-muted-foreground">Amount: ${amount.toFixed(2)}</p>
+        <p className="text-muted-foreground">Amount: {formatCurrency(Number(amount) || 0)}</p>
       </div>
 
       {groupedMethods && Object.entries(groupedMethods).map(([category, categoryMethods]) => (

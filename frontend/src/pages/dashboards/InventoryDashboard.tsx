@@ -7,6 +7,7 @@ import { LineChart } from '@/components/charts/LineChart';
 import { BarChart } from '@/components/charts/BarChart';
 import { GaugeChart } from '@/components/charts/GaugeChart';
 import reportApi from '@/lib/reportApi';
+import { formatCurrency } from '@/lib/utils';
 import type { InventoryDashboardData } from '@/types/reports';
 
 /**
@@ -120,13 +121,6 @@ export const InventoryDashboard: React.FC = () => {
       </div>
     );
   }
-
-  const formatCurrency = (value: number) => {
-    return `${value.toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
-  };
 
   return (
     <div className="p-6 space-y-6">

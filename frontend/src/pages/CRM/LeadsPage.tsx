@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
+import { formatCurrency } from '@/lib/utils'
 
 interface Lead {
   id: number
@@ -175,7 +176,7 @@ export function LeadsPage() {
                   </TableCell>
                   <TableCell>{sourceLabels[lead.source] || lead.source}</TableCell>
                   <TableCell>
-                    {lead.estimated_value ? `$${Number(lead.estimated_value).toLocaleString()}` : '-'}
+                    {lead.estimated_value ? formatCurrency(Number(lead.estimated_value) || 0) : '-'}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">

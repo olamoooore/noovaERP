@@ -44,6 +44,21 @@ export function WarehouseTransfersPage() {
     },
   })
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/warehouse-transfers/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['warehouse-transfers'] })
+      toast({ title: 'Transfer deleted' })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || 'Failed to delete',
+        variant: 'destructive',
+      })
+    },
+  })
+
   const cancelMutation = useMutation({
     mutationFn: (id: number) => api.post(`/warehouse-transfers/${id}/cancel`),
     onSuccess: () => {
@@ -161,6 +176,22 @@ export function WarehouseTransfersPage() {
                             <Link to={`/inventory/transfers/${transfer.id}/edit`} title="Edit" aria-label="Edit transfer">
                               <Icon icon="solar:pen-bold-duotone" className="h-3.5 w-3.5" />
                             </Link>
+                          </Button>
+                        )}
+                        {['draft', 'cancelled'].includes(transfer.status) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 w-7 p-0 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() => {
+                              if (confirm('Delete this transfer? This cannot be undone.')) {
+                                deleteMutation.mutate(transfer.id)
+                              }
+                            }}
+                            title="Delete"
+                            aria-label="Delete transfer"
+                          >
+                            <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-3.5 w-3.5" />
                           </Button>
                         )}
                         {!['completed', 'cancelled'].includes(transfer.status) && (

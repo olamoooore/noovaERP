@@ -12,42 +12,24 @@ use Modules\AI\Services\AssistantConfig;
 use Modules\AI\Services\OllamaService;
 
 /**
- * AI provider settings (Settings → General → AI).
+ * AI settings (Settings → General → AI).
  *
- * Supports BYOK: tenants may keep the workspace-default Cerebras key or
- * supply their own. Reads require settings.view, writes settings.write
+ * Local Ollama only. Reads require settings.view, writes settings.write
  * (Owner/Admin) — enforced on the routes.
  */
 class AISettingsController extends Controller
 {
     public function show(OllamaService $ai): JsonResponse
     {
-        $tenantKey = (string) (Setting::getValue('ai.cerebras.api_key') ?: '');
-        $settings = Setting::getValue('ai.cerebras.model');
-
         return response()->json([
             'data' => [
-                'provider' => $ai->provider(),
                 'ollama' => [
                     'model' => (string) (Setting::getValue('ai.ollama.model') ?: config('ai.ollama.model')),
-                    'models' => $ai->provider() === 'ollama' ? $ai->listModels() : array_values(array_unique(array_merge(
-                        (array) config('ai.known_models.ollama', []),
-                        [],
-                    ))),
-                ],
-                'cerebras' => [
-                    'model' => (string) ($settings ?: config('ai.cerebras.model')),
-                    'models' => $ai->provider() === 'cerebras'
-                        ? $ai->listModels()
-                        : (array) config('ai.known_models.cerebras', []),
-                    'has_custom_key' => $tenantKey !== '',
-                    'using_default_key' => $ai->usesDefaultCerebrasKey(),
-                    'key_hint' => $tenantKey !== '' ? substr($tenantKey, 0, 7).'…'.substr($tenantKey, -4) : null,
+                    'models' => $ai->listModels(),
                 ],
                 'assistant' => app(AssistantConfig::class)->toArray(),
                 'health' => [
                     'ok' => $ai->healthCheck(),
-                    'provider' => $ai->provider(),
                     'model' => $ai->model(),
                 ],
             ],
@@ -57,31 +39,15 @@ class AISettingsController extends Controller
     public function update(Request $request, OllamaService $ai): JsonResponse
     {
         $validated = $request->validate([
-            'provider' => 'required|in:ollama,cerebras',
             'ollama_model' => 'nullable|string|max:120',
-            'cerebras_model' => 'nullable|string|max:120',
-            'cerebras_api_key' => 'nullable|string|max:255',
-            'clear_cerebras_key' => 'nullable|boolean',
             'assistant_enabled' => 'nullable|boolean',
             'assistant_name' => 'nullable|string|max:60',
             'assistant_icon' => 'nullable|string|max:512',
             'assistant_welcome' => 'nullable|string|max:300',
         ]);
 
-        Setting::setValue('ai.provider', $validated['provider']);
-
         if (! empty($validated['ollama_model'])) {
             Setting::setValue('ai.ollama.model', $validated['ollama_model']);
-        }
-
-        if (! empty($validated['cerebras_model'])) {
-            Setting::setValue('ai.cerebras.model', $validated['cerebras_model']);
-        }
-
-        if ($request->boolean('clear_cerebras_key')) {
-            Setting::setValue('ai.cerebras.api_key', null);
-        } elseif (! empty($validated['cerebras_api_key'])) {
-            Setting::setValue('ai.cerebras.api_key', trim($validated['cerebras_api_key']));
         }
 
         // Website assistant identity. `assistant_enabled: null` clears the
@@ -107,64 +73,39 @@ class AISettingsController extends Controller
         return response()->json([
             'message' => 'AI settings saved',
             'data' => [
-                'provider' => $fresh->provider(),
                 'model' => $fresh->model(),
                 'assistant' => app(AssistantConfig::class)->toArray(),
-                'health' => $fresh->healthCheck(),
+                'health' => [
+                    'ok' => $fresh->healthCheck(),
+                    'model' => $fresh->model(),
+                ],
             ],
         ]);
     }
 
     /**
-     * Test the given provider/model/key without saving.
+     * Test the local model/server without saving.
      */
     public function test(Request $request, OllamaService $ai): JsonResponse
     {
         $validated = $request->validate([
-            'provider' => 'required|in:ollama,cerebras',
             'model' => 'nullable|string|max:120',
-            'cerebras_api_key' => 'nullable|string|max:255',
         ]);
 
-        $provider = $validated['provider'];
-        $key = trim((string) ($validated['cerebras_api_key'] ?? '')) ?: $ai->cerebrasKey();
         $model = $validated['model']
-            ?: ($provider === 'cerebras'
-                ? (Setting::getValue('ai.cerebras.model') ?: config('ai.cerebras.model'))
-                : (Setting::getValue('ai.ollama.model') ?: config('ai.ollama.model')));
+            ?: (Setting::getValue('ai.ollama.model') ?: config('ai.ollama.model'));
 
-        if ($provider === 'ollama') {
-            $baseUrl = config('ai.ollama.base_url');
-            $root = str_replace('/v1', '', $baseUrl);
-            $ok = \Illuminate\Support\Facades\Http::timeout(5)->get($root.'/api/tags')->successful();
-
-            return response()->json(['data' => ['ok' => $ok, 'provider' => 'ollama', 'model' => $model]]);
-        }
-
-        if (! $key) {
-            return response()->json(['data' => ['ok' => false, 'provider' => 'cerebras', 'model' => $model, 'error' => 'No API key available']], 422);
-        }
-
-        $response = \Illuminate\Support\Facades\Http::timeout(30)
-            ->withToken($key)
-            ->post(config('ai.cerebras.base_url').'/chat/completions', [
-                'model' => $model,
-                'messages' => [['role' => 'user', 'content' => 'Reply with exactly: PONG']],
-                'max_tokens' => 400,
-                'temperature' => 0.2,
-            ]);
-
-        $content = $response->successful() ? $response->json('choices.0.message.content') : null;
+        $root = str_replace('/v1', '', (string) config('ai.ollama.base_url'));
+        $ok = \Illuminate\Support\Facades\Http::timeout(5)->get($root.'/api/tags')->successful();
 
         return response()->json([
             'data' => [
-                'ok' => $response->successful() && $content !== null,
-                'provider' => 'cerebras',
+                'ok' => $ok,
+                'provider' => 'ollama',
                 'model' => $model,
-                'sample' => $content,
-                'error' => $response->successful() ? null : substr($response->body(), 0, 300),
+                'error' => $ok ? null : 'Ollama is not reachable',
             ],
-        ], $response->successful() ? 200 : 422);
+        ]);
     }
 
     /**
