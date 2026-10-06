@@ -15,7 +15,7 @@ class ReportRedactor
 
     /** Keys whose values are personal data or free-text addresses. */
     private const PERSONAL_KEYS = [
-        'name', 'person', 'person_name', 'customer_name', 'display_name',
+        'name', 'person', 'person_name', 'customer_name', 'vendor_name', 'display_name',
         'email', 'mobile', 'phone', 'person_email', 'person_mobile',
         'summary', 'value', 'lines', 'site_label',
     ];

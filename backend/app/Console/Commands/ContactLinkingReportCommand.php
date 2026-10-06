@@ -65,6 +65,9 @@ class ContactLinkingReportCommand extends Command
             $this->table(['Action', 'Rows'], $rows);
         }
 
+        $parties = $report['customer_vendor_parties']['summary'];
+        $this->line("  Customer + vendor companies: {$parties['already_shared']} on one shared record, {$parties['separate_records']} customer/vendor pairs on separate records.");
+
         return self::SUCCESS;
     }
 }

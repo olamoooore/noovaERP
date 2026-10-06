@@ -4,8 +4,10 @@ namespace App\Services;
 
 use App\Models\Customer;
 use App\Models\CustomerContact;
+use App\Models\Vendor;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Modules\Contact\src\Models\ContactAddress;
 use Modules\Contact\src\Models\ContactRegistration;
 use Modules\Contact\src\Models\ContactRelationship;
 use Modules\Contact\src\Models\CoreContact;
@@ -60,6 +62,13 @@ use Modules\Contact\src\Support\ContactTaxonomyRegistry;
  *    registrations with the same number are candidates; unlinked customers
  *    sharing one are flagged `same_registration_number_in_batch`.
  *    (Encrypted ContactIdentifier values are not compared.)
+ *
+ * Decision inputs (review of the L1–L10 recommendations):
+ *  - `customer_vendor_parties` (L2): records shared by a customer and a
+ *    vendor with the fields they disagree on, and customer/vendor pairs with
+ *    the same registration number or name on separate records;
+ *  - `dependents` on `linked_contact_deleted` rows (L3): addresses,
+ *    relationships and sites still hanging off the deleted record.
  */
 class ContactLinkingPlanner
 {
@@ -175,6 +184,7 @@ class ContactLinkingPlanner
             ],
             'organisations' => $organisations,
             'people' => $people,
+            'customer_vendor_parties' => $this->customerVendorParties(),
         ];
     }
 
@@ -562,10 +572,127 @@ class ContactLinkingPlanner
                 'action' => self::ACTION_NEEDS_REVIEW,
                 'reason' => 'linked_contact_deleted',
                 'linked_contact_id' => $uuid,
+                'dependents' => $this->dependents($uuid),
             ];
         }
 
         return null;
+    }
+
+    /**
+     * L3: what still hangs off a soft-deleted record (live rows only).
+     *
+     * @return array{addresses: int, relationships: int, sites: int}
+     */
+    private function dependents(string $contactId): array
+    {
+        $addresses = ContactAddress::where('contact_id', $contactId);
+
+        return [
+            'addresses' => (clone $addresses)->where('address_type', '!=', 'site')->count(),
+            'relationships' => ContactRelationship::where(fn ($q) => $q->where('contact_id', $contactId)->orWhere('related_contact_id', $contactId))->count(),
+            'sites' => (clone $addresses)->where('address_type', 'site')->count(),
+        ];
+    }
+
+    /**
+     * L2: companies that are both a customer and a vendor (live rows).
+     *
+     * @return array<string, mixed>
+     */
+    private function customerVendorParties(): array
+    {
+        if (! Schema::hasTable('vendors') || ! Schema::hasColumn('vendors', 'core_contact_uuid')) {
+            return ['summary' => ['already_shared' => 0, 'separate_records' => 0], 'already_shared' => [], 'separate_records' => []];
+        }
+
+        $columns = ['id', 'name', 'email', 'phone', 'website', 'company_registration_number', 'core_contact_uuid'];
+        $customers = Customer::query()->orderBy('id')->get($columns);
+        $vendors = Vendor::query()->orderBy('id')->get($columns);
+
+        $shared = [];
+        $customersByOrg = $customers->whereNotNull('core_contact_uuid')->groupBy('core_contact_uuid');
+        foreach ($vendors->whereNotNull('core_contact_uuid')->groupBy('core_contact_uuid') as $orgId => $orgVendors) {
+            if (! isset($customersByOrg[$orgId])) {
+                continue;
+            }
+            $differing = [];
+            foreach ($customersByOrg[$orgId] as $customer) {
+                foreach ($orgVendors as $vendor) {
+                    $differing = array_merge($differing, $this->differingIdentity($customer, $vendor));
+                }
+            }
+            $shared[] = [
+                'contact_id' => $orgId,
+                'customer_ids' => $customersByOrg[$orgId]->pluck('id')->map(fn ($id) => (int) $id)->values()->all(),
+                'vendor_ids' => $orgVendors->pluck('id')->map(fn ($id) => (int) $id)->values()->all(),
+                'differing_fields' => array_values(array_unique($differing)),
+            ];
+        }
+
+        $vendorsByRegistration = [];
+        $vendorsByName = [];
+        foreach ($vendors as $vendor) {
+            if ($number = $this->normalizeRegistration($vendor->company_registration_number)) {
+                $vendorsByRegistration[$number][] = $vendor;
+            }
+            if ($name = $this->normalizeName($vendor->name)) {
+                $vendorsByName[$name][] = $vendor;
+            }
+        }
+
+        $separate = [];
+        foreach ($customers as $customer) {
+            $matches = [];
+            foreach ($vendorsByRegistration[$this->normalizeRegistration($customer->company_registration_number) ?? ''] ?? [] as $vendor) {
+                $matches[$vendor->id]['vendor'] = $vendor;
+                $matches[$vendor->id]['on'][] = 'registration_number';
+            }
+            foreach ($vendorsByName[$this->normalizeName($customer->name) ?? ''] ?? [] as $vendor) {
+                $matches[$vendor->id]['vendor'] = $vendor;
+                $matches[$vendor->id]['on'][] = 'name';
+            }
+            foreach ($matches as $match) {
+                $vendor = $match['vendor'];
+                if ($customer->core_contact_uuid !== null && $customer->core_contact_uuid === $vendor->core_contact_uuid) {
+                    continue;
+                }
+                $separate[] = [
+                    'customer_id' => (int) $customer->id,
+                    'customer_name' => $customer->name,
+                    'customer_contact_id' => $customer->core_contact_uuid,
+                    'vendor_id' => (int) $vendor->id,
+                    'vendor_name' => $vendor->name,
+                    'vendor_contact_id' => $vendor->core_contact_uuid,
+                    'matched_on' => $match['on'],
+                ];
+            }
+        }
+
+        return [
+            'summary' => ['already_shared' => count($shared), 'separate_records' => count($separate)],
+            'already_shared' => $shared,
+            'separate_records' => $separate,
+        ];
+    }
+
+    /** @return list<string> identity fields on which a customer and a vendor disagree */
+    private function differingIdentity(Customer $customer, Vendor $vendor): array
+    {
+        $differing = [];
+        foreach ([
+            'name' => fn ($v) => $this->normalizeName($v),
+            'email' => fn ($v) => $this->normalizeEmail($v),
+            'phone' => fn ($v) => $this->normalizePhone($v),
+            'website' => fn ($v) => ($w = strtolower(trim((string) $v))) === '' ? null : $w,
+            'company_registration_number' => fn ($v) => $this->normalizeRegistration($v),
+        ] as $field => $normalize) {
+            if ($normalize($customer->{$field}) !== $normalize($vendor->{$field})) {
+                $differing[] = $field;
+            }
+        }
+
+        return $differing;
     }
 
     /**
