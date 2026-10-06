@@ -50,6 +50,9 @@ class SalesStatusLiteralWritesStaticTest extends TestCase
         // the deferred revenue schedule's `status` is its recognition state
         // (active/completed/…), not a sales document transition.
         'DeferredRevenueSchedule',
+        // #461 (DO9): the return document's `status` is the return's own
+        // state (recorded/restocked/…), not the delivery order lifecycle.
+        'DeliveryOrderReturn',
     ];
 
     public function test_guarded_sales_files_contain_no_raw_status_writes(): void

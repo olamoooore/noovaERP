@@ -186,6 +186,8 @@ Route::middleware([
             Route::get('/sales/delivery-orders/{id}/signed-document', [DeliveryOrderController::class, 'downloadSignedDocument'])
                 ->name('sales.delivery-orders.signed-document.download');
             Route::post('/sales/delivery-orders/{id}/complete', [DeliveryOrderController::class, 'complete']);
+            // Issue #461 (DO9): partial customer return against a completed DO.
+            Route::post('/sales/delivery-orders/{id}/returns', [DeliveryOrderController::class, 'recordReturn']);
             Route::post('/sales/delivery-orders/{id}/reverse', [DeliveryOrderController::class, 'reverse']);
             Route::post('/sales/delivery-orders/{id}/cancel', [DeliveryOrderController::class, 'cancel']);
             // Issue #178/#179: rejection with auto-versioned replacement draft.
