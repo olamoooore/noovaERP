@@ -96,6 +96,8 @@ interface SalesOrder {
     code?: string
   }
   order_date: string
+  // #401 (SU3): the date the customer needs the goods (Sales Order column).
+  required_date?: string | null
   // Issue #408: promise dates + partial-delivery policy.
   commitment_date?: string | null
   expected_date?: string | null
@@ -114,8 +116,9 @@ interface SalesOrder {
   tax_amount: number
   discount_amount: number
   total: number
+  // #401 (SU3): Sales Orders have no `terms` column, so the page no longer
+  // declares or reads one.
   notes?: string
-  terms?: string
   customer_reference?: string
   internal_reference?: string
   created_at: string
@@ -996,6 +999,11 @@ export function SalesOrderDetailPage() {
                 <span className="text-sm text-muted-foreground">Order Date:</span>
                 <span className="text-sm">{formatDate(order.order_date)}</span>
               </div>
+              {/* #401 (SU3): read the real `required_date` column. */}
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">Required Date:</span>
+                <span className="text-sm">{order.required_date ? formatDate(order.required_date) : '-'}</span>
+              </div>
               {/* Issue #408: promise date + computed expected date + policy. */}
               <div className="flex justify-between">
                 <span className="text-sm text-muted-foreground">Commitment Date:</span>
@@ -1201,30 +1209,17 @@ export function SalesOrderDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Notes */}
-      {(order.notes || order.terms) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {order.notes && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Notes</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm whitespace-pre-wrap">{order.notes}</p>
-              </CardContent>
-            </Card>
-          )}
-          {order.terms && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Terms</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm whitespace-pre-wrap">{order.terms}</p>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+      {/* Notes — #401 (SU3): Sales Orders carry no terms field, so the dead
+          Terms card was removed. */}
+      {order.notes && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Notes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm whitespace-pre-wrap">{order.notes}</p>
+          </CardContent>
+        </Card>
       )}
         </TabsContent>
 
