@@ -26,7 +26,9 @@ import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { AuditTab } from '@/components/audit/AuditTab'
 import { CustomerForm } from '@/components/customers/CustomerForm'
 import { CustomerContactDialog } from '@/components/customers/CustomerContactDialog'
-import { siteLabel, type SiteAddress } from '@/lib/customerContacts'
+import { CustomerAddressesCard } from '@/components/customers/CustomerAddressesCard'
+import { siteLabel } from '@/lib/customerContacts'
+import { companySitesQueryKey, useCompanySites } from '@/hooks/useCompanySites'
 import { customerFormToUpdatePayload, customerToFormValues, emptyCustomerFormValues, type CustomerFormValues } from '@/lib/customerPayload'
 import { downloadReportDocx, downloadReportXlsx } from '@/lib/reportFiles'
 
@@ -62,6 +64,22 @@ const formatLegacyAddress = (address: string) => {
   }
   return address
 }
+
+const BILLING_PARTY_LABELS: Record<string, string> = {
+  legal_name: 'Legal name',
+  name: 'Name',
+  attention: 'Attention',
+  billing_address: 'Address',
+}
+
+/** ADR-003A CT-VEN-012: the separate billing party, as label/value lines. */
+const billingPartyLines = (party?: Record<string, unknown> | null): [string, string][] =>
+  Object.entries(party ?? {})
+    .filter(([, value]) => typeof value === 'string' && value.trim() !== '')
+    .map(([key, value]) => [
+      BILLING_PARTY_LABELS[key] ?? key.replace(/_/g, ' '),
+      key === 'billing_address' ? (formatLegacyAddress(value as string) ?? (value as string)) : (value as string),
+    ])
 
 /**
  * Flatten a customer-statement payload into the report-table grid used by the
@@ -126,6 +144,7 @@ interface Customer {
   website: string
   billing_address: string
   shipping_address: string
+  billing_party?: Record<string, unknown> | null
   credit_limit: number
   payment_terms: number
   total_outstanding: number
@@ -282,7 +301,9 @@ export function CustomerDetailsPage() {
   const [selectedOrder, setSelectedOrder] = useState<PosOrder | null>(null)
   
   // Form states
-  const [addressForm, setAddressForm] = useState<Partial<CustomerAddress>>({})
+  // ADR-003B W5: 'site' addresses go to the Contact Master, the rest to
+  // customer_addresses (until W6 moves everything).
+  const [addressForm, setAddressForm] = useState<Partial<Omit<CustomerAddress, 'type'>> & { type?: CustomerAddress['type'] | 'site' }>({})
   const [loyaltyAdjustment, setLoyaltyAdjustment] = useState({ points: 0, notes: '' })
   const [customerNote, setCustomerNote] = useState('')
   const [editForm, setEditForm] = useState<CustomerFormValues>(emptyCustomerFormValues())
@@ -384,6 +405,9 @@ export function CustomerDetailsPage() {
       setAddressForm({})
       toast({ title: 'Address added successfully' })
     },
+    onError: (error: any) => {
+      toast({ variant: 'destructive', title: 'Failed to add address', description: getApiErrorMessage(error) })
+    },
   })
 
   // Delete address mutation
@@ -394,6 +418,9 @@ export function CustomerDetailsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customer', id] })
       toast({ title: 'Address deleted successfully' })
+    },
+    onError: (error: any) => {
+      toast({ variant: 'destructive', title: 'Failed to delete address', description: getApiErrorMessage(error) })
     },
   })
 
@@ -418,28 +445,41 @@ export function CustomerDetailsPage() {
     },
   })
 
-  // ADR-003B: each person's company Site, for the contact cards.
+  // ADR-003B: the company's Sites and each person's site (shared query).
   const organisationId = customer?.core_contact_uuid
-  const { data: personSites = {} } = useQuery<Record<string, string>>({
-    queryKey: ['customer-contact-sites', organisationId],
-    queryFn: async () => {
-      const [relationships, addresses] = await Promise.all([
-        api.get(`/contacts/${organisationId}/relationships`),
-        api.get(`/contacts/${organisationId}/addresses`),
-      ])
-      const sites = new Map<string, SiteAddress>(
-        ((addresses.data?.data ?? []) as SiteAddress[])
-          .filter((address) => address.address_type === 'site')
-          .map((site) => [site.id, site]),
-      )
-      const byPerson: Record<string, string> = {}
-      for (const row of (relationships.data?.data ?? []) as { relationship_type: string; related_contact_id: string; site_address_id?: string | null }[]) {
-        const site = row.relationship_type === 'org_person' && row.site_address_id ? sites.get(row.site_address_id) : undefined
-        if (site) byPerson[row.related_contact_id] = siteLabel(site)
-      }
-      return byPerson
+  const { data: companySites } = useCompanySites(organisationId)
+  const personSites: Record<string, string> = Object.fromEntries(
+    Object.entries(companySites?.siteByPerson ?? {}).map(([person, site]) => [person, siteLabel(site)]),
+  )
+  const peopleBySite: Record<string, string[]> = {}
+  for (const person of customer?.customer_contacts ?? []) {
+    const site = person.core_contact_uuid ? companySites?.siteByPerson[person.core_contact_uuid] : undefined
+    if (site) (peopleBySite[site.id] ??= []).push(person.name)
+  }
+
+  const addSiteMutation = useMutation({
+    mutationFn: async (data: typeof addressForm) => {
+      const response = await api.post(`/contacts/${organisationId}/addresses`, {
+        address_type: 'site',
+        label: data.label || null,
+        line_1: data.street || null,
+        line_2: data.street2 || null,
+        city: data.city || null,
+        state: data.state || null,
+        postal_code: data.zip || null,
+        country: data.country ? data.country.trim().toUpperCase() : null,
+      })
+      return response.data
     },
-    enabled: Boolean(organisationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: companySitesQueryKey(organisationId) })
+      setAddressDialogOpen(false)
+      setAddressForm({})
+      toast({ title: 'Site added successfully' })
+    },
+    onError: (error: any) => {
+      toast({ variant: 'destructive', title: 'Failed to add site', description: getApiErrorMessage(error) })
+    },
   })
 
   // Delete contact mutation
@@ -803,7 +843,7 @@ export function CustomerDetailsPage() {
           </TabsTrigger>
           <TabsTrigger value="contacts" className="gap-2 rounded-full px-4">
             <Icon icon="solar:users-group-rounded-bold-duotone" className="h-4 w-4" />
-            Contacts
+            People
           </TabsTrigger>
           <TabsTrigger value="financial" className="gap-2 rounded-full px-4">
             <Icon icon="solar:wallet-bold-duotone" className="h-4 w-4" />
@@ -933,115 +973,47 @@ export function CustomerDetailsPage() {
             </Card>
           </div>
 
-          {/* Addresses */}
-          <Card className="rounded-xl border-slate-200/80 dark:border-slate-800">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <CardTitle className="flex items-center gap-2">
-                <Icon icon="solar:map-point-bold" className="h-5 w-5" />
-                Addresses
-              </CardTitle>
-              <HeaderActionButton
-                variant="outline"
-                icon="solar:add-circle-bold"
-                onClick={() => {
-                  setEditingAddressId(null)
-                  setAddressForm({})
-                  setAddressDialogOpen(true)
-                }}
-              >
-                Add Address
-              </HeaderActionButton>
-            </CardHeader>
-            <CardContent>
-              {customer.addresses?.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {customer.addresses.map(address => (
-                    <div key={address.id} className="group relative rounded-xl border border-slate-200/80 bg-card p-4 transition-all hover:shadow-md dark:border-slate-800">
-                      <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 w-7 p-0"
-                          onClick={() => {
-                            setEditingAddressId(address.id)
-                            setAddressForm({ ...address })
-                            setAddressDialogOpen(true)
-                          }}
-                          title="Edit address"
-                          aria-label="Edit address"
-                        >
-                          <Icon icon="solar:pen-bold-duotone" className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          onClick={() => deleteAddressMutation.mutate(address.id)}
-                          title="Delete address"
-                          aria-label="Delete address"
-                        >
-                          <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                      <div className="mb-2 flex flex-wrap items-center gap-2">
-                        <span
-                          className={cn(
-                            'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize',
-                            address.type === 'billing'
-                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
-                              : 'bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300',
-                          )}
-                        >
-                          <Icon
-                            icon={address.type === 'billing' ? 'solar:bill-list-bold-duotone' : 'solar:delivery-bold-duotone'}
-                            className="h-3 w-3"
-                          />
-                          {address.type}
-                        </span>
-                        {address.is_default && (
-                          <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
-                            Default
-                          </span>
-                        )}
-                        {address.label && <span className="text-sm text-muted-foreground">{address.label}</span>}
-                      </div>
-                      <p className="text-sm leading-relaxed text-muted-foreground">
-                        {[address.street, address.street2, address.city, address.state, address.zip, address.country]
-                          .filter(Boolean)
-                          .join(', ')}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-xl border border-dashed border-slate-300 py-10 text-center text-muted-foreground dark:border-slate-700">
-                  <Icon icon="solar:map-point-wave-bold" className="mx-auto mb-2 h-10 w-10 opacity-40" />
-                  <p className="text-sm">No addresses added yet</p>
-                </div>
-              )}
-              
-              {/* Legacy addresses */}
-              {(customer.billing_address || customer.shipping_address) && (
-                <>
-                  <Separator className="my-4" />
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {customer.billing_address && (
-                      <div className="rounded-xl border border-slate-200/80 p-4 dark:border-slate-800">
-                        <Badge variant="outline" className="mb-2">Billing (Legacy)</Badge>
-                        <p className="text-sm whitespace-pre-line">{formatLegacyAddress(customer.billing_address)}</p>
-                      </div>
-                    )}
-                    {customer.shipping_address && (
-                      <div className="rounded-xl border border-slate-200/80 p-4 dark:border-slate-800">
-                        <Badge variant="outline" className="mb-2">Shipping (Legacy)</Badge>
-                        <p className="text-sm whitespace-pre-line">{formatLegacyAddress(customer.shipping_address)}</p>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
+          {/* Addresses (ADR-003B W5): Billing, Delivery, Sites */}
+          <CustomerAddressesCard
+            addresses={customer.addresses ?? []}
+            sites={companySites?.sites ?? []}
+            peopleBySite={peopleBySite}
+            legacyBilling={customer.billing_address ? formatLegacyAddress(customer.billing_address) : null}
+            legacyShipping={customer.shipping_address ? formatLegacyAddress(customer.shipping_address) : null}
+            canAddSites={Boolean(organisationId)}
+            onAdd={() => {
+              setEditingAddressId(null)
+              setAddressForm({})
+              setAddressDialogOpen(true)
+            }}
+            onEdit={(address) => {
+              setEditingAddressId(address.id)
+              setAddressForm({ ...customer.addresses.find((row) => row.id === address.id) })
+              setAddressDialogOpen(true)
+            }}
+            onDelete={(address) => deleteAddressMutation.mutate(address.id)}
+          />
+
+          {/* Billing party (ADR-003A CT-VEN-012): only when one is recorded */}
+          {billingPartyLines(customer.billing_party).length > 0 && (
+            <Card className="rounded-xl border-slate-200/80 dark:border-slate-800" data-testid="customer-billing-party">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Icon icon="solar:bill-check-bold" className="h-5 w-5" />
+                  Billing party
+                </CardTitle>
+                <CardDescription>Billing details recorded for a party different from this customer.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-1 text-sm">
+                {billingPartyLines(customer.billing_party).map(([label, value]) => (
+                  <p key={label}>
+                    <span className="text-muted-foreground">{label}:</span>{' '}
+                    <span className="whitespace-pre-line">{value}</span>
+                  </p>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Notes */}
           {customer.notes && (
@@ -1435,8 +1407,8 @@ export function CustomerDetailsPage() {
           <Card className="rounded-xl border-slate-200/80 dark:border-slate-800">
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <div>
-                <CardTitle>Contacts</CardTitle>
-                <CardDescription>People associated with this customer</CardDescription>
+                <CardTitle>People</CardTitle>
+                <CardDescription>People at this customer, their roles and the site where they work</CardDescription>
               </div>
               <HeaderActionButton
                 icon="solar:add-circle-bold"
@@ -1832,14 +1804,17 @@ export function CustomerDetailsPage() {
                 <Label>Type</Label>
                 <Select 
                   value={addressForm.type} 
-                  onValueChange={(v) => setAddressForm({ ...addressForm, type: v as 'billing' | 'shipping' | 'other' })}
+                  onValueChange={(v) => setAddressForm({ ...addressForm, type: v as CustomerAddress['type'] | 'site' })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="billing">Billing</SelectItem>
-                    <SelectItem value="shipping">Shipping</SelectItem>
+                    <SelectItem value="shipping">Delivery</SelectItem>
+                    {!editingAddressId && organisationId && (
+                      <SelectItem value="site">Site (where people work)</SelectItem>
+                    )}
                     <SelectItem value="other">Other</SelectItem>
                   </SelectContent>
                 </Select>
@@ -1899,7 +1874,12 @@ export function CustomerDetailsPage() {
                 />
               </div>
             </div>
-            <div className="flex items-center space-x-2">
+            {addressForm.type === 'site' && (
+              <p className="text-xs text-muted-foreground">
+                Sites are where this customer's people work. Use a 2-letter country code (e.g. MY).
+              </p>
+            )}
+            <div className={cn('flex items-center space-x-2', addressForm.type === 'site' && 'hidden')}>
               <input
                 type="checkbox"
                 id="is_default"
@@ -1914,13 +1894,15 @@ export function CustomerDetailsPage() {
             <Button variant="outline" onClick={() => setAddressDialogOpen(false)}>Cancel</Button>
             <Button
               onClick={() => {
-                if (editingAddressId) {
-                  updateAddressMutation.mutate({ addressId: editingAddressId, data: addressForm })
+                if (addressForm.type === 'site') {
+                  addSiteMutation.mutate(addressForm)
+                } else if (editingAddressId) {
+                  updateAddressMutation.mutate({ addressId: editingAddressId, data: addressForm as Partial<CustomerAddress> })
                 } else {
-                  addAddressMutation.mutate(addressForm)
+                  addAddressMutation.mutate(addressForm as Partial<CustomerAddress>)
                 }
               }}
-              disabled={!addressForm.type || addAddressMutation.isPending || updateAddressMutation.isPending}
+              disabled={!addressForm.type || addAddressMutation.isPending || updateAddressMutation.isPending || addSiteMutation.isPending}
             >
               {editingAddressId
                 ? (updateAddressMutation.isPending ? 'Saving...' : 'Save Changes')
@@ -1942,7 +1924,7 @@ export function CustomerDetailsPage() {
         contact={editingContact}
         onSaved={() => {
           queryClient.invalidateQueries({ queryKey: ['customer', id] })
-          queryClient.invalidateQueries({ queryKey: ['customer-contact-sites', customer.core_contact_uuid] })
+          queryClient.invalidateQueries({ queryKey: companySitesQueryKey(organisationId) })
         }}
       />
 
