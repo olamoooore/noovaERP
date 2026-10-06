@@ -33,6 +33,11 @@ import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Textarea } from '@/components/ui/textarea'
 import { RegisterPaymentDialog } from '@/components/payment/RegisterPaymentDialog'
 import { isInvoicePayable, useCanRegisterPayment } from '@/lib/registerPayment'
+import {
+  InvoiceDeliveryProgressSummary,
+  InvoiceLineDeliveryChip,
+  type InvoiceDeliveryProgress,
+} from '@/components/sales/DocumentProgressChip'
 
 interface Invoice {
   id: number
@@ -112,6 +117,8 @@ interface Invoice {
   sales_order?: { id: number; sales_order_number: string }
   quotation?: { id: number; quotation_number: string }
   delivery_orders?: { id: number; delivery_order_number: string; status: string }[]
+  // Issue #688 (INV-UX2): "Delivered x/y", header and per line.
+  delivery_progress?: InvoiceDeliveryProgress | null
   requires_approval?: boolean
   approval_status?: 'not_required' | 'pending' | 'approved' | 'rejected' | 'expired' | 'withdrawn'
   approval_request_id?: number
@@ -939,6 +946,7 @@ export function InvoiceDetailPage() {
             onClick={() => navigate(`/delivery-orders/${d.id}`)}
           />
         ))}
+        <InvoiceDeliveryProgressSummary progress={invoice.delivery_progress} />
         {(invoice.write_offs ?? []).filter((writeOff) => writeOff.journal_entry_id).map((writeOff) => (
           <Link
             key={`write-off-${writeOff.id}`}
@@ -1080,7 +1088,12 @@ export function InvoiceDetailPage() {
                     <TableCell className="text-muted-foreground">{line.product_notes || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{line.lot_number || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{line.expiry_date ? formatDate(line.expiry_date) : '-'}</TableCell>
-                    <TableCell className="text-right">{line.quantity}</TableCell>
+                    <TableCell className="text-right">
+                      <div>{line.quantity}</div>
+                      <div className="mt-1 print:hidden">
+                        <InvoiceLineDeliveryChip progress={invoice.delivery_progress} lineId={line.id} />
+                      </div>
+                    </TableCell>
                     <TableCell className="text-right">{money(line.unit_price)}</TableCell>
                     <TableCell className="text-right">{money(line.tax_amount)}</TableCell>
                     <TableCell className="text-right font-medium">{money(line.line_total)}</TableCell>

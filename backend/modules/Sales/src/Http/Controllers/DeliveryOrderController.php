@@ -66,6 +66,13 @@ class DeliveryOrderController extends Controller
         // "draft" for a document that is actually sitting in approval.
         $this->annotateApprovalView($paginator, $request->user());
 
+        // Issue #688 (INV-UX2): "Invoiced x/y" chip, one batched query per page.
+        $progress = app(\App\Services\SalesDocumentProgress::class)
+            ->forDeliveryOrders($paginator->getCollection()->pluck('id')->all());
+        foreach ($paginator->getCollection() as $order) {
+            $order->setAttribute('invoicing_progress', $progress[(int) $order->id] ?? null);
+        }
+
         return response()->json($paginator);
     }
 
@@ -201,6 +208,11 @@ class DeliveryOrderController extends Controller
 
         if ($request->filled('document_ids')) {
             $query->whereIn('id', $request->input('document_ids', []));
+        }
+
+        // Issue #688 (INV-UX2): completed deliveries not (fully) invoiced.
+        if ($request->input('progress_filter') === 'delivered_not_invoiced') {
+            app(\App\Services\SalesDocumentProgress::class)->scopeDeliveredNotInvoiced($query);
         }
 
         if ($request->filled('start_date')) {
@@ -538,6 +550,11 @@ class DeliveryOrderController extends Controller
         $deliveryOrder->bill_before_delivery = $this->deliveryService->billBeforeDeliveryEnabled();
         $deliveryOrder->can_invoice = $this->deliveryService->isInvoiceableStatus($deliveryOrder)
             && $deliveryOrder->hasInvoiceableLines();
+
+        // Issue #688 (INV-UX2): per-line and header "Invoiced x/y" with the
+        // invoices billing this delivery.
+        $deliveryOrder->invoicing_progress = app(\App\Services\SalesDocumentProgress::class)
+            ->forDeliveryOrders([(int) $deliveryOrder->id])[(int) $deliveryOrder->id] ?? null;
 
         return response()->json($deliveryOrder);
     }

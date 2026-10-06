@@ -25,6 +25,7 @@ import { SortableHead } from '@/components/ui/SortableHead'
 import { useSort } from '@/hooks/useSort'
 import { SalesOrderFilterChip } from '@/components/sales/SalesOrderFilterChip'
 import { useSalesOrderFilterParam } from '@/hooks/useSalesOrderFilterParam'
+import { DeliveryOrderInvoicingChip } from '@/components/sales/DocumentProgressChip'
 
 const DELIVERY_ORDER_EXPORT_COLUMNS = [
   { key: 'delivery_order_number', label: 'Delivery Order No', group: 'Delivery Order', default: true },
@@ -75,6 +76,8 @@ export function DeliveryOrdersPage() {
     return () => clearTimeout(timer)
   }, [searchQuery])
   const [typeFilter, setTypeFilter] = useState<string>('all')
+  // Issue #688 (INV-UX2): "delivered not invoiced" list filter.
+  const [progressFilter, setProgressFilter] = useState<'all' | 'delivered_not_invoiced'>('all')
   // MRD FR-8.1: currency filter + currency sort.
   const [currencyFilter, setCurrencyFilter] = useState('all')
   const [sortBy, setSortBy] = useState<'date' | 'currency'>('date')
@@ -93,10 +96,11 @@ export function DeliveryOrdersPage() {
   const filterCurrencyRows: any[] = (filterCurrencies as any)?.data ?? filterCurrencies ?? []
 
   const { data: response, isLoading } = useQuery({
-    queryKey: ['delivery-orders', page, perPage, typeFilter, currencyFilter, sortBy, tagFilter, debouncedSearchQuery, salesOrderFilter],
+    queryKey: ['delivery-orders', page, perPage, typeFilter, progressFilter, currencyFilter, sortBy, tagFilter, debouncedSearchQuery, salesOrderFilter],
     queryFn: async () => {
       const params: any = { page, per_page: perPage }
       if (typeFilter !== 'all') params.type = typeFilter
+      if (progressFilter !== 'all') params.progress_filter = progressFilter
       if (currencyFilter !== 'all') params.currency_code = currencyFilter
       if (sortBy === 'currency') params.sort_by = 'currency'
       if (debouncedSearchQuery.trim()) params.search = debouncedSearchQuery.trim()
@@ -117,6 +121,7 @@ export function DeliveryOrdersPage() {
 
   const selectionFilters = {
     ...(typeFilter !== 'all' ? { type: typeFilter } : {}),
+    ...(progressFilter !== 'all' ? { progress_filter: progressFilter } : {}),
     ...(debouncedSearchQuery.trim() ? { search: debouncedSearchQuery.trim() } : {}),
     ...(tagFilter ? { tag: tagFilter } : {}),
     ...(salesOrderFilter ? { sales_order_id: salesOrderFilter } : {}),
@@ -217,6 +222,7 @@ export function DeliveryOrdersPage() {
             filters={{
               search: debouncedSearchQuery.trim() || undefined,
               type: typeFilter !== 'all' ? typeFilter : undefined,
+              progress_filter: progressFilter !== 'all' ? progressFilter : undefined,
               sales_order_id: salesOrderFilter || undefined,
             }}
             selectedIds={selectedIds}
@@ -288,6 +294,19 @@ export function DeliveryOrdersPage() {
                 <SelectItem value="all">All Types</SelectItem>
                 <SelectItem value="standalone">Standalone</SelectItem>
                 <SelectItem value="linked">From Sales Order</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={progressFilter}
+              onValueChange={(v) => { setProgressFilter(v as typeof progressFilter); setPage(1) }}
+            >
+              <SelectTrigger className="h-8 w-44 rounded-full px-2.5 text-xs" aria-label="Invoicing progress">
+                <SelectValue placeholder="All Invoicing" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Invoicing</SelectItem>
+                <SelectItem value="delivered_not_invoiced">Delivered, not invoiced</SelectItem>
               </SelectContent>
             </Select>
 
@@ -452,6 +471,7 @@ export function DeliveryOrdersPage() {
                             {do_.reversed_at ? 'reversed' : do_.status}
                           </Badge>
                         )}
+                        <DeliveryOrderInvoicingChip progress={do_.invoicing_progress} className="mt-1 block w-fit" />
                       </TableCell>
                       <TableCell onClick={(event) => event.stopPropagation()}>
                         <div className="flex justify-end gap-1.5">

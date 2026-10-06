@@ -86,6 +86,13 @@ class InvoiceController extends Controller
 
         $this->annotateApprovalView($invoices, $request->user());
 
+        // Issue #688 (INV-UX2): "Delivered x/y" chip, one batched query per page.
+        $progress = app(\App\Services\SalesDocumentProgress::class)
+            ->forInvoices(collect($invoices->items())->pluck('id')->all());
+        foreach ($invoices as $invoice) {
+            $invoice->setAttribute('delivery_progress', $progress[(int) $invoice->id] ?? null);
+        }
+
         if ($search !== '') {
             $this->annotateSearchMatches($invoices, $search);
         }
@@ -288,6 +295,11 @@ class InvoiceController extends Controller
 
         if ($request->filled('document_ids')) {
             $query->whereIn('id', $request->input('document_ids', []));
+        }
+
+        // Issue #688 (INV-UX2): invoices whose goods are not (fully) delivered.
+        if ($request->input('progress_filter') === 'invoiced_not_delivered') {
+            app(\App\Services\SalesDocumentProgress::class)->scopeInvoicedNotDelivered($query);
         }
 
         if ($request->filled('start_date')) {
@@ -1234,6 +1246,13 @@ class InvoiceController extends Controller
         // Issue #906 (UX2): who last saved this draft, for the advisory
         // "Someone else is editing" banner. Null when nobody holds the lock.
         $invoice->setAttribute('active_lock', $this->versionGuard->activeLockInfo('invoice', (int) $invoice->id));
+
+        // Issue #688 (INV-UX2): per-line and header "Delivered x/y" with the
+        // delivery orders shipping this invoice's goods.
+        $invoice->setAttribute(
+            'delivery_progress',
+            app(\App\Services\SalesDocumentProgress::class)->forInvoices([(int) $invoice->id])[(int) $invoice->id] ?? null,
+        );
 
         return response()->json($invoice);
     }
