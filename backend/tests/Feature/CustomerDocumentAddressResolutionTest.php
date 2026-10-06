@@ -7,6 +7,7 @@ namespace Tests\Feature;
 use App\Enums\UserRole;
 use App\Models\Customer;
 use App\Models\Feature;
+use App\Models\Invoice;
 use App\Models\Product;
 use App\Models\Setting;
 use App\Models\Tenant;
@@ -22,9 +23,10 @@ use Tests\TenantTestCase;
 /**
  * ADR-003B W2 (rule R4): a document's bill-to is the customer's default
  * billing address and its ship-to is the customer's default delivery
- * (shipping) address. A contact person's own address is only the last
- * fallback, when the customer has no address at all (kept for
- * VEN-AT-11c/11d).
+ * (shipping) address, and an invoice's delivery address follows the same
+ * ship-to rule (product-owner decision 2026-10-06). A contact person's own
+ * address is only the last fallback, when the customer has no address at all
+ * (kept for VEN-AT-11c/11d).
  *
  * `POST /sales/orders` sends no address fields, so every sales order's
  * address snapshot comes from DocumentSnapshotService. That service never
@@ -160,6 +162,45 @@ class CustomerDocumentAddressResolutionTest extends TenantTestCase
             'zip' => '40000',
             'country' => 'MY',
         ], $order->shipping_address_snapshot, 'Ship-to must be the customer\'s default shipping address.');
+    }
+
+    public function test_invoice_delivery_address_is_the_customers_default_shipping_address(): void
+    {
+        $this->customer->addresses()->create([
+            'type' => 'billing',
+            'street' => '1 Finance Road',
+            'city' => 'Kuala Lumpur',
+            'state' => 'WP',
+            'zip' => '50000',
+            'country' => 'MY',
+            'is_default' => true,
+        ]);
+        $this->customer->addresses()->create([
+            'type' => 'shipping',
+            'street' => '22 Warehouse Way',
+            'city' => 'Shah Alam',
+            'state' => 'Selangor',
+            'zip' => '40000',
+            'country' => 'MY',
+            'is_default' => true,
+        ]);
+
+        $order = $this->createOrder();
+        $this->postJson('/api/v1/sales/orders/'.$order->id.'/confirm')->assertOk();
+        $invoiceResponse = $this->postJson('/api/v1/sales/orders/'.$order->id.'/invoice');
+        $invoiceResponse->assertSuccessful();
+
+        $invoice = Invoice::findOrFail($invoiceResponse->json('id') ?? $invoiceResponse->json('invoice.id'));
+        $delivery = $invoice->delivery_address_snapshot;
+        $delivery = is_string($delivery) ? json_decode($delivery, true) : $delivery;
+
+        $this->assertSame([
+            'address' => '22 Warehouse Way',
+            'city' => 'Shah Alam',
+            'state' => 'Selangor',
+            'zip' => '40000',
+            'country' => 'MY',
+        ], $delivery, 'An invoice\'s delivery address must be the customer\'s default shipping address, not its billing address.');
     }
 
     private function createOrder(): SalesOrder

@@ -40,6 +40,7 @@ import {
   SALES_TEXT_SIZE,
 } from '@/components/sales/salesDesignTokens'
 import { emptySalesDocumentLine, isBlankSalesDocumentLine, type SalesDocumentLine } from '@/lib/salesDocumentLines'
+import { resolvedCustomerAddress } from '@/lib/customerAddresses'
 
 /**
  * Issue #314: the single quotation create/edit implementation.
@@ -330,8 +331,13 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     }
 
     const addresses = customerDetail.addresses ?? []
-    const pick = (type: string) => addresses.find((address: any) => address.type === type && address.is_default)
-      ?? addresses.find((address: any) => address.type === type)
+    // ADR-003B R4: prefer the backend resolver's bill-to/ship-to.
+    const pick = (type: 'billing' | 'shipping') => {
+      const resolved = resolvedCustomerAddress(customerDetail, type)
+      if (resolved !== undefined) return resolved
+      return addresses.find((address: any) => address.type === type && address.is_default)
+        ?? addresses.find((address: any) => address.type === type)
+    }
     const nextBilling = toAddressForm(pick('billing'))
     const nextShipping = toAddressForm(pick('shipping'))
     setBillingAddress(nextBilling)

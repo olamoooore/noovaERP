@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\CustomerCategory;
 use App\Services\CanonicalCustomerService;
+use App\Services\CustomerAddressResolver;
 use App\Services\CustomerContactSyncService;
 use App\Services\CustomerDuplicateService;
 use App\Services\CustomerMergeService;
@@ -429,21 +430,25 @@ class CustomerController extends Controller
             return $this->customerNotFound();
         }
 
-        return response()->json(
-            $customer->load([
-                'categories',
-                'addresses',
-                'customerContacts',
-                'priceList',
-                'salesperson',
-                'loyaltyBalances.program',
-                'parent',
-                'contacts',
-                'invoices' => fn ($q) => $q->latest()->limit(10),
-                'posOrders' => fn ($q) => $q->with('items.product:id,name')->latest()->limit(10),
-                'webOrders' => fn ($q) => $q->with('items.product')->latest()->limit(10),
-            ])
-        );
+        $customer->load([
+            'categories',
+            'addresses',
+            'customerContacts',
+            'priceList',
+            'salesperson',
+            'loyaltyBalances.program',
+            'parent',
+            'contacts',
+            'invoices' => fn ($q) => $q->latest()->limit(10),
+            'posOrders' => fn ($q) => $q->with('items.product:id,name')->latest()->limit(10),
+            'webOrders' => fn ($q) => $q->with('items.product')->latest()->limit(10),
+        ]);
+
+        // ADR-003B R4: the invoice/quotation screens pre-fill bill-to/ship-to
+        // from the same resolver the backend snapshots use.
+        return response()->json(array_merge($customer->toArray(), [
+            'resolved_addresses' => app(CustomerAddressResolver::class)->resolve($customer),
+        ]));
     }
 
     public function invoices(Request $request, $customer): JsonResponse
