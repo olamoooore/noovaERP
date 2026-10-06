@@ -124,6 +124,9 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         ->middleware(RequirePermission::using('settings.view'));
     Route::put('/settings/document-formats', [CompanySettingsController::class, 'updateDocumentFormats'])
         ->middleware(RequirePermission::using('settings.write'));
+    // #548 (SET-UX4): read-only next-number preview for the numbering editor.
+    Route::get('/settings/document-formats/preview', [CompanySettingsController::class, 'previewDocumentFormat'])
+        ->middleware(RequirePermission::using('settings.view'));
     // Issue #540 (ST3): read-only document defaults for the invoice / DO
     // create pages. Gated by the roles that create those documents; the full
     // settings payload above stays OWNER/ADMIN-only.

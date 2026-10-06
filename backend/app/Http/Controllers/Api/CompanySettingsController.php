@@ -671,6 +671,48 @@ class CompanySettingsController extends Controller
         return response()->json($formats);
     }
 
+    /**
+     * #548 (SET-UX4): live next-number preview for the numbering editor.
+     * Renders the configured (or an unsaved) format and reset period through
+     * the same NumberingService peek the saved settings use — read-only, it
+     * never consumes a sequence value.
+     */
+    public function previewDocumentFormat(Request $request): JsonResponse
+    {
+        $types = array_keys(\App\Services\DocumentNumberingService::TYPE_DEFAULTS);
+
+        $validated = $request->validate([
+            'type' => 'required|string|in:'.implode(',', $types),
+            'format' => 'nullable|string|max:100',
+            'reset_period' => 'nullable|string|in:'.implode(',', \App\Platform\Numbering\NumberingService::RESET_PERIODS),
+        ]);
+
+        $service = app(\App\Services\DocumentNumberingService::class);
+        $type = $validated['type'];
+        $format = $validated['format'] ?? $service->getFormat($type, \App\Services\DocumentNumberingService::TYPE_DEFAULTS[$type]);
+        $reset = $validated['reset_period'] ?? null;
+
+        $errors = $service->validateFormat($format)['errors'];
+        if ($errors === [] && $reset !== null) {
+            $errors = $service->validateResetPeriod($format, $reset);
+        }
+
+        if ($errors !== []) {
+            return response()->json([
+                'valid' => false,
+                'preview' => null,
+                'errors' => $errors,
+            ], 422);
+        }
+
+        return response()->json([
+            'valid' => true,
+            'preview' => $service->previewNext($type, null, $format, $reset),
+            'reset_period' => $reset ?? $service->resolveResetPeriod($type, $format),
+            'errors' => [],
+        ]);
+    }
+
     public function updateDocumentFormats(Request $request): JsonResponse
     {
         // #542 (ST5): all six sales-document formats are editable here.
@@ -678,24 +720,44 @@ class CompanySettingsController extends Controller
 
         $rules = array_fill_keys($types, 'nullable|string|max:100');
         $rules['date_format'] = 'nullable|string|in:d/m/Y,m/d/Y,Y-m-d,dd/mm/yy,mm/dd/yy';
+        // #548 (SET-UX4): explicit reset period per document (decision on
+        // #538) and the next sequence value, which can only move forward.
+        $rules['reset_periods'] = 'nullable|array:'.implode(',', $types);
+        $rules['reset_periods.*'] = 'string|in:'.implode(',', \App\Platform\Numbering\NumberingService::RESET_PERIODS);
+        $rules['next_sequences'] = 'nullable|array:'.implode(',', $types);
+        $rules['next_sequences.*'] = 'integer|min:1|max:99999999';
 
         $validated = $request->validate($rules);
 
         $service = app(\App\Services\DocumentNumberingService::class);
+        $resetPeriods = $validated['reset_periods'] ?? [];
+        $nextSequences = $validated['next_sequences'] ?? [];
 
         // Validate every submitted format before saving any of them, so a bad
         // format cannot leave the settings half-updated.
         $errors = [];
 
         foreach ($types as $type) {
-            if (! isset($validated[$type])) {
-                continue;
+            if (isset($validated[$type])) {
+                $result = $service->validateFormat($validated[$type]);
+
+                if (! $result['valid']) {
+                    $errors[$type] = $result['errors'];
+
+                    continue;
+                }
             }
 
-            $result = $service->validateFormat($validated[$type]);
+            // The reset period must suit the format that will be in force:
+            // checked when either changes and an explicit period applies.
+            $period = $resetPeriods[$type] ?? app(\App\Platform\Numbering\NumberingService::class)->explicitResetPeriod($type);
+            if ($period !== null && (isset($validated[$type]) || isset($resetPeriods[$type]))) {
+                $format = $validated[$type] ?? $service->getFormat($type, \App\Services\DocumentNumberingService::TYPE_DEFAULTS[$type]);
+                $periodErrors = $service->validateResetPeriod($format, $period);
 
-            if (! $result['valid']) {
-                $errors[$type] = $result['errors'];
+                if ($periodErrors !== []) {
+                    $errors['reset_periods.'.$type] = $periodErrors;
+                }
             }
         }
 
@@ -706,14 +768,39 @@ class CompanySettingsController extends Controller
             ], 422);
         }
 
-        foreach ($types as $type) {
-            if (isset($validated[$type])) {
-                $service->setFormat($type, $validated[$type]);
-            }
-        }
+        try {
+            DB::transaction(function () use ($types, $validated, $resetPeriods, $nextSequences, $service) {
+                foreach ($types as $type) {
+                    if (isset($validated[$type])) {
+                        $service->setFormat($type, $validated[$type]);
+                    }
 
-        if (isset($validated['date_format'])) {
-            \App\Models\Setting::setValue('template_date_format', $validated['date_format']);
+                    if (isset($resetPeriods[$type])) {
+                        $service->setResetPeriod($type, $resetPeriods[$type]);
+                    }
+                }
+
+                // After the format/reset changes, so "forward" is measured
+                // against the number the new settings would issue next.
+                foreach ($nextSequences as $type => $next) {
+                    try {
+                        $service->advanceTo($type, (int) $next);
+                    } catch (\InvalidArgumentException $e) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            'next_sequences.'.$type => [$e->getMessage()],
+                        ]);
+                    }
+                }
+
+                if (isset($validated['date_format'])) {
+                    \App\Models\Setting::setValue('template_date_format', $validated['date_format']);
+                }
+            });
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'message' => 'Invalid document numbering settings.',
+                'errors' => $e->errors(),
+            ], 422);
         }
 
         return response()->json([
