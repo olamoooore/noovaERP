@@ -315,17 +315,20 @@ class SalesOrderService
                 $customer = \App\Models\Customer::whereKey($order->customer_id)->lockForUpdate()->first();
 
                 if ($customer !== null) {
-                    $committedOrdersTotal = (float) SalesOrder::query()
+                    // Issue #384: every open order counts with its UNINVOICED
+                    // REMAINDER (an order with one partial invoice used to drop
+                    // out entirely), and all amounts are in base currency.
+                    $committedOrdersTotal = SalesOrder::query()
                         ->where('customer_id', $customer->id)
                         ->whereKeyNot($order->id)
                         ->whereNotIn('status', ['draft', 'cancelled', 'completed'])
-                        ->whereDoesntHave('invoices')
-                        ->sum('total');
+                        ->get()
+                        ->sum(fn (SalesOrder $open) => $this->baseCurrencyAmount($open, $this->uninvoicedRemainder($open)));
 
                     $creditCheck = $this->creditCheckService->checkCreditLimit(
                         $customer,
-                        (float) $order->total,
-                        $committedOrdersTotal
+                        $this->baseCurrencyAmount($order, (float) $order->total),
+                        (float) $committedOrdersTotal
                     );
 
                     if (! $creditCheck->approved) {
@@ -357,6 +360,47 @@ class SalesOrderService
             return $order->fresh(['customer', 'lines.product', 'statusHistory']);
 
         });
+    }
+
+    /**
+     * Issue #384: the part of an order not yet invoiced into AR. Invoices
+     * that reached AR (or were paid) are in the customer's outstanding
+     * balance; draft invoices are not, so they stay in the order's exposure.
+     * Cancelled invoices reverse their link and drop out of the sum.
+     */
+    private function uninvoicedRemainder(SalesOrder $order): float
+    {
+        $invoiced = (float) \Modules\Sales\Models\SalesInvoiceLink::query()
+            ->where('sales_order_id', $order->id)
+            ->where('link_state', 'active')
+            ->whereHas('invoice', fn ($query) => $query->whereIn('status', \App\Models\Customer::PURCHASE_INVOICE_STATUSES))
+            ->sum('invoiced_value');
+
+        return max(0.0, round((float) $order->total - $invoiced, 2));
+    }
+
+    /**
+     * Issue #384: express a document-currency amount in the order's base
+     * currency. The order's rate snapshot was taken through the platform
+     * ExchangeRateService when the order was priced (same convention as
+     * SalesApprovalGate, #649); an order without a usable snapshot is
+     * converted by ExchangeRateService at the order date. No rate → the
+     * service throws and confirmation fails rather than guessing.
+     */
+    private function baseCurrencyAmount(SalesOrder $order, float $amount): float
+    {
+        $base = app(\App\Services\SalesApprovalGate::class)->baseCurrencyAmount($order, $amount);
+
+        if ($base !== null) {
+            return $base;
+        }
+
+        return (float) app(\App\Services\ExchangeRateService::class)->convert(
+            $amount,
+            strtoupper((string) $order->currency_code),
+            strtoupper((string) $order->base_currency_code),
+            $order->order_date?->toDateString(),
+        )['converted_amount'];
     }
 
     /**
