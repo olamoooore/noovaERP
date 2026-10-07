@@ -32,12 +32,21 @@ return [
         // #741 T8: period shapes this pack can be filed under.
         'period_shapes' => ['monthly', 'quarterly'],
         // #614 (TP4): statutory invoice field labels + requiredness as pack
-        // DATA. `required` mirrors the existing enforcement: Peppol supplier
-        // registration requires the UEN (ComplianceConfig::singaporeSFRS()).
+        // DATA. UEN: Peppol supplier registration requires it
+        // (ComplianceConfig::singaporeSFRS()). #1019: the GST registration
+        // number is required because IRAS lists it among the mandatory
+        // tax-invoice fields ("A tax invoice must contain ... GST
+        // registration number"); UEN and GST no. may differ, so both are
+        // printed. Pending tax-agent sign-off (verified:false).
         'invoice_fields' => [
             'tin' => ['label' => 'Unique Entity Number (UEN)', 'required' => true],
             'sst_number' => ['label' => 'SST Registration No.', 'required' => false],
-            'gst_number' => ['label' => 'GST Registration No.', 'required' => false],
+            'gst_number' => [
+                'label' => 'GST Registration No.',
+                'required' => true,
+                'source' => 'https://www.iras.gov.sg/taxes/goods-services-tax-(gst)/basics-of-gst/invoicing-price-display-and-record-keeping/invoicing-customers',
+                'verified' => false,
+            ],
             'bank' => ['label' => 'Bank Details', 'required' => false],
         ],
         // #743 T10: registration thresholds as DATA (amount, currency, sector

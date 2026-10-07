@@ -119,7 +119,13 @@ final class CompanyDataSource
             // column wins when a tenant has one).
             'tin' => self::firstFilled($entity->tax_id, $tenant['tin']),
             'sst_number' => self::firstFilled($entity->sst_registration_number, $tenant['sst_number']),
-            'gst_number' => self::firstFilled($entity->gst_registration_number ?? null, $entity->sst_registration_number, $tenant['gst_number']),
+            // #1019: firstFilled() takes two arguments — the former
+            // three-argument call silently dropped the tenant fallback, so the
+            // company GST registration number never reached entity documents.
+            'gst_number' => self::firstFilled(
+                self::firstFilled($entity->gst_registration_number ?? null, $entity->sst_registration_number),
+                $tenant['gst_number'],
+            ),
             'bank_name' => self::firstFilled($bank['bank_name'] ?? null, $tenant['bank_name']),
             'bank_account_name' => self::firstFilled($bank['account_name'] ?? null, $tenant['bank_account_name']),
             'bank_account_number' => self::firstFilled($bank['account_number'] ?? null, $tenant['bank_account_number']),

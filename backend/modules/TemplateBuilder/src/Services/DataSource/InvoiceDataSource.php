@@ -73,6 +73,9 @@ class InvoiceDataSource implements DataSourceContract
         $currencyCode = $invoice->currency_code ?: $companyCurrency;
         $baseCurrencyCode = $invoice->base_currency_code ?: $companyCurrency;
         $exchangeRate = $invoice->exchange_rate !== null ? (float) $invoice->exchange_rate : 1.0;
+        $baseTotal = round((float) $invoice->total * $exchangeRate, 2);
+        $baseTax = round((float) $invoice->tax_amount * $exchangeRate, 2);
+        $baseTotalExclTax = round(((float) $invoice->total - (float) $invoice->tax_amount) * $exchangeRate, 2);
 
         // Issue #614 (TP4): statutory tokens — tax summary per posted tax
         // line, e-invoice reference and amount in words.
@@ -223,15 +226,26 @@ class InvoiceDataSource implements DataSourceContract
                 'amount_in_words' => $amountInWords,
                 // Dual display (FR-5.4/FR-8.5): base-currency equivalents at
                 // the document's immutable snapshot rate.
-                'base_total' => round((float) $invoice->total * $exchangeRate, 2),
+                'base_total' => $baseTotal,
                 'base_subtotal' => round((float) $invoice->subtotal * $exchangeRate, 2),
-                'base_tax' => round((float) $invoice->tax_amount * $exchangeRate, 2),
+                'base_tax' => $baseTax,
+                // #1019 (IRAS): "Total amount payable excluding GST" in the
+                // base currency = (grand total − tax) × rate, each figure
+                // converted on its own at the snapshot rate and rounded to
+                // 2dp — the same document → base conversion the posting
+                // books (InvoiceService: base = round(doc × rate, 2)).
+                'base_total_excl_tax' => $baseTotalExclTax,
+                'base_total_formatted' => number_format($baseTotal, 2),
+                'base_tax_formatted' => number_format($baseTax, 2),
+                'base_total_excl_tax_formatted' => number_format($baseTotalExclTax, 2),
                 'exchange_rate' => $exchangeRate,
             ],
             'meta' => [
                 'currency_code' => $currencyCode,
                 'base_currency_code' => $baseCurrencyCode,
                 'exchange_rate' => $exchangeRate,
+                // #1019: drives the default template's base-currency block.
+                'is_foreign_currency' => strtoupper((string) $currencyCode) !== strtoupper((string) $baseCurrencyCode) ? 1 : 0,
                 'currency_symbol' => self::currencySymbol($currencyCode),
                 'number_format' => '1,234.56',
                 'locale' => 'en',

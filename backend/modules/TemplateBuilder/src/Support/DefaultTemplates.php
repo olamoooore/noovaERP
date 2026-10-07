@@ -54,7 +54,30 @@ final class DefaultTemplates
                             ['type' => 'image', 'url' => '{{ company.logo_url }}', 'width' => 120, 'align' => 'left'],
                             ['type' => 'text', 'content' => '<div style="font-size:20px;font-weight:bold;color:#111827;">{{ company.name }}</div><div style="font-size:10px;color:#6b7280;">{{ company.address }}</div><div style="font-size:10px;color:#6b7280;">{{ company.website }}</div>'],
                         ]],
-                        ['type' => 'text', 'align' => 'right', 'content' => '<div style="font-size:24px;font-weight:bold;color:#111827;">INVOICE</div><div style="font-size:10px;color:#6b7280;">{{ company.email }} · {{ company.phone }}</div>'],
+                        // #1019: IRAS requires the words "Tax Invoice" on a
+                        // tax invoice, which only a GST-registered supplier
+                        // issues. GST regime + a GST registration number →
+                        // "TAX INVOICE"; otherwise (no GST number, non-GST
+                        // regime, or an acceptance copy — "NOT A TAX
+                        // INVOICE", #617) → "INVOICE".
+                        ['type' => 'conditional', 'align' => 'right', 'children' => [
+                            ['type' => 'conditional', 'condition' => "{{ document_variant }} != ''", 'children' => [
+                                self::titleBlock('INVOICE'),
+                            ]],
+                            ['type' => 'conditional', 'condition' => "{{ document_variant }} == ''", 'children' => [
+                                ['type' => 'conditional', 'condition' => "{{ company.tax_regime }} == 'GST'", 'children' => [
+                                    ['type' => 'conditional', 'condition' => "{{ company.gst_number }} != ''", 'children' => [
+                                        self::titleBlock('TAX INVOICE'),
+                                    ]],
+                                    ['type' => 'conditional', 'condition' => "{{ company.gst_number }} == ''", 'children' => [
+                                        self::titleBlock('INVOICE'),
+                                    ]],
+                                ]],
+                                ['type' => 'conditional', 'condition' => "{{ company.tax_regime }} != 'GST'", 'children' => [
+                                    self::titleBlock('INVOICE'),
+                                ]],
+                            ]],
+                        ]],
                     ]],
                     ['type' => 'divider'],
                     ['type' => 'columns', 'gap' => 8, 'children' => [
@@ -107,20 +130,41 @@ final class DefaultTemplates
                             ['label' => 'Balance Due', 'field' => 'totals.balance', 'format' => 'money', 'bold' => true],
                         ]],
                     ]],
-                    ['type' => 'conditional', 'condition' => '{{ totals.paid }} <= 0 && {{ totals.discount }} > 0', 'children' => [
-                        ['type' => 'totals', 'rows' => [
-                            ['label' => 'Subtotal', 'field' => 'totals.subtotal', 'format' => 'money'],
-                            ['label' => 'Discount', 'field' => 'totals.discount', 'format' => 'money'],
-                            ['label' => 'Tax', 'field' => 'totals.tax', 'format' => 'money'],
-                            ['label' => 'Total Due', 'field' => 'totals.total', 'format' => 'money', 'bold' => true],
+                    // #1019: the condition evaluator compares one token with
+                    // one literal and does not understand "&&" (the former
+                    // "paid <= 0 && discount ..." conditions always passed,
+                    // so unpaid invoices printed two totals blocks). The two
+                    // tests are nested instead.
+                    ['type' => 'conditional', 'condition' => '{{ totals.paid }} <= 0', 'children' => [
+                        ['type' => 'conditional', 'condition' => '{{ totals.discount }} > 0', 'children' => [
+                            ['type' => 'totals', 'rows' => [
+                                ['label' => 'Subtotal', 'field' => 'totals.subtotal', 'format' => 'money'],
+                                ['label' => 'Discount', 'field' => 'totals.discount', 'format' => 'money'],
+                                ['label' => 'Tax', 'field' => 'totals.tax', 'format' => 'money'],
+                                ['label' => 'Total Due', 'field' => 'totals.total', 'format' => 'money', 'bold' => true],
+                            ]],
+                        ]],
+                        ['type' => 'conditional', 'condition' => '{{ totals.discount }} <= 0', 'children' => [
+                            ['type' => 'totals', 'rows' => [
+                                ['label' => 'Subtotal', 'field' => 'totals.subtotal', 'format' => 'money'],
+                                ['label' => 'Tax', 'field' => 'totals.tax', 'format' => 'money'],
+                                ['label' => 'Total Due', 'field' => 'totals.total', 'format' => 'money', 'bold' => true],
+                            ]],
                         ]],
                     ]],
-                    ['type' => 'conditional', 'condition' => '{{ totals.paid }} <= 0 && {{ totals.discount }} <= 0', 'children' => [
-                        ['type' => 'totals', 'rows' => [
-                            ['label' => 'Subtotal', 'field' => 'totals.subtotal', 'format' => 'money'],
-                            ['label' => 'Tax', 'field' => 'totals.tax', 'format' => 'money'],
-                            ['label' => 'Total Due', 'field' => 'totals.total', 'format' => 'money', 'bold' => true],
-                        ]],
+                    // #1019: IRAS — a foreign-currency tax invoice must show
+                    // the total excl. GST, total GST and total incl. GST in
+                    // Singapore dollars. The data source converts each at the
+                    // invoice's snapshot rate (document → base, 2dp), the
+                    // same conversion the posting uses; hidden on a
+                    // base-currency invoice.
+                    ['type' => 'conditional', 'condition' => '{{ meta.is_foreign_currency }} == 1', 'children' => [
+                        ['type' => 'text', 'align' => 'right', 'size' => 9, 'color' => '#374151', 'content' => '<div style="font-weight:bold;">Amounts in {{ meta.base_currency_code }} (at rate 1 {{ meta.currency_code }} = {{ meta.exchange_rate }} {{ meta.base_currency_code }})</div>'
+                            .'<table style="margin-left:auto;border-collapse:collapse;font-size:9px;">'
+                            .'<tr><td style="padding:1px 8px;">Total amount payable excl. {{ company.tax_regime }}</td><td style="padding:1px 0;text-align:right;">{{ meta.base_currency_code }} {{ totals.base_total_excl_tax_formatted }}</td></tr>'
+                            .'<tr><td style="padding:1px 8px;">Total {{ company.tax_regime }}</td><td style="padding:1px 0;text-align:right;">{{ meta.base_currency_code }} {{ totals.base_tax_formatted }}</td></tr>'
+                            .'<tr><td style="padding:1px 8px;font-weight:bold;">Total amount payable incl. {{ company.tax_regime }}</td><td style="padding:1px 0;text-align:right;font-weight:bold;">{{ meta.base_currency_code }} {{ totals.base_total_formatted }}</td></tr>'
+                            .'</table>'],
                     ]],
                     // Issue #614 (TP4): amount in words in the document
                     // currency/language, then the bank details a payer needs.
@@ -186,10 +230,24 @@ final class DefaultTemplates
         $tpl['code'] = 'QT-TPL-DEFAULT';
         $tpl['name'] = 'Default Quotation';
         $blocks = &$tpl['layout_config']['blocks'];
-        $blocks[1]['children'][1]['content'] = '<div style="font-size:24px;font-weight:bold;color:#111827;">QUOTATION</div><div style="font-size:10px;color:#6b7280;">{{ company.email }} · {{ company.phone }}</div>';
-        $blocks[3]['children'][1]['content'] = '<b>Quote #:</b> {{ invoice.number }}<br/><b>Date:</b> {{ invoice.issue_date }}<br/><b>Valid Until:</b> {{ invoice.due_date }}';
+        // #1019: blocks[0] is the header row (blocks[1] is the divider) — the
+        // title cell is replaced outright so the invoice's "TAX INVOICE"
+        // conditional can never reach a quotation; blocks[2] is the
+        // bill-to row carrying the document number/date column.
+        $blocks[0]['children'][1] = self::titleBlock('QUOTATION');
+        $blocks[2]['children'][1]['content'] = '<b>Quote #:</b> {{ invoice.number }}<br/><b>Date:</b> {{ invoice.issue_date }}<br/><b>Valid Until:</b> {{ invoice.due_date }}';
 
         return $tpl;
+    }
+
+    /**
+     * Right-aligned document title + contact line used by the invoice header.
+     *
+     * @return array<string,mixed>
+     */
+    private static function titleBlock(string $title): array
+    {
+        return ['type' => 'text', 'align' => 'right', 'content' => '<div style="font-size:24px;font-weight:bold;color:#111827;">'.$title.'</div><div style="font-size:10px;color:#6b7280;">{{ company.email }} · {{ company.phone }}</div>'];
     }
 
     /** @return array<string,mixed> */

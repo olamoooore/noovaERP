@@ -96,7 +96,9 @@ class StatutoryTemplatePublishTest extends TenantTestCase
     {
         $this->setIssuingCountry('SG');
         $template = $this->createTemplate([
-            ['type' => 'text', 'content' => 'No statutory tokens here'],
+            // #1019: the SG pack also requires the GST registration number;
+            // it is present so this case isolates the missing UEN.
+            ['type' => 'text', 'content' => 'No UEN token here. GST Reg No.: {{ company.gst_number }}'],
         ]);
 
         $response = $this->actingAs($this->admin)
@@ -114,8 +116,9 @@ class StatutoryTemplatePublishTest extends TenantTestCase
     public function test_sg_pack_publishes_once_the_uen_token_is_present(): void
     {
         $this->setIssuingCountry('SG');
+        // #1019: the SG pack now also requires the GST registration number.
         $template = $this->createTemplate([
-            ['type' => 'text', 'content' => 'UEN: {{ company.tin }}'],
+            ['type' => 'text', 'content' => 'UEN: {{ company.tin }} GST Reg No.: {{ company.gst_number }}'],
         ]);
 
         $this->actingAs($this->admin)
@@ -123,6 +126,26 @@ class StatutoryTemplatePublishTest extends TenantTestCase
             ->assertOk();
 
         $this->assertSame('published', $template->fresh()->status);
+    }
+
+    /**
+     * #1019: IRAS lists the supplier's "GST registration number" among the
+     * mandatory tax-invoice fields, so the SG pack requires its token too.
+     */
+    public function test_sg_pack_blocks_publishing_an_invoice_template_with_uen_but_no_gst_number_token(): void
+    {
+        $this->setIssuingCountry('SG');
+        $template = $this->createTemplate([
+            ['type' => 'text', 'content' => 'UEN: {{ company.tin }}'],
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->postJson("/api/v1/template-builder/templates/{$template->id}/publish");
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('missing_fields', ['GST Registration No.']);
+        $this->assertStringContainsString('GST Registration No.', (string) $response->json('message'));
+        $this->assertSame('draft', $template->fresh()->status);
     }
 
     public function test_generic_pack_requires_no_statutory_tokens(): void
