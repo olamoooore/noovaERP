@@ -9,8 +9,9 @@ import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { ActionQueueFilterChip } from '@/components/sales/ActionQueueFilterChip'
 import { useActionQueueParam } from '@/hooks/useActionQueueParam'
+import { LINE_STUCK_STAGES, LINE_STUCK_STAGE_LABELS, isLineFulfilmentStage } from '@/components/sales/lineFulfilment'
 import { Icon } from '@iconify/react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { formatDate, formatCurrency } from '@/lib/utils'
 import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { Pagination } from '@/components/ui/Pagination'
@@ -53,6 +54,20 @@ export function SalesOrdersPage() {
   const [channelFilter, setChannelFilter] = useState('all')
   // #365: a Sales cockpit action-queue tile links here with ?action_queue=<key>[&mine=1].
   const { actionQueue, mine: actionQueueMine, params: actionQueueParams, clear: clearActionQueue } = useActionQueueParam()
+  // Issue #411 (DX1): "lines stuck at stage X", applied server-side
+  // (GET /sales/orders?stuck_at=). Kept in the URL so the filter can be linked.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const rawStuckAt = searchParams.get('stuck_at')
+  const stuckAt = isLineFulfilmentStage(rawStuckAt) ? rawStuckAt : null
+  const setStuckAt = (value: string) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (isLineFulfilmentStage(value)) next.set('stuck_at', value)
+      else next.delete('stuck_at')
+      return next
+    })
+    setPage(1)
+  }
   // Issue #382 (O13): sorting is server-side (allow-listed sort/direction on
   // GET /sales/orders) so it spans every page, not just the rows on screen.
   const [sortKey, setSortKey] = useState<string>('created_at')
@@ -74,12 +89,13 @@ export function SalesOrdersPage() {
   const confirmIntentRef = useRef<'backorder' | 'partial' | null>(null)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['sales-orders', { page, pageSize, debouncedSearchQuery, statusFilter, channelFilter, sortKey, sortDir, actionQueue, actionQueueMine }],
+    queryKey: ['sales-orders', { page, pageSize, debouncedSearchQuery, statusFilter, channelFilter, sortKey, sortDir, actionQueue, actionQueueMine, stuckAt }],
     queryFn: async () => {
       const params: any = { per_page: pageSize, page, sort: sortKey, direction: sortDir }
       if (debouncedSearchQuery.trim()) params.search = debouncedSearchQuery.trim()
       if (statusFilter !== 'all') params.status = statusFilter
       if (channelFilter !== 'all') params.channel = channelFilter
+      if (stuckAt) params.stuck_at = stuckAt
       Object.assign(params, actionQueueParams)
       const response = await api.get('/sales/orders', { params })
       return response.data
@@ -256,6 +272,17 @@ export function SalesOrdersPage() {
             <SelectContent>
               {CHANNEL_FILTERS.map((f) => (
                 <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={stuckAt ?? 'all'} onValueChange={setStuckAt}>
+            <SelectTrigger className="w-[190px]" aria-label="Lines stuck at stage">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Any fulfilment stage</SelectItem>
+              {LINE_STUCK_STAGES.map((stage) => (
+                <SelectItem key={stage} value={stage}>Lines stuck at: {LINE_STUCK_STAGE_LABELS[stage]}</SelectItem>
               ))}
             </SelectContent>
           </Select>

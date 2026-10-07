@@ -34,6 +34,12 @@ class SalesOrderController extends Controller
 
     public function index(Request $request)
     {
+        // Issue #411: "lines stuck at stage X" — validated up front so an
+        // unknown stage is a 422, not a silently unfiltered list.
+        $request->validate([
+            'stuck_at' => ['nullable', 'string', 'in:'.implode(',', \App\Services\SalesDocumentProgress::LINE_STAGES)],
+        ]);
+
         $query = SalesOrder::with(['customer', 'lines.product', 'channelReferences'])
             ->withCount(['invoiceLinks', 'deliveryOrders']);
 
@@ -64,6 +70,13 @@ class SalesOrderController extends Controller
 
         if ($request->has('customer_id')) {
             $query->where('customer_id', $request->customer_id);
+        }
+
+        // Issue #411: orders with at least one line whose first incomplete
+        // fulfilment stage is the requested one (same SQL as the chain).
+        if ($request->filled('stuck_at')) {
+            app(\App\Services\SalesDocumentProgress::class)
+                ->scopeSalesOrdersStuckAt($query, (string) $request->query('stuck_at'));
         }
 
         // Issue #365: a Sales cockpit action-queue tile opens this list
@@ -1096,6 +1109,24 @@ class SalesOrderController extends Controller
         }
 
         return response()->json($order->invoiceLinks()->with('invoice')->get());
+    }
+
+    /**
+     * Issue #411 (DX1): per-line fulfilment chain ordered → reserved →
+     * delivered → invoiced → paid with the DOs / invoices / payments behind
+     * each stage. Read-only; same sales.view gate and entity scope as show().
+     */
+    public function fulfilment(Request $request, $id)
+    {
+        $order = $this->findScopedOrder($request, $id);
+
+        if (! $order) {
+            return response()->json(['message' => 'Sales order not found'], 404);
+        }
+
+        return response()->json([
+            'sales_order_number' => $order->sales_order_number,
+        ] + app(\App\Services\SalesDocumentProgress::class)->forSalesOrderLines((int) $order->id));
     }
 
     public function channelReferences($id)

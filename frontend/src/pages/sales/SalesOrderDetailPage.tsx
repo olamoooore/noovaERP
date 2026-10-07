@@ -37,6 +37,8 @@ import { SalesOrderLockControl } from '@/components/sales/SalesOrderLockControl'
 import { SalesOrderCreditNoteAction } from '@/components/sales/SalesOrderCreditNoteAction'
 import { SalesOrderDownPaymentAction } from '@/components/sales/SalesOrderDownPaymentAction'
 import { SalesOrderBillingRecurrenceCard } from '@/components/sales/SalesOrderBillingRecurrenceCard'
+import { LineFulfilmentBar } from '@/components/sales/LineFulfilmentBar'
+import { useSalesOrderFulfilment } from '@/components/sales/lineFulfilment'
 import { SaveConflictDialog } from '@/components/sales/SaveConflictDialog'
 import { extractSaveConflict, type ActiveEditor, type SaveConflict } from '@/lib/recordConflict'
 import { useAuthStore } from '@/store/authStore'
@@ -408,6 +410,11 @@ export function SalesOrderDetailPage() {
     },
     enabled: !!id,
   })
+
+  // Issue #411 (DX1): per-line chain ordered → reserved → delivered →
+  // invoiced → paid, computed server-side from the existing link data.
+  const { data: fulfilment } = useSalesOrderFulfilment(id)
+  const lineFulfilment = new Map((fulfilment?.lines ?? []).map((chain) => [chain.sales_order_line_id, chain]))
 
   // #402 (SU4): the credit-preview endpoint already computes the customer's
   // exposure; the header reports it instead of re-deriving credit locally.
@@ -1312,7 +1319,12 @@ export function SalesOrderDetailPage() {
                 return (
                   <TableRow key={line.id}>
                     <TableCell>{index + 1}</TableCell>
-                    <TableCell className="font-medium">{line.product?.name || '-'}</TableCell>
+                    <TableCell className="font-medium">
+                      <div>{line.product?.name || '-'}</div>
+                      {lineFulfilment.has(line.id) && (
+                        <LineFulfilmentBar line={lineFulfilment.get(line.id)!} className="mt-1 font-normal" />
+                      )}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{line.product?.sku || line.sku || '-'}</TableCell>
                     <TableCell>{line.description || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{line.model_number || line.product?.manufacturer_part_number || '-'}</TableCell>

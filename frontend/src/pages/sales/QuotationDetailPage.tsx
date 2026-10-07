@@ -30,6 +30,7 @@ import { fetchBulkStockAvailability } from '@/components/sales/stockAvailability
 import { StockShortageDialog, type ShortageLine } from '@/components/sales/StockShortageDialog'
 import { QuotationRevisionDialog, type QuotationRevisionMode } from '@/components/sales/QuotationRevisionDialog'
 import { QuotationVersionHistory, type QuotationVersionEntry } from '@/components/sales/QuotationVersionHistory'
+import { SalesOrderFulfilmentCard } from '@/components/sales/LineFulfilmentBar'
 
 const QUOTATION_LINE_COLUMNS = [
   '#', 'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Qty', 'Unit Price', 'Tax', 'Total',
@@ -1229,6 +1230,9 @@ export function QuotationDetailPage() {
           </SalesLineColumnVisibility>
         </CardContent>
       </Card>
+
+      {/* Issue #411 (DX1): the converted order's per-line fulfilment chain. */}
+      {quotation.sales_order_id && <SalesOrderFulfilmentCard orderId={quotation.sales_order_id} />}
 
       {/* Issue #336 (Q12): v1, v2 … with the change in total between versions. */}
       <QuotationVersionHistory

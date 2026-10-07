@@ -96,6 +96,10 @@ Route::middleware([
         Route::middleware(\App\Http\Middleware\RequirePermission::class.':sales.view')->group(function () {
             Route::get('/sales/orders/{id}/invoice-links', [SalesOrderController::class, 'invoiceLinks']);
             Route::get('/sales/orders/{id}/channel-references', [SalesOrderController::class, 'channelReferences']);
+            // Issue #411 (DX1): per-line fulfilment chain — reuses the
+            // sales.view literal of the order show route (no new permission).
+            Route::get('/sales/orders/{id}/fulfilment', [SalesOrderController::class, 'fulfilment'])
+                ->whereNumber('id');
 
             // Lifecycle history (immutable audit)
             Route::get('/sales/orders/{id}/history', [SalesOrderController::class, 'history']);

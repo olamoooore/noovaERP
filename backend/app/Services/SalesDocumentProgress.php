@@ -184,9 +184,305 @@ class SalesDocumentProgress
             });
     }
 
+    /** Issue #411: the fulfilment stages a line can be stuck at, in chain order. */
+    public const LINE_STAGES = ['reserve', 'deliver', 'invoice', 'pay'];
+
+    /**
+     * Issue #411 (DX1): the per-line fulfilment chain of one sales order —
+     * ordered → reserved → delivered → invoiced → paid — with the delivery
+     * orders, invoices and payments behind each stage.
+     *
+     * Every figure is read from bookkeeping the live paths already keep:
+     *   • ordered   = quantity − quantity_cancelled;
+     *   • reserved  = quantity_allocated (#380), or what was delivered when
+     *                 that is more — allocation is recorded once and not
+     *                 consumed by delivery, and shipped goods were available;
+     *   • delivered = quantity_delivered (#461 delivery-completion mirror);
+     *   • invoiced  = quantity_invoiced (#455 invoicing mirror); the amount is
+     *                 the active invoice lines linked by sales_order_line_id;
+     *   • paid      — rule: each linked invoice line's paid share is the
+     *                 invoice's live payment applications (#155: not reversed,
+     *                 payment not deleted / reversed / cancelled) ÷ the
+     *                 invoice total, capped at 1, times the line's quantity and
+     *                 amount. Credit notes are not payments and do not count.
+     *                 An invoice whose total is zero has nothing to collect and
+     *                 counts as paid.
+     * Each stage is capped at the ordered quantity (paid at invoiced). Lines
+     * with no stock to move (services, shipping, free text) skip the reserve
+     * and deliver stages: they count as reached. Quantities are compared in
+     * stock units (#685) and reported in the line's own unit.
+     *
+     * `stuck_at` is the first stage a line has not completed, on an order
+     * that is in fulfilment (not draft or cancelled); null when the line is
+     * complete or the order is not in fulfilment.
+     *
+     * @return array{sales_order_id: int, lines: array<int, array<string, mixed>>}
+     */
+    public function forSalesOrderLines(int $salesOrderId): array
+    {
+        [$sql, $bindings] = $this->salesOrderLineChainSql($salesOrderId);
+        $rows = DB::select($sql.' ORDER BY c.sequence NULLS LAST, c.sales_order_line_id', $bindings);
+
+        [$deliveryOrders, $invoices, $payments] = $this->salesOrderLineDocuments($salesOrderId);
+
+        $lines = [];
+        foreach ($rows as $row) {
+            $lineId = (int) $row->sales_order_line_id;
+            $factor = (float) $row->factor;
+            $ordered = (float) $row->ordered_stock;
+            $lineTotal = (float) $row->line_total;
+            $share = fn (float $stock): float => $ordered > self::EPSILON ? round($lineTotal * $stock / $ordered, 2) : 0.0;
+            $quantity = fn (float $stock): float => round($stock / $factor, 4);
+
+            $lines[] = [
+                'sales_order_line_id' => $lineId,
+                'product_id' => $row->product_id !== null ? (int) $row->product_id : null,
+                'product_name' => $row->product_name,
+                'description' => $row->description,
+                'unit' => $row->unit,
+                'delivery_tracked' => (bool) $row->delivery_tracked,
+                'stuck_at' => $row->stuck_at,
+                'ordered' => ['quantity' => $quantity($ordered), 'amount' => round($lineTotal, 2)],
+                'reserved' => [
+                    'quantity' => $quantity((float) $row->reserved_stock),
+                    'amount' => $share((float) $row->reserved_stock),
+                ],
+                'delivered' => [
+                    'quantity' => $quantity((float) $row->delivered_stock),
+                    'amount' => $share((float) $row->delivered_stock),
+                    'delivery_orders' => $deliveryOrders[$lineId] ?? [],
+                ],
+                'invoiced' => [
+                    'quantity' => $quantity((float) $row->invoiced_stock),
+                    'amount' => round((float) $row->invoiced_amount, 2),
+                    'invoices' => $invoices[$lineId] ?? [],
+                ],
+                'paid' => [
+                    'quantity' => $quantity((float) $row->paid_stock),
+                    'amount' => round((float) $row->paid_amount, 2),
+                    'payments' => $payments[$lineId] ?? [],
+                ],
+            ];
+        }
+
+        return ['sales_order_id' => $salesOrderId, 'lines' => $lines];
+    }
+
+    /**
+     * Issue #411 list filter "lines stuck at stage X": sales orders with at
+     * least one line whose first incomplete stage is $stage — the very same
+     * SQL as the per-line chain above.
+     */
+    public function scopeSalesOrdersStuckAt(Builder $query, string $stage): void
+    {
+        [$sql, $bindings] = $this->salesOrderLineChainSql(null);
+
+        $query->whereIn($query->getModel()->getTable().'.id', function ($sub) use ($sql, $bindings, $stage) {
+            $sub->select('s.sales_order_id')
+                ->fromRaw("({$sql}) AS s", $bindings)
+                ->where('s.stuck_at', $stage);
+        });
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // SQL
     // ─────────────────────────────────────────────────────────────────────
+
+    /** Issue #411: a live receipt application (#155 / C-3). */
+    private function livePaymentApplicationSql(string $application, string $payment): string
+    {
+        return "{$application}.reversed_at IS NULL AND {$payment}.deleted_at IS NULL"
+            ." AND COALESCE({$payment}.payment_status::text, '') NOT IN ('reversed', 'cancelled', 'voided')";
+    }
+
+    /**
+     * Issue #411: one row per non-text sales-order line with each stage's
+     * reached quantity in stock units and its first incomplete stage.
+     *
+     * @param  int|null  $salesOrderId  null = every order (list filter)
+     * @return array{0: string, 1: array<int, mixed>}
+     */
+    private function salesOrderLineChainSql(?int $salesOrderId): array
+    {
+        $bindings = [];
+        $lineScope = '';
+        $invoiceScope = '';
+        $paymentScope = '';
+
+        if ($salesOrderId !== null) {
+            $paymentScope = ' AND pa.invoice_id IN (SELECT il2.invoice_id FROM invoice_lines il2'
+                .' JOIN sales_order_lines s3 ON s3.id = il2.sales_order_line_id WHERE s3.sales_order_id = ?)';
+            $invoiceScope = ' AND il.sales_order_line_id IN (SELECT s2.id FROM sales_order_lines s2 WHERE s2.sales_order_id = ?)';
+            $lineScope = ' AND sol.sales_order_id = ?';
+            $bindings = [$salesOrderId, $salesOrderId, $salesOrderId];
+        }
+
+        $activeInvoice = $this->activeInvoiceSql('i');
+        $livePayment = $this->livePaymentApplicationSql('pa', 'pm');
+        $epsilon = self::EPSILON;
+        $factor = 'COALESCE(NULLIF(spu.conversion_factor, 0), 1)';
+        $ordered = "(GREATEST(COALESCE(sol.quantity, 0) - COALESCE(sol.quantity_cancelled, 0), 0) * {$factor})";
+        $tracked = "(sol.product_id IS NOT NULL AND COALESCE(p.type::text, 'product') <> 'service'"
+            .' AND NOT COALESCE(sol.is_delivery, false))';
+        $invoicedStock = "LEAST({$ordered}, GREATEST(COALESCE(sol.quantity_invoiced, 0), 0))";
+
+        $sql = <<<SQL
+            SELECT c.*,
+                   CASE
+                       WHEN c.in_fulfilment AND c.ordered_stock > {$epsilon} THEN
+                           CASE
+                               WHEN c.reserved_stock + {$epsilon} < c.ordered_stock THEN 'reserve'
+                               WHEN c.delivered_stock + {$epsilon} < c.ordered_stock THEN 'deliver'
+                               WHEN c.invoiced_stock + {$epsilon} < c.ordered_stock THEN 'invoice'
+                               WHEN c.paid_stock + {$epsilon} < c.ordered_stock THEN 'pay'
+                           END
+                   END AS stuck_at
+            FROM (
+                SELECT sol.id AS sales_order_line_id,
+                       sol.sales_order_id,
+                       sol.sequence,
+                       sol.product_id,
+                       p.name AS product_name,
+                       sol.description,
+                       sol.unit,
+                       COALESCE(sol.line_total, 0) AS line_total,
+                       {$factor} AS factor,
+                       {$tracked} AS delivery_tracked,
+                       (so.status::text NOT IN ('draft', 'cancelled')) AS in_fulfilment,
+                       {$ordered} AS ordered_stock,
+                       CASE WHEN {$tracked} THEN LEAST({$ordered}, GREATEST(
+                           COALESCE(sol.quantity_allocated, 0), COALESCE(sol.quantity_delivered, 0), 0))
+                       ELSE {$ordered} END AS reserved_stock,
+                       CASE WHEN {$tracked} THEN LEAST({$ordered}, GREATEST(COALESCE(sol.quantity_delivered, 0), 0))
+                       ELSE {$ordered} END AS delivered_stock,
+                       {$invoicedStock} AS invoiced_stock,
+                       LEAST({$invoicedStock}, COALESCE(inv.paid_stock, 0)) AS paid_stock,
+                       COALESCE(inv.invoiced_amount, 0) AS invoiced_amount,
+                       COALESCE(inv.paid_amount, 0) AS paid_amount
+                FROM sales_order_lines sol
+                JOIN sales_orders so ON so.id = sol.sales_order_id AND so.deleted_at IS NULL
+                LEFT JOIN products p ON p.id = sol.product_id
+                LEFT JOIN product_uoms spu ON spu.id = sol.uom_id
+                LEFT JOIN (
+                    SELECT il.sales_order_line_id,
+                           SUM(COALESCE(il.line_total, 0)) AS invoiced_amount,
+                           SUM(COALESCE(il.quantity, 0) * COALESCE(NULLIF(pu.conversion_factor, 0), 1) * r.ratio) AS paid_stock,
+                           SUM(COALESCE(il.line_total, 0) * r.ratio) AS paid_amount
+                    FROM invoice_lines il
+                    JOIN invoices i ON i.id = il.invoice_id
+                    LEFT JOIN product_uoms pu ON pu.id = il.uom_id
+                    LEFT JOIN (
+                        SELECT pa.invoice_id, SUM(pa.applied_amount) AS paid
+                        FROM payment_applications pa
+                        JOIN payments pm ON pm.id = pa.payment_id
+                        WHERE {$livePayment}{$paymentScope}
+                        GROUP BY pa.invoice_id
+                    ) paid ON paid.invoice_id = i.id
+                    CROSS JOIN LATERAL (
+                        SELECT CASE WHEN COALESCE(i.total, 0) <= 0.005 THEN 1
+                                    ELSE LEAST(1, COALESCE(paid.paid, 0) / i.total) END AS ratio
+                    ) r
+                    WHERE {$activeInvoice}
+                      AND il.sales_order_line_id IS NOT NULL
+                      {$invoiceScope}
+                    GROUP BY il.sales_order_line_id
+                ) inv ON inv.sales_order_line_id = sol.id
+                WHERE COALESCE(sol.line_type::text, 'product') NOT IN ('note', 'section')
+                  {$lineScope}
+            ) c
+            SQL;
+
+        return [$sql, $bindings];
+    }
+
+    /**
+     * Issue #411: the delivery orders, invoices and payments behind each line
+     * of one sales order — three set-based queries, keyed by order line id.
+     *
+     * @return array{0: array<int, array<int, array<string, mixed>>>, 1: array<int, array<int, array<string, mixed>>>, 2: array<int, array<int, array<string, mixed>>>}
+     */
+    private function salesOrderLineDocuments(int $salesOrderId): array
+    {
+        $activeDeliveryOrder = $this->activeDeliveryOrderSql('d');
+        $activeInvoice = $this->activeInvoiceSql('i');
+        $livePayment = $this->livePaymentApplicationSql('pa', 'pm');
+
+        $deliveryOrders = [];
+        foreach (DB::select(<<<SQL
+            SELECT dol.sales_order_line_id, d.id, d.delivery_order_number, d.status,
+                   SUM(GREATEST(COALESCE(dol.quantity_delivered, 0) - COALESCE(dol.quantity_returned, 0), 0)) AS quantity
+            FROM delivery_order_lines dol
+            JOIN delivery_orders d ON d.id = dol.delivery_order_id
+            JOIN sales_order_lines sol ON sol.id = dol.sales_order_line_id
+            WHERE sol.sales_order_id = ? AND {$activeDeliveryOrder}
+            GROUP BY dol.sales_order_line_id, d.id, d.delivery_order_number, d.status
+            ORDER BY dol.sales_order_line_id, d.id
+            SQL, [$salesOrderId]) as $row) {
+            $deliveryOrders[(int) $row->sales_order_line_id][] = [
+                'id' => (int) $row->id,
+                'delivery_order_number' => $row->delivery_order_number,
+                'status' => $row->status,
+                'quantity' => round((float) $row->quantity, 4),
+            ];
+        }
+
+        $invoices = [];
+        foreach (DB::select(<<<SQL
+            SELECT il.sales_order_line_id, i.id, i.invoice_number, i.status, i.lifecycle_status, i.total,
+                   COALESCE(paid.paid, 0) AS invoice_paid,
+                   SUM(COALESCE(il.quantity, 0)) AS quantity,
+                   SUM(COALESCE(il.line_total, 0)) AS amount
+            FROM invoice_lines il
+            JOIN invoices i ON i.id = il.invoice_id
+            JOIN sales_order_lines sol ON sol.id = il.sales_order_line_id
+            LEFT JOIN (
+                SELECT pa.invoice_id, SUM(pa.applied_amount) AS paid
+                FROM payment_applications pa
+                JOIN payments pm ON pm.id = pa.payment_id
+                WHERE {$livePayment}
+                GROUP BY pa.invoice_id
+            ) paid ON paid.invoice_id = i.id
+            WHERE sol.sales_order_id = ? AND {$activeInvoice}
+            GROUP BY il.sales_order_line_id, i.id, i.invoice_number, i.status, i.lifecycle_status, i.total, paid.paid
+            ORDER BY il.sales_order_line_id, i.id
+            SQL, [$salesOrderId]) as $row) {
+            $total = (float) $row->total;
+            $ratio = $total <= 0.005 ? 1.0 : min(1.0, (float) $row->invoice_paid / $total);
+            $invoices[(int) $row->sales_order_line_id][] = [
+                'id' => (int) $row->id,
+                'invoice_number' => $row->invoice_number,
+                'status' => $row->status,
+                'lifecycle_status' => $row->lifecycle_status,
+                'quantity' => round((float) $row->quantity, 4),
+                'amount' => round((float) $row->amount, 2),
+                'paid_ratio' => round($ratio, 4),
+                'paid_amount' => round((float) $row->amount * $ratio, 2),
+            ];
+        }
+
+        $payments = [];
+        foreach (DB::select(<<<SQL
+            SELECT DISTINCT sol.id AS sales_order_line_id, pa.id AS application_id, pm.id, pm.payment_number,
+                   pm.payment_date, pa.invoice_id, pa.applied_amount
+            FROM payment_applications pa
+            JOIN payments pm ON pm.id = pa.payment_id
+            JOIN invoices i ON i.id = pa.invoice_id
+            JOIN invoice_lines il ON il.invoice_id = i.id
+            JOIN sales_order_lines sol ON sol.id = il.sales_order_line_id
+            WHERE sol.sales_order_id = ? AND {$activeInvoice} AND {$livePayment}
+            ORDER BY sales_order_line_id, payment_date, id
+            SQL, [$salesOrderId]) as $row) {
+            $payments[(int) $row->sales_order_line_id][] = [
+                'id' => (int) $row->id,
+                'payment_number' => $row->payment_number,
+                'payment_date' => $row->payment_date,
+                'invoice_id' => (int) $row->invoice_id,
+                'applied_amount' => round((float) $row->applied_amount, 2),
+            ];
+        }
+
+        return [$deliveryOrders, $invoices, $payments];
+    }
 
     /** An invoice that still counts: not deleted, cancelled, voided or superseded. */
     private function activeInvoiceSql(string $alias): string
