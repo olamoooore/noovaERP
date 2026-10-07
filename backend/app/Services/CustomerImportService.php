@@ -9,6 +9,7 @@ use Illuminate\Support\Str;
 use Modules\Contact\src\Models\ContactImportBatch;
 use Modules\Contact\src\Models\ContactImportStaging;
 use Modules\Contact\src\Services\ContactMasterService;
+use Modules\Contact\src\Services\ContactTaxonomyService;
 use Modules\Contact\src\Support\ContactTaxonomyRegistry;
 use Modules\Contact\src\Support\LegacyContactTypeMapping;
 use Ramsey\Uuid\Uuid;
@@ -55,6 +56,7 @@ class CustomerImportService
         private readonly CustomerContactSyncService $sync,
         private readonly AuditLogger $audit,
         private readonly CanonicalCustomerService $canonicalCustomers,
+        private readonly ContactTaxonomyService $taxonomy,
     ) {}
 
     /**
@@ -513,6 +515,7 @@ class CustomerImportService
             if ($code) {
                 $result['functional_category'] = $code;
                 $result['functional_category_label'] = ContactTaxonomyRegistry::FUNCTIONAL_CATEGORIES[$code];
+                $categorySource = 'contact_category: '.$contactCategory;
             } else {
                 $result['unknown'][] = 'contact_category: '.$contactCategory;
                 $warnings[] = "Unknown contact_category '{$contactCategory}' — no canonical code created.";
@@ -533,7 +536,31 @@ class CustomerImportService
                 if ($result['functional_category'] === null && $mappedType['functional_category'] !== null) {
                     $result['functional_category'] = $mappedType['functional_category'];
                     $result['functional_category_label'] = ContactTaxonomyRegistry::FUNCTIONAL_CATEGORIES[$mappedType['functional_category']];
+                    $categorySource = 'contact_type: '.$contactType;
                 }
+            }
+        }
+
+        // #1037: the static mapping above ignores the tenant's vocabulary
+        // (#123 made the healthcare codes per-tenant). A code this tenant does
+        // not have is unknown here too, so staging warns and COMMIT rejects
+        // that row, instead of the contact sync aborting the whole commit.
+        $checks = [];
+        if ($result['functional_category'] !== null) {
+            $checks[] = [ContactTaxonomyRegistry::TYPE_FUNCTIONAL_CATEGORY, $result['functional_category'], $categorySource ?? 'contact_category'];
+        }
+        if ($result['classification'] !== null) {
+            $checks[] = [ContactTaxonomyRegistry::TYPE_CLASSIFICATION, $result['classification'], 'contact_type: '.$contactType];
+        }
+        if ($result['persistent_role'] !== null) {
+            $checks[] = [ContactTaxonomyRegistry::TYPE_PERSISTENT_ROLE, $result['persistent_role'], 'contact_type: '.$contactType];
+        }
+        foreach ($checks as [$type, $code, $source]) {
+            try {
+                $this->taxonomy->assertValidCode($type, (string) $code);
+            } catch (\DomainException) {
+                $result['unknown'][] = $source;
+                $warnings[] = "Unknown {$source} for this company ({$code} is not in its vocabulary) — no canonical code created.";
             }
         }
 

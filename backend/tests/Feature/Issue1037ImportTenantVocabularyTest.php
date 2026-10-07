@@ -1,0 +1,95 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature;
+
+use App\Models\Setting;
+use App\Models\User;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Modules\Contact\src\Support\ContactTaxonomyRegistry;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
+use Tests\TenantTestCase;
+
+/**
+ * Issue #1037: the customer import must judge contact_category/contact_type
+ * against the TENANT's vocabulary (#123 made healthcare codes per-tenant).
+ * A value the tenant does not have is a staging `warning` and is rejected
+ * at commit for that row only — it must not abort the whole commit.
+ */
+class Issue1037ImportTenantVocabularyTest extends TenantTestCase
+{
+    private string $tenantUuid;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->tenantUuid = (string) Str::uuid();
+        DB::table('public.tenants')->insertOrIgnore([
+            'id' => $this->tenantUuid,
+            'name' => 'Import Vocabulary Tenant',
+            'email' => $this->tenantUuid.'@example.test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $this->bindTenantContext($this->tenantUuid);
+
+        Role::firstOrCreate(['name' => 'admin']);
+        Permission::firstOrCreate(['name' => 'customers.write']);
+        Permission::firstOrCreate(['name' => 'customers.view']);
+
+        // A generic (non-healthcare) tenant: CLINICAL is not in its vocabulary.
+        Setting::setValue(ContactTaxonomyRegistry::HEALTHCARE_SETTING_KEY, false);
+    }
+
+    public function test_a_value_outside_the_tenant_vocabulary_rejects_its_row_not_the_whole_commit(): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole('admin');
+        $user->givePermissionTo('customers.write');
+        DB::table('user_company_access')->insert([
+            'user_id' => $user->id,
+            'tenant_id' => $this->tenantUuid,
+            'role' => 'admin',
+            'is_default' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $headers = ['Authorization' => 'Bearer '.$user->createToken('test')->plainTextToken];
+
+        $csv = "name,code,contact_name,contact_category,contact_type\n".
+            "Acme Corp,VC0001,John Doe,Clinical,Primary\n".
+            'Bayu Trading,VC0002,Siti Aminah,Finance,Primary';
+
+        $stage = $this->withHeaders($headers + ['Content-Type' => 'multipart/form-data'])
+            ->postJson('/api/v1/accounting/customers/import', ['file' => $this->csvFile($csv)])
+            ->assertOk();
+        $batchId = $stage->json('batch_id');
+
+        $rows = DB::table('contact_import_staging')->where('batch_id', $batchId)->orderBy('row_number')->get(['status', 'errors']);
+        $this->assertSame('warning', $rows[0]->status, 'Staging flags a category the tenant does not have.');
+        $this->assertStringContainsString('Clinical', (string) $rows[0]->errors);
+        $this->assertSame('valid', $rows[1]->status);
+
+        $commit = $this->withHeaders($headers)
+            ->postJson("/api/v1/accounting/customers/import/{$batchId}/commit")
+            ->assertOk();
+        $this->assertSame(1, $commit->json('imported'));
+        $this->assertSame(1, $commit->json('rejected'));
+
+        $this->assertDatabaseHas('customers', ['code' => 'VC0002', 'name' => 'Bayu Trading']);
+        $this->assertDatabaseMissing('customers', ['code' => 'VC0001']);
+    }
+
+    private function csvFile(string $csv): UploadedFile
+    {
+        $path = tempnam(sys_get_temp_dir(), 'import');
+        file_put_contents($path, $csv);
+
+        return new UploadedFile($path, 'customers.csv', 'text/csv', null, true);
+    }
+}
