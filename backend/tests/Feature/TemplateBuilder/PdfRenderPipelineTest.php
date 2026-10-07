@@ -111,4 +111,40 @@ class PdfRenderPipelineTest extends TenantTestCase
 
         $this->assertSame($a['hash'], $b['hash']);
     }
+
+    /**
+     * #1004: dompdf has no Times New Roman / Courier New, so the sanitizer's
+     * same-class DejaVu fallback must make those lines render with a serif /
+     * mono font in the real PDF instead of dompdf's default font.
+     */
+    public function test_rich_text_named_fonts_render_with_same_class_pdf_fonts(): void
+    {
+        $data = (new InvoiceDataSource)->sample();
+        $data['lines'] = [
+            [
+                'line_type' => 'note',
+                'index' => null,
+                'description' => 'Serif note',
+                'description_html' => \App\Support\InvoiceRichtextSanitizer::clean('<p><span style="font-family:Times New Roman">Serif note</span></p>'),
+            ],
+            [
+                'line_type' => 'note',
+                'index' => null,
+                'description' => 'Mono note',
+                'description_html' => \App\Support\InvoiceRichtextSanitizer::clean('<p><span style="font-family:Courier New">Mono note</span></p>'),
+            ],
+        ];
+
+        $result = $this->pdf->renderData('invoice', $data, null, 'pdf');
+
+        $this->assertStringStartsWith('%PDF', $result['bytes']);
+        preg_match_all('#/BaseFont\s*/([A-Za-z0-9+\-]+)#', $result['bytes'], $matches);
+        $fonts = implode(' ', $matches[1]);
+
+        // DejaVu (not the core Times/Courier fonts) is the fallback so non-Latin
+        // text keeps its glyphs. Before the fallback stack, an unknown family
+        // fell through to dompdf's default font instead.
+        $this->assertMatchesRegularExpression('/DejaVuSerif/', $fonts, "Times New Roman line must use DejaVu Serif in the PDF; got: {$fonts}");
+        $this->assertMatchesRegularExpression('/DejaVuSansMono/', $fonts, "Courier New line must use DejaVu Sans Mono in the PDF; got: {$fonts}");
+    }
 }

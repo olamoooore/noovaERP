@@ -29,10 +29,29 @@ final class InvoiceRichtextSanitizer
     /** Inline style properties allowed on span/p/div/li. */
     private const ALLOWED_STYLES = ['color', 'font-weight', 'font-style', 'text-decoration', 'font-family', 'font-size', 'text-align'];
 
-    /** Fonts the PDF engine can render deterministically (see #1004 decision). */
+    /**
+     * Font families the editor offers, mapped to the PDF fallback class.
+     *
+     * dompdf only ships Helvetica, Times, Courier and DejaVu Sans/Serif/Mono,
+     * so most named families (Arial, Georgia, Courier New, ...) are not
+     * installed there. A named family is emitted first (the browser/SPA uses
+     * it) followed by a same-class DejaVu family and the generic keyword, so
+     * the PDF keeps the look (sans / serif / mono) and DejaVu's non-Latin
+     * glyphs instead of silently falling back to the document's base font.
+     * Generic keywords (serif, sans-serif, monospace) resolve in dompdf as-is.
+     */
     private const ALLOWED_FONT_FAMILIES = [
-        'arial', 'helvetica', 'verdana', 'tahoma', 'trebuchet ms', 'georgia',
-        'garamond', 'times new roman', 'courier new', 'serif', 'sans-serif', 'monospace',
+        'arial' => 'sans', 'helvetica' => 'sans', 'verdana' => 'sans', 'tahoma' => 'sans',
+        'trebuchet ms' => 'sans', 'georgia' => 'serif', 'garamond' => 'serif',
+        'times new roman' => 'serif', 'courier new' => 'mono',
+        'serif' => null, 'sans-serif' => null, 'monospace' => null,
+    ];
+
+    /** Same-class dompdf-available fallback appended after a named family. */
+    private const PDF_FONT_FALLBACKS = [
+        'sans' => "'dejavu sans', sans-serif",
+        'serif' => "'dejavu serif', serif",
+        'mono' => "'dejavu sans mono', monospace",
     ];
 
     /** Font-size range accepted in px (mirrors the editor dropdown). */
@@ -187,9 +206,13 @@ final class InvoiceRichtextSanitizer
             }
 
             if ($property === 'font-family') {
-                $family = strtolower(trim($value, " \t\"'"));
-                if (in_array($family, self::ALLOWED_FONT_FAMILIES, true)) {
-                    $kept[] = 'font-family:'.$family;
+                // The first family decides: the editor re-submits the stored
+                // fallback stack on the next save, so only its head is checked.
+                $first = explode(',', $value, 2)[0];
+                $family = strtolower(trim($first, " \t\"'"));
+                if (array_key_exists($family, self::ALLOWED_FONT_FAMILIES)) {
+                    $class = self::ALLOWED_FONT_FAMILIES[$family];
+                    $kept[] = 'font-family:'.$family.($class !== null ? ', '.self::PDF_FONT_FALLBACKS[$class] : '');
                 }
 
                 continue;

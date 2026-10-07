@@ -44,3 +44,17 @@ export function plainToRichHtml(text: string | null | undefined): string {
     .map((line) => `<p>${line.replace(/[&<>"']/g, (char) => ESCAPES[char] ?? char) || '<br>'}</p>`)
     .join('');
 }
+
+/**
+ * #1004: maps a stored `font-family` value back to the editor's dropdown option.
+ *
+ * The server stores the family lowercased and followed by a PDF fallback stack
+ * (e.g. `times new roman, 'dejavu serif', serif`), so the raw TipTap attribute
+ * never equals an option label. The first family decides, matched
+ * case-insensitively; anything else leaves the dropdown on its placeholder.
+ */
+export function fontFamilyOption(raw: string | null | undefined, options: readonly string[]): string {
+  if (!raw) return '';
+  const first = raw.split(',')[0].trim().replace(/^["']|["']$/g, '').trim().toLowerCase();
+  return options.find((option) => option.toLowerCase() === first) ?? '';
+}

@@ -1042,6 +1042,9 @@ class SalesOrderService
                         'sequence' => $line->sequence ?? 0,
                         'sales_order_line_id' => $line->id,
                         'description' => $line->description,
+                        // #1004: section/note rich text (sanitized when the
+                        // order line was stored) lands on the invoice too.
+                        'description_html' => $line->description_html,
                         'quantity' => 0,
                         'unit_price' => 0,
                         'tax_rate' => 0,

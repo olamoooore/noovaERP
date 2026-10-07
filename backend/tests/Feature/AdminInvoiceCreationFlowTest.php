@@ -212,4 +212,67 @@ class AdminInvoiceCreationFlowTest extends TenantTestCase
         $this->assertStringContainsString('<b>Bold</b>', $salesLine->description_html);
         $this->assertStringNotContainsString('<script', $salesLine->description_html);
     }
+
+    /** Shared tenant + admin bootstrap for the #1004/#1005 text-row tests. */
+    private function bootTextRowTenant(string $tenantId, string $email): array
+    {
+        $tenant = Tenant::withoutEvents(fn () => Tenant::factory()->create(['id' => $tenantId]));
+        $this->bindTenantContext($tenant->id);
+
+        $user = User::create([
+            'name' => 'Text Row Admin',
+            'email' => $email,
+            'password' => bcrypt('password'),
+        ]);
+        DB::table('user_company_access')->insert([
+            'user_id' => $user->id,
+            'tenant_id' => $tenant->id,
+            'role' => 'admin',
+            'is_default' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $customer = Customer::factory()->create();
+        $product = Product::factory()->create([
+            'track_inventory' => false,
+            'cost' => 10,
+            'price' => 25,
+        ]);
+
+        return [$user, $customer, $product];
+    }
+
+    /** #1004: section/note rich text survives the invoice -> sales order -> invoice create path. */
+    public function test_section_and_note_rich_text_survives_invoice_create(): void
+    {
+        [$user, $customer, $product] = $this->bootTextRowTenant('66666666-6666-6666-6666-666666666601', 'admin-rich-rows@test.local');
+
+        $response = $this->actingAs($user)->postJson('/api/v1/invoices', [
+            'customer_id' => $customer->id,
+            'invoice_date' => '2026-04-19',
+            'lines' => [
+                ['line_type' => 'section', 'description' => 'Consumables', 'description_html' => '<p><strong>Consumables</strong></p>', 'quantity' => 0, 'unit_price' => 0, 'tax_rate' => 0, 'discount_amount' => 0],
+                ['product_id' => $product->id, 'description' => 'Item', 'quantity' => 2, 'unit_price' => 25, 'tax_rate' => 0],
+                ['line_type' => 'note', 'description' => 'Delivered in two batches', 'description_html' => '<p><strong>Delivered</strong> in two batches</p>', 'quantity' => 0, 'unit_price' => 0, 'tax_rate' => 0, 'discount_amount' => 0],
+            ],
+        ]);
+
+        $response->assertCreated();
+        $invoiceId = $response->json('id');
+
+        foreach (['section' => 'Consumables', 'note' => 'Delivered'] as $type => $text) {
+            $line = \App\Models\InvoiceLine::where('invoice_id', $invoiceId)->where('line_type', $type)->firstOrFail();
+            $this->assertNotNull($line->description_html, "{$type} row lost its rich text on create");
+            $this->assertStringContainsString("<strong>{$text}</strong>", $line->description_html);
+        }
+
+        $show = $this->actingAs($user)->getJson("/api/v1/invoices/{$invoiceId}");
+        $show->assertOk();
+        $lines = collect($show->json('lines') ?? $show->json('data.lines'));
+        $section = $lines->firstWhere('line_type', 'section');
+        $note = $lines->firstWhere('line_type', 'note');
+        $this->assertStringContainsString('<strong>Consumables</strong>', (string) ($section['description_html'] ?? ''));
+        $this->assertStringContainsString('<strong>Delivered</strong>', (string) ($note['description_html'] ?? ''));
+    }
 }

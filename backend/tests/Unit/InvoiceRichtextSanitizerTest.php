@@ -86,4 +86,68 @@ class InvoiceRichtextSanitizerTest extends TestCase
         $this->assertNull(InvoiceRichtextSanitizer::clean(''));
         $this->assertNull(InvoiceRichtextSanitizer::clean('   '));
     }
+
+    /**
+     * #1004: dompdf only ships Helvetica/Times/Courier and DejaVu Sans/Serif/Mono,
+     * so a named family keeps its place first and gains a same-class DejaVu
+     * fallback (DejaVu also keeps non-Latin glyphs).
+     */
+    public function test_named_font_families_gain_a_same_class_pdf_fallback(): void
+    {
+        $cases = [
+            'Arial' => "'dejavu sans', sans-serif",
+            'Verdana' => "'dejavu sans', sans-serif",
+            'Tahoma' => "'dejavu sans', sans-serif",
+            'Trebuchet MS' => "'dejavu sans', sans-serif",
+            'Helvetica' => "'dejavu sans', sans-serif",
+            'Georgia' => "'dejavu serif', serif",
+            'Garamond' => "'dejavu serif', serif",
+            'Times New Roman' => "'dejavu serif', serif",
+            'Courier New' => "'dejavu sans mono', monospace",
+        ];
+
+        foreach ($cases as $family => $fallback) {
+            $clean = InvoiceRichtextSanitizer::clean('<span style="font-family:'.$family.'">x</span>');
+            $this->assertNotNull($clean, $family);
+            $decoded = html_entity_decode($clean, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $this->assertStringContainsString(
+                'font-family:'.strtolower($family).', '.$fallback,
+                $decoded,
+                "{$family} should keep its name first and fall back to {$fallback}",
+            );
+        }
+    }
+
+    /** #1004: generic families already resolve in dompdf and stay as they are. */
+    public function test_generic_font_families_are_kept_without_a_stack(): void
+    {
+        foreach (['serif', 'sans-serif', 'monospace'] as $family) {
+            $clean = InvoiceRichtextSanitizer::clean('<span style="font-family:'.$family.'">x</span>');
+            $this->assertSame('<span style="font-family:'.$family.'">x</span>', $clean);
+        }
+    }
+
+    /**
+     * #1004: the editor re-submits the stored stack ("times new roman, 'dejavu serif', serif")
+     * on the next save; the first family decides, so the font is not lost on a re-save.
+     */
+    public function test_re_sanitizing_a_stored_font_stack_is_stable(): void
+    {
+        $first = InvoiceRichtextSanitizer::clean('<span style="font-family:Courier New">x</span>');
+        $this->assertNotNull($first);
+        $second = InvoiceRichtextSanitizer::clean(html_entity_decode($first, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        $this->assertSame($first, $second);
+
+        // A quoted, browser-normalised stack is accepted the same way.
+        $browser = InvoiceRichtextSanitizer::clean('<span style=\'font-family: "Times New Roman", "dejavu serif", serif\'>x</span>');
+        $this->assertNotNull($browser);
+        $this->assertStringContainsString(
+            "font-family:times new roman, 'dejavu serif', serif",
+            html_entity_decode($browser, ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+        );
+
+        // An unknown first family is still rejected even if a known one follows.
+        $sneaky = InvoiceRichtextSanitizer::clean('<span style="font-family:Comic Sans MS, serif">x</span>');
+        $this->assertStringNotContainsString('font-family', (string) $sneaky);
+    }
 }

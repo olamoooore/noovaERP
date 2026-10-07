@@ -15,6 +15,7 @@ import Image from '@tiptap/extension-image';
 import Youtube from '@tiptap/extension-youtube';
 import Placeholder from '@tiptap/extension-placeholder';
 import { cn } from '@/lib/utils';
+import { fontFamilyOption } from '@/lib/richText';
 import { PromptDialog } from '@/components/ui/prompt-dialog';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
@@ -132,7 +133,7 @@ const CompactToolbar = ({ editor }: { editor: Editor }) => {
     <div className="flex flex-wrap items-center gap-0.5 border-b border-border bg-muted/30 px-1 py-0.5">
       <ToolSelect
         title="Font type"
-        value={textStyleAttrs.fontFamily ?? ''}
+        value={fontFamilyOption(textStyleAttrs.fontFamily, FONT_FAMILIES)}
         placeholder="Font"
         options={FONT_FAMILIES}
         className="w-24"
@@ -241,7 +242,7 @@ const Toolbar = ({ editor }: { editor: Editor }) => {
       {/* #1004: font type / size / colour */}
       <ToolSelect
         title="Font type"
-        value={editor.getAttributes('textStyle').fontFamily ?? ''}
+        value={fontFamilyOption(editor.getAttributes('textStyle').fontFamily, FONT_FAMILIES)}
         placeholder="Font"
         options={FONT_FAMILIES}
         className="w-24"
