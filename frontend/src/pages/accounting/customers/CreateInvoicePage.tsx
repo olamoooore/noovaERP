@@ -76,6 +76,7 @@ import { SaveConflictDialog } from '@/components/sales/SaveConflictDialog'
 import { extractSaveConflict, type SaveConflict } from '@/lib/recordConflict'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useDensity } from '@/hooks/useDensity'
+import { resolvedCustomerAddress, type CustomerWithResolvedAddresses } from '@/lib/customerAddresses'
 import { TagPicker } from '@/components/tags/TagPicker'
 import { useDocumentDraftGuard } from '@/hooks/useDocumentDraftGuard'
 import { useFieldErrors } from '@/hooks/useFieldErrors'
@@ -172,7 +173,7 @@ interface CustomerContact {
   country?: string | null;
 }
 
-interface CustomerRecord {
+interface CustomerRecord extends CustomerWithResolvedAddresses {
   id: number;
   type?: 'individual' | 'company';
   // #1007: the company an individual is billed through (customers.parent_id).
@@ -313,6 +314,12 @@ const formatLegacyAddress = (address: string | null | undefined): string => {
 const getCustomerAddress = (customer?: CustomerRecord | null, type?: 'billing' | 'shipping'): string => {
   if (!customer) {
     return '';
+  }
+
+  // ADR-003B R4: the backend resolver decides bill-to/ship-to.
+  const resolved = resolvedCustomerAddress(customer, type ?? 'billing');
+  if (type && resolved !== undefined) {
+    return formatAddress(resolved);
   }
 
   const typedAddresses = customer.addresses ?? [];
@@ -658,8 +665,10 @@ export const CreateInvoicePage: React.FC = () => {
     const shippingAddressRecord = addresses.find((address) => address.type === 'shipping' && address.is_default)
       ?? addresses.find((address) => address.type === 'shipping');
 
-    setBillingAddress(toAddressForm(billingAddressRecord));
-    setShippingAddress(toAddressForm(shippingAddressRecord));
+    const resolvedBilling = resolvedCustomerAddress(selectedCustomer, 'billing');
+    const resolvedShipping = resolvedCustomerAddress(selectedCustomer, 'shipping');
+    setBillingAddress(toAddressForm(resolvedBilling !== undefined ? resolvedBilling : billingAddressRecord));
+    setShippingAddress(toAddressForm(resolvedShipping !== undefined ? resolvedShipping : shippingAddressRecord));
 
     // Preserve the invoice's saved snapshots while initially loading edit mode.
     if (isEditMode && String(selectedCustomer.id) === originalCustomerId) {

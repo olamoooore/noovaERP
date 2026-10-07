@@ -295,10 +295,11 @@ export function customerFormToCreatePayload(values: CustomerFormValues): Record<
 }
 
 /**
- * Update payload: `PUT /customers/{id}` persists the legacy `billing_address`
- * column (it does not accept `addresses[]`), so the same structured form
- * values are flattened back into that column. The zero/normalisation rules
- * stay identical to create (#429 CU1).
+ * Update payload: `PUT /customers/{id}` does not accept `addresses[]`. The
+ * structured billing fields travel as `billing_address_record`, which updates
+ * the default billing address the form loads from (ADR-003B W1); they are also
+ * flattened into the legacy `billing_address` column for screens that still
+ * read it. The zero/normalisation rules stay identical to create (#429 CU1).
  */
 export function customerFormToUpdatePayload(values: CustomerFormValues): Record<string, unknown> {
   const payload = buildCustomerPayload(values)
@@ -308,6 +309,14 @@ export function customerFormToUpdatePayload(values: CustomerFormValues): Record<
 
   if (addresses && addresses.length > 0) {
     const billing = addresses[0]
+    payload.billing_address_record = {
+      street: billing.street,
+      street2: billing.street2,
+      city: billing.city,
+      state: billing.state,
+      zip: billing.zip,
+      country: billing.country,
+    }
     payload.billing_address = [
       billing.street,
       billing.street2,

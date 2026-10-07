@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\TemplateBuilder\Services\DataSource;
 
+use App\Services\CustomerAddressResolver;
 use Modules\Sales\Models\SalesOrder;
 use Modules\TemplateBuilder\Contracts\DataSourceContract;
 use Modules\TemplateBuilder\Support\AmountInWords;
@@ -80,11 +81,14 @@ class SalesOrderDataSource implements DataSourceContract
         $baseCurrencyCode = $order->base_currency_code ?: $companyCurrency;
         $exchangeRate = $order->exchange_rate !== null ? (float) $order->exchange_rate : 1.0;
 
+        // ADR-003B W2b: the order's own address, else the customer's address
+        // from the one shared rule (never the older text columns).
+        $addresses = app(CustomerAddressResolver::class);
         $billingAddress = $this->formatAddress(
-            $order->billing_address_snapshot ?? $order->customer?->billing_address,
+            $order->billing_address_snapshot ?? $addresses->snapshotFor($order->customer, 'billing'),
         );
         $shippingAddress = $this->formatAddress(
-            $order->shipping_address_snapshot ?? $order->customer?->shipping_address,
+            $order->shipping_address_snapshot ?? $addresses->snapshotFor($order->customer, 'shipping'),
         );
         $salesperson = $order->customer?->salesperson?->name ?? '';
 
@@ -161,7 +165,9 @@ class SalesOrderDataSource implements DataSourceContract
                 'email' => $order->customer?->email ?? $order->contact_email ?? '',
                 'phone' => $order->customer?->phone ?? $order->contact_phone ?? '',
                 'tax_id' => $order->customer?->tax_number ?? '',
-                'billing_address' => $this->formatAddress($order->customer?->billing_address),
+                // Decision 2026-10-06: the customer Bill To follows the
+                // document's own billing address.
+                'billing_address' => $billingAddress,
             ],
             'company' => $company,
             'warehouse' => ['name' => $order->warehouse?->name ?? ''],

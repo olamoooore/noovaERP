@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\TemplateBuilder\Services\DataSource;
 
 use App\Models\CustomerCreditNote;
+use App\Services\CustomerAddressResolver;
 use Modules\TemplateBuilder\Contracts\DataSourceContract;
 use Modules\TemplateBuilder\Support\AmountInWords;
 
@@ -75,7 +76,13 @@ final class CreditNoteDataSource implements DataSourceContract
         $currencyCode = $creditNote->currency_code ?: $companyCurrency;
         $baseCurrencyCode = $creditNote->base_currency_code ?: $companyCurrency;
         $exchangeRate = $creditNote->exchange_rate !== null ? (float) $creditNote->exchange_rate : 1.0;
-        $billingAddress = $this->formatAddress($creditNote->customer?->billing_address);
+        // Decision 2026-10-06 (ADR-003B W2b): a credit note bills the same
+        // address as the invoice it corrects; the customer's address from the
+        // shared rule is the fallback (never the older text column).
+        $billingAddress = $this->formatAddress(
+            $creditNote->invoice?->billing_address_snapshot
+                ?: app(CustomerAddressResolver::class)->snapshotFor($creditNote->customer, 'billing'),
+        );
 
         $lines = [];
         $productIndex = 0;

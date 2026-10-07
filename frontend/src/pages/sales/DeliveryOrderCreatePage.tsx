@@ -33,6 +33,7 @@ import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
 import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { TagPicker } from '@/components/tags/TagPicker'
 import { ProductTrackingSelector, type TrackingSelection } from '@/components/inventory/ProductTrackingSelector'
+import { resolvedAddressText, resolvedCustomerAddress } from '@/lib/customerAddresses'
 import { missingTrackingLineIndex } from '@/lib/lotTracking'
 
 interface LineItem {
@@ -244,7 +245,15 @@ export function DeliveryOrderCreatePage() {
 
   useEffect(() => {
     if (!selectedCustomer) return
-    setShippingAddress(selectedCustomer.shipping_address || selectedCustomer.billing_address || '')
+    // ADR-003B W2b: the customer's delivery address from the shared rule
+    // (falls back to the bill-to); older text columns only if the API
+    // response has no resolved addresses.
+    const resolved = resolvedCustomerAddress(selectedCustomer, 'shipping')
+    setShippingAddress(
+      resolved !== undefined
+        ? resolvedAddressText(resolved)
+        : selectedCustomer.shipping_address || selectedCustomer.billing_address || '',
+    )
   }, [selectedCustomer])
 
   const handleSubmit = () => {

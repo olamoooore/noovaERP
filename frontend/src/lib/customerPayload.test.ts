@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { buildCustomerPayload, normalizeCreditLimit, normalizePaymentTerms } from './customerPayload'
+import {
+  buildCustomerPayload,
+  customerFormToUpdatePayload,
+  emptyCustomerFormValues,
+  normalizeCreditLimit,
+  normalizePaymentTerms,
+} from './customerPayload'
 
 /**
  * #429 (CU1): a credit limit of 0 is cash-only (not unlimited), and payment
@@ -123,5 +129,41 @@ describe('buildCustomerPayload — structured billing address', () => {
     })
 
     expect(payload.addresses).toBeUndefined()
+  })
+})
+
+/**
+ * ADR-003B W1: the edit payload must carry the structured billing fields so
+ * PUT /customers/{id} can update the default billing address the form loads
+ * from; the legacy text column is still sent for screens that read it.
+ */
+describe('customerFormToUpdatePayload — billing address', () => {
+  it('sends the structured billing record alongside the legacy text', () => {
+    const payload = customerFormToUpdatePayload(emptyCustomerFormValues({
+      name: 'Acme Clinic',
+      billing_street: ' 9 New Avenue ',
+      billing_city: 'Petaling Jaya',
+      billing_state: 'Selangor',
+      billing_zip: '46000',
+      billing_country: 'my',
+    }))
+
+    expect(payload.billing_address_record).toEqual({
+      street: '9 New Avenue',
+      street2: '',
+      city: 'Petaling Jaya',
+      state: 'Selangor',
+      zip: '46000',
+      country: 'MY',
+    })
+    expect(payload.billing_address).toBe('9 New Avenue\nPetaling Jaya\nSelangor\n46000\nMY')
+    expect('addresses' in payload).toBe(false)
+  })
+
+  it('sends no billing record when every billing field is empty', () => {
+    const payload = customerFormToUpdatePayload(emptyCustomerFormValues({ name: 'Acme Clinic' }))
+
+    expect('billing_address_record' in payload).toBe(false)
+    expect('billing_address' in payload).toBe(false)
   })
 })

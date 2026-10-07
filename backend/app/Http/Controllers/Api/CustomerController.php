@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\CustomerCategory;
 use App\Services\CanonicalCustomerService;
+use App\Services\CustomerAddressResolver;
 use App\Services\CustomerContactSyncService;
 use App\Services\CustomerDuplicateService;
 use App\Services\CustomerMergeService;
@@ -434,21 +435,25 @@ class CustomerController extends Controller
             return $this->customerNotFound();
         }
 
-        return response()->json(
-            $customer->load([
-                'categories',
-                'addresses',
-                'customerContacts',
-                'priceList',
-                'salesperson',
-                'loyaltyBalances.program',
-                'parent',
-                'contacts',
-                'invoices' => fn ($q) => $q->latest()->limit(10),
-                'posOrders' => fn ($q) => $q->with('items.product:id,name')->latest()->limit(10),
-                'webOrders' => fn ($q) => $q->with('items.product')->latest()->limit(10),
-            ])
-        );
+        $customer->load([
+            'categories',
+            'addresses',
+            'customerContacts',
+            'priceList',
+            'salesperson',
+            'loyaltyBalances.program',
+            'parent',
+            'contacts',
+            'invoices' => fn ($q) => $q->latest()->limit(10),
+            'posOrders' => fn ($q) => $q->with('items.product:id,name')->latest()->limit(10),
+            'webOrders' => fn ($q) => $q->with('items.product')->latest()->limit(10),
+        ]);
+
+        // ADR-003B R4: the invoice/quotation screens pre-fill bill-to/ship-to
+        // from the same resolver the backend snapshots use.
+        return response()->json(array_merge($customer->toArray(), [
+            'resolved_addresses' => app(CustomerAddressResolver::class)->resolve($customer),
+        ]));
     }
 
     public function invoices(Request $request, $customer): JsonResponse
@@ -504,6 +509,17 @@ class CustomerController extends Controller
             'billing_address' => 'nullable|string',
             'shipping_address' => 'nullable|string',
 
+            // ADR-003B W1: the edit form's structured billing fields. They
+            // update the default billing address — the record the form loads
+            // and new documents read — not only the legacy text column.
+            'billing_address_record' => 'nullable|array',
+            'billing_address_record.street' => 'nullable|string|max:255',
+            'billing_address_record.street2' => 'nullable|string|max:255',
+            'billing_address_record.city' => 'nullable|string|max:100',
+            'billing_address_record.state' => 'nullable|string|max:100',
+            'billing_address_record.zip' => 'nullable|string|max:20',
+            'billing_address_record.country' => 'nullable|string|max:100',
+
             // Financial
             'credit_limit' => 'nullable|numeric|min:0',
             'payment_terms' => 'nullable|integer|min:0',
@@ -556,8 +572,10 @@ class CustomerController extends Controller
 
         // Extract category IDs
         $categoryIds = $validated['category_ids'] ?? null;
+        $billingAddressRecord = $validated['billing_address_record'] ?? null;
         unset(
             $validated['category_ids'],
+            $validated['billing_address_record'],
             $validated['allow_duplicate'],
             $validated['duplicate_acknowledgement_reason'],
         );
@@ -565,12 +583,16 @@ class CustomerController extends Controller
         // Issue #432 (CU4): the customer profile and its canonical Contact
         // Master contact are edited in the same transaction. Without this the
         // Contact Master keeps the pre-edit name/email/phone/website forever.
-        \Illuminate\Support\Facades\DB::transaction(function () use ($customer, $validated, $categoryIds) {
+        \Illuminate\Support\Facades\DB::transaction(function () use ($customer, $validated, $categoryIds, $billingAddressRecord) {
             $customer->update($validated);
 
             // Sync categories if provided
             if ($categoryIds !== null) {
                 $customer->categories()->sync($categoryIds);
+            }
+
+            if ($billingAddressRecord !== null) {
+                $this->saveDefaultBillingAddress($customer, $billingAddressRecord);
             }
 
             if (! $customer->core_contact_uuid || $customer->wasChanged(self::CONTACT_MIRROR_FIELDS)) {
@@ -687,6 +709,35 @@ class CustomerController extends Controller
         $address = $customer->addresses()->create($validated);
 
         return response()->json($address, 201);
+    }
+
+    /**
+     * ADR-003B W1: write the edit form's billing fields to the customer's
+     * default billing address (the same record the form loads from and new
+     * invoices/quotations read), creating it when the customer has none.
+     *
+     * @param  array<string, string|null>  $fields
+     */
+    private function saveDefaultBillingAddress(Customer $customer, array $fields): void
+    {
+        $attributes = [];
+        foreach (['street', 'street2', 'city', 'state', 'zip', 'country'] as $field) {
+            $attributes[$field] = $fields[$field] ?? null;
+        }
+
+        $billing = $customer->addresses()
+            ->where('type', 'billing')
+            ->orderByDesc('is_default')
+            ->orderBy('id')
+            ->first();
+
+        if ($billing) {
+            $billing->update($attributes + ['is_default' => true]);
+
+            return;
+        }
+
+        $customer->addresses()->create($attributes + ['type' => 'billing', 'is_default' => true]);
     }
 
     public function updateAddress(Request $request, $customerId, $addressId): JsonResponse
@@ -906,6 +957,9 @@ class CustomerController extends Controller
             'classification_code' => 'nullable|string|max:50',
             'persistent_role_codes' => 'sometimes|array',
             'persistent_role_codes.*' => 'string|max:50',
+            // ADR-003B: the company site where the person works; omitted
+            // keeps the current site, null clears it.
+            'site_address_id' => 'sometimes|nullable|uuid',
             'email' => 'nullable|email',
             'phone' => self::NUMERIC_PHONE_RULE,
             'mobile' => self::NUMERIC_PHONE_RULE,
@@ -922,7 +976,7 @@ class CustomerController extends Controller
         try {
             [$contact] = $this->syncContact($customer, $validated, null);
         } catch (\DomainException $e) {
-            throw ValidationException::withMessages(['contact_type' => [$e->getMessage()]]);
+            throw ValidationException::withMessages([$this->contactErrorField($e) => [$e->getMessage()]]);
         }
 
         return response()->json($contact, 201);
@@ -948,6 +1002,9 @@ class CustomerController extends Controller
             'classification_code' => 'nullable|string|max:50',
             'persistent_role_codes' => 'sometimes|array',
             'persistent_role_codes.*' => 'string|max:50',
+            // ADR-003B: the company site where the person works; omitted
+            // keeps the current site, null clears it.
+            'site_address_id' => 'sometimes|nullable|uuid',
             'email' => 'nullable|email',
             'phone' => self::NUMERIC_PHONE_RULE,
             'mobile' => self::NUMERIC_PHONE_RULE,
@@ -964,7 +1021,7 @@ class CustomerController extends Controller
         try {
             [$contact] = $this->syncContact($customer, $validated, $contact);
         } catch (\DomainException $e) {
-            throw ValidationException::withMessages(['contact_type' => [$e->getMessage()]]);
+            throw ValidationException::withMessages([$this->contactErrorField($e) => [$e->getMessage()]]);
         }
 
         return response()->json($contact);
@@ -1008,6 +1065,11 @@ class CustomerController extends Controller
         return response()->json($contact);
     }
 
+    private function contactErrorField(\DomainException $e): string
+    {
+        return str_starts_with($e->getMessage(), 'CONTACT_SITE_') ? 'site_address_id' : 'contact_type';
+    }
+
     /**
      * Create/update a customer contact and synchronize canonical Contact
      * Master structures. Returns [CustomerContact, array $canonical].
@@ -1034,6 +1096,9 @@ class CustomerController extends Controller
             'persistent_role_codes' => $data['persistent_role_codes'] ?? $legacy['persistent_role_codes'],
             'department_name' => $data['department_name'] ?? null,
         ];
+        if (array_key_exists('site_address_id', $data)) {
+            $canonical['site_address_id'] = $data['site_address_id'];
+        }
 
         if ($canonical['functional_category_code'] !== null) {
             $canonical['functional_category_code'] = ContactTaxonomyRegistry::resolveCode(
@@ -1066,6 +1131,13 @@ class CustomerController extends Controller
             if ($legacy['is_primary'] && ! $canonical['classification_code'] && ! $canonical['persistent_role_codes']) {
                 $rowType = $data['contact_type'] ?? null; // Primary only: keep as-is; flag carries it.
             }
+        } elseif (! array_key_exists('contact_type', $data)) {
+            // ADR-003B W4 / CT-VEN-021: a canonical-only payload (the contact
+            // dialog) still gets its legacy type projected, never blanked.
+            $rowType = LegacyContactTypeMapping::projectLegacyContactType(
+                array_filter([$canonical['classification_code']]),
+                $canonical['persistent_role_codes']
+            );
         }
 
         $attributes = collect($data)->only([
@@ -1078,17 +1150,21 @@ class CustomerController extends Controller
         // is_primary is never written directly; it is applied atomically below.
         unset($attributes['is_primary']);
 
-        $contact = $existing
-            ? tap($existing)->update($attributes)
-            : $customer->customerContacts()->create($attributes);
+        // One transaction: a canonical-sync rejection (e.g. an invalid site,
+        // ADR-003B R1) must not leave a half-saved contact row behind.
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($customer, $existing, $attributes, $sync, $canonical, $isPrimary) {
+            $contact = $existing
+                ? tap($existing)->update($attributes)
+                : $customer->customerContacts()->create($attributes);
 
-        $personUuid = $sync->syncPersonForCustomerContact($customer, $contact, $canonical);
+            $personUuid = $sync->syncPersonForCustomerContact($customer, $contact, $canonical);
 
-        if ($isPrimary) {
-            $contact = $sync->setPrimaryContact($customer, $contact->id);
-        }
+            if ($isPrimary) {
+                $contact = $sync->setPrimaryContact($customer, $contact->id);
+            }
 
-        return [$contact->fresh(), array_merge($canonical, ['core_contact_uuid' => $personUuid])];
+            return [$contact->fresh(), array_merge($canonical, ['core_contact_uuid' => $personUuid])];
+        });
     }
 
     // ==========================================

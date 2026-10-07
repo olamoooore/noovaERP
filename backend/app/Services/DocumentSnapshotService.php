@@ -43,14 +43,16 @@ class DocumentSnapshotService
             ->where('is_primary', true)
             ->first();
 
-        $billingAddress = $this->resolveBillingAddress($customer, $primaryContact);
+        $addresses = app(CustomerAddressResolver::class);
 
         $invoice->forceFill([
             'attention_to' => $primaryContact?->name ?? $customer->name,
             'contact_email' => $primaryContact?->email ?? $customer->email,
             'contact_phone' => $primaryContact?->phone ?? $primaryContact?->mobile ?? $customer->phone,
-            'billing_address_snapshot' => $billingAddress,
-            'delivery_address_snapshot' => $this->resolveDeliveryAddress($customer, $primaryContact),
+            // ADR-003B R4: bill-to and ship-to come from the one resolver; the
+            // invoice delivery address follows the ship-to rule.
+            'billing_address_snapshot' => CustomerAddressResolver::toSnapshot($addresses->billing($customer, $primaryContact)),
+            'delivery_address_snapshot' => CustomerAddressResolver::toSnapshot($addresses->shipping($customer, $primaryContact)),
             // A terms value chosen on the document (day count passed through
             // the create payload) is authoritative; the customer default is
             // only a fallback.
@@ -79,7 +81,7 @@ class DocumentSnapshotService
             ->where('is_primary', true)
             ->first();
 
-        $billingAddress = $this->resolveBillingAddress($customer, $primaryContact);
+        $addresses = app(CustomerAddressResolver::class);
 
         $order->forceFill([
             'attention_to' => $primaryContact?->name ?? $customer->name,
@@ -91,47 +93,10 @@ class DocumentSnapshotService
                 'company_registration_number' => $customer->company_registration_number,
                 'tax_number' => $customer->tax_number,
             ],
-            'billing_address_snapshot' => $billingAddress,
-            'shipping_address_snapshot' => $this->resolveShippingAddress($customer, $primaryContact),
+            'billing_address_snapshot' => CustomerAddressResolver::toSnapshot($addresses->billing($customer, $primaryContact)),
+            'shipping_address_snapshot' => CustomerAddressResolver::toSnapshot($addresses->shipping($customer, $primaryContact)),
             'company_registration_number' => $customer->company_registration_number ?? null,
             'tax_registration_number' => $customer->tax_number ?? null,
         ])->save();
-    }
-
-    private function resolveBillingAddress(Customer $customer, ?CustomerContact $contact): ?array
-    {
-        if ($contact && ($contact->street || $contact->city)) {
-            return [
-                'address' => collect([$contact->street, $contact->street2])->filter()->implode(', '),
-                'city' => $contact->city,
-                'state' => $contact->state,
-                'zip' => $contact->zip,
-                'country' => $contact->country,
-            ];
-        }
-
-        if ($customer->billing_address) {
-            return is_array($customer->billing_address)
-                ? $customer->billing_address
-                : json_decode($customer->billing_address, true);
-        }
-
-        return null;
-    }
-
-    private function resolveDeliveryAddress(Customer $customer, ?CustomerContact $contact): ?array
-    {
-        return $this->resolveBillingAddress($customer, $contact);
-    }
-
-    private function resolveShippingAddress(Customer $customer, ?CustomerContact $contact): ?array
-    {
-        if ($customer->shipping_address) {
-            return is_array($customer->shipping_address)
-                ? $customer->shipping_address
-                : json_decode($customer->shipping_address, true);
-        }
-
-        return $this->resolveBillingAddress($customer, $contact);
     }
 }

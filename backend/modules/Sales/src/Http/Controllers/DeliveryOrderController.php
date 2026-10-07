@@ -1544,10 +1544,12 @@ class DeliveryOrderController extends Controller
 
                     // Auto-fill shipping address from customer record
                     if (empty($header['shipping_address'])) {
+                        // ADR-003B W2b: the customer's delivery address from
+                        // the one shared rule (falls back to the bill-to).
                         $customer = \App\Models\Customer::find($header['customer_id']);
-                        $header['shipping_address'] = $customer?->shipping_address
-                            ?: $customer?->billing_address
-                            ?: null;
+                        $header['shipping_address'] = \App\Services\CustomerAddressResolver::toText(
+                            app(\App\Services\CustomerAddressResolver::class)->snapshotFor($customer, 'shipping')
+                        ) ?: null;
                     }
 
                     unset($header['customer_name']);

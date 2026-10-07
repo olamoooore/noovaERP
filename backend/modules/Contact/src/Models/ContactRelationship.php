@@ -21,6 +21,7 @@ class ContactRelationship extends Model
         'id', 'tenant_id', 'contact_id', 'related_contact_id',
         'relationship_type', 'relationship_label',
         'functional_category_code', 'department_name', 'department_id',
+        'site_address_id',
         'notes', 'is_primary', 'metadata',
     ];
 
@@ -37,5 +38,14 @@ class ContactRelationship extends Model
     public function relatedContact()
     {
         return $this->belongsTo(CoreContact::class, 'related_contact_id');
+    }
+
+    /**
+     * ADR-003B: the organisation's `site` address where the person works
+     * (org_person relationships only).
+     */
+    public function siteAddress()
+    {
+        return $this->belongsTo(ContactAddress::class, 'site_address_id');
     }
 }
