@@ -308,8 +308,13 @@ class QuotationController extends Controller
             'discount_amount' => 'nullable|numeric|min:0',
             'discount_type' => 'nullable|in:fixed,percentage',
             'discount_value' => 'nullable|numeric|min:0|required_with:discount_type',
-            'lines' => 'required|array|min:1',
+            // Issue #338: create from a quotation template — its lines,
+            // notes, terms and validity fill whatever the request leaves out.
+            'quotation_template_id' => 'nullable|integer|exists:quotation_templates,id',
+            'lines' => 'required_without:quotation_template_id|array|min:1',
             'lines.*.line_type' => 'nullable|in:product,note,section',
+            // Issue #338: an optional product, excluded from totals until selected.
+            'lines.*.is_optional' => 'nullable|boolean',
             'lines.*.product_id' => 'nullable|exists:products,id',
             // Issue #884 (UX2): optional line income account + analytic
             // dimensions — overridable per line, defaulted from the product.
@@ -348,6 +353,11 @@ class QuotationController extends Controller
             'require_payment' => 'nullable|boolean',
             'prepayment_percent' => 'nullable|numeric|gt:0|max:100',
         ]);
+
+        // Issue #338: expand the chosen template into the request before any
+        // default/pricing/tax step runs, so template lines take exactly the
+        // same path as typed lines.
+        $validated = $this->applyQuotationTemplate($validated);
 
         // Issue #550: Sales Settings → Quotations, applied server-side. An
         // absent valid_until takes the default validity (0 = no expiry); an
@@ -460,6 +470,7 @@ class QuotationController extends Controller
                     'require_signature' => $validated['require_signature'],
                     'require_payment' => $validated['require_payment'],
                     'prepayment_percent' => $validated['prepayment_percent'],
+                    'quotation_template_id' => $validated['quotation_template_id'] ?? null,
                 ], fn ($v) => $v !== null);
 
                 $quotation = Quotation::create($data);
@@ -522,6 +533,8 @@ class QuotationController extends Controller
                         'tax_code' => $lineData['tax_code'] ?? null,
                         'tax_treatment' => $lineData['tax_treatment'] ?? null,
                         'discount_amount' => $lineData['discount_amount'] ?? 0,
+                        // Issue #338: optional products (never for note/section rows).
+                        'is_optional' => $lineType === 'product' && (bool) ($lineData['is_optional'] ?? false),
                     ], $priced));
                 }
 
@@ -585,6 +598,11 @@ class QuotationController extends Controller
         // detail page can show v1, v2 … and how the totals moved.
         $quotation->setAttribute('version_history', $this->versionHistory($quotation));
 
+        // Issue #338: margin per line and for the document, only for roles
+        // holding the cost capability (pricelists.cost). Everyone else gets
+        // neither the margin nor the product cost it is derived from.
+        app(\App\Services\QuotationMarginService::class)->present($quotation);
+
         return response()->json($quotation);
     }
 
@@ -635,6 +653,51 @@ class QuotationController extends Controller
                 'created_at' => $version->created_at,
             ];
         })->values()->all();
+    }
+
+    /**
+     * Issue #338: fill a new quotation from its template. Request values win;
+     * the template supplies the lines (when none were sent), blank notes and
+     * terms, and the validity when no valid_until was sent (days run from the
+     * quotation date, never from a past date — the #550 rule; 0 = no expiry).
+     *
+     * @param  array<string, mixed>  $validated
+     * @return array<string, mixed>
+     */
+    private function applyQuotationTemplate(array $validated): array
+    {
+        if (empty($validated['quotation_template_id'])) {
+            return $validated;
+        }
+
+        $template = \App\Models\QuotationTemplate::with('lines')
+            ->where('is_active', true)
+            ->find((int) $validated['quotation_template_id']);
+
+        if (! $template) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'quotation_template_id' => 'The selected quotation template is inactive.',
+            ]);
+        }
+
+        if (empty($validated['lines'])) {
+            $validated['lines'] = $template->toQuotationLines();
+        }
+
+        foreach (['notes', 'terms'] as $field) {
+            if (blank($validated[$field] ?? null) && filled($template->{$field})) {
+                $validated[$field] = $template->{$field};
+            }
+        }
+
+        if (! array_key_exists('valid_until', $validated) && $template->validity_days !== null) {
+            $quotationDay = \Illuminate\Support\Carbon::parse($validated['quotation_date'] ?? now()->toDateString())->startOfDay();
+            $validated['valid_until'] = $template->validity_days > 0
+                ? $quotationDay->max(now()->startOfDay())->addDays($template->validity_days)->toDateString()
+                : null;
+        }
+
+        return $validated;
     }
 
     /**
@@ -723,6 +786,8 @@ class QuotationController extends Controller
             'discount_value' => 'nullable|numeric|min:0|required_with:discount_type',
             'lines' => 'nullable|array|min:1',
             'lines.*.line_type' => 'nullable|in:product,note,section',
+            // Issue #338: optional products, same rule as create.
+            'lines.*.is_optional' => 'nullable|boolean',
             'lines.*.sequence' => 'nullable|integer|min:0',
             'lines.*.product_id' => 'nullable|exists:products,id',
             // Issue #884 (UX2): optional line income account + analytic
@@ -849,6 +914,9 @@ class QuotationController extends Controller
                             'tax_code' => $lineData['tax_code'] ?? null,
                             'tax_treatment' => $lineData['tax_treatment'] ?? null,
                             'discount_amount' => $lineData['discount_amount'] ?? 0,
+                            // Issue #338: selecting an optional line internally
+                            // is an edit that clears the flag.
+                            'is_optional' => $lineType === 'product' && (bool) ($lineData['is_optional'] ?? false),
                         ], $priced));
                     }
                 }

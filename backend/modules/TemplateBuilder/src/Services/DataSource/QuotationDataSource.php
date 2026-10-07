@@ -68,8 +68,23 @@ final class QuotationDataSource implements DataSourceContract
         $exchangeRate = $q->exchange_rate !== null ? (float) $q->exchange_rate : 1.0;
 
         $lines = [];
+        $optionalLines = [];
         $salesperson = $q->customer?->salesperson?->name ?? $q->salesperson ?? '';
-        foreach ($q->lines as $i => $line) {
+        // Issue #338: optional products print in their own table, outside
+        // the line items the totals are made of.
+        foreach ($q->lines->where('is_optional', true)->values() as $i => $line) {
+            $optionalLines[] = [
+                'index' => $i + 1,
+                'sku' => $line->product?->sku ?? '',
+                'description' => $line->description ?? '',
+                'quantity' => (float) $line->quantity,
+                'unit_price' => (float) $line->unit_price,
+                'tax_rate' => (float) $line->tax_rate,
+                'discount' => (float) ($line->discount_amount ?? 0),
+                'line_total' => (float) $line->line_total,
+            ];
+        }
+        foreach ($q->lines->reject(fn ($line) => (bool) $line->is_optional)->values() as $i => $line) {
             $isProduct = ($line->line_type ?? 'product') === 'product';
             $lines[] = [
                 'line_type' => $line->line_type ?? 'product',
@@ -150,6 +165,7 @@ final class QuotationDataSource implements DataSourceContract
             ],
             'company' => $company,
             'lines' => $lines,
+            'optional_lines' => $optionalLines,
             'totals' => [
                 'subtotal' => (float) $q->subtotal,
                 'tax' => (float) $q->tax_amount,
@@ -217,6 +233,7 @@ final class QuotationDataSource implements DataSourceContract
             ]],
             ['group' => 'Line Items', 'fields' => [
                 ['token' => 'lines', 'label' => 'Line items table (binds a Table block)'],
+                ['token' => 'optional_lines', 'label' => 'Optional products table (not in totals; binds a Table block)'],
             ]],
         ];
     }
@@ -250,6 +267,8 @@ final class QuotationDataSource implements DataSourceContract
             'notes' => 'Sample quotation note',
             'terms' => 'Standard terms apply',
         ];
+        // Issue #338: optional products (outside the totals).
+        $base['optional_lines'] = [];
 
         return $base;
     }

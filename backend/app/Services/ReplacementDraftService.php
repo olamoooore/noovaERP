@@ -254,6 +254,9 @@ class ReplacementDraftService
                 'tax_amount' => $originalLine->tax_amount,
                 'discount_amount' => $originalLine->discount_amount,
                 'line_total' => $originalLine->line_total,
+                // Issue #338: a revision keeps which lines are optional, so
+                // its copied totals still exclude them.
+                'is_optional' => (bool) $originalLine->is_optional,
             ]);
         }
 

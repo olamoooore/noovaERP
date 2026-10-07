@@ -61,6 +61,7 @@ use App\Http\Controllers\Api\ProductTrackingController;
 use App\Http\Controllers\Api\ProductUnitController;
 use App\Http\Controllers\Api\ProductVariantController;
 use App\Http\Controllers\Api\QuotationController;
+use App\Http\Controllers\Api\QuotationTemplateController;
 use App\Http\Controllers\Api\ReconciliationExceptionController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\StockCogsBadgeController;
@@ -606,6 +607,14 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
     // Accountant stay able to run the quote flow. Ledger release actions of
     // the children (invoice post, DO confirm) remain accounting.post.
     Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class])->group(function () {
+        // Issue #338: quotation templates (default lines, notes, terms,
+        // validity). Reuses the existing quotations.view / quotations.write
+        // literals — no new permission.
+        Route::get('/quotation-templates', [QuotationTemplateController::class, 'index'])->middleware(RequirePermission::using('quotations.view'));
+        Route::post('/quotation-templates', [QuotationTemplateController::class, 'store'])->middleware(RequirePermission::using('quotations.write'));
+        Route::get('/quotation-templates/{id}', [QuotationTemplateController::class, 'show'])->whereNumber('id')->middleware(RequirePermission::using('quotations.view'));
+        Route::put('/quotation-templates/{id}', [QuotationTemplateController::class, 'update'])->whereNumber('id')->middleware(RequirePermission::using('quotations.write'));
+        Route::delete('/quotation-templates/{id}', [QuotationTemplateController::class, 'destroy'])->whereNumber('id')->middleware(RequirePermission::using('quotations.write'));
         Route::get('/quotations', [QuotationController::class, 'index'])->middleware(RequirePermission::using('quotations.view'));
         Route::get('/quotations/export', [QuotationController::class, 'export'])->middleware(RequirePermission::using('quotations.view'));
         Route::post('/quotations/import', [QuotationController::class, 'import'])->middleware(RequirePermission::using('quotations.write'));

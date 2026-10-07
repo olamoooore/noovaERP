@@ -137,6 +137,8 @@ class Quotation extends Model implements WorkflowSubject
         'require_signature',
         'require_payment',
         'prepayment_percent',
+        // Issue #338: the template the quotation was created from.
+        'quotation_template_id',
         // Issue #178: rejection/replacement revision chain.
         'correction_group_id',
         'version_number',
@@ -253,6 +255,12 @@ class Quotation extends Model implements WorkflowSubject
             $line->calculateLineTotals();
             if ($line->isDirty(['tax_amount', 'line_total'])) {
                 $line->save();
+            }
+            // Issue #338: an optional line keeps its own figures (shown to
+            // the customer) but adds nothing to the document's subtotal, tax
+            // or total until the customer selects it.
+            if ($line->is_optional) {
+                continue;
             }
             $subtotal += (float) $line->line_total - (float) $line->tax_amount;
             $taxAmount += (float) $line->tax_amount;

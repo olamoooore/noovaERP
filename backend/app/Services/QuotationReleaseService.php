@@ -43,7 +43,10 @@ class QuotationReleaseService
             // same quantity + UoM (the order service converts to stock units)
             // and a per-stock-unit price, so the accepted per-Box price is
             // preserved exactly.
-            $salesLines = $quotation->lines->map(function ($line) {
+            // Issue #338: an optional line the customer did not select is
+            // not part of the agreement — it never reaches the order (and so
+            // never the invoice or its e-invoice payload).
+            $salesLines = $quotation->lines->reject(fn ($line) => (bool) $line->is_optional)->map(function ($line) {
                 $uomConverter = app(\App\Services\ProductUomConverter::class);
                 $lineUom = ($line->uom_id && $line->product_id)
                     ? $uomConverter->resolveOrNull((int) $line->product_id, (int) $line->uom_id)
