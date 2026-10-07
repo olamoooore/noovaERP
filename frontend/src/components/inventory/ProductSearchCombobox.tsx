@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/popover'
 import { cn, resolveImageUrl } from '@/lib/utils'
 import api from '@/lib/api'
+import { ProductCatalogPickerDialog, type CatalogProduct } from './ProductCatalogPickerDialog'
 
 interface Product {
   id: number
@@ -63,6 +64,15 @@ const isExactCode = (product: Product, query: string) =>
 const plainText = (value?: string | null) =>
   value ? value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : ''
 
+/** #1003: rows and the selected value render name + short description. */
+const productLabel = (product: Product): string => {
+  const short = plainText(product.short_description)
+  return short ? `${product.name} — ${short}` : `${product.name} (${product.sku})`
+}
+
+/** The inline picker caps at 15 results; "Show more" opens the full catalog. */
+const INLINE_RESULT_LIMIT = 15
+
 export const getProductLineDescription = (product?: Product) =>
   plainText(product?.short_description) || plainText(product?.description) || product?.name || ''
 
@@ -76,6 +86,7 @@ export function ProductSearchCombobox({
   focusAfterSelect,
 }: ProductSearchComboboxProps) {
   const [open, setOpen] = useState(false)
+  const [catalogOpen, setCatalogOpen] = useState(false)
   const pickedRef = useRef(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
@@ -88,19 +99,26 @@ export function ProductSearchCombobox({
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-  // Fetch products with search
-  const { data: searchResults, isLoading } = useQuery<Product[]>({
+  // Fetch products with search — server-side, capped at 15 for the inline list.
+  const { data: searchData, isLoading } = useQuery<{ items: Product[]; total: number }>({
     queryKey: ['products-search', debouncedQuery],
     queryFn: async () => {
-      const params: Record<string, string | number> = { per_page: 20 }
+      const params: Record<string, string | number> = { per_page: INLINE_RESULT_LIMIT }
       if (debouncedQuery) {
         params.search = debouncedQuery
       }
       const res = await api.get('/products', { params })
-      return res.data.data || []
+      const body = res.data ?? {}
+      return {
+        items: (body.data ?? []) as Product[],
+        total: Number(body.total ?? body.data?.length ?? 0),
+      }
     },
     enabled: open, // Only fetch when popover is open
   })
+
+  const searchResults = searchData?.items
+  const hasMoreResults = (searchData?.total ?? 0) > INLINE_RESULT_LIMIT
 
   // Fetch selected product details if we have a value but no display name
   const { data: selectedProduct } = useQuery<Product>({
@@ -119,12 +137,12 @@ export function ProductSearchCombobox({
     // Check in search results first
     const fromResults = searchResults?.find(p => String(p.id) === value)
     if (fromResults) {
-      return `${fromResults.name} (${fromResults.sku})`
+      return productLabel(fromResults)
     }
 
     // Check if we have the selected product details
     if (selectedProduct) {
-      return `${selectedProduct.name} (${selectedProduct.sku})`
+      return productLabel(selectedProduct)
     }
 
     return 'Loading...'
@@ -307,53 +325,79 @@ export function ProductSearchCombobox({
                 {debouncedQuery ? 'No products found.' : 'Search by name, SKU, barcode, lot or serial...'}
               </CommandEmpty>
             ) : (
-              <CommandGroup heading="Products">
-                {searchResults?.map((product) => (
-                  <CommandItem
-                    key={product.id}
-                    value={String(product.id)}
-                    onSelect={handleSelect}
-                    className="flex items-center justify-between gap-3 py-3"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted">
-                        {product.image ? (
-                          <img
-                            src={resolveImageUrl(product.image)}
-                            alt={product.name}
-                            className="h-full w-full object-cover"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <Icon icon="solar:gallery-bold-duotone" className="h-5 w-5 text-muted-foreground" />
+              <>
+                <CommandGroup heading="Products">
+                  {searchResults?.map((product) => (
+                    <CommandItem
+                      key={product.id}
+                      value={String(product.id)}
+                      onSelect={handleSelect}
+                      className="flex items-center justify-between gap-3 py-3"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted">
+                          {product.image ? (
+                            <img
+                              src={resolveImageUrl(product.image)}
+                              alt={product.name}
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <Icon icon="solar:gallery-bold-duotone" className="h-5 w-5 text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="flex min-w-0 flex-1 flex-col">
+                          <span className="line-clamp-2 font-medium leading-snug" title={product.name}>{product.name}</span>
+                          {plainText(product.short_description) && (
+                            <span className="mt-1 max-w-[240px] whitespace-normal text-xs text-muted-foreground">
+                              {plainText(product.short_description)}
+                            </span>
+                          )}
+                          <span className="truncate text-xs text-muted-foreground" title={product.sku}>SKU: {product.sku}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">
+                          Stock: {product.stock_quantity}
+                        </Badge>
+                        {String(product.id) === value && (
+                          <Icon icon="solar:check-circle-bold" className="h-4 w-4 text-primary" />
                         )}
                       </div>
-                      <div className="flex min-w-0 flex-1 flex-col">
-                        <span className="line-clamp-2 font-medium leading-snug" title={product.name}>{product.name}</span>
-                        <span className="truncate text-xs text-muted-foreground" title={product.sku}>SKU: {product.sku}</span>
-                        {plainText(product.short_description) && (
-                          <span className="mt-1 max-w-[240px] whitespace-normal text-xs text-muted-foreground">
-                            {plainText(product.short_description)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">
-                        Stock: {product.stock_quantity}
-                      </Badge>
-                      {String(product.id) === value && (
-                        <Icon icon="solar:check-circle-bold" className="h-4 w-4 text-primary" />
-                      )}
-                    </div>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+                {hasMoreResults && (
+                  <CommandGroup>
+                    <CommandItem
+                      value="__catalog_show_more"
+                      onSelect={() => {
+                        setOpen(false)
+                        setCatalogOpen(true)
+                      }}
+                      className="justify-center text-primary"
+                    >
+                      Show more ({searchData?.total} results)
+                    </CommandItem>
+                  </CommandGroup>
+                )}
+              </>
             )}
           </CommandList>
         </Command>
         </PopoverContent>
       </Popover>
+
+      <ProductCatalogPickerDialog
+        open={catalogOpen}
+        onOpenChange={setCatalogOpen}
+        initialSearch={searchQuery || debouncedQuery}
+        onSelect={(product: CatalogProduct) => {
+          pick(String(product.id), product as Product)
+          setSearchQuery('')
+        }}
+      />
     </div>
   )
 }
