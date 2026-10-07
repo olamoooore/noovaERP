@@ -34,6 +34,7 @@ import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Textarea } from '@/components/ui/textarea'
 import { RegisterPaymentDialog } from '@/components/payment/RegisterPaymentDialog'
 import { UnappliedCreditsCard } from '@/components/payment/PaymentAllocations'
+import { OutstandingCreditNotesCard } from '@/components/payment/OutstandingCreditNotes'
 import { isInvoicePayable, useCanRegisterPayment } from '@/lib/registerPayment'
 import {
   InvoiceDeliveryProgressSummary,
@@ -90,6 +91,8 @@ interface Invoice {
   }>
   // MRD pricelist-multicurrency FR-5.1/5.4: document currency + snapshot.
   currency_code?: string | null
+  // #875: the invoice's legal entity (#495 offers only same-entity credit).
+  legal_entity_id?: number | null
   base_currency_code?: string | null
   exchange_rate?: number | string | null
   notes: string
@@ -1507,6 +1510,20 @@ export function InvoiceDetailPage() {
                 invoiceBalance={Number(invoice.balance ?? 0)}
                 currency={invoice.currency_code}
                 hideWhenEmpty
+              />
+            </div>
+          )}
+
+          {/* #495: the customer's credit notes still holding credit, applicable here. */}
+          {isInvoicePayable(invoice) && invoice.customer_id && (
+            <div className="mb-8">
+              <OutstandingCreditNotesCard
+                customerId={Number(invoice.customer_id)}
+                invoiceId={invoice.id}
+                invoiceNumber={invoice.invoice_number}
+                invoiceBalance={Number(invoice.balance ?? 0)}
+                currency={invoice.currency_code}
+                legalEntityId={invoice.legal_entity_id ?? null}
               />
             </div>
           )}

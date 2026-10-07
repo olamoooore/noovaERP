@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\CustomerCreditNote;
+use App\Models\CustomerCreditNoteApplication;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentApplication;
@@ -72,16 +74,14 @@ class PaymentAllocationService
                     );
                 }
 
+                // #495: cash received by one legal entity cannot settle
+                // another entity's receivable.
+                $this->assertSameEntity($payment->legal_entity_id, $invoice, "payment {$payment->payment_number}");
+
                 // Issue #155 (hostile re-review): only open posted receivables
                 // can be settled — draft/unposted, cancelled and voided/
                 // superseded invoices have no AR to apply cash against.
-                if (! in_array((string) $invoice->lifecycle_status, ['posted', 'credited'], true)
-                    || in_array((string) $invoice->status, ['draft', 'cancelled'], true)) {
-                    throw new \InvalidArgumentException(
-                        "Invoice {$invoice->invoice_number} is not an open posted receivable "
-                        ."(lifecycle '{$invoice->lifecycle_status}', status '{$invoice->status}')."
-                    );
-                }
+                $this->assertOpenReceivable($invoice);
 
                 if (in_array($invoice->id, $seenInvoices, true)) {
                     throw new \InvalidArgumentException(
@@ -120,6 +120,172 @@ class PaymentAllocationService
 
             return $payment->fresh(['applications.invoice']);
         });
+    }
+
+    /**
+     * Issue #495 ("Outstanding credits"): apply a posted credit note's
+     * remaining customer credit to other open invoices of the same customer,
+     * legal entity and currency — full or partial. The credit moves between
+     * the two receivables through InvoiceService (credited_amount), so each
+     * balance stays total − paid − credited and the note's remaining credit
+     * drops by the applied amount. Both receivables sit in the same AR
+     * control account of the same entity, so the ledger is unchanged and no
+     * journal is posted (as for a #155 payment allocation).
+     *
+     * @param  array<int, array{invoice_id: int, amount: float}>  $applications
+     */
+    public function allocateCreditNote(CustomerCreditNote $creditNote, array $applications): CustomerCreditNote
+    {
+        return DB::transaction(function () use ($creditNote, $applications) {
+            // Lock the note so concurrent requests cannot both spend its credit.
+            $creditNote = CustomerCreditNote::whereKey($creditNote->id)->lockForUpdate()->firstOrFail();
+
+            if ($creditNote->status !== 'posted') {
+                throw new \InvalidArgumentException(
+                    "Credit note {$creditNote->credit_note_number} is '{$creditNote->status}' — only posted credit notes can be applied."
+                );
+            }
+
+            $origin = Invoice::whereKey($creditNote->invoice_id)->lockForUpdate()->first();
+            if (! $origin) {
+                throw new \InvalidArgumentException("Credit note {$creditNote->credit_note_number} has no source invoice holding its credit.");
+            }
+
+            $available = app(CustomerCreditNoteOutcomeService::class)->remainingCredit($creditNote);
+            $total = round(array_sum(array_map(
+                fn (array $application) => (float) $application['amount'],
+                $applications,
+            )), 2);
+
+            if ($total <= 0) {
+                throw new \InvalidArgumentException('The application total must be greater than zero.');
+            }
+
+            if ($total > $available + 0.005) {
+                throw new \InvalidArgumentException(
+                    "The application total ({$total}) exceeds the credit note's remaining credit ({$available})."
+                );
+            }
+
+            $currency = $creditNote->currency_code ?: $origin->currency_code;
+            $seenInvoices = [];
+
+            foreach ($applications as $application) {
+                $invoice = Invoice::whereKey($application['invoice_id'])->lockForUpdate()->firstOrFail();
+                $amount = round((float) $application['amount'], 2);
+
+                if ($amount <= 0) {
+                    throw new \InvalidArgumentException('Each application amount must be greater than zero.');
+                }
+
+                if ((int) $invoice->id === (int) $origin->id) {
+                    throw new \InvalidArgumentException(
+                        "Credit note {$creditNote->credit_note_number} already credits invoice {$invoice->invoice_number}."
+                    );
+                }
+
+                if ((int) $invoice->customer_id !== (int) $creditNote->customer_id) {
+                    throw new \InvalidArgumentException(
+                        "Invoice {$invoice->invoice_number} does not belong to the credit note's customer."
+                    );
+                }
+
+                $this->assertSameEntity($creditNote->legal_entity_id, $invoice, "credit note {$creditNote->credit_note_number}");
+
+                // Credit is held in the document currency; moving it to an
+                // invoice in another currency would need an FX settlement.
+                if ($currency && $invoice->currency_code && strtoupper((string) $currency) !== strtoupper((string) $invoice->currency_code)) {
+                    throw new \InvalidArgumentException(
+                        "Invoice {$invoice->invoice_number} is in {$invoice->currency_code}; the credit note's credit is in {$currency}."
+                    );
+                }
+
+                $this->assertOpenReceivable($invoice);
+
+                if (in_array($invoice->id, $seenInvoices, true)) {
+                    throw new \InvalidArgumentException(
+                        "Invoice {$invoice->invoice_number} appears more than once in the application."
+                    );
+                }
+                $seenInvoices[] = $invoice->id;
+
+                $open = round(max(0.0, (float) $invoice->total - (float) $invoice->paid_amount
+                    - (float) $invoice->credited_amount - (float) $invoice->written_off_amount), 2);
+
+                if ($amount > $open + 0.005) {
+                    throw new \InvalidArgumentException(
+                        "The application ({$amount}) exceeds the outstanding balance of invoice {$invoice->invoice_number} ({$open})."
+                    );
+                }
+
+                $this->invoiceService->transferCustomerCredit(
+                    $origin,
+                    $invoice,
+                    $amount,
+                    "Credit note {$creditNote->credit_note_number} applied to {$invoice->invoice_number}",
+                );
+
+                CustomerCreditNoteApplication::create([
+                    'credit_note_id' => $creditNote->id,
+                    'invoice_id' => $invoice->id,
+                    'applied_amount' => $amount,
+                    'currency_code' => $currency ?: null,
+                    'created_by' => \Modules\OCRBookkeeping\Helpers\TenantUserHelper::resolveTenantUserId(),
+                ]);
+            }
+
+            return $creditNote->fresh(['applications.invoice']);
+        });
+    }
+
+    /**
+     * Issue #495: undo every live application of a credit note — move the
+     * credit back to the note's own invoice and mark the application reversed
+     * (audit preserved). Called when the credit note is voided, before its own
+     * credit is released, so no invoice keeps credit from a voided note.
+     */
+    public function reverseCreditNoteApplications(CustomerCreditNote $creditNote): void
+    {
+        $origin = $creditNote->invoice_id ? Invoice::find($creditNote->invoice_id) : null;
+
+        foreach ($creditNote->applications()->whereNull('reversed_at')->with('invoice')->get() as $application) {
+            if ($origin && $application->invoice) {
+                $this->invoiceService->transferCustomerCredit(
+                    $application->invoice,
+                    $origin,
+                    (float) $application->applied_amount,
+                    "Credit note {$creditNote->credit_note_number} application reversed",
+                );
+            }
+
+            $application->update(['reversed_at' => now()]);
+        }
+    }
+
+    /**
+     * #495: a credit source belongs to one legal entity's books; it can only
+     * settle receivables of that entity. Legacy rows without an entity are
+     * not blocked.
+     */
+    private function assertSameEntity(mixed $sourceEntityId, Invoice $invoice, string $sourceLabel): void
+    {
+        if ($sourceEntityId !== null && $invoice->legal_entity_id !== null
+            && (int) $sourceEntityId !== (int) $invoice->legal_entity_id) {
+            throw new \InvalidArgumentException(
+                "Invoice {$invoice->invoice_number} belongs to another legal entity than {$sourceLabel}."
+            );
+        }
+    }
+
+    private function assertOpenReceivable(Invoice $invoice): void
+    {
+        if (! in_array((string) $invoice->lifecycle_status, ['posted', 'credited'], true)
+            || in_array((string) $invoice->status, ['draft', 'cancelled'], true)) {
+            throw new \InvalidArgumentException(
+                "Invoice {$invoice->invoice_number} is not an open posted receivable "
+                ."(lifecycle '{$invoice->lifecycle_status}', status '{$invoice->status}')."
+            );
+        }
     }
 
     /**

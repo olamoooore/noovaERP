@@ -328,6 +328,49 @@ class CustomerCreditNotesController extends Controller
      * Void a posted credit note (reverses its GL entry, restores the invoice
      * balance, and unblocks invoice cancel/reset-to-draft — issue #228).
      */
+    /**
+     * Issue #495 ("Outstanding credits"): apply the note's remaining credit to
+     * other open invoices of the same customer (full or partial) through
+     * PaymentAllocationService.
+     */
+    public function applyCredit(Request $request, $creditNote)
+    {
+        $creditNote = CustomerCreditNote::findOrFail($creditNote);
+
+        $validated = $request->validate([
+            'applications' => 'required|array|min:1',
+            'applications.*.invoice_id' => 'required|integer|exists:invoices,id',
+            'applications.*.amount' => 'required|numeric|min:0.01',
+        ]);
+
+        try {
+            $applied = app(\App\Services\PaymentAllocationService::class)
+                ->allocateCreditNote($creditNote, $validated['applications']);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'error' => 'INVALID_ALLOCATION',
+            ], 422);
+        }
+
+        $this->writeAuditLog(
+            'customer_credit_note_applied',
+            (int) $applied->id,
+            null,
+            ['applications' => $validated['applications']],
+            ['credit_note_number' => $applied->credit_note_number],
+        );
+
+        $applied->load('invoice');
+        $this->outcomes->annotate([$applied]);
+
+        return response()->json([
+            'message' => 'Credit applied successfully',
+            'data' => $applied->applications->whereNull('reversed_at')->values(),
+            'outcome' => $applied->outcome,
+        ]);
+    }
+
     public function void(Request $request, $creditNote)
     {
         // #520: the detail page asks the user why the note is being voided;

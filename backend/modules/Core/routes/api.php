@@ -1108,6 +1108,11 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.post')); // #515
         Route::post('/customers/credit-notes/{creditNote}/void', [CustomerCreditNotesController::class, 'void'])
             ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.post')); // #515
+        // #495: apply the note's remaining credit to another open invoice —
+        // a subledger reallocation (no GL posting), the same accounting.write
+        // authority as a #155 payment allocation.
+        Route::post('/customers/credit-notes/{creditNote}/applications', [CustomerCreditNotesController::class, 'applyCredit'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.write'));
         Route::get('/customers/invoices/{invoiceId}/credit-notes', [CustomerCreditNotesController::class, 'getByInvoice'])
             ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.view'));
         Route::post('/customers/credit-notes/validate', [CustomerCreditNotesController::class, 'validateCreditNote'])

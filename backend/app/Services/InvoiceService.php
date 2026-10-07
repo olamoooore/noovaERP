@@ -2386,7 +2386,22 @@ class InvoiceService
         return $this->adjustCreditNoteOnInvoice($invoice, -$creditAmount);
     }
 
-    private function adjustCreditNoteOnInvoice(Invoice $invoice, float $delta): Invoice
+    /**
+     * Issue #495: move a posted credit note's remaining customer credit from
+     * the invoice it was parked on (its own invoice, #510) to another open
+     * invoice of the same customer — or back, when the application is
+     * reversed. Both sides go through the same credited_amount path, so each
+     * balance stays max(0, total − paid − credited − written off) and the
+     * customer credit balance is re-derived. A pure subledger reallocation
+     * between two receivables of one customer: the GL is unchanged.
+     */
+    public function transferCustomerCredit(Invoice $from, Invoice $to, float $amount, string $reason): void
+    {
+        $this->adjustCreditNoteOnInvoice($from, -$amount, $reason);
+        $this->adjustCreditNoteOnInvoice($to, $amount, $reason);
+    }
+
+    private function adjustCreditNoteOnInvoice(Invoice $invoice, float $delta, ?string $reason = null): Invoice
     {
         $invoice->refresh();
 
@@ -2409,7 +2424,7 @@ class InvoiceService
         ]);
 
         $this->syncInvoiceWorkflowStatus($invoice, $status, [
-            'reason' => $delta >= 0 ? 'Credit note applied' : 'Credit note reversed',
+            'reason' => $reason ?? ($delta >= 0 ? 'Credit note applied' : 'Credit note reversed'),
             'credited_delta' => $delta,
         ]);
 
@@ -2702,9 +2717,13 @@ class InvoiceService
         // Issue #879 (SA6): a written-off amount settles the invoice exactly
         // like cash does; excluding it here would resurrect a written-off
         // balance the next time a payment is applied.
+        // Issue #495: so does credit (#510 credited_amount) — an invoice
+        // credited from a credit note's outstanding credit and then paid must
+        // keep balance = total − paid − credited, not jump back by the credit.
         $newBalance = max(0.0, round(
             (float) $invoice->total
             - (float) $invoice->paid_amount
+            - (float) $invoice->credited_amount
             - (float) $invoice->written_off_amount,
             2
         ));

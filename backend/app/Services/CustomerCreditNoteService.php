@@ -856,6 +856,10 @@ class CustomerCreditNoteService
                     ?? $reversal->journalEntry?->id;
             }
 
+            // #495: first take back any of the note's credit applied to other
+            // invoices (outstanding credits), so none keeps a voided credit.
+            app(PaymentAllocationService::class)->reverseCreditNoteApplications($creditNote);
+
             // #510 (CN1): release the credit applied at posting time.
             if ($creditNote->invoice) {
                 app(InvoiceService::class)->reverseCreditNoteFromInvoice(

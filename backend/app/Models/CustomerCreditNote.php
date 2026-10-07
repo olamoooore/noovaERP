@@ -114,6 +114,15 @@ class CustomerCreditNote extends Model
         return $this->hasMany(CustomerCreditNoteLine::class, 'credit_note_id');
     }
 
+    /**
+     * Issue #495: applications of this note's remaining credit to other
+     * invoices (reversed rows kept for audit).
+     */
+    public function applications(): HasMany
+    {
+        return $this->hasMany(CustomerCreditNoteApplication::class, 'credit_note_id');
+    }
+
     public function journalEntry(): BelongsTo
     {
         return $this->belongsTo(JournalEntry::class);

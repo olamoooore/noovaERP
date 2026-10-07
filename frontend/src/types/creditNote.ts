@@ -14,6 +14,8 @@ export interface CustomerCreditNote {
   outcome?: CreditNoteOutcome | null;
   /** #525: e-invoice status key (null for drafts). */
   einvoice_status?: string | null;
+  currency_code?: string | null;
+  legal_entity_id?: number | null;
 }
 
 export type CreditNoteOutcomeState = 'applied' | 'partially_applied' | 'customer_credit' | 'voided';
@@ -23,6 +25,8 @@ export interface CreditNoteOutcome {
   applied_amount: number;
   remaining_credit: number;
   applied_to: { invoice_id: number; invoice_number: string | null } | null;
+  /** #495: credit applied to other invoices from "Outstanding credits". */
+  applied_elsewhere?: number;
 }
 
 export interface CreditNoteFilters {
