@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { Fragment, useState, useEffect, useCallback, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
@@ -33,7 +33,45 @@ interface Customer {
   matched_tags?: string[]
   /** Address/building labels that matched the search. */
   matched_addresses?: string[]
+  /** #339: customer_addresses ids aligned with matched_addresses. */
+  matched_address_ids?: Array<string | number>
+  /**
+   * #339 (D1 Smart Customer Pick): one row per matched contact/address —
+   * ids and display labels only (no contact email/phone, #444/#567).
+   */
+  matched_picks?: CustomerMatchPick[]
 }
+
+type CustomerMatchPick =
+  | { kind: 'contact'; contact_id: string | number; contact_name?: string | null; job_title?: string | null; role?: string | null }
+  | { kind: 'address'; address_id: string | number; address_type?: string | null; label?: string | null; city?: string | null; text?: string | null }
+
+/**
+ * #339: what a smart-pick row selected besides the customer, so the caller can
+ * fill that contact or address on the header in the same pick.
+ */
+export type CustomerSmartPick =
+  | { kind: 'contact'; contactId: string }
+  | { kind: 'address'; addressId: string; addressType: string }
+
+const titleCase = (value?: string | null) =>
+  value ? value.charAt(0).toUpperCase() + value.slice(1).toLowerCase() : ''
+
+/** "ACME › John Tan · Billing" / "ACME › KL Warehouse · Shipping · Kuala Lumpur" */
+const pickLabel = (customerName: string, pick: CustomerMatchPick): string => {
+  if (pick.kind === 'contact') {
+    const parts = [pick.contact_name || 'Contact', titleCase(pick.role) || pick.job_title || '']
+    return `${customerName} › ${parts.filter(Boolean).join(' · ')}`
+  }
+  const head = pick.label || pick.text || 'Address'
+  const parts = [head, titleCase(pick.address_type), pick.label ? pick.city ?? '' : '']
+  return `${customerName} › ${parts.filter(Boolean).join(' · ')}`
+}
+
+const pickValue = (customerId: string | number, pick: CustomerMatchPick) =>
+  pick.kind === 'contact'
+    ? `${customerId}::contact::${pick.contact_id}`
+    : `${customerId}::address::${pick.address_id}`
 
 interface CustomerSearchComboboxProps {
   value: string
@@ -41,7 +79,7 @@ interface CustomerSearchComboboxProps {
    * #1007: `matchedContactId` is set when the pick matched through exactly one
    * of the customer's contact persons, so the caller can pre-select it.
    */
-  onValueChange: (value: string, customer?: Customer, matchedContactId?: string) => void
+  onValueChange: (value: string, customer?: Customer, matchedContactId?: string, smartPick?: CustomerSmartPick) => void
   placeholder?: string
   disabled?: boolean
   /** Compact pill styling (h-8 / rounded-full) to match the header action row. */
@@ -127,6 +165,24 @@ export function CustomerSearchCombobox({
     setSearchQuery('')
   }
 
+  // #339: a contact/address pick row selects the customer AND that record.
+  const handleSmartPick = (customer: Customer, pick: CustomerMatchPick) => {
+    pickedRef.current = true
+    const customerId = String(customer.id)
+    if (pick.kind === 'contact') {
+      const contactId = String(pick.contact_id)
+      onValueChange(customerId, customer, contactId, { kind: 'contact', contactId })
+    } else {
+      onValueChange(customerId, customer, undefined, {
+        kind: 'address',
+        addressId: String(pick.address_id),
+        addressType: pick.address_type ?? '',
+      })
+    }
+    setOpen(false)
+    setSearchQuery('')
+  }
+
   const handleClear = () => {
     onValueChange('', undefined)
     setSearchQuery('')
@@ -184,8 +240,8 @@ export function CustomerSearchCombobox({
             )}
             <CommandGroup>
               {searchResults?.map((customer) => (
+                <Fragment key={customer.id}>
                 <CommandItem
-                  key={customer.id}
                   value={String(customer.id)}
                   onSelect={handleSelect}
                 >
@@ -218,6 +274,21 @@ export function CustomerSearchCombobox({
                     )}
                   </div>
                 </CommandItem>
+                {(customer.matched_picks ?? []).map((pick) => (
+                  <CommandItem
+                    key={pickValue(customer.id, pick)}
+                    value={pickValue(customer.id, pick)}
+                    onSelect={() => handleSmartPick(customer, pick)}
+                    className="pl-8"
+                  >
+                    <Icon
+                      icon={pick.kind === 'contact' ? 'solar:user-linear' : 'solar:map-point-linear'}
+                      className="mr-2 h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                    />
+                    <span className="truncate text-xs">{pickLabel(getDisplayName(customer), pick)}</span>
+                  </CommandItem>
+                ))}
+                </Fragment>
               ))}
             </CommandGroup>
           </CommandList>

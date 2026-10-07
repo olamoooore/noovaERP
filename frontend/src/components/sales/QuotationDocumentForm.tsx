@@ -25,7 +25,7 @@ import { SaveConflictDialog } from '@/components/sales/SaveConflictDialog'
 import { extractSaveConflict, type SaveConflict } from '@/lib/recordConflict'
 import { QuotationCaseInformation, emptyQuotationCaseInformation } from '@/components/sales/QuotationCaseInformation'
 import { InternalReferenceTags } from '@/components/sales/InternalReferenceTags'
-import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
+import { CustomerSearchCombobox, type CustomerSmartPick } from '@/components/ui/CustomerSearchCombobox'
 import { CustomerContextStrip } from '@/components/sales/CustomerContextStrip'
 import { RememberedDefaultsHint } from '@/components/sales/RememberedDefaultsHint'
 import { applyRememberedToBlankFields, useRememberedCustomerDefaults } from '@/hooks/useRememberedCustomerDefaults'
@@ -161,6 +161,9 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
   const [conflict, setConflict] = useState<SaveConflict | null>(null)
   const lastPayloadRef = useRef<Record<string, any> | null>(null)
   const autofilledCustomerRef = useRef<string | null>(null)
+  // #339 (D1 Smart Customer Pick): the contact/address row picked in the
+  // customer search, applied with the customer defaults in the same pick.
+  const smartPickRef = useRef<{ customerId: string; pick: CustomerSmartPick } | null>(null)
   // #318: inline field errors; server line indexes map back through the grid
   // rows that were actually sent.
   const fieldErrors = useFieldErrors()
@@ -485,7 +488,22 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     // #320: invoice-parity defaults (billing contact first, default addresses),
     // filled only into fields the user has not edited — a customer change
     // refreshes untouched fields and keeps the user's own values.
-    const contactDefaults = getCustomerContactDefaults(customerDetail)
+    const smartPick = smartPickRef.current?.customerId === customerId ? smartPickRef.current.pick : undefined
+    const detailContacts: any[] = customerDetail.customer_contacts ?? customerDetail.customerContacts ?? []
+    const pickedContact = smartPick?.kind === 'contact'
+      ? detailContacts.find((contact: any) => String(contact.id) === smartPick.contactId)
+      : undefined
+    const pickedAddress = smartPick?.kind === 'address'
+      ? (customerDetail.addresses ?? []).find((address: any) => String(address.id) === smartPick.addressId)
+      : undefined
+    const pickedAddressSlot = pickedAddress ? ((pickedAddress.type ?? (smartPick as any)?.addressType) === 'billing' ? 'billing' : 'shipping') : null
+    const contactDefaults = pickedContact
+      ? {
+          attentionTo: pickedContact.name ?? '',
+          contactEmail: pickedContact.email ?? '',
+          contactPhone: pickedContact.phone ?? pickedContact.mobile ?? '',
+        }
+      : getCustomerContactDefaults(customerDetail)
     autofillField('attentionTo', attentionTo, contactDefaults.attentionTo, setAttentionTo)
     autofillField('contactEmail', contactEmail, contactDefaults.contactEmail, setContactEmail)
     autofillField('contactPhone', contactPhone, contactDefaults.contactPhone, setContactPhone)
@@ -516,6 +534,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     // ADR-003B R4: prefer the backend resolver's bill-to/ship-to, then the
     // saved addresses; autofill never overwrites what the user typed.
     const pick = (type: 'billing' | 'shipping') => {
+      if (pickedAddressSlot === type) return pickedAddress
       const resolved = resolvedCustomerAddress(customerDetail, type)
       return resolved !== undefined ? resolved : pickCustomerAddress(customerDetail, type)
     }
@@ -523,7 +542,9 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     const nextShipping = toAddressForm(pick('shipping'))
     autofillField('billingAddress', billingAddress, nextBilling, setBillingAddress, serializeAddressForm)
     autofillField('shippingAddress', shippingAddress, nextShipping, setShippingAddress, serializeAddressForm)
-    setBillingContactId('')
+    // #339: a picked contact row becomes the billing contact (same value the
+    // billing ContactSearchCombobox would set).
+    setBillingContactId(pickedContact ? String(pickedContact.id) : '')
     setShippingContactId('')
     if (mode === 'edit') {
       // The edit payload ships the raw snapshots, so keep them in step with a
@@ -888,9 +909,10 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                       focusAfterSelect={() => lineGridRef.current?.focusFirstOpenProduct()}
                       className={cn(SALES_CONTROL, 'justify-between')}
                       value={customerId}
-                      onValueChange={(id, customer) => {
+                      onValueChange={(id, customer, _matchedContactId, smartPick) => {
                         fieldErrors.clear('customer_id')
                         autofilledCustomerRef.current = null
+                        smartPickRef.current = id && smartPick ? { customerId: id, pick: smartPick } : null
                         setCustomerId(id)
                         setCustomerMatch(customer ? {
                           contacts: (customer as any).matched_contacts ?? [],

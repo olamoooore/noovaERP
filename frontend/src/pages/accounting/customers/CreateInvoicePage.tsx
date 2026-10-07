@@ -146,6 +146,7 @@ interface InvoiceLine {
 }
 
 interface CustomerAddress {
+  id?: number | string;
   type?: 'billing' | 'shipping' | 'other';
   street?: string | null;
   street2?: string | null;
@@ -515,6 +516,9 @@ export const CreateInvoicePage: React.FC = () => {
   // #1007: the contact person the customer search matched on (picker's
   // "Contact: …" line), applied as the billing contact for that customer.
   const matchedContactRef = useRef<{ customerId: string; contactId: string } | null>(null);
+  // #339 (D1 Smart Customer Pick): the address row the operator picked in the
+  // customer search, applied as bill-to (billing type) or ship-to (any other).
+  const matchedAddressRef = useRef<{ customerId: string; addressId: string; addressType: string } | null>(null);
   // Guards the async Contact-Master address lookups per section: a stale
   // response must not overwrite the address of a contact picked later.
   const contactAddressRequestRef = useRef<{ billing: number; shipping: number }>({ billing: 0, shipping: 0 });
@@ -674,8 +678,15 @@ export const CreateInvoicePage: React.FC = () => {
 
     const resolvedBilling = resolvedCustomerAddress(selectedCustomer, 'billing');
     const resolvedShipping = resolvedCustomerAddress(selectedCustomer, 'shipping');
-    setBillingAddress(toAddressForm(resolvedBilling !== undefined ? resolvedBilling : billingAddressRecord));
-    setShippingAddress(toAddressForm(resolvedShipping !== undefined ? resolvedShipping : shippingAddressRecord));
+    // #339: a picked address row wins over the resolver default for its slot.
+    const pickedAddress = matchedAddressRef.current?.customerId === String(selectedCustomer.id)
+      ? addresses.find((address) => String(address.id) === matchedAddressRef.current?.addressId)
+      : undefined;
+    const pickedSlot: 'billing' | 'shipping' | null = pickedAddress
+      ? ((pickedAddress.type ?? matchedAddressRef.current?.addressType) === 'billing' ? 'billing' : 'shipping')
+      : null;
+    setBillingAddress(toAddressForm(pickedSlot === 'billing' ? pickedAddress : resolvedBilling !== undefined ? resolvedBilling : billingAddressRecord));
+    setShippingAddress(toAddressForm(pickedSlot === 'shipping' ? pickedAddress : resolvedShipping !== undefined ? resolvedShipping : shippingAddressRecord));
 
     // Preserve the invoice's saved snapshots while initially loading edit mode.
     if (isEditMode && String(selectedCustomer.id) === originalCustomerId) {
@@ -688,8 +699,8 @@ export const CreateInvoicePage: React.FC = () => {
       : undefined;
     const primaryContact = matchedContact ?? getPrimaryCustomerContact(selectedCustomer);
     const shippingContact = getCustomerContactForRole(selectedCustomer, 'shipping');
-    const billingAddress = getCustomerAddress(selectedCustomer, 'billing');
-    const shippingAddress = getCustomerAddress(selectedCustomer, 'shipping');
+    const billingAddress = pickedSlot === 'billing' ? formatAddress(pickedAddress) : getCustomerAddress(selectedCustomer, 'billing');
+    const shippingAddress = pickedSlot === 'shipping' ? formatAddress(pickedAddress) : getCustomerAddress(selectedCustomer, 'shipping');
     setDocumentSnapshot({
       customer_reference: selectedCustomer.code ?? '',
       internal_reference: '',
@@ -2273,9 +2284,12 @@ export const CreateInvoicePage: React.FC = () => {
                     <CustomerSearchCombobox
                       compact
                       value={customerId}
-                      onValueChange={(id, customer, matchedContactId) => {
+                      onValueChange={(id, customer, matchedContactId, smartPick) => {
                         fieldErrors.clear('customer_id')
                         matchedContactRef.current = id && matchedContactId ? { customerId: id, contactId: matchedContactId } : null
+                        matchedAddressRef.current = id && smartPick?.kind === 'address'
+                          ? { customerId: id, addressId: smartPick.addressId, addressType: smartPick.addressType }
+                          : null
                         setCustomerId(id)
                         // D1: keep the match explanation so the operator can see
                         // the pick came from a contact/tag/address search.

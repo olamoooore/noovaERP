@@ -86,4 +86,47 @@ describe('CustomerSearchCombobox', () => {
       '601',
     )
   })
+
+  it('#339: each matched contact/address is its own pick row; picking it passes that contact/address', async () => {
+    apiGet.mockImplementation(async () => ({
+      data: {
+        data: [
+          {
+            id: 70,
+            name: 'ACME Trading',
+            matched_contacts: ['John Tan'],
+            matched_contact_ids: [701],
+            matched_addresses: ['KL Warehouse, 8 Jalan Klang, Kuala Lumpur'],
+            matched_address_ids: [702],
+            matched_picks: [
+              { kind: 'contact', contact_id: 701, contact_name: 'John Tan', job_title: 'Buyer', role: 'billing' },
+              { kind: 'address', address_id: 702, address_type: 'shipping', label: 'KL Warehouse', city: 'Kuala Lumpur', text: 'KL Warehouse, 8 Jalan Klang, Kuala Lumpur' },
+            ],
+          },
+        ],
+      },
+    }))
+    const onValueChange = vi.fn()
+
+    renderPicker(onValueChange)
+    fireEvent.click(screen.getByRole('combobox'))
+
+    // "ACME › John Tan · Billing" — one row per matched person.
+    fireEvent.click(await screen.findByText('ACME Trading › John Tan · Billing'))
+    expect(onValueChange).toHaveBeenLastCalledWith(
+      '70',
+      expect.objectContaining({ id: 70 }),
+      '701',
+      { kind: 'contact', contactId: '701' },
+    )
+
+    fireEvent.click(screen.getByRole('combobox'))
+    fireEvent.click(await screen.findByText('ACME Trading › KL Warehouse · Shipping · Kuala Lumpur'))
+    expect(onValueChange).toHaveBeenLastCalledWith(
+      '70',
+      expect.objectContaining({ id: 70 }),
+      undefined,
+      { kind: 'address', addressId: '702', addressType: 'shipping' },
+    )
+  })
 })

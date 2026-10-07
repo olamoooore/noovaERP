@@ -118,7 +118,9 @@ class CustomerController extends Controller
             app(CustomerWideSearchService::class)->apply($query, $search);
 
             $query->with([
-                'customerContacts' => fn ($contact) => $contact->select('id', 'customer_id', 'name', 'job_title', 'contact_category', 'contact_type', 'is_primary'),
+                // #339: email/phone/mobile are loaded only to decide WHICH
+                // contact matched; they are never echoed in the match payload.
+                'customerContacts' => fn ($contact) => $contact->select('id', 'customer_id', 'name', 'job_title', 'contact_category', 'contact_type', 'is_primary', 'email', 'phone', 'mobile'),
                 'addresses' => fn ($address) => $address->select('id', 'customer_id', 'type', 'label', 'street', 'street2', 'city', 'state', 'zip', 'country', 'is_default'),
             ]);
         }
@@ -200,33 +202,69 @@ class CustomerController extends Controller
 
             if ($search !== null) {
                 $needle = mb_strtolower($search);
+                $contains = fn ($value) => $value !== null && $value !== '' && str_contains(mb_strtolower((string) $value), $needle);
+                // #339 (D1 Smart Customer Pick): each matched contact/address
+                // becomes its own pick row ("ACME › John Tan · Billing · KL"),
+                // carrying only ids and display labels — never contact
+                // email/phone or bank fields (#444/#567).
+                $picks = [];
 
                 if ($customer->relationLoaded('customerContacts')) {
+                    // Same contact columns the wide search matches on
+                    // (CustomerWideSearchService), so a hit by email or phone
+                    // still tells the picker WHICH person matched.
                     $matchedContacts = $customer->customerContacts
-                        ->filter(fn ($contact) => $contact->name && str_contains(mb_strtolower($contact->name), $needle))
+                        ->filter(fn ($contact) => $contains($contact->name)
+                            || $contains($contact->job_title)
+                            || $contains($contact->email)
+                            || $contains($contact->phone)
+                            || $contains($contact->mobile))
                         ->take(3)
                         ->values();
                     $customer->matched_contacts = $matchedContacts->pluck('name')->values();
                     // #1007: ids aligned with matched_contacts so the invoice
                     // picker can pre-select the matched person as billing contact.
                     $customer->matched_contact_ids = $matchedContacts->pluck('id')->values();
+                    foreach ($matchedContacts as $contact) {
+                        $picks[] = [
+                            'kind' => 'contact',
+                            'contact_id' => $contact->id,
+                            'contact_name' => $contact->name,
+                            'job_title' => $contact->job_title,
+                            'role' => $contact->contact_category ?: $contact->contact_type,
+                        ];
+                    }
                     unset($customer->customerContacts);
                 }
 
                 if ($customer->relationLoaded('addresses')) {
                     // "Building name" style labels plus street/city text.
-                    $customer->matched_addresses = $customer->addresses
+                    $matchedAddresses = $customer->addresses
                         ->map(function ($address) {
                             $parts = [$address->label, $address->street, $address->street2, $address->city, $address->state, $address->zip, $address->country];
 
-                            return collect($parts)->filter()->implode(', ');
+                            return ['address' => $address, 'text' => collect($parts)->filter()->implode(', ')];
                         })
-                        ->filter(fn ($text) => $text && str_contains(mb_strtolower($text), $needle))
+                        ->filter(fn ($match) => $match['text'] && $contains($match['text']))
                         ->take(2)
                         ->values();
+                    $customer->matched_addresses = $matchedAddresses->pluck('text')->values();
+                    // #339: ids aligned with matched_addresses.
+                    $customer->matched_address_ids = $matchedAddresses->map(fn ($match) => $match['address']->id)->values();
+                    foreach ($matchedAddresses as $match) {
+                        $picks[] = [
+                            'kind' => 'address',
+                            'address_id' => $match['address']->id,
+                            'address_type' => $match['address']->type,
+                            'label' => $match['address']->label,
+                            'city' => $match['address']->city,
+                            'text' => $match['text'],
+                        ];
+                    }
                     unset($customer->addresses);
                 }
 
+                $customer->matched_picks = $picks;
                 $customer->matched_tags = $tagMatches[$customer->id] ?? [];
             }
 
