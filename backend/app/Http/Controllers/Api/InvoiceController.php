@@ -2146,7 +2146,7 @@ class InvoiceController extends Controller
 
         try {
             if (! empty($validated['resend'])) {
-                $delivery = $this->deliveryService->resend($invoice, $request->user(), $channel, [
+                $delivery = $this->deliveryService->resend($invoice, $channel, $request->user(), [
                     'document_type' => $documentType,
                     'recipient' => $validated['recipient'] ?? null,
                 ]);
