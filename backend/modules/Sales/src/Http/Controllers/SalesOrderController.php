@@ -253,6 +253,15 @@ class SalesOrderController extends Controller
             // Issue #685: sales-UoM prices are converted to stock-unit prices.
             $validated['lines'] = $this->applyDefaultInvoicingPolicy($this->convertSalesUomPrices($validated['lines']));
 
+            // Issue #346 (D9): an order entered here takes the customer's
+            // remembered choices (last order's warehouse, incoterms, notes) for
+            // the fields the request left out — before the tenant default
+            // warehouse below. Channel and converted orders keep their source.
+            if (in_array($validated['channel'] ?? 'admin', ['admin'], true) && empty($validated['source_document_type'])) {
+                $validated = app(\App\Services\SalesDefaultsService::class)
+                    ->applyRememberedDefaults($validated, 'sales_order');
+            }
+
             // Issue #381: stock-tracked lines need a warehouse to reserve and
             // allocate against; default to the tenant's default warehouse.
             if (empty($validated['warehouse_id'])) {

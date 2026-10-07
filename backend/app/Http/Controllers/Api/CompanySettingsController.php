@@ -817,8 +817,11 @@ class CompanySettingsController extends Controller
      * invoice / delivery order needs — no reviewer pools, user directory or
      * administrative settings.
      */
-    public function getSalesDocumentDefaults(): JsonResponse
+    public function getSalesDocumentDefaults(Request $request): JsonResponse
     {
+        // Issue #346 (D9): the customer's remembered choices, when asked for.
+        $remembered = $this->rememberedCustomerDefaults($request);
+
         return response()->json([
             'data' => [
                 'invoice' => [
@@ -848,8 +851,45 @@ class CompanySettingsController extends Controller
                     'proforma_enabled' => app(\App\Services\SalesSettings::class)->proformaInvoiceEnabled(),
                 ],
                 'tax' => $this->salesTaxDefaults(),
-            ],
+            ] + ($remembered === null ? [] : ['remembered' => $remembered]),
         ]);
+    }
+
+    /**
+     * Issue #346 (D9): with ?customer_id=&document=quotation|sales_order|invoice
+     * the defaults also carry that customer's remembered choices (and the
+     * document they came from, for the form's "remembered from last …" hint).
+     * The customer must be inside the caller's legal-entity scope (#434).
+     *
+     * @return array<string,mixed>|null
+     */
+    private function rememberedCustomerDefaults(Request $request): ?array
+    {
+        if (! $request->filled('customer_id')) {
+            return null;
+        }
+
+        $validated = $request->validate([
+            'customer_id' => 'required|integer',
+            'document' => 'required|in:'.implode(',', array_keys(\App\Services\SalesDefaultsService::REMEMBERED_FIELDS)),
+        ]);
+
+        $customers = \App\Models\Customer::query()->whereKey((int) $validated['customer_id']);
+        $user = $request->user();
+        if ($user) {
+            $entityIds = app(\App\Services\EntityAccessService::class)->accessibleEntityIds((int) $user->id);
+            if ($entityIds !== []) {
+                $customers->accessibleBy($entityIds);
+            }
+        }
+        $customer = $customers->first(['id']);
+
+        if ($customer === null) {
+            return ['document' => $validated['document'], 'source' => null, 'values' => []];
+        }
+
+        return app(\App\Services\SalesDefaultsService::class)
+            ->rememberedDefaults((int) $customer->id, (string) $validated['document']);
     }
 
     /**

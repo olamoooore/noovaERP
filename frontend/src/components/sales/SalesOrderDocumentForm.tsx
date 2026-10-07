@@ -9,6 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
 import { CustomerContextStrip } from '@/components/sales/CustomerContextStrip'
+import { RememberedDefaultsHint } from '@/components/sales/RememberedDefaultsHint'
 import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard'
 import { SalesDocumentLineGrid, type SalesDocumentLineGridHandle } from '@/components/sales/SalesDocumentLineGrid'
 import { EditingBanner } from '@/components/sales/EditingBanner'
@@ -23,6 +24,7 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { useDensity } from '@/hooks/useDensity'
 import { useSalesDocumentPricing } from '@/hooks/useSalesDocumentPricing'
+import { applyRememberedToBlankFields, useRememberedCustomerDefaults } from '@/hooks/useRememberedCustomerDefaults'
 import { useAuthStore } from '@/store/authStore'
 import api from '@/lib/api'
 import pricingApi from '@/lib/pricingApi'
@@ -238,6 +240,25 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
     void resolvePricingForLines(lines)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerId])
+
+  // Issue #346 (D9): the customer's remembered choices (last order's notes and
+  // Incoterms) pre-fill still-blank fields once per customer pick; the
+  // warehouse is applied by the server on save. Typed values are never
+  // replaced.
+  const { data: rememberedDefaults } = useRememberedCustomerDefaults(customerId, 'sales_order', mode === 'create')
+  const rememberedAppliedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (mode !== 'create' || !customerId || !rememberedDefaults) return
+    if (rememberedAppliedRef.current === customerId) return
+    rememberedAppliedRef.current = customerId
+    applyRememberedToBlankFields(rememberedDefaults, [
+      { key: 'notes', current: notes, set: setNotes },
+      { key: 'incoterm_code', current: incotermCode, set: setIncotermCode },
+      { key: 'incoterm_place', current: incotermPlace, set: setIncotermPlace },
+    ])
+    // Runs once per customer pick; the field values are read as "still blank?".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rememberedDefaults, customerId, mode])
 
   const createMutation = useMutation({
     mutationFn: async (payload: Record<string, any>) => {
@@ -528,6 +549,7 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
 
             {/* #340: compact AR context for the selected customer (invoice parity). */}
             <CustomerContextStrip customerId={customerId || null} />
+            {mode === 'create' && customerId && <RememberedDefaultsHint remembered={rememberedDefaults} />}
 
             <div className="flex flex-wrap items-center gap-2">
               {mode === 'create' ? (

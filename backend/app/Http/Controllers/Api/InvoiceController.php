@@ -613,6 +613,12 @@ class InvoiceController extends Controller
 
         $this->applyFormContactSelections($validated, isset($validated['customer_id']) ? (int) $validated['customer_id'] : null);
 
+        // Issue #346 (D9): the customer's remembered choices (last invoice's
+        // warehouse, billing/shipping contacts, notes) fill only the fields
+        // this request left out; anything sent — even null — wins.
+        $validated = app(\App\Services\SalesDefaultsService::class)
+            ->applyRememberedDefaults($validated, 'invoice');
+
         try {
             $tagNames = $validated['tags'] ?? [];
             unset($validated['tags']);

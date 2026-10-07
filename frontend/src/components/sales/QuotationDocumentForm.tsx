@@ -27,6 +27,8 @@ import { QuotationCaseInformation, emptyQuotationCaseInformation } from '@/compo
 import { InternalReferenceTags } from '@/components/sales/InternalReferenceTags'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
 import { CustomerContextStrip } from '@/components/sales/CustomerContextStrip'
+import { RememberedDefaultsHint } from '@/components/sales/RememberedDefaultsHint'
+import { applyRememberedToBlankFields, useRememberedCustomerDefaults } from '@/hooks/useRememberedCustomerDefaults'
 import { useCustomerAutofill } from '@/hooks/useCustomerAutofill'
 import { getCustomerContactDefaults, pickCustomerAddress } from '@/lib/customerDocumentDefaults'
 import { ContactSearchCombobox } from '@/components/ui/ContactSearchCombobox'
@@ -528,6 +530,26 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerDetail, customerId])
 
+  // Issue #346 (D9): the customer's remembered choices (last quotation's
+  // notes, shipping method, Incoterms) pre-fill still-blank fields once per
+  // customer pick; remembered contacts are applied by the server on save.
+  // Typed values are never replaced.
+  const { data: rememberedDefaults } = useRememberedCustomerDefaults(customerId, 'quotation', mode === 'create')
+  const rememberedAppliedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (mode !== 'create' || !customerId || !rememberedDefaults) return
+    if (rememberedAppliedRef.current === customerId) return
+    rememberedAppliedRef.current = customerId
+    applyRememberedToBlankFields(rememberedDefaults, [
+      { key: 'notes', current: notes, set: setNotes },
+      { key: 'shipping_method', current: shippingMethod, set: setShippingMethod },
+      { key: 'incoterm_code', current: incotermCode, set: setIncotermCode },
+      { key: 'incoterm_place', current: incotermPlace, set: setIncotermPlace },
+    ])
+    // Runs once per customer pick; the field values are read as "still blank?".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rememberedDefaults, customerId, mode])
+
   // Customer changes re-resolve the default prices/lists (FR-2.3). Existing
   // documents keep their saved prices until an explicit change.
   useEffect(() => {
@@ -917,6 +939,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
 
             {/* #340: compact AR context for the selected customer (invoice parity). */}
             <CustomerContextStrip customerId={customerId || null} className="mt-3" />
+            {mode === 'create' && customerId && <RememberedDefaultsHint remembered={rememberedDefaults} className="mt-2" />}
 
             {/* Row 2: direct dropdowns + chips, one compact strip. */}
             <div className="mt-3 flex flex-wrap items-center gap-2">

@@ -381,9 +381,11 @@ class QuotationController extends Controller
 
         // Issue #553: when the tenant enabled "default salesperson = current
         // user" (and/or a per-user default team), stamp the blank fields on
-        // this new quotation. Explicit request values always win.
+        // this new quotation. Issue #346: the customer's remembered choices
+        // (last quotation's contacts, shipping, notes) fill omitted fields.
+        // Explicit request values always win.
         $validated = app(\App\Services\SalesDefaultsService::class)
-            ->applyCreationDefaults($validated, Auth::id());
+            ->applyCreationDefaults($validated, Auth::id(), 'quotation');
 
         // Issue #321: a master payment term also sets the printed credit terms.
         $validated = $this->applyPaymentTerm($validated);
