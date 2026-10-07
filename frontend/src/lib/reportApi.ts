@@ -22,6 +22,8 @@ import type {
   UnbilledDeliveriesData,
   SalesDrilldownData,
   SalesDrilldownTarget,
+  CreditNoteAnalysisData,
+  CreditNoteGrouping,
   MedicalCasePerformanceData,
   MedicalCaseDateField,
   PivotDimension,
@@ -752,6 +754,9 @@ class ReportApiClient {
     if (target.dimension === 'period') {
       params.interval = target.interval ?? 'day';
     }
+    if (target.document_type) {
+      params.document_type = target.document_type;
+    }
     try {
       const response = await api.get<ApiResponse<SalesDrilldownData>>(
         '/analytics/sales/drilldown',
@@ -760,6 +765,27 @@ class ReportApiClient {
       return response.data.data;
     } catch (error) {
       this.handleError(error, 'Failed to fetch Sales drill-down');
+      throw error;
+    }
+  }
+
+  /**
+   * Issue #532: credit note analysis — credit rate (credited ÷ invoiced) by
+   * reason, product, customer or salesperson, with the same #593 filters.
+   */
+  async getCreditNoteAnalysis(filters: ReportFilters, groupBy: CreditNoteGrouping): Promise<CreditNoteAnalysisData> {
+    const params: ReportFilters & Record<string, unknown> = { ...this.salesParams(filters), group_by: groupBy };
+    delete params.comparison;
+    delete params.compare_start_date;
+    delete params.compare_end_date;
+    try {
+      const response = await api.get<ApiResponse<CreditNoteAnalysisData>>(
+        '/analytics/sales/credit-notes',
+        { params }
+      );
+      return response.data.data;
+    } catch (error) {
+      this.handleError(error, 'Failed to fetch Credit Note Analysis');
       throw error;
     }
   }

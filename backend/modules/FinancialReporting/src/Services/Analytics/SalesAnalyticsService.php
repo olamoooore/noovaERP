@@ -154,6 +154,19 @@ class SalesAnalyticsService
     public const UNLINKED_PRODUCT_LABEL = 'Services / unlinked lines';
 
     /**
+     * Issue #532: how the credit-note analysis may group credit notes.
+     */
+    private const CREDIT_NOTE_GROUPINGS = ['reason', 'product', 'customer', 'salesperson'];
+
+    /**
+     * Issue #532: a credit note's reason bucket. Reasons are free text until
+     * reason codes land (#523), so surrounding whitespace is ignored and a
+     * blank reason is its own bucket. Used as both the row key and the label
+     * so a reason row and its drill-down bucket identically.
+     */
+    private const CREDIT_NOTE_REASON_SQL = "COALESCE(NULLIF(TRIM(cnr.reason), ''), 'No reason')";
+
+    /**
      * Issue #360: layout-only line types (no quantity, no amount) that are not
      * sales and must not count towards a product's orders.
      */
@@ -1343,8 +1356,13 @@ class SalesAnalyticsService
      *
      * @return array<string, mixed>
      */
-    public function getSalesDrilldown(ReportFilter $filter, string $dimension, ?string $key, string $interval = 'day'): array
-    {
+    public function getSalesDrilldown(
+        ReportFilter $filter,
+        string $dimension,
+        ?string $key,
+        string $interval = 'day',
+        ?string $documentType = null,
+    ): array {
         $startDate = $filter->startDate ?? Carbon::now()->startOfMonth();
         $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
 
@@ -1354,9 +1372,33 @@ class SalesAnalyticsService
             ->fromSub($this->lineItemsUnion($filter, $salesOrderIds, $invoiceIds), 'li')
             ->leftJoin('customers as cust', 'cust.id', '=', 'li.customer_id');
 
+        // Issue #532: a credit-note analysis row drills to its credit notes
+        // only — the same union arm the row's credited amount is summed from.
+        if ($documentType === 'credit_note') {
+            $query->where('li.channel', 'credit_note');
+        } elseif ($documentType !== null) {
+            throw new \InvalidArgumentException("Unknown drill-down document type: {$documentType}");
+        }
+
         $id = $key === null ? null : (int) $key;
 
         switch ($dimension) {
+            case 'salesperson':
+                // Issue #532: the customer's assigned salesperson, as the #593
+                // salesperson filter and getCreditNoteAnalysis() bucket it.
+                $id === null ? $query->whereNull('cust.salesperson_id') : $query->where('cust.salesperson_id', $id);
+                break;
+
+            case 'reason':
+                // Issue #532: a credit note's reason, bucketed exactly as
+                // getCreditNoteAnalysis() labels it (the key is that label).
+                if ($documentType !== 'credit_note' || $key === null) {
+                    throw new \InvalidArgumentException('A reason drill-down needs document_type=credit_note and a reason key.');
+                }
+                $this->joinCreditNoteReason($query);
+                $query->whereRaw(self::CREDIT_NOTE_REASON_SQL.' = ?', [$key]);
+                break;
+
             case 'customer':
                 // buildSalesByCustomer groups by li.customer_id.
                 $id === null ? $query->whereNull('li.customer_id') : $query->where('li.customer_id', $id);
@@ -1474,6 +1516,237 @@ class SalesAnalyticsService
             ]),
             'generated_at' => now()->toISOString(),
         ];
+    }
+
+    /**
+     * Issue #532 (SALES-ODOO): credit note analysis — credit-rate KPIs
+     * (credited ÷ invoiced) grouped by reason, product, customer or salesperson.
+     *
+     * Read from the SAME lineItemsUnion() as every sales report, with the same
+     * #593 filters (legal entity included) and tag rule, so:
+     *   - credited = posted, non-voided credit notes' net line amounts
+     *     (tax excluded, header discount off), in the BASE currency at the
+     *     note's own snapshot rate (#355/#363), reported as a positive figure;
+     *   - invoiced = posted invoices' net line amounts on the same basis
+     *     (the invoice arm only: POS sales and un-invoiced bookings are revenue
+     *     but not invoicing, so they are not a credit-rate denominator).
+     *
+     * A row exists for every bucket holding at least one credit note. Invoices
+     * carry no reason, so a reason row's invoiced figure is all invoicing in
+     * scope. Salesperson is the customer's assigned salesperson
+     * (customers.salesperson_id), the same bucket the #593 salesperson filter
+     * and the drill-down use. Each row carries the applied / refunded state of
+     * its notes from CustomerCreditNoteOutcomeService (#525/#528).
+     *
+     * @return array<string, mixed>
+     */
+    public function getCreditNoteAnalysis(ReportFilter $filter, string $groupBy): array
+    {
+        if (! in_array($groupBy, self::CREDIT_NOTE_GROUPINGS, true)) {
+            throw new \InvalidArgumentException("Unsupported credit-note grouping [{$groupBy}].");
+        }
+
+        $startDate = $filter->startDate ?? Carbon::now()->startOfMonth();
+        $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
+
+        [$salesOrderIds, $invoiceIds] = $this->documentIdsForTag($filter->tag ?? null);
+
+        $base = fn () => DB::query()
+            ->fromSub($this->lineItemsUnion($filter, $salesOrderIds, $invoiceIds), 'li')
+            ->whereIn('li.channel', ['invoice', 'credit_note']);
+
+        $query = $base()->leftJoin('customers as cust', 'cust.id', '=', 'li.customer_id');
+
+        switch ($groupBy) {
+            case 'reason':
+                $this->joinCreditNoteReason($query);
+                $query->where('li.channel', 'credit_note');
+                $keySql = self::CREDIT_NOTE_REASON_SQL;
+                $labelSql = self::CREDIT_NOTE_REASON_SQL;
+                break;
+
+            case 'product':
+                // As buildSalesByProduct (and the product drill-down).
+                $query->leftJoin('products as p', 'p.id', '=', 'li.product_id')
+                    ->where(function ($q) {
+                        $q->whereNull('li.line_type')->orWhereNotIn('li.line_type', self::NON_SALE_LINE_TYPES);
+                    });
+                $keySql = 'p.id';
+                $labelSql = "COALESCE(p.name, '".self::UNLINKED_PRODUCT_LABEL."')";
+                break;
+
+            case 'customer':
+                $keySql = 'li.customer_id';
+                $labelSql = "COALESCE(cust.name, 'Walk-in Customer')";
+                break;
+
+            default: // salesperson
+                $query->leftJoin('users as sp', 'sp.id', '=', 'cust.salesperson_id');
+                $keySql = 'cust.salesperson_id';
+                $labelSql = "COALESCE(sp.name, 'Unassigned')";
+                break;
+        }
+
+        try {
+            $rows = $query
+                ->selectRaw("{$keySql} AS group_key")
+                ->selectRaw("{$labelSql} AS group_label")
+                ->selectRaw("SUM(CASE WHEN li.channel = 'credit_note' THEN -li.base_revenue ELSE 0 END) AS credited_amount")
+                ->selectRaw("SUM(CASE WHEN li.channel = 'invoice' THEN li.base_revenue ELSE 0 END) AS invoiced_amount")
+                ->selectRaw("STRING_AGG(DISTINCT CASE WHEN li.channel = 'credit_note' THEN SPLIT_PART(li.order_ref, ':', 2) END, ',') AS credit_note_ids")
+                ->groupByRaw('1, 2')
+                ->havingRaw("COUNT(CASE WHEN li.channel = 'credit_note' THEN 1 END) > 0")
+                ->orderByDesc('credited_amount')
+                ->orderBy('group_label')
+                ->get();
+
+            $totalInvoiced = round((float) $base()->where('li.channel', 'invoice')->sum('li.base_revenue'), 2);
+        } catch (\Throwable $e) {
+            Log::error('SalesAnalyticsService getCreditNoteAnalysis error', ['error' => $e->getMessage()]);
+
+            throw $e;
+        }
+
+        $noteIdsByRow = $rows->map(fn ($row) => array_values(array_unique(array_map(
+            'intval',
+            array_filter(explode(',', (string) $row->credit_note_ids), fn ($id) => $id !== ''),
+        ))));
+        $outcomes = $this->creditNoteOutcomes($noteIdsByRow->flatten()->unique()->values()->all());
+
+        $data = $rows->values()->map(function ($row, int $index) use ($groupBy, $totalInvoiced, $noteIdsByRow, $outcomes) {
+            $credited = round((float) $row->credited_amount, 2);
+            $invoiced = $groupBy === 'reason' ? $totalInvoiced : round((float) $row->invoiced_amount, 2);
+            $noteIds = $noteIdsByRow[$index];
+
+            $counts = ['applied' => 0, 'partially_applied' => 0, 'customer_credit' => 0];
+            foreach ($noteIds as $noteId) {
+                $state = $outcomes[$noteId]['state'] ?? null;
+                if ($state !== null && isset($counts[$state])) {
+                    $counts[$state]++;
+                }
+            }
+
+            return [
+                'key' => $row->group_key === null
+                    ? null
+                    : ($groupBy === 'reason' ? (string) $row->group_key : (int) $row->group_key),
+                'label' => (string) $row->group_label,
+                'credit_note_count' => count($noteIds),
+                'credited_amount' => $credited,
+                'invoiced_amount' => $invoiced,
+                'credit_rate' => $this->creditRate($credited, $invoiced),
+                'outcome' => $counts,
+            ];
+        })->all();
+
+        $totalCredited = round((float) $rows->sum('credited_amount'), 2);
+
+        $summaryOutcome = ['applied' => 0, 'partially_applied' => 0, 'customer_credit' => 0];
+        $appliedBase = $refundedBase = $remainingBase = 0.0;
+        foreach ($outcomes as $outcome) {
+            if (isset($summaryOutcome[$outcome['state']])) {
+                $summaryOutcome[$outcome['state']]++;
+            }
+            $appliedBase += $outcome['applied_amount_base'];
+            $refundedBase += $outcome['refunded_amount_base'];
+            $remainingBase += $outcome['remaining_credit_base'];
+        }
+
+        return [
+            'title' => 'Credit Note Analysis',
+            'group_by' => $groupBy,
+            'pos_excluded_by_tag' => $filter->tag !== null,
+            'period' => [
+                'start_date' => $startDate->format('Y-m-d'),
+                'end_date' => $endDate->format('Y-m-d'),
+            ],
+            'rows' => $data,
+            'summary' => $this->baseSummary([
+                'credit_note_count' => count($outcomes),
+                'total_credited' => $totalCredited,
+                'total_invoiced' => $totalInvoiced,
+                'net_invoiced' => round($totalInvoiced - $totalCredited, 2),
+                'credit_rate' => $this->creditRate($totalCredited, $totalInvoiced),
+                'outcome' => $summaryOutcome + [
+                    // The notes' own (tax-inclusive) credit, converted at each
+                    // note's snapshot rate: what was applied to invoices,
+                    // refunded to the customer, or is still held as credit.
+                    'applied_amount' => round($appliedBase, 2),
+                    'refunded_amount' => round($refundedBase, 2),
+                    'remaining_credit' => round($remainingBase, 2),
+                    'basis' => 'Credit note totals including tax, in the base currency.',
+                ],
+                'credit_rate_basis' => 'Credited ÷ invoiced: posted credit notes over posted invoices, '
+                    .'both net of tax and document discounts, in the base currency. '
+                    .'Drafts and voided credit notes are excluded.',
+            ]),
+            'generated_at' => now()->toISOString(),
+        ];
+    }
+
+    /**
+     * Groupings the credit-note analysis accepts; the controller validates
+     * against this list.
+     *
+     * @return list<string>
+     */
+    public static function creditNoteGroupings(): array
+    {
+        return self::CREDIT_NOTE_GROUPINGS;
+    }
+
+    private function creditRate(float $credited, float $invoiced): ?float
+    {
+        return $invoiced > 0 ? round($credited / $invoiced * 100, 2) : null;
+    }
+
+    /**
+     * Applied / refunded / remaining state per posted credit note, from
+     * CustomerCreditNoteOutcomeService (#525/#528), with its amounts converted
+     * to the base currency at the note's snapshot rate.
+     *
+     * @param  list<int>  $ids
+     * @return array<int, array{state: string, applied_amount_base: float, refunded_amount_base: float, remaining_credit_base: float}>
+     */
+    private function creditNoteOutcomes(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        $notes = \App\Models\CustomerCreditNote::with('invoice')->whereIn('id', $ids)->get();
+        app(\App\Services\CustomerCreditNoteOutcomeService::class)->annotate($notes);
+
+        $result = [];
+        foreach ($notes as $note) {
+            $outcome = $note->getAttribute('outcome');
+            if (! is_array($outcome)) {
+                continue;
+            }
+            $rate = (float) ($note->exchange_rate ?: 1.0);
+            $result[(int) $note->id] = [
+                'state' => (string) $outcome['state'],
+                'applied_amount_base' => round((float) $outcome['applied_amount'] * $rate, 2),
+                'refunded_amount_base' => round((float) $outcome['refunded_amount'] * $rate, 2),
+                'remaining_credit_base' => round((float) $outcome['remaining_credit'] * $rate, 2),
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Join each credit-note line of the union to its credit note, for the
+     * reason bucket (CREDIT_NOTE_REASON_SQL). Non-credit-note rows join nothing.
+     */
+    private function joinCreditNoteReason(\Illuminate\Database\Query\Builder $query): void
+    {
+        $query->leftJoin(
+            'customer_credit_notes as cnr',
+            DB::raw('cnr.id'),
+            '=',
+            DB::raw("(CASE WHEN li.channel = 'credit_note' THEN SPLIT_PART(li.order_ref, ':', 2)::bigint END)"),
+        );
     }
 
     /**
@@ -1658,8 +1931,19 @@ class SalesAnalyticsService
         $focBySalesOrderLine = $this->focQuantitiesSql('sales_order_item_id', 'allocated_qty');
         $focByInvoiceLine = $this->focQuantitiesSql('invoice_item_id', 'invoiced_qty');
 
-        // Credit note: line_total is already tax-exclusive (CustomerCreditNoteLine
-        // computes quantity x unit_price) and a credit note carries no discount.
+        // Credit note: since #512 CustomerCreditNoteLine computes its totals with
+        // the invoice line arithmetic (InvoiceLine::computeLineTotals), so
+        // line_total is tax-INCLUSIVE and net of the line discount, exactly
+        // like an invoice line. Issue #532: the arm used to read line_total as
+        // tax-exclusive, so a taxed credit note reduced revenue by its gross.
+        // The header discount (pro-rated from the source invoice) comes off
+        // pro-rata, matching the posting (revenue = subtotal - discount_amount).
+        $creditNoteNet = $this->netLineRevenueSql(
+            '(COALESCE(cnl.line_total, 0) - COALESCE(cnl.tax_amount, 0))',
+            'COALESCE(ccn.discount_amount, 0)',
+            'ccn.id'
+        );
+
         // Issue #601: the pivot groups by the document's own salesperson/team.
         // POS orders carry neither, so their arm leaves them NULL and the pivot
         // falls back to the customer's assigned salesperson; invoice and credit
@@ -1785,7 +2069,7 @@ class SalesAnalyticsService
         ) UNION ALL (
             SELECT cnl.product_id,
                    ccn.customer_id,
-                   (-1 * COALESCE(cnl.line_total, 0)) AS document_revenue,
+                   (-1 * {$creditNoteNet}) AS document_revenue,
                    (-1 * COALESCE(cnl.quantity, 0)) AS quantity,
                    -- #602: a credit note reverses invoiced quantity (and
                    -- amount); it does not change what was ordered/delivered,
