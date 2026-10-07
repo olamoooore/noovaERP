@@ -304,4 +304,55 @@ class SalesRecordsReportTest extends TenantTestCase
     {
         $this->getJson('/api/v1/reports/sales-records')->assertStatus(401);
     }
+
+    /**
+     * #1020: the route is gated by reports.view (RequirePermission on the
+     * reporting group). A central role without it (SALES — not in the
+     * PERMISSION_MATRIX reports.view list, and not an OWNER/ADMIN super role)
+     * is refused; a role that has it (VIEWER) reads the report.
+     *
+     * @test
+     */
+    public function a_role_without_reports_view_is_forbidden_and_a_role_with_it_is_allowed()
+    {
+        $this->actingAs($this->roleUser('sales'))
+            ->getJson('/api/v1/reports/sales-records?start_date=2026-05-01&end_date=2026-05-31')
+            ->assertStatus(403);
+
+        $this->actingAs($this->roleUser('viewer'))
+            ->getJson('/api/v1/reports/sales-records?start_date=2026-05-01&end_date=2026-05-31')
+            ->assertOk();
+    }
+
+    private function roleUser(string $role): User
+    {
+        $user = User::factory()->create();
+
+        DB::table('public.users')->updateOrInsert(
+            ['email' => $user->email],
+            [
+                'name' => $user->name,
+                'password' => $user->password,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]
+        );
+
+        $centralId = DB::table('public.users')->where('email', $user->email)->value('id');
+
+        DB::table('user_company_access')->updateOrInsert(
+            ['user_id' => $centralId, 'tenant_id' => (string) tenant('id')],
+            [
+                'role' => $role,
+                'is_default' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]
+        );
+
+        $user->assignRole(\App\Enums\UserRole::from($role)->spatieName());
+
+        return $user;
+    }
 }
+

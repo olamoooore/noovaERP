@@ -18,7 +18,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
-import { cn, formatCurrency, formatDate, getApiErrorMessage, normalizeQuantity } from '@/lib/utils';
+import { cn, formatCurrency, formatDate, getApiErrorMessage, normalizeQuantity, NON_WHOLE_QUANTITY_KEYS, toWholeQuantity } from '@/lib/utils';
 import api from '@/lib/api'
 import { buildContactAddress, getCustomerContactForRole, getPrimaryCustomerContact } from '@/lib/customerDocumentDefaults';
 import type { ContactMasterAddress } from '@/lib/customerDocumentDefaults';
@@ -27,10 +27,13 @@ import { computeDocumentTotals } from '@/lib/documentTotals';
 import { useSalesDocumentPricing } from '@/hooks/useSalesDocumentPricing';
 import {
   duplicateSalesDocumentLine,
+  focLineKeyForId,
+  focPayloadFields,
   getSalesDocumentLineTotal,
   isBlankSalesDocumentLine,
-  moveSalesDocumentLine,
-  removeSalesDocumentLine,
+  keepFocLinesUnderSource,
+  moveSalesDocumentLineWithFoc,
+  removeSalesDocumentLineWithFoc,
   resetSalesDocumentLine,
   type SalesDocumentLine,
 } from '@/lib/salesDocumentLines';
@@ -130,6 +133,11 @@ interface InvoiceLine {
   } | null;
   pricing_currency?: string | null;
   pricing_base_currency?: string | null;
+  // #1006: bonus-scheme FOC line, linked to its paid source line by a stable
+  // client key (sent as source_line_index on save).
+  is_foc?: boolean;
+  line_key?: string;
+  source_line_key?: string | null;
 }
 
 interface CustomerAddress {
@@ -165,6 +173,8 @@ interface CustomerContact {
 interface CustomerRecord extends CustomerWithResolvedAddresses {
   id: number;
   type?: 'individual' | 'company';
+  // #1007: the company an individual is billed through (customers.parent_id).
+  parent_id?: number | null;
   name?: string;
   company?: string | null;
   code?: string | null;
@@ -486,6 +496,9 @@ export const CreateInvoicePage: React.FC = () => {
   // #317: customer id of a restored local draft — its header values are the
   // user's own, so the customer-default effects must not overwrite them.
   const restoredCustomerRef = useRef<string | null>(null);
+  // #1007: the contact person the customer search matched on (picker's
+  // "Contact: …" line), applied as the billing contact for that customer.
+  const matchedContactRef = useRef<{ customerId: string; contactId: string } | null>(null);
   // Guards the async Contact-Master address lookups per section: a stale
   // response must not overwrite the address of a contact picked later.
   const contactAddressRequestRef = useRef<{ billing: number; shipping: number }>({ billing: 0, shipping: 0 });
@@ -659,7 +672,11 @@ export const CreateInvoicePage: React.FC = () => {
       return;
     }
 
-    const primaryContact = getPrimaryCustomerContact(selectedCustomer);
+    const matchedContact = matchedContactRef.current?.customerId === String(selectedCustomer.id)
+      ? (selectedCustomer.customer_contacts ?? selectedCustomer.customerContacts ?? [])
+        .find((contact) => String(contact.id) === matchedContactRef.current?.contactId)
+      : undefined;
+    const primaryContact = matchedContact ?? getPrimaryCustomerContact(selectedCustomer);
     const shippingContact = getCustomerContactForRole(selectedCustomer, 'shipping');
     const billingAddress = getCustomerAddress(selectedCustomer, 'billing');
     const shippingAddress = getCustomerAddress(selectedCustomer, 'shipping');
@@ -890,6 +907,10 @@ export const CreateInvoicePage: React.FC = () => {
       unit_price: line.unit_price != null ? Number(line.unit_price) : '',
       tax_rate: line.tax_rate != null ? Number(line.tax_rate) : '',
       discount_amount: line.discount_amount != null ? Number(line.discount_amount) : '',
+      // #1006: keep the FOC flag and its source link through the edit.
+      is_foc: Boolean(line.is_foc),
+      line_key: line.id != null ? focLineKeyForId(line.id) : undefined,
+      source_line_key: line.source_line_id != null ? focLineKeyForId(line.source_line_id) : null,
     }));
     setLines(mappedLines.length ? mappedLines : [emptyLine()]);
   }, [existingInvoice, invoiceLoaded]);
@@ -898,16 +919,8 @@ export const CreateInvoicePage: React.FC = () => {
     if (!isEditMode || !existingInvoice || !selectedCustomerDetail) return;
 
     const contacts = selectedCustomerDetail.customer_contacts ?? selectedCustomerDetail.customerContacts ?? [];
-    const billingName = existingInvoice.billing_contact?.display_name?.trim().toLowerCase();
-    const shippingName = existingInvoice.shipping_contact?.display_name?.trim().toLowerCase();
     const doctorName = (existingInvoice.doctor?.display_name || existingInvoice.doctor?.full_name || existingInvoice.doctor?.name)?.trim().toLowerCase();
     const requestorName = (existingInvoice.requestor?.display_name || existingInvoice.requestor?.full_name || existingInvoice.requestor?.name)?.trim().toLowerCase();
-    const billingMatch = billingName
-      ? contacts.find((contact) => contact.name?.trim().toLowerCase() === billingName)
-      : undefined;
-    const shippingMatch = shippingName
-      ? contacts.find((contact) => contact.name?.trim().toLowerCase() === shippingName)
-      : undefined;
     const doctorMatch = doctorName
       ? contacts.find((contact) => contact.name?.trim().toLowerCase() === doctorName)
       : undefined;
@@ -918,19 +931,25 @@ export const CreateInvoicePage: React.FC = () => {
     // Invoices raised before contact defaults were stored show no contact;
     // render the customer's default billing/shipping contact instead of blank,
     // without touching the invoice's saved snapshots or addresses.
+    // #1007: only an invoice with NO saved contact gets the default. A saved
+    // contact that is not in the customer's current list keeps its saved id
+    // (core contact UUID), so re-saving never re-points the invoice.
     const billingDefault = getCustomerContactForRole(selectedCustomerDetail, 'billing');
     const shippingDefault = getCustomerContactForRole(selectedCustomerDetail, 'shipping');
+    const savedBillingId = existingInvoice.billing_contact_id ? String(existingInvoice.billing_contact_id) : '';
+    const savedShippingId = existingInvoice.shipping_contact_id ? String(existingInvoice.shipping_contact_id) : '';
+    // A customer contact linked to the saved person is the same person, so it
+    // is shown by its customer-contact id; a name match is NOT (it may be a
+    // different person with the same name) and is no longer used here.
+    const resolveContact = (savedId: string, fallback: { id?: unknown } | undefined) => {
+      const linked = savedId ? contacts.find((contact) => contact.core_contact_uuid === savedId) : undefined;
+      if (linked?.id != null) return String(linked.id);
+      if (savedId) return savedId;
+      return fallback?.id != null ? String(fallback.id) : '';
+    };
 
-    setBillingContactId(
-      billingMatch?.id != null
-        ? String(billingMatch.id)
-        : (billingDefault?.id != null ? String(billingDefault.id) : ''),
-    );
-    setShippingContactId(
-      shippingMatch?.id != null
-        ? String(shippingMatch.id)
-        : (shippingDefault?.id != null ? String(shippingDefault.id) : ''),
-    );
+    setBillingContactId(resolveContact(savedBillingId, billingDefault));
+    setShippingContactId(resolveContact(savedShippingId, shippingDefault));
     setDoctorContactId(doctorMatch?.id != null ? String(doctorMatch.id) : '');
     setRequestorContactId(requestorMatch?.id != null ? String(requestorMatch.id) : '');
   }, [existingInvoice, isEditMode, selectedCustomerDetail]);
@@ -1671,17 +1690,30 @@ export const CreateInvoicePage: React.FC = () => {
 
   const duplicateLine = (index: number) => {
     fieldErrors.clearLines();
-    setLines((current) => duplicateSalesDocumentLine(current, index));
+    setLines((current) => {
+      const next = duplicateSalesDocumentLine(current, index);
+      // #1006: the copy is a new line — it must not share the source's key.
+      if (next !== current && next[index + 1]) next[index + 1] = { ...next[index + 1], line_key: undefined };
+      return next;
+    });
   };
 
+  // #1006: a paid line moves together with its FOC line(s).
   const moveLine = (index: number, direction: 'up' | 'down') => {
     fieldErrors.clearLines();
-    setLines((current) => moveSalesDocumentLine(current, index, direction));
+    setLines((current) => moveSalesDocumentLineWithFoc(current, index, direction));
   };
 
+  // #1006: deleting a paid line also deletes its FOC line(s).
   const removeLine = (index: number) => {
     fieldErrors.clearLines();
-    setLines((current) => removeSalesDocumentLine(current, index));
+    setLines((current) => removeSalesDocumentLineWithFoc(current, index));
+  };
+
+  // #1006: drag reorder keeps each FOC line directly under its paid line.
+  const dropLine = (from: number, to: number) => {
+    fieldErrors.clearLines();
+    setLines(keepFocLinesUnderSource(reorderDocumentLines(lines, from, to)));
   };
 
   const resetLine = (index: number) => {
@@ -1913,6 +1945,8 @@ export const CreateInvoicePage: React.FC = () => {
       return;
     }
 
+    // #1006: the lines actually sent — FOC source indexes point into this array.
+    const sentLines = submissionLines.filter((line) => line.description || line.product_id);
     const payload = {
       customer_id: parseInt(customerId, 10),
       invoice_date: invoiceDate,
@@ -1956,8 +1990,7 @@ export const CreateInvoicePage: React.FC = () => {
         ? { version: existingInvoice.lock_version }
         : {}),
       ...documentSnapshot,
-      lines: submissionLines
-        .filter((line) => line.description || line.product_id)
+      lines: sentLines
         .map((line) => ({
           line_type: line.line_type || 'product',
           sequence: submissionLines.indexOf(line),
@@ -1977,6 +2010,8 @@ export const CreateInvoicePage: React.FC = () => {
           override_reason: line.override_reason ?? undefined,
           tax_rate: line.tax_rate === '' ? 0 : line.tax_rate,
           discount_amount: line.discount_amount === '' ? 0 : line.discount_amount,
+          // #1006: FOC flag + the index of its paid line in this array.
+          ...focPayloadFields(sentLines, line),
         })),
     };
 
@@ -2098,7 +2133,7 @@ export const CreateInvoicePage: React.FC = () => {
 
   const detailsSummary = [
     documentSnapshot.customer_reference ? `PO ${documentSnapshot.customer_reference}` : null,
-    contactNameById(billingContactId) || documentSnapshot.attention_to || null,
+    documentSnapshot.attention_to || contactNameById(billingContactId) || null,
     showCases && caseCount > 0 ? `cases ${caseCount}` : null,
     notes ? 'notes' : null,
   ]
@@ -2203,8 +2238,9 @@ export const CreateInvoicePage: React.FC = () => {
                     <CustomerSearchCombobox
                       compact
                       value={customerId}
-                      onValueChange={(id, customer) => {
+                      onValueChange={(id, customer, matchedContactId) => {
                         fieldErrors.clear('customer_id')
+                        matchedContactRef.current = id && matchedContactId ? { customerId: id, contactId: matchedContactId } : null
                         setCustomerId(id)
                         // D1: keep the match explanation so the operator can see
                         // the pick came from a contact/tag/address search.
@@ -2233,6 +2269,13 @@ export const CreateInvoicePage: React.FC = () => {
                       {customerMatch.addresses.length > 0 && (
                         <span className="truncate">Address: {customerMatch.addresses.join(' · ')}</span>
                       )}
+                    </p>
+                  )}
+                  {selectedCustomer?.type === 'individual' && !selectedCustomer.parent_id && (
+                    // #1007: an individual with no linked company bills to the
+                    // person — say so instead of silently defaulting.
+                    <p role="status" data-testid="individual-no-company-warning" className="mt-1 text-[11px] leading-snug text-amber-600">
+                      This customer is an individual with no linked company — the invoice will be billed to the person. Link a company on the customer record if a company should be billed.
                     </p>
                   )}
                 </div>
@@ -3142,8 +3185,8 @@ export const CreateInvoicePage: React.FC = () => {
                   })}
                 >
                     {lines.map((line, index) => (
-                      <tr key={index} className="doc-line-row border-b transition-colors hover:bg-muted/20" draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) { fieldErrors.clearLines(); setLines(reorderDocumentLines(lines, draggedLineIndex, index)); } setDraggedLineIndex(null); }}>
-                        {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} html={line.description_html || plainToRichHtml(line.description)} colSpan={13 + (visibleLineColumns.stock ? 1 : 0)} total={line.line_type === 'section' ? money(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined} onChange={(text) => updateLine(index, 'description', text)} onHtmlChange={(html) => setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, description_html: html, description: htmlToPlainText(html) } : item))} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) { fieldErrors.clearLines(); setLines(reorderDocumentLines(lines, draggedLineIndex, index)); } setDraggedLineIndex(null); }} /> : <>
+                      <tr key={index} className="doc-line-row border-b transition-colors hover:bg-muted/20" draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) { dropLine(draggedLineIndex, index); } setDraggedLineIndex(null); }}>
+                        {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} html={line.description_html || plainToRichHtml(line.description)} colSpan={13 + (visibleLineColumns.stock ? 1 : 0)} total={line.line_type === 'section' ? money(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined} onChange={(text) => updateLine(index, 'description', text)} onHtmlChange={(html) => setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, description_html: html, description: htmlToPlainText(html) } : item))} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) { dropLine(draggedLineIndex, index); } setDraggedLineIndex(null); }} /> : <>
                         <td data-label="#" className={cn(LINE_CELL, 'w-10')}>
                           <div className={cn(LINE_CELL_BOX, 'justify-center text-xs font-medium text-muted-foreground')}>
                             {lines.slice(0, index + 1).filter((item) => (item.line_type ?? 'product') === 'product').length}
@@ -3192,6 +3235,12 @@ export const CreateInvoicePage: React.FC = () => {
                         </td>}
                         {visibleLineColumns.description && <td data-label="Description" className={cn(LINE_CELL, 'min-w-[16rem]')}>
                           <FieldSlot name={lineFieldKey(index, 'description')}>
+                            {/* #1006: a bonus-scheme free line, kept under its paid line. */}
+                            {line.is_foc && (
+                              <span data-testid={`foc-badge-${index}`} title="Free of charge (bonus scheme) — stays under its paid line" className="mb-1 inline-flex items-center rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                                FOC
+                              </span>
+                            )}
                             {/* #1004: WYSIWYG description (bold/italic/underline/colour); plain text stays in sync for search/exports. */}
                             <RichTextEditor
                               compact
@@ -3241,22 +3290,21 @@ export const CreateInvoicePage: React.FC = () => {
                               <input
                                 type="number"
                                 min="0"
-                                // #1024: arrows step by 1; decimals stay typeable.
+                                // #1024: quantities are whole numbers; arrows step by 1.
                                 step="1"
-                                inputMode="decimal"
+                                inputMode="numeric"
                                 value={line.quantity}
                                 onChange={(event) => {
                                   const raw = event.target.value;
                                   if (raw === '') { updateLine(index, 'quantity', ''); return; }
-                                  const parsed = Number(raw);
-                                  if (!Number.isNaN(parsed)) updateLine(index, 'quantity', parsed);
-                                }}
-                                onBlur={() => {
-                                  if (line.quantity !== '') {
-                                    updateLine(index, 'quantity', normalizeQuantity(line.quantity) as number);
-                                  }
+                                  const whole = toWholeQuantity(raw);
+                                  if (whole !== '') updateLine(index, 'quantity', whole);
                                 }}
                                 onKeyDown={(event) => {
+                                  if (NON_WHOLE_QUANTITY_KEYS.has(event.key)) {
+                                    event.preventDefault();
+                                    return;
+                                  }
                                   // D6(e): Enter on the last row starts a new line.
                                   if (event.key === 'Enter') {
                                     event.preventDefault();

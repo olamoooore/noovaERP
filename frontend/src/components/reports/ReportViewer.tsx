@@ -21,6 +21,12 @@ interface ReportViewerProps {
   exportTargetRef?: React.RefObject<HTMLElement | null>;
   exportFilename?: string;
   /**
+   * Complete export rows (header first). When set, Excel/PDF/Word export these
+   * instead of scraping the rendered table, which only holds the visible page
+   * of a paginated ReportTable (#1020).
+   */
+  exportRows?: string[][];
+  /**
    * Extra controls rendered first in the action row — e.g. Expand all /
    * Collapse all pills that must sit next to Excel/PDF/Word and Refresh.
    */
@@ -62,6 +68,7 @@ export const ReportViewer: React.FC<ReportViewerProps> = ({
   className = '',
   exportTargetRef,
   exportFilename,
+  exportRows,
 }) => {
   return (
     <Card className={`p-6 ${className}`}>
@@ -89,6 +96,7 @@ export const ReportViewer: React.FC<ReportViewerProps> = ({
                   title={title}
                   subtitle={description}
                   filename={exportFilename ?? `report-${Date.now()}`}
+                  rows={exportRows}
                 />
               )}
 

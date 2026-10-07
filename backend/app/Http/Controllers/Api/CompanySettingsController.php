@@ -857,7 +857,7 @@ class CompanySettingsController extends Controller
      * derived from the canonical Setting tax block that the engine actually
      * reads — no orphan writes.
      *
-     * @return array{default_tax_rate: float, prices_include_tax: bool, default_tax_treatment: string}
+     * @return array{default_tax_rate: float, default_tax_id: int|null, prices_include_tax: bool, default_tax_treatment: string}
      */
     private function salesTaxDefaults(): array
     {
@@ -869,12 +869,54 @@ class CompanySettingsController extends Controller
 
         return [
             'default_tax_rate' => $defaultRate,
+            // Issue #543: the default is a tax rule, not a free-typed rate.
+            'default_tax_id' => ! empty($tax['default_tax_id']) ? (int) $tax['default_tax_id'] : null,
             'prices_include_tax' => ($tax['pricing_mode'] ?? 'exclusive') === 'inclusive',
             // #451: the tenant-level treatment default is a real persisted
             // choice; 'standard' is only the display default until the tenant
             // saves one.
             'default_tax_treatment' => (string) ($tax['default_tax_treatment'] ?? 'standard'),
         ];
+    }
+
+    /**
+     * Issue #543 (ST6): the tax rules that can be the tenant's sales default —
+     * the same conditions TaxEngineService::resolveRaw applies before it uses
+     * `default_tax_id` (active, ACTIVE lifecycle, output-capable scope), plus
+     * not already expired. Choosing any other rule would be saved but never
+     * applied, which is the silent no-op this issue is about.
+     */
+    private function salesDefaultTaxRuleQuery(): \Illuminate\Database\Eloquent\Builder
+    {
+        return \App\Models\Tax::query()
+            ->where('is_active', true)
+            ->where('lifecycle_state', 'ACTIVE')
+            ->where(function ($query) {
+                $query->whereNull('scope')->orWhereIn('scope', ['output', 'both']);
+            })
+            ->where(function ($query) {
+                $query->whereNull('effective_to')->orWhereDate('effective_to', '>=', now()->toDateString());
+            });
+    }
+
+    /**
+     * Issue #543: options for the Sales Settings default-tax picker.
+     *
+     * @return list<array{id: int, name: string, code: string|null, rate: float}>
+     */
+    private function salesDefaultTaxOptions(): array
+    {
+        return $this->salesDefaultTaxRuleQuery()
+            ->orderBy('name')
+            ->get(['id', 'name', 'code', 'rate'])
+            ->map(fn (\App\Models\Tax $tax) => [
+                'id' => (int) $tax->id,
+                'name' => (string) $tax->name,
+                'code' => $tax->code,
+                'rate' => (float) $tax->rate,
+            ])
+            ->values()
+            ->all();
     }
 
     /**
@@ -951,7 +993,8 @@ class CompanySettingsController extends Controller
                 // MRD R10.3: ONE tax config surface. The legacy sales.tax.*
                 // keys are now derived from the canonical Setting tax block
                 // that the engine actually reads — no orphan writes.
-                'tax' => $this->salesTaxDefaults(),
+                // Issue #543: plus the active sales tax rules for the picker.
+                'tax' => $this->salesTaxDefaults() + ['available_taxes' => $this->salesDefaultTaxOptions()],
                 'delivery' => [
                     'attach_pdf' => app(\App\Services\SalesSettings::class)->attachPdf(),
                     'cc_internal_email' => app(\App\Services\SalesSettings::class)->ccInternalEmail() ?? '',
@@ -1020,6 +1063,13 @@ class CompanySettingsController extends Controller
                     'levels' => app(\App\Services\SalesSettings::class)->followupLevels(),
                     'actions' => \App\Services\SalesSettings::FOLLOWUP_ACTIONS,
                 ],
+                // Issue #494: payment difference handling — the write-off
+                // tolerance and the reasons (each with its expense account)
+                // offered when a short payment is marked as fully paid.
+                'payment' => [
+                    'write_off_tolerance' => app(\App\Services\SalesSettings::class)->paymentWriteOffTolerance(),
+                    'write_off_reasons' => app(\App\Services\SalesSettings::class)->paymentWriteOffReasons(),
+                ],
                 // Issue #549: read-only defaults for the "changed from default"
                 // markers. Not accepted by updateSalesSettings; a reset is a
                 // normal PUT of the default value.
@@ -1060,6 +1110,9 @@ class CompanySettingsController extends Controller
             'portal.acceptance_link_expiry_days' => 'nullable|integer|min:1|max:365',
             'portal.payment_link_expiry_days' => 'nullable|integer|min:1|max:365',
             'tax.default_tax_rate' => 'nullable|numeric|min:0|max:100',
+            // Issue #543: the picker writes the rule id directly. Sending a
+            // rate and a rule together is ambiguous, so it is rejected.
+            'tax.default_tax_id' => 'nullable|integer|prohibits:tax.default_tax_rate',
             'tax.prices_include_tax' => 'nullable|boolean',
             'tax.default_tax_treatment' => 'nullable|string|in:standard,zero_rated,exempt,out_of_scope',
             'delivery.attach_pdf' => 'nullable|boolean',
@@ -1106,7 +1159,35 @@ class CompanySettingsController extends Controller
             'followup.levels.*.days' => 'required|integer|min:1|max:365|distinct',
             'followup.levels.*.action' => ['required', \Illuminate\Validation\Rule::in(\App\Services\SalesSettings::FOLLOWUP_ACTIONS)],
             'followup.levels.*.template' => 'nullable|string|max:191',
+            // Issue #494: payment difference write-off tolerance + reasons.
+            'payment.write_off_tolerance' => 'nullable|numeric|min:0|max:1000000',
+            'payment.write_off_reasons' => 'nullable|array|max:50',
+            'payment.write_off_reasons.*.code' => ['required', 'string', 'max:50', 'distinct', 'regex:/^[A-Za-z0-9_-]+$/'],
+            'payment.write_off_reasons.*.label' => 'required|string|max:191',
+            'payment.write_off_reasons.*.account_id' => 'required|integer|exists:chart_of_accounts,id',
         ]);
+
+        // Issue #494: a write-off reason posts its difference to an expense
+        // account — reject anything else rather than save a reason that
+        // could never post.
+        if (isset($validated['payment']['write_off_reasons']) && is_array($validated['payment']['write_off_reasons'])) {
+            $reasons = [];
+            foreach ($validated['payment']['write_off_reasons'] as $i => $reason) {
+                $account = \App\Models\ChartOfAccount::query()->whereKey((int) $reason['account_id'])->first();
+                if (! $account || ! $account->is_active || $account->type !== 'expense') {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        "payment.write_off_reasons.{$i}.account_id" => 'Choose an active expense account for the write-off reason.',
+                    ]);
+                }
+
+                $reasons[] = [
+                    'code' => trim((string) $reason['code']),
+                    'label' => trim((string) $reason['label']),
+                    'account_id' => (int) $account->id,
+                ];
+            }
+            $validated['payment']['write_off_reasons'] = $reasons;
+        }
 
         // Issue #328: levels are stored ascending by days overdue.
         if (isset($validated['followup']['levels']) && is_array($validated['followup']['levels'])) {
@@ -1141,21 +1222,44 @@ class CompanySettingsController extends Controller
                 $taxSetting['default_tax_treatment'] = $validated['tax']['default_tax_treatment'];
             }
 
+            // Issue #543 (ST6): an id or rate that matches no usable sales
+            // tax rule is a 422 — never a success that keeps the old default.
+            if (array_key_exists('default_tax_id', $validated['tax'])) {
+                $ruleId = $validated['tax']['default_tax_id'];
+
+                if ($ruleId === null) {
+                    $taxSetting['default_tax_id'] = null;
+                } else {
+                    $rule = $this->salesDefaultTaxRuleQuery()->whereKey((int) $ruleId)->first();
+
+                    if (! $rule) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            'tax.default_tax_id' => 'Choose an active sales tax rule.',
+                        ]);
+                    }
+
+                    $taxSetting['default_tax_id'] = $rule->id;
+                }
+            }
+
             if (array_key_exists('default_tax_rate', $validated['tax'])) {
                 $rate = (float) $validated['tax']['default_tax_rate'];
 
                 if ($rate <= 0) {
                     $taxSetting['default_tax_id'] = null;
                 } else {
-                    $match = \App\Models\Tax::query()
-                        ->where('is_active', true)
+                    $match = $this->salesDefaultTaxRuleQuery()
                         ->whereRaw('ABS(rate - ?) < 0.005', [$rate])
                         ->orderByDesc('is_default')
                         ->first();
 
-                    if ($match) {
-                        $taxSetting['default_tax_id'] = $match->id;
+                    if (! $match) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            'tax.default_tax_rate' => 'No active sales tax rule has this rate. Choose a tax rule instead.',
+                        ]);
                     }
+
+                    $taxSetting['default_tax_id'] = $match->id;
                 }
             }
 

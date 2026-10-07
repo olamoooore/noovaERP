@@ -12,6 +12,7 @@ import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombo
 import { Label } from '@/components/ui/label';
 import { useReportAutoRefresh } from '@/hooks/useReportAutoRefresh';
 import reportApi from '@/lib/reportApi';
+import { toLocalIsoDate } from '@/lib/dateOnly';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { ReportFilters as ReportFiltersType } from '@/types/reports';
 
@@ -22,14 +23,87 @@ const formatQty = (value: unknown): string => {
   return num.toLocaleString(undefined, { maximumFractionDigits: 4 })
 }
 
+/**
+ * #1020: export columns as plain text. The toolbar used to scrape the rendered
+ * table, which only holds the visible 20-row page of a paginated ReportTable,
+ * so exports dropped every other row. Exports are now built from the full
+ * API result (header first).
+ */
+type ExportColumn = { label: string; text: (row: any) => string }
+
+const text = (value: unknown): string => (value == null ? '' : String(value))
+
+const productText = (row: any): string => {
+  const description = row?.short_description ?? row?.product_short_description
+  return description ? `${text(row?.product_name)} — ${description}` : text(row?.product_name)
+}
+
+const toExportRows = (columns: ExportColumn[], items: any[] | undefined): string[][] => [
+  columns.map((column) => column.label),
+  ...(items ?? []).map((row) => columns.map((column) => column.text(row))),
+]
+
+const signedQty = (row: any): string => {
+  const delta = Number(row?.effective_quantity ?? row?.quantity ?? 0)
+  return `${delta > 0 ? '+' : ''}${formatQty(delta)}`
+}
+
+const VALUATION_EXPORT: ExportColumn[] = [
+  { label: 'Product', text: productText },
+  { label: 'SKU', text: (row) => text(row.sku) },
+  { label: 'Category', text: (row) => text(row.category) },
+  { label: 'Quantity', text: (row) => formatQty(row.quantity) },
+  { label: 'Unit Cost', text: (row) => formatCurrency(row.cost) },
+  { label: 'Total Value', text: (row) => formatCurrency(row.value) },
+  { label: 'Location', text: (row) => text(row.location) },
+]
+
+const MOVEMENT_EXPORT: ExportColumn[] = [
+  { label: 'Date', text: (row) => formatDate(row.date) },
+  { label: 'Product', text: productText },
+  { label: 'SKU', text: (row) => text(row.sku) },
+  { label: 'Type', text: (row) => text(row.type) },
+  { label: 'Quantity', text: signedQty },
+  { label: 'Balance', text: (row) => formatQty(row.running_balance) },
+  { label: 'Reference', text: (row) => text(row.reference) },
+  { label: 'Notes', text: (row) => text(row.notes) || '-' },
+]
+
+const REORDER_EXPORT: ExportColumn[] = [
+  { label: 'Product', text: productText },
+  { label: 'SKU', text: (row) => text(row.sku) },
+  { label: 'Current Stock', text: (row) => formatQty(row.current_stock) },
+  { label: 'Reorder Level', text: (row) => formatQty(row.effective_threshold ?? row.reorder_level ?? 10) },
+  { label: 'Suggested Order', text: (row) => formatQty(row.suggested_quantity) },
+  { label: 'Supplier', text: (row) => text(row.supplier_name) },
+  { label: 'Last Price', text: (row) => (row.last_purchase_price ? formatCurrency(row.last_purchase_price) : '-') },
+]
+
+const AGING_EXPORT: ExportColumn[] = [
+  { label: 'Product', text: productText },
+  { label: 'SKU', text: (row) => text(row.sku) },
+  { label: 'Quantity', text: (row) => formatQty(row.quantity) },
+  { label: 'Age (Days)', text: (row) => String(Math.round(Number(row.age_days ?? 0))) },
+  { label: 'Age Bucket', text: (row) => (row.age_bucket ? `${row.age_bucket} days` : '') },
+  { label: 'Value', text: (row) => formatCurrency(row.value) },
+  { label: 'Carrying Cost', text: (row) => formatCurrency(row.carrying_cost) },
+]
+
+const TURNOVER_EXPORT: ExportColumn[] = [
+  { label: 'Product', text: productText },
+  { label: 'Category', text: (row) => text(row.category) },
+  { label: 'Turnover Ratio', text: (row) => Number(row.turnover_ratio ?? 0).toFixed(2) },
+  { label: 'Days in Inventory', text: (row) => String(Math.round(Number(row.days_in_inventory ?? 0))) },
+  { label: 'Classification', text: (row) => text(row.classification).replace(/_/g, ' ').toUpperCase() },
+]
+
 export function InventoryReportsPage() {
   const [activeTab, setActiveTab] = useState('valuation');
   useReportAutoRefresh();
   const [filters, setFilters] = useState<ReportFiltersType>({
-    start_date: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
-      .toISOString()
-      .split('T')[0],
-    end_date: new Date().toISOString().split('T')[0],
+    // Local calendar dates — toISOString() is the UTC day (#1018/#1020).
+    start_date: toLocalIsoDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
+    end_date: toLocalIsoDate(new Date()),
   });
 
   // Stock Valuation Query
@@ -53,7 +127,8 @@ export function InventoryReportsPage() {
     refetch: refetchMovement,
   } = useQuery({
     queryKey: ['stock-movement', filters],
-    queryFn: () => reportApi.getStockMovement(filters),
+    // #1020: every page of the server-paginated movement report.
+    queryFn: () => reportApi.getAllStockMovements(filters),
     enabled: activeTab === 'movement',
     staleTime: 15 * 1000,
   });
@@ -467,6 +542,7 @@ const valuationTotal = Number(valuationData?.total_value ?? 0);
               product_id: value ? Number(value) : undefined,
             }))}
             placeholder="All products"
+            activeOnly={false}
           />
         </div>
         <div className="min-w-[280px] flex-1">
@@ -513,6 +589,7 @@ const valuationTotal = Number(valuationData?.total_value ?? 0);
             error={valuationError?.message || null}
             onRefresh={refetchValuation}
             exportTargetRef={reportRef}
+            exportRows={toExportRows(VALUATION_EXPORT, valuationData?.items)}
             exportFilename={`inventory-${activeTab}-${filters.start_date || 'all'}-${filters.end_date || 'all'}`}
           >
             {valuationData && (
@@ -618,6 +695,7 @@ const valuationTotal = Number(valuationData?.total_value ?? 0);
             error={movementError?.message || null}
             onRefresh={refetchMovement}
             exportTargetRef={reportRef}
+            exportRows={toExportRows(MOVEMENT_EXPORT, movementData?.movements)}
             exportFilename={`inventory-${activeTab}-${filters.start_date || 'all'}-${filters.end_date || 'all'}`}
           >
             {movementData && (
@@ -699,6 +777,7 @@ const valuationTotal = Number(valuationData?.total_value ?? 0);
             error={reorderError?.message || null}
             onRefresh={refetchReorder}
             exportTargetRef={reportRef}
+            exportRows={toExportRows(REORDER_EXPORT, reorderData?.items)}
             exportFilename={`inventory-${activeTab}-${filters.start_date || 'all'}-${filters.end_date || 'all'}`}
           >
             {reorderData && (
@@ -742,6 +821,7 @@ const valuationTotal = Number(valuationData?.total_value ?? 0);
             error={agingError?.message || null}
             onRefresh={refetchAging}
             exportTargetRef={reportRef}
+            exportRows={toExportRows(AGING_EXPORT, agingData?.items)}
             exportFilename={`inventory-${activeTab}-${filters.start_date || 'all'}-${filters.end_date || 'all'}`}
           >
             {agingData && (
@@ -830,6 +910,7 @@ const valuationTotal = Number(valuationData?.total_value ?? 0);
             error={turnoverError?.message || null}
             onRefresh={refetchTurnover}
             exportTargetRef={reportRef}
+            exportRows={toExportRows(TURNOVER_EXPORT, turnoverData?.items)}
             exportFilename={`inventory-${activeTab}-${filters.start_date || 'all'}-${filters.end_date || 'all'}`}
           >
             {turnoverData && (

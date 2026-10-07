@@ -7,6 +7,7 @@ namespace Tests\Feature;
 use App\Models\Customer;
 use App\Models\MedicalCase;
 use App\Models\User;
+use App\Platform\DataSecurity\SensitiveFieldGuard;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -67,6 +68,19 @@ class HR223MedicalCaseLegacyDecryptTest extends TenantTestCase
         $fresh = MedicalCase::find($case->id);
 
         $this->assertSame('Legacy Jane Doe', $fresh->patient_name_encrypted);
+
+        // #567 / Decision on #919 (approved 7 Oct 2026): serialization masks
+        // the patient name unless the viewer may read it; no viewer = masked.
+        $this->assertNotSame('Legacy Jane Doe', $fresh->toArray()['patient_name_encrypted']);
+
+        // A viewer holding medical_cases.phi.view still gets the plaintext.
+        $this->app->instance(SensitiveFieldGuard::class, new class extends SensitiveFieldGuard
+        {
+            public function canRead(string $permission): bool
+            {
+                return true;
+            }
+        });
         $this->assertSame('Legacy Jane Doe', $fresh->toArray()['patient_name_encrypted']);
 
         Log::shouldHaveReceived('warning')

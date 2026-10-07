@@ -36,12 +36,12 @@ if (!Element.prototype.hasPointerCapture) {
   Element.prototype.releasePointerCapture = () => {}
 }
 
-const { apiGet } = vi.hoisted(() => ({ apiGet: vi.fn() }))
+const { apiGet, apiPost } = vi.hoisted(() => ({ apiGet: vi.fn(), apiPost: vi.fn(async () => ({ data: {} })) }))
 
 vi.mock('@/lib/api', () => ({
   default: {
     get: apiGet,
-    post: vi.fn(async () => ({ data: {} })),
+    post: apiPost,
     put: vi.fn(async () => ({ data: {} })),
     patch: vi.fn(async () => ({ data: {} })),
     delete: vi.fn(async () => ({ data: {} })),
@@ -111,10 +111,11 @@ describe('CustomerStatements — shared print and send menu (#618)', () => {
     expect(screen.getByText('Download PDF')).toBeTruthy()
     expect(screen.getByText('Print')).toBeTruthy()
     expect(screen.getByText('Choose template')).toBeTruthy()
-    // Statements can be emailed through the existing statement endpoint but
-    // have no WhatsApp channel.
+    // Statements can be emailed through the existing statement endpoint and,
+    // since #1018, sent by WhatsApp through POST /customer-statements/send
+    // (documentSendChannels enables whatsapp for customer_statement).
     expect(screen.getByText('Email')).toBeTruthy()
-    expect(screen.queryByText('WhatsApp')).toBeNull()
+    expect(screen.getByText('WhatsApp')).toBeTruthy()
 
     expect(await screen.findByText('Using: Statement of Account (entity rule)')).toBeTruthy()
   })
@@ -182,5 +183,28 @@ describe('CustomerStatements — shared print and send menu (#618)', () => {
     fireEvent.change(to, { target: { value: '2026-01-01' } })
     expect(await screen.findByText(/To date must be on or after the From date/)).toBeTruthy()
     await waitFor(() => expect(screen.queryByRole('button', { name: /print \/ send/i })).toBeNull())
+  })
+
+  it('sends the statement by WhatsApp for the selected From/To range (#1018)', async () => {
+    renderPage()
+    await screen.findByText('Customer Account Statement')
+
+    fireEvent.change(screen.getByLabelText('From date'), { target: { value: '2026-01-15' } })
+    fireEvent.change(screen.getByLabelText('To date'), { target: { value: '2026-02-15' } })
+
+    fireEvent.pointerDown(await screen.findByRole('button', { name: /print \/ send/i }), { button: 0, ctrlKey: false })
+    fireEvent.click(await screen.findByText('WhatsApp'))
+
+    await waitFor(() => {
+      expect(apiPost).toHaveBeenCalledWith(
+        '/accounting/customer-statements/send',
+        expect.objectContaining({
+          customer_id: 7,
+          start_date: '2026-01-15',
+          end_date: '2026-02-15',
+          channel: 'whatsapp',
+        }),
+      )
+    })
   })
 })

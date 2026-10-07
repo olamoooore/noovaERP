@@ -80,7 +80,16 @@ class TemplateController extends Controller
 
     public function publish(Request $request, string $id): JsonResponse
     {
-        $template = $this->service->publish($id, $request->input('change_note'));
+        try {
+            $template = $this->service->publish($id, $request->input('change_note'));
+        } catch (\Modules\TemplateBuilder\Exceptions\StatutoryTemplateException $e) {
+            // #627: the country pack requires statutory fields this template
+            // does not print — tell the editor exactly what is missing.
+            return response()->json([
+                'message' => $e->getMessage(),
+                'missing_fields' => $e->missing,
+            ], 422);
+        }
 
         return response()->json(['data' => new TemplateResource($template)]);
     }

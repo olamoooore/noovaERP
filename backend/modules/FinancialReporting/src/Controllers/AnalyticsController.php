@@ -349,15 +349,22 @@ class AnalyticsController extends Controller
      */
     public function salesDrilldown(Request $request): JsonResponse
     {
+        // Issue #532: credit-note analysis rows drill by salesperson and reason
+        // too, narrowed to credit notes (document_type=credit_note). A reason
+        // key is the reason text itself, so it may be longer than an id.
         $filter = $this->salesFilter($request, [
-            'dimension' => 'required|in:customer,product,category,period',
-            'key' => 'required|string|max:20',
+            'dimension' => 'required|in:customer,product,category,period,salesperson,reason',
+            'key' => $request->query('dimension') === 'reason'
+                ? 'required|string|max:500'
+                : 'required|string|max:20',
             'interval' => 'nullable|in:day,week,month,year',
+            'document_type' => 'nullable|in:credit_note|required_if:dimension,reason',
         ], allowComparison: false);
 
         $dimension = (string) $request->query('dimension');
         $key = (string) $request->query('key');
         $interval = $filter->interval ?? 'day';
+        $documentType = $request->query('document_type');
 
         if ($dimension === 'period') {
             $pattern = match ($interval) {
@@ -371,7 +378,8 @@ class AnalyticsController extends Controller
                     'key' => "The period key does not match the {$interval} interval.",
                 ]);
             }
-        } elseif ($key !== 'none' && ! ctype_digit($key)) {
+        } elseif ($dimension !== 'reason' && $key !== 'none' && ! ctype_digit($key)) {
+            // A reason key is the reason label, matched as a bound value.
             throw ValidationException::withMessages([
                 'key' => 'The key must be a record id or "none".',
             ]);
@@ -383,12 +391,46 @@ class AnalyticsController extends Controller
                 'data' => $this->salesAnalyticsService->getSalesDrilldown(
                     $filter,
                     $dimension,
-                    $key === 'none' ? null : $key,
+                    $dimension !== 'reason' && $key === 'none' ? null : $key,
                     $interval,
+                    is_string($documentType) && $documentType !== '' ? $documentType : null,
                 ),
             ]);
         } catch (\Exception $e) {
             \Log::error('Sales drill-down failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to generate analytics. Please try again.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Issue #532 (SALES-ODOO): credit note analysis — credit rate (credited ÷
+     * invoiced) by reason, product, customer or salesperson. Same #593 filter
+     * contract (and legal-entity scope) as the other sales reports; one period,
+     * so no comparison window.
+     */
+    public function creditNoteAnalysis(Request $request): JsonResponse
+    {
+        $filter = $this->salesFilter($request, [
+            'group_by' => 'required|in:'.implode(',', SalesAnalyticsService::creditNoteGroupings()),
+        ], allowComparison: false);
+
+        try {
+            return response()->json([
+                'success' => true,
+                'data' => $this->salesAnalyticsService->getCreditNoteAnalysis(
+                    $filter,
+                    (string) $request->query('group_by'),
+                ),
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Credit note analysis failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);

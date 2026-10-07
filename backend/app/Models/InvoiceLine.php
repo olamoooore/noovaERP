@@ -58,6 +58,12 @@ class InvoiceLine extends Model
         'is_deferred',
         'service_start_date',
         'service_end_date',
+        // #1006: bonus-scheme FOC line paired under its paid source line.
+        'is_foc',
+        'source_line_id',
+        // Issue #331: on a final invoice's "Less: down payment" line, the
+        // down-payment invoice whose deposit it draws down.
+        'down_payment_invoice_id',
     ];
 
     protected $casts = [
@@ -75,6 +81,7 @@ class InvoiceLine extends Model
         'is_deferred' => 'boolean',
         'service_start_date' => 'date',
         'service_end_date' => 'date',
+        'is_foc' => 'boolean',
     ];
 
     protected static function boot()

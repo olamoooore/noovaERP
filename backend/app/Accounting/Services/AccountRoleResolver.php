@@ -30,6 +30,8 @@ class AccountRoleResolver
         'inventory' => 'INVENTORY',
         'cogs' => 'COGS',
         'sales_tax_payable' => 'TAX_OUTPUT',
+        // Issue #331: down payments held until the final invoice deducts them.
+        'customer_deposit' => 'CUSTOMER_DEPOSIT',
         'input_tax' => 'TAX_INPUT',
         'unrealized_fx_gain_loss' => 'FX_GAIN',
         'realized_fx_gain_loss' => 'FX_LOSS',

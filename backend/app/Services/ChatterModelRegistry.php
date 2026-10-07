@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Str;
+use LogicException;
+
 /**
  * Issue #76 (CRITICAL, SEC-1): ChatterModelRegistry
  *
@@ -12,30 +15,49 @@ namespace App\Services;
  * `Modules\Sales\Models\Order` style string and reading messages/subscribers
  * for records they don't own.
  *
- * To add a new chatter-enabled model, add an entry here AND wire the
- * authorization policy / Gate check on that model.
+ * To add a new chatter-enabled model, add it to config/chatter.php
+ * (`allowed_models` plus its view/write permission maps) — issue #633.
  */
 class ChatterModelRegistry
 {
     /**
-     * Canonical registry of chatter-enabled model aliases.
-     * Key = short, lowercase, controllable alias exposed to the API.
-     * Value = fully-qualified Eloquent model class.
+     * Issue #633 — Decision (7 Oct 2026, product owner): "Option B — keep and
+     * fix ... repoint the aliases to real classes and derive the registry from
+     * `config/chatter.php` so there is one subject list."
      *
-     * Issue #76: this is the whitelist. Any model NOT in this list
-     * cannot be referenced via /api/communication/* — the middleware
-     * returns 422 (model not chatter-enabled) instead of letting the
-     * request reach the controller.
+     * The alias whitelist is no longer a hand-kept constant (which had drifted
+     * to non-existent classes: Modules\Sales\Models\Order,
+     * Modules\Accounting\Models\Invoice, App\Models\Contact). It is derived
+     * from `chatter.allowed_models`: each configured model is exposed under
+     * the snake_case of its class basename (Invoice → `invoice`,
+     * JournalEntry → `journal_entry`), unless `chatter.subject_aliases` names
+     * a different alias for it (SalesOrder → `order`, kept for API stability).
+     *
+     * Any model NOT in `chatter.allowed_models` cannot be referenced via
+     * /api/communication/* — the middleware returns 422.
+     *
+     * @return array<string, class-string> alias => FQCN
      */
-    protected const ALLOWED = [
-        'order' => 'Modules\\Sales\\Models\\Order',
-        'invoice' => 'Modules\\Accounting\\Models\\Invoice',
-        'customer' => 'App\\Models\\Customer',
-        'vendor' => 'App\\Models\\Vendor',
-        'contact' => 'App\\Models\\Contact',
-        'journal_entry' => 'App\\Models\\JournalEntry',
-        'bill' => 'App\\Models\\Bill',
-    ];
+    protected function aliasMap(): array
+    {
+        $overrides = (array) config('chatter.subject_aliases', []);
+        $map = [];
+
+        foreach ((array) config('chatter.allowed_models', []) as $class) {
+            $class = (string) $class;
+            $alias = strtolower((string) ($overrides[$class] ?? Str::snake(class_basename($class))));
+
+            if (isset($map[$alias]) && $map[$alias] !== $class) {
+                throw new LogicException(
+                    "Chatter alias '{$alias}' is ambiguous ({$map[$alias]} vs {$class}); set chatter.subject_aliases."
+                );
+            }
+
+            $map[$alias] = $class;
+        }
+
+        return $map;
+    }
 
     /**
      * Resolve a controlled alias to its FQCN. Returns null when the alias
@@ -45,7 +67,7 @@ class ChatterModelRegistry
     {
         $key = strtolower(trim($alias));
 
-        return self::ALLOWED[$key] ?? null;
+        return $this->aliasMap()[$key] ?? null;
     }
 
     /**
@@ -71,6 +93,6 @@ class ChatterModelRegistry
      */
     public function allowedAliases(): array
     {
-        return array_keys(self::ALLOWED);
+        return array_keys($this->aliasMap());
     }
 }

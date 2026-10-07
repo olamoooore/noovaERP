@@ -24,6 +24,10 @@ class PlatformServiceProvider extends ServiceProvider
         // Issue #921 (SS5): the one registry of declared tenant settings.
         $this->app->singleton(SettingsRegistryContract::class, SettingsRegistry::class);
 
+        // Issue #567 / Decision on #919: per-request sensitive-field guard
+        // (permission cache + audit collector).
+        $this->app->scoped(\App\Platform\DataSecurity\SensitiveFieldGuard::class);
+
         // Wire up the DomainEventDispatcher to ContactMasterService
         $this->app->afterResolving(\Modules\Contact\src\Services\ContactMasterService::class, function ($service) {
             $service->setEventDispatcher(app(DomainEventDispatcher::class));
@@ -51,6 +55,14 @@ class PlatformServiceProvider extends ServiceProvider
         }
 
         $this->registerObservers();
+
+        // Issue #567 / Decision on #919: one audit summary per request of the
+        // sensitive fields that were rendered unmasked.
+        $this->app->terminating(function () {
+            if ($this->app->resolved(\App\Platform\DataSecurity\SensitiveFieldGuard::class)) {
+                $this->app->make(\App\Platform\DataSecurity\SensitiveFieldGuard::class)->flushAudit();
+            }
+        });
     }
 
     private function registerObservers(): void

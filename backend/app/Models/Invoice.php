@@ -311,6 +311,8 @@ class Invoice extends Model implements WorkflowSubject
         // Issue #875: Sales documents carry their legal entity + book.
         'legal_entity_id',
         'entity_book_id',
+        // Issue #331: a down-payment invoice (credits Customer Deposit).
+        'is_down_payment',
     ];
 
     protected $casts = [
@@ -324,6 +326,7 @@ class Invoice extends Model implements WorkflowSubject
         'delivery_date' => 'date',
         'sent_at' => 'datetime',
         'requires_approval' => 'boolean',
+        'is_down_payment' => 'boolean',
         'payment_link_expires_at' => 'datetime',
         'subtotal' => 'decimal:2',
         'tax_amount' => 'decimal:2',
@@ -624,10 +627,18 @@ class Invoice extends Model implements WorkflowSubject
         $lineTaxSum = $this->lines->sum('tax_amount');
         $discount = $this->discount_amount ?? 0;
 
-        if ($discount > 0 && $this->subtotal > 0) {
-            $taxableAmount = max($this->subtotal - $discount, 0);
-            $taxRatio = $this->subtotal > 0 ? $taxableAmount / $this->subtotal : 0;
-            $this->tax_amount = round($lineTaxSum * $taxRatio, 2);
+        // Issue #331: a "Less: down payment" line is not part of the goods
+        // the header discount applies to — its (negative) tax is the exact
+        // reversal of the down payment's tax and is never scaled. Without
+        // such a line both numbers equal the previous subtotal / line tax.
+        $deductionLines = $this->lines->filter(fn ($line) => $line->down_payment_invoice_id !== null);
+        $goodsSubtotal = $this->subtotal - $deductionLines->sum(fn ($line) => $line->line_total - $line->tax_amount);
+        $deductionTax = (float) $deductionLines->sum('tax_amount');
+
+        if ($discount > 0 && $goodsSubtotal > 0) {
+            $taxableAmount = max($goodsSubtotal - $discount, 0);
+            $taxRatio = $taxableAmount / $goodsSubtotal;
+            $this->tax_amount = round(($lineTaxSum - $deductionTax) * $taxRatio + $deductionTax, 2);
         } else {
             $this->tax_amount = $lineTaxSum;
         }

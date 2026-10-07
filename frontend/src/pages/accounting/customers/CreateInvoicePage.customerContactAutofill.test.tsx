@@ -61,9 +61,21 @@ vi.mock('@/lib/pricingApi', () => ({
 }))
 
 vi.mock('@/components/ui/CustomerSearchCombobox', () => ({
-  CustomerSearchCombobox: ({ onValueChange }: { onValueChange: (id: string, c?: any) => void }) => (
+  CustomerSearchCombobox: ({ onValueChange }: { onValueChange: (id: string, c?: any, matchedContactId?: string) => void }) => (
     <div>
       <button type="button" onClick={() => onValueChange('1', { id: '1', name: 'Klinik Ali', code: 'C-ALI' })}>pick-ali</button>
+      <button
+        type="button"
+        onClick={() =>
+          onValueChange(
+            '1',
+            { id: '1', name: 'Klinik Ali', code: 'C-ALI', matched_contacts: ['Primary Pat'], matched_contact_ids: [12] },
+            '12',
+          )
+        }
+      >
+        pick-ali-via-contact
+      </button>
     </div>
   ),
 }))
@@ -191,6 +203,29 @@ beforeEach(() => {
         },
       }
     }
+    if (url === '/invoices/6') {
+      return {
+        data: {
+          id: 6,
+          customer_id: 1,
+          invoice_number: 'INV-0006',
+          invoice_date: '2026-10-01',
+          due_date: '2026-10-31',
+          payment_terms: 30,
+          status: 'draft',
+          currency_code: 'SGD',
+          // Saved billing contact is a person no longer in the customer's
+          // contact list (e.g. left the company / renamed).
+          billing_contact_id: 'uuid-saved-old',
+          billing_contact: { id: 'uuid-saved-old', display_name: 'Former Accounts Person' },
+          shipping_contact_id: null,
+          attention_to: 'Former Accounts Person',
+          billing_address_snapshot: 'Saved Billing Snapshot',
+          shipping_address_snapshot: 'Saved Shipping Snapshot',
+          lines: [],
+        },
+      }
+    }
     if (url.startsWith('/customers')) return { data: { data: [ali] } }
     return { data: { data: [] } }
   })
@@ -212,11 +247,11 @@ function renderPage() {
   )
 }
 
-function renderEditPage() {
+function renderEditPage(invoiceId = 5) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/invoices/5/edit']}>
+      <MemoryRouter initialEntries={[`/invoices/${invoiceId}/edit`]}>
         <Routes>
           <Route path="/invoices/:id/edit" element={<CreateInvoicePage />} />
         </Routes>
@@ -289,5 +324,65 @@ describe('CreateInvoicePage — customer/contact billing defaults', () => {
 
     await waitFor(() => expect(billingContactValue().textContent).toBe('13'))
     await waitFor(() => expect(shippingContactValue().textContent).toBe('14'))
+  })
+
+  it('#1007: editing an invoice keeps its saved billing contact instead of re-pointing it to the customer default', async () => {
+    renderEditPage(6)
+    openDetails()
+
+    // The saved contact (not in the customer's current list) stays selected...
+    await waitFor(() => expect(shippingContactValue().textContent).toBe('14'))
+    expect(billingContactValue().textContent).toBe('uuid-saved-old')
+    // ...so the save payload (invoiceContactPayload) resends the saved person,
+    // never the default billing contact 13.
+    expect(billingContactValue().textContent).not.toBe('13')
+    // The summary line shows the saved attention-to.
+    expect(screen.getAllByText(/Former Accounts Person/).length).toBeGreaterThan(0)
+  })
+
+  it('#1007: a customer picked through a contact-person match pre-selects that person as billing contact', async () => {
+    renderPage()
+    fireEvent.click(await screen.findByText('pick-ali-via-contact'))
+    openDetails()
+
+    // The matched person (12) wins over the default billing contact (13).
+    await waitFor(() => expect(billingContactValue().textContent).toBe('12'))
+    expect(shippingContactValue().textContent).toBe('14')
+    // The bill-to address still defaults to the company billing address.
+    await waitFor(() => expect(billingStreetInput().value).toBe('2 Ali Billing St'))
+  })
+
+  it('#1007: an individual customer with no linked company shows a bill-to-person warning', async () => {
+    const base = apiGet.getMockImplementation()!
+    apiGet.mockImplementation(async (url: string, ...rest: unknown[]) =>
+      url === '/customers/1'
+        ? { data: { ...ali, type: 'individual', name: 'Pat Person', parent_id: null } }
+        : base(url, ...rest))
+    renderPage()
+    fireEvent.click(await screen.findByText('pick-ali'))
+
+    expect(await screen.findByTestId('individual-no-company-warning')).toBeTruthy()
+  })
+
+  it('#1007: a company customer (or an individual with a linked company) shows no warning', async () => {
+    const base = apiGet.getMockImplementation()!
+    apiGet.mockImplementation(async (url: string, ...rest: unknown[]) =>
+      url === '/customers/1'
+        ? { data: { ...ali, type: 'individual', name: 'Pat Person', parent_id: 7 } }
+        : base(url, ...rest))
+    renderPage()
+    fireEvent.click(await screen.findByText('pick-ali'))
+    openDetails()
+    // The customer detail has loaded once its billing address renders.
+    await waitFor(() => expect(billingStreetInput().value).toBe('2 Ali Billing St'))
+    expect(screen.queryByTestId('individual-no-company-warning')).toBeNull()
+
+    cleanup()
+    apiGet.mockImplementation(base)
+    renderPage()
+    fireEvent.click(await screen.findByText('pick-ali'))
+    openDetails()
+    await waitFor(() => expect(billingStreetInput().value).toBe('2 Ali Billing St'))
+    expect(screen.queryByTestId('individual-no-company-warning')).toBeNull()
   })
 })

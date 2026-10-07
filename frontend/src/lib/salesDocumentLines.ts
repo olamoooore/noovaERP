@@ -102,3 +102,93 @@ export function removeSalesDocumentLine<T>(lines: T[], index: number): T[] {
 export function resetSalesDocumentLine<T>(lines: T[], index: number, replacement: T): T[] {
   return lines.map((line, currentIndex) => (currentIndex === index ? replacement : line))
 }
+
+/**
+ * #1006: bonus-scheme FOC pairing on the invoice editor. A FOC (free) line
+ * carries `is_foc` and points at its paid source line through a stable client
+ * key (`source_line_key` → the source's `line_key`), so the link survives
+ * reorders and deletes; on save it is sent as `source_line_index` (the
+ * source's position in the submitted lines array).
+ */
+export interface FocPairableLine {
+  is_foc?: boolean
+  line_key?: string
+  source_line_key?: string | null
+}
+
+/** Client key for a line loaded from the API (stable across edits). */
+export const focLineKeyForId = (id: number | string): string => `line-${id}`
+
+/** A FOC line pointing at the given paid line. */
+const isFocChildOf = (line: FocPairableLine, source: FocPairableLine): boolean =>
+  Boolean(line.is_foc && source.line_key && line.source_line_key === source.line_key)
+
+/**
+ * Keep every FOC line directly beneath its paid source line (children in
+ * their current relative order). A FOC line whose source is not on the
+ * document stays where it is.
+ */
+export function keepFocLinesUnderSource<T extends FocPairableLine>(lines: T[]): T[] {
+  const keys = new Set(lines.map((line) => line.line_key).filter(Boolean))
+  const isAttached = (line: T) =>
+    Boolean(line.is_foc && line.source_line_key && keys.has(line.source_line_key) && line.source_line_key !== line.line_key)
+  const result: T[] = []
+  for (const line of lines) {
+    if (isAttached(line)) continue
+    result.push(line)
+    for (const child of lines) {
+      if (child !== line && isAttached(child) && isFocChildOf(child, line)) result.push(child)
+    }
+  }
+  return result
+}
+
+/**
+ * Move up/down by whole blocks: a paid line moves together with its FOC
+ * children (moving a FOC line moves its whole block).
+ */
+export function moveSalesDocumentLineWithFoc<T extends FocPairableLine>(
+  lines: T[],
+  index: number,
+  direction: 'up' | 'down',
+): T[] {
+  const ordered = keepFocLinesUnderSource(lines)
+  const target = lines[index]
+  if (!target) return lines
+  const blocks: T[][] = []
+  for (const line of ordered) {
+    const previous = blocks[blocks.length - 1]
+    const attachedToPrevious = Boolean(previous && line.is_foc && previous.some((member) => isFocChildOf(line, member)))
+    if (attachedToPrevious) previous.push(line)
+    else blocks.push([line])
+  }
+  const blockIndex = blocks.findIndex((block) => block.includes(target))
+  const swapWith = direction === 'up' ? blockIndex - 1 : blockIndex + 1
+  if (blockIndex < 0 || swapWith < 0 || swapWith >= blocks.length) return lines
+  ;[blocks[blockIndex], blocks[swapWith]] = [blocks[swapWith], blocks[blockIndex]]
+  return blocks.flat()
+}
+
+/** Remove a line; removing a paid line also removes its FOC children. */
+export function removeSalesDocumentLineWithFoc<T extends FocPairableLine>(lines: T[], index: number): T[] {
+  const target = lines[index]
+  if (!target) return lines
+  const remaining = lines.filter((line, currentIndex) => currentIndex !== index && !isFocChildOf(line, target))
+  // Never delete the last remaining row (same rule as removeSalesDocumentLine).
+  return remaining.length === 0 ? lines : remaining
+}
+
+/**
+ * The FOC fields a submitted line carries: `is_foc` and the index of its paid
+ * source line within the submitted array (omitted when the source is not sent).
+ */
+export function focPayloadFields<T extends FocPairableLine>(
+  submitted: T[],
+  line: T,
+): { is_foc?: boolean; source_line_index?: number } {
+  if (!line.is_foc) return {}
+  const sourceIndex = line.source_line_key
+    ? submitted.findIndex((candidate) => candidate !== line && candidate.line_key === line.source_line_key)
+    : -1
+  return sourceIndex >= 0 ? { is_foc: true, source_line_index: sourceIndex } : { is_foc: true }
+}

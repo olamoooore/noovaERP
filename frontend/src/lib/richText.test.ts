@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { htmlToPlainText, plainToRichHtml } from './richText'
+import { fontFamilyOption, htmlToPlainText, plainToRichHtml } from './richText'
 
 describe('htmlToPlainText (#1004)', () => {
   it('unwraps formatting into the plain description copy', () => {
@@ -29,3 +29,20 @@ describe('plainToRichHtml (#1004)', () => {
     expect(htmlToPlainText(plainToRichHtml('Keep <this> & that'))).toBe('Keep <this> & that')
   })
 })
+
+describe('fontFamilyOption (#1004)', () => {
+  const options = ['Arial', 'Times New Roman', 'Courier New', 'serif'];
+
+  it('re-selects the dropdown option for a stored lowercase PDF fallback stack', () => {
+    expect(fontFamilyOption("times new roman, 'dejavu serif', serif", options)).toBe('Times New Roman');
+    expect(fontFamilyOption('"Courier New", "dejavu sans mono", monospace', options)).toBe('Courier New');
+    expect(fontFamilyOption('arial', options)).toBe('Arial');
+    expect(fontFamilyOption('serif', options)).toBe('serif');
+  });
+
+  it('returns an empty value for missing or unknown families', () => {
+    expect(fontFamilyOption(undefined, options)).toBe('');
+    expect(fontFamilyOption('', options)).toBe('');
+    expect(fontFamilyOption('Comic Sans MS, serif', options)).toBe('');
+  });
+});

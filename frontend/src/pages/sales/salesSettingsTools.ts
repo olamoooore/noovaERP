@@ -75,6 +75,12 @@ export const SALES_SETTINGS_INDEX: SalesSettingSearchEntry[] = [
   ).map(([title, keywords]) => ({ section: 'payment-methods', sectionTitle: 'Payment Methods', title, keywords })),
   ...(
     [
+      ['Write-off tolerance', 'payment difference short payment underpayment bank charges rounding write off fully paid'],
+      ['Write-off reasons', 'payment difference write off account bank charges rounding expense'],
+    ] as const
+  ).map(([title, keywords]) => ({ section: 'payment-difference', sectionTitle: 'Payment Differences', title, keywords })),
+  ...(
+    [
       ['Customer acceptance portal', 'accept link'],
       ['Require digital signature', 'sign'],
       ['Acceptance link validity', 'expiry days'],
@@ -207,5 +213,31 @@ export function followupLevelsError(levels: FollowupLevel[]): string | null {
   const days = levels.map((level) => level.days)
   if (days.some((d) => !Number.isInteger(d) || d < 1 || d > 365)) return 'Days overdue must be a whole number from 1 to 365.'
   if (new Set(days).size !== days.length) return 'Each level needs a different number of days overdue.'
+  return null
+}
+
+/** Issue #494: one payment write-off reason and its expense account. */
+export interface PaymentWriteOffReason {
+  code: string
+  label: string
+  account_id: number | null
+}
+
+/** Issue #494: a reason code is the label, lower-cased, non-alphanumerics → _. */
+export function writeOffReasonCode(label: string): string {
+  return label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 50)
+}
+
+/** Issue #494: why the edited reasons cannot be saved, or null. */
+export function writeOffReasonsError(reasons: PaymentWriteOffReason[]): string | null {
+  const codes = new Set<string>()
+  for (const reason of reasons) {
+    if (!reason.label.trim()) return 'Every write-off reason needs a label.'
+    if (!reason.account_id) return `Choose an expense account for "${reason.label.trim()}".`
+    const code = reason.code || writeOffReasonCode(reason.label)
+    if (!code) return `"${reason.label.trim()}" needs at least one letter or digit.`
+    if (codes.has(code)) return `Two write-off reasons share the name "${reason.label.trim()}".`
+    codes.add(code)
+  }
   return null
 }

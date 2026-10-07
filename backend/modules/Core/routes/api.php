@@ -45,6 +45,7 @@ use App\Http\Controllers\Api\JournalsController;
 use App\Http\Controllers\Api\LockDatesController;
 use App\Http\Controllers\Api\MedicalCaseController;
 use App\Http\Controllers\Api\OnboardingSessionsController;
+use App\Http\Controllers\Api\PaymentAdviceController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PaymentImportController;
 use App\Http\Controllers\Api\PaymentMethodsController;
@@ -60,6 +61,7 @@ use App\Http\Controllers\Api\ProductTrackingController;
 use App\Http\Controllers\Api\ProductUnitController;
 use App\Http\Controllers\Api\ProductVariantController;
 use App\Http\Controllers\Api\QuotationController;
+use App\Http\Controllers\Api\QuotationTemplateController;
 use App\Http\Controllers\Api\ReconciliationExceptionController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\StockCogsBadgeController;
@@ -549,6 +551,18 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::post('/payments/bulk-post', [PaymentController::class, 'bulkPost'])
             ->middleware(RequirePermission::using('accounting.post')); // #480
         Route::post('/payments', [PaymentController::class, 'store']);
+
+        // #1001: customer payment advice reconciliation — parse the uploaded
+        // advice, review the invoice matches, then confirm the allocations
+        // (draft payments only; posting stays a deliberate operator action).
+        Route::get('/payment-advices', [PaymentAdviceController::class, 'index'])
+            ->middleware(RequirePermission::using('accounting.view'));
+        Route::get('/payment-advices/{id}', [PaymentAdviceController::class, 'show'])
+            ->middleware(RequirePermission::using('accounting.view'));
+        Route::post('/payment-advices', [PaymentAdviceController::class, 'store'])
+            ->middleware(RequirePermission::using('accounting.write'));
+        Route::post('/payment-advices/{id}/confirm', [PaymentAdviceController::class, 'confirm'])
+            ->middleware(RequirePermission::using('accounting.write'));
         // #489 (PAY-UX3): customer-first receipt — record + post + allocate in
         // one atomic request; it posts to the GL, so it needs accounting.post.
         Route::post('/payments/receipts', [PaymentController::class, 'storeReceipt'])
@@ -564,6 +578,15 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::get('/payments/{payment}/allocations', [PaymentController::class, 'allocations'])
             ->middleware(RequirePermission::using('accounting.view')); // #481
         Route::post('/payments/{payment}/allocations', [PaymentController::class, 'allocate']);
+
+        // Issue #500: send the official receipt (email / WhatsApp) and read its
+        // delivery history. Sending a document to the customer reuses the
+        // seeded invoices.send grant; both actions also pass the #611 receipt
+        // authorizer (accounting.view + the payment's legal entity).
+        Route::post('/payments/{payment}/send-receipt', [\App\Http\Controllers\Api\PaymentReceiptController::class, 'send'])
+            ->middleware(RequirePermission::using('invoices.send'));
+        Route::get('/payments/{payment}/receipt-deliveries', [\App\Http\Controllers\Api\PaymentReceiptController::class, 'index'])
+            ->middleware(RequirePermission::using('accounting.view'));
 
         // Issue #905 (PCU1): read-only audit tab, gated by the payments read
         // permission (#481 uses accounting.view for every payment read).
@@ -584,6 +607,14 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
     // Accountant stay able to run the quote flow. Ledger release actions of
     // the children (invoice post, DO confirm) remain accounting.post.
     Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class])->group(function () {
+        // Issue #338: quotation templates (default lines, notes, terms,
+        // validity). Reuses the existing quotations.view / quotations.write
+        // literals — no new permission.
+        Route::get('/quotation-templates', [QuotationTemplateController::class, 'index'])->middleware(RequirePermission::using('quotations.view'));
+        Route::post('/quotation-templates', [QuotationTemplateController::class, 'store'])->middleware(RequirePermission::using('quotations.write'));
+        Route::get('/quotation-templates/{id}', [QuotationTemplateController::class, 'show'])->whereNumber('id')->middleware(RequirePermission::using('quotations.view'));
+        Route::put('/quotation-templates/{id}', [QuotationTemplateController::class, 'update'])->whereNumber('id')->middleware(RequirePermission::using('quotations.write'));
+        Route::delete('/quotation-templates/{id}', [QuotationTemplateController::class, 'destroy'])->whereNumber('id')->middleware(RequirePermission::using('quotations.write'));
         Route::get('/quotations', [QuotationController::class, 'index'])->middleware(RequirePermission::using('quotations.view'));
         Route::get('/quotations/export', [QuotationController::class, 'export'])->middleware(RequirePermission::using('quotations.view'));
         Route::post('/quotations/import', [QuotationController::class, 'import'])->middleware(RequirePermission::using('quotations.write'));
@@ -601,6 +632,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::post('/quotations/{id}/reject', [QuotationController::class, 'reject'])->middleware(RequirePermission::using('quotations.write'));
         Route::post('/quotations/{id}/reset-to-draft', [QuotationController::class, 'resetToDraft'])->middleware(RequirePermission::using('documents.reset_to_draft'));
         Route::post('/quotations/{id}/create-invoice', [QuotationController::class, 'createInvoice'])->middleware(RequirePermission::using('quotations.write'));
+        // Issue #331: down-payment invoice on a confirmed quotation's order (same quotations.write gate as create-invoice).
+        Route::post('/quotations/{id}/down-payment-invoice', [QuotationController::class, 'downPaymentInvoice'])->middleware(RequirePermission::using('quotations.write'));
         Route::post('/quotations/{id}/create-delivery-order', [QuotationController::class, 'createDeliveryOrder'])->middleware(RequirePermission::using('quotations.write'));
 
         // Issue #905 (PCU1): read-only audit tab under the quotation view gate.
@@ -1108,6 +1141,25 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.post')); // #515
         Route::post('/customers/credit-notes/{creditNote}/void', [CustomerCreditNotesController::class, 'void'])
             ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.post')); // #515
+        // #495: apply the note's remaining credit to another open invoice —
+        // a subledger reallocation (no GL posting), the same accounting.write
+        // authority as a #155 payment allocation.
+        Route::post('/customers/credit-notes/{creditNote}/applications', [CustomerCreditNotesController::class, 'applyCredit'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.write'));
+        // #528: refund the note's remaining credit to the customer (outbound
+        // payment, Dr AR / Cr Bank) and void such a refund — both post to the
+        // GL, so they carry the same accounting.post gate as /post and /void.
+        Route::post('/customers/credit-notes/{creditNote}/refunds', [CustomerCreditNotesController::class, 'refund'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.post'));
+        Route::post('/customers/credit-notes/{creditNote}/refunds/{refundId}/void', [CustomerCreditNotesController::class, 'voidRefund'])
+            ->whereNumber('refundId')
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.post'));
+
+        // #527: credit note reversal wizard (full refund / full refund + new
+        // draft invoice) — creates AND posts a credit note, so it carries the
+        // same accounting.post gate as /post.
+        Route::post('/customers/invoices/{invoiceId}/credit-note-reversal', [CustomerCreditNotesController::class, 'reversal'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.post'));
         Route::get('/customers/invoices/{invoiceId}/credit-notes', [CustomerCreditNotesController::class, 'getByInvoice'])
             ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.view'));
         Route::post('/customers/credit-notes/validate', [CustomerCreditNotesController::class, 'validateCreditNote'])

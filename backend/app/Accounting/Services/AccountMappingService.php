@@ -32,6 +32,9 @@ class AccountMappingService
         // Issue #882 (SA9): unearned revenue held until the service period
         // has elapsed (released through the recognition job).
         'deferred_revenue' => '2300',
+        // Issue #331: down payments received ahead of the final invoice
+        // (Decision 7 Oct 2026 — a liability, drawn down by the final invoice).
+        'customer_deposit' => '2400',
         // MRD D8: output and input tax must not share one control account.
         'input_tax' => '2210',
         'input_tax_blocked' => '5210',
@@ -168,6 +171,7 @@ class AccountMappingService
         'grni' => 'liability',
         'sales_tax_payable' => 'liability',
         'deferred_revenue' => 'liability',
+        'customer_deposit' => 'liability',
         'input_tax' => 'asset',
         'input_tax_blocked' => 'expense',
         'wht_payable' => 'liability',

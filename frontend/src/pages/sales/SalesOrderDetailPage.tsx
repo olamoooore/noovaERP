@@ -35,6 +35,7 @@ import { StockShortageDialog, type ShortageLine } from '@/components/sales/Stock
 import { EditingBanner } from '@/components/sales/EditingBanner'
 import { SalesOrderLockControl } from '@/components/sales/SalesOrderLockControl'
 import { SalesOrderCreditNoteAction } from '@/components/sales/SalesOrderCreditNoteAction'
+import { SalesOrderDownPaymentAction } from '@/components/sales/SalesOrderDownPaymentAction'
 import { SalesOrderBillingRecurrenceCard } from '@/components/sales/SalesOrderBillingRecurrenceCard'
 import { SaveConflictDialog } from '@/components/sales/SaveConflictDialog'
 import { extractSaveConflict, type ActiveEditor, type SaveConflict } from '@/lib/recordConflict'
@@ -975,6 +976,15 @@ export function SalesOrderDetailPage() {
             >
               Create Invoice
             </HeaderActionButton>
+          )}
+          {/* Issue #331: a down-payment invoice, deducted on the final invoice. */}
+          {(order.allowed_transitions ?? []).includes('invoiced') && order.invoice_status !== 'fully_invoiced' && (
+            <SalesOrderDownPaymentAction
+              orderId={order.id}
+              orderNumber={order.sales_order_number}
+              orderTotal={order.total}
+              currency={order.currency_code}
+            />
           )}
           {(order.allowed_transitions ?? []).includes('draft') && (
             <HeaderActionButton

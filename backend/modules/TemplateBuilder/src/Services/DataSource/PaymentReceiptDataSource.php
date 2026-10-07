@@ -24,7 +24,10 @@ final class PaymentReceiptDataSource implements DataSourceContract
     public function legalEntityId(): ?int
     {
         $payment = $this->payment ?? throw new \RuntimeException('Payment not loaded.');
-        $entityId = $payment->customer?->legal_entity_id
+        // Issue #875 stamps the payment's own legal entity; customer links
+        // remain the fallback for older rows.
+        $entityId = $payment->getAttribute('legal_entity_id')
+            ?? $payment->customer?->legal_entity_id
             ?? $payment->invoice?->customer?->legal_entity_id;
 
         return $entityId !== null ? (int) $entityId : null;
@@ -46,7 +49,7 @@ final class PaymentReceiptDataSource implements DataSourceContract
 
     public function load(string $documentId): self
     {
-        $this->payment = Payment::with(['customer', 'invoice'])->findOrFail($documentId);
+        $this->payment = Payment::with(['customer', 'invoice', 'applications.invoice'])->findOrFail($documentId);
 
         return $this;
     }
@@ -56,6 +59,7 @@ final class PaymentReceiptDataSource implements DataSourceContract
         $payment = $this->payment ?? throw new \RuntimeException('Payment not loaded.');
         $company = CompanyDataSource::forDocument($payment);
         $currencyCode = $company['currency_code'] ?? 'MYR';
+        [$allocations, $applied, $unapplied] = $this->allocations($payment);
 
         return [
             'receipt' => [
@@ -64,15 +68,21 @@ final class PaymentReceiptDataSource implements DataSourceContract
                 'method' => $payment->method,
                 'reference' => $payment->reference,
                 'amount' => (float) $payment->amount,
-                'invoice_no' => $payment->invoice?->invoice_number ?? '',
+                'invoice_no' => $allocations !== []
+                    ? implode(', ', array_column($allocations, 'invoice_number'))
+                    : ($payment->invoice?->invoice_number ?? ''),
             ],
             'customer' => [
                 'name' => $payment->customer?->name ?? '',
                 'email' => $payment->customer?->email ?? '',
             ],
             'company' => $company,
+            // Issue #500: one line per invoice this payment settled.
+            'allocations' => $allocations,
             'totals' => [
                 'amount' => (float) $payment->amount,
+                'applied' => $applied,
+                'unapplied' => $unapplied,
                 'total' => (float) $payment->amount,
             ],
             'meta' => [
@@ -82,6 +92,45 @@ final class PaymentReceiptDataSource implements DataSourceContract
                 'locale' => 'en',
             ],
         ];
+    }
+
+    /**
+     * Issue #500: the receipt's allocation lines and its unapplied credit.
+     *
+     * Live #155 applications are authoritative; the unapplied amount reuses
+     * PaymentAllocationService so the receipt agrees with the allocations
+     * screen. A legacy payment recorded against one invoice before
+     * applications existed (no application rows at all) prints that invoice
+     * for the full amount.
+     *
+     * @return array{0: array<int, array<string, mixed>>, 1: float, 2: float}
+     */
+    private function allocations(Payment $payment): array
+    {
+        $live = $payment->applications->whereNull('reversed_at')->values();
+
+        if ($live->isEmpty() && $payment->applications->isEmpty() && $payment->invoice !== null) {
+            return [[[
+                'index' => 1,
+                'invoice_number' => (string) $payment->invoice->invoice_number,
+                'invoice_date' => optional($payment->invoice->invoice_date)->format('Y-m-d') ?? '',
+                'invoice_total' => (float) $payment->invoice->total,
+                'applied_amount' => (float) $payment->amount,
+            ]], (float) $payment->amount, 0.0];
+        }
+
+        $lines = $live->map(fn ($application, $i) => [
+            'index' => $i + 1,
+            'invoice_number' => (string) ($application->invoice?->invoice_number ?? ''),
+            'invoice_date' => optional($application->invoice?->invoice_date)->format('Y-m-d') ?? '',
+            'invoice_total' => (float) ($application->invoice?->total ?? 0),
+            'applied_amount' => (float) $application->applied_amount,
+        ])->all();
+
+        $applied = round((float) $live->sum('applied_amount'), 2);
+        $unapplied = max(0.0, app(\App\Services\PaymentAllocationService::class)->unappliedAmount($payment));
+
+        return [$lines, $applied, $unapplied];
     }
 
     public function fieldCatalog(): array
@@ -94,6 +143,11 @@ final class PaymentReceiptDataSource implements DataSourceContract
                 ['token' => 'receipt.reference', 'label' => 'Reference'],
                 ['token' => 'receipt.amount', 'label' => 'Amount'],
                 ['token' => 'receipt.invoice_no', 'label' => 'Invoice No.'],
+            ]],
+            ['group' => 'Allocations', 'fields' => [
+                ['token' => 'allocations', 'label' => 'Invoices paid (table source)'],
+                ['token' => 'totals.applied', 'label' => 'Applied to Invoices'],
+                ['token' => 'totals.unapplied', 'label' => 'Unapplied Credit'],
             ]],
             ['group' => 'Customer', 'fields' => [
                 ['token' => 'customer.name', 'label' => 'Name'],
@@ -120,7 +174,10 @@ final class PaymentReceiptDataSource implements DataSourceContract
             ],
             'customer' => ['name' => 'Globex Corporation', 'email' => 'ap@globex.example'],
             'company' => CompanyDataSource::sample(),
-            'totals' => ['amount' => 8056.00, 'total' => 8056.00],
+            'allocations' => [
+                ['index' => 1, 'invoice_number' => 'INV-2026-0001', 'invoice_date' => '2026-06-30', 'invoice_total' => 8000.00, 'applied_amount' => 8000.00],
+            ],
+            'totals' => ['amount' => 8056.00, 'applied' => 8000.00, 'unapplied' => 56.00, 'total' => 8056.00],
             'meta' => ['currency_code' => 'SGD', 'currency_symbol' => 'S$', 'number_format' => '1,234.56', 'locale' => 'en'],
         ];
     }

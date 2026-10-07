@@ -90,6 +90,19 @@ class SalesSettings
     /** Issue #328: follow-up levels (days overdue -> template, action). */
     public const FOLLOWUP_LEVELS = 'sales.followup.levels';
 
+    /**
+     * Issue #494: payment difference handling. The tolerance is the largest
+     * short-payment difference (document currency) that may be written off
+     * when a payment is "marked as fully paid"; 0 (the default) means no
+     * difference may be written off. Each write-off reason names the
+     * expense account the difference posts to.
+     */
+    public const PAYMENT_WRITE_OFF_TOLERANCE = 'sales.payment.write_off_tolerance';
+
+    public const PAYMENT_WRITE_OFF_REASONS = 'sales.payment.write_off_reasons';
+
+    public const DEFAULT_PAYMENT_WRITE_OFF_TOLERANCE = 0.0;
+
     public const FOLLOWUP_ACTION_SEND = 'send';
 
     public const FOLLOWUP_ACTION_MANUAL = 'manual';
@@ -192,6 +205,9 @@ class SalesSettings
             ],
             'followup' => [
                 'auto_send_enabled' => false,
+            ],
+            'payment' => [
+                'write_off_tolerance' => self::DEFAULT_PAYMENT_WRITE_OFF_TOLERANCE,
             ],
         ];
     }
@@ -425,6 +441,66 @@ class SalesSettings
         ksort($levels);
 
         return array_values($levels);
+    }
+
+    /**
+     * Issue #494: the per-tenant payment write-off tolerance (>= 0).
+     */
+    public function paymentWriteOffTolerance(): float
+    {
+        $raw = Setting::getValue(self::PAYMENT_WRITE_OFF_TOLERANCE);
+
+        if (! is_numeric($raw) || (float) $raw < 0) {
+            return self::DEFAULT_PAYMENT_WRITE_OFF_TOLERANCE;
+        }
+
+        return round((float) $raw, 2);
+    }
+
+    /**
+     * Issue #494: the configured payment write-off reasons. Rows without a
+     * code, label or account are dropped; none are configured by default.
+     *
+     * @return list<array{code: string, label: string, account_id: int}>
+     */
+    public function paymentWriteOffReasons(): array
+    {
+        $raw = Setting::getValue(self::PAYMENT_WRITE_OFF_REASONS);
+        $reasons = [];
+
+        foreach (is_array($raw) ? $raw : [] as $reason) {
+            if (! is_array($reason)) {
+                continue;
+            }
+
+            $code = is_string($reason['code'] ?? null) ? trim($reason['code']) : '';
+            $label = is_string($reason['label'] ?? null) ? trim($reason['label']) : '';
+            $accountId = is_numeric($reason['account_id'] ?? null) ? (int) $reason['account_id'] : 0;
+
+            if ($code === '' || $label === '' || $accountId < 1) {
+                continue;
+            }
+
+            $reasons[$code] = ['code' => $code, 'label' => $label, 'account_id' => $accountId];
+        }
+
+        return array_values($reasons);
+    }
+
+    /**
+     * Issue #494: one configured write-off reason by code, or null.
+     *
+     * @return array{code: string, label: string, account_id: int}|null
+     */
+    public function paymentWriteOffReason(string $code): ?array
+    {
+        foreach ($this->paymentWriteOffReasons() as $reason) {
+            if ($reason['code'] === $code) {
+                return $reason;
+            }
+        }
+
+        return null;
     }
 
     private function bool(string $key, bool $default): bool

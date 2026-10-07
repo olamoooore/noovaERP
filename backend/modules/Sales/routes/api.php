@@ -58,6 +58,9 @@ Route::middleware([
 
             // Linked documents (mutating)
             Route::post('/sales/orders/{id}/invoice', [SalesOrderController::class, 'createInvoice']);
+            // Issue #331: down-payment invoice (same sales.write gate as the
+            // order → invoice action above; no new permission).
+            Route::post('/sales/orders/{id}/down-payment-invoice', [SalesOrderController::class, 'downPaymentInvoice']);
             // Issue #154: the credit-note path the cancel error points at.
             Route::post('/sales/orders/{id}/credit-note', [SalesOrderController::class, 'creditNote']);
             // Issue #152: blanket order writes/releases require sales.write.

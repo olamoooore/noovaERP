@@ -37,6 +37,9 @@ class QuotationLine extends Model
         'tax_amount',
         'discount_amount',
         'line_total',
+        // Issue #338: an optional product the customer may add; excluded
+        // from totals, the released order and invoices until selected.
+        'is_optional',
     ];
 
     protected $casts = [
@@ -52,6 +55,7 @@ class QuotationLine extends Model
         'tax_amount' => 'decimal:2',
         'discount_amount' => 'decimal:2',
         'line_total' => 'decimal:2',
+        'is_optional' => 'boolean',
     ];
 
     protected static function boot()

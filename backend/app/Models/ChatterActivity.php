@@ -24,11 +24,14 @@ class ChatterActivity extends Model
         'due_date',
         'status',
         'completed_at',
+        // Issue #410: when the due-activity reminder was sent (once per due date).
+        'reminded_at',
     ];
 
     protected $casts = [
         'due_date' => 'datetime',
         'completed_at' => 'datetime',
+        'reminded_at' => 'datetime',
     ];
 
     public function subject(): MorphTo

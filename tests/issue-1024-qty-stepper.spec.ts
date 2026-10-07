@@ -2,8 +2,8 @@ import { test, expect, type Page } from '@playwright/test';
 
 /**
  * Acme #1024 — the Qty spinner/ArrowUp moved by the input's `step` (0.0001),
- * so 1 became 1.0001 instead of 2. The inputs now use step="1" and normalise
- * floating-point noise on blur; decimals must stay typeable.
+ * so 1 became 1.0001 instead of 2. The inputs now use step="1" and, per the
+ * requester's decision (2026-10-07), accept whole-number quantities only.
  *
  * This is a real-browser test on purpose: jsdom does not implement the native
  * number-input spinner, so a component test cannot exercise ArrowUp.
@@ -35,30 +35,35 @@ async function assertQtyStepper(page: Page) {
   await qty.press('ArrowUp');
   await expect(qty).toHaveValue('2');
 
-  // Fractional typing survives, including blur (no spinner noise rewrite).
-  await qty.fill('1.5');
-  await expect(qty).toHaveValue('1.5');
+  // Requester decision 2026-10-07: quantities are whole numbers only.
+  // The decimal point cannot be typed...
+  await qty.fill('');
+  await qty.pressSequentially('1.5');
+  await expect(qty).toHaveValue('15');
+  // ...and a pasted decimal rounds to the nearest whole unit.
+  await qty.fill('2.6');
+  await expect(qty).toHaveValue('3');
   await qty.blur();
-  await expect(qty).toHaveValue('1.5');
-
-  // ArrowUp on a fraction snaps to the next whole step (browser step grid).
-  await qty.press('ArrowUp');
-  await expect(qty).toHaveValue('2');
+  await expect(qty).toHaveValue('3');
+  // Native validation must never block the submit of a valid quantity.
+  expect(
+    await qty.evaluate((el: HTMLInputElement) => !el.form || el.form.noValidate || el.validity.valid),
+  ).toBe(true);
 
   // ArrowDown below zero is blocked by min=0.
-  await qty.fill('0.5');
+  await qty.fill('0');
   await qty.press('ArrowDown');
   await expect(qty).toHaveValue('0');
 }
 
-test('invoice line Qty arrows step by 1 and typed decimals survive (#1024)', async ({ page }) => {
+test('invoice line Qty arrows step by 1 and quantities stay whole (#1024)', async ({ page }) => {
   await login(page);
   await page.goto('/invoices/create');
   await pickProduct(page, 'F240115150', /Front Morcellator/);
   await assertQtyStepper(page);
 });
 
-test('vendor bill line Qty arrows step by 1 and typed decimals survive (#1024)', async ({ page }) => {
+test('vendor bill line Qty arrows step by 1 and quantities stay whole (#1024)', async ({ page }) => {
   await login(page);
   await page.goto('/accounting/vendors/bills/create');
   await page.getByText('Select vendor...').first().click();

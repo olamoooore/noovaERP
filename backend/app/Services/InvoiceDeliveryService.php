@@ -11,13 +11,20 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Modules\Communication\Events\BusinessEvent;
+use Modules\WhatsApp\Models\WhatsAppApiKey;
+use Modules\WhatsApp\Services\WhatsAppService;
 
 class InvoiceDeliveryService
 {
     public const NOT_DELIVERABLE_MESSAGE = 'Invoice is not ready to be delivered. It must be approved or already posted.';
 
     public const NO_RECIPIENT_MESSAGE = 'No recipient email available for invoice delivery.';
+
+    public const NO_WHATSAPP_RECIPIENT_MESSAGE = 'No WhatsApp number is on file for this customer.';
+
+    public const WHATSAPP_NOT_CONFIGURED_MESSAGE = 'WhatsApp is not configured for this tenant.';
 
     public function __construct(
         private InvoiceActivityService $activityLog,
@@ -57,6 +64,14 @@ class InvoiceDeliveryService
         return $override ?? $invoice->contact_email ?? $invoice->customer?->email;
     }
 
+    private function resolveWhatsAppRecipient(Invoice $invoice): ?string
+    {
+        $customer = $invoice->customer;
+        $phone = trim((string) ($customer?->mobile ?: $customer?->phone));
+
+        return $phone !== '' ? $phone : null;
+    }
+
     /**
      * Issue #328: $user is null for a send made by the scheduler (automatic
      * follow-up reminders); the delivery then has no sender and the activity
@@ -83,10 +98,17 @@ class InvoiceDeliveryService
             ?? ($invoice->status === 'posted'
                 ? InvoiceDelivery::DOCUMENT_FINAL_INVOICE
                 : InvoiceDelivery::DOCUMENT_ACCEPTANCE_COPY);
-        $recipient = $this->resolveRecipient($invoice, $options['recipient'] ?? null);
+        // Issue #1030: a WhatsApp send goes to the customer's mobile (falling
+        // back to phone), like the statement and receipt senders — not to the
+        // invoice's email address.
+        $recipient = $channel === InvoiceDelivery::CHANNEL_WHATSAPP
+            ? $this->resolveWhatsAppRecipient($invoice)
+            : $this->resolveRecipient($invoice, $options['recipient'] ?? null);
 
         if (! $recipient) {
-            throw new \InvalidArgumentException(self::NO_RECIPIENT_MESSAGE);
+            throw new \InvalidArgumentException($channel === InvoiceDelivery::CHANNEL_WHATSAPP
+                ? self::NO_WHATSAPP_RECIPIENT_MESSAGE
+                : self::NO_RECIPIENT_MESSAGE);
         }
 
         $delivery = DB::transaction(function () use ($invoice, $channel, $user, $documentType, $recipient, $options) {
@@ -276,10 +298,19 @@ class InvoiceDeliveryService
         try {
             $message = $delivery->metadata['message_body'] ?? $this->getWhatsAppMessage($invoice, $delivery->document_type);
 
-            app(\Modules\WhatsApp\src\Services\WhatsAppService::class)
-                ->send($invoice->customer_id, $message, [
-                    'reference' => $invoice->invoice_number,
-                ]);
+            // Issue #1030: the real module service (PSR-4 strips src/) and
+            // its sendMessage() API, with the tenant's active provider key.
+            $apiKey = $this->activeWhatsAppKey();
+
+            if ($apiKey === null) {
+                throw new \RuntimeException(self::WHATSAPP_NOT_CONFIGURED_MESSAGE);
+            }
+
+            $result = app(WhatsAppService::class)->sendMessage($apiKey, $delivery->recipient, $message);
+
+            if (! ($result['success'] ?? false)) {
+                throw new \RuntimeException((string) ($result['error'] ?? 'WhatsApp send failed'));
+            }
 
             $delivery->update([
                 'status' => InvoiceDelivery::STATUS_SENT,
@@ -289,6 +320,15 @@ class InvoiceDeliveryService
             $this->markFailed($delivery, $e->getMessage());
             throw $e;
         }
+    }
+
+    private function activeWhatsAppKey(): ?WhatsAppApiKey
+    {
+        if (! Schema::hasTable('whatsapp_api_keys')) {
+            return null;
+        }
+
+        return WhatsAppApiKey::query()->valid()->latest('id')->first();
     }
 
     private function markPortalSent(InvoiceDelivery $delivery, Invoice $invoice): void

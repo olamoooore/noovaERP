@@ -34,6 +34,7 @@ import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Textarea } from '@/components/ui/textarea'
 import { RegisterPaymentDialog } from '@/components/payment/RegisterPaymentDialog'
 import { UnappliedCreditsCard } from '@/components/payment/PaymentAllocations'
+import { OutstandingCreditNotesCard } from '@/components/payment/OutstandingCreditNotes'
 import { isInvoicePayable, useCanRegisterPayment } from '@/lib/registerPayment'
 import {
   InvoiceDeliveryProgressSummary,
@@ -45,6 +46,8 @@ import { creditWarning } from '@/lib/creditCheck'
 interface Invoice {
   id: number
   invoice_number: string
+  /** Issue #331: a down-payment invoice (held in Customer Deposit). */
+  is_down_payment?: boolean
   customer_id: number
   customer?: {
     id: number
@@ -90,6 +93,8 @@ interface Invoice {
   }>
   // MRD pricelist-multicurrency FR-5.1/5.4: document currency + snapshot.
   currency_code?: string | null
+  // #875: the invoice's legal entity (#495 offers only same-entity credit).
+  legal_entity_id?: number | null
   base_currency_code?: string | null
   exchange_rate?: number | string | null
   notes: string
@@ -182,6 +187,8 @@ interface InvoiceLine {
   tax_amount: number
   discount_amount: number
   line_total: number
+  /** Issue #331: set on a final invoice's "Less: down payment" line. */
+  down_payment_invoice_id?: number | null
   /** Issue #332: revenue split across analytic accounts (totals 100%). */
   analytic_distribution?: Array<{
     analytic_account_id: number
@@ -1061,6 +1068,11 @@ export function InvoiceDetailPage() {
             <div>
               <h2 className="text-3xl font-bold mb-2">INVOICE</h2>
               <p className="text-muted-foreground">#{invoice.invoice_number}</p>
+              {invoice.is_down_payment && (
+                <Badge variant="outline" className="mt-2" data-testid="invoice-down-payment-badge">
+                  Down payment
+                </Badge>
+              )}
             </div>
             <div className="text-right">
               {getStatusBadge(invoice.status, invoice.approval_status)}
@@ -1204,6 +1216,11 @@ export function InvoiceDetailPage() {
                     </TableCell>
                     <TableCell>
                       <div>{line.description || '-'}</div>
+                      {line.down_payment_invoice_id && (
+                        <div className="mt-1 text-xs text-muted-foreground" data-testid={`invoice-line-down-payment-${line.id}`}>
+                          Deducted from Customer Deposit
+                        </div>
+                      )}
                       {line.analytic_distribution && line.analytic_distribution.length > 0 && (
                         <div className="mt-1 text-xs text-muted-foreground" data-testid={`invoice-line-analytic-${line.id}`}>
                           Analytic:{' '}
@@ -1507,6 +1524,20 @@ export function InvoiceDetailPage() {
                 invoiceBalance={Number(invoice.balance ?? 0)}
                 currency={invoice.currency_code}
                 hideWhenEmpty
+              />
+            </div>
+          )}
+
+          {/* #495: the customer's credit notes still holding credit, applicable here. */}
+          {isInvoicePayable(invoice) && invoice.customer_id && (
+            <div className="mb-8">
+              <OutstandingCreditNotesCard
+                customerId={Number(invoice.customer_id)}
+                invoiceId={invoice.id}
+                invoiceNumber={invoice.invoice_number}
+                invoiceBalance={Number(invoice.balance ?? 0)}
+                currency={invoice.currency_code}
+                legalEntityId={invoice.legal_entity_id ?? null}
               />
             </div>
           )}

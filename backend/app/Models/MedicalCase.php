@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Casts\EncryptedOrLegacyString;
+use App\Platform\DataSecurity\MasksSensitiveFields;
 use App\Platform\Workflow\Contracts\WorkflowSubject;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -13,7 +14,7 @@ use Illuminate\Support\Facades\Log;
 
 class MedicalCase extends Model implements WorkflowSubject
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, MasksSensitiveFields, SoftDeletes;
 
     protected $fillable = [
         'case_no',
@@ -45,6 +46,23 @@ class MedicalCase extends Model implements WorkflowSubject
         // letting a DecryptException 500 every read of the model.
         'patient_name_encrypted' => EncryptedOrLegacyString::class,
     ];
+
+    /**
+     * Issue #567 (MC5): the patient name is PHI. It is masked in every JSON
+     * rendering unless the viewer holds medical_cases.phi.view (Decision on
+     * #919, ADR-007 v0.3 §16A).
+     */
+    public function sensitiveFields(): array
+    {
+        return [
+            'patient_name_encrypted' => ['permission' => 'medical_cases.phi.view', 'mask' => 'name'],
+        ];
+    }
+
+    public function sensitiveReferenceType(): string
+    {
+        return 'medical_case';
+    }
 
     protected static function boot(): void
     {

@@ -38,12 +38,13 @@ class HR76ChatterModelRegistryTest extends TenantTestCase
     {
         $registry = app(ChatterModelRegistry::class);
 
+        // #633 Decision (7 Oct 2026, Option B): aliases repointed from non-existent classes to the real models.
         $this->assertSame(
-            'Modules\\Sales\\Models\\Order',
+            'Modules\\Sales\\Models\\SalesOrder',
             $registry->resolveClass('order')
         );
         $this->assertSame(
-            'Modules\\Accounting\\Models\\Invoice',
+            'App\\Models\\Invoice',
             $registry->resolveClass('invoice')
         );
         $this->assertSame('App\\Models\\Customer', $registry->resolveClass('customer'));

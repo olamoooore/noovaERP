@@ -352,6 +352,93 @@ class Issue607SalesCustomerStatementsTest extends TenantTestCase
         $progress->assertJsonPath('data.processed_customers', 2);
     }
 
+    /** #1018 — batch statements honour a custom range crossing month ends. */
+    public function test_batch_send_with_a_range_crossing_month_ends_uses_opening_before_from_and_excludes_after_to(): void
+    {
+        Mail::fake();
+
+        $customer = Customer::factory()->create(['name' => 'Range Customer']);
+        // Before From: opening balance only.
+        $this->invoiceFor($customer, ['invoice_date' => '2026-01-05', 'invoice_number' => 'INV-1018-A']);
+        // Inside the range.
+        $this->invoiceFor($customer, [
+            'invoice_date' => '2026-02-05',
+            'invoice_number' => 'INV-1018-B',
+            'subtotal' => 300, 'total' => 300, 'balance' => 300,
+        ]);
+        // After To: excluded.
+        $this->invoiceFor($customer, [
+            'invoice_date' => '2026-02-25',
+            'invoice_number' => 'INV-1018-C',
+            'subtotal' => 999, 'total' => 999, 'balance' => 999,
+        ]);
+
+        $response = $this->actingAs($this->admin)->postJson(
+            '/api/v1/accounting/customer-statements/batch',
+            [
+                'with_balance' => true,
+                'as_of' => '2026-02-15',
+                'customer_ids' => [$customer->id],
+                'start_date' => '2026-01-15',
+                'end_date' => '2026-02-15',
+                'channel' => 'email',
+            ]
+        );
+
+        $response->assertStatus(202);
+        $batch = CustomerStatementBatch::findOrFail((int) $response->json('data.id'));
+        $this->assertSame(CustomerStatementBatch::STATUS_COMPLETED, $batch->status);
+
+        $statement = CustomerStatement::query()->where('customer_id', $customer->id)->latest('id')->firstOrFail();
+        $payload = $statement->payload;
+
+        $this->assertSame('2026-01-15', $payload['period']['start_date']);
+        $this->assertSame('2026-02-15', $payload['period']['end_date']);
+        $this->assertEquals(1000.0, (float) $payload['opening_balance'], 'Opening = balance before Jan 15 (the Jan 5 invoice).');
+        $this->assertEquals(300.0, (float) $payload['total_debits'], 'Only the Feb 5 invoice is inside Jan 15 → Feb 15.');
+        $this->assertEquals(1300.0, (float) $payload['closing_balance'], 'Closing = opening + in-range debits; Feb 25 excluded.');
+
+        $numbers = collect($payload['transactions'])->pluck('document_number')->filter()->values()->all();
+        $this->assertContains('INV-1018-B', $numbers);
+        $this->assertNotContains('INV-1018-C', $numbers, 'The Feb 25 invoice is after To and must not appear.');
+    }
+
+    /** #1018 — the GET statement (the print/preview path) renders the custom range. */
+    public function test_statement_read_renders_a_custom_range_as_pdf_and_json(): void
+    {
+        $this->invoiceFor($this->customer, ['invoice_date' => '2026-01-05', 'invoice_number' => 'INV-1018-D']);
+        $this->invoiceFor($this->customer, [
+            'invoice_date' => '2026-02-05',
+            'invoice_number' => 'INV-1018-E',
+            'subtotal' => 300, 'total' => 300, 'balance' => 300,
+        ]);
+        $this->invoiceFor($this->customer, [
+            'invoice_date' => '2026-02-25',
+            'invoice_number' => 'INV-1018-F',
+            'subtotal' => 999, 'total' => 999, 'balance' => 999,
+        ]);
+
+        $base = '/api/v1/accounting/customers/'.$this->customer->id.'/statement?start_date=2026-01-15&end_date=2026-02-15';
+
+        $pdf = $this->actingAs($this->admin)->get($base);
+        $pdf->assertOk();
+        $this->assertStringContainsString('application/pdf', (string) $pdf->headers->get('Content-Type'));
+        $this->assertStringStartsWith('%PDF', (string) $pdf->getContent());
+
+        $json = $this->actingAs($this->admin)->getJson($base.'&format=json');
+        $json->assertOk();
+        $json->assertJsonPath('payload.period.start_date', '2026-01-15');
+        $json->assertJsonPath('payload.period.end_date', '2026-02-15');
+        $this->assertEquals(1000.0, (float) $json->json('payload.opening_balance'));
+        $this->assertEquals(300.0, (float) $json->json('payload.total_debits'));
+        $this->assertEquals(1300.0, (float) $json->json('payload.closing_balance'));
+
+        // To before From is rejected, not silently swapped.
+        $this->actingAs($this->admin)
+            ->getJson('/api/v1/accounting/customers/'.$this->customer->id.'/statement?start_date=2026-02-15&end_date=2026-01-15&format=json')
+            ->assertStatus(422);
+    }
+
     public function test_fully_paid_invoices_are_excluded_by_default_and_included_when_requested(): void
     {
         Mail::fake();

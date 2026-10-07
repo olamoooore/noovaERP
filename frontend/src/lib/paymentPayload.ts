@@ -26,6 +26,11 @@ export function buildPaymentPayload(
      * invoice allocations instead of a single invoice_id.
      */
     applications?: Array<{ invoice_id: number; amount: number }>;
+    /**
+     * #494: a short payment marked as fully paid — the difference is written
+     * off to the account of the chosen reason. Omitted = keep open.
+     */
+    writeOff?: { reason: string; label?: string } | null;
   } = {},
 ): Record<string, unknown> {
   const { invoice_id, ...rest } = form;
@@ -34,5 +39,12 @@ export function buildPaymentPayload(
     ...(options.applications ? { applications: options.applications } : { invoice_id }),
     bank_account_id: form.bank_account_id ? Number(form.bank_account_id) : null,
     ...(options.exchangeRate != null ? { exchange_rate: options.exchangeRate } : {}),
+    ...(options.writeOff
+      ? {
+          payment_difference: 'write_off',
+          write_off_reason: options.writeOff.reason,
+          ...(options.writeOff.label?.trim() ? { write_off_label: options.writeOff.label.trim() } : {}),
+        }
+      : {}),
   };
 }

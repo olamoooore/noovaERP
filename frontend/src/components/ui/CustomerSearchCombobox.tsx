@@ -27,6 +27,8 @@ interface Customer {
   code?: string
   /** Populated by the API when the search matched one of the customer's contacts. */
   matched_contacts?: string[]
+  /** #1007: customer_contacts ids aligned with matched_contacts. */
+  matched_contact_ids?: Array<string | number>
   /** Tag names that matched the search (e.g. "VIP"). */
   matched_tags?: string[]
   /** Address/building labels that matched the search. */
@@ -35,7 +37,11 @@ interface Customer {
 
 interface CustomerSearchComboboxProps {
   value: string
-  onValueChange: (value: string, customer?: Customer) => void
+  /**
+   * #1007: `matchedContactId` is set when the pick matched through exactly one
+   * of the customer's contact persons, so the caller can pre-select it.
+   */
+  onValueChange: (value: string, customer?: Customer, matchedContactId?: string) => void
   placeholder?: string
   disabled?: boolean
   /** Compact pill styling (h-8 / rounded-full) to match the header action row. */
@@ -70,7 +76,7 @@ export function CustomerSearchCombobox({
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-  const { data: searchResults, isLoading } = useQuery<Customer[]>({
+  const { data: searchResults, isLoading, isError, error } = useQuery<Customer[]>({
     queryKey: ['customers-search', debouncedQuery],
     queryFn: async () => {
       const params: Record<string, string> = { per_page: '50' }
@@ -92,6 +98,11 @@ export function CustomerSearchCombobox({
     enabled: !!value && !searchResults?.find(c => String(c.id) === value),
   })
 
+  // #1002: a refused/failed search (401/403/500) must not look like an empty
+  // result — "No customers found." sent users hunting for a missing customer
+  // when the real problem was access or a server error.
+  const errorStatus = (error as { response?: { status?: number } } | null)?.response?.status
+
   const getDisplayName = (c: Customer) =>
     c.name || c.company || 'Unnamed'
 
@@ -109,7 +120,9 @@ export function CustomerSearchCombobox({
   const handleSelect = (customerId: string) => {
     const customer = searchResults?.find(c => String(c.id) === customerId)
     pickedRef.current = true
-    onValueChange(customerId, customer)
+    const matchedIds = customer?.matched_contact_ids ?? []
+    const matchedContactId = matchedIds.length === 1 ? String(matchedIds[0]) : undefined
+    onValueChange(customerId, customer, matchedContactId)
     setOpen(false)
     setSearchQuery('')
   }
@@ -159,9 +172,16 @@ export function CustomerSearchCombobox({
             onValueChange={setSearchQuery}
           />
           <CommandList>
-            <CommandEmpty>
-              {isLoading ? 'Searching...' : 'No customers found.'}
-            </CommandEmpty>
+            {isError ? (
+              <div role="alert" className="px-3 py-6 text-center text-sm text-destructive">
+                Couldn't load customers — check your access or try again.
+                {errorStatus ? ` (HTTP ${errorStatus})` : ''}
+              </div>
+            ) : (
+              <CommandEmpty>
+                {isLoading ? 'Searching...' : 'No customers found.'}
+              </CommandEmpty>
+            )}
             <CommandGroup>
               {searchResults?.map((customer) => (
                 <CommandItem

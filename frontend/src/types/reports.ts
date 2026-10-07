@@ -332,6 +332,8 @@ export interface StockMovementData {
   pagination?: {
     current_page: number;
     total_pages: number;
+    /** What the movement endpoint actually returns (Laravel paginator). */
+    last_page?: number;
     per_page: number;
     total: number;
   };
@@ -616,18 +618,74 @@ export interface UnbilledDeliveriesData {
 }
 
 /**
+ * Issue #532: credit note analysis (GET /analytics/sales/credit-notes). All
+ * amounts are net of tax and document discounts, in the tenant base currency;
+ * `credit_rate` is credited ÷ invoiced × 100 (null when nothing was invoiced).
+ */
+export type CreditNoteGrouping = 'reason' | 'product' | 'customer' | 'salesperson';
+
+export interface CreditNoteOutcomeCounts {
+  applied: number;
+  partially_applied: number;
+  customer_credit: number;
+}
+
+export interface CreditNoteAnalysisRow {
+  /** Row id (null for the unlinked / walk-in / unassigned bucket), or the reason label. */
+  key: number | string | null;
+  label: string;
+  credit_note_count: number;
+  credited_amount: number;
+  invoiced_amount: number;
+  credit_rate: number | null;
+  outcome: CreditNoteOutcomeCounts;
+}
+
+export interface CreditNoteAnalysisData {
+  title: string;
+  group_by: CreditNoteGrouping;
+  rows: CreditNoteAnalysisRow[];
+  summary: {
+    credit_note_count: number;
+    total_credited: number;
+    total_invoiced: number;
+    net_invoiced: number;
+    credit_rate: number | null;
+    outcome: CreditNoteOutcomeCounts & {
+      applied_amount: number;
+      refunded_amount: number;
+      remaining_credit: number;
+      basis?: string;
+    };
+    credit_rate_basis?: string;
+    base_currency?: string;
+  };
+  period?: { start_date: string; end_date: string };
+  pos_excluded_by_tag?: boolean;
+}
+
+/**
  * Issue #596: one sales-report row drilled to its source documents
  * (GET /analytics/sales/drilldown). `net_amount` is the document's share of
  * the row in the tenant base currency, so the documents add up to the row.
  */
-export type SalesDrilldownDimension = 'customer' | 'product' | 'category' | 'period';
+export type SalesDrilldownDimension =
+  | 'customer'
+  | 'product'
+  | 'category'
+  | 'period'
+  /** Issue #532: credit-note analysis rows (with document_type = credit_note). */
+  | 'salesperson'
+  | 'reason';
 
 export interface SalesDrilldownTarget {
   dimension: SalesDrilldownDimension;
-  /** Row id, 'none' for the walk-in / unlinked / Uncategorized bucket, or the period key. */
+  /** Row id, 'none' for the walk-in / unlinked / Uncategorized bucket, the period key, or the reason label. */
   key: string;
   /** Only for dimension = period: the trend interval the key belongs to. */
   interval?: 'day' | 'week' | 'month' | 'year';
+  /** Issue #532: narrow the row's documents to credit notes. */
+  document_type?: 'credit_note';
 }
 
 export interface SalesDrilldownDocument {

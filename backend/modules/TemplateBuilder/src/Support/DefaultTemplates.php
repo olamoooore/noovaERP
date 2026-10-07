@@ -156,11 +156,17 @@ final class DefaultTemplates
                         // document jurisdiction's pack label (SST for MY,
                         // GST for SG, generic otherwise) instead of a
                         // hardcoded "GST Reg".
+                        // #1019: an unset/optional registration number must
+                        // not print a blank "GST Registration No.:" line.
                         ['type' => 'conditional', 'condition' => "{{ company.tax_regime }} == 'GST'", 'children' => [
-                            ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => '{{ company.gst_number_label }}: {{ company.gst_number }}'],
+                            ['type' => 'conditional', 'condition' => "{{ company.gst_number }} != ''", 'children' => [
+                                ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => '{{ company.gst_number_label }}: {{ company.gst_number }}'],
+                            ]],
                         ]],
                         ['type' => 'conditional', 'condition' => "{{ company.tax_regime }} != 'GST'", 'children' => [
-                            ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => '{{ company.sst_number_label }}: {{ company.sst_number }}'],
+                            ['type' => 'conditional', 'condition' => "{{ company.sst_number }} != ''", 'children' => [
+                                ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => '{{ company.sst_number_label }}: {{ company.sst_number }}'],
+                            ]],
                         ]],
                         ['type' => 'conditional', 'condition' => "{{ einvoice.uuid }} != ''", 'children' => [
                             ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => 'E-Invoice: {{ einvoice.uuid }} · Validated: {{ einvoice.validated_at }}'],
@@ -259,11 +265,27 @@ final class DefaultTemplates
                     ['type' => 'text', 'content' => 'Receipt #: <b>{{ receipt.number }}</b> &nbsp; Date: {{ receipt.date }}'],
                     ['type' => 'text', 'content' => 'Method: {{ receipt.method }} &nbsp; Reference: {{ receipt.reference }}'],
                     ['type' => 'spacer', 'height' => 10],
+                    // Issue #500: one line per invoice the payment settled.
+                    ['type' => 'table', 'source' => 'allocations', 'paginate' => false, 'columns' => [
+                        ['label' => '#', 'field' => 'index', 'width' => '6%', 'align' => 'center'],
+                        ['label' => 'Invoice', 'field' => 'invoice_number', 'width' => '30%'],
+                        ['label' => 'Invoice Date', 'field' => 'invoice_date', 'width' => '20%'],
+                        ['label' => 'Invoice Total', 'field' => 'invoice_total', 'width' => '22%', 'align' => 'right', 'format' => 'money'],
+                        ['label' => 'Amount Applied', 'field' => 'applied_amount', 'width' => '22%', 'align' => 'right', 'format' => 'money'],
+                    ]],
+                    ['type' => 'spacer', 'height' => 10],
                     ['type' => 'totals', 'rows' => [
+                        ['label' => 'Applied to Invoices', 'field' => 'totals.applied', 'format' => 'money'],
                         ['label' => 'Amount Received', 'field' => 'totals.amount', 'format' => 'money', 'bold' => true],
                     ]],
+                    // Issue #500: the remainder held on the customer's account.
+                    ['type' => 'conditional', 'condition' => '{{ totals.unapplied }} > 0', 'children' => [
+                        ['type' => 'totals', 'rows' => [
+                            ['label' => 'Unapplied Credit', 'field' => 'totals.unapplied', 'format' => 'money'],
+                        ]],
+                    ]],
                     ['type' => 'spacer', 'height' => 12],
-                    ['type' => 'text', 'size' => 9, 'color' => '#6b7280', 'content' => 'Applied to invoice {{ receipt.invoice_no }}. Thank you for your payment.'],
+                    ['type' => 'text', 'size' => 9, 'color' => '#6b7280', 'content' => 'Thank you for your payment.'],
                 ],
             ],
         ];

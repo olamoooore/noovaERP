@@ -7,14 +7,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Middleware\RequirePermission;
 use App\Models\ChatterActivity;
-use App\Models\CustomerCreditNote;
-use App\Models\Invoice;
-use App\Models\Quotation;
+use App\Services\Chatter\AssignedActivityService;
 use App\Services\Chatter\ChatterService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Modules\Sales\Models\DeliveryOrder;
-use Modules\Sales\Models\SalesOrder;
 
 /**
  * Issue #637 — "My Activities".
@@ -24,6 +20,11 @@ use Modules\Sales\Models\SalesOrder;
  * This controller exposes the caller's own open activities across quotations,
  * sales orders, delivery orders, invoices and customer credit notes, grouped
  * overdue / today / upcoming, plus mark-done and snooze actions.
+ *
+ * Issue #410: the listing and the actions follow the document's legal entity
+ * too (AssignedActivityService, shared with the cockpit tile and the due
+ * reminders) — an activity on a document outside the caller's entities is
+ * neither listed nor actionable (404).
  *
  * Security rules (asserted in Issue637MyActivitiesTest):
  *  - the assignee filter is the whole point: `assigned_to_id` must be the
@@ -35,30 +36,16 @@ use Modules\Sales\Models\SalesOrder;
  */
 class MyActivityController extends Controller
 {
-    /**
-     * Document types surfaced by "My Activities", mapped to the column that
-     * carries their human reference for the link label.
-     */
-    private const SUBJECT_NUMBER_COLUMNS = [
-        Invoice::class => 'invoice_number',
-        Quotation::class => 'quotation_number',
-        SalesOrder::class => 'sales_order_number',
-        DeliveryOrder::class => 'delivery_order_number',
-        CustomerCreditNote::class => 'credit_note_number',
-    ];
-
     public function __construct(
         private readonly ChatterService $chatter,
+        private readonly AssignedActivityService $assigned,
     ) {}
 
     public function mine(Request $request): JsonResponse
     {
-        $allowedTypes = $this->allowedSubjectTypes($request);
-
-        $activities = ChatterActivity::query()
-            ->where('assigned_to_id', $request->user()->id)
-            ->where('status', 'planned')
-            ->whereIn('subject_type', $allowedTypes)
+        // Issue #410: the assignee/permission/legal-entity rule is shared with
+        // the cockpit tile and the due reminders (AssignedActivityService).
+        $activities = $this->assigned->openFor($request->user(), $this->allowedSubjectTypes($request))
             ->orderByRaw('due_date IS NULL')
             ->orderBy('due_date')
             ->orderBy('id')
@@ -136,10 +123,23 @@ class MyActivityController extends Controller
      */
     private function findOwnActivity(Request $request, int $activityId): ChatterActivity
     {
-        return ChatterActivity::query()
+        $activity = ChatterActivity::query()
             ->where('id', $activityId)
             ->where('assigned_to_id', $request->user()->id)
             ->firstOrFail();
+
+        // Issue #410: an activity on a document outside the caller's legal
+        // entities is not theirs to act on — 404 like any unlisted activity.
+        $inScope = ! isset(AssignedActivityService::SUBJECTS[(string) $activity->subject_type])
+            || $this->assigned->assignedTo($request->user(), [(string) $activity->subject_type])
+                ->where('chatter_activities.id', $activity->id)
+                ->exists();
+
+        if (! $inScope) {
+            abort(404);
+        }
+
+        return $activity;
     }
 
     /**
@@ -151,17 +151,9 @@ class MyActivityController extends Controller
      */
     private function allowedSubjectTypes(Request $request): array
     {
-        $viewPermissions = config('chatter.subject_permissions', []);
-        $allowed = [];
-
-        foreach (array_keys(self::SUBJECT_NUMBER_COLUMNS) as $subjectType) {
-            $permission = $viewPermissions[$subjectType] ?? null;
-            if ($permission !== null && RequirePermission::allows($request, $permission)) {
-                $allowed[] = $subjectType;
-            }
-        }
-
-        return $allowed;
+        return $this->assigned->viewableSubjectTypes(
+            fn (string $permission) => RequirePermission::allows($request, $permission),
+        );
     }
 
     private function authorizeSubjectAccess(Request $request, ChatterActivity $activity): void
@@ -186,7 +178,7 @@ class MyActivityController extends Controller
         $labels = [];
 
         foreach ($activities->groupBy('subject_type') as $subjectType => $rows) {
-            $column = self::SUBJECT_NUMBER_COLUMNS[$subjectType] ?? null;
+            $column = AssignedActivityService::SUBJECTS[$subjectType][0] ?? null;
             if ($column === null) {
                 continue;
             }
@@ -208,8 +200,8 @@ class MyActivityController extends Controller
         $subjectId = (int) $activity->subject_id;
         $label = $labels[$subjectType][$subjectId] ?? null;
 
-        if ($label === null && isset(self::SUBJECT_NUMBER_COLUMNS[$subjectType])) {
-            $column = self::SUBJECT_NUMBER_COLUMNS[$subjectType];
+        if ($label === null && isset(AssignedActivityService::SUBJECTS[$subjectType])) {
+            $column = AssignedActivityService::SUBJECTS[$subjectType][0];
             $label = $subjectType::query()->whereKey($subjectId)->value($column);
         }
 

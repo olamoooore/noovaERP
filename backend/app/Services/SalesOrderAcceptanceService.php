@@ -114,12 +114,22 @@ class SalesOrderAcceptanceService
             'order_date' => optional($quotation->quotation_date)->toDateString(),
             'required_date' => optional($quotation->commitment_date ?? $quotation->delivery_date)->toDateString(),
             'notes' => $quotation->notes,
-            'lines' => $quotation->lines->map(fn ($line) => [
+            // Issue #338: optional products are listed separately (with the
+            // id the customer selects them by) and are not in the totals.
+            'lines' => $quotation->lines->reject(fn ($line) => (bool) $line->is_optional)->map(fn ($line) => [
                 'description' => $line->description,
                 'quantity' => (float) $line->quantity,
                 'unit_price' => (float) $line->unit_price,
                 'line_total' => (float) $line->line_total,
-            ])->all(),
+            ])->values()->all(),
+            'optional_lines' => $quotation->lines->filter(fn ($line) => (bool) $line->is_optional)->map(fn ($line) => [
+                'id' => (int) $line->id,
+                'description' => $line->description,
+                'quantity' => (float) $line->quantity,
+                'unit_price' => (float) $line->unit_price,
+                'tax_amount' => (float) $line->tax_amount,
+                'line_total' => (float) $line->line_total,
+            ])->values()->all(),
             'already_accepted' => $quotation->accepted_at !== null,
             'signer_name' => $quotation->signer_name,
             'signer_email' => $quotation->signer_email,
@@ -127,6 +137,75 @@ class SalesOrderAcceptanceService
             // Issue #550: what the portal must collect before accepting.
             ...$this->quotationRequirements($quotation),
         ];
+    }
+
+    /**
+     * Issue #338: the ids the customer selected must all be optional lines of
+     * this quotation. Returns the normalised id list.
+     *
+     * @param  array<int, mixed>  $lineIds
+     * @return array<int, int>
+     *
+     * @throws \Illuminate\Validation\ValidationException
+     */
+    public function validateOptionalSelection(\App\Models\Quotation $quotation, array $lineIds): array
+    {
+        $lineIds = array_values(array_unique(array_map('intval', $lineIds)));
+
+        if ($lineIds === []) {
+            return [];
+        }
+
+        $optionalIds = $quotation->lines()
+            ->where('is_optional', true)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $unknown = array_diff($lineIds, $optionalIds);
+
+        if ($unknown !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'optional_line_ids' => 'Only the optional products offered on this quotation can be added.',
+            ]);
+        }
+
+        return $lineIds;
+    }
+
+    /**
+     * Issue #338: turn the selected optional lines into ordinary quotation
+     * lines and recompute the totals through the model's single totals path.
+     *
+     * @param  array<int, int>  $lineIds
+     */
+    private function selectOptionalLines(\App\Models\Quotation $quotation, array $lineIds): void
+    {
+        $lineIds = $this->validateOptionalSelection($quotation, $lineIds);
+
+        if ($lineIds === []) {
+            return;
+        }
+
+        $quotation->lines()->whereIn('id', $lineIds)->update(['is_optional' => false]);
+
+        $quotation->unsetRelation('lines');
+        $quotation->load('lines');
+        $quotation->calculateTotals();
+
+        // Issue #646 rule, as on an internal edit: an approval granted for
+        // the previous total no longer covers the enlarged quotation.
+        app(SalesApprovalGate::class)->invalidateStaleApprovals(
+            $quotation,
+            SalesApprovalGate::REQUEST_TYPE_QUOTATION,
+        );
+
+        $this->logChatter(
+            $quotation,
+            'optional_products_selected',
+            'Customer added '.count($lineIds).' optional product(s) to quotation '.$quotation->quotation_number.' via the portal',
+            ['line_ids' => $lineIds, 'total' => (float) $quotation->total],
+        );
     }
 
     /**
@@ -216,6 +295,7 @@ class SalesOrderAcceptanceService
         ?string $signatureDataUrl = null,
         ?string $ip = null,
         ?string $userAgent = null,
+        array $optionalLineIds = [],
     ): array {
         if ($quotation->accepted_at !== null) {
             return [
@@ -242,15 +322,23 @@ class SalesOrderAcceptanceService
 
         $fromStatus = (string) $quotation->status;
 
-        $requirements = $this->quotationRequirements($quotation);
+        // Issue #338: the optional products the customer selected join the
+        // quotation (and its totals) in the same unit of work as the recorded
+        // acceptance — before the prepayment amount, the approval gate and
+        // the release read the total.
+        DB::transaction(function () use ($quotation, $optionalLineIds, $signerName, $signerEmail, $signatureDataUrl) {
+            $this->selectOptionalLines($quotation, $optionalLineIds);
 
-        $quotation->update([
-            'accepted_at' => now(),
-            'signer_name' => $signerName,
-            'signer_email' => $signerEmail,
-            'signature_data' => $signatureDataUrl,
-            'acceptance_source' => self::SOURCE_PORTAL,
-        ]);
+            $quotation->update([
+                'accepted_at' => now(),
+                'signer_name' => $signerName,
+                'signer_email' => $signerEmail,
+                'signature_data' => $signatureDataUrl,
+                'acceptance_source' => self::SOURCE_PORTAL,
+            ]);
+        });
+
+        $requirements = $this->quotationRequirements($quotation->fresh());
 
         $accepted = $quotation->fresh();
 

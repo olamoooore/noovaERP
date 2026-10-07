@@ -44,6 +44,7 @@ from pathlib import Path
 import pytesseract
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
 from PIL import Image
+from PIL import ImageOps
 
 OCR_ENGINE = os.environ.get("OCR_ENGINE", "tesseract").lower()
 
@@ -690,6 +691,68 @@ def parse_financial_data(raw_text: str) -> dict:
 async def health():
     """Health check endpoint."""
     return {"status": "healthy", "service": "ocr-bookkeeping", "version": "1.0.0"}
+
+
+@app.post("/api/ocr/raw", dependencies=[Depends(require_service_key)])
+async def ocr_raw(request: Request, file: UploadFile = File(...)):
+    """
+    Raw OCR text for a document — used by the payment-advice parsers (#1001),
+    which apply their own per-bank layout rules.
+    """
+    allowed_types = {
+        "image/jpeg", "image/png", "image/jpg",
+        "application/pdf",
+    }
+    if file.content_type and file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type: {file.content_type}. Allowed: JPG, PNG, PDF",
+        )
+
+    contents = await _read_upload_capped(file, request, OCR_MAX_UPLOAD_BYTES)
+    if not contents:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    if (file.filename or "").lower().endswith(".pdf"):
+        raw_text, avg_confidence = run_ocr(contents, file.filename or "advice.pdf")
+    else:
+        raw_text = _ocr_advice_image(contents)
+        avg_confidence = 75.0
+
+    return {"text": raw_text, "confidence": avg_confidence}
+
+
+def _ocr_advice_image(image_bytes: bytes) -> str:
+    """
+    OCR tuned for bank payment-advice screenshots (#1001): grayscale, invert
+    dark-mode captures, upscale small text and autocontrast before Tesseract.
+    A full-page pass can miss a table rendered low on the image, so when the
+    first pass is nearly empty the lower region is retried and appended.
+    """
+    image = Image.open(io.BytesIO(image_bytes))
+
+    text = pytesseract.image_to_string(_prepare_advice_image(image), config="--psm 6")
+
+    if len(text.strip()) < 200:
+        width, height = image.size
+        lower = image.crop((0, int(height * 0.2), width, int(height * 0.8)))
+        text += "\n" + pytesseract.image_to_string(
+            _prepare_advice_image(lower, scale=3), config="--psm 6"
+        )
+
+    return text
+
+
+def _prepare_advice_image(image: Image.Image, scale: int = 2) -> Image.Image:
+    gray = image.convert("L")
+
+    # Dark-mode screenshots: detect and invert so text is dark on light.
+    if sum(gray.resize((50, 50)).getdata()) / 2500 < 128:
+        gray = ImageOps.invert(gray)
+
+    gray = gray.resize((gray.width * scale, gray.height * scale), Image.LANCZOS)
+
+    return ImageOps.autocontrast(gray)
 
 
 @app.post("/api/bookkeeping/upload", dependencies=[Depends(require_service_key)])

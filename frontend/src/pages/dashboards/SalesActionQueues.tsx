@@ -13,7 +13,8 @@ import { fetchSalesActionQueues, type SalesActionQueue } from '@/lib/salesAction
  * and the most urgent rows, and opens the matching filtered list. The API
  * returns only the queues the user may view, scoped to their legal entities;
  * "Only mine" narrows to the user's own documents. The section hides itself
- * when the endpoint is not available to the user.
+ * when the endpoint is not available to the user. Issue #410 adds the user's
+ * own due activities (overdue / today) as a tile opening My activities.
  */
 export function SalesActionQueues() {
   const [mine, setMine] = useState(false);
@@ -25,9 +26,21 @@ export function SalesActionQueues() {
     retry: false,
   });
 
-  if (isError || !data || data.queues.length === 0) {
+  if (isError || !data || (data.queues.length === 0 && !data.activities)) {
     return null;
   }
+
+  // Issue #410: the caller's due activities ride along as one more tile.
+  const activitiesTile: SalesActionQueue | null = data.activities
+    ? {
+        key: 'activities_due',
+        label: data.activities.label,
+        document: 'activity',
+        count: data.activities.count,
+        link: data.activities.link,
+        items: data.activities.items,
+      }
+    : null;
 
   return (
     <section aria-label="Action queues" className="space-y-3">
@@ -48,6 +61,7 @@ export function SalesActionQueues() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {activitiesTile && <ActionQueueTile queue={activitiesTile} overdue={data.activities?.overdue ?? 0} />}
         {data.queues.map((queue) => (
           <ActionQueueTile key={queue.key} queue={queue} />
         ))}
@@ -56,7 +70,7 @@ export function SalesActionQueues() {
   );
 }
 
-function ActionQueueTile({ queue }: { queue: SalesActionQueue }) {
+function ActionQueueTile({ queue, overdue = 0 }: { queue: SalesActionQueue; overdue?: number }) {
   return (
     <Card data-testid={`action-queue-${queue.key}`} className="flex flex-col">
       <CardHeader className="pb-2">
@@ -73,6 +87,11 @@ function ActionQueueTile({ queue }: { queue: SalesActionQueue }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-2 pt-0">
+        {overdue > 0 && (
+          <p className="text-xs font-medium text-destructive" data-testid={`action-queue-overdue-${queue.key}`}>
+            {overdue} overdue
+          </p>
+        )}
         {queue.items.length === 0 ? (
           <p className="text-xs text-muted-foreground">Nothing waiting.</p>
         ) : (

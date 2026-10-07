@@ -22,6 +22,7 @@ import {
   QuotationSettings,
   SalesOrderSettings,
   PaymentMethodSettings,
+  PaymentDifferenceSettings,
   PaymentPortalSettings,
   TaxPricingSettings,
   CashRoundingSettings,
@@ -94,6 +95,13 @@ const SECTIONS: SettingsSectionDef[] = [
     description: 'Methods, references and deposit-to accounts',
     icon: 'solar:wallet-money-bold-duotone',
     component: PaymentMethodSettings,
+  },
+  {
+    key: 'payment-difference',
+    title: 'Payment Differences',
+    description: 'Write off small short-payments to an account',
+    icon: 'solar:hand-money-bold-duotone',
+    component: PaymentDifferenceSettings,
   },
   {
     key: 'payments',

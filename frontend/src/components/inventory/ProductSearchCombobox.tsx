@@ -54,6 +54,11 @@ interface ProductSearchComboboxProps {
    * to the line's quantity).
    */
   focusAfterSelect?: () => void
+  /**
+   * #1003: archived/inactive products are excluded from transactional
+   * pickers. Report filters pass false so historical products stay findable.
+   */
+  activeOnly?: boolean
 }
 
 const isExactCode = (product: Product, query: string) =>
@@ -84,6 +89,7 @@ export function ProductSearchCombobox({
   wrapText = false,
   keyboardEntry = false,
   focusAfterSelect,
+  activeOnly = true,
 }: ProductSearchComboboxProps) {
   const [open, setOpen] = useState(false)
   const [catalogOpen, setCatalogOpen] = useState(false)
@@ -101,9 +107,10 @@ export function ProductSearchCombobox({
 
   // Fetch products with search — server-side, capped at 15 for the inline list.
   const { data: searchData, isLoading } = useQuery<{ items: Product[]; total: number }>({
-    queryKey: ['products-search', debouncedQuery],
+    queryKey: ['products-search', debouncedQuery, activeOnly],
     queryFn: async () => {
       const params: Record<string, string | number> = { per_page: INLINE_RESULT_LIMIT }
+      if (activeOnly) params.is_active = 'true'
       if (debouncedQuery) {
         params.search = debouncedQuery
       }
@@ -187,7 +194,9 @@ export function ProductSearchCombobox({
     setLookupError(null)
     let res
     try {
-      res = await api.get('/products', { params: { per_page: 20, search: query } })
+      res = await api.get('/products', {
+        params: { per_page: 20, search: query, ...(activeOnly ? { is_active: 'true' } : {}) },
+      })
     } catch {
       if (ticket === lookupRef.current) setLookupError(`Could not look up "${query}". Try again.`)
       return
@@ -393,6 +402,7 @@ export function ProductSearchCombobox({
         open={catalogOpen}
         onOpenChange={setCatalogOpen}
         initialSearch={searchQuery || debouncedQuery}
+        activeOnly={activeOnly}
         onSelect={(product: CatalogProduct) => {
           pick(String(product.id), product as Product)
           setSearchQuery('')

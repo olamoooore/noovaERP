@@ -22,6 +22,8 @@ import type {
   UnbilledDeliveriesData,
   SalesDrilldownData,
   SalesDrilldownTarget,
+  CreditNoteAnalysisData,
+  CreditNoteGrouping,
   MedicalCasePerformanceData,
   MedicalCaseDateField,
   PivotDimension,
@@ -506,6 +508,24 @@ class ReportApiClient {
   }
 
   /**
+   * #1020: the movement endpoint is server-paginated (50 per page, max 100);
+   * the report screen and its exports need every movement in the range, so
+   * walk all pages and concatenate them. The summary is computed server-side
+   * over the whole range and is taken from the first page.
+   */
+  async getAllStockMovements(filters: ReportFilters): Promise<StockMovementData> {
+    const perPage = 100;
+    const first = await this.getStockMovement({ ...filters, page: 1, per_page: perPage });
+    const lastPage = Number(first?.pagination?.last_page ?? first?.pagination?.total_pages ?? 1);
+    const movements = [...(first?.movements ?? [])];
+    for (let page = 2; page <= lastPage; page += 1) {
+      const next = await this.getStockMovement({ ...filters, page, per_page: perPage });
+      movements.push(...(next?.movements ?? []));
+    }
+    return { ...first, movements };
+  }
+
+  /**
    * Get Reorder Report
    */
   async getReorderReport(filters?: ReportFilters): Promise<ReorderData> {
@@ -734,6 +754,9 @@ class ReportApiClient {
     if (target.dimension === 'period') {
       params.interval = target.interval ?? 'day';
     }
+    if (target.document_type) {
+      params.document_type = target.document_type;
+    }
     try {
       const response = await api.get<ApiResponse<SalesDrilldownData>>(
         '/analytics/sales/drilldown',
@@ -742,6 +765,27 @@ class ReportApiClient {
       return response.data.data;
     } catch (error) {
       this.handleError(error, 'Failed to fetch Sales drill-down');
+      throw error;
+    }
+  }
+
+  /**
+   * Issue #532: credit note analysis — credit rate (credited ÷ invoiced) by
+   * reason, product, customer or salesperson, with the same #593 filters.
+   */
+  async getCreditNoteAnalysis(filters: ReportFilters, groupBy: CreditNoteGrouping): Promise<CreditNoteAnalysisData> {
+    const params: ReportFilters & Record<string, unknown> = { ...this.salesParams(filters), group_by: groupBy };
+    delete params.comparison;
+    delete params.compare_start_date;
+    delete params.compare_end_date;
+    try {
+      const response = await api.get<ApiResponse<CreditNoteAnalysisData>>(
+        '/analytics/sales/credit-notes',
+        { params }
+      );
+      return response.data.data;
+    } catch (error) {
+      this.handleError(error, 'Failed to fetch Credit Note Analysis');
       throw error;
     }
   }

@@ -200,4 +200,39 @@ class StockAdjustmentReasonValidationTest extends TenantTestCase
         $this->assertSame(0, JournalEntryLink::where('source_document_type', 'stock_adjustment')->count(),
             'Decision #1017: an increase with no configured gain account posts nothing.');
     }
+
+    /**
+     * #1017: the client hit this with Adjust Stock and reason "Stock Count
+     * Correction" (type both, no mapping key). Counting stock up must save the
+     * new level without a GL posting, the same as Receive Stock.
+     */
+    public function test_adjust_stock_up_with_a_both_reason_and_no_gain_mapping_saves_without_gl(): void
+    {
+        AccountMapping::where('mapping_key', 'inventory_adjustment_gain')->delete();
+
+        $costed = Product::factory()->create([
+            'name' => 'Counted Widget',
+            'sku' => 'CNT-'.uniqid(),
+            'track_inventory' => true,
+            'tracking_method' => 'none',
+            'price' => 30,
+            'cost' => 25,
+            'stock_quantity' => 0,
+        ]);
+        $this->assertSame(0.0, (float) (StockLevel::where('product_id', $costed->id)
+            ->where('warehouse_id', $this->warehouse->id)->value('quantity') ?? 0), 'Counting 0 -> 5 must be an increase.');
+
+        $this->actingAs($this->user)->postJson('/api/v1/stock/adjust', [
+            'product_id' => $costed->id,
+            'warehouse_id' => $this->warehouse->id,
+            'new_quantity' => 5,
+            'adjustment_reason_id' => $this->reasons['both']->id,
+        ])->assertOk();
+
+        $this->assertSame(5.0, round((float) StockLevel::where('product_id', $costed->id)
+            ->where('warehouse_id', $this->warehouse->id)
+            ->value('quantity'), 2));
+        $this->assertSame(0, JournalEntryLink::where('source_document_type', 'stock_adjustment')->count(),
+            'Decision #1017: an increase with no configured gain account posts nothing.');
+    }
 }

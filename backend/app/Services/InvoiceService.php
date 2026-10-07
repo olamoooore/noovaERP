@@ -258,6 +258,9 @@ class InvoiceService
 
                 $invoice->lines()->create([
                     'line_type' => $lineData['line_type'] ?? 'product',
+                    // #1006: bonus-scheme FOC hint; the pairing service below
+                    // normalises order/links for the whole invoice.
+                    'is_foc' => (bool) ($lineData['is_foc'] ?? false),
                     // Issue #138: stable link to the originating order line.
                     'sales_order_line_id' => $lineData['sales_order_line_id'] ?? null,
                     'sequence' => $lineData['sequence'] ?? $lineIndex,
@@ -309,10 +312,16 @@ class InvoiceService
                     'is_deferred' => $deferredFields['is_deferred'],
                     'service_start_date' => $deferredFields['service_start_date'],
                     'service_end_date' => $deferredFields['service_end_date'],
+                    // Issue #331: a final invoice's "Less: down payment" line.
+                    'down_payment_invoice_id' => $lineData['down_payment_invoice_id'] ?? null,
                 ]);
             }
 
             $invoice->refresh();
+
+            // #1006: paid line first, its FOC bonus line directly beneath.
+            app(InvoiceFocLinePairingService::class)->normalize($invoice);
+
             $invoice->calculateTotals();
 
             // The tenant policy / explicit caller decision is captured BEFORE
@@ -1074,8 +1083,17 @@ class InvoiceService
             description: "Invoice {$invoice->invoice_number}".($foreign ? " ({$invoice->total} {$docCurrency} @ {$fxRate})" : ''),
         );
 
+        // Issue #331: the Customer Deposit leg, in document currency and
+        // signed — positive on a down-payment invoice (credit the deposit),
+        // negative for a final invoice's "Less: down payment" lines (debit
+        // it back). It is never revenue.
+        $depositDocument = $this->customerDepositDocumentAmount($invoice);
+        if ($persist && $depositDocument < 0) {
+            $this->assertDownPaymentDeductionsAvailable($invoice);
+        }
+
         // Sales Revenue (subtotal minus discount) → profile direction: credit
-        $salesRevenue = (float) $invoice->subtotal - (float) $invoice->discount_amount;
+        $salesRevenue = (float) $invoice->subtotal - (float) $invoice->discount_amount - $depositDocument;
 
         // Shipping Revenue (if shipping cost > 0) → profile direction: credit
         $shippingBase = (float) $invoice->shipping_cost > 0 ? $toBase((float) $invoice->shipping_cost) : 0.0;
@@ -1126,16 +1144,17 @@ class InvoiceService
 
         $arBase = $toBase((float) $invoice->total);
         $revenueExactBase = $toBase($salesRevenue);
+        $depositBase = $toBase($depositDocument);
 
         if ($foreign) {
-            $residual = round($arBase - $revenueExactBase - $taxBaseTotal - $shippingBase - $roundingBase, 2);
+            $residual = round($arBase - $revenueExactBase - $taxBaseTotal - $shippingBase - $roundingBase - $depositBase, 2);
             $revenueBase = $revenueExactBase;
         } else {
             // Same-currency documents (rate 1.0) have no FX residual to
             // classify; a tampered-inconsistent header keeps the legacy
             // balance-through-revenue arithmetic.
             $residual = 0.0;
-            $revenueBase = round($arBase - $taxBaseTotal - $shippingBase - $roundingBase, 2);
+            $revenueBase = round($arBase - $taxBaseTotal - $shippingBase - $roundingBase - $depositBase, 2);
         }
 
         if ($persist && $foreign && abs($residual) > 0.02) {
@@ -1343,6 +1362,23 @@ class InvoiceService
                 'legal_entity_id' => $legalEntityId,
                 'entity_book_id' => $entityBookId,
             ])->save();
+        }
+
+        // Issue #331 (Decision 7 Oct 2026): the deposit leg posts to the
+        // `customer_deposit` role account of the document's legal entity —
+        // Cr on a down-payment invoice, Dr on a final invoice's deduction.
+        // The direction is pinned because one invoice profile carries both.
+        if (abs($depositBase) >= 0.01) {
+            $lines[] = new DomainPostingLine(
+                accountRole: 'customer_deposit',
+                amount: abs($depositBase),
+                currencyCode: $foreign ? $baseCurrency : null,
+                originalAmount: $foreign ? abs(round($depositDocument, 2)) : null,
+                exchangeRate: $foreign ? $fxRate : null,
+                description: ($depositBase > 0 ? 'Customer deposit' : 'Less: down payment')." - Invoice {$invoice->invoice_number}",
+                accountId: app(\App\Accounting\Services\AccountRoleResolver::class)->resolveId('customer_deposit', 'invoice', $legalEntityId),
+                direction: $depositBase > 0 ? 'credit' : 'debit',
+            );
         }
 
         return [
@@ -1760,6 +1796,75 @@ class InvoiceService
      * profile's `sales_revenue` default resolved from account_mappings /
      * entity_account_roles).
      */
+    /**
+     * Issue #331: the signed Customer Deposit amount of an invoice, in
+     * document currency and net of tax — a down-payment invoice's whole net
+     * (credited to the deposit), or the sum of a final invoice's "Less: down
+     * payment" lines (negative, debited back).
+     */
+    private function customerDepositDocumentAmount(Invoice $invoice): float
+    {
+        if ($invoice->is_down_payment) {
+            return round((float) $invoice->subtotal - (float) $invoice->discount_amount, 2);
+        }
+
+        return round((float) $invoice->lines
+            ->filter(fn (InvoiceLine $line) => $line->down_payment_invoice_id !== null)
+            ->sum(fn (InvoiceLine $line) => (float) $line->line_total - (float) $line->tax_amount), 2);
+    }
+
+    /**
+     * Issue #331: a final invoice may only draw down what is still on each
+     * POSTED down-payment invoice of the same customer — never more than
+     * was down-paid, and never a deposit another posted invoice already
+     * deducted. Refused before anything reaches the ledger.
+     */
+    private function assertDownPaymentDeductionsAvailable(Invoice $invoice): void
+    {
+        $requested = [];
+        foreach ($invoice->lines as $line) {
+            if ($line->down_payment_invoice_id === null) {
+                continue;
+            }
+            $dpId = (int) $line->down_payment_invoice_id;
+            $requested[$dpId] = ($requested[$dpId] ?? 0.0) - ((float) $line->line_total - (float) $line->tax_amount);
+        }
+
+        foreach ($requested as $dpId => $amount) {
+            $downPayment = Invoice::query()->whereKey($dpId)->lockForUpdate()->first();
+
+            if (! $downPayment
+                || ! $downPayment->is_down_payment
+                || (int) $downPayment->customer_id !== (int) $invoice->customer_id
+                || $downPayment->journal_entry_id === null
+                || in_array($downPayment->status, ['draft', 'cancelled'], true)) {
+                throw new \RuntimeException("Invoice {$invoice->invoice_number} deducts a down payment that is not a posted down-payment invoice of this customer.");
+            }
+
+            $alreadyDeducted = -1 * (float) InvoiceLine::query()
+                ->where('down_payment_invoice_id', $dpId)
+                ->where('invoice_id', '!=', $invoice->id)
+                ->whereHas('invoice', fn ($query) => $query
+                    ->whereNotNull('journal_entry_id')
+                    ->where('status', '!=', 'cancelled')
+                    ->whereNotIn('lifecycle_status', ['voided', 'reversed']))
+                ->get()
+                ->sum(fn (InvoiceLine $line) => (float) $line->line_total - (float) $line->tax_amount);
+
+            $available = round((float) $downPayment->subtotal - (float) $downPayment->discount_amount - $alreadyDeducted, 2);
+
+            if (round($amount, 2) > $available + 0.005) {
+                throw new \RuntimeException(sprintf(
+                    'Invoice %s deducts %s from down payment %s, but only %s remains on it.',
+                    $invoice->invoice_number,
+                    number_format($amount, 2),
+                    $downPayment->invoice_number,
+                    number_format(max($available, 0), 2),
+                ));
+            }
+        }
+    }
+
     private function resolveLineIncomeAccountId(InvoiceLine $line): ?int
     {
         if ($line->gl_account_id) {
@@ -1811,6 +1916,12 @@ class InvoiceService
 
         foreach ($invoice->lines as $line) {
             if (in_array($line->line_type ?? 'product', ['note', 'section'], true)) {
+                continue;
+            }
+
+            // Issue #331: a down payment (and its deduction) is the Customer
+            // Deposit leg, never revenue.
+            if ($invoice->is_down_payment || $line->down_payment_invoice_id !== null) {
                 continue;
             }
 
@@ -2379,7 +2490,35 @@ class InvoiceService
         return $this->adjustCreditNoteOnInvoice($invoice, -$creditAmount);
     }
 
-    private function adjustCreditNoteOnInvoice(Invoice $invoice, float $delta): Invoice
+    /**
+     * Issue #495: move a posted credit note's remaining customer credit from
+     * the invoice it was parked on (its own invoice, #510) to another open
+     * invoice of the same customer — or back, when the application is
+     * reversed. Both sides go through the same credited_amount path, so each
+     * balance stays max(0, total − paid − credited − written off) and the
+     * customer credit balance is re-derived. A pure subledger reallocation
+     * between two receivables of one customer: the GL is unchanged.
+     */
+    public function transferCustomerCredit(Invoice $from, Invoice $to, float $amount, string $reason): void
+    {
+        $this->adjustCreditNoteOnInvoice($from, -$amount, $reason);
+        $this->adjustCreditNoteOnInvoice($to, $amount, $reason);
+    }
+
+    /**
+     * Issue #528: a credit note's remaining customer credit, parked on its
+     * own invoice as credited_amount beyond the open balance (#510), is paid
+     * out to the customer. Releasing it from credited_amount takes it out of
+     * the customer credit balance; the invoice balance is unchanged because
+     * only credit the invoice could not absorb is refundable. A negative
+     * amount puts the credit back (the refund was voided).
+     */
+    public function releaseRefundedCustomerCredit(Invoice $origin, float $amount, string $reason): void
+    {
+        $this->adjustCreditNoteOnInvoice($origin, -$amount, $reason);
+    }
+
+    private function adjustCreditNoteOnInvoice(Invoice $invoice, float $delta, ?string $reason = null): Invoice
     {
         $invoice->refresh();
 
@@ -2402,7 +2541,7 @@ class InvoiceService
         ]);
 
         $this->syncInvoiceWorkflowStatus($invoice, $status, [
-            'reason' => $delta >= 0 ? 'Credit note applied' : 'Credit note reversed',
+            'reason' => $reason ?? ($delta >= 0 ? 'Credit note applied' : 'Credit note reversed'),
             'credited_delta' => $delta,
         ]);
 
@@ -2572,7 +2711,13 @@ class InvoiceService
 
         // #478: a cash discount is part of what settles the invoice — the
         // customer pays `amount` and the discount clears the rest.
-        $settled = round((float) $payment->amount + (float) ($payment->discount_amount ?? 0), 2);
+        // #494: so does a payment-difference write-off ("mark as fully paid").
+        $settled = round(
+            (float) $payment->amount
+            + (float) ($payment->discount_amount ?? 0)
+            + (float) ($payment->write_off_amount ?? 0),
+            2
+        );
 
         $this->syncInvoicePaymentState($invoice, $settled, $payment);
     }
@@ -2695,9 +2840,13 @@ class InvoiceService
         // Issue #879 (SA6): a written-off amount settles the invoice exactly
         // like cash does; excluding it here would resurrect a written-off
         // balance the next time a payment is applied.
+        // Issue #495: so does credit (#510 credited_amount) — an invoice
+        // credited from a credit note's outstanding credit and then paid must
+        // keep balance = total − paid − credited, not jump back by the credit.
         $newBalance = max(0.0, round(
             (float) $invoice->total
             - (float) $invoice->paid_amount
+            - (float) $invoice->credited_amount
             - (float) $invoice->written_off_amount,
             2
         ));

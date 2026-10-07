@@ -173,6 +173,27 @@ export function normalizeQuantity(value: number | string | null | undefined): nu
   return Math.abs(rounded - nearestInteger) < 0.001 ? nearestInteger : rounded
 }
 
+/**
+ * #1024 (requester decision 2026-10-07): a document line quantity is a whole
+ * number — 1, 2, 3 — never 1.0001. Pasted/loaded decimals round to the nearest
+ * whole unit; negatives clamp to 0.
+ */
+export function toWholeQuantity(value: number | string | null | undefined): number | '' {
+  if (value === '' || value == null) {
+    return ''
+  }
+
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) {
+    return ''
+  }
+
+  return Math.max(0, Math.round(parsed))
+}
+
+/** Keys a whole-number quantity input never accepts (decimal point, exponent, sign). */
+export const NON_WHOLE_QUANTITY_KEYS = new Set(['.', ',', 'e', 'E', '+', '-'])
+
 export function getApiErrorMessage(error: any, fallback: string = 'An error occurred'): string {
   const data = error?.response?.data
 

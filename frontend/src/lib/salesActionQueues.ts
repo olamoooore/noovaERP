@@ -26,10 +26,24 @@ export interface SalesActionQueue {
   items: SalesActionQueueItem[]
 }
 
+/**
+ * Issue #410: the caller's own scheduled activities that are due (overdue or
+ * today) on documents they may open. Always the caller's own work, so "Only my
+ * documents" does not apply; the link opens My activities.
+ */
+export interface SalesActivitiesDue {
+  label: string
+  count: number
+  overdue: number
+  link: string
+  items: SalesActionQueueItem[]
+}
+
 export interface SalesActionQueuesResponse {
   mine: boolean
   expiring_window_days: number
   queues: SalesActionQueue[]
+  activities?: SalesActivitiesDue
 }
 
 export async function fetchSalesActionQueues(mine: boolean): Promise<SalesActionQueuesResponse> {

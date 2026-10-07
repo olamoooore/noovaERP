@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
+import { toLocalIsoDate } from '@/lib/dateOnly'
 import { formatCurrency, formatDate, getApiErrorMessage } from '@/lib/utils'
 
 interface CustomerTransaction {
@@ -35,19 +36,11 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ]
 
-/** Local calendar date (YYYY-MM-DD) — never via toISOString (timezone shift). */
-function toIsoDate(date: Date): string {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
 /** First and last day of the selected month — the month picker is a preset. */
 function monthWindow(year: number, monthIndex: number) {
   return {
-    start: toIsoDate(new Date(year, monthIndex, 1)),
-    end: toIsoDate(new Date(year, monthIndex + 1, 0)),
+    start: toLocalIsoDate(new Date(year, monthIndex, 1)),
+    end: toLocalIsoDate(new Date(year, monthIndex + 1, 0)),
   }
 }
 
@@ -107,7 +100,7 @@ export const CustomerStatements = () => {
     enabled: Boolean(customerId),
   })
 
-  const transactions = transactionsQuery.data || []
+  const transactions = useMemo(() => transactionsQuery.data || [], [transactionsQuery.data])
   const totals = useMemo(() => transactions.reduce(
     (result, transaction) => ({
       debit: result.debit + Number(transaction.debit || 0),
@@ -144,6 +137,28 @@ export const CustomerStatements = () => {
     onSuccess: () => toast({ title: 'Statement emailed to the customer' }),
     onError: (error) => toast({
       title: 'Failed to email statement',
+      description: getApiErrorMessage(error, 'The customer statement could not be sent.'),
+      variant: 'destructive',
+    }),
+  })
+
+  // #1018: WhatsApp goes through the shared statement send endpoint (the same
+  // one the Sales statements panel uses), for the selected From/To range.
+  // include_paid matches the PDF that Print/Preview render for this screen.
+  const whatsAppStatement = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/accounting/customer-statements/send', {
+        customer_id: Number(customerId),
+        start_date: range.start,
+        end_date: range.end,
+        include_paid: true,
+        channel: 'whatsapp',
+      })
+      return response.data
+    },
+    onSuccess: () => toast({ title: 'Statement sent via WhatsApp' }),
+    onError: (error) => toast({
+      title: 'Failed to send statement',
       description: getApiErrorMessage(error, 'The customer statement could not be sent.'),
       variant: 'destructive',
     }),
@@ -225,6 +240,7 @@ export const CustomerStatements = () => {
                 }
                 emailStatement.mutate()
               }}
+              onWhatsApp={() => whatsAppStatement.mutate()}
             />
           )}
           {rangeInvalid && (

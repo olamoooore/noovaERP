@@ -315,6 +315,7 @@ function ProductUsagePivot({
                 value={usageFilters[key]}
                 onValueChange={(value) => setUsageFilters((current) => ({ ...current, [key]: value }))}
                 placeholder={all}
+                activeOnly={false}
               />
             </div>
           ) : (

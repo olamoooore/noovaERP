@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { DocumentTextLineRow } from './DocumentTextLineRow'
 
 afterEach(cleanup)
@@ -41,5 +41,39 @@ describe('DocumentTextLineRow (#1005)', () => {
 
     fireEvent.change(field, { target: { value: 'Equipment' } })
     expect(onChange).toHaveBeenCalledWith('Equipment')
+  })
+
+  /**
+   * The invoice page passes onHtmlChange, so the row renders the TipTap
+   * RichTextEditor rather than the <input> fallback. Prove that path is
+   * editable: the ProseMirror surface is contenteditable and text typed into
+   * it (a DOM text mutation, which ProseMirror reads back as input) reaches
+   * onHtmlChange.
+   */
+  it('renders an editable rich-text section field when onHtmlChange is passed', async () => {
+    const onChange = vi.fn()
+    const onHtmlChange = vi.fn()
+
+    const { container } = render(
+      <table><tbody><tr>
+        <DocumentTextLineRow type="section" text="" html="" colSpan={1} total="$0.00" onChange={onChange} onHtmlChange={onHtmlChange} onDelete={() => {}} onDragStart={() => {}} onDrop={() => {}} />
+      </tr></tbody></table>,
+    )
+
+    const surface = await waitFor(() => {
+      const node = container.querySelector('[contenteditable="true"]')
+      expect(node).not.toBeNull()
+      return node as HTMLElement
+    })
+    expect(container.querySelector('input[placeholder="Section title"]')).toBeNull()
+
+    const paragraph = surface.querySelector('p') ?? surface
+    paragraph.textContent = 'Equipment'
+    fireEvent.input(surface)
+
+    await waitFor(() => {
+      expect(onHtmlChange).toHaveBeenCalled()
+    })
+    expect(onHtmlChange.mock.calls.at(-1)?.[0]).toContain('Equipment')
   })
 })

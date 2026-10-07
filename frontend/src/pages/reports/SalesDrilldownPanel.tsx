@@ -46,6 +46,7 @@ export function SalesDrilldownPanel({
         dimension: request.dimension,
         key: request.key,
         ...(request.dimension === 'period' ? { interval: request.interval ?? 'day' } : {}),
+        ...(request.document_type ? { document_type: request.document_type } : {}),
       }
     : null;
 

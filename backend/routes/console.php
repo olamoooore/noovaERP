@@ -96,6 +96,14 @@ Schedule::command('sales:send-followup-reminders')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Issue #410 - due-activity reminders. The command iterates every tenant
+// (IteratesTenants) and notifies each assignee once when a scheduled activity
+// on a sales document falls due, if they may still open that document.
+Schedule::command('sales:send-activity-reminders')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Issue #606 - weekly per-salesperson sales digest. The command iterates every
 // tenant (IteratesTenants) and sends only to users who opted in.
 Schedule::command('sales:send-weekly-digest')

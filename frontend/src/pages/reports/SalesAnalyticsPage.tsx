@@ -47,6 +47,7 @@ import {
 import { SalesPivotView } from './SalesPivotView';
 import { DEFAULT_PIVOT_GROUPING } from './salesPivotRows';
 import { UnbilledDeliveriesView } from './UnbilledDeliveriesView';
+import { CreditNoteAnalysisView } from './CreditNoteAnalysisView';
 import { ProductUsageView } from './ProductUsageView';
 import { SavedViewBar, type SavedViewApplied } from './SavedViewBar';
 import { SalesDrilldownPanel, type SalesDrilldownRequest } from './SalesDrilldownPanel';
@@ -77,6 +78,7 @@ const DEEP_LINK_TABS = [
   'pivot',
   'unbilled',
   'product-usage',
+  'credit-notes',
 ];
 
 /** Issue #599: /products/report keeps working — it opens the Product tab. */
@@ -468,6 +470,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     queryClient.invalidateQueries({ queryKey: ['sales-by-category'] });
     queryClient.invalidateQueries({ queryKey: ['sales-pivot'] });
     queryClient.invalidateQueries({ queryKey: ['sales-unbilled-deliveries'] });
+    queryClient.invalidateQueries({ queryKey: ['sales-credit-notes'] });
   };
 
   const activeFetching = activeTab === 'by-product'
@@ -1095,6 +1098,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
                 updateFilter('product_id', value ? Number(value) : undefined);
                 setPickedFilterLabels((prev) => ({ ...prev, product_id: product?.name || undefined }));
               }}
+              activeOnly={false}
             />
           </div>
 
@@ -1320,6 +1324,10 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
           <TabsTrigger value="product-usage" className="gap-2 rounded-full px-4">
             <Icon icon="solar:medical-kit-bold" className="h-4 w-4" />
             Product Usage
+          </TabsTrigger>
+          <TabsTrigger value="credit-notes" className="gap-2 rounded-full px-4">
+            <Icon icon="solar:undo-left-round-bold" className="h-4 w-4" />
+            Credit Notes
           </TabsTrigger>
         </TabsList>
 
@@ -1794,6 +1802,16 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
             filters={pivotFilters}
             periodLabel={periodLabel}
             exportRange={exportRange}
+          />
+        </TabsContent>
+
+        {/* ------------------------- Credit Notes (#532) ------------------------- */}
+        <TabsContent value="credit-notes" className="space-y-6">
+          <CreditNoteAnalysisView
+            filters={pivotFilters}
+            periodLabel={periodLabel}
+            exportRange={exportRange}
+            onDrilldown={setDrilldown}
           />
         </TabsContent>
 

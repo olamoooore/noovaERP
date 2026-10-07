@@ -117,6 +117,8 @@ class CustomerCreditNotesController extends Controller
             'journalEntry.lines.account',
             'createdBy',
             'postedBy',
+            // #528: refunds of the note's credit (voided rows kept for audit).
+            'refunds.payment',
         ]);
 
         // #525 (CN-UX4): what happened to the credit + e-invoice status.
@@ -328,6 +330,168 @@ class CustomerCreditNotesController extends Controller
      * Void a posted credit note (reverses its GL entry, restores the invoice
      * balance, and unblocks invoice cancel/reset-to-draft — issue #228).
      */
+    /**
+     * Issue #495 ("Outstanding credits"): apply the note's remaining credit to
+     * other open invoices of the same customer (full or partial) through
+     * PaymentAllocationService.
+     */
+    public function applyCredit(Request $request, $creditNote)
+    {
+        $creditNote = CustomerCreditNote::findOrFail($creditNote);
+
+        $validated = $request->validate([
+            'applications' => 'required|array|min:1',
+            'applications.*.invoice_id' => 'required|integer|exists:invoices,id',
+            'applications.*.amount' => 'required|numeric|min:0.01',
+        ]);
+
+        try {
+            $applied = app(\App\Services\PaymentAllocationService::class)
+                ->allocateCreditNote($creditNote, $validated['applications']);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'error' => 'INVALID_ALLOCATION',
+            ], 422);
+        }
+
+        $this->writeAuditLog(
+            'customer_credit_note_applied',
+            (int) $applied->id,
+            null,
+            ['applications' => $validated['applications']],
+            ['credit_note_number' => $applied->credit_note_number],
+        );
+
+        $applied->load('invoice');
+        $this->outcomes->annotate([$applied]);
+
+        return response()->json([
+            'message' => 'Credit applied successfully',
+            'data' => $applied->applications->whereNull('reversed_at')->values(),
+            'outcome' => $applied->outcome,
+        ]);
+    }
+
+    /**
+     * Issue #528: refund the note's remaining credit to the customer — an
+     * outbound payment posted through the PostingEngine (Dr AR / Cr Bank).
+     */
+    public function refund(Request $request, $creditNote)
+    {
+        $creditNote = CustomerCreditNote::findOrFail($creditNote);
+
+        $validated = $request->validate([
+            'amount' => 'required|numeric|min:0.01',
+            'bank_account_id' => 'nullable|integer|exists:bank_accounts,id',
+            'method' => 'nullable|string|max:50',
+            'refund_date' => 'nullable|date',
+            'reference' => 'nullable|string|max:255',
+            'notes' => 'nullable|string|max:1000',
+            'currency_code' => 'nullable|string|size:3',
+        ]);
+
+        try {
+            $refund = app(\App\Services\CustomerCreditNoteRefundService::class)->refund($creditNote, $validated);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'error' => 'INVALID_REFUND',
+            ], 422);
+        } catch (\App\Accounting\Exceptions\TaxPeriodLockedException $e) {
+            return response()->json([
+                'message' => 'The period of this refund is closed. Date the refund in an open period.',
+                'code' => $e::REASON_CODE,
+                'error' => $e->getMessage(),
+            ], 422);
+        }
+
+        $this->writeAuditLog(
+            'customer_credit_note_refunded',
+            (int) $creditNote->id,
+            null,
+            [
+                'refund_id' => $refund->id,
+                'payment_id' => $refund->payment_id,
+                'amount' => (float) $refund->amount,
+                'journal_entry_id' => $refund->journal_entry_id,
+            ],
+            ['credit_note_number' => $creditNote->credit_note_number],
+        );
+
+        $this->logChatter(
+            $creditNote,
+            'refunded',
+            "Refunded {$refund->amount} {$refund->currency_code} of credit note {$creditNote->credit_note_number} to the customer",
+            [
+                'refund_id' => $refund->id,
+                'payment_id' => $refund->payment_id,
+                'journal_entry_id' => $refund->journal_entry_id,
+            ],
+        );
+
+        $creditNote->load('invoice');
+        $this->outcomes->annotate([$creditNote]);
+
+        return response()->json([
+            'message' => 'Credit refunded successfully',
+            'data' => $refund,
+            'outcome' => $creditNote->outcome,
+        ], 201);
+    }
+
+    /**
+     * Issue #528: void a refund — reverses its journal and restores the credit.
+     */
+    public function voidRefund(Request $request, $creditNote, $refundId)
+    {
+        $creditNote = CustomerCreditNote::findOrFail($creditNote);
+
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:500',
+        ]);
+        $reason = isset($validated['reason']) ? trim((string) $validated['reason']) : null;
+        $reason = $reason === '' ? null : $reason;
+
+        try {
+            $refund = app(\App\Services\CustomerCreditNoteRefundService::class)
+                ->voidRefund($creditNote, (int) $refundId, $reason);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'error' => 'INVALID_REFUND_VOID',
+            ], 422);
+        }
+
+        $this->writeAuditLog(
+            'customer_credit_note_refund_voided',
+            (int) $creditNote->id,
+            ['refund_id' => $refund->id, 'journal_entry_id' => $refund->journal_entry_id],
+            ['voided_at' => (string) $refund->voided_at, 'reversal_journal_entry_id' => $refund->reversal_journal_entry_id],
+            ['credit_note_number' => $creditNote->credit_note_number, 'reason' => $reason],
+        );
+
+        $this->logChatter(
+            $creditNote,
+            'refund_voided',
+            "Voided refund of {$refund->amount} {$refund->currency_code} on credit note {$creditNote->credit_note_number}",
+            [
+                'refund_id' => $refund->id,
+                'reversal_journal_entry_id' => $refund->reversal_journal_entry_id,
+                'reason' => $reason,
+            ],
+        );
+
+        $creditNote->load('invoice');
+        $this->outcomes->annotate([$creditNote]);
+
+        return response()->json([
+            'message' => 'Refund voided successfully',
+            'data' => $refund,
+            'outcome' => $creditNote->outcome,
+        ]);
+    }
+
     public function void(Request $request, $creditNote)
     {
         // #520: the detail page asks the user why the note is being voided;
@@ -379,6 +543,12 @@ class CustomerCreditNotesController extends Controller
                 'credit_note' => $voided,
             ]);
 
+        } catch (\InvalidArgumentException $e) {
+            // #528: e.g. the note's credit has been refunded to the customer.
+            return response()->json([
+                'message' => $e->getMessage(),
+                'error' => 'CREDIT_NOTE_REFUNDED',
+            ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to void credit note',
@@ -398,6 +568,77 @@ class CustomerCreditNotesController extends Controller
             ->get();
 
         return response()->json(['data' => $creditNotes]);
+    }
+
+    /**
+     * #527 (SALES-ODOO): credit note reversal wizard — "full refund" posts a
+     * credit note for everything not yet credited on the invoice and
+     * reconciles it; "full refund and new draft invoice" also re-issues the
+     * invoice as a new draft linked to the credit note. The partial mode is
+     * the #522 dialog (store()). Posts to the GL, so the route requires
+     * accounting.post like post().
+     */
+    public function reversal(Request $request, $invoiceId)
+    {
+        $invoice = \App\Models\Invoice::findOrFail($invoiceId);
+
+        $validated = $request->validate([
+            'mode' => 'required|in:'.CustomerCreditNoteService::REVERSAL_FULL_REFUND.','.CustomerCreditNoteService::REVERSAL_FULL_REFUND_NEW_DRAFT,
+            'credit_note_date' => 'nullable|date',
+            'reason' => 'nullable|string',
+            'notes' => 'nullable|string',
+        ]);
+
+        try {
+            $result = $this->creditNoteService->reverseInvoice($invoice, $validated['mode'], $validated);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'message' => 'Failed to credit the invoice',
+                'error' => $e->getMessage(),
+            ], 422);
+        }
+
+        $posted = $result['credit_note'];
+        $reissued = $result['invoice'];
+
+        $this->writeAuditLog(
+            'customer_credit_note_posted',
+            (int) $posted->id,
+            ['status' => 'draft', 'journal_entry_id' => null],
+            [
+                'status' => $posted->status,
+                'journal_entry_id' => $posted->journal_entry_id,
+                'amount' => (float) $posted->total_amount,
+            ],
+            [
+                'credit_note_number' => $posted->credit_note_number,
+                'invoice_id' => $posted->invoice_id,
+                'reversal_mode' => $validated['mode'],
+                'reissued_invoice_id' => $reissued?->id,
+            ],
+        );
+
+        $this->logChatter(
+            $posted,
+            'status_changed',
+            "Posted credit note {$posted->credit_note_number} to GL (full refund"
+                .($reissued ? ", re-issued as draft invoice {$reissued->invoice_number}" : '').')',
+            [
+                'from_state' => 'draft',
+                'to_state' => 'posted',
+                'total' => (float) $posted->total_amount,
+                'journal_entry_id' => $posted->journal_entry_id,
+                'reissued_invoice_id' => $reissued?->id,
+            ],
+        );
+
+        return response()->json([
+            'message' => $reissued
+                ? 'Invoice fully credited and re-issued as a new draft'
+                : 'Invoice fully credited',
+            'credit_note' => $posted,
+            'invoice' => $reissued,
+        ], 201);
     }
 
     /**

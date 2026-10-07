@@ -19,6 +19,8 @@ use App\Services\InvoiceDeliveryService;
 use App\Services\InvoiceEvidenceService;
 use App\Services\InvoiceSendBundleService;
 use App\Services\InvoiceService;
+use App\Services\PaymentPostingService;
+use App\Services\PaymentWriteOffService;
 use App\Services\SalesApprovalGate;
 use App\Services\SalesDefaultsService;
 use App\Services\SalesOrderAcceptanceService;
@@ -179,8 +181,8 @@ class SettingsRegistry implements SettingsRegistryContract
             'invoice.approval_expiry_days' => ['key' => SalesSettings::APPROVAL_EXPIRY_DAYS, 'type' => 'int', 'via' => [SalesSettings::class.'::approvalExpiryDays'], 'readers' => [InvoiceApprovalService::class.'::submit', SalesApprovalGate::class.'::expiryDays']],
             'invoice.auto_send_to_customer_on_post' => ['key' => SalesSettings::AUTO_SEND_ON_POST, 'type' => 'bool', 'via' => [SalesSettings::class.'::autoSendToCustomerOnPost'], 'readers' => [InvoiceController::class.'::post']],
             'invoice.allow_partial_payments' => ['key' => SalesSettings::ALLOW_PARTIAL_PAYMENTS, 'type' => 'bool', 'via' => [SalesSettings::class.'::allowPartialPayments'], 'readers' => [PaymentController::class.'::store', CustomerReceiptService::class.'::receive']],
-            'invoice.default_payment_terms_days' => ['key' => SalesSettings::DEFAULT_PAYMENT_TERMS_DAYS, 'type' => 'int', 'via' => [SalesSettings::class.'::defaultPaymentTermsDays'], 'readers' => [InvoiceService::class.'::createInvoiceInternal', SalesOrderService::class.'::createInvoice', Customer::class.'::boot']],
-            'invoice.default_notes' => ['key' => SalesSettings::DEFAULT_NOTES, 'type' => 'text', 'via' => [SalesSettings::class.'::defaultNotes'], 'readers' => [InvoiceService::class.'::createInvoiceInternal', SalesOrderService::class.'::createInvoice']],
+            'invoice.default_payment_terms_days' => ['key' => SalesSettings::DEFAULT_PAYMENT_TERMS_DAYS, 'type' => 'int', 'via' => [SalesSettings::class.'::defaultPaymentTermsDays'], 'readers' => [InvoiceService::class.'::createInvoiceInternal', SalesOrderService::class.'::orderInvoiceHeader', Customer::class.'::boot']],
+            'invoice.default_notes' => ['key' => SalesSettings::DEFAULT_NOTES, 'type' => 'text', 'via' => [SalesSettings::class.'::defaultNotes'], 'readers' => [InvoiceService::class.'::createInvoiceInternal', SalesOrderService::class.'::orderInvoiceHeader']],
             // Issue #326: warn or block when an invoice fails the credit check.
             'invoice.credit_limit_policy' => ['key' => SalesSettings::CREDIT_LIMIT_POLICY, 'type' => 'enum', 'default' => SalesSettings::CREDIT_LIMIT_POLICY_BLOCK, 'via' => [SalesSettings::class.'::invoiceCreditLimitPolicy'], 'readers' => [CreditCheckService::class.'::invoiceVerdict']],
             'invoice.default_terms' => ['key' => SalesSettings::DEFAULT_TERMS, 'type' => 'text', 'via' => [SalesSettings::class.'::defaultTerms'], 'readers' => [InvoiceService::class.'::createInvoiceInternal']],
@@ -192,7 +194,8 @@ class SettingsRegistry implements SettingsRegistryContract
 
             // MRD R10.3: the three tax fields are merged into the ONE
             // canonical `tax` block the tax engine reads.
-            'tax.default_tax_rate' => ['key' => 'tax', 'path' => 'default_tax_id', 'type' => 'decimal', 'default' => null, 'readers' => [TaxEngineService::class.'::resolveRaw'], 'note' => 'Saved as the matching active tax rule (default_tax_id), never as a rate.'],
+            'tax.default_tax_rate' => ['key' => 'tax', 'path' => 'default_tax_id', 'type' => 'decimal', 'default' => null, 'readers' => [TaxEngineService::class.'::resolveRaw'], 'note' => 'Legacy input: saved as the matching active sales tax rule (default_tax_id), never as a rate; a rate no active rule has is rejected (422, #543).'],
+            'tax.default_tax_id' => ['key' => 'tax', 'path' => 'default_tax_id', 'type' => 'int', 'default' => null, 'readers' => [TaxEngineService::class.'::resolveRaw'], 'note' => 'Picked from the active sales tax rules (#543); an unknown, inactive or purchase-only rule is rejected (422).'],
             'tax.prices_include_tax' => ['key' => 'tax', 'path' => 'pricing_mode', 'type' => 'bool', 'default' => false, 'readers' => [SettingsController::class.'::show'], 'note' => 'Only consumed by the product create screen (initial "tax included" value) through GET /settings; the tax engine does not read it.'],
             'tax.default_tax_treatment' => ['key' => 'tax', 'path' => 'default_tax_treatment', 'type' => 'enum', 'default' => null, 'readers' => [TaxEngineService::class.'::defaultTreatment']],
 
@@ -222,6 +225,9 @@ class SettingsRegistry implements SettingsRegistryContract
             // Issue #328: customer follow-up reminders.
             'followup.auto_send_enabled' => ['key' => SalesSettings::FOLLOWUP_AUTO_SEND, 'type' => 'bool', 'via' => [SalesSettings::class.'::followupAutoSendEnabled'], 'readers' => [CustomerFollowupService::class.'::runAutomatic']],
             'followup.levels' => ['key' => SalesSettings::FOLLOWUP_LEVELS, 'type' => 'list', 'default' => SalesSettings::DEFAULT_FOLLOWUP_LEVELS, 'via' => [SalesSettings::class.'::followupLevels'], 'readers' => [CustomerFollowupService::class.'::runAutomatic', CustomerFollowupService::class.'::sendForCustomer', CustomerFollowupService::class.'::sendForInvoice'], 'note' => 'Each level: days overdue, action (send = reminder on the customer\'s preferred channel, manual = log a manual follow-up), Communication template key.'],
+            // Issue #494: payment difference handling (keep open vs write off).
+            'payment.write_off_tolerance' => ['key' => SalesSettings::PAYMENT_WRITE_OFF_TOLERANCE, 'type' => 'decimal', 'via' => [SalesSettings::class.'::paymentWriteOffTolerance', PaymentWriteOffService::class.'::assertWithinTolerance', PaymentWriteOffService::class.'::resolveForPayment', PaymentWriteOffService::class.'::assertPostable'], 'readers' => [PaymentController::class.'::store', PaymentPostingService::class.'::post'], 'note' => 'Largest short-payment difference (document currency) a payment may write off when marked fully paid; 0 disables write-offs on payment.'],
+            'payment.write_off_reasons' => ['key' => SalesSettings::PAYMENT_WRITE_OFF_REASONS, 'type' => 'list', 'default' => [], 'via' => [SalesSettings::class.'::paymentWriteOffReasons', SalesSettings::class.'::paymentWriteOffReason', PaymentWriteOffService::class.'::resolveForPayment'], 'readers' => [PaymentController::class.'::store'], 'note' => 'Each reason: code, label and the active expense account the written-off difference posts to.'],
         ];
 
         // Issue #645: one reviewer pool per request type, all resolved by

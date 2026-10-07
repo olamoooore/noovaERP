@@ -63,6 +63,9 @@ class MalaysiaCountrySeeder extends Seeder
         'accounts_receivable' => '124000',
         'accounts_payable' => '221100',
         'sales_tax_payable' => '221300',
+        // Issue #331 (Decision 7 Oct 2026): down payments sit in Receipt in
+        // Advance (Customer Prepayments) until the final invoice deducts them.
+        'customer_deposit' => '221200',
         'sales_revenue' => '410000',
         'cogs' => '510100',
         'general_expense' => '520000',

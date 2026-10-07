@@ -37,6 +37,8 @@ interface CreateCreditNoteDialogProps {
   onClose: () => void;
   onSuccess: () => void;
   invoiceId?: number;
+  /** #527: called with the new draft invoice after "Full refund and new draft invoice". */
+  onReissued?: (invoiceId: number) => void;
 }
 
 interface Invoice {
@@ -84,6 +86,30 @@ interface CreditRow {
 }
 
 type CreditMode = 'full' | 'partial';
+
+// #527 (SALES-ODOO): the reversal wizard's three modes. 'partial' is the
+// #522 draft credit note to edit; the two full modes credit everything not
+// yet credited and POST it (reconciled with the invoice), the last one also
+// re-issues the invoice as a new draft linked to the credit note.
+type RefundMethod = 'partial' | 'full_refund' | 'full_refund_new_draft';
+
+const REFUND_METHODS: Array<{ value: RefundMethod; label: string; help: string }> = [
+  {
+    value: 'partial',
+    label: 'Partial refund',
+    help: 'Creates a draft credit note you can edit before posting.',
+  },
+  {
+    value: 'full_refund',
+    label: 'Full refund',
+    help: 'Credits everything not yet credited and posts it; it is reconciled with the invoice.',
+  },
+  {
+    value: 'full_refund_new_draft',
+    label: 'Full refund and new draft invoice',
+    help: 'As full refund, then copies the invoice into a new draft to correct and re-issue.',
+  },
+];
 
 interface PriorCreditNote {
   status: string;
@@ -137,7 +163,7 @@ function lineDiscount(row: CreditRow): number {
 
 const exceedsRemaining = (row: CreditRow) => row.quantity > row.remaining_quantity + QTY_EPSILON;
 
-export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }: CreateCreditNoteDialogProps) {
+export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId, onReissued }: CreateCreditNoteDialogProps) {
   const { toast } = useToast();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
@@ -154,6 +180,11 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
   // #522: partial is the default — lines start at 0 so nothing is credited
   // unless the user asks for it.
   const [mode, setMode] = useState<CreditMode>('partial');
+  const [refundMethod, setRefundMethod] = useState<RefundMethod>('partial');
+  const [isReversing, setIsReversing] = useState(false);
+  const isFullRefund = refundMethod !== 'partial';
+  // The full refund modes always show the full remaining quantity per line.
+  const lineMode: CreditMode = isFullRefund ? 'full' : mode;
   const [credited, setCredited] = useState<Record<number, number> | null>(null);
   const [creditsError, setCreditsError] = useState<string | null>(null);
   const [rows, setRows] = useState<CreditRow[]>([]);
@@ -200,8 +231,8 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
       setRows([]);
       return;
     }
-    setRows(buildRows(selectedInvoice, credited, mode));
-  }, [selectedInvoice, credited, mode]);
+    setRows(buildRows(selectedInvoice, credited, lineMode));
+  }, [selectedInvoice, credited, lineMode]);
 
   // Fetch data
   useEffect(() => {
@@ -278,6 +309,39 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
 
     if (credited === null) {
       toast({ variant: 'destructive', title: 'Still loading', description: 'Earlier credit notes for this invoice are still loading.' });
+      return;
+    }
+
+    // #527: the full refund modes are built and posted server-side from the
+    // invoice (remaining quantities), in one step with the new draft.
+    if (isFullRefund) {
+      if (!rows.some(row => row.quantity > 0)) {
+        toast({ variant: 'destructive', title: 'Nothing to credit', description: 'Every line of this invoice has already been credited in full.' });
+        return;
+      }
+      setIsReversing(true);
+      try {
+        const res = await api.post(`/accounting/customers/invoices/${formData.invoice_id}/credit-note-reversal`, {
+          mode: refundMethod,
+          credit_note_date: formData.credit_note_date,
+          reason: formData.reason || null,
+          notes: formData.notes || null,
+        });
+        const reissuedId = Number(res.data?.invoice?.id) || null;
+        toast({
+          title: 'Credit note posted',
+          description: reissuedId
+            ? `The invoice is fully credited and was re-issued as draft ${res.data?.invoice?.invoice_number ?? ''}.`.trim()
+            : 'The invoice is fully credited.',
+        });
+        onSuccess();
+        if (reissuedId && onReissued) onReissued(reissuedId);
+      } catch (error: any) {
+        const msg = error.response?.data?.error || error.response?.data?.message || error.message || 'Failed to credit the invoice';
+        toast({ variant: 'destructive', title: 'Failed to credit the invoice', description: msg });
+      } finally {
+        setIsReversing(false);
+      }
       return;
     }
 
@@ -501,10 +565,33 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
           </div>
 
           {selectedInvoice && (
+            <fieldset className="space-y-2">
+              <legend className="mb-1 text-sm font-medium">Refund method</legend>
+              {REFUND_METHODS.map((option) => (
+                <label key={option.value} className="flex cursor-pointer items-start gap-2 rounded-lg border p-2 text-sm">
+                  <input
+                    type="radio"
+                    name="refund-method"
+                    value={option.value}
+                    checked={refundMethod === option.value}
+                    onChange={() => setRefundMethod(option.value)}
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="block font-medium">{option.label}</span>
+                    <span className="block text-xs text-muted-foreground">{option.help}</span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+          )}
+
+          {selectedInvoice && (
             <div className="mb-6">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-lg font-semibold">Line Items</h3>
-                {/* #522 (CN-UX1): full vs partial credit. */}
+                {/* #522 (CN-UX1): full vs partial credit (draft credit note only). */}
+                {!isFullRefund && (
                 <div role="group" aria-label="Credit type" className="inline-flex rounded-lg border p-0.5">
                   {(['full', 'partial'] as const).map((m) => (
                     <Button
@@ -519,9 +606,10 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
                     </Button>
                   ))}
                 </div>
+                )}
               </div>
               <p className="mb-2 text-xs text-muted-foreground">
-                {mode === 'full'
+                {lineMode === 'full'
                   ? 'Credits everything not yet credited on each line.'
                   : 'Enter the quantity to credit on each line; lines left at 0 are not included.'}
               </p>
@@ -557,7 +645,7 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
                           <td className="px-3 py-2 text-right text-sm" aria-label="Invoiced">{fmtQty(line.invoiced_quantity)}</td>
                           <td className="px-3 py-2 text-right text-sm" aria-label="Already credited">{fmtQty(line.credited_quantity)}</td>
                           <td className="px-3 py-2">
-                            {mode === 'full' ? (
+                            {lineMode === 'full' ? (
                               <span className="text-sm">{fullyCredited ? 'Fully credited' : fmtQty(line.quantity)}</span>
                             ) : (
                               <>
@@ -583,7 +671,7 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
                             )}
                           </td>
                           <td className="px-3 py-2">
-                            {mode === 'full' ? (
+                            {lineMode === 'full' ? (
                               <span className="text-sm">{formatCurrency(line.unit_price, selectedInvoice.currency_code || undefined)}</span>
                             ) : (
                               <input
@@ -624,8 +712,14 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={createMutation.isPending || isLoading || (!!selectedInvoice && credited === null)}>
-              {createMutation.isPending ? 'Creating...' : 'Create Credit Note'}
+            <Button type="submit" disabled={createMutation.isPending || isReversing || isLoading || (!!selectedInvoice && credited === null)}>
+              {createMutation.isPending || isReversing
+                ? (isFullRefund ? 'Posting...' : 'Creating...')
+                : refundMethod === 'full_refund'
+                  ? 'Post Credit Note'
+                  : refundMethod === 'full_refund_new_draft'
+                    ? 'Post & Create Draft Invoice'
+                    : 'Create Credit Note'}
             </Button>
           </DialogFooter>
         </form>

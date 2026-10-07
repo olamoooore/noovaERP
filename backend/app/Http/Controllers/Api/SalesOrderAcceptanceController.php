@@ -65,6 +65,9 @@ class SalesOrderAcceptanceController extends Controller
             'signer_name' => 'required|string|max:255',
             'signer_email' => 'required|email|max:255',
             'signature' => 'nullable|string|max:1048576',
+            // Issue #338: the optional products the customer chose to add.
+            'optional_line_ids' => 'nullable|array',
+            'optional_line_ids.*' => 'integer|distinct',
         ]);
 
         $quotation = $this->service->findQuotationByToken($token);
@@ -156,6 +159,13 @@ class SalesOrderAcceptanceController extends Controller
             ]);
         }
 
+        // Issue #338: every selected id must be an optional line of THIS
+        // quotation — refused before any acceptance trace is written.
+        $optionalLineIds = $this->service->validateOptionalSelection(
+            $quotation,
+            (array) ($validated['optional_line_ids'] ?? []),
+        );
+
         try {
             $result = $this->service->acceptQuotation(
                 $quotation,
@@ -164,6 +174,7 @@ class SalesOrderAcceptanceController extends Controller
                 $validated['signature'] ?? null,
                 $request->ip() ?? 'unknown',
                 $request->userAgent() ?? 'unknown',
+                $optionalLineIds,
             );
 
             $accepted = $result['quotation'];

@@ -71,6 +71,9 @@ class PaymentCorrectionService
                 // #478: mirror the discount leg too so the correction document
                 // reverses the full settlement.
                 'discount_amount' => -round((float) ($payment->discount_amount ?? 0), 2),
+                // #494: and the payment-difference write-off leg.
+                'write_off_amount' => $payment->write_off_amount !== null ? -round((float) $payment->write_off_amount, 2) : null,
+                'write_off_account_id' => $payment->write_off_account_id,
                 'method' => $payment->method,
                 'reference' => 'Reversal: '.$payment->payment_number,
                 'notes' => $request->reasonText,
@@ -168,6 +171,9 @@ class PaymentCorrectionService
                 // #478: mirror the discount leg too so the correction document
                 // reverses the full settlement.
                 'discount_amount' => -round((float) ($payment->discount_amount ?? 0), 2),
+                // #494: and the payment-difference write-off leg.
+                'write_off_amount' => $payment->write_off_amount !== null ? -round((float) $payment->write_off_amount, 2) : null,
+                'write_off_account_id' => $payment->write_off_account_id,
                 'method' => $payment->method,
                 'reference' => 'Refund: '.$payment->payment_number,
                 'notes' => $request->reasonText,
@@ -322,7 +328,13 @@ class PaymentCorrectionService
      */
     private function settledAmount(Payment $payment): float
     {
-        return round((float) $payment->amount + (float) ($payment->discount_amount ?? 0), 2);
+        // #494: plus any payment-difference write-off.
+        return round(
+            (float) $payment->amount
+            + (float) ($payment->discount_amount ?? 0)
+            + (float) ($payment->write_off_amount ?? 0),
+            2
+        );
     }
 
     private function assertCorrectable(Payment $payment, string $targetStatus): void

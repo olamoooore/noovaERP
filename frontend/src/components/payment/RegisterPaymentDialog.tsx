@@ -294,6 +294,13 @@ export const RecordPaymentForm: React.FC<{
     if (!rateEdited && fxPreview?.foreign) setRateInput(String(fxPreview.exchange_rate));
   }, [fxPreview, rateEdited]);
 
+  // #494: payment difference — a short payment keeps the invoice open, or
+  // is marked fully paid and the difference written off to the account of a
+  // configured reason (within the tenant tolerance; the backend re-checks).
+  const [differenceMode, setDifferenceMode] = useState<'keep_open' | 'write_off'>('keep_open');
+  const [writeOffReason, setWriteOffReason] = useState('');
+  const [writeOffLabel, setWriteOffLabel] = useState('');
+
   const recordPaymentMutation = useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
       const response = payment
@@ -337,6 +344,7 @@ export const RecordPaymentForm: React.FC<{
       // #490: an edited rate (the bank's actual one) is sent as exchange_rate;
       // otherwise the backend snapshots the payment-date rate itself.
       exchangeRate: !isEdit && editedRate != null && fxPreview?.foreign ? editedRate : null,
+      writeOff: writeOffSelected ? { reason: writeOffReason, label: writeOffLabel } : null,
     }));
   };
 
@@ -360,6 +368,26 @@ export const RecordPaymentForm: React.FC<{
         ? preselectedInvoice.balance
         : unpaidInvoices.find((inv) => inv.id === parseInt(formData.invoice_id))?.balance)
     : null;
+
+  // #494: the short-payment difference (new payments against an invoice).
+  const balanceNumber = selectedBalance != null ? Number(selectedBalance) : null;
+  const paymentDifference = !isEdit && balanceNumber != null && amountNumber > 0
+    ? Math.round((balanceNumber - amountNumber) * 100) / 100
+    : 0;
+  const showDifference = paymentDifference > 0;
+  const { data: writeOffSettings } = useQuery<{ write_off_tolerance: number; write_off_reasons: Array<{ code: string; label: string }> } | null>({
+    queryKey: ['sales-settings', 'payment-write-off'],
+    queryFn: async () => {
+      const res = await api.get('/settings/sales');
+      return res.data?.data?.payment ?? null;
+    },
+    enabled: showDifference,
+    retry: false,
+  });
+  const writeOffTolerance = Number(writeOffSettings?.write_off_tolerance ?? 0);
+  const writeOffReasons = writeOffSettings?.write_off_reasons ?? [];
+  const writeOffAvailable = writeOffTolerance > 0 && writeOffReasons.length > 0 && paymentDifference <= writeOffTolerance;
+  const writeOffSelected = showDifference && writeOffAvailable && differenceMode === 'write_off' && writeOffReason !== '';
 
   // #487: Reference is optional unless the method master requires it — then
   // it is shown up front instead of behind "More".
@@ -479,6 +507,71 @@ export const RecordPaymentForm: React.FC<{
           {(fxPreviewError as any)?.response?.data?.message || 'Could not preview the exchange rate.'}
         </p>
       )}
+      {showDifference && (
+        <div className="rounded-md border p-3 space-y-3" data-testid="payment-difference">
+          <p className="text-sm">
+            Payment difference: <span className="font-medium" data-testid="payment-difference-amount">{paymentDifference.toFixed(2)}</span>
+          </p>
+          <div className="flex flex-col gap-2 text-sm" role="radiogroup" aria-label="Payment difference">
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="payment_difference"
+                value="keep_open"
+                checked={differenceMode === 'keep_open' || !writeOffAvailable}
+                onChange={() => setDifferenceMode('keep_open')}
+              />
+              Keep open — the invoice stays partially paid
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="payment_difference"
+                value="write_off"
+                disabled={!writeOffAvailable}
+                checked={writeOffAvailable && differenceMode === 'write_off'}
+                onChange={() => {
+                  setDifferenceMode('write_off');
+                  if (!writeOffReason && writeOffReasons.length > 0) setWriteOffReason(writeOffReasons[0].code);
+                }}
+              />
+              Mark as fully paid — write off the difference
+            </label>
+          </div>
+          {!writeOffAvailable && (
+            <p className="text-xs text-muted-foreground">
+              {writeOffReasons.length === 0 || writeOffTolerance <= 0
+                ? 'Write-offs need a tolerance and at least one write-off reason in Sales Settings → Payment Differences.'
+                : `The difference exceeds the write-off tolerance (${writeOffTolerance.toFixed(2)}).`}
+            </p>
+          )}
+          {writeOffAvailable && differenceMode === 'write_off' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="write_off_reason">Write-off reason</Label>
+                <Select value={writeOffReason || undefined} onValueChange={setWriteOffReason}>
+                  <SelectTrigger id="write_off_reason"><SelectValue placeholder="Choose a reason" /></SelectTrigger>
+                  <SelectContent>
+                    {writeOffReasons.map((reason) => (
+                      <SelectItem key={reason.code} value={reason.code}>{reason.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="write_off_label">Label (optional)</Label>
+                <Input
+                  id="write_off_label"
+                  value={writeOffLabel}
+                  maxLength={255}
+                  onChange={(e) => setWriteOffLabel(e.target.value)}
+                  placeholder="e.g. TT charges"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       <div data-payment-field="deposit_account">
         <DepositAccountSelect
           id="deposit_account_id"
@@ -520,7 +613,11 @@ export const RecordPaymentForm: React.FC<{
       )}
 
       <div className="flex justify-end gap-2 pt-4">
-        <Button type="submit" disabled={recordPaymentMutation.isPending}>
+        <Button
+          type="submit"
+          disabled={recordPaymentMutation.isPending
+            || (showDifference && writeOffAvailable && differenceMode === 'write_off' && writeOffReason === '')}
+        >
           {isEdit
             ? (recordPaymentMutation.isPending ? 'Saving...' : 'Save Changes')
             : (recordPaymentMutation.isPending ? 'Recording...' : 'Record Payment')}
