@@ -22,6 +22,12 @@ use Illuminate\Database\Eloquent\Builder;
  *
  * Live = draft/posted/sent/partial/overdue/paid and not superseded, voided
  * or reversed (the pre-flight's existing filter).
+ *
+ * Invoices raised from the same sales order (or the same quotation) are
+ * parts of one sale — staged invoicing, down payment + final invoice — and
+ * every one of them carries the order's PO number and customer reference.
+ * They are never compared with each other; an invoice from another source,
+ * or with no source, still is.
  */
 class InvoiceDuplicateCheck
 {
@@ -170,6 +176,12 @@ class InvoiceDuplicateCheck
         return Invoice::query()
             ->where('customer_id', $invoice->customer_id)
             ->when($invoice->exists, fn (Builder $query) => $query->whereKeyNot($invoice->id))
+            ->when($invoice->sales_order_id, fn (Builder $query, $salesOrderId) => $query->where(fn (Builder $query) => $query
+                ->whereNull('sales_order_id')
+                ->orWhere('sales_order_id', '!=', $salesOrderId)))
+            ->when($invoice->quotation_id, fn (Builder $query, $quotationId) => $query->where(fn (Builder $query) => $query
+                ->whereNull('quotation_id')
+                ->orWhere('quotation_id', '!=', $quotationId)))
             ->whereIn('status', self::LIVE_STATUSES)
             ->where(fn (Builder $query) => $query
                 ->whereNull('lifecycle_status')

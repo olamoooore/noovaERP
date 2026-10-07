@@ -195,6 +195,23 @@ class Issue327DuplicateInvoiceWarningTest extends TenantTestCase
         $this->assertSame(1, Invoice::query()->where('customer_id', $customer->id)->count(), 'An unconfirmed likely duplicate must not be created.');
     }
 
+    public function test_same_po_number_is_a_likely_duplicate_and_needs_confirmation(): void
+    {
+        $customer = $this->customer();
+        $earlier = $this->existing($customer, ['po_number' => 'PO-5520']);
+
+        // Different total, two months apart, no customer reference: only the
+        // PO number matches (case and surrounding spaces ignored).
+        $response = $this->createInvoice($customer, 120, ['po_number' => ' po-5520 ']);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('code', 'DUPLICATE_INVOICE_LIKELY')
+            ->assertJsonPath('duplicate_check.level', 'likely')
+            ->assertJsonPath('duplicate_check.matches.0.invoice_number', $earlier->invoice_number)
+            ->assertJsonPath('duplicate_check.matches.0.matched_on', ['po_number']);
+        $this->assertSame(1, Invoice::query()->where('customer_id', $customer->id)->count(), 'An unconfirmed likely duplicate must not be created.');
+    }
+
     public function test_a_confirmed_likely_duplicate_is_created_and_the_confirmation_is_recorded(): void
     {
         $customer = $this->customer();
