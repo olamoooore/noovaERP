@@ -20,9 +20,11 @@ use App\Services\CaseImportService;
 use App\Services\CustomerWideSearchService;
 use App\Services\InvoiceActivityService;
 use App\Services\InvoiceApprovalService;
+use App\Services\InvoiceBulkDocumentService;
 use App\Services\InvoiceCancellationService;
 use App\Services\InvoiceDeliveryService;
 use App\Services\InvoiceEvidenceService;
+use App\Services\InvoiceSendBundleService;
 use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
 use Illuminate\Http\JsonResponse;
@@ -38,6 +40,7 @@ use Modules\Sales\Exceptions\CreditLimitExceededException;
 use Modules\Sales\Services\CreditCheckService;
 use Modules\Sales\Services\DeliveryOrderService;
 use Modules\Sales\Services\SalesOrderService;
+use Modules\TemplateBuilder\Services\DocumentRenderAuthorizer;
 
 class InvoiceController extends Controller
 {
@@ -2359,8 +2362,8 @@ class InvoiceController extends Controller
             return response()->json(['message' => 'Invoice not found'], 404);
         }
 
-        if (in_array($invoice->status, ['cancelled', 'voided', 'reversed'], true)) {
-            return response()->json(['message' => 'This invoice cannot be sent to the customer.'], 422);
+        if (in_array($invoice->status, InvoiceSendBundleService::UNSENDABLE_STATUSES, true)) {
+            return response()->json(['message' => InvoiceSendBundleService::UNSENDABLE_STATUS_MESSAGE], 422);
         }
 
         $validated = $request->validate([
@@ -2377,91 +2380,26 @@ class InvoiceController extends Controller
             $invoice->unsetRelation('customer');
         }
 
-        $salesSettings = app(\App\Services\SalesSettings::class);
-
         try {
-            // 1) Acceptance portal link (review / e-sign) — only while the
-            // tenant keeps customer acceptance on (#539). The link lifetime
-            // defaults to sales.portal.acceptance_link_expiry_days.
-            $linkData = [];
-
-            if ($salesSettings->acceptanceEnabled()) {
-                $linkData = $this->evidenceService->createPortalAcceptanceLink(
-                    $invoice,
-                    $validated['expires_in_days'] ?? null
-                );
-
-                $this->activityService->log(
-                    $invoice,
-                    \App\Models\InvoiceActivityLog::EVENT_ACCEPTANCE_LINK_CREATED,
-                    [
-                        'acceptance_url' => $linkData['url'],
-                        'expires_at' => $linkData['expires_at'],
-                        'evidence_id' => $linkData['evidence_id'],
-                        'send_email' => true,
-                        'bundle' => true,
-                    ],
-                    $invoice->getOriginal('evidence_status') ?? $invoice->evidence_status,
-                    $invoice->fresh()->evidence_status,
-                    \App\Models\InvoiceActivityLog::ACTOR_USER,
-                    $request->user()->id,
-                );
-            }
-
-            // 2) Pay-now link — only for posted invoices with a live balance.
-            // Drafts are sent for acceptance first; a draft has no payable
-            // document yet, so the bundle degrades gracefully.
-            $paymentUrl = null;
-            $payment = null;
-
-            if ($invoice->status !== 'draft' && bccomp((string) $invoice->balance, '0.00', 2) > 0) {
-                try {
-                    $payment = $this->invoiceService->createPaymentLink(
-                        $invoice,
-                        (float) $invoice->balance,
-                        now()->addDays($validated['payment_expires_in_days'] ?? $salesSettings->paymentLinkExpiryDays()),
-                    );
-                    $paymentUrl = $payment['url'] ?? null;
-
-                    $this->activityService->log(
-                        $invoice,
-                        \App\Models\InvoiceActivityLog::EVENT_PAYMENT_LINK_ISSUED,
-                        [
-                            'payment_link_url' => $paymentUrl,
-                            'amount' => (float) $invoice->balance,
-                            'expires_at' => $invoice->payment_link_expires_at?->toIso8601String(),
-                        ],
-                        null,
-                        null,
-                        \App\Models\InvoiceActivityLog::ACTOR_USER,
-                        $request->user()->id,
-                    );
-                } catch (\Throwable $e) {
-                    \Log::warning('Send bundle: payment link creation failed, sending without it', [
-                        'invoice_id' => $invoice->id,
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            }
-
-            // 3)ONE email: PDF + acceptance link + pay-now link + QR.
-            $delivery = $this->deliveryService->deliver($invoice, 'email', $request->user(), [
-                // #539: the tenant's "document type on send" choice; the final
-                // invoice stays the bundle default when none was configured.
-                'document_type' => $salesSettings->documentTypeOnSend() ?? \App\Models\InvoiceDelivery::DOCUMENT_FINAL_INVOICE,
-                'portal_url' => $linkData['url'] ?? null,
-                'payment_url' => $paymentUrl,
+            // Issue #329: the bundle itself lives in InvoiceSendBundleService
+            // so Bulk Send queues exactly this path.
+            $result = app(InvoiceSendBundleService::class)->send($invoice, $request->user(), [
+                'expires_in_days' => $validated['expires_in_days'] ?? null,
+                'payment_expires_in_days' => $validated['payment_expires_in_days'] ?? null,
                 'recipient' => $recipientOverride,
             ]);
+
+            $paymentUrl = $result['payment_url'];
+            $delivery = $result['delivery'];
 
             return response()->json([
                 'message' => $paymentUrl
                     ? 'Invoice sent with acceptance and pay-now links'
                     : 'Invoice sent to customer',
                 'data' => [
-                    ...$linkData,
+                    ...$result['link_data'],
                     'payment_url' => $paymentUrl,
-                    'payment' => $payment,
+                    'payment' => $result['payment'],
                     'delivery' => [
                         'id' => $delivery->id,
                         'status' => $delivery->status,
@@ -3242,6 +3180,74 @@ class InvoiceController extends Controller
             'message' => count($posted).' invoice(s) posted.',
             'posted' => $posted,
             'skipped' => $skipped,
+        ]);
+    }
+
+    /**
+     * Issue #329: Bulk Send from the invoice list. Each selected invoice is
+     * authorized (legal entity) and checked on its own, then one bundle send
+     * (the same path as the single Send button) is queued per eligible
+     * invoice. 202 with one result per id: queued, or skipped with why.
+     */
+    public function bulkSend(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1|max:'.InvoiceBulkDocumentService::BULK_SEND_LIMIT,
+            'ids.*' => 'integer',
+        ]);
+
+        $bulk = app(InvoiceBulkDocumentService::class);
+
+        // The source document's own read permission, as on every invoice render.
+        $denied = app(DocumentRenderAuthorizer::class)->denyType('invoice', $request);
+        if ($denied !== null) {
+            return $denied;
+        }
+
+        $results = $bulk->queueSend($validated['ids'], $request, $request->user());
+        $queued = count(array_filter($results, fn (array $result) => $result['outcome'] === 'queued'));
+
+        return response()->json([
+            'success' => true,
+            'message' => "{$queued} of ".count($results).' invoice(s) queued for sending.',
+            'data' => [
+                'queued' => $queued,
+                'skipped' => count($results) - $queued,
+                'results' => $results,
+            ],
+        ], 202);
+    }
+
+    /**
+     * Issue #329: zip of the selected invoices' PDFs plus their e-invoice
+     * XML/JSON where present, with a manifest of skipped / failed ids.
+     */
+    public function bulkDownload(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1|max:'.InvoiceBulkDocumentService::BULK_DOWNLOAD_LIMIT,
+            'ids.*' => 'integer',
+        ]);
+
+        $denied = app(DocumentRenderAuthorizer::class)->denyType('invoice', $request);
+        if ($denied !== null) {
+            return $denied;
+        }
+
+        $zip = app(InvoiceBulkDocumentService::class)->buildZip($validated['ids'], $request);
+
+        // None of the ids is visible to the caller: same answer as a single
+        // render of an inaccessible invoice (no existence oracle).
+        if ($zip === null) {
+            return response()->json(['message' => 'Document not found.'], 403);
+        }
+
+        $filename = 'invoices-'.now()->format('Ymd-His').'.zip';
+
+        return response($zip['bytes'], 200, [
+            'Content-Type' => 'application/zip',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+            'Content-Length' => strlen($zip['bytes']),
         ]);
     }
 

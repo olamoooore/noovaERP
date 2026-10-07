@@ -40,7 +40,8 @@ export function InvoicesPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
   const [hiddenInvoiceColumns, setHiddenInvoiceColumns] = useState<number[]>([])
-  const [bulkAction, setBulkAction] = useState<'post' | 'delete' | null>(null)
+  const [bulkAction, setBulkAction] = useState<'post' | 'delete' | 'send' | null>(null)
+  const [isDownloadingZip, setIsDownloadingZip] = useState(false)
   const [statusFilter, setStatusFilter] = useState('all')
   // Issue #688 (INV-UX2): "invoiced not delivered" list filter.
   const [progressFilter, setProgressFilter] = useState<'all' | 'invoiced_not_delivered'>('all')
@@ -198,6 +199,54 @@ export function InvoicesPage() {
     },
   })
 
+  // #329: Bulk Send — one queued send bundle per invoice; the server checks
+  // every id (permission + legal entity) and returns a result per invoice.
+  const canSend = hasPermission('invoices.send')
+  const canDownloadDocuments = hasPermission('document.view')
+
+  const bulkSendMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      const res = await api.post('/invoices/bulk-send', { ids })
+      return res.data
+    },
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      clearSelection()
+      const results: Array<{ id: number; invoice_number?: string; outcome: string; reason?: string }> = response.data?.results || []
+      const skipped = results.filter((r) => r.outcome !== 'queued')
+      toast({
+        title: `${response.data?.queued ?? 0} invoice(s) queued for sending${skipped.length ? `, ${skipped.length} skipped` : ''}`,
+        description: skipped.length
+          ? skipped.slice(0, 3).map((r) => `${r.invoice_number ?? `#${r.id}`}: ${r.reason}`).join('; ')
+          : 'Delivery status updates on each invoice once its email is sent.',
+      })
+    },
+    onError: (error: any) => {
+      toast({ variant: 'destructive', title: 'Bulk send failed', description: error.response?.data?.message })
+    },
+  })
+
+  // #329: zip of the selected invoices' PDFs plus e-invoice XML/JSON where present.
+  const downloadZip = async (ids: number[]) => {
+    setIsDownloadingZip(true)
+    try {
+      const response = await api.get('/invoices/bulk-download', { params: { ids }, responseType: 'blob' })
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/zip' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `invoices_${new Date().toISOString().slice(0, 10)}.zip`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+      toast({ title: 'Invoice documents downloaded', description: 'See manifest.txt in the zip for any invoice that was skipped.' })
+    } catch {
+      toast({ variant: 'destructive', title: 'Failed to download invoice documents' })
+    } finally {
+      setIsDownloadingZip(false)
+    }
+  }
+
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
       draft: 'bg-gray-100 text-gray-800',
@@ -275,6 +324,26 @@ export function InvoicesPage() {
             onClick={() => setBulkAction('post')}
           >
             Bulk Post ({selectedIds.length})
+          </HeaderActionButton>
+        )}
+        {canSend && (
+          <HeaderActionButton
+            icon="solar:letter-bold"
+            loading={bulkSendMutation.isPending}
+            disabled={bulkSendMutation.isPending || selectedIds.length > 100}
+            onClick={() => setBulkAction('send')}
+          >
+            Send ({selectedIds.length})
+          </HeaderActionButton>
+        )}
+        {canDownloadDocuments && (
+          <HeaderActionButton
+            icon="solar:download-minimalistic-bold"
+            loading={isDownloadingZip}
+            disabled={isDownloadingZip || selectedIds.length > 50}
+            onClick={() => downloadZip(selectedIds)}
+          >
+            Download zip ({selectedIds.length})
           </HeaderActionButton>
         )}
       </BulkActionBar>
@@ -650,6 +719,21 @@ export function InvoicesPage() {
           const ids = selectedIds
           setBulkAction(null)
           bulkPostMutation.mutate(ids)
+        }}
+      />
+
+      <ConfirmDialog
+        open={bulkAction === 'send'}
+        onOpenChange={(open) => !open && setBulkAction(null)}
+        title={`Send ${selectedIds.length} invoice(s)?`}
+        description="Each invoice is emailed to its customer with the PDF and its acceptance / pay-now links, in the background. Cancelled, unapproved drafts and invoices without a customer email are skipped."
+        confirmLabel="Send invoices"
+        icon="solar:letter-bold-duotone"
+        isPending={bulkSendMutation.isPending}
+        onConfirm={() => {
+          const ids = selectedIds
+          setBulkAction(null)
+          bulkSendMutation.mutate(ids)
         }}
       />
 

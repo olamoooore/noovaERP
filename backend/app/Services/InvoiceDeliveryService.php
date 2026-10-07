@@ -15,20 +15,52 @@ use Modules\Communication\Events\BusinessEvent;
 
 class InvoiceDeliveryService
 {
+    public const NOT_DELIVERABLE_MESSAGE = 'Invoice is not ready to be delivered. It must be approved or already posted.';
+
+    public const NO_RECIPIENT_MESSAGE = 'No recipient email available for invoice delivery.';
+
     public function __construct(
         private InvoiceActivityService $activityLog,
     ) {}
 
+    /**
+     * Issue #329: the reason deliver() would refuse this invoice, or null when
+     * it can be delivered. Bulk Send checks this up front so every selected
+     * invoice gets its own result before anything is queued.
+     */
+    public function deliverabilityError(Invoice $invoice, ?string $recipient = null): ?string
+    {
+        if (! $this->isDeliverable($invoice)) {
+            return self::NOT_DELIVERABLE_MESSAGE;
+        }
+
+        if (! $this->resolveRecipient($invoice, $recipient)) {
+            return self::NO_RECIPIENT_MESSAGE;
+        }
+
+        return null;
+    }
+
+    /**
+     * An invoice is deliverable once it is posted, or while still in draft
+     * after approval (the "send to customer for acceptance" step). A draft
+     * that is pending approval, rejected, or plain must not be emailed yet.
+     */
+    private function isDeliverable(Invoice $invoice): bool
+    {
+        return $invoice->status !== 'draft'
+            || $invoice->approval_status === Invoice::APPROVAL_APPROVED;
+    }
+
+    private function resolveRecipient(Invoice $invoice, ?string $override): ?string
+    {
+        return $override ?? $invoice->contact_email ?? $invoice->customer?->email;
+    }
+
     public function deliver(Invoice $invoice, string $channel, User $user, array $options = []): InvoiceDelivery
     {
-        // An invoice is deliverable once it is posted, or while still in draft
-        // after approval (the "send to customer for acceptance" step). A draft
-        // that is pending approval, rejected, or plain must not be emailed yet.
-        $isDeliverable = $invoice->status !== 'draft'
-            || $invoice->approval_status === Invoice::APPROVAL_APPROVED;
-
-        if (! $isDeliverable) {
-            throw new \InvalidArgumentException('Invoice is not ready to be delivered. It must be approved or already posted.');
+        if (! $this->isDeliverable($invoice)) {
+            throw new \InvalidArgumentException(self::NOT_DELIVERABLE_MESSAGE);
         }
 
         if (! in_array($channel, InvoiceDelivery::CHANNELS, true)) {
@@ -44,10 +76,10 @@ class InvoiceDeliveryService
             ?? ($invoice->status === 'posted'
                 ? InvoiceDelivery::DOCUMENT_FINAL_INVOICE
                 : InvoiceDelivery::DOCUMENT_ACCEPTANCE_COPY);
-        $recipient = $options['recipient'] ?? $invoice->contact_email ?? $invoice->customer?->email;
+        $recipient = $this->resolveRecipient($invoice, $options['recipient'] ?? null);
 
         if (! $recipient) {
-            throw new \InvalidArgumentException('No recipient email available for invoice delivery.');
+            throw new \InvalidArgumentException(self::NO_RECIPIENT_MESSAGE);
         }
 
         $delivery = DB::transaction(function () use ($invoice, $channel, $user, $documentType, $recipient, $options) {

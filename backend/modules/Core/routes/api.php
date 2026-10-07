@@ -364,6 +364,14 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             ->middleware(RequirePermission::using('invoices.write'));
         Route::post('/invoices/bulk-post', [InvoiceController::class, 'bulkPost'])
             ->middleware(RequirePermission::using('accounting.post'));
+        // Issue #329: Bulk Send (queued bundle per invoice) reuses the single
+        // send-bundle grant; the zip download reuses the invoice PDF render
+        // grant. Both also check every id's source permission + legal entity
+        // in the controller (#611 DocumentRenderAuthorizer).
+        Route::post('/invoices/bulk-send', [InvoiceController::class, 'bulkSend'])
+            ->middleware(RequirePermission::using('invoices.send'));
+        Route::get('/invoices/bulk-download', [InvoiceController::class, 'bulkDownload'])
+            ->middleware(RequirePermission::using('document.view'));
 
         // Invoice CRUD — explicit so per-method middleware is precise
         Route::get('/invoices', [InvoiceController::class, 'index'])
