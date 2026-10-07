@@ -40,6 +40,7 @@ import {
   InvoiceLineDeliveryChip,
   type InvoiceDeliveryProgress,
 } from '@/components/sales/DocumentProgressChip'
+import { creditWarning } from '@/lib/creditCheck'
 
 interface Invoice {
   id: number
@@ -297,10 +298,11 @@ export function InvoiceDetailPage() {
       const response = await api.post(`/invoices/${id}/post`)
       return response.data
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['invoice', id] })
       queryClient.invalidateQueries({ queryKey: ['invoice-preflight', id] })
-      toast({ title: 'Invoice posted successfully' })
+      // Issue #326: a post under the `warn` credit policy carries the verdict.
+      toast({ title: 'Invoice posted successfully', description: creditWarning(data) })
     },
     onError: (error: any) => {
       const message = error.response?.data?.message || 'An error occurred'

@@ -417,7 +417,14 @@ class SalesOrderService
         return $this->lastCreditCheck;
     }
 
-    public function confirmOrder(SalesOrder $order): SalesOrder
+    /**
+     * @param  bool  $creditGate  Issue #326: false only for the backing order
+     *                            of a direct invoice. That invoice runs the same CreditCheckService
+     *                            verdict itself (base-currency exposure, tenant warn/block policy) in
+     *                            the same transaction, so the order must not run a second check on a
+     *                            different basis (#383).
+     */
+    public function confirmOrder(SalesOrder $order, bool $creditGate = true): SalesOrder
     {
         $this->lastCreditCheck = null;
 
@@ -429,20 +436,12 @@ class SalesOrderService
         // Issue #240: include the customer's other confirmed-but-uninvoiced
         // orders (they are not in total_outstanding yet) and take a row lock on
         // the customer so concurrent confirmations cannot both pass the check.
-        return DB::transaction(function () use ($order) {
-            if ($order->customer_id !== null) {
+        return DB::transaction(function () use ($order, $creditGate) {
+            if ($creditGate && $order->customer_id !== null) {
                 $customer = \App\Models\Customer::whereKey($order->customer_id)->lockForUpdate()->first();
 
                 if ($customer !== null) {
-                    // Issue #384: every open order counts with its UNINVOICED
-                    // REMAINDER (an order with one partial invoice used to drop
-                    // out entirely), and all amounts are in base currency.
-                    $committedOrdersTotal = SalesOrder::query()
-                        ->where('customer_id', $customer->id)
-                        ->whereKeyNot($order->id)
-                        ->whereNotIn('status', ['draft', 'cancelled', 'completed'])
-                        ->get()
-                        ->sum(fn (SalesOrder $open) => $this->baseCurrencyAmount($open, $this->uninvoicedRemainder($open)));
+                    $committedOrdersTotal = $this->committedOrdersTotal((int) $customer->id, (int) $order->id);
 
                     $creditCheck = $this->creditCheckService->checkCreditLimit(
                         $customer,
@@ -480,6 +479,23 @@ class SalesOrderService
             return $order->fresh(['customer', 'lines.product', 'statusHistory']);
 
         });
+    }
+
+    /**
+     * Issue #384: every open (confirmed, not completed/cancelled) order of the
+     * customer counts with its UNINVOICED REMAINDER (an order with one partial
+     * invoice used to drop out entirely), and all amounts are in base
+     * currency. Issue #326: shared with the invoice credit check
+     * (CreditCheckService::checkCustomer) so both use one committed basis.
+     */
+    public function committedOrdersTotal(int $customerId, ?int $exceptOrderId = null): float
+    {
+        return (float) SalesOrder::query()
+            ->where('customer_id', $customerId)
+            ->when($exceptOrderId !== null, fn ($query) => $query->whereKeyNot($exceptOrderId))
+            ->whereNotIn('status', ['draft', 'cancelled', 'completed'])
+            ->get()
+            ->sum(fn (SalesOrder $open) => $this->baseCurrencyAmount($open, $this->uninvoicedRemainder($open)));
     }
 
     /**

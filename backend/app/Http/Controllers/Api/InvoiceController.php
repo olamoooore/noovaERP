@@ -34,6 +34,8 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Facades\Excel;
+use Modules\Sales\Exceptions\CreditLimitExceededException;
+use Modules\Sales\Services\CreditCheckService;
 use Modules\Sales\Services\DeliveryOrderService;
 use Modules\Sales\Services\SalesOrderService;
 
@@ -587,7 +589,9 @@ class InvoiceController extends Controller
             $tagNames = $validated['tags'] ?? [];
             unset($validated['tags']);
 
-            $invoice = $this->createInvoiceFromData($validated);
+            // Issue #326: create + credit check in one transaction, so a
+            // `block` verdict leaves no invoice (or backing order) behind.
+            [$invoice, $creditCheck] = $this->createInvoiceWithCreditGate($validated);
 
             if (is_array($tagNames) && $tagNames !== []) {
                 app(\App\Services\TagService::class)->attach($invoice, $tagNames, $request->user()?->id);
@@ -618,11 +622,16 @@ class InvoiceController extends Controller
                         : 'Invoice created successfully'),
                 'id' => $invoice->id,
                 'data' => $invoice->fresh(['approvalRequest', 'customer']),
+                // Issue #326: the credit verdict (a warning under the `warn`
+                // policy when approved is false).
+                'credit_check' => $creditCheck,
             ], 201);
 
         } catch (ValidationException $e) {
             // #302: an explicit tax rule that cannot apply is a 422, not a 500.
             throw $e;
+        } catch (CreditLimitExceededException $e) {
+            return $this->creditLimitExceededResponse(app(CreditCheckService::class)->invoiceVerdict($e->creditCheck));
         } catch (\App\Exceptions\PricingException $e) {
             // MRD pricelist-multicurrency FR-1.1/FR-1.3/FR-6.3: unknown or
             // unsellable currency, missing FX rate, or a below-floor override
@@ -673,6 +682,59 @@ class InvoiceController extends Controller
 
             return $e->getMessage();
         }
+    }
+
+    /**
+     * Issue #326: create the invoice and run the credit check on it in ONE
+     * transaction. The check is the sales-order confirm rule
+     * (CreditCheckService) on a base-currency exposure; the backing order of
+     * a direct invoice skips its own check (createInvoiceFromData) so there
+     * is one verdict, not two on different bases. Under the `block` policy a
+     * failed check throws and rolls the whole creation back.
+     *
+     * @return array{0: Invoice, 1: array<string, mixed>|null}
+     */
+    private function createInvoiceWithCreditGate(array $data): array
+    {
+        $credit = app(CreditCheckService::class);
+
+        return DB::transaction(function () use ($data, $credit) {
+            $invoice = $this->createInvoiceFromData($data);
+            $this->ensureTenantSearchPath();
+
+            $result = $invoice->status === 'draft' ? $credit->checkInvoice($invoice, lockCustomer: true) : null;
+            $verdict = $result !== null ? $credit->invoiceVerdict($result) : null;
+
+            if ($verdict !== null && $verdict['blocked']) {
+                throw new CreditLimitExceededException($result, $invoice->customer);
+            }
+
+            return [$invoice, $verdict];
+        });
+    }
+
+    /**
+     * Issue #326: the credit verdict for posting a draft invoice (null when
+     * the invoice has no customer).
+     *
+     * @return array<string, mixed>|null
+     */
+    private function invoiceCreditVerdict(Invoice $invoice): ?array
+    {
+        $credit = app(CreditCheckService::class);
+        $result = $credit->checkInvoice($invoice);
+
+        return $result !== null ? $credit->invoiceVerdict($result) : null;
+    }
+
+    /** Issue #326: the 422 a `block` credit verdict returns. */
+    private function creditLimitExceededResponse(array $verdict): JsonResponse
+    {
+        return response()->json([
+            'message' => 'Credit check failed: '.$verdict['reason'],
+            'code' => 'CREDIT_LIMIT_EXCEEDED',
+            'credit_check' => $verdict,
+        ], 422);
     }
 
     /**
@@ -989,7 +1051,9 @@ class InvoiceController extends Controller
         // fulfilment is derived from delivery-order completion, so invoicing
         // must never mark the order fulfilled without a delivery.
         // Re-apply search_path after each DB::transaction() call which can reset connections
-        $salesOrder = $this->salesOrderService->confirmOrder($salesOrder);
+        // Issue #326: the invoice runs the credit check itself
+        // (createInvoiceWithCreditGate) — no second check on the order.
+        $salesOrder = $this->salesOrderService->confirmOrder($salesOrder, creditGate: false);
         $this->ensureTenantSearchPath();
         $salesOrder = $this->salesOrderService->allocateOrder($salesOrder);
         $this->ensureTenantSearchPath();
@@ -1751,6 +1815,12 @@ class InvoiceController extends Controller
             ], 422);
         }
 
+        // Issue #326: /send posts too, so it runs the same credit check.
+        $creditCheck = $this->invoiceCreditVerdict($invoice);
+        if ($creditCheck !== null && $creditCheck['blocked']) {
+            return $this->creditLimitExceededResponse($creditCheck);
+        }
+
         try {
             $posted = $this->invoiceService->postInvoice($invoice);
 
@@ -1770,6 +1840,7 @@ class InvoiceController extends Controller
             return response()->json([
                 'message' => 'Invoice posted successfully',
                 'invoice' => $posted,
+                'credit_check' => $creditCheck,
             ]);
 
         } catch (\RuntimeException $e) {
@@ -2528,6 +2599,13 @@ class InvoiceController extends Controller
             ], 422);
         }
 
+        // Issue #326: the same credit check as create and sales-order
+        // confirm; the tenant policy decides block (422) or warn.
+        $creditCheck = $this->invoiceCreditVerdict($invoice);
+        if ($creditCheck !== null && $creditCheck['blocked']) {
+            return $this->creditLimitExceededResponse($creditCheck);
+        }
+
         try {
             $posted = $this->invoiceService->postInvoice($invoice);
 
@@ -2594,6 +2672,7 @@ class InvoiceController extends Controller
             return response()->json([
                 'message' => 'Invoice posted successfully',
                 'data' => $posted,
+                'credit_check' => $creditCheck,
             ]);
         } catch (\RuntimeException $e) {
             if (str_contains($e->getMessage(), 'Cannot resolve GL account')) {
@@ -3087,6 +3166,14 @@ class InvoiceController extends Controller
                 continue;
             }
 
+            // Issue #326: same credit check as single post.
+            $creditCheck = $this->invoiceCreditVerdict($invoice);
+            if ($creditCheck !== null && $creditCheck['blocked']) {
+                $skipped[] = ['id' => $id, 'reason' => 'Credit check failed: '.$creditCheck['reason']];
+
+                continue;
+            }
+
             try {
                 $postedInvoice = $this->invoiceService->postInvoice($invoice);
 
@@ -3423,7 +3510,9 @@ class InvoiceController extends Controller
                     throw new \RuntimeException("Date in closed period ({$invoiceDate})");
                 }
 
-                $invoice = $this->createInvoiceFromData($data);
+                // Issue #326: a row refused by the credit check is reported
+                // as an error and leaves nothing behind.
+                [$invoice] = $this->createInvoiceWithCreditGate($data);
 
                 // Create medical case if case data is present
                 $caseData = [

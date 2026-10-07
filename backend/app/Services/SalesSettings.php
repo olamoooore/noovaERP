@@ -61,6 +61,15 @@ class SalesSettings
 
     public const DEFAULT_INVOICING_POLICY = 'sales.sales_order.default_invoicing_policy';
 
+    /** Issue #326: what a failed credit check does on invoice create / post. */
+    public const CREDIT_LIMIT_POLICY = 'sales.invoice.credit_limit_policy';
+
+    public const CREDIT_LIMIT_POLICY_BLOCK = 'block';
+
+    public const CREDIT_LIMIT_POLICY_WARN = 'warn';
+
+    public const CREDIT_LIMIT_POLICIES = [self::CREDIT_LIMIT_POLICY_BLOCK, self::CREDIT_LIMIT_POLICY_WARN];
+
     public const INVOICING_POLICIES = ['ordered_qty', 'delivered_qty'];
 
     /**
@@ -233,6 +242,19 @@ class SalesSettings
         $value = Setting::getValue(self::DEFAULT_INVOICING_POLICY);
 
         return is_string($value) && in_array($value, self::INVOICING_POLICIES, true) ? $value : 'ordered_qty';
+    }
+
+    /**
+     * Issue #326: `block` (default) refuses an invoice create/post that fails
+     * the credit check; `warn` lets it through with the verdict attached.
+     * Block is the default because direct invoices were already refused by
+     * their backing sales order's credit check before this setting existed.
+     */
+    public function invoiceCreditLimitPolicy(): string
+    {
+        $value = Setting::getValue(self::CREDIT_LIMIT_POLICY);
+
+        return is_string($value) && in_array($value, self::CREDIT_LIMIT_POLICIES, true) ? $value : self::CREDIT_LIMIT_POLICY_BLOCK;
     }
 
     public function acceptanceEnabled(): bool

@@ -23,6 +23,7 @@ use App\Services\SalesPricelistDisplayService;
 use App\Services\SalesSettings;
 use App\Services\TaxEngineService;
 use Modules\Sales\Http\Controllers\SalesOrderController;
+use Modules\Sales\Services\CreditCheckService;
 use Modules\Sales\Services\DeliveryOrderService;
 use Modules\Sales\Services\SalesOrderService;
 use Modules\TemplateBuilder\Services\DataSource\DataSourceRegistry;
@@ -176,6 +177,8 @@ class SettingsRegistry implements SettingsRegistryContract
             'invoice.allow_partial_payments' => ['key' => SalesSettings::ALLOW_PARTIAL_PAYMENTS, 'type' => 'bool', 'via' => [SalesSettings::class.'::allowPartialPayments'], 'readers' => [PaymentController::class.'::store', CustomerReceiptService::class.'::receive']],
             'invoice.default_payment_terms_days' => ['key' => SalesSettings::DEFAULT_PAYMENT_TERMS_DAYS, 'type' => 'int', 'via' => [SalesSettings::class.'::defaultPaymentTermsDays'], 'readers' => [InvoiceService::class.'::createInvoiceInternal', SalesOrderService::class.'::createInvoice', Customer::class.'::boot']],
             'invoice.default_notes' => ['key' => SalesSettings::DEFAULT_NOTES, 'type' => 'text', 'via' => [SalesSettings::class.'::defaultNotes'], 'readers' => [InvoiceService::class.'::createInvoiceInternal', SalesOrderService::class.'::createInvoice']],
+            // Issue #326: warn or block when an invoice fails the credit check.
+            'invoice.credit_limit_policy' => ['key' => SalesSettings::CREDIT_LIMIT_POLICY, 'type' => 'enum', 'default' => SalesSettings::CREDIT_LIMIT_POLICY_BLOCK, 'via' => [SalesSettings::class.'::invoiceCreditLimitPolicy'], 'readers' => [CreditCheckService::class.'::invoiceVerdict']],
             'invoice.default_terms' => ['key' => SalesSettings::DEFAULT_TERMS, 'type' => 'text', 'via' => [SalesSettings::class.'::defaultTerms'], 'readers' => [InvoiceService::class.'::createInvoiceInternal']],
 
             'portal.acceptance_enabled' => ['key' => SalesSettings::ACCEPTANCE_ENABLED, 'type' => 'bool', 'via' => [SalesSettings::class.'::acceptanceEnabled'], 'readers' => [InvoiceAcceptanceController::class.'::accept', InvoiceController::class.'::createAcceptanceLink', InvoiceController::class.'::sendBundle', InvoiceController::class.'::post']],

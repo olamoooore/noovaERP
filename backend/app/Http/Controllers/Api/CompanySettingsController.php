@@ -930,6 +930,8 @@ class CompanySettingsController extends Controller
                     'default_payment_terms_days' => app(\App\Services\SalesSettings::class)->defaultPaymentTermsDays(),
                     'default_notes' => app(\App\Services\SalesSettings::class)->defaultNotes() ?? '',
                     'default_terms' => app(\App\Services\SalesSettings::class)->defaultTerms() ?? '',
+                    // Issue #326: warn or block on a failed invoice credit check.
+                    'credit_limit_policy' => app(\App\Services\SalesSettings::class)->invoiceCreditLimitPolicy(),
                 ],
                 'portal' => [
                     'acceptance_enabled' => app(\App\Services\SalesSettings::class)->acceptanceEnabled(),
@@ -1071,6 +1073,8 @@ class CompanySettingsController extends Controller
             'quotation.default_terms' => 'nullable|string|max:1000',
             'sales_order.auto_lock_on_confirm' => 'nullable|boolean',
             'sales_order.default_invoicing_policy' => ['nullable', \Illuminate\Validation\Rule::in(\App\Services\SalesSettings::INVOICING_POLICIES)],
+            // Issue #326: invoice credit-limit policy.
+            'invoice.credit_limit_policy' => ['nullable', \Illuminate\Validation\Rule::in(\App\Services\SalesSettings::CREDIT_LIMIT_POLICIES)],
         ]);
 
         // Issue #921 (SS5): the field => store-key map comes from the

@@ -51,6 +51,7 @@ import { getProductLineDescription, ProductSearchCombobox } from '@/components/i
 import { CaseSearchCombobox, type MedicalCaseOption } from '@/components/sales/CaseSearchCombobox';
 import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard';
 import { CustomerContextStrip } from '@/components/sales/CustomerContextStrip';
+import { creditWarning } from '@/lib/creditCheck';
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
 import { ProductTrackingSelector } from '@/components/inventory/ProductTrackingSelector';
 import { RichTextEditor } from '@/components/ui/RichTextEditor';
@@ -990,7 +991,8 @@ export const CreateInvoicePage: React.FC = () => {
     onSuccess: async (data) => {
       setConflict(null);
       draftGuard.clearDraft();
-      toast({ title: `${documentLabel} ${isEditMode ? 'updated' : 'created'} successfully` });
+      // Issue #326: a save under the `warn` credit policy carries the verdict.
+      toast({ title: `${documentLabel} ${isEditMode ? 'updated' : 'created'} successfully`, description: creditWarning(data) });
       const invoiceId = id || data?.id || data?.data?.id;
       const savedStatus = data?.status ?? data?.data?.status;
 

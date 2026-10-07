@@ -6,11 +6,12 @@ use App\Models\Invoice;
 use App\Models\Warehouse;
 use Modules\Inventory\Models\InventorySettings;
 use Modules\Inventory\Services\InventoryService;
+use Modules\Sales\Services\CreditCheckService;
 
 /**
  * D7 (Oct-2026 invoice review): the pre-flight checklist behind the badge on
  * Post. Composes the checks that already exist across services — approval,
- * evidence, period lock, credit exposure (AgedReceivablesService), stock —
+ * evidence, period lock, credit (CreditCheckService, #326), stock —
  * plus two data-quality checks (possible duplicate, customer TIN) that only
  * surface here, and reports pass/warn/fail without blocking anything by
  * itself (posting keeps its own hard gates).
@@ -20,8 +21,8 @@ class InvoicePreflightService
     public function __construct(
         private InvoiceApprovalService $approvalService,
         private InvoiceEvidenceService $evidenceService,
-        private AgedReceivablesService $agedReceivables,
         private LockDateValidationService $lockDateValidator,
+        private CreditCheckService $creditCheckService,
     ) {}
 
     public function run(Invoice $invoice): array
@@ -95,40 +96,37 @@ class InvoicePreflightService
         );
     }
 
+    /**
+     * Issue #326: the same verdict invoice create/post enforce
+     * (CreditCheckService, base-currency exposure) — not a separate rule.
+     * A failed check fails the checklist under the `block` policy (posting
+     * will be refused) and warns under `warn`.
+     */
     private function creditCheck(Invoice $invoice): array
     {
-        $customer = $invoice->customer;
+        $result = $invoice->customer_id ? $this->creditCheckService->checkInvoice($invoice) : null;
 
-        if (! $customer) {
+        if ($result === null) {
             return $this->warn('credit', 'Credit limit', 'No customer on this invoice.');
         }
 
-        $context = $this->agedReceivables->getCustomerContext((int) $customer->id);
-        $limit = $context['credit_limit'];
+        $verdict = $this->creditCheckService->invoiceVerdict($result);
 
-        if ($limit === null) {
-            return $this->pass('credit', 'Credit limit', 'No credit limit set for this customer.');
+        if ($result->approved) {
+            return $this->pass('credit', 'Credit limit', $result->availableCredit === null
+                ? 'No credit limit set for this customer.'
+                : sprintf(
+                    'Exposure %s of %s limit.',
+                    number_format($result->creditLimit - $result->availableCredit + $result->orderTotal, 2),
+                    number_format($result->creditLimit, 2),
+                ));
         }
 
-        $exposure = (float) $context['outstanding'];
-        if ($invoice->status === 'draft') {
-            $exposure += (float) $invoice->total;
-        }
+        $detail = $result->reason.($verdict['blocked'] ? ' — posting is blocked by the credit policy.' : ' — warning only (credit policy: warn).');
 
-        if ($exposure > $limit) {
-            return $this->warn('credit', 'Credit limit', sprintf(
-                'Exposure would reach %s of the %s limit (%s over).',
-                number_format($exposure, 2),
-                number_format($limit, 2),
-                number_format($exposure - $limit, 2),
-            ));
-        }
-
-        return $this->pass('credit', 'Credit limit', sprintf(
-            'Exposure %s of %s limit.',
-            number_format($exposure, 2),
-            number_format($limit, 2),
-        ));
+        return $verdict['blocked']
+            ? $this->fail('credit', 'Credit limit', $detail)
+            : $this->warn('credit', 'Credit limit', $detail);
     }
 
     private function duplicateCheck(Invoice $invoice): array

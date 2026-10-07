@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, CalendarClock, CreditCard, Wallet } from 'lucide-react';
+import { AlertTriangle, Ban, CalendarClock, CreditCard, Wallet } from 'lucide-react';
 import api from '@/lib/api';
 import { cn, formatCurrency, formatDate } from '@/lib/utils';
+import type { CreditCheckVerdict } from '@/lib/creditCheck';
 
 export interface CustomerContext {
   customer_id: number;
@@ -15,6 +16,7 @@ export interface CustomerContext {
   credit_utilization_pct: number | null;
   credit_available: number | null;
   last_invoice_date: string | null;
+  credit_check?: CreditCheckVerdict;
 }
 
 const CHIP = 'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs';
@@ -116,6 +118,20 @@ export function CustomerContextStrip({
           {context.credit_available != null && context.credit_available > 0 && (
             <> · {formatCurrency(context.credit_available, currency)} left</>
           )}
+        </span>
+      )}
+
+      {context.credit_check && !context.credit_check.approved && (
+        <span
+          className={cn(
+            CHIP,
+            'border-red-200 bg-red-50 text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300'
+          )}
+          title={context.credit_check.reason}
+          data-testid="credit-check-chip"
+        >
+          <Ban className="h-3.5 w-3.5" />
+          {context.credit_check.policy === 'block' ? 'Credit check fails · posting blocked' : 'Credit check fails · warning only'}
         </span>
       )}
 

@@ -47,6 +47,8 @@ export interface SalesSettings {
     default_payment_terms_days: number
     default_notes: string
     default_terms: string
+    // Issue #326: what a failed credit check does on invoice create / post.
+    credit_limit_policy?: 'block' | 'warn'
     reviewer_user_ids?: number[]
     reviewer_roles?: string[]
     available_reviewers?: Array<{ id: number; name: string; email: string }>
@@ -1116,6 +1118,26 @@ export function InvoiceDefaultsSettings() {
             checked={invoice.auto_send_to_customer_on_post}
             onCheckedChange={(v) => setLocal({ ...local, auto_send_to_customer_on_post: v })}
           />
+        </SettingsRow>
+
+        <SettingsRow
+          title="Credit limit on invoices"
+          description="When creating or posting an invoice would take the customer over the credit limit (or the customer is on hold). Block refuses it; Warn lets it through with a warning."
+        >
+          <Select
+            value={invoice.credit_limit_policy ?? 'block'}
+            onValueChange={(v) =>
+              setLocal({ ...local, credit_limit_policy: v as SalesSettings['invoice']['credit_limit_policy'] })
+            }
+          >
+            <SelectTrigger className="w-56" aria-label="Credit limit on invoices">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="block">Block</SelectItem>
+              <SelectItem value="warn">Warn only</SelectItem>
+            </SelectContent>
+          </Select>
         </SettingsRow>
 
         <div className="grid gap-6 py-4 md:grid-cols-2">
